@@ -13,6 +13,7 @@ import { TenderSynthese } from './TenderSynthese'
 import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { relaunchAnalysisAction as _relaunchAnalysisAction } from './actions'
+import { ArchiveTenderButton } from './ArchiveTenderButton'
 
 async function relaunchAnalysisAction(formData: FormData): Promise<void> {
   'use server'
@@ -73,20 +74,25 @@ export default async function TenderDetailPage({
         </div>
 
         {/* Fix 2: only show relaunch button when not analyzing/extracting */}
-        {canRelaunch && (
-          <form action={relaunchAnalysisAction}>
-            <input type="hidden" name="id" value={id} />
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              disabled={isInProgress}
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Relancer l&apos;analyse
-            </Button>
-          </form>
-        )}
+        <div className="flex items-center gap-2">
+          {canRelaunch && (
+            <form action={relaunchAnalysisAction}>
+              <input type="hidden" name="id" value={id} />
+              <Button
+                type="submit"
+                variant="outline"
+                size="sm"
+                disabled={isInProgress}
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Relancer l&apos;analyse
+              </Button>
+            </form>
+          )}
+          {!isInProgress && tender.status !== 'archived' && (
+            <ArchiveTenderButton tenderId={id} />
+          )}
+        </div>
       </div>
 
       {/* Fix 7: mock mode banner */}

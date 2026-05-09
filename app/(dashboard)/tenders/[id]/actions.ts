@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -65,5 +66,5 @@ export async function archiveTenderAction(formData: FormData) {
     metadata: {},
   })
   revalidatePath('/tenders')
-  return { ok: true }
+  redirect('/tenders')
 }
