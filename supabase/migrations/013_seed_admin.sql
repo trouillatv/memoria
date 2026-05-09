@@ -10,7 +10,7 @@ declare
   admin_email text := current_setting('app.settings.initial_admin_email', true);
 begin
   if admin_email is null or admin_email = '' then
-    admin_email := 'admin@netoiage.test';
+    admin_email := 'admin@netoiage.nc';
   end if;
 
   raise notice 'Initial admin email expected: %. Run: npm run db:bootstrap-admin', admin_email;

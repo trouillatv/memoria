@@ -159,7 +159,7 @@ AI_MODEL_LIGHT=gemini-2.5-flash
 AI_MODEL_HEAVY=gemini-2.5-pro
 
 # Bootstrap admin
-INITIAL_ADMIN_EMAIL=admin@netoiage.test
+INITIAL_ADMIN_EMAIL=admin@netoiage.nc
 INITIAL_ADMIN_PASSWORD=netoiage2026
 
 # Quotas
@@ -1074,7 +1074,7 @@ declare
 begin
   -- En local, on hardcode pour faciliter le démarrage si la variable n'est pas posée
   if admin_email is null or admin_email = '' then
-    admin_email := 'admin@netoiage.test';
+    admin_email := 'admin@netoiage.nc';
   end if;
 
   -- L'insertion réelle de l'utilisateur dans auth.users se fait via un script Node,
@@ -1518,11 +1518,11 @@ Run :
 npm run db:bootstrap-admin
 ```
 
-Attendu : `[bootstrap-admin] Admin created: admin@netoiage.test (id=...)`. Le mdp temporaire est `netoiage2026`.
+Attendu : `[bootstrap-admin] Admin created: admin@netoiage.nc (id=...)`. Le mdp temporaire est `netoiage2026`.
 
 - [ ] **Step 6.12 : Vérifier dans Studio**
 
-Studio → Auth → Users : doit lister `admin@netoiage.test`. Studio → Table Editor → public.users : doit lister la même row avec role='admin', must_change_password=true.
+Studio → Auth → Users : doit lister `admin@netoiage.nc`. Studio → Table Editor → public.users : doit lister la même row avec role='admin', must_change_password=true.
 
 - [ ] **Step 6.13 : Commit**
 
@@ -1946,7 +1946,7 @@ npm run dev
 ```
 
 - Aller sur `http://localhost:3000` → middleware doit rediriger vers `/login`.
-- Se connecter avec `admin@netoiage.test` / `netoiage2026`.
+- Se connecter avec `admin@netoiage.nc` / `netoiage2026`.
 - Le `must_change_password` est à `true` → redirect vers `/change-password`.
 - Définir un nouveau mdp → redirect vers `/missions` (404 attendu pour l'instant, normal).
 - Se déconnecter manuellement (DB studio, supprimer cookies) puis re-login avec le nouveau mdp → redirect direct vers `/missions`.
@@ -2853,7 +2853,7 @@ export default async function AdminUsersPage() {
 
 Run `npm run dev`, login admin, aller sur `/admin/users` :
 - Voir l'admin dans la liste.
-- Créer un manager via le form (mode "Mdp temporaire" avec email `manager@netoiage.test`).
+- Créer un manager via le form (mode "Mdp temporaire" avec email `manager@netoiage.nc`).
 - Changer son rôle inline → toast OK + log activity.
 - Tester le reset password sur le manager → toast OK.
 - Tenter de delete soi-même → bouton désactivé.
@@ -3158,8 +3158,8 @@ git commit -m "chore: setup Vitest + 3 tests audit-log + GitHub Actions CI"
 À l'issue de ces 12 tasks, on doit avoir :
 
 - [ ] `npm run dev` démarre sans erreur, `npm run typecheck` et `npm test` passent.
-- [ ] `npm run db:reset && npm run db:bootstrap-admin` produit un admin `admin@netoiage.test`.
-- [ ] Login avec `admin@netoiage.test` / `netoiage2026` redirige vers `/change-password`, puis vers `/missions`.
+- [ ] `npm run db:reset && npm run db:bootstrap-admin` produit un admin `admin@netoiage.nc`.
+- [ ] Login avec `admin@netoiage.nc` / `netoiage2026` redirige vers `/change-password`, puis vers `/missions`.
 - [ ] La sidebar affiche les bonnes entrées selon le rôle (admin voit tout, chef_equipe voit Missions seulement).
 - [ ] Dark/light mode fonctionne via le ThemeToggle.
 - [ ] PWA installable (manifest correct dans Chrome DevTools).
