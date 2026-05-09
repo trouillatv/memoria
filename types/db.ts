@@ -42,3 +42,61 @@ export interface DbKnowledgeItem {
   created_at: string
   deleted_at: string | null
 }
+
+export interface DbTender {
+  id: string
+  title: string
+  client_name: string | null
+  deadline: string | null
+  status: TenderStatus
+  opportunity_score: number | null
+  error_msg: string | null
+  created_by: string
+  created_at: string
+  deleted_at: string | null
+}
+
+export interface DbTenderDocument {
+  id: string
+  tender_id: string
+  storage_path: string
+  filename: string
+  size_bytes: number | null
+  page_count: number | null
+  extracted_text: string | null
+  uploaded_at: string
+}
+
+export interface DbTenderAnalysisConstraint {
+  label: string
+  detail?: string
+  required?: boolean
+  category?: string
+}
+
+export interface DbTenderAnalysisRisk {
+  label: string
+  severity: 'low' | 'medium' | 'high'
+  detail?: string
+}
+
+export interface DbTenderAnalysisChecklistItem {
+  item: string
+  required: boolean
+}
+
+export interface DbTenderAnalysis {
+  id: string
+  tender_id: string
+  provider: AIProviderName
+  model: string | null
+  prompt_versions: Record<string, string> | null
+  summary: string | null
+  constraints: DbTenderAnalysisConstraint[] | null
+  risks: DbTenderAnalysisRisk[] | null
+  checklist: DbTenderAnalysisChecklistItem[] | null
+  technical_memo: string | null
+  library_snapshot: { items_count: number; total_chars: number } | null
+  raw_response: unknown | null
+  created_at: string
+}
