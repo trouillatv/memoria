@@ -60,7 +60,18 @@ export async function sendChatMessageAction(formData: FormData) {
   const tender = await getTender(parsed.data.tender_id)
   if (!tender) return { error: 'AO introuvable' }
 
-  // Insert user message
+  // Build context for the agent — history fetched BEFORE inserting the current
+  // user message, so that history contains only previous turns (le message
+  // courant est passé séparément comme userMessage à chatWithAgent).
+  const [doc, analysis, lib, history] = await Promise.all([
+    getTenderDocument(parsed.data.tender_id),
+    getLatestTenderAnalysis(parsed.data.tender_id),
+    buildLibraryContext(),
+    listChatMessages(parsed.data.tender_id),
+  ])
+  const tenderContext = buildTenderContext(tender, doc, analysis)
+
+  // Insert user message (after history fetched)
   const userMessageId = await insertChatMessage({
     tender_id: parsed.data.tender_id,
     user_id: userId,
@@ -108,15 +119,6 @@ export async function sendChatMessageAction(formData: FormData) {
       }
     }
   }
-
-  // Build context for the agent
-  const [doc, analysis, lib, history] = await Promise.all([
-    getTenderDocument(parsed.data.tender_id),
-    getLatestTenderAnalysis(parsed.data.tender_id),
-    buildLibraryContext(),
-    listChatMessages(parsed.data.tender_id),
-  ])
-  const tenderContext = buildTenderContext(tender, doc, analysis)
 
   // Call agent
   let agentResponse: string
