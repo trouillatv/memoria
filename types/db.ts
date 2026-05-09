@@ -100,3 +100,28 @@ export interface DbTenderAnalysis {
   raw_response: unknown | null
   created_at: string
 }
+
+export type ChatAgentName =
+  | 'general' | 'lecteur_ao' | 'memoire_technique'
+  | 'contradicteur' | 'financier' | 'terrain' | 'conformite'
+
+export interface DbTenderChatMessage {
+  id: string
+  tender_id: string
+  user_id: string | null
+  agent_name: ChatAgentName | null
+  role: 'user' | 'agent' | 'system'
+  content: string
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface DbTenderChatAttachment {
+  id: string
+  message_id: string
+  storage_path: string
+  filename: string
+  size_bytes: number | null
+  extracted_text: string | null
+  created_at: string
+}
