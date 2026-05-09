@@ -7,12 +7,16 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
 export const metadata: Metadata = {
-  title: "NetoIAge",
-  description: "Gestion terrain & appels d'offres pour entreprises de nettoyage",
+  title: 'NetoIAge',
+  description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
+  manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: "NetoIAge",
-    statusBarStyle: "black-translucent",
+    title: 'NetoIAge',
+    statusBarStyle: 'black-translucent',
+  },
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
   },
 }
 
