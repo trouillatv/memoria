@@ -155,6 +155,7 @@ export default async function TenderDetailPage({
             <TabsTrigger value="synthese">Synthese</TabsTrigger>
             <TabsTrigger value="analyse">Analyse detaillee</TabsTrigger>
             <TabsTrigger value="memoire">Memoire technique</TabsTrigger>
+            <TabsTrigger value="atelier">Atelier IA &middot; Bientot</TabsTrigger>
           </TabsList>
 
           <TabsContent value="synthese" className="mt-4">
@@ -172,6 +173,23 @@ export default async function TenderDetailPage({
 
           <TabsContent value="memoire" className="mt-4">
             <TenderMemoireTechnique tender={tender} analysis={analysis} />
+          </TabsContent>
+
+          <TabsContent value="atelier" className="mt-4">
+            <div className="rounded-xl border border-dashed p-8 space-y-3">
+              <div className="text-base font-semibold">Atelier IA d&apos;appel d&apos;offres</div>
+              <p className="text-sm text-muted-foreground">
+                Bientot disponible : un espace de chat contextualise sur cet AO ou tu pourras
+                interroger un agent IA precis (lecteur AO, memoire technique, contradicteur,
+                financier, terrain, conformite, stratege commercial), poser des questions libres,
+                challenger les reponses generees, et uploader des documents complementaires
+                (annexes, attestations, RIB) en cours de conversation.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Architecture preparee dans la spec ; tables <code className="font-mono">tender_chat_messages</code> et
+                {' '}<code className="font-mono">tender_agent_runs</code> seront ajoutees en V2.
+              </p>
+            </div>
           </TabsContent>
         </Tabs>
       )}
