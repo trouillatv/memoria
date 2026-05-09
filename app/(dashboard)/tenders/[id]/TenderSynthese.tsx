@@ -6,9 +6,10 @@ interface TenderSyntheseProps {
   tender: DbTender
   analysis: DbTenderAnalysis
   document: DbTenderDocument | null
+  pdfSignedUrl?: string | null
 }
 
-export function TenderSynthese({ tender, analysis, document }: TenderSyntheseProps) {
+export function TenderSynthese({ tender, analysis, document, pdfSignedUrl }: TenderSyntheseProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Score & Provider */}
@@ -36,11 +37,16 @@ export function TenderSynthese({ tender, analysis, document }: TenderSynthesePro
             {document && (
               <div>
                 <span className="font-medium">Document :</span>{' '}
-                {document.filename}
+                <code>{document.filename}</code>
                 {document.page_count ? ` · ${document.page_count} pages` : ''}
                 {document.size_bytes
                   ? ` · ${Math.round(document.size_bytes / 1024)} Ko`
                   : ''}
+                {pdfSignedUrl && (
+                  <a href={pdfSignedUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-brand-600 hover:underline">
+                    Ouvrir le PDF source
+                  </a>
+                )}
               </div>
             )}
           </div>

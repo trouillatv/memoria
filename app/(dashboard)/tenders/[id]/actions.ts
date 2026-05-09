@@ -1,11 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday } from '@/lib/db/tenders'
+import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday, insertTenderAnalysis } from '@/lib/db/tenders'
+import { analyzeTender } from '@/services/ai/orchestrator'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -43,12 +46,32 @@ export async function relaunchAnalysisAction(formData: FormData) {
   })
   revalidatePath(`/tenders/${parsed.data.id}`)
 
-  // Fire-and-forget
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const secret = process.env.INTERNAL_ANALYZE_SECRET ?? ''
-  fetch(`${baseUrl}/api/tenders/${parsed.data.id}/analyze`, {
-    method: 'POST', headers: { 'x-internal-trigger': secret },
-  }).catch(() => {})
+  // Schedule background analyze via Next.js after()
+  const tenderId = parsed.data.id
+  const extractedText = doc.extracted_text
+  after(async () => {
+    try {
+      const result = await analyzeTender(extractedText, userId)
+      await insertTenderAnalysis({
+        tender_id: tenderId,
+        provider: result.provider as 'mock' | 'gemini' | 'anthropic' | 'openai',
+        model: result.model,
+        prompt_versions: result.promptVersions,
+        summary: result.reading.summary,
+        constraints: result.reading.constraints,
+        risks: result.reading.risks,
+        checklist: result.reading.checklist,
+        technical_memo: result.memo.technical_memo,
+        library_snapshot: result.librarySnapshot,
+        raw_response: null,
+      })
+      await updateTenderStatus(tenderId, 'ready', null, result.score.score)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'unknown'
+      console.error('[relaunchAnalysisAction] analyze failed:', e)
+      await updateTenderStatus(tenderId, 'failed', msg)
+    }
+  })
 
   return { ok: true }
 }
@@ -65,5 +88,5 @@ export async function archiveTenderAction(formData: FormData) {
     metadata: {},
   })
   revalidatePath('/tenders')
-  return { ok: true }
+  redirect('/tenders')
 }

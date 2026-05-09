@@ -770,6 +770,79 @@ components/tenders/
 | AO doublon (même titre + même client) | Avertissement non-bloquant |
 | Quota IA quotidien dépassé | Message clair, blocage |
 
+### Vision V2 — Atelier IA d'appel d'offres (préparation architecture)
+
+Le Module 1 actuel est limité à : upload PDF → analyse → mémoire technique. La vision cible est un **vrai atelier IA conversationnel** par AO. **NON livré au MVP** mais l'architecture doit être préparée pour ne pas casser le code existant lors de l'activation.
+
+#### Concept
+
+Sur `/tenders/[id]`, en plus des 3 onglets actuels (Synthèse / Analyse détaillée / Mémoire technique), un 4ᵉ onglet **« Atelier IA »** offrira :
+
+- Une **fenêtre de chat contextualisée** sur l'AO (tous les messages partagent le contexte du PDF + des analyses + de la bibliothèque)
+- La possibilité de **choisir un agent IA précis** pour répondre (dropdown ou mention `@agent`)
+- La possibilité de **poser des questions libres** (au-delà de l'analyse initiale)
+- La possibilité de **challenger une réponse** (« peux-tu me donner un autre angle ? », « contredis ça »)
+- La possibilité d'**uploader des documents complémentaires** liés à une question (annexe, RIB, attestation, etc.) → ajoutés comme nouveaux `tender_documents` du tender courant
+- 7 agents activables individuellement :
+  - `lecteur_ao` (déjà MVP)
+  - `memoire_technique` (déjà MVP)
+  - `contradicteur` (stub MVP, à activer)
+  - `financier` (stub MVP, à activer)
+  - `terrain` (stub MVP, à activer)
+  - `conformite` (stub MVP, à activer)
+  - `stratege_commercial` (**nouveau, à créer en V2**) — angle stratégie/positionnement (« comment se différencier ? », « quels arguments de vente mettre en avant ? »)
+
+#### Multi-fichiers AO — déjà supporté
+
+La table `tender_documents` est en relation 1..N avec `tenders` (FK `tender_id` non unique). Le MVP actuel limite l'UI à 1 PDF par AO, mais le schéma supporte déjà N documents → l'Atelier IA pourra empiler des annexes sans migration.
+
+#### Tables à ajouter en V2
+
+```sql
+-- Conversation atelier IA par AO (futur, pas créé au MVP)
+create table public.tender_chat_messages (
+  id                   uuid primary key default gen_random_uuid(),
+  tender_id            uuid not null references tenders(id) on delete cascade,
+  user_id              uuid references public.users(id) on delete set null,
+  agent_name           text,                                  -- null = message utilisateur, sinon nom de l'agent répondant
+  role                 text not null check (role in ('user', 'agent', 'system')),
+  content              text not null,
+  attached_document_ids uuid[],                               -- liens vers tender_documents.id supplémentaires
+  created_at           timestamptz default now()
+);
+create index tender_chat_messages_tender_idx on public.tender_chat_messages(tender_id, created_at);
+
+-- Trace des exécutions d'agents (un run = un appel agent IA)
+create table public.tender_agent_runs (
+  id                uuid primary key default gen_random_uuid(),
+  tender_id         uuid not null references tenders(id) on delete cascade,
+  agent_name        text not null,
+  input_message_id  uuid references tender_chat_messages(id) on delete set null,
+  output_message_id uuid references tender_chat_messages(id) on delete set null,
+  status            text not null check (status in ('pending', 'running', 'success', 'failed')),
+  metadata          jsonb,                                    -- model, tokens, durée, etc.
+  created_at        timestamptz default now()
+);
+create index tender_agent_runs_tender_idx on public.tender_agent_runs(tender_id, created_at);
+```
+
+**RLS** : héritera des règles `tenders` (manager + admin only).
+
+#### Roadmap d'activation
+
+| Phase | Contenu |
+|---|---|
+| MVP actuel | 3 onglets, agents `lecteur_ao` + `memoire_technique` + `opportunity_scorer` actifs |
+| V2 — Atelier IA | Migration `014_tender_chat_atelier.sql` (les 2 tables ci-dessus) + UI onglet « Atelier IA » avec chat + uploads + dropdown agent + nouveau `stratege_commercial` (8ᵉ agent) |
+| V2.1+ | Activation progressive des stubs (`conformite`, `contradicteur`, `financier`, `terrain`) selon le besoin client |
+
+#### Préparation MVP
+
+- ✅ `tender_documents` déjà 1..N (zéro modif schéma à faire)
+- ✅ Couche IA (`AIAgent` interface + registry) déjà extensible : ajouter `stratege_commercial` = 1 fichier
+- ✅ UI : un onglet placeholder « Atelier IA · Bientôt » est ajouté dès le MVP pour signaler la roadmap
+- ⏳ Tables `tender_chat_messages` + `tender_agent_runs` : documentées ici, NON migrées au MVP
+
 ---
 
 ## 8. Module 2 — Terrain (`/missions`) + PWA

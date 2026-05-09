@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -12,8 +13,10 @@ import {
   createTenderDocument,
   updateTenderStatus,
   countAnalysesToday,
+  insertTenderAnalysis,
 } from '@/lib/db/tenders'
 import { extractPdfText } from '@/services/pdf/extract'
+import { analyzeTender } from '@/services/ai/orchestrator'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -85,8 +88,10 @@ export async function createTenderAction(formData: FormData) {
     const r = await extractPdfText(buffer)
     extracted = r
   } catch (e) {
-    await updateTenderStatus(tenderId, 'failed', `extraction: ${e instanceof Error ? e.message : 'unknown'}`)
-    return { error: 'Extraction texte échouée' }
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[createTenderAction] PDF extraction failed:', e)
+    await updateTenderStatus(tenderId, 'failed', `extraction: ${msg}`)
+    return { error: `Extraction texte échouée : ${msg}` }
   }
 
   if (extracted.isLikelyScanned) {
@@ -127,18 +132,35 @@ export async function createTenderAction(formData: FormData) {
   })
   revalidatePath('/tenders')
 
-  // 7. Trigger background analyze via fetch (fire-and-forget on server)
-  // We use a Route Handler called via fetch from this Server Action.
-  triggerAnalyzeBackground(tenderId).catch((e) => console.warn('[analyze trigger] failed:', e))
+  // 7. Schedule background analyze via Next.js after() — runs after the redirect
+  //    response is sent, but the function instance stays alive long enough.
+  //    Replaces the broken fire-and-forget fetch pattern.
+  const tenderIdForAnalyze = tenderId
+  const userIdForAnalyze = userId
+  const extractedTextForAnalyze = extracted.text
+  after(async () => {
+    try {
+      const result = await analyzeTender(extractedTextForAnalyze, userIdForAnalyze)
+      await insertTenderAnalysis({
+        tender_id: tenderIdForAnalyze,
+        provider: result.provider as 'mock' | 'gemini' | 'anthropic' | 'openai',
+        model: result.model,
+        prompt_versions: result.promptVersions,
+        summary: result.reading.summary,
+        constraints: result.reading.constraints,
+        risks: result.reading.risks,
+        checklist: result.reading.checklist,
+        technical_memo: result.memo.technical_memo,
+        library_snapshot: result.librarySnapshot,
+        raw_response: null,
+      })
+      await updateTenderStatus(tenderIdForAnalyze, 'ready', null, result.score.score)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'unknown'
+      console.error('[createTenderAction] analyze failed:', e)
+      await updateTenderStatus(tenderIdForAnalyze, 'failed', msg)
+    }
+  })
 
   redirect(`/tenders/${tenderId}`)
-}
-
-function triggerAnalyzeBackground(tenderId: string): Promise<void> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const secret = process.env.INTERNAL_ANALYZE_SECRET ?? ''
-  return fetch(`${baseUrl}/api/tenders/${tenderId}/analyze`, {
-    method: 'POST',
-    headers: { 'x-internal-trigger': secret },
-  }).then(() => undefined)
 }

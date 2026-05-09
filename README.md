@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NetoIAge
 
-## Getting Started
+SaaS B2B pour entreprises de nettoyage professionnel : appels d'offres avec IA, gestion terrain mobile-first, rapports & bibliothèque AGP.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Frontend** : Next.js 16 + TypeScript + Tailwind v4 + shadcn/ui
+- **Backend** : Supabase Cloud (Postgres + Auth + Storage)
+- **IA** : multi-provider (mock / gemini / anthropic) via abstraction commune
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Démarrage local
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Cloner le repo** et `cd` dedans
+2. **Node.js 20+** requis (via nvm recommandé)
+3. **Installer les deps** :
+   ```bash
+   npm install
+   ```
+4. **Variables d'environnement** : copier `.env.example` vers `.env.local` et remplir avec les valeurs de votre projet Supabase Cloud (URL + anon key + service_role key + access token).
+5. **Appliquer les migrations** sur votre projet Supabase Cloud :
+   ```bash
+   npm run db:push
+   ```
+6. **Créer l'admin initial** :
+   ```bash
+   npm run db:bootstrap-admin
+   ```
+7. **Démarrer le dev server** :
+   ```bash
+   npm run dev
+   ```
+   Ouvrir http://localhost:3000 et se connecter avec les valeurs de `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Documentation
 
-## Learn More
+- **Spec** : `docs/superpowers/specs/2026-05-09-netoiage-mvp-design.md`
+- **Plans d'implémentation** : `docs/superpowers/plans/`
+- **Review Plans 1-3** : `docs/REVIEW-PLANS-1-3.md`
 
-To learn more about Next.js, take a look at the following resources:
+## Securite
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Tokens et secrets
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Aucun secret réel ne doit être commité dans ce repo.** `.env.local` est gitignored.
+- Si un token Supabase ou autre clé API a été exposé dans un chat, des logs, un message ou tout canal non-privé : **révoquer immédiatement le token concerné** et en générer un neuf.
+  - Tokens Supabase CLI : https://supabase.com/dashboard/account/tokens
+  - Service role keys : régénérables depuis le dashboard du projet Supabase
+- Le mot de passe `INITIAL_ADMIN_PASSWORD` est temporaire — il est forcé à être changé à la première connexion (`must_change_password` flag).
 
-## Deploy on Vercel
+### Headers HTTP
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+À activer avant production : Content-Security-Policy, HSTS, X-Frame-Options. Pas configurés au MVP.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Scripts npm
+
+- `npm run dev` — serveur de dev (Turbopack)
+- `npm run build` — build production
+- `npm run typecheck` — `tsc --noEmit`
+- `npm test` — tests Vitest
+- `npm run db:push` — applique les migrations Supabase
+- `npm run db:bootstrap-admin` — crée l'utilisateur admin initial
+- `npm run gen:icons` — régénère les icônes PWA
+
+## Tests
+
+8 tests Vitest en place (audit logging, knowledge tags, AI mock provider, AI orchestrator). CI GitHub Actions sur push/PR vers main.
