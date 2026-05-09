@@ -85,8 +85,10 @@ export async function createTenderAction(formData: FormData) {
     const r = await extractPdfText(buffer)
     extracted = r
   } catch (e) {
-    await updateTenderStatus(tenderId, 'failed', `extraction: ${e instanceof Error ? e.message : 'unknown'}`)
-    return { error: 'Extraction texte échouée' }
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[createTenderAction] PDF extraction failed:', e)
+    await updateTenderStatus(tenderId, 'failed', `extraction: ${msg}`)
+    return { error: `Extraction texte échouée : ${msg}` }
   }
 
   if (extracted.isLikelyScanned) {
