@@ -112,10 +112,13 @@ const uploadSchema = z.object({
   filename: z.string().min(1).max(200),
 })
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 export async function uploadKnowledgeFileAction(formData: FormData) {
   await requireManagerOrAdmin()
   const file = formData.get('file')
   if (!(file instanceof File)) return { error: 'No file' }
+  if (file.size > MAX_UPLOAD_BYTES) return { error: 'Fichier > 10 MB' }
 
   const parsed = uploadSchema.safeParse({ filename: file.name })
   if (!parsed.success) return { error: 'Invalid filename' }
