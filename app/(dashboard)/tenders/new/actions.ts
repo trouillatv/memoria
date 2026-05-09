@@ -99,6 +99,11 @@ export async function createTenderAction(formData: FormData) {
       page_count: extracted.pageCount,
       extracted_text: '',
     })
+    await logAuditEvent({
+      userId, entityType: 'tender', entityId: tenderId,
+      action: 'created',
+      metadata: { title: parsed.data.title, page_count: extracted.pageCount, status: 'failed', reason: 'scanned_pdf_unsupported' },
+    })
     redirect(`/tenders/${tenderId}`)
   }
 
@@ -131,8 +136,9 @@ export async function createTenderAction(formData: FormData) {
 
 function triggerAnalyzeBackground(tenderId: string): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+  const secret = process.env.INTERNAL_ANALYZE_SECRET ?? ''
   return fetch(`${baseUrl}/api/tenders/${tenderId}/analyze`, {
     method: 'POST',
-    headers: { 'x-internal-trigger': '1' },
+    headers: { 'x-internal-trigger': secret },
   }).then(() => undefined)
 }

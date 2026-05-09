@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument } from '@/lib/db/tenders'
+import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday } from '@/lib/db/tenders'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -29,6 +29,12 @@ export async function relaunchAnalysisAction(formData: FormData) {
   const doc = await getTenderDocument(parsed.data.id)
   if (!doc || !doc.extracted_text) return { error: 'Pas de texte extrait — re-uploader le PDF' }
 
+  const todayCount = await countAnalysesToday()
+  const limit = parseInt(process.env.MAX_AO_ANALYSES_PER_DAY ?? '20', 10)
+  if (todayCount >= limit) {
+    return { error: `Quota journalier atteint (${todayCount}/${limit}).` }
+  }
+
   await updateTenderStatus(parsed.data.id, 'analyzing', null)
   await logAuditEvent({
     userId, entityType: 'tender', entityId: parsed.data.id,
@@ -39,8 +45,9 @@ export async function relaunchAnalysisAction(formData: FormData) {
 
   // Fire-and-forget
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
+  const secret = process.env.INTERNAL_ANALYZE_SECRET ?? ''
   fetch(`${baseUrl}/api/tenders/${parsed.data.id}/analyze`, {
-    method: 'POST', headers: { 'x-internal-trigger': '1' },
+    method: 'POST', headers: { 'x-internal-trigger': secret },
   }).catch(() => {})
 
   return { ok: true }

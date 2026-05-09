@@ -17,6 +17,6 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractResult> {
   const text = (result.text ?? '').trim()
   const pageCount = result.numpages ?? 0
   const charCount = text.length
-  const isLikelyScanned = charCount < 200 && pageCount > 1
+  const isLikelyScanned = charCount < 200 && pageCount >= 1
   return { text, pageCount, charCount, isLikelyScanned }
 }

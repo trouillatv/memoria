@@ -6,7 +6,13 @@ import { analyzeTender } from '@/services/ai/orchestrator'
  * Triggered by the Server Action after upload completes.
  * Runs the full analyze pipeline and writes results.
  */
-export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const expected = process.env.INTERNAL_ANALYZE_SECRET
+  const got = req.headers.get('x-internal-trigger')
+  if (!expected || got !== expected) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const { id } = await ctx.params
 
   const tender = await getTender(id)

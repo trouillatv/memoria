@@ -27,11 +27,12 @@ export async function logAIUsage(entry: AIUsageEntry): Promise<void> {
 export async function withAITracking<T>(
   feature: string,
   userId: string | null,
-  fn: () => Promise<{ result: T; tokens: { input: number; output: number }; model: string; provider: AIProviderName; durationMs: number }>
+  fn: () => Promise<{ result: T; tokens: { input: number; output: number }; model: string; provider: AIProviderName; durationMs?: number }>
 ): Promise<T> {
   const start = Date.now()
   try {
     const r = await fn()
+    const durationMs = Date.now() - start  // measure here, not from callback
     await logAIUsage({
       user_id: userId,
       feature,
@@ -40,7 +41,7 @@ export async function withAITracking<T>(
       input_tokens: r.tokens.input,
       output_tokens: r.tokens.output,
       cost_usd: null,
-      duration_ms: r.durationMs,
+      duration_ms: durationMs,
       status: 'success',
       error_msg: null,
     })
