@@ -4,6 +4,7 @@ create or replace function public.sync_user_role_to_jwt()
   returns trigger
   language plpgsql
   security definer
+  set search_path = ''
 as $$
 begin
   update auth.users
@@ -27,6 +28,7 @@ create or replace function public.handle_new_auth_user()
   returns trigger
   language plpgsql
   security definer
+  set search_path = ''
 as $$
 begin
   insert into public.users (id, email, full_name, role)
@@ -34,7 +36,7 @@ begin
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'full_name', ''),
-    coalesce((new.raw_user_meta_data->>'role')::user_role, 'chef_equipe')
+    coalesce((new.raw_user_meta_data->>'role')::public.user_role, 'chef_equipe'::public.user_role)
   )
   on conflict (id) do nothing;
   return new;
