@@ -35,7 +35,7 @@ Toutes les décisions ci-dessous ont été prises par la product owner pendant l
 | Design | shadcn/ui + theming sobre + dark/light + une couleur primaire | "SaaS pro crédible", pas pixel-perfect |
 | Tests | Tests ciblés sur la logique critique (~15-25 tests Vitest) | Bon ratio couverture/vitesse |
 | Hosting | Vercel (front) + Supabase (DB / Auth / Storage) | Stack standard Next.js 15 |
-| Exports MVP | Mémoire technique : markdown + bouton Copier + export Word simple. Rapport mission : PDF prévu mais lot final | "Pas surinvestir dans l'export au début" |
+| Exports MVP | Mémoire technique : markdown + Copier (md/HTML) + export Word simple. Rapport mission : page web imprimable (`@media print`) en priorité, PDF natif en bonus si temps | "Pas surinvestir dans l'export au début" |
 
 ---
 
@@ -226,11 +226,9 @@ create type knowledge_category as enum (
   'references_clients',
   'moyens_humains',
   'materiel',
-  'procedures_qualite',
-  'engagements_environnementaux',
-  'anciens_memoires',
-  'arguments_differenciants',
-  'certifications'
+  'procedures',
+  'qualite',
+  'anciens_memoires'
 );
 ```
 
@@ -387,19 +385,19 @@ create table public.reports (
   created_at       timestamptz default now()
 );
 
--- 12. Bibliothèque AGP — table unifiée
+-- 12. Bibliothèque AGP — table unifiée minimale
 create table public.knowledge_items (
-  id                uuid primary key default gen_random_uuid(),
-  title             text not null,
-  category          knowledge_category not null,
-  content           text not null,          -- markdown libre
-  file_storage_path text,                   -- nullable, PDF/doc dans bucket library-documents
-  is_active         boolean default true,   -- exclusion ponctuelle d'un item du contexte IA
-  created_at        timestamptz default now(),
-  updated_at        timestamptz default now(),
-  deleted_at        timestamptz
+  id               uuid primary key default gen_random_uuid(),
+  title            text not null,
+  category         knowledge_category not null,
+  content_markdown text not null,
+  file_path        text,                    -- nullable, PDF/doc dans bucket library-documents
+  tags             text[],                  -- libres : "environnement", "rgpd", "iso9001", etc.
+  created_at       timestamptz default now(),
+  deleted_at       timestamptz
 );
 create index knowledge_items_category_idx on knowledge_items(category) where deleted_at is null;
+create index knowledge_items_tags_idx on knowledge_items using gin(tags) where deleted_at is null;
 
 -- 13. Logs d'usage IA (contrôle des coûts)
 create table public.ai_usage (
@@ -601,7 +599,7 @@ export async function analyzeTender(tenderId: string, rawText: string, userId: s
 ```ts
 // services/ai/library-context.ts
 export async function buildLibraryContext(): Promise<string> {
-  const items = await fetchKnowledgeItemsActive()  // SELECT ... WHERE is_active AND deleted_at IS NULL
+  const items = await fetchKnowledgeItems()        // SELECT ... WHERE deleted_at IS NULL
   const grouped = groupBy(items, 'category')
 
   return Object.entries(grouped)
@@ -833,41 +831,56 @@ V2 : queue IndexedDB + replay au retour en ligne.
 
 1 mission terminée (`completed` ou `issue`) ↔ 1 rapport (1-to-1). Le rapport ne se génère **pas automatiquement** : un manager le valide et l'exporte à la demande.
 
+### Stratégie de livraison priorisée
+
+| Livrable | Priorité MVP | Implémentation |
+|---|---|---|
+| **Vue web lecture seule** (`/reports/[id]`) | ✅ obligatoire | HTML standard avec dark/light, lecture-seule |
+| **Page imprimable** (`@media print` CSS) | ✅ obligatoire | CSS print rules + bouton « Imprimer » qui déclenche `window.print()` → l'utilisateur peut "Imprimer en PDF" via le navigateur (macOS / Windows / iOS). Suffisant pour 80 % des usages. |
+| **Export PDF natif** (`@react-pdf/renderer`) | 🟡 bonus, lot final | Si le temps le permet en fin de cycle. Sinon → V1.1 |
+
+**Justification** : la chaîne `HTML imprimable → "Imprimer en PDF" navigateur` produit un PDF correct sans coût de dev, identique à ce que ferait `@react-pdf/renderer` à 90 %. On ne sacrifie rien d'essentiel en repoussant le PDF natif.
+
 ### Pages
 
 **`/reports` — Liste**
 Table : date mission · client · site · chef · statut · « Validé par » · actions. Filtres URL (client, période, validé/non).
 
 **`/reports/[id]` — Détail**
-Vue lecture seule, agrégation mission :
+Vue lecture seule, agrégation mission, layout pensé **print-friendly dès le départ** :
 - Bandeau : client, site, date, chef, statut.
 - Section checklist (effectués/non).
-- Section photos (grille avant/après).
+- Section photos (grille avant/après, 2-3 cols écran, 2 cols print).
 - Section incidents (liste avec sévérité).
 - Si clôture en écart : encart visible avec le commentaire.
 - Bouton **« Valider le rapport »** (admin/manager) → set `validated_by` + `validated_at`.
-- Bouton **« Exporter PDF »** → génère PDF côté serveur, stocke `report-pdfs/{report_id}/{ts}.pdf`, retourne signed URL.
+- Bouton **« Imprimer / Exporter PDF »** → `window.print()`. CSS `@media print` masque sidebar, topbar, boutons, force fond blanc, paginatione.
+- (Bonus si lot final) Bouton **« Télécharger PDF »** → version `@react-pdf/renderer` stockée dans `report-pdfs/`.
 
-### Génération PDF
+### CSS print
 
-Lib **`@react-pdf/renderer`**. Template `services/reports/pdf-template.tsx` minimal :
-- En-tête avec logo NetoIAge (texte ou image simple).
-- Bloc identité mission.
-- Tableau checklist.
-- Galerie photos (max 6 par page, paginées).
-- Bloc incidents.
-- Pied de page : « Validé par X le DD/MM/YYYY ».
+Règles minimales :
+- `@page { size: A4; margin: 1.5cm; }`
+- `@media print { .no-print { display: none; } body { background: white; color: black; } }`
+- `.page-break-before` sur les sections > 1 page.
+- Photos : `max-height: 8cm` pour rester en pages digestes.
 
-**Note priorité** : ce module est codé en **dernier dans le cycle**. Si le temps presse, le PDF passe en V1.1, on livre la vue HTML lecture seule en MVP.
+### Génération PDF natif (si livré)
+
+Si on entre dans le scope final :
+- Lib `@react-pdf/renderer`. Template `services/reports/pdf-template.tsx`.
+- Sections identiques à la vue web.
+- Stockage `report-pdfs/{report_id}/{ts}.pdf`. Régénérable.
 
 ### Composants
 
 ```
 components/reports/
 ├─ ReportListTable.tsx
-├─ ReportDetailView.tsx
+├─ ReportDetailView.tsx              # avec @media print
 ├─ ReportValidateButton.tsx
-└─ ReportExportPdfButton.tsx
+├─ ReportPrintButton.tsx             # window.print()
+└─ ReportExportPdfButton.tsx         # bonus, lot final
 ```
 
 ---
@@ -884,47 +897,50 @@ Sans bibliothèque, l'IA produit du générique creux. Avec bibliothèque, l'IA 
 
 ### Modèle de données
 
-**Une seule table `knowledge_items`** avec colonne `category` (8 valeurs enum). Schéma déjà défini en §5 :
+**Une seule table `knowledge_items`**, colonnes minimales, pas de sous-tables, pas de 6 CRUD séparés. Schéma défini en §5 :
 
 ```sql
 knowledge_items (
-  id, title, category, content (markdown), file_storage_path, is_active,
-  created_at, updated_at, deleted_at
+  id, title, category, content_markdown, file_path, tags,
+  created_at, deleted_at
 )
 ```
 
-### Catégories
+Le champ `tags text[]` permet de sous-catégoriser librement (ex. `["environnement", "ecolabel"]` sur un item de catégorie `materiel`) sans créer de nouvelles tables. Si plus tard une catégorie justifie sa propre structure, on normalise — pas avant.
+
+### Catégories (6)
 
 | Enum | Libellé UI | Exemple |
 |---|---|---|
 | `references_clients` | Références clients | "CHU de Toulouse, hospitalier, 12 000 m², 2021-aujourd'hui" |
 | `moyens_humains` | Moyens humains | "14 agents CQP APH, 3 chefs d'équipe ISO 9001" |
 | `materiel` | Matériel | "Monobrosses Numatic NUC244 (×4, Ecolabel)" |
-| `procedures_qualite` | Procédures qualité | "Procédure désinfection bloc opératoire — fichier PDF" |
-| `engagements_environnementaux` | Engagements environnementaux | "Charte zéro phyto, produits Ecolabel exclusifs" |
+| `procedures` | Procédures | "Procédure désinfection bloc opératoire — fichier PDF joint" |
+| `qualite` | Qualité | "ISO 9001:2015 valide 2027-03-15 ; engagement zéro phyto" |
 | `anciens_memoires` | Anciens mémoires techniques | "Mémoire AO 2024 ville de X — gagné" |
-| `arguments_differenciants` | Arguments différenciants | "Application terrain temps-réel, traçabilité photo systématique" |
-| `certifications` | Certifications / attestations | "ISO 9001:2015 (valide 2027-03-15) — fichier PDF" |
 
-### Page `/library`
+Les anciennes catégories que j'avais ajoutées (`engagements_environnementaux`, `arguments_differenciants`, `certifications`) sont **représentables via `tags`** sur la catégorie `qualite` ou `anciens_memoires`. On évite la prolifération d'enums.
 
-Layout simple :
+### Page `/library` (une seule page)
+
+Layout simple, **pas de sous-pages** :
 - Bandeau titre + bouton « + Ajouter un élément ».
-- Onglets ou filtre par catégorie (8 catégories).
-- Tableau : titre · catégorie · fichier joint (icône) · actif (toggle) · modifié le · actions (éditer / supprimer).
+- Filtre par catégorie (chips ou select, 6 valeurs) + barre de recherche full-text sur `title` + `content_markdown`.
+- Filtre additionnel par tag (chips dynamiques, listés depuis l'agrégation des `tags` existants).
+- Tableau : titre · catégorie (badge) · tags (chips) · fichier joint (icône) · créé le · actions (éditer / supprimer).
 - Drawer/Modal create/edit avec form `react-hook-form` + `zod` :
   - `title` (text, required)
-  - `category` (select, required)
-  - `content` (textarea markdown, required)
-  - `file` (upload optionnel → bucket `library-documents`)
-  - `is_active` (switch, défaut on)
+  - `category` (select, required, 6 options)
+  - `content_markdown` (textarea avec preview markdown live, required)
+  - `file` (upload optionnel → bucket `library-documents`, type libre PDF / DOCX / image)
+  - `tags` (input multi-tags type chips, libre)
 
-Suppression soft (admin peut restaurer).
+Suppression soft (admin peut restaurer via une vue archive future, pas au MVP).
 
 ### Comment l'IA consomme la bibliothèque
 
 Service `services/ai/library-context.ts` (cf. §6) :
-1. `SELECT * FROM knowledge_items WHERE is_active AND deleted_at IS NULL`.
+1. `SELECT * FROM knowledge_items WHERE deleted_at IS NULL`.
 2. Groupage par catégorie.
 3. Sérialisation markdown structurée :
    ```md
@@ -949,11 +965,12 @@ Service `services/ai/library-context.ts` (cf. §6) :
 
 ```
 components/library/
-├─ KnowledgeItemList.tsx
-├─ KnowledgeItemTable.tsx
+├─ KnowledgeItemTable.tsx           # liste + filtres
 ├─ KnowledgeItemDrawer.tsx          # create/edit form
 ├─ KnowledgeItemFileUpload.tsx
-└─ KnowledgeCategoryFilter.tsx
+├─ KnowledgeCategoryFilter.tsx      # chips de filtre
+├─ KnowledgeTagsInput.tsx           # multi-tags chips dans le form
+└─ KnowledgeTagsFilter.tsx          # chips dynamiques basés sur les tags existants
 ```
 
 ---
@@ -1094,7 +1111,7 @@ zod
 react-hook-form
 @hookform/resolvers
 next-themes
-@react-pdf/renderer            # PDF rapport mission (Module 3)
+@react-pdf/renderer            # PDF rapport mission — installé seulement si livré en lot final, sinon V1.1
 docx                           # export Word mémoire technique simple
 pdf-parse                      # extraction texte PDF AO
 browser-image-compression
@@ -1137,7 +1154,7 @@ prettier
 |---|---|
 | `services/ai/providers/mock.ts` | Forme du retour, schéma valide |
 | `services/ai/orchestrator.ts` | Flow phase 1 → 2 → 3, gestion d'erreur |
-| `services/ai/library-context.ts` | Sérialisation markdown, filtre `is_active` |
+| `services/ai/library-context.ts` | Sérialisation markdown groupée par catégorie, exclusion `deleted_at` |
 | `services/pdf/extract.ts` | PDF texte OK, PDF scanné détecté |
 | `services/reports/generator.ts` | PDF généré avec sections présentes |
 | `lib/db/missions.ts` | Clôture avec écart insère un incident |
@@ -1178,7 +1195,7 @@ Le MVP est livré quand :
 - [ ] Un manager peut créer un client, un site, une mission, l'assigner à un chef d'équipe.
 - [ ] Le chef d'équipe voit sa mission sur mobile, démarre, coche la checklist en optimistic UI, prend des photos avant/après, déclare un incident, clôture en écart avec commentaire, et l'incident "écart" est tracé.
 - [ ] Un manager voit la mission clôturée en écart sur `/missions` et `/admin/monitoring`.
-- [ ] Un manager peut voir le rapport HTML de la mission terminée et le valider. (Export PDF prévu, livrable lot final ou V1.1).
+- [ ] Un manager peut voir le rapport HTML de la mission terminée, le valider, et l'imprimer / l'exporter en PDF via le navigateur (CSS `@media print`). Export PDF natif via `@react-pdf/renderer` en bonus si temps disponible en lot final.
 - [ ] Un manager peut créer/éditer/supprimer des éléments dans `/library` (CRUD knowledge_items).
 - [ ] Un manager peut uploader un PDF d'AO non scanné, l'analyse IA tourne (en mode `mock` ou `gemini`), produit un résumé, des contraintes, des risques, une checklist, un score d'opportunité, une mémoire technique grounded sur la bibliothèque.
 - [ ] Le manager peut copier la mémoire en markdown ou HTML enrichi (collable Word/Outlook), et l'exporter en .docx simple.
@@ -1201,8 +1218,10 @@ Ordre suggéré (à finaliser dans le plan d'implémentation) :
 5. Couche IA — provider mock + interface + orchestrateur + 3 agents.
 6. Module 1 — AO (upload, polling, vue analyse, exports markdown/HTML/Word).
 7. Module 2 — Missions (liste, fiche, photos, checklist, incidents, clôture en écart) + PWA manifest.
-8. Module 3 — Rapports (vue HTML lecture, validation). PDF en lot final.
+8. Module 3 — Rapports : vue HTML lecture seule + validation + page imprimable (`@media print`). PDF natif via `@react-pdf/renderer` **uniquement** si on a le temps en lot final.
 9. Tests Vitest ciblés + CI.
 10. Polish, dark mode, edge cases.
+
+**Règle de priorité scope** : si on doit couper, on coupe d'abord le PDF natif rapport (Module 3), puis les éléments « lot final » du Module 1 (Word export, on garde Copier markdown/HTML), puis les composants UI cosmétiques. **Jamais** la bibliothèque, jamais l'orchestrateur IA, jamais la clôture mission avec écart.
 
 Le découpage exact (étapes implémentables en isolation, agents en parallèle, points de checkpoint) est l'objet du plan d'implémentation, à écrire en suivant.
