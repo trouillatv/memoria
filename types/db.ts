@@ -31,3 +31,14 @@ export interface DbActivityLog {
   metadata: Record<string, unknown> | null
   created_at: string
 }
+
+export interface DbKnowledgeItem {
+  id: string
+  title: string
+  category: KnowledgeCategory
+  content_markdown: string
+  file_path: string | null
+  tags: string[] | null
+  created_at: string
+  deleted_at: string | null
+}
