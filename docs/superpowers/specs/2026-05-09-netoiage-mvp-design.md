@@ -155,6 +155,30 @@ netoiage/
 2. **Pas de TanStack Query** : Server Actions + `revalidatePath` + 1 hook polling pour le seul cas async (analyse AO).
 3. **Validation** : `zod` partout (Server Actions, route handlers, sorties IA, formulaires via `react-hook-form` + `@hookform/resolvers/zod`).
 
+### Multi-tenant readiness — conventions
+
+Le MVP est mono-entreprise par décision (cf §2), mais on s'interdit toute hypothèse hardcodée qui rendrait la migration vers multi-tenant douloureuse. Conventions à appliquer dès le premier jour :
+
+| Convention | Pourquoi |
+|---|---|
+| **Tous les accès DB centralisés dans `lib/db/*.ts`** | Une seule frontière à modifier le jour où on ajoute `company_id`. Aucune requête Supabase directe depuis un Server Component / Server Action / Route Handler. |
+| **Nommage explicite par scope** : `getMissionsForCurrentUser()`, `getMissionsAssignedTo(userId)` plutôt que `getAllMissions()` | Force à penser le filtrage. `getAllMissions()` ne deviendra jamais correct en multi-tenant. |
+| **Pas de `SELECT *` brut applicatif** | Toujours via les query functions typées avec colonnes explicites. |
+| **RLS basées sur `auth.uid()` et le rôle JWT** | Aucune RLS « tout authenticated voit tout ». Le jour J on ajoute juste une condition `company_id = auth.jwt()->...->'company_id'` à chaque policy. |
+| **Pas de variables globales d'app** type `SINGLE_COMPANY_NAME`, `DEFAULT_COMPANY_ID` | Aucune supposition « il n'y a qu'une société ». |
+| **Storage paths basés sur l'`entity_id`** | `mission-photos/{mission_id}/...`, jamais `acme-cleaning/missions/...`. |
+| **Pas de `branding` hardcodé entreprise** dans le code | Logo, nom commercial, couleurs : si on en met, c'est dans la base ou dans des variables d'env, pas dans des composants. |
+
+Le jour où NetoIAge devient multi-client (estimation 3-5 jours) :
+1. `alter table` ajout `company_id uuid not null references companies(id)` sur toutes les tables métier.
+2. Création table `companies`.
+3. Backfill `company_id` (la société existante reçoit un id).
+4. Update RLS pour filtrer par `company_id` dérivé du JWT.
+5. Sync `company_id` dans `auth.users.app_metadata` via trigger.
+6. UI : `/admin/companies` + sélecteur de société active pour les super-admins multi-entreprises.
+
+Aucune de ces étapes ne nécessite de réécrire la couche métier ou les composants.
+
 ---
 
 ## 4. Authentification & rôles
@@ -416,7 +440,41 @@ create table public.ai_usage (
 );
 create index ai_usage_user_idx       on ai_usage(user_id);
 create index ai_usage_created_at_idx on ai_usage(created_at);
+
+-- 14. Audit trail minimal — traçabilité des actions sensibles
+create table public.activity_logs (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid references users(id) on delete set null,
+  entity_type text not null,                -- 'tender' | 'mission' | 'user' | 'knowledge_item' | 'report' | 'client' | 'site'
+  entity_id   uuid,
+  action      text not null,                -- 'analysis_relaunched' | 'status_changed' | 'closed' | 'soft_deleted' | 'role_changed' | ...
+  metadata    jsonb,                        -- contexte structuré (from/to, raison, etc.)
+  created_at  timestamptz default now()
+);
+create index activity_logs_entity_idx     on activity_logs(entity_type, entity_id);
+create index activity_logs_created_at_idx on activity_logs(created_at desc);
+create index activity_logs_user_idx       on activity_logs(user_id);
 ```
+
+### Audit trail — quand on insère
+
+Une entrée `activity_logs` est insérée dans les Server Actions sur les événements critiques suivants :
+
+| Événement | `entity_type` | `action` | `metadata` exemple |
+|---|---|---|---|
+| Relance analyse AO | `tender` | `analysis_relaunched` | `{ from_analysis_id, to_analysis_id, prompt_versions }` |
+| Changement statut mission | `mission` | `status_changed` | `{ from: 'pending', to: 'in_progress' }` |
+| Clôture mission (avec ou sans écart) | `mission` | `closed` | `{ status: 'completed' \| 'issue', closed_with_deviation, completion_notes_excerpt, missing_count }` |
+| Soft delete d'une entité | `tender` / `mission` / `knowledge_item` / `client` / `site` | `soft_deleted` | `{ title, restored_from }` |
+| Changement rôle utilisateur | `user` | `role_changed` | `{ from: 'manager', to: 'admin', changed_by_user_id }` |
+| Force password reset | `user` | `password_reset_forced` | `{ target_user_id }` |
+| Validation rapport | `report` | `validated` | `{ mission_id }` |
+
+**Vue `/admin/monitoring`** : table paginée des `activity_logs` récents, triée DESC par `created_at`, avec filtres par `entity_type` / `action` / `user_id` / période.
+
+**Politique de rétention** : aucune purge automatique au MVP. Une politique de rétention pourra être ajoutée en V2 (par exemple `delete from activity_logs where created_at < now() - interval '12 months'` via cron Supabase).
+
+**Tracabilité RGPD** : le format `jsonb` de `metadata` permettra d'enregistrer plus tard des événements liés au RGPD (export de données, demande de suppression) sans changement de schéma.
 
 ### Buckets Supabase Storage
 
@@ -466,10 +524,11 @@ create trigger on_user_role_change
 6. `006_reports.sql`
 7. `007_knowledge_items.sql`
 8. `008_ai_usage.sql`
-9. `009_buckets.sql`
-10. `010_rls_policies.sql`
-11. `011_triggers.sql`
-12. `012_seed_admin.sql`
+9. `009_activity_logs.sql`
+10. `010_buckets.sql`
+11. `011_rls_policies.sql`
+12. `012_triggers.sql`
+13. `013_seed_admin.sql`
 
 ---
 
@@ -1081,10 +1140,77 @@ MAX_AO_ANALYSES_PER_DAY=20
 git clone <repo>
 npm install
 npx supabase start                  # Postgres + Auth + Storage Docker
-npx supabase db reset               # applique migrations + seed
+npm run db:seed                     # = supabase db reset + script storage seed (cf section Seed)
 cp .env.example .env.local          # remplir
 npm run dev                         # http://localhost:3000
 ```
+
+### Seed & données de démo
+
+**Objectif** : `npm run db:seed` produit une app **immédiatement démontrable**, sans saisie manuelle. C'est essentiel pour montrer NetoIAge à un prospect en 5 minutes au lieu de passer 30 minutes à créer des données.
+
+#### Contenu du seed
+
+| Domaine | Quantité cible | Fichier |
+|---|---|---|
+| Users | 1 admin + 1 manager + 2 chefs d'équipe | `supabase/seed/01_users.sql` |
+| Clients | 4 (tertiaire, santé, scolaire, industriel) | `02_clients.sql` |
+| Sites | 8 (≈ 2 par client) | `03_sites.sql` |
+| Missions | ~15 (mix passées validées, à venir, en cours, clôturées avec écart) | `04_missions.sql` |
+| Checklist items | ~10 par mission, mix done/non-done | inclus dans `04_missions.sql` |
+| Mission photos | 4-6 par mission terminée (avant/après), placeholder JPG ~50 KB | uploadés via script `scripts/seed-storage.ts` |
+| Incidents | 3-5, répartis sur missions terminées | `05_incidents.sql` |
+| Tenders | 5 (statuts variés : `draft`, `analyzing`, `ready`, `submitted`, `archived`) | `06_tenders.sql` |
+| Tender documents | 1 PDF placeholder par AO | uploadés via script |
+| Tender analyses | 1 analyse mockée (provider `'mock'`) par AO `ready` ou `submitted`, avec contraintes/risques/checklist/mémoire technique réalistes | `07_tender_analyses.sql` |
+| Knowledge items | ~15-20 répartis sur les 6 catégories, avec tags réalistes (`["iso9001"]`, `["ecolabel", "environnement"]`, etc.) | `08_knowledge_items.sql` |
+| Reports | 3-5 (sur missions terminées validées) | `09_reports.sql` |
+| AI usage | ~10 entrées historiques (pour peupler `/admin/monitoring`) | `10_ai_usage.sql` |
+| Activity logs | ~30 entrées récentes (relances analyses, changements statut, clôtures, role changes) | `11_activity_logs.sql` |
+
+#### Mécanique
+
+- Fichiers SQL dans `supabase/seed/` (un par domaine, ordre numérique).
+- `supabase/seed.sql` racine fait `\i` pour inclure tous les fichiers en ordre.
+- Les **assets binaires** (photos, PDFs) sont dans `supabase/seed/assets/` et uploadés vers les buckets via `scripts/seed-storage.ts` (TS, exécuté par `tsx`, utilise `SUPABASE_SERVICE_ROLE_KEY`).
+- `package.json` :
+  ```json
+  "scripts": {
+    "db:reset":  "supabase db reset",
+    "db:seed":   "supabase db reset && tsx scripts/seed-storage.ts",
+    "dev":       "next dev",
+    ...
+  }
+  ```
+
+#### Cohérence des dates
+
+**Toutes les dates sont relatives à `now()`**, calculées dans les seeds SQL via `now() - interval 'X days'`. Garantit que la démo reste pertinente quelle que soit la date d'install.
+
+- 5 missions à venir (`now()` + 1 à 7 jours).
+- 5 missions « aujourd'hui » ou en cours.
+- 5 missions passées (`now()` - 1 à 30 jours), avec rapports validés ou en attente.
+- AO avec deadlines variées : 1 dépassée, 2 dans la semaine, 2 dans le mois.
+
+Aucune date hardcodée façon `'2026-01-15'`.
+
+#### Données réalistes (pas Lorem)
+
+Le contenu reflète le métier nettoyage :
+- **Clients** : « Clinique Saint-Roch », « Lycée Jean Jaurès », « Mairie de Sallèles », « Groupe Tertiaire Sud-Ouest ».
+- **Sites** : adresses françaises plausibles génériques.
+- **Missions** : intitulés métier (« Vitres extérieures bureaux étage 3 », « Désinfection bloc opératoire suite chirurgie »).
+- **Knowledge items** : références techniques crédibles (CQP APH, ISO 9001:2015, monobrosse Numatic NUC244, Ecolabel).
+- **Mémoires techniques mockées** : 200-400 mots de markdown plausibles, rédigés une fois, copiés.
+- **AO mockés** : titres réalistes (« Marché de nettoyage des locaux administratifs ville de X — 3 ans »).
+
+#### Reset rapide en dev
+
+`npm run db:seed` doit s'exécuter en ≤ 30 sec sur une machine moderne. Permet de tester un flow plusieurs fois sans accumulation parasite.
+
+#### Ne pas seeder en production
+
+`scripts/seed-storage.ts` refuse de s'exécuter si `NODE_ENV === 'production'` ou si `NEXT_PUBLIC_SUPABASE_URL` ne contient pas `localhost`/`127.0.0.1`. Garde-fou explicite.
 
 ### Tests CI (GitHub Actions)
 
@@ -1155,6 +1281,7 @@ prettier
 | `services/ai/providers/mock.ts` | Forme du retour, schéma valide |
 | `services/ai/orchestrator.ts` | Flow phase 1 → 2 → 3, gestion d'erreur |
 | `services/ai/library-context.ts` | Sérialisation markdown groupée par catégorie, exclusion `deleted_at` |
+| `services/audit/log.ts` | Insertion `activity_logs` correcte sur les 7 événements définis, metadata bien sérialisée |
 | `services/pdf/extract.ts` | PDF texte OK, PDF scanné détecté |
 | `services/reports/generator.ts` | PDF généré avec sections présentes |
 | `lib/db/missions.ts` | Clôture avec écart insère un incident |
@@ -1167,7 +1294,7 @@ prettier
 
 Repoussé volontairement :
 
-- **Multi-tenant** (companies, RLS company_id, sous-domaines).
+- **Multi-tenant** (companies, RLS `company_id`, sous-domaines) — voir conventions §3 « Multi-tenant readiness » qui rendent cette migration peu douloureuse (≈ 3-5 j).
 - **OCR** sur PDFs scannés.
 - **Streaming token-par-token** sur les analyses.
 - **Templates de checklist** réutilisables.
@@ -1181,6 +1308,9 @@ Repoussé volontairement :
 - **Signature numérique** sur les rapports.
 - **Multi-fichiers AO upload simultané**.
 - **Tests E2E Playwright**.
+- **Vue archive / restauration des éléments soft-deleted** (`deleted_at` est posé mais pas d'UI de restauration au MVP).
+- **Politique de rétention** sur `activity_logs` (purge automatique après N mois).
+- **Export RGPD** (les events sont format-compatibles via `metadata jsonb`, mais pas d'UI au MVP).
 
 Toutes ces évolutions sont **architecturalement compatibles** avec le MVP — pas de refacto bloquante anticipée.
 
@@ -1203,6 +1333,9 @@ Le MVP est livré quand :
 - [ ] Le mode `mock` permet de faire tourner toute l'app sans aucune clé IA.
 - [ ] Le switch vers `gemini` se fait par changement d'env var, sans recompilation.
 - [ ] Les RLS Supabase empêchent un chef_equipe de voir les missions d'un autre.
+- [ ] **`npm run db:seed`** produit une app immédiatement démontrable : 4 clients, 8 sites, ~15 missions à différents statuts (passées/en cours/à venir), photos avant/après, 5 AO avec analyses IA mockées, ~15-20 items de bibliothèque répartis sur les 6 catégories. Aucune saisie manuelle nécessaire pour faire une démo.
+- [ ] Les **événements sensibles** (relance analyse AO, changement statut mission, clôture mission, soft delete, changement rôle utilisateur, force password reset, validation rapport) génèrent une entrée dans `activity_logs` avec metadata structurée, visible et filtrable depuis `/admin/monitoring`.
+- [ ] Les **conventions multi-tenant readiness** sont respectées : aucune requête Supabase directe en dehors de `lib/db/*.ts`, aucun `getAllX()` hardcodé, aucun nom commercial / `DEFAULT_COMPANY` dans le code.
 - [ ] Lint + tests Vitest + build passent en CI.
 
 ---
@@ -1212,15 +1345,17 @@ Le MVP est livré quand :
 Ordre suggéré (à finaliser dans le plan d'implémentation) :
 
 1. Setup projet (Next.js, Tailwind, shadcn, Supabase, env, scripts).
-2. Migrations DB + seed admin + RLS.
-3. Auth + middleware + layout SaaS + zone admin (réutilise patterns EquiPass).
-4. Module 4 — Bibliothèque AGP (CRUD simple, prérequis pour le module 1 utile).
-5. Couche IA — provider mock + interface + orchestrateur + 3 agents.
-6. Module 1 — AO (upload, polling, vue analyse, exports markdown/HTML/Word).
-7. Module 2 — Missions (liste, fiche, photos, checklist, incidents, clôture en écart) + PWA manifest.
-8. Module 3 — Rapports : vue HTML lecture seule + validation + page imprimable (`@media print`). PDF natif via `@react-pdf/renderer` **uniquement** si on a le temps en lot final.
-9. Tests Vitest ciblés + CI.
-10. Polish, dark mode, edge cases.
+2. Migrations DB (incl. `activity_logs`) + seed admin + RLS.
+3. **Service `lib/audit/log.ts`** + helpers d'insertion `activity_logs` (à brancher dans toutes les Server Actions sensibles dès qu'elles sont écrites).
+4. Auth + middleware + layout SaaS + zone admin (réutilise patterns EquiPass) + page `/admin/monitoring` lisant `activity_logs`.
+5. Module 4 — Bibliothèque AGP (CRUD simple, prérequis pour le module 1 utile).
+6. Couche IA — provider mock + interface + orchestrateur + 3 agents.
+7. Module 1 — AO (upload, polling, vue analyse, exports markdown/HTML/Word, audit sur relance analyse).
+8. Module 2 — Missions (liste, fiche, photos, checklist, incidents, clôture en écart, audit sur status / clôture) + PWA manifest.
+9. Module 3 — Rapports : vue HTML lecture seule + validation (audit) + page imprimable (`@media print`). PDF natif via `@react-pdf/renderer` **uniquement** si on a le temps en lot final.
+10. **Seed riche** (`supabase/seed/*.sql` + `scripts/seed-storage.ts`) — peut être démarré tôt en parallèle, mais finalisé une fois les tables stables.
+11. Tests Vitest ciblés + CI.
+12. Polish, dark mode, edge cases.
 
 **Règle de priorité scope** : si on doit couper, on coupe d'abord le PDF natif rapport (Module 3), puis les éléments « lot final » du Module 1 (Word export, on garde Copier markdown/HTML), puis les composants UI cosmétiques. **Jamais** la bibliothèque, jamais l'orchestrateur IA, jamais la clôture mission avec écart.
 
