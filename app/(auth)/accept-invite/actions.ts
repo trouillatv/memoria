@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { clearMustChangePasswordForCurrentUser } from '@/lib/db/users'
 
 const schema = z.object({
   password: z.string().min(8, 'Mot de passe trop court (min 8 caractères)'),
@@ -18,10 +19,7 @@ export async function acceptInviteAction(formData: FormData) {
   if (error) return { error: error.message }
 
   // Marquer must_change_password = false
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
-    await supabase.from('users').update({ must_change_password: false }).eq('id', user.id)
-  }
+  await clearMustChangePasswordForCurrentUser()
 
   redirect('/missions')
 }

@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { clearMustChangePasswordForCurrentUser } from '@/lib/db/users'
 
 const schema = z.object({
   password: z.string().min(8, 'Min 8 caractères'),
@@ -16,9 +17,6 @@ export async function changePasswordAction(formData: FormData) {
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
   if (error) return { error: error.message }
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
-    await supabase.from('users').update({ must_change_password: false }).eq('id', user.id)
-  }
+  await clearMustChangePasswordForCurrentUser()
   redirect('/missions')
 }

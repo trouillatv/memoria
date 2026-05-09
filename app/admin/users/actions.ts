@@ -5,15 +5,15 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
-import { updateUserRoleAsAdmin, softDeleteUserAsAdmin } from '@/lib/db/users'
+import { updateUserRoleAsAdmin, softDeleteUserAsAdmin, getUserRoleById, updateUserProfileAsAdmin } from '@/lib/db/users'
 import type { UserRole } from '@/types/db'
 
 async function requireAdmin() {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
-  const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') throw new Error('Forbidden')
+  const role = await getUserRoleById(user.id)
+  if (role !== 'admin') throw new Error('Forbidden')
   return user.id
 }
 
@@ -42,7 +42,7 @@ export async function createUserAction(formData: FormData) {
     })
     if (error) return { error: error.message }
     if (data.user) {
-      await supabase.from('users').update({ role: parsed.data.role, full_name: parsed.data.full_name }).eq('id', data.user.id)
+      await updateUserProfileAsAdmin(data.user.id, { role: parsed.data.role, full_name: parsed.data.full_name })
       await logAuditEvent({
         userId: adminId, entityType: 'user', entityId: data.user.id,
         action: 'created',
@@ -60,11 +60,7 @@ export async function createUserAction(formData: FormData) {
     })
     if (error) return { error: error.message }
     if (data.user) {
-      await supabase.from('users').update({
-        role: parsed.data.role,
-        full_name: parsed.data.full_name,
-        must_change_password: true,
-      }).eq('id', data.user.id)
+      await updateUserProfileAsAdmin(data.user.id, { role: parsed.data.role, full_name: parsed.data.full_name, must_change_password: true })
       await logAuditEvent({
         userId: adminId, entityType: 'user', entityId: data.user.id,
         action: 'created',
@@ -90,13 +86,12 @@ export async function changeUserRoleAction(formData: FormData) {
   })
   if (!parsed.success) return { error: 'Invalid' }
 
-  const supabase = createAdminClient()
-  const { data: before } = await supabase.from('users').select('role').eq('id', parsed.data.userId).single()
+  const beforeRole = await getUserRoleById(parsed.data.userId)
   await updateUserRoleAsAdmin(parsed.data.userId, parsed.data.role as UserRole)
   await logAuditEvent({
     userId: adminId, entityType: 'user', entityId: parsed.data.userId,
     action: 'role_changed',
-    metadata: { from: before?.role, to: parsed.data.role },
+    metadata: { from: beforeRole, to: parsed.data.role },
   })
   revalidatePath('/admin/users')
   return { ok: true }
@@ -110,12 +105,12 @@ export async function forcePasswordResetAction(formData: FormData) {
   if (!parsed.success) return { error: 'Invalid' }
 
   const supabase = createAdminClient()
-  const { data: target } = await supabase.from('users').select('role').eq('id', parsed.data.userId).single()
-  if (target?.role === 'admin') return { error: 'Reset admin via Supabase Studio uniquement' }
+  const targetRole = await getUserRoleById(parsed.data.userId)
+  if (targetRole === 'admin') return { error: 'Reset admin via Supabase Studio uniquement' }
 
   const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'netoiage2026'
   await supabase.auth.admin.updateUserById(parsed.data.userId, { password: tempPassword })
-  await supabase.from('users').update({ must_change_password: true }).eq('id', parsed.data.userId)
+  await updateUserProfileAsAdmin(parsed.data.userId, { must_change_password: true })
   await logAuditEvent({
     userId: adminId, entityType: 'user', entityId: parsed.data.userId,
     action: 'password_reset_forced',

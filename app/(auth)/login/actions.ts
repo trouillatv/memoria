@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { getCurrentUserMiniProfile } from '@/lib/db/users'
 
 const schema = z.object({
   email: z.string().email(),
@@ -31,15 +32,9 @@ export async function loginAction(formData: FormData) {
   }
 
   // Vérifier must_change_password
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('must_change_password, role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.must_change_password) {
+  const profile = await getCurrentUserMiniProfile()
+  if (profile) {
+    if (profile.must_change_password) {
       redirect('/change-password')
     }
 

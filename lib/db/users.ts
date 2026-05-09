@@ -59,3 +59,67 @@ export async function softDeleteUserAsAdmin(userId: string): Promise<void> {
     .eq('id', userId)
   if (error) throw error
 }
+
+/**
+ * Récupère le rôle d'un utilisateur (par son id).
+ * Renvoie null si pas trouvé. Utilise le service role pour bypass RLS.
+ * Utilisé pour les checks d'autorisation côté Server Action (ex. requireAdmin).
+ */
+export async function getUserRoleById(userId: string): Promise<UserRole | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', userId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (error || !data) return null
+  return data.role as UserRole
+}
+
+/**
+ * Récupère un mini-profil (role + must_change_password) pour le user authentifié courant.
+ * Pour login/redirect logic. Utilise le client serveur (cookies), passe par RLS.
+ */
+export async function getCurrentUserMiniProfile(): Promise<{ role: UserRole; must_change_password: boolean } | null> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data, error } = await supabase
+    .from('users')
+    .select('role, must_change_password')
+    .eq('id', user.id)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (error || !data) return null
+  return { role: data.role as UserRole, must_change_password: data.must_change_password }
+}
+
+/**
+ * Met à jour les champs de profil d'un utilisateur (par id, en tant qu'admin).
+ * Service role — bypass RLS.
+ */
+export async function updateUserProfileAsAdmin(
+  userId: string,
+  fields: { full_name?: string; role?: UserRole; must_change_password?: boolean }
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('users').update(fields).eq('id', userId)
+  if (error) throw error
+}
+
+/**
+ * Marque must_change_password = false pour le user authentifié courant.
+ * Pour les flows accept-invite et change-password.
+ * Utilise le client serveur (cookies), passe par RLS auto-only.
+ */
+export async function clearMustChangePasswordForCurrentUser(): Promise<void> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const { error } = await supabase
+    .from('users')
+    .update({ must_change_password: false })
+    .eq('id', user.id)
+  if (error) throw error
+}
