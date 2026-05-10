@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Paperclip, Bot, User, Loader2, X } from 'lucide-react'
+import { Send, Paperclip, Bot, User, Loader2, X, Sparkles, FileSearch, FileText, Swords, Calculator, MapPinned, Scale } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,15 +12,24 @@ import { sendChatMessageAction } from './atelier-actions'
 import { toast } from 'sonner'
 import type { ChatAgentName, DbTenderChatMessage } from '@/types/db'
 
-const AGENT_LABELS: Record<ChatAgentName, string> = {
-  general: 'Général',
-  lecteur_ao: 'Lecteur AO',
-  memoire_technique: 'Mémoire technique',
-  contradicteur: 'Contradicteur',
-  financier: 'Financier',
-  terrain: 'Terrain',
-  conformite: 'Conformité',
+interface AgentMeta {
+  label: string
+  description: string
+  icon: React.ComponentType<{ className?: string }>
 }
+
+const AGENTS: Record<ChatAgentName, AgentMeta> = {
+  general:           { label: 'Général',            description: 'Assistant généraliste, répond à toutes vos questions sur l\'AO',        icon: Sparkles },
+  lecteur_ao:        { label: 'Lecteur AO',         description: 'Spécialiste de la lecture critique du cahier des charges',              icon: FileSearch },
+  memoire_technique: { label: 'Mémoire technique',  description: 'Reformule, enrichit ou adapte la mémoire technique générée',            icon: FileText },
+  contradicteur:     { label: 'Contradicteur',      description: 'Avocat du diable : identifie les faiblesses, anticipe les critiques',  icon: Swords },
+  financier:         { label: 'Financier',          description: 'Modélisation des coûts, marges, pénalités et ROI',                      icon: Calculator },
+  terrain:           { label: 'Terrain',            description: 'Faisabilité opérationnelle : effectifs, rotations, logistique',         icon: MapPinned },
+  conformite:        { label: 'Conformité',         description: 'Normes ISO, RGPD, clauses sociales, certifications métier',             icon: Scale },
+}
+
+const AGENT_LABELS: Record<ChatAgentName, string> =
+  Object.fromEntries((Object.keys(AGENTS) as ChatAgentName[]).map((k) => [k, AGENTS[k].label])) as Record<ChatAgentName, string>
 
 export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; initialMessages: DbTenderChatMessage[] }) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
@@ -97,16 +107,31 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
 
       <Card>
         <CardContent className="pt-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Agent :</span>
-            <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgentName)}>
-              <SelectTrigger className="h-8 w-48 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {(Object.keys(AGENT_LABELS) as ChatAgentName[]).map((k) => (
-                  <SelectItem key={k} value={k}>{AGENT_LABELS[k]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-2">
+            <Label htmlFor="agent-select" className="text-sm font-medium">Agent IA</Label>
+            <div className="flex items-start gap-3 flex-wrap">
+              <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgentName)}>
+                <SelectTrigger id="agent-select" className="w-full sm:w-72">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(AGENTS) as ChatAgentName[]).map((k) => {
+                    const Icon = AGENTS[k].icon
+                    return (
+                      <SelectItem key={k} value={k}>
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4 text-muted-foreground" />
+                          <span>{AGENTS[k].label}</span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground flex-1 min-w-0 pt-2">
+                {AGENTS[agent].description}
+              </p>
+            </div>
           </div>
           <Textarea
             value={draft}
