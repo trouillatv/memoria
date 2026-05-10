@@ -144,7 +144,7 @@ export function AtelierMessageThread({ messages, tenderId, pending = false, onCh
       return
     }
     if (r && 'agentMessages' in r && r.agentMessages) {
-      toast.success(`Challenge round ${currentRound + 1} terminé`)
+      toast.success('Confrontation terminée')
       onChallengeLaunched?.(r.agentMessages as DbTenderChatMessage[])
     }
   }
@@ -158,7 +158,7 @@ export function AtelierMessageThread({ messages, tenderId, pending = false, onCh
         const canChallenge =
           group.turnId !== null
           && lastRoundMessages.length >= 2
-          && lastRound < 2
+          && lastRound < 1
           && !challengingTurnId
           && !pending
         const isChallengingThis = challengingTurnId === group.turnId
@@ -201,12 +201,12 @@ export function AtelierMessageThread({ messages, tenderId, pending = false, onCh
                   {isChallengingThis ? (
                     <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Les agents se confrontent…</>
                   ) : (
-                    <><Swords className="h-3 w-3 mr-1" />Confronter les perspectives</>
+                    <><Swords className="h-3 w-3 mr-1" />Confronter les avis</>
                   )}
                 </Button>
                 {!isChallengingThis && (
                   <p className="text-[10px] text-muted-foreground">
-                    Round {lastRound + 1} · {lastRoundMessages.length} agents réagiront aux réponses des autres
+                    Round unique · {lastRoundMessages.length} agents réagiront aux réponses des autres
                   </p>
                 )}
               </div>
