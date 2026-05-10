@@ -41,6 +41,26 @@ export async function listAllEngagements(): Promise<DbEngagement[]> {
   return data ?? []
 }
 
+/** Counts active+completed engagements per contract — single query, no N+1. */
+export async function countEngagementsByContracts(
+  contractIds: string[]
+): Promise<Map<string, number>> {
+  if (contractIds.length === 0) return new Map()
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .select('contract_id')
+    .in('contract_id', contractIds)
+    .in('status', ['active', 'completed'])
+  if (error) throw error
+  const counts = new Map<string, number>()
+  for (const row of data ?? []) {
+    if (!row.contract_id) continue
+    counts.set(row.contract_id, (counts.get(row.contract_id) ?? 0) + 1)
+  }
+  return counts
+}
+
 export async function bulkInsertEngagements(input: {
   tender_id: string
   created_by: string | null

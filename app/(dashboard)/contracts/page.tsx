@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { listContracts } from '@/lib/db/contracts'
-import { listEngagementsByContract } from '@/lib/db/engagements'
+import { countEngagementsByContracts } from '@/lib/db/engagements'
 
 const STATUS_COLORS: Record<string, string> = {
   active:     'bg-emerald-50 border-emerald-200 text-emerald-700',
@@ -13,14 +13,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default async function ContractsPage() {
   const contracts = await listContracts()
 
-  // Pour chaque contrat, on charge le compteur d'engagements actifs
-  const counts = await Promise.all(
-    contracts.map(async (c) => {
-      const engagements = await listEngagementsByContract(c.id)
-      return { contractId: c.id, count: engagements.length }
-    })
-  )
-  const countByContract = new Map(counts.map((x) => [x.contractId, x.count]))
+  // Single query for all engagement counts, no N+1
+  const countByContract = await countEngagementsByContracts(contracts.map((c) => c.id))
 
   return (
     <div className="space-y-6 max-w-5xl">
