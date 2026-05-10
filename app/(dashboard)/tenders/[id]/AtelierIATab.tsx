@@ -9,8 +9,11 @@ import { toast } from 'sonner'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { AtelierMessageThread } from './AtelierMessageThread'
+import { CopiloteHeroCard } from './CopiloteHeroCard'
 import { cn } from '@/lib/utils'
-import type { ChatAgentName, DbTenderChatMessage, DbAgentAnalysis, AgentAnalysisStatus } from '@/types/db'
+import { pickThinkingPhrase } from './agent-thinking-phrases'
+import { SLASH_COMMANDS, type SlashCommand } from './slash-commands'
+import type { ChatAgentName, DbTenderChatMessage, DbAgentAnalysis, DbTenderAnalysis, AgentAnalysisStatus } from '@/types/db'
 
 const MAX_AGENTS = 3
 
@@ -81,9 +84,9 @@ function AgentPill({ agentName, selected, status, disabledForSelection, isRunnin
             'text-[10px] px-1.5 py-1 rounded text-muted-foreground hover:text-foreground hover:underline transition-colors',
             isRunning && 'opacity-50 cursor-not-allowed'
           )}
-          title={effectiveStatus === 'failed' ? 'Réessayer l\'analyse de cet agent' : 'Lancer l\'analyse de cet agent'}
+          title={effectiveStatus === 'failed' ? 'Réveiller cet agent (analyse précédente échouée)' : 'Briefer cet agent sur l\'AO'}
         >
-          {effectiveStatus === 'failed' ? 'Réessayer' : 'Analyser'}
+          {effectiveStatus === 'failed' ? 'Réveiller' : 'Briefer'}
         </button>
       )}
     </div>
@@ -94,11 +97,15 @@ function AgentPill({ agentName, selected, status, disabledForSelection, isRunnin
 // AtelierIATab
 // ---------------------------------------------------------------------------
 
-export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }: {
+interface AtelierIATabProps {
   tenderId: string
   initialMessages: DbTenderChatMessage[]
   initialAgentAnalyses: DbAgentAnalysis[]
-}) {
+  tenderAnalysis: DbTenderAnalysis | null
+  tenderTitle: string
+}
+
+export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
   const [selectedAgents, setSelectedAgents] = useState<Set<ChatAgentName>>(() => new Set<ChatAgentName>(['general']))
   const [agentAnalyses, setAgentAnalyses] = useState<Map<ChatAgentName, DbAgentAnalysis>>(
@@ -108,14 +115,28 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
   const [draft, setDraft] = useState('')
   const [attachment, setAttachment] = useState<File | null>(null)
   const [pending, setPending] = useState(false)
+  const [thinkingPhrases, setThinkingPhrases] = useState<Map<ChatAgentName, string>>(new Map())
+  const [slashSelectedIdx, setSlashSelectedIdx] = useState(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Slash command filtering
+  const slashFilter = draft.startsWith('/') && !draft.includes(' ') ? draft.slice(1).toLowerCase() : null
+  const slashFilteredCommands: SlashCommand[] = slashFilter !== null
+    ? SLASH_COMMANDS.filter((c) => c.trigger.startsWith(slashFilter))
+    : []
+  const slashOpen = slashFilter !== null && slashFilteredCommands.length > 0
 
   // Auto scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
+
+  // Reset slashSelectedIdx when filter changes
+  useEffect(() => {
+    setSlashSelectedIdx(0)
+  }, [slashFilter])
 
   function toggleAgent(agent: ChatAgentName) {
     setSelectedAgents((prev) => {
@@ -131,6 +152,19 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
       }
       return next
     })
+  }
+
+  function applySlashCommand(cmd: SlashCommand) {
+    setDraft(cmd.prompt)
+    setSelectedAgents(new Set(cmd.agents.slice(0, MAX_AGENTS)))
+    setSlashSelectedIdx(0)
+    setTimeout(() => {
+      const ta = document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null
+      ta?.focus()
+      if (ta) {
+        ta.setSelectionRange(cmd.prompt.length, cmd.prompt.length)
+      }
+    }, 30)
   }
 
   async function runInitialAnalysis(agentName: ChatAgentName) {
@@ -188,6 +222,13 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
 
   async function send() {
     if (!draft.trim() || pending || selectedAgents.size === 0) return
+
+    // Capture thinking phrases before pending
+    const phrasesNow = new Map<ChatAgentName, string>()
+    for (const a of selectedAgents) {
+      phrasesNow.set(a, pickThinkingPhrase(a))
+    }
+    setThinkingPhrases(phrasesNow)
     setPending(true)
 
     // Optimistic add user message
@@ -239,6 +280,15 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
 
   const firstAgent = selectedAgents.values().next().value as ChatAgentName | undefined
 
+  function handleHeroPromptClick(prompt: string, agents: ChatAgentName[]) {
+    setSelectedAgents(new Set(agents.slice(0, MAX_AGENTS)))
+    setDraft(prompt)
+    setTimeout(() => {
+      const ta = document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null
+      ta?.focus()
+    }, 50)
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Thread scrollable */}
@@ -250,11 +300,32 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
           onChallengeLaunched={(newMessages) => {
             setMessages((prev) => [...prev, ...newMessages])
           }}
+          emptyState={
+            <CopiloteHeroCard
+              tenderTitle={tenderTitle}
+              analysis={tenderAnalysis}
+              onPromptClick={handleHeroPromptClick}
+            />
+          }
         />
-        {pending && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>{selectedAgents.size === 1 ? 'Agent réfléchit' : `${selectedAgents.size} agents réfléchissent`}&hellip;</span>
+        {pending && selectedAgents.size > 0 && (
+          <div className="space-y-1.5 mt-3 px-1">
+            {Array.from(selectedAgents).map((agentName) => {
+              const meta = AGENTS[agentName]
+              const colors = AGENT_COLORS[agentName]
+              const Icon = meta.icon
+              const phrase = thinkingPhrases.get(agentName) ?? 'Réfléchit…'
+              return (
+                <div key={agentName} className="flex items-center gap-2 text-xs">
+                  <div className={cn('w-5 h-5 rounded-full flex items-center justify-center shrink-0', colors.bgClass)}>
+                    <Icon className={cn('h-3 w-3', colors.textClass)} />
+                  </div>
+                  <span className={cn('font-medium', colors.textClass)}>{meta.label}</span>
+                  <span className="text-muted-foreground italic flex-1">{phrase}</span>
+                  <Loader2 className={cn('h-3 w-3 animate-spin', colors.textClass)} />
+                </div>
+              )
+            })}
           </div>
         )}
         <div ref={bottomRef} />
@@ -297,29 +368,89 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
           </div>
         </div>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={(e) => { setDraft(e.target.value); autoGrow(e.currentTarget) }}
-          placeholder={
-            selectedAgents.size === 0
-              ? 'Sélectionne au moins 1 agent…'
-              : selectedAgents.size === 1 && firstAgent
-                ? `Pose ta question à l'agent ${AGENTS[firstAgent].label}…`
-                : `Pose ta question aux ${selectedAgents.size} agents sélectionnés…`
-          }
-          rows={2}
-          disabled={pending}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault()
-              send()
+        {/* Textarea with slash command menu */}
+        <div className="relative">
+          {slashOpen && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 rounded-lg border bg-popover shadow-lg z-10 overflow-hidden">
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground border-b bg-muted/30">
+                Commande rapide
+              </div>
+              <ul className="max-h-64 overflow-y-auto">
+                {slashFilteredCommands.map((cmd, idx) => {
+                  const Icon = cmd.icon
+                  const isSelected = idx === slashSelectedIdx
+                  return (
+                    <li key={cmd.trigger}>
+                      <button
+                        type="button"
+                        onClick={() => applySlashCommand(cmd)}
+                        onMouseEnter={() => setSlashSelectedIdx(idx)}
+                        className={cn(
+                          'w-full flex items-start gap-2 px-3 py-2 text-left transition-colors',
+                          isSelected ? 'bg-accent' : 'hover:bg-muted/50'
+                        )}
+                      >
+                        <Icon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium font-mono">{cmd.label}</div>
+                          <div className="text-xs text-muted-foreground line-clamp-1">{cmd.description}</div>
+                        </div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              <div className="px-2 py-1 text-[10px] text-muted-foreground border-t bg-muted/20">
+                ↑ ↓ pour naviguer · Entrée pour appliquer · Esc pour fermer
+              </div>
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            data-composer="true"
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); autoGrow(e.currentTarget) }}
+            placeholder={
+              selectedAgents.size === 0
+                ? 'Sélectionne au moins 1 agent…'
+                : selectedAgents.size === 1 && firstAgent
+                  ? `Demande à l'agent ${AGENTS[firstAgent].label} de creuser cet AO… (ex: « Quels sont les 3 risques cachés ? »)`
+                  : `Demande à tes ${selectedAgents.size} agents de creuser cet AO en parallèle…`
             }
-          }}
-          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mb-2"
-          style={{ minHeight: '60px', maxHeight: '200px', overflow: 'hidden' }}
-        />
+            rows={2}
+            disabled={pending}
+            onKeyDown={(e) => {
+              if (slashOpen) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setSlashSelectedIdx((i) => Math.min(i + 1, slashFilteredCommands.length - 1))
+                  return
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSlashSelectedIdx((i) => Math.max(i - 1, 0))
+                  return
+                }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  applySlashCommand(slashFilteredCommands[slashSelectedIdx])
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setDraft('')
+                  return
+                }
+              }
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault()
+                send()
+              }
+            }}
+            className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mb-2"
+            style={{ minHeight: '60px', maxHeight: '200px', overflow: 'hidden' }}
+          />
+        </div>
 
         {/* Actions row */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -362,7 +493,7 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Ctrl/Cmd + Entrée pour envoyer · max {MAX_AGENTS} agents · 5 MB pour la pièce jointe
+          Ctrl/Cmd + Entrée pour envoyer · Tape <code className="font-mono bg-muted px-1 rounded">/</code> pour les commandes rapides · max {MAX_AGENTS} agents
         </p>
       </div>
     </div>

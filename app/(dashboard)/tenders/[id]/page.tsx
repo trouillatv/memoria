@@ -11,6 +11,7 @@ import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
+import { buildActivityFeed } from './activity-feed'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -84,6 +85,12 @@ export default async function TenderDetailPage({
     isMock: analysis?.provider === 'mock',
   }
 
+  const activityFeed = buildActivityFeed({
+    chatMessages,
+    agentAnalyses,
+    mainAnalysisCreatedAt: analysis?.created_at ?? null,
+  })
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 md:gap-8">
       <TenderSidebar
@@ -95,6 +102,7 @@ export default async function TenderDetailPage({
         canRelaunch={canRelaunch}
         isInProgress={isInProgress}
         tenderId={id}
+        activityFeed={activityFeed}
       />
 
       <div className={view === 'atelier'
@@ -162,6 +170,8 @@ export default async function TenderDetailPage({
                 tenderId={id}
                 initialMessages={chatMessages}
                 initialAgentAnalyses={agentAnalyses}
+                tenderAnalysis={analysis}
+                tenderTitle={tender.title}
               />
             )}
           </>
