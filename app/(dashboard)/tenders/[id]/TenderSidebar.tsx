@@ -70,7 +70,7 @@ export function TenderSidebar({
     { view: 'synthese', label: 'Synthèse',          icon: LayoutDashboard },
     { view: 'analyse',  label: 'Analyse détaillée', icon: ListChecks      },
     { view: 'memoire',  label: 'Mémoire technique', icon: FileText        },
-    { view: 'atelier',  label: 'Atelier IA',        icon: MessageSquare,  count: kpis.chatMessagesCount > 0 ? kpis.chatMessagesCount : undefined },
+    { view: 'atelier',  label: 'Copilote AO',        icon: MessageSquare,  count: kpis.chatMessagesCount > 0 ? kpis.chatMessagesCount : undefined },
   ]
 
   async function handleArchive() {

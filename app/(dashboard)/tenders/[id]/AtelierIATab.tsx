@@ -9,8 +9,9 @@ import { toast } from 'sonner'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { AtelierMessageThread } from './AtelierMessageThread'
+import { CopiloteHeroCard } from './CopiloteHeroCard'
 import { cn } from '@/lib/utils'
-import type { ChatAgentName, DbTenderChatMessage, DbAgentAnalysis, AgentAnalysisStatus } from '@/types/db'
+import type { ChatAgentName, DbTenderChatMessage, DbAgentAnalysis, DbTenderAnalysis, AgentAnalysisStatus } from '@/types/db'
 
 const MAX_AGENTS = 3
 
@@ -81,9 +82,9 @@ function AgentPill({ agentName, selected, status, disabledForSelection, isRunnin
             'text-[10px] px-1.5 py-1 rounded text-muted-foreground hover:text-foreground hover:underline transition-colors',
             isRunning && 'opacity-50 cursor-not-allowed'
           )}
-          title={effectiveStatus === 'failed' ? 'Réessayer l\'analyse de cet agent' : 'Lancer l\'analyse de cet agent'}
+          title={effectiveStatus === 'failed' ? 'Réveiller cet agent (analyse précédente échouée)' : 'Briefer cet agent sur l\'AO'}
         >
-          {effectiveStatus === 'failed' ? 'Réessayer' : 'Analyser'}
+          {effectiveStatus === 'failed' ? 'Réveiller' : 'Briefer'}
         </button>
       )}
     </div>
@@ -94,11 +95,15 @@ function AgentPill({ agentName, selected, status, disabledForSelection, isRunnin
 // AtelierIATab
 // ---------------------------------------------------------------------------
 
-export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }: {
+interface AtelierIATabProps {
   tenderId: string
   initialMessages: DbTenderChatMessage[]
   initialAgentAnalyses: DbAgentAnalysis[]
-}) {
+  tenderAnalysis: DbTenderAnalysis | null
+  tenderTitle: string
+}
+
+export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
   const [selectedAgents, setSelectedAgents] = useState<Set<ChatAgentName>>(() => new Set<ChatAgentName>(['general']))
   const [agentAnalyses, setAgentAnalyses] = useState<Map<ChatAgentName, DbAgentAnalysis>>(
@@ -239,6 +244,15 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
 
   const firstAgent = selectedAgents.values().next().value as ChatAgentName | undefined
 
+  function handleHeroPromptClick(prompt: string, agents: ChatAgentName[]) {
+    setSelectedAgents(new Set(agents.slice(0, MAX_AGENTS)))
+    setDraft(prompt)
+    setTimeout(() => {
+      const ta = document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null
+      ta?.focus()
+    }, 50)
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Thread scrollable */}
@@ -250,6 +264,13 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
           onChallengeLaunched={(newMessages) => {
             setMessages((prev) => [...prev, ...newMessages])
           }}
+          emptyState={
+            <CopiloteHeroCard
+              tenderTitle={tenderTitle}
+              analysis={tenderAnalysis}
+              onPromptClick={handleHeroPromptClick}
+            />
+          }
         />
         {pending && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
@@ -300,14 +321,15 @@ export function AtelierIATab({ tenderId, initialMessages, initialAgentAnalyses }
         {/* Textarea */}
         <textarea
           ref={textareaRef}
+          data-composer="true"
           value={draft}
           onChange={(e) => { setDraft(e.target.value); autoGrow(e.currentTarget) }}
           placeholder={
             selectedAgents.size === 0
               ? 'Sélectionne au moins 1 agent…'
               : selectedAgents.size === 1 && firstAgent
-                ? `Pose ta question à l'agent ${AGENTS[firstAgent].label}…`
-                : `Pose ta question aux ${selectedAgents.size} agents sélectionnés…`
+                ? `Demande à l'agent ${AGENTS[firstAgent].label} de creuser cet AO… (ex: « Quels sont les 3 risques cachés ? »)`
+                : `Demande à tes ${selectedAgents.size} agents de creuser cet AO en parallèle…`
           }
           rows={2}
           disabled={pending}

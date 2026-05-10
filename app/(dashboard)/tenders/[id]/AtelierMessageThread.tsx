@@ -16,6 +16,7 @@ interface Props {
   tenderId: string
   pending?: boolean
   onChallengeLaunched?: (newMessages: DbTenderChatMessage[]) => void
+  emptyState?: React.ReactNode
 }
 
 interface TurnGroup {
@@ -107,13 +108,13 @@ function MessageBubble({ message }: { message: DbTenderChatMessage }) {
   )
 }
 
-export function AtelierMessageThread({ messages, tenderId, pending = false, onChallengeLaunched }: Props) {
+export function AtelierMessageThread({ messages, tenderId, pending = false, onChallengeLaunched, emptyState }: Props) {
   const [challengingTurnId, setChallengingTurnId] = useState<string | null>(null)
 
   if (messages.length === 0) {
-    return (
+    return emptyState ?? (
       <p className="text-sm text-muted-foreground text-center py-8">
-        Aucun message pour le moment. Pose une question à un ou plusieurs agents IA pour démarrer la conversation.
+        Aucun message pour le moment.
       </p>
     )
   }
@@ -179,20 +180,26 @@ export function AtelierMessageThread({ messages, tenderId, pending = false, onCh
             ))}
 
             {(canChallenge || isChallengingThis) && group.turnId && (
-              <div className="flex justify-center pt-2">
+              <div className="flex flex-col items-center gap-1 pt-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   onClick={() => launchChallenge(group.turnId!, lastRound)}
                   disabled={isChallengingThis || pending}
+                  className="bg-gradient-to-br from-amber-50 to-blue-50 border-amber-200 hover:from-amber-100 hover:to-blue-100"
                 >
                   {isChallengingThis ? (
-                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Challenge round {lastRound + 1} en cours…</>
+                    <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Les agents se confrontent…</>
                   ) : (
-                    <><Swords className="h-3 w-3 mr-1" />Lancer un challenge (round {lastRound + 1})</>
+                    <><Swords className="h-3 w-3 mr-1" />Confronter les perspectives</>
                   )}
                 </Button>
+                {!isChallengingThis && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Round {lastRound + 1} · {lastRoundMessages.length} agents réagiront aux réponses des autres
+                  </p>
+                )}
               </div>
             )}
           </div>

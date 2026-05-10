@@ -162,6 +162,8 @@ export default async function TenderDetailPage({
                 tenderId={id}
                 initialMessages={chatMessages}
                 initialAgentAnalyses={agentAnalyses}
+                tenderAnalysis={analysis}
+                tenderTitle={tender.title}
               />
             )}
           </>
