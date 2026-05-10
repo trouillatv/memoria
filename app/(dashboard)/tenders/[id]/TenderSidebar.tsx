@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { LayoutDashboard, ListChecks, FileText, MessageSquare, MoreHorizontal, ExternalLink, RefreshCw, Archive, AlertTriangle, BookOpen, Bot } from 'lucide-react'
+import { LayoutDashboard, ListChecks, FileText, MessageSquare, MoreHorizontal, ExternalLink, RefreshCw, Archive, AlertTriangle, BookOpen, Bot, FileSignature } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -317,6 +317,20 @@ export function TenderSidebar({
           )
         })}
       </nav>
+
+      {/* CTA — Convertir en contrat (status finalisé uniquement) */}
+      {(tender.status === 'ready' || tender.status === 'submitted') && (
+        <>
+          <div className="hidden md:block border-t" />
+          <Link
+            href={`/tenders/${tenderId}/convert`}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md border bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700 text-sm font-medium transition-colors"
+          >
+            <FileSignature className="h-4 w-4" />
+            Convertir en contrat
+          </Link>
+        </>
+      )}
 
       {/* ACTIONS — kebab natif <details> pour éviter les bugs overlay shadcn */}
       {(canRelaunch || (!isInProgress && tender.status !== 'archived') || sources.pdfSignedUrl) && (
