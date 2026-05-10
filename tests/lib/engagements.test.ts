@@ -1,0 +1,179 @@
+import { describe, it, expect, beforeAll, afterEach } from 'vitest'
+import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  listEngagementsByTender,
+  bulkInsertEngagements,
+  curateEngagement,
+  activateEngagementsForContract,
+  rejectEngagements,
+} from '@/lib/db/engagements'
+import { createContract } from '@/lib/db/contracts'
+
+const TEST_TENDER_TITLE = '__test_engagement_phase1_tender__'
+
+async function getOrCreateTestTender(): Promise<string> {
+  const supabase = createAdminClient()
+  // Find admin user to satisfy created_by
+  const { data: admin } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'admin')
+    .limit(1)
+    .maybeSingle()
+  if (!admin) throw new Error('No admin user found for test setup')
+
+  const { data: existing } = await supabase
+    .from('tenders')
+    .select('id')
+    .eq('title', TEST_TENDER_TITLE)
+    .maybeSingle()
+  if (existing) return existing.id
+
+  const { data, error } = await supabase
+    .from('tenders')
+    .insert({ title: TEST_TENDER_TITLE, status: 'ready', created_by: admin.id })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+async function cleanup(tenderId: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('engagements').delete().eq('tender_id', tenderId)
+  await supabase.from('contracts').delete().eq('tender_id', tenderId)
+}
+
+describe('engagements DB helpers', () => {
+  let tenderId: string
+
+  beforeAll(async () => {
+    tenderId = await getOrCreateTestTender()
+    await cleanup(tenderId)
+  })
+
+  afterEach(async () => {
+    await cleanup(tenderId)
+  })
+
+  it('bulkInsert creates engagements with status=extracted', async () => {
+    const inserted = await bulkInsertEngagements({
+      tender_id: tenderId,
+      created_by: null,
+      engagements: [
+        {
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Désinfection biquotidienne sanitaires écolabel',
+          source_ref: { page: 12, section: '3.2' },
+          category: 'frequency',
+          short_label: 'Sanitaires 2x/jour avec écolabel',
+          measurable: true,
+          ai_confidence: 0.92,
+        },
+      ],
+    })
+    expect(inserted.length).toBe(1)
+    expect(inserted[0].status).toBe('extracted')
+    expect(inserted[0].short_label).toContain('Sanitaires')
+    expect(inserted[0].ai_confidence).toBe(0.92)
+  })
+
+  it('bulkInsert with empty array returns empty', async () => {
+    const inserted = await bulkInsertEngagements({
+      tender_id: tenderId,
+      created_by: null,
+      engagements: [],
+    })
+    expect(inserted).toEqual([])
+  })
+
+  it('curateEngagement updates label + category + sets status=curated', async () => {
+    const inserted = await bulkInsertEngagements({
+      tender_id: tenderId,
+      created_by: null,
+      engagements: [{
+        source_type: 'ao_clause',
+        source_excerpt: 'Clause X exemple',
+        source_ref: null,
+        category: 'compliance',
+        short_label: 'Initial label',
+        measurable: false,
+        ai_confidence: 0.7,
+      }],
+    })
+    await curateEngagement(inserted[0].id, { short_label: 'Updated label', category: 'quality' })
+    const list = await listEngagementsByTender(tenderId)
+    expect(list[0].short_label).toBe('Updated label')
+    expect(list[0].category).toBe('quality')
+    expect(list[0].status).toBe('curated')
+  })
+
+  it('curateEngagement is rejected when engagement is already active', async () => {
+    const inserted = await bulkInsertEngagements({
+      tender_id: tenderId,
+      created_by: null,
+      engagements: [{
+        source_type: 'ao_clause',
+        source_excerpt: 'Clause Y exemple',
+        source_ref: null,
+        category: 'compliance',
+        short_label: 'Before',
+        measurable: false,
+        ai_confidence: 0.7,
+      }],
+    })
+    const contractId = await createContract({
+      tender_id: tenderId,
+      name: 'Test contract',
+      client_name: 'Test client',
+      start_date: '2026-05-01',
+      created_by: null,
+    })
+    await activateEngagementsForContract(tenderId, contractId)
+    await curateEngagement(inserted[0].id, { short_label: 'Should not apply' })
+    const list = await listEngagementsByTender(tenderId)
+    expect(list[0].short_label).toBe('Before')
+    expect(list[0].status).toBe('active')
+  })
+
+  it('activateEngagementsForContract sets contract_id + status=active', async () => {
+    await bulkInsertEngagements({
+      tender_id: tenderId,
+      created_by: null,
+      engagements: [
+        { source_type: 'memoire_engagement', source_excerpt: 'A exemple', source_ref: null,
+          category: 'frequency', short_label: 'Engagement A', measurable: true, ai_confidence: 0.9 },
+        { source_type: 'memoire_engagement', source_excerpt: 'B exemple', source_ref: null,
+          category: 'quality', short_label: 'Engagement B', measurable: false, ai_confidence: 0.8 },
+      ],
+    })
+    const contractId = await createContract({
+      tender_id: tenderId,
+      name: 'Test contract',
+      client_name: 'Test client',
+      start_date: '2026-05-01',
+      created_by: null,
+    })
+    const count = await activateEngagementsForContract(tenderId, contractId)
+    expect(count).toBe(2)
+    const list = await listEngagementsByTender(tenderId)
+    expect(list.every((e) => e.status === 'active' && e.contract_id === contractId)).toBe(true)
+  })
+
+  it('rejectEngagements removes only extracted engagements', async () => {
+    const inserted = await bulkInsertEngagements({
+      tender_id: tenderId,
+      created_by: null,
+      engagements: [
+        { source_type: 'ao_clause', source_excerpt: 'X exemple', source_ref: null,
+          category: 'other', short_label: 'Engagement X', measurable: false, ai_confidence: 0.5 },
+        { source_type: 'ao_clause', source_excerpt: 'Y exemple', source_ref: null,
+          category: 'other', short_label: 'Engagement Y', measurable: false, ai_confidence: 0.5 },
+      ],
+    })
+    await rejectEngagements([inserted[0].id])
+    const remaining = await listEngagementsByTender(tenderId)
+    expect(remaining.length).toBe(1)
+    expect(remaining[0].id).toBe(inserted[1].id)
+  })
+})
