@@ -43,6 +43,7 @@ export interface DbKnowledgeItem {
   file_path: string | null
   tags: string[] | null
   created_at: string
+  updated_at: string
   deleted_at: string | null
 }
 

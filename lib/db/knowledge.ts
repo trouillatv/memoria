@@ -17,7 +17,7 @@ export async function listKnowledgeItems(query: KnowledgeQuery = {}): Promise<Db
   const supabase = await createServerClient()
   let q = supabase
     .from('knowledge_items')
-    .select('id, title, category, content_markdown, file_path, tags, created_at, deleted_at')
+    .select('id, title, category, content_markdown, file_path, tags, created_at, updated_at, deleted_at')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -40,7 +40,7 @@ export async function getKnowledgeItem(id: string): Promise<DbKnowledgeItem | nu
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('knowledge_items')
-    .select('id, title, category, content_markdown, file_path, tags, created_at, deleted_at')
+    .select('id, title, category, content_markdown, file_path, tags, created_at, updated_at, deleted_at')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
