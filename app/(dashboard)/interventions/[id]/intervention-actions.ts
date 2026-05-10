@@ -11,6 +11,9 @@ import {
   updateInterventionStatus,
   getIntervention,
   listChecklistItemsByIntervention,
+  createAnomaly,
+  createValidation,
+  getValidationByIntervention,
 } from '@/lib/db/interventions'
 
 async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
@@ -159,4 +162,151 @@ export async function uploadInterventionPhotoAction(formData: FormData) {
 
   revalidatePath(`/interventions/${parsed.data.intervention_id}`)
   return { ok: true as const, photoId }
+}
+
+// ============================
+// Anomalies
+// ============================
+
+const createAnomalySchema = z.object({
+  intervention_id: z.string().uuid(),
+  category: z.enum(['eau_coupee', 'materiel_casse', 'acces_bloque', 'produit_manquant', 'autre']),
+  category_other: z.string().max(100).optional(),
+  description: z.string().max(2000).optional(),
+})
+
+export async function createAnomalyAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = createAnomalySchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    category: formData.get('category'),
+    category_other: formData.get('category_other') || undefined,
+    description: formData.get('description') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  if (parsed.data.category === 'autre' && !parsed.data.category_other?.trim()) {
+    return { error: 'Précisez la catégorie pour "Autre"' }
+  }
+
+  await createAnomaly({
+    intervention_id: parsed.data.intervention_id,
+    category: parsed.data.category,
+    category_other: parsed.data.category_other ?? null,
+    description: parsed.data.description ?? null,
+    reported_by: auth.userId,
+  })
+
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  return { ok: true as const }
+}
+
+const resolveAnomalySchema = z.object({
+  id: z.string().uuid(),
+  resolution_note: z.string().max(2000).optional(),
+})
+
+export async function resolveAnomalyAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = resolveAnomalySchema.safeParse({
+    id: formData.get('id'),
+    resolution_note: formData.get('resolution_note') || undefined,
+  })
+  if (!parsed.success) return { error: 'Invalid input' }
+
+  const supabase = createAdminClient()
+  const { data: anom, error: anomErr } = await supabase
+    .from('intervention_anomalies')
+    .update({
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+      resolution_note: parsed.data.resolution_note ?? null,
+    })
+    .eq('id', parsed.data.id)
+    .select('intervention_id')
+    .single()
+  if (anomErr) return { error: anomErr.message }
+  if (anom?.intervention_id) revalidatePath(`/interventions/${anom.intervention_id}`)
+  return { ok: true as const }
+}
+
+// ============================
+// Validations
+// ============================
+
+const validateSchema = z.object({
+  intervention_id: z.string().uuid(),
+  comment: z.string().max(2000).optional(),
+})
+
+export async function validateInterventionAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = validateSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    comment: formData.get('comment') || undefined,
+  })
+  if (!parsed.success) return { error: 'Invalid input' }
+
+  const intervention = await getIntervention(parsed.data.intervention_id)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (intervention.status !== 'completed') {
+    return { error: `Statut courant: ${intervention.status}. Validation impossible.` }
+  }
+
+  // Check no validation already exists
+  const existing = await getValidationByIntervention(parsed.data.intervention_id)
+  if (existing) return { error: 'Cette intervention a déjà été validée' }
+
+  // Create validation row + bump status
+  await createValidation({
+    intervention_id: parsed.data.intervention_id,
+    validated_by: auth.userId,
+    comment: parsed.data.comment ?? null,
+  })
+  await updateInterventionStatus(parsed.data.intervention_id, 'validated')
+
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  return { ok: true as const }
+}
+
+const requestCorrectionSchema = z.object({
+  intervention_id: z.string().uuid(),
+  comment: z.string().min(1, 'Précisez ce qui doit être corrigé').max(2000),
+})
+
+export async function requestCorrectionAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = requestCorrectionSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    comment: formData.get('comment'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  const intervention = await getIntervention(parsed.data.intervention_id)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (intervention.status !== 'completed') {
+    return { error: `Statut courant: ${intervention.status}.` }
+  }
+
+  // Bump status back to in_progress + append comment to notes
+  const supabase = createAdminClient()
+  const { data: current } = await supabase.from('interventions').select('notes').eq('id', parsed.data.intervention_id).maybeSingle()
+  const existingNotes = current?.notes ?? ''
+  const newNote = `[Demande correction · ${new Date().toLocaleDateString('fr-FR')}] ${parsed.data.comment}`
+  const combinedNotes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote
+
+  await supabase.from('interventions')
+    .update({ status: 'in_progress', notes: combinedNotes })
+    .eq('id', parsed.data.intervention_id)
+
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  return { ok: true as const }
 }

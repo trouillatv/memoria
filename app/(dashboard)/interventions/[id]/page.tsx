@@ -1,11 +1,19 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Calendar, MapPin } from 'lucide-react'
-import { getIntervention, listChecklistItemsByIntervention, listPhotosByIntervention } from '@/lib/db/interventions'
+import {
+  getIntervention,
+  listChecklistItemsByIntervention,
+  listPhotosByIntervention,
+  listAnomaliesByIntervention,
+  getValidationByIntervention,
+} from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 import { ExecutionPanel } from './execution-panel'
+import { AnomaliesPanel } from './anomalies-panel'
+import { ValidationPanel } from './validation-panel'
 
 const STATUS_LABELS: Record<string, string> = {
   planned:     'Planifiée',
@@ -28,10 +36,12 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
+    listAnomaliesByIntervention(id),
+    getValidationByIntervention(id),
   ])
 
   const supabase = createAdminClient()
@@ -47,6 +57,9 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   })
   const timeLabel = scheduledDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+  // Anomalies + validation are useable only when intervention is active enough
+  const anomaliesCanCreate = intervention.status === 'in_progress' || intervention.status === 'completed'
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -82,6 +95,18 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         checklistItems={checklistItems}
         photos={photos}
         signedUrls={Object.fromEntries(signedUrls)}
+      />
+
+      <AnomaliesPanel
+        interventionId={intervention.id}
+        anomalies={anomalies}
+        canCreate={anomaliesCanCreate}
+      />
+
+      <ValidationPanel
+        interventionId={intervention.id}
+        status={intervention.status}
+        existingValidation={validation}
       />
 
       {intervention.notes && (

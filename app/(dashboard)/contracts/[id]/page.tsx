@@ -53,14 +53,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
   // Per-engagement aggregates
   const planned = new Set<string>()
-  const interventionsByEngagement = new Map<string, { total: number; executed: number; proven: number }>()
+  const interventionsByEngagement = new Map<string, { total: number; executed: number; proven: number; validated: number }>()
 
   for (const m of missions) {
     const eIds = missionEngagements.get(m.id) ?? []
     for (const eId of eIds) {
       planned.add(eId)
       if (!interventionsByEngagement.has(eId)) {
-        interventionsByEngagement.set(eId, { total: 0, executed: 0, proven: 0 })
+        interventionsByEngagement.set(eId, { total: 0, executed: 0, proven: 0, validated: 0 })
       }
     }
   }
@@ -74,6 +74,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       if (COMPLETED_STATUSES.has(intv.status)) {
         acc.executed += 1
         if ((interventionPhotosCount.get(intv.id) ?? 0) > 0) acc.proven += 1
+        if (intv.status === 'validated') acc.validated += 1
       }
     }
   }
@@ -85,12 +86,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
     const total = stats?.total ?? 0
     const executed = total > 0 ? (stats?.executed ?? 0) / total : 0
     const proven = (stats?.executed ?? 0) > 0 ? (stats?.proven ?? 0) / (stats?.executed ?? 0) : 0
+    const validated = (stats?.executed ?? 0) > 0 ? (stats?.validated ?? 0) / (stats?.executed ?? 0) : 0
     return {
       promised,
       planned: isPlanned ? 1 : 0,
       executed,
       proven,
-      validated: 0, // Slice 2.4
+      validated,
     }
   }
 
@@ -169,11 +171,6 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </ul>
         )}
 
-        {engagements.length > 0 && (
-          <p className="text-[11px] text-muted-foreground italic mt-4 rounded-lg border border-dashed p-3 bg-muted/30">
-            La phase <strong>validation</strong> sera alimentée à la slice 2.4 (validation superviseur).
-          </p>
-        )}
       </section>
     </div>
   )
