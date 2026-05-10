@@ -2,9 +2,10 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 const TABS = [
-  { key: 'overview',  label: "Vue d'ensemble", path: '' },
-  { key: 'sites',     label: 'Sites',          path: '/sites' },
-  { key: 'missions',  label: 'Missions',       path: '/missions' },
+  { key: 'overview',      label: "Vue d'ensemble", path: '' },
+  { key: 'sites',         label: 'Sites',          path: '/sites' },
+  { key: 'missions',      label: 'Missions',       path: '/missions' },
+  { key: 'interventions', label: 'Interventions',  path: '/interventions' },
 ] as const
 
 type TabKey = typeof TABS[number]['key']
