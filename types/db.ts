@@ -125,3 +125,19 @@ export interface DbTenderChatAttachment {
   extracted_text: string | null
   created_at: string
 }
+
+export type AgentAnalysisStatus = 'pending' | 'running' | 'ready' | 'failed'
+
+export interface DbAgentAnalysis {
+  id: string
+  tender_id: string
+  agent_name: ChatAgentName
+  status: AgentAnalysisStatus
+  summary: string | null
+  key_points: Record<string, unknown> | null
+  raw_content: string | null
+  metadata: Record<string, unknown> | null
+  error_msg: string | null
+  created_at: string
+  updated_at: string
+}
