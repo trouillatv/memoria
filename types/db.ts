@@ -148,3 +148,69 @@ export interface DbAgentAnalysis {
   created_at: string
   updated_at: string
 }
+
+// =================================
+// Engagement & Contracts (Phase 1 — boucle stratégique AO ↔ Field)
+// =================================
+
+export type ContractStatus = 'active' | 'paused' | 'terminated' | 'archived'
+
+export interface DbContract {
+  id: string
+  tender_id: string | null
+  name: string
+  client_name: string
+  start_date: string
+  end_date: string | null
+  status: ContractStatus
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+  created_by: string | null
+}
+
+export type EngagementSourceType = 'ao_clause' | 'memoire_engagement' | 'manual'
+
+export type EngagementCategory =
+  | 'frequency'
+  | 'quality'
+  | 'compliance'
+  | 'delivery'
+  | 'sla'
+  | 'reporting'
+  | 'other'
+
+export type EngagementStatus =
+  | 'extracted'
+  | 'curated'
+  | 'active'
+  | 'completed'
+  | 'archived'
+
+export interface DbEngagement {
+  id: string
+  tender_id: string
+  contract_id: string | null
+  source_type: EngagementSourceType
+  source_excerpt: string
+  source_ref: Record<string, unknown> | null
+  category: EngagementCategory
+  short_label: string
+  measurable: boolean
+  ai_confidence: number | null
+  status: EngagementStatus
+  created_at: string
+  updated_at: string
+  created_by: string | null
+}
+
+// Compliance helpers (computed view-side, not persisted)
+export type EngagementHealth = 'green' | 'amber' | 'red' | 'unknown'
+
+export interface EngagementComplianceRatios {
+  promised: boolean
+  planned: number      // 0-1
+  executed: number     // 0-1
+  proven: number       // 0-1
+  validated: number    // 0-1
+}
