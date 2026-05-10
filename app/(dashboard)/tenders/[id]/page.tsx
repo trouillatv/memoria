@@ -169,7 +169,6 @@ export default async function TenderDetailPage({
               <AtelierIATab
                 tenderId={id}
                 initialMessages={chatMessages}
-                initialAgentAnalyses={agentAnalyses}
                 tenderAnalysis={analysis}
                 tenderTitle={tender.title}
               />
