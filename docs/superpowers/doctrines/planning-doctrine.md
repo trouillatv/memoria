@@ -283,20 +283,30 @@ Toute occurrence dans du code utilisateur-facing → **refus** ou refacto wordin
 
 Pas d'anticipation. Pas de Google Calendar-like construit pour le plaisir. Pas de calendrier sophistiqué « parce que ça serait cool ».
 
-### Si Phase 4 est un jour déclenchée
+> ⚠ **Avertissement** : la liste ci-dessous N'EST PAS une roadmap. C'est un **cap de scope** — les seules choses tolérables si la décision Phase 4 est un jour prise. Tout ce qui n'est pas dans la liste « inclus possible » ou est dans la liste « exclus définitivement » DOIT être refusé.
 
-**Inclus possible** (si vraiment demandé par 3+ pilotes) :
-- Vue semaine type calendrier (en lecture, pas slot-by-slot)
-- Templates hebdomadaires plus puissants
-- Détection conflit avec soft warning
-- Export ICS/iCal read-only
+### Phase 4 hypothétique — version saine
 
-**Exclus définitivement, même en V5+** :
-- Pointage / temps / paie
-- Optimisation tournée
-- KPI individuels
-- GPS continu
-- Gestion RH (absences, congés)
+**Goal** : améliorer la création et la lecture du planning, sans rien ajouter de RH-like.
+
+#### ✅ Inclus possible (si demandé par 3+ pilotes terrain)
+
+- Vue semaine type Google Calendar (mais en lecture, pas slot-by-slot)
+- Templates hebdomadaires (« lundi-vendredi 8h-10h, équipe par défaut »)
+- Duplication d'intervention (« mêmes paramètres demain »)
+- Détection conflit basique (2 missions sur 1 agent en simultané) — soft warning seulement
+- Filtre par site dans `/missions`
+- Export ICS/iCal (read-only, pour intégration agendas externes)
+
+#### ❌ Exclus définitivement, même en V5+
+
+- Tout dashboard avec ratios par personne
+- Tout suivi temps réel d'arrivée/départ
+- Tout calcul d'heures cumulées
+- Toute optimisation de tournée
+- Toute notification « retard »
+- Toute vue « qui fait quoi maintenant »
+- Toute gestion d'absences/congés/plannings RH
 
 ---
 
