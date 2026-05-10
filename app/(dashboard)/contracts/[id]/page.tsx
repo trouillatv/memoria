@@ -2,14 +2,10 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getContract } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
+import { listMissionsByContract } from '@/lib/db/missions'
 import { EngagementCompliance } from './engagement-compliance'
+import { ContractTabs } from './contract-tabs'
 import type { EngagementComplianceRatios } from '@/types/db'
-
-// Phase 1: only PROMIS is real, rest is 0
-// Health calculation alimentera Phase 2+ quand interventions/photos arrivent.
-function phase1Ratios(): EngagementComplianceRatios {
-  return { promised: true, planned: 0, executed: 0, proven: 0, validated: 0 }
-}
 
 function categoryColorClass(category: string): string {
   switch (category) {
@@ -28,7 +24,28 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const engagements = await listEngagementsByContract(id)
+  const [engagements, missions] = await Promise.all([
+    listEngagementsByContract(id),
+    listMissionsByContract(id),
+  ])
+
+  // Compute planned ratio per engagement (for now : binary 0 or 1)
+  const engagementsCoveredByMission = new Set<string>()
+  for (const m of missions) {
+    if (Array.isArray(m.engagement_ids)) {
+      for (const eid of m.engagement_ids) engagementsCoveredByMission.add(eid)
+    }
+  }
+
+  function computeRatios(engagementId: string): EngagementComplianceRatios {
+    return {
+      promised: true,
+      planned: engagementsCoveredByMission.has(engagementId) ? 1 : 0,
+      executed: 0,    // Slice 2.3
+      proven: 0,      // Slice 2.3
+      validated: 0,   // Slice 2.4
+    }
+  }
 
   const startLabel = new Date(contract.start_date).toLocaleDateString('fr-FR', {
     day: '2-digit', month: 'long', year: 'numeric',
@@ -39,9 +56,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       })
     : null
 
+  const plannedCount = engagements.filter((e) => engagementsCoveredByMission.has(e.id)).length
+  const unplannedCount = engagements.length - plannedCount
+
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* Header */}
       <header className="space-y-1">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">{contract.name}</h1>
@@ -62,12 +81,21 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
         )}
       </header>
 
-      {/* Engagements list */}
+      <ContractTabs contractId={id} active="overview" />
+
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Engagements ({engagements.length})
           </h2>
+          {engagements.length > 0 && unplannedCount > 0 && (
+            <Link
+              href={`/contracts/${id}/missions`}
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {unplannedCount} engagement{unplannedCount > 1 ? 's' : ''} non couvert{unplannedCount > 1 ? 's' : ''} →
+            </Link>
+          )}
         </div>
 
         {engagements.length === 0 ? (
@@ -89,7 +117,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                     {e.category}
                   </span>
                 </div>
-                <EngagementCompliance ratios={phase1Ratios()} size="medium" />
+                <EngagementCompliance ratios={computeRatios(e.id)} size="medium" />
               </li>
             ))}
           </ul>
@@ -97,8 +125,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
         {engagements.length > 0 && (
           <p className="text-[11px] text-muted-foreground italic mt-4 rounded-lg border border-dashed p-3 bg-muted/30">
-            Note : les phases <strong>planification / exécution / preuves / validation</strong> seront alimentées
-            dès la mise en place du module Field (Phase 2). Pour l&apos;instant, seul le status PROMIS reflète l&apos;activation contractuelle.
+            Les phases <strong>exécution / preuves / validation</strong> seront alimentées dès la mise en place
+            des interventions (slices 2.3 et 2.4).
           </p>
         )}
       </section>
