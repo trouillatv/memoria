@@ -63,7 +63,10 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // false = le popup s'ouvre comme un dropdown standard (sous le trigger)
+  // au lieu d'aligner l'item selectionne sur le trigger (ce qui chevauche
+  // le contenu suivant quand l'item est en bas de liste).
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
