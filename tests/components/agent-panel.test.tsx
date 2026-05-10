@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentPanel } from '@/app/(dashboard)/tenders/[id]/AgentPanel'
 import type { DbAgentAnalysis } from '@/types/db'
 
@@ -60,7 +60,7 @@ describe('AgentPanel — expanded mode', () => {
     const onView = vi.fn()
     const analyses = [makeAnalysis({ agent_name: 'contradicteur', status: 'ready' })]
     render(<AgentPanel tenderId={TENDER_ID} analyses={analyses} onView={onView} expanded={true} onToggleExpanded={noop} />)
-    screen.getByRole('button', { name: /voir l'analyse/i }).click()
+    fireEvent.click(screen.getByRole('button', { name: /voir l'analyse/i }))
     expect(onView).toHaveBeenCalledWith('contradicteur')
   })
 
@@ -74,7 +74,7 @@ describe('AgentPanel — expanded mode', () => {
   it('calls onToggleExpanded when collapse button clicked', () => {
     const onToggle = vi.fn()
     render(<AgentPanel tenderId={TENDER_ID} analyses={[]} onView={noop} expanded={true} onToggleExpanded={onToggle} />)
-    screen.getByTestId('rail-collapse').click()
+    fireEvent.click(screen.getByTestId('rail-collapse'))
     expect(onToggle).toHaveBeenCalled()
   })
 })
@@ -97,36 +97,58 @@ describe('AgentPanel — collapsed rail', () => {
     expect(screen.queryByText('Contradicteur')).not.toBeInTheDocument()
   })
 
-  it('icon title attribute includes name + signature question + status', () => {
+  it('icon aria-label includes name + status (a11y)', () => {
     render(<AgentPanel tenderId={TENDER_ID} analyses={[]} onView={noop} expanded={false} onToggleExpanded={noop} />)
     const btn = screen.getByTestId('rail-icon-contradicteur')
-    const title = btn.getAttribute('title') ?? ''
-    expect(title).toContain('Contradicteur')
-    expect(title).toContain('Quels risques ai-je oubliés ?')
-    expect(title).toContain('À générer')
+    const ariaLabel = btn.getAttribute('aria-label') ?? ''
+    expect(ariaLabel).toContain('Contradicteur')
+    expect(ariaLabel).toContain('À générer')
   })
 
   it('clicking ready icon calls onView with agent', () => {
     const onView = vi.fn()
     const analyses = [makeAnalysis({ agent_name: 'contradicteur', status: 'ready' })]
     render(<AgentPanel tenderId={TENDER_ID} analyses={analyses} onView={onView} expanded={false} onToggleExpanded={noop} />)
-    screen.getByTestId('rail-icon-contradicteur').click()
+    fireEvent.click(screen.getByTestId('rail-icon-contradicteur'))
     expect(onView).toHaveBeenCalledWith('contradicteur')
   })
 
-  it('clicking not-generated icon calls onToggleExpanded (no view, expand to generate)', () => {
+  it('clicking not-generated icon opens action popover (no expand, no view)', () => {
     const onToggle = vi.fn()
     const onView = vi.fn()
     render(<AgentPanel tenderId={TENDER_ID} analyses={[]} onView={onView} expanded={false} onToggleExpanded={onToggle} />)
-    screen.getByTestId('rail-icon-contradicteur').click()
-    expect(onToggle).toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('rail-icon-contradicteur'))
+    expect(screen.getByTestId('action-popover-contradicteur')).toBeInTheDocument()
+    expect(screen.getByText(/n'a pas encore été générée/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /générer l'analyse/i })).toBeInTheDocument()
+    expect(onToggle).not.toHaveBeenCalled()
     expect(onView).not.toHaveBeenCalled()
   })
 
-  it('clicking expand button calls onToggleExpanded', () => {
+  it('clicking failed icon opens action popover with Réessayer', () => {
+    const analyses = [makeAnalysis({ agent_name: 'contradicteur', status: 'failed', error_msg: 'timeout' })]
+    render(<AgentPanel tenderId={TENDER_ID} analyses={analyses} onView={noop} expanded={false} onToggleExpanded={noop} />)
+    fireEvent.click(screen.getByTestId('rail-icon-contradicteur'))
+    expect(screen.getByTestId('action-popover-contradicteur')).toBeInTheDocument()
+    expect(screen.getByText(/en erreur/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /réessayer/i })).toBeInTheDocument()
+  })
+
+  it('clicking running icon does nothing (no popover, no expand, no view)', () => {
+    const onToggle = vi.fn()
+    const onView = vi.fn()
+    const analyses = [makeAnalysis({ agent_name: 'contradicteur', status: 'running' })]
+    render(<AgentPanel tenderId={TENDER_ID} analyses={analyses} onView={onView} expanded={false} onToggleExpanded={onToggle} />)
+    fireEvent.click(screen.getByTestId('rail-icon-contradicteur'))
+    expect(screen.queryByTestId('action-popover-contradicteur')).not.toBeInTheDocument()
+    expect(onToggle).not.toHaveBeenCalled()
+    expect(onView).not.toHaveBeenCalled()
+  })
+
+  it('clicking chevron is the ONLY way to expand', () => {
     const onToggle = vi.fn()
     render(<AgentPanel tenderId={TENDER_ID} analyses={[]} onView={noop} expanded={false} onToggleExpanded={onToggle} />)
-    screen.getByTestId('rail-expand').click()
+    fireEvent.click(screen.getByTestId('rail-expand'))
     expect(onToggle).toHaveBeenCalled()
   })
 })

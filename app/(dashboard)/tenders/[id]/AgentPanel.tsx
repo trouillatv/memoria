@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { runAgentInitialAnalysisAction } from './atelier-actions'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
+import { Tooltip } from './Tooltip'
+import { AgentActionPopover, type ActionKind } from './AgentActionPopover'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { ChatAgentName, DbAgentAnalysis, AgentAnalysisStatus } from '@/types/db'
@@ -52,8 +54,14 @@ function statusLabel(status: AgentAnalysisStatus | null): string {
   }
 }
 
+interface PopoverState {
+  agent: ChatAgentName
+  kind: ActionKind
+}
+
 export function AgentPanel({ tenderId, analyses, onView, expanded, onToggleExpanded }: AgentPanelProps) {
   const [pendingAgents, setPendingAgents] = useState<Set<ChatAgentName>>(new Set())
+  const [popover, setPopover] = useState<PopoverState | null>(null)
 
   const byAgent = new Map<ChatAgentName, DbAgentAnalysis>()
   for (const a of analyses) byAgent.set(a.agent_name, a)
@@ -78,12 +86,18 @@ export function AgentPanel({ tenderId, analyses, onView, expanded, onToggleExpan
   }
 
   function handleRailIconClick(agent: ChatAgentName, status: AgentAnalysisStatus | null) {
+    // Strict separation: icon = agent action (NEVER expand layout)
     if (status === 'ready') {
       onView(agent)
-    } else {
-      // Not ready (not_generated / running / failed) → expand panel so user can act
-      onToggleExpanded()
+      return
     }
+    if (status === 'running') {
+      // No-op: tooltip suffices
+      return
+    }
+    // not_generated / pending / failed → popover
+    const kind: ActionKind = status === 'failed' ? 'failed' : 'pending'
+    setPopover({ agent, kind })
   }
 
   // ---------------------------------------------------------------------------
@@ -101,34 +115,50 @@ export function AgentPanel({ tenderId, analyses, onView, expanded, onToggleExpan
             const status = analysis?.status ?? null
             const isLocallyPending = pendingAgents.has(agent)
             const effectiveStatus: AgentAnalysisStatus | null = isLocallyPending ? 'running' : status
+            const isPopoverOpen = popover?.agent === agent
 
             return (
-              <button
-                key={agent}
-                type="button"
-                data-testid={`rail-icon-${agent}`}
-                onClick={() => handleRailIconClick(agent, effectiveStatus)}
-                title={`${meta.label} — ${meta.signatureQuestion} · ${statusLabel(effectiveStatus)}`}
-                aria-label={`${meta.label} : ${statusLabel(effectiveStatus)}`}
-                className={cn(
-                  'relative w-12 h-12 rounded-md flex items-center justify-center transition-colors',
-                  colors.bgClass, 'hover:opacity-80'
-                )}
-              >
-                <Icon className={cn('h-5 w-5', colors.textClass)} />
-                {effectiveStatus === 'ready' && (
-                  <span
-                    className={cn('absolute top-1 right-1 w-2 h-2 rounded-full ring-1 ring-background', colors.dotClass)}
-                    aria-hidden
+              <div key={agent} className="relative inline-flex">
+                <Tooltip
+                  content={`${meta.label}\n« ${meta.signatureQuestion} »\n${statusLabel(effectiveStatus)}`}
+                  side="right"
+                >
+                  <button
+                    type="button"
+                    data-testid={`rail-icon-${agent}`}
+                    onClick={() => handleRailIconClick(agent, effectiveStatus)}
+                    aria-label={`${meta.label} : ${statusLabel(effectiveStatus)}`}
+                    className={cn(
+                      'relative w-12 h-12 rounded-md flex items-center justify-center transition-colors',
+                      colors.bgClass, 'hover:opacity-80'
+                    )}
+                  >
+                    <Icon className={cn('h-5 w-5', colors.textClass)} />
+                    {effectiveStatus === 'ready' && (
+                      <span
+                        className={cn('absolute top-1 right-1 w-2 h-2 rounded-full ring-1 ring-background', colors.dotClass)}
+                        aria-hidden
+                      />
+                    )}
+                    {effectiveStatus === 'running' && (
+                      <Loader2 className="absolute top-0.5 right-0.5 h-3 w-3 animate-spin text-muted-foreground" aria-hidden />
+                    )}
+                    {effectiveStatus === 'failed' && (
+                      <AlertCircle className="absolute top-0.5 right-0.5 h-3 w-3 text-rose-500" aria-hidden />
+                    )}
+                  </button>
+                </Tooltip>
+                {isPopoverOpen && popover && (
+                  <AgentActionPopover
+                    open={true}
+                    agent={agent}
+                    kind={popover.kind}
+                    loading={isLocallyPending}
+                    onAction={() => generate(agent)}
+                    onOpenChange={(open) => { if (!open) setPopover(null) }}
                   />
                 )}
-                {effectiveStatus === 'running' && (
-                  <Loader2 className="absolute top-0.5 right-0.5 h-3 w-3 animate-spin text-muted-foreground" aria-hidden />
-                )}
-                {effectiveStatus === 'failed' && (
-                  <AlertCircle className="absolute top-0.5 right-0.5 h-3 w-3 text-rose-500" aria-hidden />
-                )}
-              </button>
+              </div>
             )
           })}
           <button
@@ -136,7 +166,6 @@ export function AgentPanel({ tenderId, analyses, onView, expanded, onToggleExpan
             data-testid="rail-expand"
             onClick={onToggleExpanded}
             className="w-12 h-8 rounded-md flex items-center justify-center hover:bg-muted/50 mt-1 border-t pt-1 text-muted-foreground"
-            title="Développer le panneau des analyses"
             aria-label="Développer le panneau des analyses persistées"
           >
             <ChevronRight className="h-4 w-4" />
