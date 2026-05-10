@@ -38,7 +38,13 @@ export async function loginAction(formData: FormData) {
       redirect('/change-password')
     }
 
-    // Redirect par rôle (au Plan 1 tout le monde va sur /missions)
+    // Redirect par rôle :
+    // - chef_equipe (agent terrain) → /m (route mobile bornée, Slice 3.0)
+    // - admin / manager → /missions (ou ?next= si fourni)
+    if (profile.role === 'chef_equipe') {
+      redirect('/m')
+    }
+
     redirect(parsed.data.next ?? '/missions')
   }
 
