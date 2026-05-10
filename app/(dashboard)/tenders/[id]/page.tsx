@@ -1,8 +1,6 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { RefreshCw, AlertTriangle, FileX } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { AlertTriangle, FileX } from 'lucide-react'
+import Link from 'next/link'
 import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
 import { listChatMessages } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
@@ -13,16 +11,9 @@ import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
 import { AtelierAgentSidebar } from './AtelierAgentSidebar'
-import { relaunchAnalysisAction as _relaunchAnalysisAction } from './actions'
-import { ArchiveTenderButton } from './ArchiveTenderButton'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
-
-async function relaunchAnalysisAction(formData: FormData): Promise<void> {
-  'use server'
-  await _relaunchAnalysisAction(formData)
-}
 
 export default async function TenderDetailPage({
   params,
@@ -76,54 +67,42 @@ export default async function TenderDetailPage({
   const view: TenderView =
     requestedView !== 'atelier' && !hasAnalysis ? 'atelier' : requestedView
 
+  // KPIs calculés depuis l'analyse
+  const kpis = {
+    risksCount: (analysis?.risks ?? []).length,
+    risksHighCount: (analysis?.risks ?? []).filter((r: { severity?: string }) => r.severity === 'high').length,
+    constraintsCount: (analysis?.constraints ?? []).length,
+    constraintsRequiredCount: (analysis?.constraints ?? []).filter((c: { required?: boolean }) => c.required).length,
+    checklistCount: (analysis?.checklist ?? []).length,
+    chatMessagesCount: chatMessages.length,
+  }
+
+  const sources = {
+    pdfSignedUrl,
+    pdfFilename: doc?.filename ?? null,
+    libraryItemsCount: (analysis?.library_snapshot as { items_count?: number } | null)?.items_count ?? 0,
+    provider: analysis?.provider ?? null,
+    isMock: analysis?.provider === 'mock',
+  }
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 md:gap-8">
-      <TenderSidebar tender={tender} currentView={view} hasAnalysis={hasAnalysis} />
+    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 md:gap-8">
+      <TenderSidebar
+        tender={tender}
+        currentView={view}
+        hasAnalysis={hasAnalysis}
+        kpis={kpis}
+        sources={sources}
+        canRelaunch={canRelaunch}
+        isInProgress={isInProgress}
+        tenderId={id}
+      />
 
-      <div className="space-y-4 min-w-0">
-        {/* Top action row */}
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold leading-tight">{tender.title}</h1>
-            {tender.client_name && (
-              <p className="text-sm text-muted-foreground mt-0.5">{tender.client_name}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {canRelaunch && (
-              <form action={relaunchAnalysisAction}>
-                <input type="hidden" name="id" value={id} />
-                <Button
-                  type="submit"
-                  variant="outline"
-                  size="sm"
-                  disabled={isInProgress}
-                >
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                  Relancer
-                </Button>
-              </form>
-            )}
-            {!isInProgress && tender.status !== 'archived' && (
-              <ArchiveTenderButton tenderId={id} />
-            )}
-          </div>
-        </div>
-
-        {/* Mock mode banner */}
-        {analysis?.provider === 'mock' && (
-          <Card className="border-amber-300 bg-amber-50">
-            <CardContent className="pt-4 pb-4 flex items-start gap-3">
-              <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-900">
-                <strong>Analyse de demonstration (mode mock).</strong> Le contenu genere ne reflete PAS le PDF uploade &mdash; c&apos;est un exemple pour valider le flux.
-                Pour activer l&apos;IA veritable, basculer la variable d&apos;environnement <code className="font-mono bg-white px-1 rounded">AI_PROVIDER=gemini</code> ou <code className="font-mono bg-white px-1 rounded">anthropic</code>.
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* States — affichees independamment de la vue selectionnee */}
+      <div className={view === 'atelier'
+        ? 'min-w-0 h-[calc(100vh-3rem)] flex flex-col'
+        : 'space-y-4 min-w-0'
+      }>
+        {/* States — affichées indépendamment de la vue sélectionnée */}
         {isInProgress && <TenderAnalysisLoader id={id} />}
 
         {isFailed && (
@@ -154,7 +133,7 @@ export default async function TenderDetailPage({
             ) : tender.error_msg === 'analyze_timeout' ? (
               <>
                 <p className="text-sm text-rose-800">L&apos;analyse a depasse 10 min sans repondre. Le job a ete marque comme echoue automatiquement.</p>
-                <p className="text-sm text-rose-800 mt-2">Cliquez sur &laquo; Relancer &raquo; ou contactez l&apos;admin si le probleme persiste.</p>
+                <p className="text-sm text-rose-800 mt-2">Cliquez sur &laquo; Relancer &raquo; dans les actions ou contactez l&apos;admin si le probleme persiste.</p>
               </>
             ) : (
               <p className="text-sm text-rose-800">{tender.error_msg ?? 'Erreur inconnue'}</p>
@@ -180,10 +159,12 @@ export default async function TenderDetailPage({
               <TenderMemoireTechnique tender={tender} analysis={analysis} />
             )}
             {view === 'atelier' && (
-              <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
-                <AtelierAgentSidebar tenderId={id} analyses={agentAnalyses} />
-                <div className="min-w-0">
-                  <AtelierIATab tenderId={id} initialMessages={chatMessages} />
+              <div className={view === 'atelier' ? 'flex flex-col flex-1 gap-4 min-h-0' : 'grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4'}>
+                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 flex-1 min-h-0">
+                  <AtelierAgentSidebar tenderId={id} analyses={agentAnalyses} />
+                  <div className="min-w-0 flex flex-col min-h-0">
+                    <AtelierIATab tenderId={id} initialMessages={chatMessages} />
+                  </div>
                 </div>
               </div>
             )}
@@ -194,7 +175,7 @@ export default async function TenderDetailPage({
         {isReady && !analysis && view !== 'atelier' && (
           <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground text-sm">
             Aucune analyse disponible pour cet appel d&apos;offres.
-            {canRelaunch && ' Vous pouvez relancer l\'analyse ci-dessus.'}
+            {canRelaunch && ' Vous pouvez relancer l\'analyse via les actions dans la barre latérale.'}
           </div>
         )}
       </div>
