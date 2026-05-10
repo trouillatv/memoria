@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { LayoutDashboard, ListChecks, FileText, MessageSquare, MoreHorizontal, ExternalLink, RefreshCw, Archive, AlertTriangle, BookOpen, Bot, FileSignature } from 'lucide-react'
+import { LayoutDashboard, ListChecks, FileText, MessageSquare, MoreHorizontal, ExternalLink, RefreshCw, Archive, AlertTriangle, BookOpen, Bot, FileSignature, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -317,6 +317,20 @@ export function TenderSidebar({
           )
         })}
       </nav>
+
+      {/* Engagements — sub-link vers la page extraction/curation */}
+      {(tender.status === 'ready' || tender.status === 'submitted' || tender.status === 'archived') && (
+        <>
+          <div className="hidden md:block border-t" />
+          <Link
+            href={`/tenders/${tenderId}/engagements`}
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors"
+          >
+            <Target className="h-4 w-4 text-muted-foreground" />
+            Engagements extraits
+          </Link>
+        </>
+      )}
 
       {/* CTA — Convertir en contrat (status finalisé uniquement) */}
       {(tender.status === 'ready' || tender.status === 'submitted') && (

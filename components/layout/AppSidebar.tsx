@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 interface NavItem {
@@ -10,11 +10,12 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { href: '/missions', label: 'Missions',         icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
-  { href: '/tenders',  label: "Appels d'offres",  icon: FileText,      roles: ['admin', 'manager'] },
-  { href: '/library',  label: 'Bibliothèque',     icon: BookOpen,      roles: ['admin', 'manager'] },
-  { href: '/reports',  label: 'Rapports',         icon: FileBarChart,  roles: ['admin', 'manager'] },
-  { href: '/admin',    label: 'Administration',   icon: ShieldAlert,   roles: ['admin'] },
+  { href: '/missions',  label: 'Missions',         icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
+  { href: '/tenders',   label: "Appels d'offres",  icon: FileText,      roles: ['admin', 'manager'] },
+  { href: '/contracts', label: 'Contrats',          icon: FileCheck,     roles: ['admin', 'manager'] },
+  { href: '/library',   label: 'Bibliothèque',     icon: BookOpen,      roles: ['admin', 'manager'] },
+  { href: '/reports',   label: 'Rapports',         icon: FileBarChart,  roles: ['admin', 'manager'] },
+  { href: '/admin',     label: 'Administration',   icon: ShieldAlert,   roles: ['admin'] },
 ]
 
 export function AppSidebar({ role, fullName }: { role: UserRole; fullName: string }) {
