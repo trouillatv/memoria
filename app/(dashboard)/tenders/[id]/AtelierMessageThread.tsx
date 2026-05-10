@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { runChallengeRoundAction } from './atelier-actions'
 import { toast } from 'sonner'
 import { AGENT_LABELS } from './agents-metadata'
+import { AGENT_COLORS } from './agents-colors'
+import { cn } from '@/lib/utils'
 import type { DbTenderChatMessage, ChatAgentName } from '@/types/db'
 
 interface Props {
@@ -63,17 +65,41 @@ function groupMessagesByTurn(messages: DbTenderChatMessage[]): TurnGroup[] {
 
 function MessageBubble({ message }: { message: DbTenderChatMessage }) {
   const isUser = message.role === 'user'
-  const Icon = isUser ? User : Bot
-  return (
-    <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
-      <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${isUser ? 'bg-brand-600 text-white' : 'bg-muted'}`}>
-        <Icon className="h-3 w-3" />
+
+  if (isUser) {
+    return (
+      <div className="flex gap-2 flex-row-reverse">
+        <div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center bg-brand-600 text-white">
+          <User className="h-3 w-3" />
+        </div>
+        <div className="flex-1 text-right">
+          <div className="inline-block rounded-lg px-3 py-2 text-sm whitespace-pre-wrap bg-brand-600 text-white">
+            {message.content}
+          </div>
+        </div>
       </div>
-      <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
-        {!isUser && message.agent_name && (
-          <Badge variant="outline" className="text-xs mb-1">{AGENT_LABELS[message.agent_name as ChatAgentName] ?? message.agent_name}</Badge>
-        )}
-        <div className={`inline-block rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${isUser ? 'bg-brand-600 text-white' : 'bg-muted'}`}>
+    )
+  }
+
+  // Agent bubble with color identity
+  const agentName = message.agent_name as ChatAgentName | null
+  const color = agentName ? AGENT_COLORS[agentName] : AGENT_COLORS.general
+  const agentLabel = agentName
+    ? (AGENT_LABELS[agentName] ?? agentName)
+    : 'Agent'
+
+  return (
+    <div className="flex gap-2">
+      <div className={cn('shrink-0 w-7 h-7 rounded-full flex items-center justify-center', color.bgClass)}>
+        <Bot className={cn('h-3 w-3', color.textClass)} />
+      </div>
+      <div className="flex-1">
+        <Badge
+          className={cn('text-xs mb-1 border', color.bgClass, color.textClass, color.borderClass)}
+        >
+          {agentLabel}
+        </Badge>
+        <div className={cn('rounded-lg px-3 py-2 text-sm whitespace-pre-wrap bg-card border-l-4', color.borderClass)}>
           {message.content}
         </div>
       </div>
