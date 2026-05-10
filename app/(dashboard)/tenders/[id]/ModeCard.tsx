@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { X, Plus, Sparkles, Flame } from 'lucide-react'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
-import { resolveMode, modeLabel, MAX_AGENTS } from './copilote-mode'
+import { resolveMode, MAX_AGENTS } from './copilote-mode'
 import { AgentSelectorPopover } from './AgentSelectorPopover'
 import { cn } from '@/lib/utils'
 import type { ChatAgentName } from '@/types/db'
@@ -14,80 +14,149 @@ interface ModeCardProps {
   onChange: (agents: ChatAgentName[]) => void
 }
 
+const ALL_AGENTS: ChatAgentName[] = [
+  'lecteur_ao', 'memoire_technique', 'contradicteur',
+  'financier', 'terrain', 'conformite', 'general',
+]
+
+function AgentChip({
+  agent,
+  onRemove,
+}: {
+  agent: ChatAgentName
+  onRemove: (agent: ChatAgentName) => void
+}) {
+  const meta = AGENTS[agent]
+  const colors = AGENT_COLORS[agent]
+  const Icon = meta.icon
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-full text-xs font-medium border',
+        colors.borderClass, colors.textClass, colors.bgClass
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      <span>{meta.label}</span>
+      <button
+        type="button"
+        data-testid={`chip-remove-${agent}`}
+        onClick={() => onRemove(agent)}
+        className="ml-0.5 p-0.5 rounded-full hover:bg-black/5"
+        aria-label={`Retirer ${meta.label}`}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  )
+}
+
 export function ModeCard({ agents, onChange }: ModeCardProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const mode = resolveMode(agents)
-
-  const removeAgent = (agent: ChatAgentName) => onChange(agents.filter((a) => a !== agent))
-
   const isDebate = mode === 'debate'
   const atCap = agents.length >= MAX_AGENTS
 
-  return (
-    <div className="relative">
-      <div className={cn(
-        'rounded-lg border p-3 mb-2 transition-colors',
-        isDebate
-          ? 'border-amber-300 bg-gradient-to-br from-amber-50/40 to-sky-50/40'
-          : 'bg-muted/20'
-      )}>
-        {/* Header mode */}
-        <div className="flex items-center gap-2 mb-2">
-          {isDebate ? (
-            <Flame className="h-4 w-4 text-amber-600" />
-          ) : (
-            <Sparkles className="h-4 w-4 text-slate-500" />
-          )}
-          <span className="text-sm font-semibold">
-            {mode === 'empty' ? (
-              <span>{modeLabel('empty')}</span>
-            ) : (
-              <>
-                <span className="text-muted-foreground font-normal">Mode : </span>
-                <span>{modeLabel(mode)}</span>
-              </>
-            )}
-            {isDebate && (
-              <span className="ml-1 text-xs font-normal text-muted-foreground">
-                · {agents.length} perspectives
-              </span>
-            )}
-          </span>
+  const removeAgent = (agent: ChatAgentName) => onChange(agents.filter((a) => a !== agent))
+  const addFromChip = (agent: ChatAgentName) => onChange([...agents, agent])
+
+  // -------------------------------------------------------------------------
+  // Empty state — declarative onboarding with 7 agent chips visible
+  // -------------------------------------------------------------------------
+  if (mode === 'empty') {
+    return (
+      <div className="rounded-lg border bg-muted/20 p-4 mb-2">
+        <div className="text-sm font-semibold mb-0.5">À qui voulez-vous parler ?</div>
+        <div className="text-xs text-muted-foreground mb-3">
+          Sélectionnez 1 expert pour un avis · 2-3 pour un débat IA
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          {ALL_AGENTS.map((agent) => {
+            const meta = AGENTS[agent]
+            const colors = AGENT_COLORS[agent]
+            const Icon = meta.icon
+            return (
+              <button
+                key={agent}
+                type="button"
+                data-testid={`mode-chip-${agent}`}
+                onClick={() => addFromChip(agent)}
+                title={`${meta.label} — ${meta.signatureQuestion}`}
+                className="flex items-start gap-2 p-2 rounded-lg border bg-card hover:border-foreground/30 hover:bg-muted/40 transition-colors text-left"
+              >
+                <div className={cn('shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5', colors.bgClass)}>
+                  <Icon className={cn('h-3 w-3', colors.textClass)} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium">{meta.label}</div>
+                  <div className="text-[11px] text-muted-foreground italic line-clamp-1">
+                    {meta.signatureQuestion}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Expert mode — declarative "Vous consultez X"
+  // -------------------------------------------------------------------------
+  if (mode === 'expert' && agents[0]) {
+    return (
+      <div className="relative">
+        <div className="rounded-lg border bg-muted/20 p-3 mb-2">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-slate-500 shrink-0" />
+            <span className="text-sm font-semibold">Avis d&apos;expert</span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap mb-2 text-xs">
+            <span className="text-muted-foreground">Vous consultez</span>
+            <AgentChip agent={agents[0]} onRemove={removeAgent} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded text-foreground hover:bg-muted/50 transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+            Ajouter un expert pour confronter
+          </button>
         </div>
 
-        {/* Chips participants */}
-        {agents.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap mb-2">
-            {agents.map((agent) => {
-              const meta = AGENTS[agent]
-              const colors = AGENT_COLORS[agent]
-              const Icon = meta.icon
-              return (
-                <span
-                  key={agent}
-                  className={cn(
-                    'inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-full text-xs font-medium border',
-                    colors.borderClass, colors.textClass, colors.bgClass
-                  )}
-                >
-                  <Icon className="h-3 w-3" />
-                  <span>{meta.label}</span>
-                  <button
-                    type="button"
-                    data-testid={`chip-remove-${agent}`}
-                    onClick={() => removeAgent(agent)}
-                    className="ml-0.5 p-0.5 rounded-full hover:bg-black/5"
-                    aria-label={`Retirer ${meta.label}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )
-            })}
-          </div>
-        )}
+        <AgentSelectorPopover
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          selected={agents}
+          onChange={onChange}
+        />
+      </div>
+    )
+  }
 
-        {/* CTA add */}
+  // -------------------------------------------------------------------------
+  // Debate mode — assertive "N perspectives vont confronter leurs analyses"
+  // -------------------------------------------------------------------------
+  return (
+    <div className="relative">
+      <div className="rounded-lg border border-amber-300 bg-gradient-to-br from-amber-50/40 to-sky-50/40 p-3 mb-2">
+        <div className="flex items-center gap-2 mb-1">
+          <Flame className="h-4 w-4 text-amber-600 shrink-0" />
+          <span className="text-sm font-semibold">Débat IA</span>
+        </div>
+        <div className="text-xs text-muted-foreground mb-2">
+          {agents.length} perspectives vont confronter leurs analyses :
+        </div>
+        <div className="flex items-center gap-1 flex-wrap mb-2">
+          {agents.map((agent, idx) => (
+            <span key={agent} className="inline-flex items-center">
+              <AgentChip agent={agent} onRemove={removeAgent} />
+              {idx < agents.length - 1 && <span className="text-muted-foreground mx-0.5">·</span>}
+            </span>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
@@ -102,17 +171,8 @@ export function ModeCard({ agents, onChange }: ModeCardProps) {
           <Plus className="h-3 w-3" />
           {atCap
             ? `${MAX_AGENTS}/${MAX_AGENTS} — limite atteinte`
-            : agents.length === 0
-              ? 'Sélectionner un agent'
-              : 'Ajouter un agent'}
+            : `Ajouter un expert — ${agents.length}/${MAX_AGENTS}`}
         </button>
-
-        {/* Anticipation banner (mode debate) */}
-        {isDebate && (
-          <div className="mt-2 pt-2 border-t border-amber-200/60 text-[11px] text-amber-800 italic">
-            ℹ Les agents donneront d&apos;abord leurs avis séparés, puis vous pourrez confronter leurs perspectives.
-          </div>
-        )}
       </div>
 
       <AgentSelectorPopover
