@@ -5,7 +5,6 @@ import { Send, Paperclip, Bot, User, Loader2, X, Sparkles, FileSearch, FileText,
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { sendChatMessageAction } from './atelier-actions'
@@ -117,24 +116,32 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
           <div className="space-y-2">
             <Label htmlFor="agent-select" className="text-sm font-medium">Agent IA</Label>
             <div className="flex items-start gap-3 flex-wrap">
-              <Select value={agent} onValueChange={(v) => setAgent(v as ChatAgentName)}>
-                <SelectTrigger id="agent-select" className="w-full sm:w-72">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(AGENTS) as ChatAgentName[]).map((k) => {
-                    const Icon = AGENTS[k].icon
-                    return (
-                      <SelectItem key={k} value={k}>
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
-                          <span>{AGENTS[k].label}</span>
-                        </div>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
+              {/*
+                Native HTML <select> volontairement utilise ici (au lieu du Select shadcn/base-ui)
+                car le composant base-ui v4 a un comportement de positioning instable (le popup
+                ne se rend pas comme un vrai overlay flottant et chevauche le contenu suivant).
+                Pour le MVP, on prefere une UI fiable a une UI fancy. La perte = les icones
+                ne sont pas affichees DANS les options du dropdown (les <option> HTML natives ne
+                supportent que du texte), mais l'icone de l'agent SELECTIONNE est tout de meme
+                visible juste a cote du select.
+              */}
+              <div className="flex items-center gap-2 w-full sm:w-72">
+                {(() => {
+                  const Icon = AGENTS[agent].icon
+                  return <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                })()}
+                <select
+                  id="agent-select"
+                  value={agent}
+                  onChange={(e) => setAgent(e.target.value as ChatAgentName)}
+                  disabled={pending}
+                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {(Object.keys(AGENTS) as ChatAgentName[]).map((k) => (
+                    <option key={k} value={k}>{AGENTS[k].label}</option>
+                  ))}
+                </select>
+              </div>
               <p className="text-xs text-muted-foreground flex-1 min-w-0 pt-2">
                 {AGENTS[agent].description}
               </p>
