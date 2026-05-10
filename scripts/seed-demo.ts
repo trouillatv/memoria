@@ -540,7 +540,7 @@ async function seedContract1(adminId: string, supabase: SupabaseAdmin) {
     const interventionId = await createIntervention({
       mission_id: m.id,
       scheduled_at: isoTimestamp(scheduledAt),
-      team: [],
+      team: [adminId],
       created_by: adminId,
     })
 
@@ -905,7 +905,7 @@ async function seedContract2(adminId: string, supabase: SupabaseAdmin) {
     const interventionId = await createIntervention({
       mission_id: plan.missionId,
       scheduled_at: isoTimestamp(scheduledAt),
-      team: [],
+      team: [adminId],
       created_by: adminId,
     })
 
@@ -1220,7 +1220,7 @@ async function seedContract3(adminId: string, supabase: SupabaseAdmin) {
   const inProgressId = await createIntervention({
     mission_id: missionClassesId,
     scheduled_at: isoTimestamp(today),
-    team: [],
+    team: [adminId],
     created_by: adminId,
   })
   const ipChecklist: ChecklistTemplateItem[] = [
@@ -1250,7 +1250,7 @@ async function seedContract3(adminId: string, supabase: SupabaseAdmin) {
   const plannedId = await createIntervention({
     mission_id: missionCantineId,
     scheduled_at: isoTimestamp(tomorrow),
-    team: [],
+    team: [adminId],
     created_by: adminId,
   })
   const plannedChecklist: ChecklistTemplateItem[] = [

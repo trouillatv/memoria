@@ -211,3 +211,27 @@ export async function createValidation(input: {
   if (error) throw error
   return data.id
 }
+
+/**
+ * List interventions where the given agent is in the team[] array.
+ * Used by the mobile agent UI (/m).
+ *
+ * Returns interventions ordered by scheduled_at ascending, limited to
+ * status not 'skipped' and within the past 24h to next 7 days window.
+ */
+export async function listInterventionsByAgent(agentId: string): Promise<DbIntervention[]> {
+  const supabase = createAdminClient()
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data, error } = await supabase
+    .from('interventions')
+    .select('*')
+    .contains('team', [agentId])
+    .gte('scheduled_at', yesterday)
+    .lte('scheduled_at', inOneWeek)
+    .neq('status', 'skipped')
+    .order('scheduled_at', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
