@@ -30,6 +30,8 @@ export interface ChatInput {
   libraryContext: string           // bibliothèque AGP sérialisée (peut être '')
   history: Pick<DbTenderChatMessage, 'role' | 'content' | 'agent_name'>[]
   userId: string | null
+  // si fourni, l'agent reçoit en plus les réponses des autres agents pour réagir/contester
+  challengeContext?: { otherAgents: { agent: ChatAgentName; content: string }[] }
 }
 
 export interface ChatOutput {
@@ -46,7 +48,7 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatOutput> {
   const prompt = PROMPTS[input.agentName]
   const provider = getAIProvider()
 
-  const fullSystem = [
+  const systemParts = [
     prompt.system,
     '',
     '=== Contexte AO ===',
@@ -57,7 +59,22 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatOutput> {
     '',
     '=== Historique récent ===',
     input.history.slice(-10).map(m => `[${m.role}${m.agent_name ? `:${m.agent_name}` : ''}] ${m.content}`).join('\n') || '(aucun message précédent)',
-  ].join('\n')
+  ]
+
+  if (input.challengeContext && input.challengeContext.otherAgents.length > 0) {
+    const otherAgentsBloc = input.challengeContext.otherAgents
+      .map((o) => `[Agent ${o.agent}] : ${o.content}`)
+      .join('\n\n---\n\n')
+    systemParts.push(
+      '',
+      '=== Réponses des autres agents (round précédent) ===',
+      otherAgentsBloc,
+      '',
+      `Ta mission : réagir, contester, compléter ou nuancer leurs réponses depuis ta perspective d'agent ${input.agentName}. Sois direct, factuel.`,
+    )
+  }
+
+  const fullSystem = systemParts.join('\n')
 
   const userMsg = input.attachmentText
     ? `${input.userMessage}\n\n--- Document joint (texte extrait) ---\n${input.attachmentText.slice(0, 8000)}`
@@ -65,7 +82,8 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatOutput> {
 
   return withAITracking(`chat_${input.agentName}`, input.userId, async () => {
     const isMock = provider.name === 'mock'
-    const fixture = isMock ? buildMockChatResponse(input.agentName, input.userMessage) : null
+    const isChallenge = !!(input.challengeContext && input.challengeContext.otherAgents.length > 0)
+    const fixture = isMock ? buildMockChatResponse(input.agentName, input.userMessage, isChallenge) : null
     const r = await provider.complete({
       systemPrompt: fullSystem,
       userMessage: isMock ? '__MOCK_FIXTURE__:' + JSON.stringify({ content: fixture }) : userMsg,
@@ -93,7 +111,7 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatOutput> {
   })
 }
 
-function buildMockChatResponse(agent: ChatAgentName, userMsg: string): string {
+function buildMockChatResponse(agent: ChatAgentName, userMsg: string, isChallenge = false): string {
   const intros: Record<ChatAgentName, string> = {
     general: "**(Mock — agent général)**\n\nVoici une réponse de démonstration. En mode mock je ne lis pas vraiment le PDF.",
     lecteur_ao: "**(Mock — lecteur AO)**\n\nDans le PDF mock, je vois les contraintes ISO 9001, CDI, Ecolabel et l'astreinte 24/7.",
@@ -103,5 +121,10 @@ function buildMockChatResponse(agent: ChatAgentName, userMsg: string): string {
     terrain: "**(Mock — terrain)**\n\nDimensionnement de démo : 3-4 agents tournants, 2 chefs d'équipe, rotation hebdomadaire.",
     conformite: "**(Mock — conformité)**\n\nCertifications attendues (mock) :\n- ISO 9001:2015 (obligatoire)\n- ISO 14001 (recommandé)\n- CQP APH pour les agents",
   }
+
+  if (isChallenge) {
+    return `**(Mock — challenge round)**\n\nJe réagis aux autres agents : depuis ma perspective d'agent **${agent}**, je nuance / conteste les points soulevés.\n\n${intros[agent]}\n\n_Question initiale : "${userMsg.slice(0, 100)}${userMsg.length > 100 ? '...' : ''}"_\n\nPour activer l'IA réelle, basculer \`AI_PROVIDER=gemini\` ou \`anthropic\`.`
+  }
+
   return `${intros[agent]}\n\n_Question reçue : "${userMsg.slice(0, 100)}${userMsg.length > 100 ? '...' : ''}"_\n\nPour activer l'IA réelle, basculer \`AI_PROVIDER=gemini\` ou \`anthropic\`.`
 }
