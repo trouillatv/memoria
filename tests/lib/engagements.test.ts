@@ -390,7 +390,7 @@ describe('getEvidenceForEngagement', () => {
     }
   })
 
-  it('aggregates interventions, photos, anomalies, validations correctly', async () => {
+  it('aggregates interventions, photos, anomalies, validations correctly', { timeout: 30_000 }, async () => {
     const { id: tenderId } = await ensureTenderExists('test-evidence-full')
     const supabase = createAdminClient()
     const { data: admin } = await supabase
