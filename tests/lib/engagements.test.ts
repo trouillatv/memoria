@@ -6,6 +6,7 @@ import {
   curateEngagement,
   activateEngagementsForContract,
   rejectEngagements,
+  findSimilarEngagements,
 } from '@/lib/db/engagements'
 import { createContract } from '@/lib/db/contracts'
 
@@ -175,5 +176,156 @@ describe('engagements DB helpers', () => {
     const remaining = await listEngagementsByTender(tenderId)
     expect(remaining.length).toBe(1)
     expect(remaining[0].id).toBe(inserted[1].id)
+  })
+})
+
+// ============================================================================
+// Phase 4 — Cross-tender matching (pg_trgm similarity engine)
+// ============================================================================
+
+async function ensureTenderExists(prefix: string): Promise<{ id: string }> {
+  const title = `__test_${prefix}__`
+  const supabase = createAdminClient()
+  const { data: admin } = await supabase
+    .from('users')
+    .select('id')
+    .eq('role', 'admin')
+    .limit(1)
+    .maybeSingle()
+  if (!admin) throw new Error('No admin user')
+
+  const { data: existing } = await supabase
+    .from('tenders')
+    .select('id')
+    .eq('title', title)
+    .maybeSingle()
+  if (existing) return { id: existing.id }
+
+  const { data, error } = await supabase
+    .from('tenders')
+    .insert({ title, status: 'ready', created_by: admin.id })
+    .select('id')
+    .single()
+  if (error) throw error
+  return { id: data.id }
+}
+
+async function cleanupTender(tenderId: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('engagements').delete().eq('tender_id', tenderId)
+  await supabase.from('contracts').delete().eq('tender_id', tenderId)
+  await supabase.from('tenders').delete().eq('id', tenderId)
+}
+
+describe('findSimilarEngagements (pg_trgm)', () => {
+  it('returns empty for query too short', async () => {
+    const r = await findSimilarEngagements({ query: 'abc' })
+    expect(r).toEqual([])
+  })
+
+  it('matches engagements with similar source_excerpt', async () => {
+    const { id: tender1 } = await ensureTenderExists('similar-1')
+    try {
+      await bulkInsertEngagements({
+        tender_id: tender1,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Bionettoyage biquotidien des sanitaires avec produits écolabel certifiés',
+          source_ref: null,
+          category: 'frequency',
+          short_label: 'Sanitaires 2x/jour écolabel',
+          measurable: true,
+          ai_confidence: 0.92,
+        }],
+      })
+
+      const contractId = await createContract({
+        tender_id: tender1,
+        name: 'Test contract similar',
+        client_name: 'Test client',
+        start_date: '2026-05-01',
+        created_by: null,
+      })
+      await activateEngagementsForContract(tender1, contractId)
+
+      const matches = await findSimilarEngagements({
+        query: 'nettoyage sanitaires écolabel produits certifiés',
+        threshold: 0.2,
+        limit: 5,
+      })
+
+      const found = matches.find((m) => m.engagement.tender_id === tender1)
+      expect(found).toBeDefined()
+      expect(found!.similarity).toBeGreaterThan(0.2)
+    } finally {
+      await cleanupTender(tender1)
+    }
+  })
+
+  it('excludes engagements from a specific tender when excludeTenderId provided', async () => {
+    const { id: tenderA } = await ensureTenderExists('exclude-A')
+    try {
+      await bulkInsertEngagements({
+        tender_id: tenderA,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Audit qualité hebdomadaire avec rapport écrit transmis sous 48h',
+          source_ref: null,
+          category: 'reporting',
+          short_label: 'Audit qualité hebdo',
+          measurable: true,
+          ai_confidence: 0.88,
+        }],
+      })
+      const contractId = await createContract({
+        tender_id: tenderA,
+        name: 'Test contract A',
+        client_name: 'Test client',
+        start_date: '2026-05-01',
+        created_by: null,
+      })
+      await activateEngagementsForContract(tenderA, contractId)
+
+      const matches = await findSimilarEngagements({
+        query: 'audit qualité hebdomadaire rapport écrit',
+        excludeTenderId: tenderA,
+        threshold: 0.2,
+      })
+      const found = matches.find((m) => m.engagement.tender_id === tenderA)
+      expect(found).toBeUndefined()
+    } finally {
+      await cleanupTender(tenderA)
+    }
+  })
+
+  it('excludes engagements with status extracted/curated/archived', async () => {
+    const { id: tenderC } = await ensureTenderExists('status-filter')
+    try {
+      await bulkInsertEngagements({
+        tender_id: tenderC,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Désinfection biquotidienne unique testée pour ce cas',
+          source_ref: null,
+          category: 'frequency',
+          short_label: 'Désinfection unique test',
+          measurable: true,
+          ai_confidence: 0.90,
+        }],
+      })
+      // Note : engagement stays in status='extracted' since we didn't activate it
+
+      const matches = await findSimilarEngagements({
+        query: 'désinfection biquotidienne unique',
+        threshold: 0.2,
+      })
+      const found = matches.find((m) => m.engagement.tender_id === tenderC)
+      expect(found).toBeUndefined() // extracted status should be excluded
+    } finally {
+      await cleanupTender(tenderC)
+    }
   })
 })

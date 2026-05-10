@@ -144,3 +144,57 @@ export async function archiveEngagement(id: string): Promise<void> {
     .eq('id', id)
   if (error) throw error
 }
+
+// ============================================================================
+// Cross-tender matching — Phase 4 (pg_trgm similarity)
+// ============================================================================
+
+export interface SimilarEngagementMatch {
+  engagement: DbEngagement
+  similarity: number // 0-1, higher = more similar
+}
+
+/**
+ * Find past engagements (active or completed) whose source_excerpt or short_label
+ * is similar to the input query text.
+ *
+ * Uses Postgres pg_trgm trigram similarity via the `find_similar_engagements`
+ * RPC function (cf. migration 020). Threshold 0.3 by default = moderate match.
+ *
+ * If `excludeTenderId` is provided, engagements from that tender are filtered
+ * out — used when a Resp. AO writes a new tender response and we don't want to
+ * match the current tender's own engagements.
+ *
+ * Engagements with status extracted/curated/archived are NEVER returned : only
+ * active/completed past engagements count as "preuves".
+ *
+ * Returns at most `limit` matches, sorted by similarity descending.
+ */
+export async function findSimilarEngagements(input: {
+  query: string
+  excludeTenderId?: string | null
+  threshold?: number
+  limit?: number
+}): Promise<SimilarEngagementMatch[]> {
+  const query = input.query.trim()
+  if (query.length < 10) return [] // too short to match meaningfully
+
+  const threshold = input.threshold ?? 0.3
+  const limit = input.limit ?? 10
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase.rpc('find_similar_engagements', {
+    p_query: query,
+    p_threshold: threshold,
+    p_limit: limit,
+    p_exclude_tender_id: input.excludeTenderId ?? null,
+  })
+  if (error) throw error
+  if (!data) return []
+
+  type RpcRow = DbEngagement & { similarity: number }
+  return (data as RpcRow[]).map((row) => {
+    const { similarity, ...engagement } = row
+    return { engagement: engagement as DbEngagement, similarity }
+  })
+}
