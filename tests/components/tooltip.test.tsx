@@ -58,4 +58,19 @@ describe('Tooltip', () => {
     act(() => { vi.advanceTimersByTime(200) })
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
+
+  it('hides immediately on mousedown (click on the trigger)', () => {
+    vi.useFakeTimers()
+    render(
+      <Tooltip content="Hello world" delay={100}>
+        <button>Trigger</button>
+      </Tooltip>
+    )
+    const wrapper = screen.getByText('Trigger').parentElement!
+    fireEvent.mouseEnter(wrapper)
+    act(() => { vi.advanceTimersByTime(100) })
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    fireEvent.mouseDown(wrapper)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
 })

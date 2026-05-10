@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Plus, Sparkles, Flame } from 'lucide-react'
+import { X, Plus, Sparkles, Flame, ChevronDown, ChevronUp } from 'lucide-react'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { resolveMode, MAX_AGENTS } from './copilote-mode'
@@ -53,6 +53,7 @@ function AgentChip({
 
 export function ModeCard({ agents, onChange }: ModeCardProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [emptyExpanded, setEmptyExpanded] = useState(false)
   const mode = resolveMode(agents)
   const isDebate = mode === 'debate'
   const atCap = agents.length >= MAX_AGENTS
@@ -61,42 +62,78 @@ export function ModeCard({ agents, onChange }: ModeCardProps) {
   const addFromChip = (agent: ChatAgentName) => onChange([...agents, agent])
 
   // -------------------------------------------------------------------------
-  // Empty state — declarative onboarding with 7 agent chips visible
+  // Empty state — compact bar by default. Tap "+ Choisir" or expand chevron.
+  // The rail tooltips already convey each agent's signature question, so we
+  // hide the verbose 7-chips grid behind an opt-in expand.
   // -------------------------------------------------------------------------
   if (mode === 'empty') {
     return (
-      <div className="rounded-lg border bg-muted/20 p-4 mb-2">
-        <div className="text-sm font-semibold mb-0.5">À qui voulez-vous parler ?</div>
-        <div className="text-xs text-muted-foreground mb-3">
-          Sélectionnez 1 expert pour un avis · 2-3 pour un débat IA
+      <div className="relative rounded-lg border bg-muted/20 p-3 mb-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium">À qui voulez-vous parler ?</span>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              data-testid="mode-empty-pick"
+              onClick={() => setPickerOpen(true)}
+              className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Choisir un expert
+            </button>
+            <button
+              type="button"
+              data-testid="mode-empty-expand"
+              onClick={() => setEmptyExpanded((v) => !v)}
+              aria-expanded={emptyExpanded}
+              aria-label={emptyExpanded ? 'Masquer les experts' : 'Voir tous les experts'}
+              className="p-1 rounded hover:bg-muted/50 text-muted-foreground"
+            >
+              {emptyExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-          {ALL_AGENTS.map((agent) => {
-            const meta = AGENTS[agent]
-            const colors = AGENT_COLORS[agent]
-            const Icon = meta.icon
-            return (
-              <button
-                key={agent}
-                type="button"
-                data-testid={`mode-chip-${agent}`}
-                onClick={() => addFromChip(agent)}
-                title={`${meta.label} — ${meta.signatureQuestion}`}
-                className="flex items-start gap-2 p-2 rounded-lg border bg-card hover:border-foreground/30 hover:bg-muted/40 transition-colors text-left"
-              >
-                <div className={cn('shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5', colors.bgClass)}>
-                  <Icon className={cn('h-3 w-3', colors.textClass)} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium">{meta.label}</div>
-                  <div className="text-[11px] text-muted-foreground italic line-clamp-1">
-                    {meta.signatureQuestion}
-                  </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
+
+        {emptyExpanded && (
+          <div className="mt-3 pt-3 border-t">
+            <div className="text-xs text-muted-foreground mb-2">
+              Sélectionnez 1 expert pour un avis · 2-3 pour un débat IA
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {ALL_AGENTS.map((agent) => {
+                const meta = AGENTS[agent]
+                const colors = AGENT_COLORS[agent]
+                const Icon = meta.icon
+                return (
+                  <button
+                    key={agent}
+                    type="button"
+                    data-testid={`mode-chip-${agent}`}
+                    onClick={() => addFromChip(agent)}
+                    className="flex items-start gap-2 p-2 rounded-lg border bg-card hover:border-foreground/30 hover:bg-muted/40 transition-colors text-left"
+                  >
+                    <div className={cn('shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5', colors.bgClass)}>
+                      <Icon className={cn('h-3 w-3', colors.textClass)} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium">{meta.label}</div>
+                      <div className="text-[11px] text-muted-foreground italic line-clamp-1">
+                        {meta.signatureQuestion}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <AgentSelectorPopover
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          selected={agents}
+          onChange={onChange}
+        />
       </div>
     )
   }

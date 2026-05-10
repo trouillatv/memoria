@@ -31,10 +31,23 @@ export function Tooltip({ content, delay = 150, side = 'right', children }: Tool
     setVisible(false)
   }
 
+  function onPress() {
+    // Hide immediately on click so it doesn't linger over a popover/drawer
+    clearTimer()
+    setVisible(false)
+  }
+
   useEffect(() => () => clearTimer(), [])
 
   return (
-    <span className="relative inline-flex" onMouseEnter={onEnter} onMouseLeave={onLeave} onFocus={onEnter} onBlur={onLeave}>
+    <span
+      className="relative inline-flex"
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      onMouseDown={onPress}
+      onFocus={onEnter}
+      onBlur={onLeave}
+    >
       {children}
       {visible && (
         <span

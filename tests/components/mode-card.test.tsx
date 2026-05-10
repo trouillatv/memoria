@@ -2,31 +2,48 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ModeCard } from '@/app/(dashboard)/tenders/[id]/ModeCard'
 
-describe('ModeCard — empty state (declarative onboarding)', () => {
-  it('renders welcome question and helper text', () => {
+describe('ModeCard — empty state (compact by default)', () => {
+  it('renders welcome question + Choisir button + expand chevron', () => {
     render(<ModeCard agents={[]} onChange={() => {}} />)
     expect(screen.getByText(/à qui voulez-vous parler/i)).toBeInTheDocument()
-    expect(screen.getByText(/1 expert pour un avis · 2-3 pour un débat ia/i)).toBeInTheDocument()
+    expect(screen.getByTestId('mode-empty-pick')).toBeInTheDocument()
+    expect(screen.getByTestId('mode-empty-expand')).toBeInTheDocument()
   })
 
-  it('renders 7 agent chips with signature questions visible', () => {
+  it('hides the 7 chips by default (compact)', () => {
     render(<ModeCard agents={[]} onChange={() => {}} />)
-    expect(screen.getByTestId('mode-chip-contradicteur')).toBeInTheDocument()
-    expect(screen.getByTestId('mode-chip-financier')).toBeInTheDocument()
-    expect(screen.getByTestId('mode-chip-terrain')).toBeInTheDocument()
-    expect(screen.getByTestId('mode-chip-conformite')).toBeInTheDocument()
-    expect(screen.getByTestId('mode-chip-memoire_technique')).toBeInTheDocument()
-    expect(screen.getByTestId('mode-chip-lecteur_ao')).toBeInTheDocument()
-    expect(screen.getByTestId('mode-chip-general')).toBeInTheDocument()
-    expect(screen.getByText('Quels risques ai-je oubliés ?')).toBeInTheDocument()
-    expect(screen.getByText('Cette réponse est-elle rentable ?')).toBeInTheDocument()
+    expect(screen.queryByTestId('mode-chip-contradicteur')).not.toBeInTheDocument()
+    expect(screen.queryByText(/1 expert pour un avis/i)).not.toBeInTheDocument()
   })
 
-  it('clicking a chip selects that agent', () => {
+  it('clicking the Choisir button opens AgentSelectorPopover', () => {
+    render(<ModeCard agents={[]} onChange={() => {}} />)
+    fireEvent.click(screen.getByTestId('mode-empty-pick'))
+    expect(screen.getByRole('dialog', { name: /sélectionner les agents/i })).toBeInTheDocument()
+  })
+
+  it('clicking the chevron reveals the 7 chips', () => {
+    render(<ModeCard agents={[]} onChange={() => {}} />)
+    fireEvent.click(screen.getByTestId('mode-empty-expand'))
+    expect(screen.getByTestId('mode-chip-contradicteur')).toBeInTheDocument()
+    expect(screen.getByText(/1 expert pour un avis/i)).toBeInTheDocument()
+    expect(screen.getByText('Quels risques ai-je oubliés ?')).toBeInTheDocument()
+  })
+
+  it('clicking a chip (after expand) selects that agent', () => {
     const onChange = vi.fn()
     render(<ModeCard agents={[]} onChange={onChange} />)
+    fireEvent.click(screen.getByTestId('mode-empty-expand'))
     fireEvent.click(screen.getByTestId('mode-chip-contradicteur'))
     expect(onChange).toHaveBeenCalledWith(['contradicteur'])
+  })
+
+  it('chevron toggles aria-expanded', () => {
+    render(<ModeCard agents={[]} onChange={() => {}} />)
+    const btn = screen.getByTestId('mode-empty-expand')
+    expect(btn).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(btn)
+    expect(btn).toHaveAttribute('aria-expanded', 'true')
   })
 })
 
