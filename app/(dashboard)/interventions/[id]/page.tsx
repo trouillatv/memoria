@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Calendar, MapPin } from 'lucide-react'
-import { getIntervention, listChecklistItemsByIntervention } from '@/lib/db/interventions'
+import { getIntervention, listChecklistItemsByIntervention, listPhotosByIntervention } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { ExecutionPanel } from './execution-panel'
 
 const STATUS_LABELS: Record<string, string> = {
   planned:     'Planifiée',
@@ -26,19 +28,24 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems] = await Promise.all([
+  const [mission, checklistItems, photos] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
+    listPhotosByIntervention(id),
   ])
 
-  // Get site + contract for breadcrumb
   const supabase = createAdminClient()
   const { data: site } = mission
     ? await supabase.from('sites').select('id, name, contract_id').eq('id', mission.site_id).maybeSingle()
     : { data: null }
 
+  // Sign URLs for photos
+  const signedUrls = await getSignedPhotoUrls(photos.map((p) => p.storage_path))
+
   const scheduledDate = new Date(intervention.scheduled_at)
-  const dateLabel = scheduledDate.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+  })
   const timeLabel = scheduledDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
   return (
@@ -70,38 +77,12 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
-      <section className="space-y-3 rounded-lg border bg-card p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          Checklist ({checklistItems.length})
-        </h2>
-        {checklistItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aucune tâche pour cette intervention.
-          </p>
-        ) : (
-          <ul className="space-y-1.5">
-            {checklistItems.map((item) => (
-              <li key={item.id} className="flex items-start gap-2 p-2 rounded border bg-background">
-                <span className={`inline-block w-4 h-4 rounded border mt-0.5 shrink-0 ${item.done ? 'bg-emerald-500 border-emerald-600' : 'bg-card border-border'}`} aria-hidden />
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm ${item.done ? 'line-through text-muted-foreground' : ''}`}>
-                    {item.label}
-                    {item.required && <span className="ml-1 text-rose-500">*</span>}
-                  </div>
-                  {item.done && item.done_at && (
-                    <div className="text-[10px] text-muted-foreground">
-                      ✓ {new Date(item.done_at).toLocaleString('fr-FR')}
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="text-[11px] text-muted-foreground italic mt-2">
-          Exécution + photos seront disponibles dans la slice 2.3 (à venir).
-        </p>
-      </section>
+      <ExecutionPanel
+        intervention={intervention}
+        checklistItems={checklistItems}
+        photos={photos}
+        signedUrls={Object.fromEntries(signedUrls)}
+      />
 
       {intervention.notes && (
         <section className="rounded-lg border bg-card p-4">

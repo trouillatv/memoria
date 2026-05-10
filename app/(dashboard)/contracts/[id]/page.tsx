@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getContract } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
+import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
 import { ContractTabs } from './contract-tabs'
 import type { EngagementComplianceRatios } from '@/types/db'
@@ -19,31 +20,77 @@ function categoryColorClass(category: string): string {
   }
 }
 
+const COMPLETED_STATUSES = new Set(['completed', 'validated'])
+
 export default async function ContractPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions] = await Promise.all([
+  const [engagements, missions, interventions] = await Promise.all([
     listEngagementsByContract(id),
     listMissionsByContract(id),
+    listInterventionsByContract(id),
   ])
 
-  // Compute planned ratio per engagement (for now : binary 0 or 1)
-  const engagementsCoveredByMission = new Set<string>()
+  // Build mission_id → engagement_ids map
+  const missionEngagements = new Map<string, string[]>()
   for (const m of missions) {
-    if (Array.isArray(m.engagement_ids)) {
-      for (const eid of m.engagement_ids) engagementsCoveredByMission.add(eid)
+    missionEngagements.set(m.id, Array.isArray(m.engagement_ids) ? m.engagement_ids : [])
+  }
+
+  // For each completed/validated intervention : load photos count (1 query each — acceptable for MVP)
+  // For better perf later, switch to a single SQL aggregate
+  const interventionPhotosCount = new Map<string, number>()
+  await Promise.all(
+    interventions
+      .filter((i) => COMPLETED_STATUSES.has(i.status))
+      .map(async (i) => {
+        const photos = await listPhotosByIntervention(i.id)
+        interventionPhotosCount.set(i.id, photos.length)
+      }),
+  )
+
+  // Per-engagement aggregates
+  const planned = new Set<string>()
+  const interventionsByEngagement = new Map<string, { total: number; executed: number; proven: number }>()
+
+  for (const m of missions) {
+    const eIds = missionEngagements.get(m.id) ?? []
+    for (const eId of eIds) {
+      planned.add(eId)
+      if (!interventionsByEngagement.has(eId)) {
+        interventionsByEngagement.set(eId, { total: 0, executed: 0, proven: 0 })
+      }
+    }
+  }
+
+  for (const intv of interventions) {
+    const eIds = missionEngagements.get(intv.mission_id) ?? []
+    for (const eId of eIds) {
+      const acc = interventionsByEngagement.get(eId)
+      if (!acc) continue
+      acc.total += 1
+      if (COMPLETED_STATUSES.has(intv.status)) {
+        acc.executed += 1
+        if ((interventionPhotosCount.get(intv.id) ?? 0) > 0) acc.proven += 1
+      }
     }
   }
 
   function computeRatios(engagementId: string): EngagementComplianceRatios {
+    const stats = interventionsByEngagement.get(engagementId)
+    const promised = true
+    const isPlanned = planned.has(engagementId)
+    const total = stats?.total ?? 0
+    const executed = total > 0 ? (stats?.executed ?? 0) / total : 0
+    const proven = (stats?.executed ?? 0) > 0 ? (stats?.proven ?? 0) / (stats?.executed ?? 0) : 0
     return {
-      promised: true,
-      planned: engagementsCoveredByMission.has(engagementId) ? 1 : 0,
-      executed: 0,    // Slice 2.3
-      proven: 0,      // Slice 2.3
-      validated: 0,   // Slice 2.4
+      promised,
+      planned: isPlanned ? 1 : 0,
+      executed,
+      proven,
+      validated: 0, // Slice 2.4
     }
   }
 
@@ -56,8 +103,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       })
     : null
 
-  const plannedCount = engagements.filter((e) => engagementsCoveredByMission.has(e.id)).length
-  const unplannedCount = engagements.length - plannedCount
+  const unplannedCount = engagements.filter((e) => !planned.has(e.id)).length
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -125,8 +171,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
         {engagements.length > 0 && (
           <p className="text-[11px] text-muted-foreground italic mt-4 rounded-lg border border-dashed p-3 bg-muted/30">
-            Les phases <strong>exécution / preuves / validation</strong> seront alimentées dès la mise en place
-            des interventions (slices 2.3 et 2.4).
+            La phase <strong>validation</strong> sera alimentée à la slice 2.4 (validation superviseur).
           </p>
         )}
       </section>
