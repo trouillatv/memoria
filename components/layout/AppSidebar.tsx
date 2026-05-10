@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck } from 'lucide-react'
+import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 interface NavItem {
@@ -10,6 +10,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
+  { href: '/dashboard', label: 'Tableau de bord',  icon: Sparkles,      roles: ['admin', 'manager'] },
   { href: '/missions',  label: 'Missions',         icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
   { href: '/tenders',   label: "Appels d'offres",  icon: FileText,      roles: ['admin', 'manager'] },
   { href: '/contracts', label: 'Contrats',          icon: FileCheck,     roles: ['admin', 'manager'] },
@@ -23,7 +24,7 @@ export function AppSidebar({ role, fullName }: { role: UserRole; fullName: strin
   return (
     <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r bg-card">
       <div className="flex h-16 items-center border-b px-4">
-        <Link href="/missions" className="flex items-center gap-2 font-semibold">
+        <Link href={role === 'admin' || role === 'manager' ? '/dashboard' : '/missions'} className="flex items-center gap-2 font-semibold">
           <LayoutDashboard className="h-5 w-5 text-brand-600" />
           <span>NetoIAge</span>
         </Link>
