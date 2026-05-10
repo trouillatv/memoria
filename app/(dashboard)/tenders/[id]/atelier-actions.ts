@@ -14,7 +14,9 @@ import { buildLibraryContext } from '@/services/ai/library-context'
 import { extractPdfText } from '@/services/pdf/extract'
 import { chatWithAgent } from '@/services/ai/chat'
 import { runInitialAnalysisAgent } from '@/services/ai/initial-analysis'
-import type { ChatAgentName } from '@/types/db'
+import { validateSources } from '@/services/ai/source-validation'
+import { listKnowledgeItems } from '@/lib/db/knowledge'
+import type { ChatAgentName, Source } from '@/types/db'
 
 const CHAT_AGENTS = [
   'general', 'lecteur_ao', 'memoire_technique',
@@ -48,6 +50,9 @@ function buildTenderContext(tender: { title: string; client_name: string | null;
   if (analysis?.risks) lines.push(`\nRisques :\n${JSON.stringify(analysis.risks, null, 2).slice(0, 2000)}`)
   if (analysis?.technical_memo) lines.push(`\nMémoire technique :\n${analysis.technical_memo.slice(0, 4000)}`)
   if (!analysis && doc?.extracted_text) lines.push(`\nTexte AO (extrait) :\n${doc.extracted_text.slice(0, 6000)}`)
+  if (doc?.extracted_text) {
+    lines.push(`\n=== Texte du PDF (pour citations verbatim) ===\n${doc.extracted_text.slice(0, 8000)}`)
+  }
   return lines.join('\n')
 }
 
@@ -75,11 +80,12 @@ export async function sendChatMessageAction(formData: FormData) {
   // Build context for the agent — history fetched BEFORE inserting the current
   // user message, so that history contains only previous turns (le message
   // courant est passé séparément comme userMessage à chatWithAgent).
-  const [doc, analysis, lib, history] = await Promise.all([
+  const [doc, analysis, lib, history, knowledgeItems] = await Promise.all([
     getTenderDocument(parsed.data.tender_id),
     getLatestTenderAnalysis(parsed.data.tender_id),
     buildLibraryContext(),
     listChatMessages(parsed.data.tender_id),
+    listKnowledgeItems({}),  // NEW — for source validation
   ])
   const tenderContext = buildTenderContext(tender, doc, analysis)
 
@@ -149,6 +155,13 @@ export async function sendChatMessageAction(formData: FormData) {
           history,
           userId,
         })
+        let validatedSources: Source[] = []
+        if (r.sources && r.sources.length > 0) {
+          validatedSources = validateSources(r.sources, {
+            extractedText: doc?.extracted_text ?? null,
+            knowledgeItems,
+          })
+        }
         return {
           agentName,
           content: r.content,
@@ -161,6 +174,7 @@ export async function sendChatMessageAction(formData: FormData) {
             duration_ms: r.durationMs,
             turn_id: turnId,
             challenge_round: 0,
+            sources: validatedSources.length > 0 ? validatedSources : undefined,
           },
         }
       } catch (e) {

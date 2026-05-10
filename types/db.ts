@@ -2,6 +2,9 @@
 // On peut générer automatiquement avec un script type-gen futur,
 // pour l'instant on tient les types à la main pour ne pas dépendre du DB password.
 
+import type { Source } from './sources'
+export type { Source, SourceType } from './sources'
+
 export type UserRole = 'admin' | 'manager' | 'chef_equipe'
 export type MissionStatus = 'pending' | 'in_progress' | 'completed' | 'issue'
 export type TenderStatus =
@@ -72,17 +75,20 @@ export interface DbTenderAnalysisConstraint {
   detail?: string
   required?: boolean
   category?: string
+  sources?: Source[]
 }
 
 export interface DbTenderAnalysisRisk {
   label: string
   severity: 'low' | 'medium' | 'high'
   detail?: string
+  sources?: Source[]
 }
 
 export interface DbTenderAnalysisChecklistItem {
   item: string
   required: boolean
+  sources?: Source[]
 }
 
 export interface DbTenderAnalysis {

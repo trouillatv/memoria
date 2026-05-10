@@ -9,7 +9,8 @@ import { toast } from 'sonner'
 import { AGENT_LABELS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { cn } from '@/lib/utils'
-import type { DbTenderChatMessage, ChatAgentName } from '@/types/db'
+import type { DbTenderChatMessage, ChatAgentName, Source } from '@/types/db'
+import { SourceList } from './SourceList'
 
 interface Props {
   messages: DbTenderChatMessage[]
@@ -66,6 +67,9 @@ function groupMessagesByTurn(messages: DbTenderChatMessage[]): TurnGroup[] {
 
 function MessageBubble({ message }: { message: DbTenderChatMessage }) {
   const isUser = message.role === 'user'
+  const sources = (message.metadata && typeof message.metadata === 'object'
+    ? (message.metadata as Record<string, unknown>).sources
+    : undefined) as Source[] | undefined
 
   if (isUser) {
     return (
@@ -103,6 +107,11 @@ function MessageBubble({ message }: { message: DbTenderChatMessage }) {
         <div className={cn('rounded-lg px-3 py-2 text-sm whitespace-pre-wrap bg-card border-l-4', color.borderClass)}>
           {message.content}
         </div>
+        {sources && sources.length > 0 && (
+          <div className="mt-2">
+            <SourceList sources={sources} />
+          </div>
+        )}
       </div>
     </div>
   )

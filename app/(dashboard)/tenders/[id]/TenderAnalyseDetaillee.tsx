@@ -6,6 +6,7 @@ import type {
   DbTenderAnalysisRisk,
   DbTenderAnalysisChecklistItem,
 } from '@/types/db'
+import { SourceList } from './SourceList'
 
 const SEVERITY_STYLES: Record<'low' | 'medium' | 'high', string> = {
   low: 'bg-emerald-100 text-emerald-700',
@@ -48,6 +49,7 @@ export function TenderAnalyseDetaillee({ analysis }: TenderAnalyseDetailleeProps
                       {c.detail && (
                         <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
                       )}
+                      {c.sources && c.sources.length > 0 && <SourceList sources={c.sources} />}
                     </div>
                     {c.required && (
                       <Badge className="text-xs bg-rose-100 text-rose-700 shrink-0">Requis</Badge>
@@ -81,11 +83,12 @@ export function TenderAnalyseDetaillee({ analysis }: TenderAnalyseDetailleeProps
                     >
                       {SEVERITY_LABELS[r.severity]}
                     </Badge>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <span className="font-medium">{r.label}</span>
                       {r.detail && (
                         <p className="text-xs text-muted-foreground mt-0.5">{r.detail}</p>
                       )}
+                      {r.sources && r.sources.length > 0 && <SourceList sources={r.sources} />}
                     </div>
                   </div>
                 </li>
@@ -114,12 +117,15 @@ export function TenderAnalyseDetaillee({ analysis }: TenderAnalyseDetailleeProps
                         : 'border-muted-foreground/30'
                     }`}
                   />
-                  <span className={item.required ? 'font-medium' : 'text-muted-foreground'}>
-                    {item.item}
-                    {item.required && (
-                      <span className="ml-1 text-xs text-rose-600">*</span>
-                    )}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className={item.required ? 'font-medium' : 'text-muted-foreground'}>
+                      {item.item}
+                      {item.required && (
+                        <span className="ml-1 text-xs text-rose-600">*</span>
+                      )}
+                    </span>
+                    {item.sources && item.sources.length > 0 && <SourceList sources={item.sources} />}
+                  </div>
                 </li>
               ))}
             </ul>

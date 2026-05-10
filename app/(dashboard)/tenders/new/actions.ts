@@ -17,6 +17,8 @@ import {
 } from '@/lib/db/tenders'
 import { extractPdfText } from '@/services/pdf/extract'
 import { analyzeTender } from '@/services/ai/orchestrator'
+import { validateAnalysisSources } from '@/services/ai/source-validation'
+import { listKnowledgeItems } from '@/lib/db/knowledge'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -141,15 +143,25 @@ export async function createTenderAction(formData: FormData) {
   after(async () => {
     try {
       const result = await analyzeTender(extractedTextForAnalyze, userIdForAnalyze)
+
+      // Validation des sources avant insertion
+      const knowledgeItems = await listKnowledgeItems({})
+      const isMock = result.provider === 'mock'
+      const validated = validateAnalysisSources(result.reading, {
+        extractedText: extractedTextForAnalyze,
+        knowledgeItems,
+        skipPdfValidation: isMock,
+      })
+
       await insertTenderAnalysis({
         tender_id: tenderIdForAnalyze,
         provider: result.provider as 'mock' | 'gemini' | 'anthropic' | 'openai',
         model: result.model,
         prompt_versions: result.promptVersions,
         summary: result.reading.summary,
-        constraints: result.reading.constraints,
-        risks: result.reading.risks,
-        checklist: result.reading.checklist,
+        constraints: validated.constraints,
+        risks: validated.risks,
+        checklist: validated.checklist,
         technical_memo: result.memo.technical_memo,
         library_snapshot: result.librarySnapshot,
         raw_response: null,
