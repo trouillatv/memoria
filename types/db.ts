@@ -2,6 +2,8 @@
 // On peut générer automatiquement avec un script type-gen futur,
 // pour l'instant on tient les types à la main pour ne pas dépendre du DB password.
 
+export type { Source, SourceType } from './sources'
+
 export type UserRole = 'admin' | 'manager' | 'chef_equipe'
 export type MissionStatus = 'pending' | 'in_progress' | 'completed' | 'issue'
 export type TenderStatus =
