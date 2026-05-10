@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "db:push": "tsx scripts/db-push.ts",
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "db:seed-demo": "tsx scripts/seed-demo.ts",
     "gen:icons": "tsx scripts/gen-icons.ts"
   },
   "dependencies": {
