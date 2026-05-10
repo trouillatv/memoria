@@ -68,7 +68,7 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
 
     const fd = new FormData()
     fd.set('tender_id', tenderId)
-    fd.set('agent_name', agent)
+    fd.set('agent_names', JSON.stringify([agent]))
     fd.set('message', sentDraft)
     if (sentAttachment) fd.set('attachment', sentAttachment)
 
@@ -80,13 +80,13 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
       return
     }
     // Replace the optimistic placeholder by the real user message returned by
-    // the action, then append the agent response. No reload → l'onglet actif
+    // the action, then append the agent responses. No reload → l'onglet actif
     // est preserve.
-    if (r && 'userMessage' in r && r.userMessage && r.agentMessage) {
+    if (r && 'userMessage' in r && r.userMessage && r.agentMessages) {
       setMessages((prev) =>
         prev
           .filter((m) => m.id !== optimisticUser.id)
-          .concat([r.userMessage as DbTenderChatMessage, r.agentMessage as DbTenderChatMessage])
+          .concat([r.userMessage as DbTenderChatMessage, ...(r.agentMessages as DbTenderChatMessage[])])
       )
     }
   }

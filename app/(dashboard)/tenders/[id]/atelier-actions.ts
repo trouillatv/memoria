@@ -1,5 +1,6 @@
 'use server'
 
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
@@ -20,9 +21,9 @@ const CHAT_AGENTS = [
   'contradicteur', 'financier', 'terrain', 'conformite',
 ] as const satisfies readonly ChatAgentName[]
 
-const schema = z.object({
+const multiAgentSchema = z.object({
   tender_id: z.string().uuid(),
-  agent_name: z.enum(CHAT_AGENTS),
+  agent_names: z.array(z.enum(CHAT_AGENTS)).min(1).max(3),
   message: z.string().min(1).max(4000),
 })
 
@@ -53,9 +54,17 @@ function buildTenderContext(tender: { title: string; client_name: string | null;
 export async function sendChatMessageAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()
 
-  const parsed = schema.safeParse({
+  // agent_names is sent as a JSON-encoded array by the client
+  let agentNamesRaw: unknown
+  try {
+    agentNamesRaw = JSON.parse(formData.get('agent_names') as string)
+  } catch {
+    return { error: 'agent_names invalide' }
+  }
+
+  const parsed = multiAgentSchema.safeParse({
     tender_id: formData.get('tender_id'),
-    agent_name: formData.get('agent_name'),
+    agent_names: agentNamesRaw,
     message: formData.get('message'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
@@ -74,13 +83,17 @@ export async function sendChatMessageAction(formData: FormData) {
   ])
   const tenderContext = buildTenderContext(tender, doc, analysis)
 
-  // Insert user message (after history fetched)
+  // Common turn_id — groups the user message and all agent responses
+  const turnId = randomUUID()
+
+  // Insert user message (after history fetched), includes turn_id in metadata
   const userMessageId = await insertChatMessage({
     tender_id: parsed.data.tender_id,
     user_id: userId,
     agent_name: null,
     role: 'user',
     content: parsed.data.message,
+    metadata: { turn_id: turnId },
   })
 
   // Optional attachment
@@ -123,46 +136,60 @@ export async function sendChatMessageAction(formData: FormData) {
     }
   }
 
-  // Call agent
-  let agentResponse: string
-  let metadata: Record<string, unknown> = {}
-  try {
-    const r = await chatWithAgent({
-      agentName: parsed.data.agent_name,
-      userMessage: parsed.data.message,
-      attachmentText,
-      tenderContext,
-      libraryContext: lib.markdown,
-      history,
-      userId,
+  // Call all agents in parallel — a failure in one does not cancel the others
+  const agentResults = await Promise.all(
+    parsed.data.agent_names.map(async (agentName) => {
+      try {
+        const r = await chatWithAgent({
+          agentName,
+          userMessage: parsed.data.message,
+          attachmentText,
+          tenderContext,
+          libraryContext: lib.markdown,
+          history,
+          userId,
+        })
+        return {
+          agentName,
+          content: r.content,
+          metadata: {
+            provider: r.provider,
+            model: r.model,
+            prompt_version: r.promptVersion,
+            input_tokens: r.inputTokens,
+            output_tokens: r.outputTokens,
+            duration_ms: r.durationMs,
+            turn_id: turnId,
+            challenge_round: 0,
+          },
+        }
+      } catch (e) {
+        return {
+          agentName,
+          content: `_Erreur agent ${agentName} : ${e instanceof Error ? e.message : 'unknown'}_`,
+          metadata: { error: true, turn_id: turnId, challenge_round: 0 },
+        }
+      }
     })
-    agentResponse = r.content
-    metadata = {
-      provider: r.provider,
-      model: r.model,
-      prompt_version: r.promptVersion,
-      input_tokens: r.inputTokens,
-      output_tokens: r.outputTokens,
-      duration_ms: r.durationMs,
-    }
-  } catch (e) {
-    agentResponse = `_Erreur agent : ${e instanceof Error ? e.message : 'unknown'}_`
-    metadata = { error: true }
-  }
+  )
 
-  // Insert agent message
-  const agentMessageId = await insertChatMessage({
-    tender_id: parsed.data.tender_id,
-    user_id: null,
-    agent_name: parsed.data.agent_name,
-    role: 'agent',
-    content: agentResponse,
-    metadata,
-  })
+  // Insert all agent messages in parallel
+  const agentMessageIds = await Promise.all(
+    agentResults.map((r) =>
+      insertChatMessage({
+        tender_id: parsed.data.tender_id,
+        user_id: null,
+        agent_name: r.agentName,
+        role: 'agent',
+        content: r.content,
+        metadata: r.metadata,
+      })
+    )
+  )
 
   revalidatePath(`/tenders/${parsed.data.tender_id}`)
 
-  // Return both messages so the client can append in-place (avoids full page
+  // Return all messages so the client can append in-place (avoids full page
   // reload which would reset the active tab back to "Synthèse").
   const now = new Date().toISOString()
   return {
@@ -174,19 +201,19 @@ export async function sendChatMessageAction(formData: FormData) {
       agent_name: null,
       role: 'user' as const,
       content: parsed.data.message,
-      metadata: null,
+      metadata: { turn_id: turnId },
       created_at: now,
     },
-    agentMessage: {
-      id: agentMessageId,
+    agentMessages: agentResults.map((r, idx) => ({
+      id: agentMessageIds[idx],
       tender_id: parsed.data.tender_id,
       user_id: null,
-      agent_name: parsed.data.agent_name,
+      agent_name: r.agentName,
       role: 'agent' as const,
-      content: agentResponse,
-      metadata,
+      content: r.content,
+      metadata: r.metadata,
       created_at: now,
-    },
+    })),
   }
 }
 
