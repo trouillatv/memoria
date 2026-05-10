@@ -9,7 +9,10 @@ import { TenderStatusBadge } from './TenderStatusBadge'
 import { TenderScoreBadge } from './TenderScoreBadge'
 import { archiveTenderAction, relaunchAnalysisAction as _relaunchAnalysisAction } from './actions'
 import { toast } from 'sonner'
+import { AGENT_COLORS } from './agents-colors'
+import { AGENTS } from './agents-metadata'
 import type { DbTender } from '@/types/db'
+import type { ActivityItem } from './activity-feed'
 
 export type TenderView = 'synthese' | 'analyse' | 'memoire' | 'atelier'
 
@@ -42,6 +45,18 @@ interface TenderSidebarProps {
   canRelaunch: boolean
   isInProgress: boolean
   tenderId: string
+  activityFeed: ActivityItem[]
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.round(diff / 60000)
+  if (m < 1) return "à l'instant"
+  if (m < 60) return `il y a ${m} min`
+  const h = Math.round(m / 60)
+  if (h < 24) return `il y a ${h} h`
+  const d = Math.round(h / 24)
+  return `il y a ${d} j`
 }
 
 function formatDeadline(deadline: string | null): { label: string; daysLeft: number | null } | null {
@@ -63,6 +78,7 @@ export function TenderSidebar({
   canRelaunch,
   isInProgress,
   tenderId,
+  activityFeed,
 }: TenderSidebarProps) {
   const deadline = formatDeadline(tender.deadline)
 
@@ -167,6 +183,40 @@ export function TenderSidebar({
                   <span>{kpis.chatMessagesCount} msg{kpis.chatMessagesCount > 1 ? 's' : ''} atelier</span>
                 </li>
               )}
+            </ul>
+          </div>
+        </>
+      )}
+
+      {/* ACTIVITÉ RÉCENTE */}
+      {activityFeed.length > 0 && (
+        <>
+          <div className="hidden md:block border-t" />
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Activité récente</p>
+            <ul className="space-y-2 text-xs">
+              {activityFeed.map((item) => {
+                const colors = item.agentName ? AGENT_COLORS[item.agentName] : null
+                const meta = item.agentName ? AGENTS[item.agentName] : null
+                return (
+                  <li key={item.id} className="flex items-start gap-2">
+                    <span
+                      className={cn(
+                        'shrink-0 w-1.5 h-1.5 rounded-full mt-1.5',
+                        colors?.dotClass ?? 'bg-muted-foreground/50'
+                      )}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-foreground/90">
+                        {meta && <span className={cn('font-medium', colors?.textClass)}>{meta.label}</span>}
+                        {meta ? ' ' : ''}
+                        <span className="text-muted-foreground">{item.description}</span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/80">{timeAgo(item.timestamp)}</div>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           </div>
         </>
