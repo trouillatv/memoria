@@ -2,14 +2,17 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
 import { listChatMessages, insertChatMessage, insertChatAttachment } from '@/lib/db/atelier-ia'
+import { upsertAgentAnalysis } from '@/lib/db/agent-analyses'
 import { buildLibraryContext } from '@/services/ai/library-context'
 import { extractPdfText } from '@/services/pdf/extract'
 import { chatWithAgent } from '@/services/ai/chat'
+import { runInitialAnalysisAgent } from '@/services/ai/initial-analysis'
 import type { ChatAgentName } from '@/types/db'
 
 const CHAT_AGENTS = [
@@ -185,4 +188,69 @@ export async function sendChatMessageAction(formData: FormData) {
       created_at: now,
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// runAgentInitialAnalysisAction
+// ---------------------------------------------------------------------------
+
+const runAnalysisSchema = z.object({
+  tender_id: z.string().uuid(),
+  agent_name: z.enum(CHAT_AGENTS),
+})
+
+export async function runAgentInitialAnalysisAction(formData: FormData) {
+  const userId = await requireManagerOrAdmin()
+
+  const parsed = runAnalysisSchema.safeParse({
+    tender_id: formData.get('tender_id'),
+    agent_name: formData.get('agent_name'),
+  })
+  if (!parsed.success) return { error: 'Invalid input' }
+
+  // Lock optimiste : passer en 'running' avant de rendre la main
+  await upsertAgentAnalysis({
+    tender_id: parsed.data.tender_id,
+    agent_name: parsed.data.agent_name,
+    status: 'running',
+  })
+
+  // Schedule l'analyse via after() — s'exécute après la réponse HTTP
+  after(async () => {
+    try {
+      const tender = await getTender(parsed.data.tender_id)
+      if (!tender) throw new Error('Tender introuvable')
+      const doc = await getTenderDocument(parsed.data.tender_id)
+      if (!doc?.extracted_text) throw new Error('Pas de texte extrait')
+      const lib = await buildLibraryContext()
+
+      const result = await runInitialAnalysisAgent({
+        agentName: parsed.data.agent_name,
+        rawText: doc.extracted_text,
+        libraryContext: lib.markdown,
+        userId,
+      })
+
+      await upsertAgentAnalysis({
+        tender_id: parsed.data.tender_id,
+        agent_name: parsed.data.agent_name,
+        status: 'ready',
+        summary: result.summary,
+        key_points: result.keyPoints as Record<string, unknown>,
+        raw_content: result.rawContent,
+        metadata: result.metadata,
+      })
+    } catch (e) {
+      console.error('[runAgentInitialAnalysis] failed:', e)
+      await upsertAgentAnalysis({
+        tender_id: parsed.data.tender_id,
+        agent_name: parsed.data.agent_name,
+        status: 'failed',
+        error_msg: e instanceof Error ? e.message : 'unknown',
+      })
+    }
+  })
+
+  revalidatePath(`/tenders/${parsed.data.tender_id}`)
+  return { ok: true }
 }
