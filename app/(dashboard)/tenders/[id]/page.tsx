@@ -10,7 +10,6 @@ import { TenderSynthese } from './TenderSynthese'
 import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
-import { AtelierAgentSidebar } from './AtelierAgentSidebar'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
@@ -159,14 +158,11 @@ export default async function TenderDetailPage({
               <TenderMemoireTechnique tender={tender} analysis={analysis} />
             )}
             {view === 'atelier' && (
-              <div className={view === 'atelier' ? 'flex flex-col flex-1 gap-4 min-h-0' : 'grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4'}>
-                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4 flex-1 min-h-0">
-                  <AtelierAgentSidebar tenderId={id} analyses={agentAnalyses} />
-                  <div className="min-w-0 flex flex-col min-h-0">
-                    <AtelierIATab tenderId={id} initialMessages={chatMessages} />
-                  </div>
-                </div>
-              </div>
+              <AtelierIATab
+                tenderId={id}
+                initialMessages={chatMessages}
+                initialAgentAnalyses={agentAnalyses}
+              />
             )}
           </>
         )}
