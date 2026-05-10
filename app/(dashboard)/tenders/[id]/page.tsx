@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
 import { listChatMessages } from '@/lib/db/atelier-ia'
+import { listAgentAnalyses } from '@/lib/db/agent-analyses'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TenderAnalysisLoader } from './TenderAnalysisLoader'
 import { TenderSynthese } from './TenderSynthese'
 import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
+import { AtelierAgentSidebar } from './AtelierAgentSidebar'
 import { relaunchAnalysisAction as _relaunchAnalysisAction } from './actions'
 import { ArchiveTenderButton } from './ArchiveTenderButton'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
@@ -43,13 +45,14 @@ export default async function TenderDetailPage({
     tender.status === 'submitted' ||
     tender.status === 'archived'
 
-  const [analysis, doc, chatMessages] = isReady || isFailed
+  const [analysis, doc, chatMessages, agentAnalyses] = isReady || isFailed
     ? await Promise.all([
         getLatestTenderAnalysis(id),
         getTenderDocument(id),
         listChatMessages(id),
+        listAgentAnalyses(id),
       ])
-    : [null, null, []]
+    : [null, null, [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
 
@@ -177,7 +180,12 @@ export default async function TenderDetailPage({
               <TenderMemoireTechnique tender={tender} analysis={analysis} />
             )}
             {view === 'atelier' && (
-              <AtelierIATab tenderId={id} initialMessages={chatMessages} />
+              <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+                <AtelierAgentSidebar tenderId={id} analyses={agentAnalyses} />
+                <div className="min-w-0">
+                  <AtelierIATab tenderId={id} initialMessages={chatMessages} />
+                </div>
+              </div>
             )}
           </>
         )}

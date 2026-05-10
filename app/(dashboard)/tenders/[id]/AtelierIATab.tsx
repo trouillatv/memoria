@@ -1,38 +1,22 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Paperclip, Bot, User, Loader2, X, Sparkles, FileSearch, FileText, Swords, Calculator, MapPinned, Scale } from 'lucide-react'
+import { Send, Paperclip, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { sendChatMessageAction } from './atelier-actions'
 import { toast } from 'sonner'
+import { AGENTS } from './agents-metadata'
+import { AtelierMessageThread } from './AtelierMessageThread'
 import type { ChatAgentName, DbTenderChatMessage } from '@/types/db'
 
-interface AgentMeta {
-  label: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-}
-
-const AGENTS: Record<ChatAgentName, AgentMeta> = {
-  general:           { label: 'Général',            description: 'Assistant généraliste, répond à toutes vos questions sur l\'AO',        icon: Sparkles },
-  lecteur_ao:        { label: 'Lecteur AO',         description: 'Spécialiste de la lecture critique du cahier des charges',              icon: FileSearch },
-  memoire_technique: { label: 'Mémoire technique',  description: 'Reformule, enrichit ou adapte la mémoire technique générée',            icon: FileText },
-  contradicteur:     { label: 'Contradicteur',      description: 'Avocat du diable : identifie les faiblesses, anticipe les critiques',  icon: Swords },
-  financier:         { label: 'Financier',          description: 'Modélisation des coûts, marges, pénalités et ROI',                      icon: Calculator },
-  terrain:           { label: 'Terrain',            description: 'Faisabilité opérationnelle : effectifs, rotations, logistique',         icon: MapPinned },
-  conformite:        { label: 'Conformité',         description: 'Normes ISO, RGPD, clauses sociales, certifications métier',             icon: Scale },
-}
-
-const AGENT_LABELS: Record<ChatAgentName, string> =
-  Object.fromEntries((Object.keys(AGENTS) as ChatAgentName[]).map((k) => [k, AGENTS[k].label])) as Record<ChatAgentName, string>
+const MAX_AGENTS = 3
 
 export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; initialMessages: DbTenderChatMessage[] }) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
-  const [agent, setAgent] = useState<ChatAgentName>('general')
+  const [selectedAgents, setSelectedAgents] = useState<Set<ChatAgentName>>(() => new Set<ChatAgentName>(['general']))
   const [draft, setDraft] = useState('')
   const [attachment, setAttachment] = useState<File | null>(null)
   const [pending, setPending] = useState(false)
@@ -44,8 +28,24 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length])
 
+  function toggleAgent(agent: ChatAgentName) {
+    setSelectedAgents((prev) => {
+      const next = new Set(prev)
+      if (next.has(agent)) {
+        next.delete(agent)
+      } else {
+        if (next.size >= MAX_AGENTS) {
+          toast.warning(`Max ${MAX_AGENTS} agents simultanés`)
+          return prev
+        }
+        next.add(agent)
+      }
+      return next
+    })
+  }
+
   async function send() {
-    if (!draft.trim() || pending) return
+    if (!draft.trim() || pending || selectedAgents.size === 0) return
     setPending(true)
 
     // Optimistic add user message
@@ -68,7 +68,7 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
 
     const fd = new FormData()
     fd.set('tender_id', tenderId)
-    fd.set('agent_name', agent)
+    fd.set('agent_names', JSON.stringify(Array.from(selectedAgents)))
     fd.set('message', sentDraft)
     if (sentAttachment) fd.set('attachment', sentAttachment)
 
@@ -80,32 +80,34 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
       return
     }
     // Replace the optimistic placeholder by the real user message returned by
-    // the action, then append the agent response. No reload → l'onglet actif
-    // est preserve.
-    if (r && 'userMessage' in r && r.userMessage && r.agentMessage) {
+    // the action, then append the agent responses. No reload → l'onglet actif
+    // est préservé.
+    if (r && 'userMessage' in r && r.userMessage && r.agentMessages) {
       setMessages((prev) =>
         prev
           .filter((m) => m.id !== optimisticUser.id)
-          .concat([r.userMessage as DbTenderChatMessage, r.agentMessage as DbTenderChatMessage])
+          .concat([r.userMessage as DbTenderChatMessage, ...(r.agentMessages as DbTenderChatMessage[])])
       )
     }
   }
 
+  const firstAgent = selectedAgents.values().next().value as ChatAgentName | undefined
+
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border bg-card p-3 max-h-[60vh] overflow-y-auto space-y-3">
-        {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            Aucun message pour le moment. Pose une question à un agent IA pour démarrer la conversation.
-          </p>
-        )}
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
-        ))}
+      <div className="rounded-xl border bg-card p-3 max-h-[60vh] overflow-y-auto">
+        <AtelierMessageThread
+          messages={messages}
+          tenderId={tenderId}
+          pending={pending}
+          onChallengeLaunched={(newMessages) => {
+            setMessages((prev) => [...prev, ...newMessages])
+          }}
+        />
         {pending && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-3">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Agent {AGENT_LABELS[agent]} réfléchit&hellip;</span>
+            <span>{selectedAgents.size === 1 ? 'Agent réfléchit' : `${selectedAgents.size} agents réfléchissent`}&hellip;</span>
           </div>
         )}
         <div ref={bottomRef} />
@@ -114,43 +116,53 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
       <Card>
         <CardContent className="pt-4 space-y-3">
           <div className="space-y-2">
-            <Label htmlFor="agent-select" className="text-sm font-medium">Agent IA</Label>
-            <div className="flex items-start gap-3 flex-wrap">
-              {/*
-                Native HTML <select> volontairement utilise ici (au lieu du Select shadcn/base-ui)
-                car le composant base-ui v4 a un comportement de positioning instable (le popup
-                ne se rend pas comme un vrai overlay flottant et chevauche le contenu suivant).
-                Pour le MVP, on prefere une UI fiable a une UI fancy. La perte = les icones
-                ne sont pas affichees DANS les options du dropdown (les <option> HTML natives ne
-                supportent que du texte), mais l'icone de l'agent SELECTIONNE est tout de meme
-                visible juste a cote du select.
-              */}
-              <div className="flex items-center gap-2 w-full sm:w-72">
-                {(() => {
-                  const Icon = AGENTS[agent].icon
-                  return <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
-                })()}
-                <select
-                  id="agent-select"
-                  value={agent}
-                  onChange={(e) => setAgent(e.target.value as ChatAgentName)}
-                  disabled={pending}
-                  className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {(Object.keys(AGENTS) as ChatAgentName[]).map((k) => (
-                    <option key={k} value={k}>{AGENTS[k].label}</option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-xs text-muted-foreground flex-1 min-w-0 pt-2">
-                {AGENTS[agent].description}
-              </p>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <Label className="text-sm font-medium">Agents IA</Label>
+              <span className="text-xs text-muted-foreground">
+                {selectedAgents.size}/{MAX_AGENTS} sélectionnés
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {(Object.keys(AGENTS) as ChatAgentName[]).map((agent) => {
+                const meta = AGENTS[agent]
+                const Icon = meta.icon
+                const checked = selectedAgents.has(agent)
+                const wouldExceed = !checked && selectedAgents.size >= MAX_AGENTS
+                return (
+                  <label
+                    key={agent}
+                    className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer text-sm transition-colors ${
+                      checked
+                        ? 'bg-accent border-brand-600 text-accent-foreground'
+                        : wouldExceed
+                          ? 'opacity-40 cursor-not-allowed'
+                          : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="shrink-0"
+                      checked={checked}
+                      disabled={wouldExceed || pending}
+                      onChange={() => toggleAgent(agent)}
+                    />
+                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="truncate">{meta.label}</span>
+                  </label>
+                )
+              })}
             </div>
           </div>
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={`Pose ta question à l'agent ${AGENT_LABELS[agent]}…`}
+            placeholder={
+              selectedAgents.size === 0
+                ? 'Sélectionne au moins 1 agent…'
+                : selectedAgents.size === 1 && firstAgent
+                  ? `Pose ta question à l'agent ${AGENTS[firstAgent].label}…`
+                  : `Pose ta question aux ${selectedAgents.size} agents sélectionnés…`
+            }
             rows={3}
             disabled={pending}
             onKeyDown={(e) => {
@@ -190,36 +202,20 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
                 </Button>
               )}
             </div>
-            <Button type="button" onClick={send} disabled={!draft.trim() || pending}>
+            <Button
+              type="button"
+              onClick={send}
+              disabled={!draft.trim() || pending || selectedAgents.size === 0}
+            >
               <Send className="h-3 w-3 mr-1" />
-              {pending ? 'Envoi…' : 'Envoyer'}
+              {pending ? 'Envoi…' : selectedAgents.size > 1 ? `Envoyer aux ${selectedAgents.size} agents` : 'Envoyer'}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Ctrl/Cmd + Entrée pour envoyer · max 5 MB pour la pièce jointe
+            Ctrl/Cmd + Entrée pour envoyer · max {MAX_AGENTS} agents · 5 MB pour la pièce jointe
           </p>
         </CardContent>
       </Card>
-    </div>
-  )
-}
-
-function MessageBubble({ message }: { message: DbTenderChatMessage }) {
-  const isUser = message.role === 'user'
-  const Icon = isUser ? User : Bot
-  return (
-    <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
-      <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${isUser ? 'bg-brand-600 text-white' : 'bg-muted'}`}>
-        <Icon className="h-3 w-3" />
-      </div>
-      <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
-        {!isUser && message.agent_name && (
-          <Badge variant="outline" className="text-xs mb-1">{AGENT_LABELS[message.agent_name as ChatAgentName] ?? message.agent_name}</Badge>
-        )}
-        <div className={`inline-block rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${isUser ? 'bg-brand-600 text-white' : 'bg-muted'}`}>
-          {message.content}
-        </div>
-      </div>
     </div>
   )
 }
