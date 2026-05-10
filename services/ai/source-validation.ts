@@ -1,6 +1,13 @@
 import type { Source } from '@/types/sources'
 import type { DbKnowledgeItem } from '@/types/db'
 
+interface AnalysisSourcesContext {
+  extractedText: string | null
+  knowledgeItems: DbKnowledgeItem[]
+  /** Si true (mode mock), on skip la validation pour préserver les fixtures démo */
+  skipPdfValidation?: boolean
+}
+
 /**
  * Valide une liste de sources retournées par un agent IA.
  * - PDF : quote doit apparaître (substring approximative) dans extracted_text. Sinon drop.
@@ -64,4 +71,36 @@ export function validateSources(
 
 function normalize(s: string): string {
   return s.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/**
+ * Valide les sources de chaque item dans constraints/risks/checklist.
+ * Retourne un nouvel objet avec sources nettoyées (drop si invalides).
+ * Si skipPdfValidation=true (mode mock), conserve toutes les sources sans validation.
+ */
+export function validateAnalysisSources<T extends {
+  constraints?: Array<{ sources?: Source[]; [k: string]: unknown }>
+  risks?: Array<{ sources?: Source[]; [k: string]: unknown }>
+  checklist?: Array<{ sources?: Source[]; [k: string]: unknown }>
+}>(analysis: T, ctx: AnalysisSourcesContext): T {
+  const validateItems = <I extends { sources?: Source[] }>(items?: I[]): I[] | undefined => {
+    if (!items) return items
+    return items.map(item => {
+      if (!item.sources || item.sources.length === 0) return item
+      if (ctx.skipPdfValidation) return item
+      return {
+        ...item,
+        sources: validateSources(item.sources, {
+          extractedText: ctx.extractedText,
+          knowledgeItems: ctx.knowledgeItems,
+        }),
+      }
+    })
+  }
+  return {
+    ...analysis,
+    constraints: validateItems(analysis.constraints),
+    risks: validateItems(analysis.risks),
+    checklist: validateItems(analysis.checklist),
+  }
 }

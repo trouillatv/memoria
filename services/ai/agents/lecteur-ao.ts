@@ -2,22 +2,33 @@ import { z } from 'zod'
 import type { AIAgent, AgentContext } from './types'
 import { LECTEUR_AO_V1 } from '../prompts/lecteur-ao.v1'
 
+const sourceSchemaForAnalysis = z.object({
+  type: z.enum(['pdf', 'library', 'analysis']),
+  quote: z.string().max(500),
+  page: z.number().int().optional(),
+  library_item_title: z.string().max(200).optional(),
+  reasoning: z.string().max(200).optional(),
+})
+
 const constraintSchema = z.object({
   label: z.string(),
   detail: z.string().optional(),
   required: z.boolean().optional(),
   category: z.string().optional(),
+  sources: z.array(sourceSchemaForAnalysis).max(3).optional(),
 })
 
 const riskSchema = z.object({
   label: z.string(),
   severity: z.enum(['low', 'medium', 'high']),
   detail: z.string().optional(),
+  sources: z.array(sourceSchemaForAnalysis).max(3).optional(),
 })
 
 const checklistItemSchema = z.object({
   item: z.string(),
   required: z.boolean(),
+  sources: z.array(sourceSchemaForAnalysis).max(2).optional(),
 })
 
 export const lecteurAoOutputSchema = z.object({
@@ -61,20 +72,90 @@ function buildMockFixture(rawText: string): LecteurAoOutput {
   return {
     summary: `Mock — Cahier des charges de ${wordCount} mots environ. Marché de nettoyage type tertiaire avec exigences ISO 9001 et planning hebdomadaire. Échéance dans la semaine. Volume horaire mensuel estimé ~120h.`,
     constraints: [
-      { label: 'ISO 9001:2015', detail: 'Certification exigée pour toute la durée du marché', required: true, category: 'qualité' },
-      { label: 'Personnel en CDI', detail: 'Tout le personnel intervenant doit être en CDI', required: true, category: 'administratif' },
-      { label: 'Produits écolabellisés', detail: 'Produits désinfectants Ecolabel uniquement', required: true, category: 'environnement' },
-      { label: 'Astreinte téléphonique', detail: '24/7 pendant la durée du marché', required: false, category: 'opérationnel' },
+      {
+        label: 'ISO 9001:2015',
+        detail: 'Certification exigée pour toute la durée du marché',
+        required: true,
+        category: 'qualité',
+        sources: [
+          { type: 'pdf', quote: 'Le candidat justifiera de la certification ISO 9001:2015 en cours de validité', page: 3, reasoning: 'Citation directe de l\'obligation de certification' },
+        ],
+      },
+      {
+        label: 'Personnel en CDI',
+        detail: 'Tout le personnel intervenant doit être en CDI',
+        required: true,
+        category: 'administratif',
+        sources: [
+          { type: 'pdf', quote: 'L\'ensemble du personnel intervenant sera en contrat à durée indéterminée', page: 5, reasoning: 'Clause sociale stricte exigeant le CDI' },
+        ],
+      },
+      {
+        label: 'Produits écolabellisés',
+        detail: 'Produits désinfectants Ecolabel uniquement',
+        required: true,
+        category: 'environnement',
+        sources: [
+          { type: 'pdf', quote: 'Seuls les produits porteurs de l\'Ecolabel européen seront utilisés pour l\'ensemble des prestations', page: 7, reasoning: 'Exigence environnementale explicite' },
+        ],
+      },
+      {
+        label: 'Astreinte téléphonique',
+        detail: '24/7 pendant la durée du marché',
+        required: false,
+        category: 'opérationnel',
+        sources: [
+          { type: 'pdf', quote: 'Le prestataire assurera une astreinte téléphonique 24h/24 et 7j/7', page: 9, reasoning: 'Engagement de disponibilité permanente' },
+        ],
+      },
     ],
     risks: [
-      { label: 'Disponibilité personnel', severity: 'medium', detail: 'Recrutement difficile en zone X' },
-      { label: 'Délai de mobilisation', severity: 'high', detail: 'Démarrage J+15 demandé' },
+      {
+        label: 'Disponibilité personnel',
+        severity: 'medium',
+        detail: 'Recrutement difficile en zone X',
+        sources: [
+          { type: 'pdf', quote: 'Démarrage J+15 demandé après notification du marché', page: 8, reasoning: 'Le délai de mobilisation rend le recrutement tendu sur ce bassin' },
+        ],
+      },
+      {
+        label: 'Délai de mobilisation',
+        severity: 'high',
+        detail: 'Démarrage J+15 demandé',
+        sources: [
+          { type: 'pdf', quote: 'Le titulaire devra être en mesure de démarrer les prestations dans un délai de 15 jours', page: 8, reasoning: 'Délai très court nécessitant une anticipation importante' },
+        ],
+      },
     ],
     checklist: [
-      { item: 'Joindre attestation ISO 9001 valide', required: true },
-      { item: 'Fournir liste nominative des agents avec n° contrat CDI', required: true },
-      { item: 'Annexer fiche technique des produits Ecolabel', required: true },
-      { item: 'Décrire dispositif d\'astreinte 24/7', required: false },
+      {
+        item: 'Joindre attestation ISO 9001 valide',
+        required: true,
+        sources: [
+          { type: 'pdf', quote: 'Joindre la copie certifiée conforme du certificat ISO 9001 en cours de validité', page: 14 },
+        ],
+      },
+      {
+        item: 'Fournir liste nominative des agents avec n° contrat CDI',
+        required: true,
+        sources: [
+          { type: 'pdf', quote: 'Fournir la liste nominative du personnel avec les références de contrat de travail', page: 15 },
+        ],
+      },
+      {
+        item: 'Annexer fiche technique des produits Ecolabel',
+        required: true,
+        sources: [
+          { type: 'pdf', quote: 'Annexer les fiches techniques et les certificats Ecolabel de l\'ensemble des produits utilisés', page: 15 },
+        ],
+      },
+      {
+        item: 'Décrire dispositif d\'astreinte 24/7',
+        required: false,
+        sources: [
+          { type: 'pdf', quote: 'Décrire le dispositif d\'astreinte mis en place pour assurer la disponibilité 24h/24', page: 16 },
+        ],
+      },
     ],
   }
 }

@@ -9,6 +9,8 @@ import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
 import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday, insertTenderAnalysis } from '@/lib/db/tenders'
 import { analyzeTender } from '@/services/ai/orchestrator'
+import { validateAnalysisSources } from '@/services/ai/source-validation'
+import { listKnowledgeItems } from '@/lib/db/knowledge'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -52,15 +54,25 @@ export async function relaunchAnalysisAction(formData: FormData) {
   after(async () => {
     try {
       const result = await analyzeTender(extractedText, userId)
+
+      // Validation des sources avant insertion
+      const knowledgeItems = await listKnowledgeItems({})
+      const isMock = result.provider === 'mock'
+      const validated = validateAnalysisSources(result.reading, {
+        extractedText,
+        knowledgeItems,
+        skipPdfValidation: isMock,
+      })
+
       await insertTenderAnalysis({
         tender_id: tenderId,
         provider: result.provider as 'mock' | 'gemini' | 'anthropic' | 'openai',
         model: result.model,
         prompt_versions: result.promptVersions,
         summary: result.reading.summary,
-        constraints: result.reading.constraints,
-        risks: result.reading.risks,
-        checklist: result.reading.checklist,
+        constraints: validated.constraints,
+        risks: validated.risks,
+        checklist: validated.checklist,
         technical_memo: result.memo.technical_memo,
         library_snapshot: result.librarySnapshot,
         raw_response: null,
