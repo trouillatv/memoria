@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Sparkles, FileCheck, Image as ImageIcon, AlertTriangle, MapPin } from 'lucide-react'
 import { findSimilarEngagements, getEvidenceForEngagements } from '@/lib/db/engagements'
 import type { DbEngagement, EngagementEvidence } from '@/types/db'
+import { InsertEvidenceButton } from './InsertEvidenceButton'
 
 interface EvidencePanelProps {
   tenderId: string
@@ -85,6 +86,16 @@ export async function EvidencePanel({
     return ev && ev.interventionsExecuted > 0
   })
 
+  // Detect engagements already inserted in the memoire via marker scan
+  const alreadyInsertedSet = new Set<string>()
+  if (memoireText) {
+    const markerRegex = /<!-- ref: engagement:([0-9a-f-]+) -->/gi
+    let match: RegExpExecArray | null
+    while ((match = markerRegex.exec(memoireText)) !== null) {
+      alreadyInsertedSet.add(match[1])
+    }
+  }
+
   if (richMatches.length === 0) {
     return (
       <aside className="rounded-lg border bg-card p-4">
@@ -120,13 +131,11 @@ export async function EvidencePanel({
             engagement={m.engagement}
             similarity={m.similarity}
             evidence={evidenceMap.get(m.engagement.id)!}
+            tenderId={tenderId}
+            alreadyInsertedSet={alreadyInsertedSet}
           />
         ))}
       </ul>
-
-      <p className="text-[11px] text-muted-foreground italic px-1 pt-2 border-t">
-        Insérer une preuve dans la mémoire technique sera disponible en Slice 4.3.
-      </p>
     </aside>
   )
 }
@@ -135,10 +144,14 @@ function EvidenceCard({
   engagement,
   similarity,
   evidence,
+  tenderId,
+  alreadyInsertedSet,
 }: {
   engagement: DbEngagement
   similarity: number
   evidence: EngagementEvidence
+  tenderId: string
+  alreadyInsertedSet: Set<string>
 }) {
   const categoryClass = CATEGORY_COLORS[engagement.category] ?? CATEGORY_COLORS.other
   const durationLabel = formatDuration(evidence.durationDays)
@@ -198,16 +211,13 @@ function EvidenceCard({
         </div>
       )}
 
-      {/* Insert button — wired in Slice 4.3, disabled+labeled for now */}
+      {/* Insert button — Slice 4.3 : server action + backlink */}
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled
-          className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded border bg-muted/30 text-xs text-muted-foreground cursor-not-allowed"
-          title="Disponible en Slice 4.3"
-        >
-          Insérer dans la mémoire
-        </button>
+        <InsertEvidenceButton
+          tenderId={tenderId}
+          engagementId={engagement.id}
+          alreadyInserted={alreadyInsertedSet.has(engagement.id)}
+        />
         {evidence.contractIds[0] && (
           <Link
             href={`/contracts/${evidence.contractIds[0]}`}
