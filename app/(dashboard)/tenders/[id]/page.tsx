@@ -10,8 +10,10 @@ import { TenderSynthese } from './TenderSynthese'
 import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
+import { CopiloteWorkspace } from './CopiloteWorkspace'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
 import { buildActivityFeed } from './activity-feed'
+import { EvidencePanel } from './EvidencePanel'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -163,10 +165,20 @@ export default async function TenderDetailPage({
               <TenderAnalyseDetaillee analysis={analysis} />
             )}
             {view === 'memoire' && analysis && (
-              <TenderMemoireTechnique tender={tender} analysis={analysis} />
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+                <div className="min-w-0">
+                  <TenderMemoireTechnique tender={tender} analysis={analysis} />
+                </div>
+                <div className="lg:sticky lg:top-4 lg:self-start">
+                  <EvidencePanel
+                    tenderId={id}
+                    memoireText={analysis.technical_memo}
+                  />
+                </div>
+              </div>
             )}
             {view === 'atelier' && (
-              <AtelierIATab
+              <CopiloteWorkspace
                 tenderId={id}
                 initialMessages={chatMessages}
                 initialAgentAnalyses={agentAnalyses}

@@ -3,14 +3,14 @@
 import { Sparkles, ShieldAlert, ListChecks, BookOpen, Calculator, MapPinned, Scale } from 'lucide-react'
 import type { DbTenderAnalysis, ChatAgentName } from '@/types/db'
 
-interface SuggestedPrompt {
+export interface SuggestedPrompt {
   label: string
   icon: React.ComponentType<{ className?: string }>
   prompt: string
   agents: ChatAgentName[]
 }
 
-const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
+export const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
   {
     label: 'Risques cachés',
     icon: ShieldAlert,

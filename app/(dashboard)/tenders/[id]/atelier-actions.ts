@@ -303,7 +303,7 @@ export async function runAgentInitialAnalysisAction(formData: FormData) {
 const challengeSchema = z.object({
   tender_id: z.string().uuid(),
   turn_id: z.string().uuid(),
-  current_round: z.number().int().min(0).max(1),  // round actuel ; le challenge crée round+1
+  current_round: z.number().int().min(0).max(0),  // 1 round max ; current=0 → next=1
 })
 
 export async function runChallengeRoundAction(formData: FormData) {
@@ -316,7 +316,7 @@ export async function runChallengeRoundAction(formData: FormData) {
   if (!parsed.success) return { error: 'Invalid input' }
 
   const nextRound = parsed.data.current_round + 1
-  if (nextRound > 2) return { error: 'Max 2 rounds de challenge atteint' }
+  if (nextRound > 1) return { error: 'Une seule confrontation par tour' }
 
   // Récupérer toutes les bulles agent du turn courant + round actuel
   const allMessages = await listChatMessages(parsed.data.tender_id)

@@ -9,15 +9,22 @@ interface TenderMemoireTechniqueProps {
 }
 
 export function TenderMemoireTechnique({ tender, analysis }: TenderMemoireTechniqueProps) {
-  const memo = analysis.technical_memo
+  const rawMemo = analysis.technical_memo
 
-  if (!memo) {
+  if (!rawMemo) {
     return (
       <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground text-sm">
         Aucun mémoire technique généré pour cet appel d&apos;offres.
       </div>
     )
   }
+
+  // Slice 4.3 : strip les markers de backlink `<!-- ref: engagement:UUID -->`
+  // pour qu'ils n'apparaissent ni dans le rendu, ni dans les exports.
+  // Les markers restent en DB pour idempotence + traçabilité.
+  const memo = rawMemo
+    .replace(/<!-- ref: engagement:[0-9a-f-]+ -->/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
 
   return (
     <div className="flex flex-col gap-4">
