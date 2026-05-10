@@ -148,7 +148,7 @@ export async function sendChatMessageAction(formData: FormData) {
   }
 
   // Insert agent message
-  await insertChatMessage({
+  const agentMessageId = await insertChatMessage({
     tender_id: parsed.data.tender_id,
     user_id: null,
     agent_name: parsed.data.agent_name,
@@ -158,5 +158,31 @@ export async function sendChatMessageAction(formData: FormData) {
   })
 
   revalidatePath(`/tenders/${parsed.data.tender_id}`)
-  return { ok: true }
+
+  // Return both messages so the client can append in-place (avoids full page
+  // reload which would reset the active tab back to "Synthèse").
+  const now = new Date().toISOString()
+  return {
+    ok: true as const,
+    userMessage: {
+      id: userMessageId,
+      tender_id: parsed.data.tender_id,
+      user_id: userId,
+      agent_name: null,
+      role: 'user' as const,
+      content: parsed.data.message,
+      metadata: null,
+      created_at: now,
+    },
+    agentMessage: {
+      id: agentMessageId,
+      tender_id: parsed.data.tender_id,
+      user_id: null,
+      agent_name: parsed.data.agent_name,
+      role: 'agent' as const,
+      content: agentResponse,
+      metadata,
+      created_at: now,
+    },
+  }
 }

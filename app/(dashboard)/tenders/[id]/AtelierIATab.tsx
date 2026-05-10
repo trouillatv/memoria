@@ -80,9 +80,16 @@ export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; 
       setMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id))
       return
     }
-    // Server-side revalidation will refresh; as a quick UX win, we could refetch.
-    // Simplest : reload via router.refresh()
-    window.location.reload()
+    // Replace the optimistic placeholder by the real user message returned by
+    // the action, then append the agent response. No reload → l'onglet actif
+    // est preserve.
+    if (r && 'userMessage' in r && r.userMessage && r.agentMessage) {
+      setMessages((prev) =>
+        prev
+          .filter((m) => m.id !== optimisticUser.id)
+          .concat([r.userMessage as DbTenderChatMessage, r.agentMessage as DbTenderChatMessage])
+      )
+    }
   }
 
   return (
