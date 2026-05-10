@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Paperclip, Bot, User, Loader2, X, Sparkles, FileSearch, FileText, Swords, Calculator, MapPinned, Scale } from 'lucide-react'
+import { Send, Paperclip, Bot, User, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -9,26 +9,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { sendChatMessageAction } from './atelier-actions'
 import { toast } from 'sonner'
+import { AGENTS, AGENT_LABELS } from './agents-metadata'
 import type { ChatAgentName, DbTenderChatMessage } from '@/types/db'
-
-interface AgentMeta {
-  label: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-}
-
-const AGENTS: Record<ChatAgentName, AgentMeta> = {
-  general:           { label: 'Général',            description: 'Assistant généraliste, répond à toutes vos questions sur l\'AO',        icon: Sparkles },
-  lecteur_ao:        { label: 'Lecteur AO',         description: 'Spécialiste de la lecture critique du cahier des charges',              icon: FileSearch },
-  memoire_technique: { label: 'Mémoire technique',  description: 'Reformule, enrichit ou adapte la mémoire technique générée',            icon: FileText },
-  contradicteur:     { label: 'Contradicteur',      description: 'Avocat du diable : identifie les faiblesses, anticipe les critiques',  icon: Swords },
-  financier:         { label: 'Financier',          description: 'Modélisation des coûts, marges, pénalités et ROI',                      icon: Calculator },
-  terrain:           { label: 'Terrain',            description: 'Faisabilité opérationnelle : effectifs, rotations, logistique',         icon: MapPinned },
-  conformite:        { label: 'Conformité',         description: 'Normes ISO, RGPD, clauses sociales, certifications métier',             icon: Scale },
-}
-
-const AGENT_LABELS: Record<ChatAgentName, string> =
-  Object.fromEntries((Object.keys(AGENTS) as ChatAgentName[]).map((k) => [k, AGENTS[k].label])) as Record<ChatAgentName, string>
 
 export function AtelierIATab({ tenderId, initialMessages }: { tenderId: string; initialMessages: DbTenderChatMessage[] }) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
