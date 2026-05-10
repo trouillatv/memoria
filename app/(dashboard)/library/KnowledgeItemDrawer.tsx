@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import {
   Drawer,
   DrawerContent,
@@ -21,7 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Eraser } from 'lucide-react'
 import { KnowledgeTagsInput } from './KnowledgeTagsInput'
+import { CATEGORY_TEMPLATES } from './category-templates'
 import {
   createKnowledgeItemAction,
   updateKnowledgeItemAction,
@@ -42,15 +44,17 @@ const CATEGORY_LABELS: Record<KnowledgeCategory, string> = {
 export function KnowledgeItemDrawer({
   trigger,
   item,
+  defaultCategory,
 }: {
   trigger: React.ReactElement
   item?: DbKnowledgeItem
+  defaultCategory?: KnowledgeCategory
 }) {
   const isEdit = !!item
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState(item?.title ?? '')
   const [category, setCategory] = useState<KnowledgeCategory>(
-    item?.category ?? 'references_clients',
+    item?.category ?? defaultCategory ?? 'references_clients',
   )
   const [contentMarkdown, setContentMarkdown] = useState(
     item?.content_markdown ?? '',
@@ -60,6 +64,46 @@ export function KnowledgeItemDrawer({
     item?.file_path ?? null,
   )
   const [pending, setPending] = useState(false)
+
+  // Helper: apply template for a given category
+  function applyTemplate(cat: KnowledgeCategory) {
+    setContentMarkdown(CATEGORY_TEMPLATES[cat].content)
+  }
+
+  // On mount (create mode), inject the template if content is empty
+  useEffect(() => {
+    if (!isEdit && contentMarkdown.trim().length === 0) {
+      applyTemplate(category)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // When the drawer re-opens in create mode after a reset, re-apply template
+  useEffect(() => {
+    if (open && !isEdit && contentMarkdown.trim().length === 0) {
+      applyTemplate(category)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // Handle category change: auto-apply template if content is empty or matches a known template
+  function handleCategoryChange(newCat: KnowledgeCategory) {
+    const isEmpty = contentMarkdown.trim().length === 0
+    const isCurrentTemplate = Object.values(CATEGORY_TEMPLATES).some(
+      (t) => t.content.trim() === contentMarkdown.trim(),
+    )
+    setCategory(newCat)
+    if (!isEdit && (isEmpty || isCurrentTemplate)) {
+      applyTemplate(newCat)
+    }
+  }
+
+  const currentTemplate = CATEGORY_TEMPLATES[category]
+  const suggestedTagsToShow = currentTemplate.suggestedTags.filter(
+    (t) => !tags.includes(t),
+  )
+  const contentIsTemplate =
+    !isEdit && contentMarkdown.trim() === currentTemplate.content.trim()
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -102,6 +146,7 @@ export function KnowledgeItemDrawer({
         setContentMarkdown('')
         setTags([])
         setFilePath(null)
+        setCategory(defaultCategory ?? 'references_clients')
       }
     }
   }
@@ -128,11 +173,12 @@ export function KnowledgeItemDrawer({
               required
             />
           </div>
+
           <div className="space-y-2">
             <Label>Catégorie</Label>
             <Select
               value={category}
-              onValueChange={(v) => setCategory(v as KnowledgeCategory)}
+              onValueChange={(v) => handleCategoryChange(v as KnowledgeCategory)}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -148,21 +194,57 @@ export function KnowledgeItemDrawer({
               </SelectContent>
             </Select>
           </div>
+
           <div className="space-y-2">
-            <Label htmlFor="content">Contenu (markdown)</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="content">Contenu (markdown)</Label>
+              {contentIsTemplate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setContentMarkdown('')}
+                  className="h-6 text-[11px]"
+                >
+                  <Eraser className="h-3 w-3 mr-1" />
+                  Effacer le template
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{currentTemplate.hint}</p>
             <Textarea
               id="content"
               value={contentMarkdown}
               onChange={(e) => setContentMarkdown(e.target.value)}
               required
-              rows={8}
-              placeholder="Description, détails techniques, références…"
+              rows={10}
+              placeholder="Décrivez l'élément métier..."
+              className="font-mono text-sm"
             />
           </div>
+
           <div className="space-y-2">
             <Label>Tags</Label>
             <KnowledgeTagsInput value={tags} onChange={setTags} />
+            {suggestedTagsToShow.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Suggérés :
+                </span>
+                {suggestedTagsToShow.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTags([...tags, t])}
+                    className="text-[11px] px-2 py-0.5 rounded-full border border-input text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
+                  >
+                    + {t}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
           <div className="space-y-2">
             <Label htmlFor="file">Fichier joint (optionnel, max 10 MB)</Label>
             <Input id="file" type="file" onChange={onUpload} />
@@ -180,6 +262,7 @@ export function KnowledgeItemDrawer({
               </p>
             )}
           </div>
+
           <DrawerFooter>
             <Button type="submit" disabled={pending}>
               {pending

@@ -4,6 +4,7 @@ import { LayoutGrid, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { KnowledgeItemCard } from './KnowledgeItemCard'
 import { KnowledgeItemTable } from './KnowledgeItemTable'
+import { EmptyStateLibrary } from './EmptyStateLibrary'
 import { useViewMode } from './useViewMode'
 import type { DbKnowledgeItem } from '@/types/db'
 
@@ -41,9 +42,7 @@ export function LibraryViewToggle({ items, usageCounts }: Props) {
 
       {mode === 'cards' ? (
         items.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-12 text-center">
-            Aucun élément. Ajoutez votre premier item de capital IA.
-          </p>
+          <EmptyStateLibrary />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {items.map((item) => (
