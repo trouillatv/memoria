@@ -12,6 +12,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
+import { AnomalyTrigger } from './anomaly-trigger'
+import { CompleteButton } from './complete-button'
 
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -71,6 +73,8 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   const isCompleted =
     intervention.status === 'completed' || intervention.status === 'validated'
 
+  const hasMissingRequired = checklistItems.some((i) => i.required && !i.done)
+
   return (
     <div className="space-y-5 max-w-md">
       <Link
@@ -122,10 +126,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         canEdit={isInProgress || isAdmin}
       />
 
-      {/* Slice 3.4 ajoutera : anomalies + terminer */}
-      <p className="text-xs text-muted-foreground italic mt-8 text-center">
-        Anomalies et terminer arrivent en slice 3.4
-      </p>
+      {isInProgress && (
+        <div className="space-y-3 mt-6">
+          <AnomalyTrigger interventionId={id} />
+          <CompleteButton
+            interventionId={id}
+            hasMissingRequired={hasMissingRequired}
+          />
+        </div>
+      )}
     </div>
   )
 }

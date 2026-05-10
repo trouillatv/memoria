@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { LogoutButton } from './m/logout-button'
+import { SyncIndicator } from './sync-indicator'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -22,11 +23,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           <div className="text-sm">
             Bonjour <span className="font-semibold">{firstName}</span>
           </div>
-          {/* TODO Slice 3.4 : connect sync indicator to actual photo queue state (via context or useSyncStatus hook) */}
-          <div className="text-xs text-muted-foreground" aria-live="polite">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1" aria-hidden />
-            <span className="sr-only">Tout est envoyé</span>
-          </div>
+          <SyncIndicator />
         </div>
       </header>
       <main className="px-4 py-4">{children}</main>

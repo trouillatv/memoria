@@ -10,6 +10,7 @@ import {
   updateInterventionStatus,
   markChecklistItemDone,
   insertPhoto,
+  createAnomaly,
 } from '@/lib/db/interventions'
 
 async function requireFieldAgent(): Promise<{ userId: string } | { error: string }> {
@@ -144,4 +145,107 @@ export async function uploadPhotoMobileAction(formData: FormData) {
 
   revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
   return { ok: true as const, photoId, storagePath }
+}
+
+// ----- Anomalies (mobile, chef_equipe-friendly) -----
+
+const createAnomalyMobileSchema = z.object({
+  intervention_id: z.string().uuid(),
+  category: z.enum(['acces_bloque', 'materiel_casse', 'eau_coupee', 'produit_manquant', 'autre']),
+  category_other: z.string().max(140).optional(),
+  description: z.string().max(2000).optional(),
+})
+
+export async function createAnomalyMobileAction(formData: FormData) {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return auth
+
+  const parsed = createAnomalyMobileSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    category: formData.get('category'),
+    category_other: formData.get('category_other') || undefined,
+    description: formData.get('description') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  if (parsed.data.category === 'autre' && !parsed.data.category_other?.trim()) {
+    return { error: 'Précisez ce qu\'il s\'est passé' }
+  }
+
+  await createAnomaly({
+    intervention_id: parsed.data.intervention_id,
+    category: parsed.data.category,
+    category_other: parsed.data.category_other ?? null,
+    description: parsed.data.description ?? null,
+    reported_by: auth.userId,
+  })
+
+  revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  return { ok: true as const }
+}
+
+// ----- Complete intervention (mobile, soft-required) -----
+
+const completeMobileSchema = z.object({
+  id: z.string().uuid(),
+  comment: z.string().max(140).optional(),
+})
+
+export async function completeInterventionMobileAction(formData: FormData) {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return auth
+
+  const parsed = completeMobileSchema.safeParse({
+    id: formData.get('id'),
+    comment: formData.get('comment') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  const intervention = await getIntervention(parsed.data.id)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (intervention.status !== 'in_progress') {
+    return { error: `Statut courant: ${intervention.status}` }
+  }
+
+  // Check required items
+  const supabase = createAdminClient()
+  const { data: items } = await supabase
+    .from('intervention_checklist_items')
+    .select('id, required, done')
+    .eq('intervention_id', parsed.data.id)
+  const missingRequired = (items ?? []).filter((i) => i.required && !i.done)
+
+  if (missingRequired.length > 0 && !parsed.data.comment) {
+    return {
+      error: 'comment_required',
+      missingCount: missingRequired.length,
+    } as const
+  }
+
+  // Append comment to notes if provided
+  if (parsed.data.comment) {
+    const { data: current } = await supabase
+      .from('interventions')
+      .select('notes')
+      .eq('id', parsed.data.id)
+      .maybeSingle()
+    const existingNotes = current?.notes ?? ''
+    const newNote = `[Agent · ${new Date().toLocaleDateString('fr-FR')}] ${parsed.data.comment}`
+    const combinedNotes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote
+
+    await supabase
+      .from('interventions')
+      .update({
+        status: 'completed',
+        executed_at: new Date().toISOString(),
+        notes: combinedNotes,
+      })
+      .eq('id', parsed.data.id)
+  } else {
+    await updateInterventionStatus(parsed.data.id, 'completed', new Date().toISOString())
+  }
+
+  revalidatePath(`/m/intervention/${parsed.data.id}`)
+  revalidatePath('/m')
+  return { ok: true as const }
 }
