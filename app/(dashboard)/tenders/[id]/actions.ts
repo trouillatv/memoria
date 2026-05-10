@@ -203,11 +203,14 @@ export async function insertEvidenceIntoMemoire({
   const durationLabel = formatDurationFr(evidence.durationDays)
   const validationPercent = Math.round(evidence.validationRate * 100)
 
+  const interventionWord =
+    evidence.interventionsExecuted > 1 ? 'interventions' : 'intervention'
   const parts: string[] = [
-    `Sur ${contractLabel}, nous avons réalisé **${evidence.interventionsExecuted.toLocaleString('fr-FR')} interventions**`,
+    `Sur ${contractLabel}, nous avons réalisé **${evidence.interventionsExecuted.toLocaleString('fr-FR')} ${interventionWord}**`,
   ]
   if (evidence.photosCount > 0) {
-    parts.push(`avec **${evidence.photosCount.toLocaleString('fr-FR')} photos de preuve**`)
+    const photoWord = evidence.photosCount > 1 ? 'photos de preuve' : 'photo de preuve'
+    parts.push(`avec **${evidence.photosCount.toLocaleString('fr-FR')} ${photoWord}**`)
   }
   if (durationLabel) {
     parts.push(`sur **${durationLabel}**`)

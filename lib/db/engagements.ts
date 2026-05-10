@@ -200,6 +200,85 @@ export async function findSimilarEngagements(input: {
   })
 }
 
+/**
+ * Découpe un mémoire technique long en chunks sémantiques (paragraphes /
+ * sections markdown) et lance findSimilarEngagements() sur chacun. Aggrège les
+ * résultats en gardant la **similarité MAX** par engagement.
+ *
+ * Justification : pg_trgm.similarity() est sensible à la longueur. Un mémoire
+ * de 3000 chars renvoie 0 match au threshold 0.25, alors qu'un paragraphe de
+ * 80-150 chars dépasse facilement 0.5. Le chunking est la stratégie qui
+ * préserve la sémantique du panneau (un seul matchThreshold côté UI).
+ */
+export async function findSimilarEngagementsForMemo(input: {
+  memo: string
+  excludeTenderId?: string | null
+  threshold?: number
+  limit?: number
+}): Promise<SimilarEngagementMatch[]> {
+  const memo = (input.memo ?? '').trim()
+  if (memo.length < 10) return []
+
+  const threshold = input.threshold ?? 0.3
+  const limit = input.limit ?? 10
+
+  // Split on markdown headings + blank lines, then by sentences. Trim empties.
+  const rough = memo
+    .split(/\n{2,}|(?=^#{1,6}\s)/m)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 20)
+
+  const chunks: string[] = []
+  for (const block of rough) {
+    if (block.length <= 220) {
+      chunks.push(block)
+      continue
+    }
+    // Long block → split by sentence (FR-friendly : « . », « ! », « ? »
+    // followed by whitespace). Keep chunks 40-220 chars.
+    const sentences = block.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean)
+    for (const s of sentences) {
+      if (s.length >= 30 && s.length <= 260) chunks.push(s)
+      else if (s.length > 260) {
+        // Fallback : hard cut every 200 chars
+        for (let i = 0; i < s.length; i += 200) chunks.push(s.slice(i, i + 200))
+      }
+    }
+  }
+
+  // Cap : avoid pathological N queries on huge memos.
+  const MAX_CHUNKS = 30
+  const queryChunks = chunks.slice(0, MAX_CHUNKS)
+  if (queryChunks.length === 0) return []
+
+  // Run all chunk queries in parallel — small overlap, max latency = single RPC.
+  const results = await Promise.all(
+    queryChunks.map((chunk) =>
+      findSimilarEngagements({
+        query: chunk,
+        excludeTenderId: input.excludeTenderId,
+        threshold,
+        limit, // each chunk may surface up to `limit` matches
+      })
+    )
+  )
+
+  // Aggregate : keep max similarity per engagement_id
+  const bestByEngagement = new Map<string, SimilarEngagementMatch>()
+  for (const matchList of results) {
+    for (const m of matchList) {
+      const prev = bestByEngagement.get(m.engagement.id)
+      if (!prev || m.similarity > prev.similarity) {
+        bestByEngagement.set(m.engagement.id, m)
+      }
+    }
+  }
+
+  return Array.from(bestByEngagement.values())
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit)
+}
+
 // ============================================================================
 // Evidence aggregator — Phase 4 Slice 4.1
 // ============================================================================

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Sparkles, FileCheck, Image as ImageIcon, AlertTriangle, MapPin } from 'lucide-react'
-import { findSimilarEngagements, getEvidenceForEngagements } from '@/lib/db/engagements'
+import { findSimilarEngagementsForMemo, getEvidenceForEngagements } from '@/lib/db/engagements'
 import type { DbEngagement, EngagementEvidence } from '@/types/db'
 import { InsertEvidenceButton } from './InsertEvidenceButton'
 
@@ -53,9 +53,9 @@ export async function EvidencePanel({
     )
   }
 
-  // Find similar engagements
-  const matches = await findSimilarEngagements({
-    query: memoireText,
+  // Find similar engagements (chunked memo → max similarity per engagement)
+  const matches = await findSimilarEngagementsForMemo({
+    memo: memoireText,
     excludeTenderId: tenderId,
     threshold: matchThreshold,
     limit: maxMatches,
@@ -180,12 +180,16 @@ function EvidenceCard({
         <div className="flex items-center gap-1.5">
           <FileCheck className="h-3 w-3 text-muted-foreground" />
           <span className="font-medium tabular-nums">{evidence.interventionsExecuted}</span>
-          <span className="text-muted-foreground">interventions</span>
+          <span className="text-muted-foreground">
+            intervention{evidence.interventionsExecuted > 1 ? 's' : ''}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <ImageIcon className="h-3 w-3 text-muted-foreground" />
           <span className="font-medium tabular-nums">{evidence.photosCount}</span>
-          <span className="text-muted-foreground">photos</span>
+          <span className="text-muted-foreground">
+            photo{evidence.photosCount > 1 ? 's' : ''}
+          </span>
         </div>
         {anomaliesTotal > 0 && (
           <div className="flex items-center gap-1.5">
@@ -230,7 +234,7 @@ function EvidenceCard({
       </div>
 
       <div className="text-[10px] text-muted-foreground italic mt-2">
-        Similarité : {similarityPercent}%
+        Proximité avec votre mémoire : {similarityPercent}%
       </div>
     </li>
   )

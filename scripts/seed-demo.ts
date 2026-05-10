@@ -134,6 +134,9 @@ async function uploadSeedPhoto(
 
 /**
  * Ensures a tender + document + analysis exists. Idempotent on title.
+ * When `refreshAnalysis` is true, an existing analysis is updated so re-running
+ * the seed reflects changes to technicalMemo / summary (useful for the demo
+ * tender used by the cross-tender matching panel).
  */
 async function ensureTender(
   supabase: SupabaseAdmin,
@@ -142,7 +145,8 @@ async function ensureTender(
   extractedText: string,
   technicalMemo: string,
   summary: string,
-  adminId: string
+  adminId: string,
+  opts: { refreshAnalysis?: boolean } = {}
 ): Promise<{ tenderId: string; created: boolean }> {
   const { data: existing } = await supabase
     .from('tenders')
@@ -151,6 +155,22 @@ async function ensureTender(
     .maybeSingle()
   if (existing) {
     console.log(`  ↳ Tender '${title}' already exists, reusing (id=${existing.id})`)
+    if (opts.refreshAnalysis) {
+      const { data: ana } = await supabase
+        .from('tender_analyses')
+        .select('id')
+        .eq('tender_id', existing.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (ana) {
+        await supabase
+          .from('tender_analyses')
+          .update({ technical_memo: technicalMemo, summary })
+          .eq('id', ana.id)
+        console.log(`  ↳ Refreshed analysis on existing tender`)
+      }
+    }
     return { tenderId: existing.id, created: false }
   }
 
@@ -1273,6 +1293,115 @@ async function seedContract3(adminId: string, supabase: SupabaseAdmin) {
 }
 
 // ---------------------------------------------------------------------------
+// DEMO TENDER 4 — Hôpital Sainte-Marie (AO en cours, pas de contrat)
+//
+// Ce tender est l'AO en cours d'analyse qu'un Resp. AO ouvrirait via
+// `/tenders/<id>?view=memoire`. Le panel d'évidence à droite va chercher des
+// engagements similaires dans les 3 contrats actifs (CHU / Banque / École).
+//
+// Le mémoire technique est construit pour matcher (pg_trgm) le vocabulaire
+// présent dans les engagements des 3 contrats : bionettoyage, sanitaires
+// écolabel, ISO 9001, audit qualité, reporting mensuel photos avant/après,
+// HACCP cantine, produits sans solvants, etc.
+// ---------------------------------------------------------------------------
+
+const SAINTE_MARIE_TENDER_TITLE = '[DEMO] Hôpital Sainte-Marie — Bionettoyage 2026'
+const SAINTE_MARIE_CLIENT_NAME = 'Hôpital Sainte-Marie'
+
+const SAINTE_MARIE_EXTRACTED_TEXT = `APPEL D'OFFRES NETTOYAGE — HÔPITAL SAINTE-MARIE — LOT BIONETTOYAGE
+Référence : SM-2026-NETT-12
+Durée : 36 mois renouvelables
+Surface totale : 9 800 m² répartis sur 2 bâtiments (pôle médecine + pôle restauration)
+
+1. PRESTATIONS ATTENDUES
+
+Bionettoyage biquotidien des sanitaires, chambres patients et zones à risque infectieux avec produits écolabel certifiés. Fréquences strictes : 2x/jour sanitaires, 1x/jour couloirs et salles d'attente, 1x/semaine vitres et surfaces hautes. Cantine du personnel bionettoyée 2x/jour dans le respect HACCP (avant et après chaque service).
+
+2. EXIGENCES QUALITÉ
+
+Le prestataire devra maintenir une certification ISO 9001:2015 pendant toute la durée du marché. Audit qualité hebdomadaire conjoint avec le service Hygiène Hospitalière, rapport écrit transmis sous 48h.
+
+3. PRODUITS ET CONFORMITÉ
+
+Tous les produits utilisés satisferont aux exigences Ecolabel européen et seront adaptés au milieu hospitalier. Fiches de données de sécurité (FDS) tenues à disposition. Personnel détenteur de la formation CQP APH ou équivalent. Personnel cantine formé HACCP avec recyclage triennal.
+
+4. NIVEAU DE SERVICE
+
+Reprise sous 4 heures ouvrées 7 jours sur 7 en cas d'incident sanitaire signalé. Pénalités contractuelles de 0,5% du marché par jour de retard, plafonnées à 5%.
+
+5. REPORTING
+
+Reporting mensuel structuré : photos avant/après par zone critique, indicateurs de performance qualité, anomalies traitées et non-traitées, suggestions d'amélioration. Transmission avant le 5 du mois suivant.
+
+6. SÉCURITÉ ET CONFIDENTIALITÉ
+
+Personnel doté de badge nominatif délivré par le service sécurité. Charte de confidentialité signée à l'embauche. Respect strict du secret médical. Vacation jour et nuit (équipes en rotation).`
+
+const SAINTE_MARIE_TECHNICAL_MEMO = `# Mémoire technique — Réponse à l'AO Hôpital Sainte-Marie
+
+## 1. Approche du bionettoyage hospitalier
+
+Nous nous engageons à effectuer un **bionettoyage biquotidien des sanitaires** et des chambres patients avec **produits écolabel certifiés Ecocert**, dans le strict respect des fréquences imposées par le cahier des charges. Notre équipe dédiée de 5 ETP est intégralement formée au CQP APH (Certificat de Qualification Professionnelle Agent de Propreté Hospitalière).
+
+Les zones à risque infectieux feront l'objet d'un protocole spécifique avec traçabilité écrite. Les couloirs et salles d'attente seront traités quotidiennement, les vitres et surfaces hautes hebdomadairement.
+
+## 2. Cantine du personnel — protocole HACCP
+
+La cantine du personnel sera **bionettoyée 2 fois par jour** (avant et après chaque service), dans le strict respect des **normes HACCP**. Notre personnel cantine est intégralement formé HACCP avec recyclage triennal. Les attestations à jour sont disponibles à tout contrôle inopiné.
+
+Nous utiliserons exclusivement des produits sans solvants agressifs et adaptés au contact alimentaire, conformément aux exigences sanitaires.
+
+## 3. Certifications et qualité
+
+Nous maintiendrons notre **certification ISO 9001:2015** pendant toute la durée du marché. Notre service qualité interne effectuera un **audit qualité hebdomadaire** en collaboration avec le service Hygiène Hospitalière, avec rapport écrit transmis sous 48h.
+
+Tous nos produits sont **certifiés Ecolabel européen**. Les fiches de données de sécurité (FDS) sont tenues à disposition dans un classeur dédié sur chaque site, mis à jour à chaque réapprovisionnement.
+
+## 4. Engagement de service — SLA
+
+Nous garantissons une **intervention sous 4 heures ouvrées 7j/7** en cas d'incident sanitaire, avec une équipe d'astreinte joignable 24h/24. Notre organisation prévoit une rotation **vacation jour et nuit** permettant de couvrir tous les créneaux, y compris les urgences post-opératoires.
+
+## 5. Reporting mensuel structuré
+
+Nous fournirons un **rapport mensuel structuré** comprenant :
+- Photos avant/après géolocalisées par zone critique (sans patient identifiable)
+- Indicateurs qualité : taux de conformité par zone, délai moyen de résolution d'incident
+- Liste exhaustive des anomalies signalées et résolues
+- Suggestions opérationnelles d'amélioration continue
+
+Le reporting sera transmis avant le 5 du mois suivant, au format PDF + tableau de bord interactif.
+
+## 6. Sécurité, accès et confidentialité
+
+L'ensemble de notre personnel sera doté d'un **badge nominatif** délivré par votre service sécurité. **Charte de confidentialité** signée à l'embauche. Respect strict du secret médical : aucune photographie incluant un patient, aucun document non public.
+
+## 7. Continuité et clause sociale
+
+Nous nous engageons à reprendre les contrats des agents en place dans le respect du Code du travail. Notre démarche RSE intègre une clause sociale d'insertion : nous mobilisons des personnels en parcours d'insertion via notre partenariat avec la régie de quartier, justificatif RH transmis trimestriellement.`
+
+const SAINTE_MARIE_SUMMARY =
+  'Hôpital Sainte-Marie — bionettoyage hospitalier 9 800 m² sur 2 bâtiments. Marché 36 mois. Exigences ISO 9001:2015 + Ecolabel + CQP APH + HACCP cantine. SLA reprise 4h ouvrées 7j/7. Reporting mensuel photos avant/après. Vacation jour + nuit.'
+
+/**
+ * Crée (ou rafraîchit) le tender démo Sainte-Marie.
+ * - status: 'ready' (analyse OK, pas de contrat converti)
+ * - aucune engagement extrait — on consulte uniquement le mémoire pour matcher
+ *   les engagements *des autres tenders* via cross-tender search
+ */
+async function seedDemoTenderSainteMarie(adminId: string, supabase: SupabaseAdmin) {
+  await ensureTender(
+    supabase,
+    SAINTE_MARIE_TENDER_TITLE,
+    SAINTE_MARIE_CLIENT_NAME,
+    SAINTE_MARIE_EXTRACTED_TEXT,
+    SAINTE_MARIE_TECHNICAL_MEMO,
+    SAINTE_MARIE_SUMMARY,
+    adminId,
+    { refreshAnalysis: true }
+  )
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
@@ -1304,6 +1433,9 @@ async function main() {
 
   console.log('🏫 Seeding Contract 3 — École Jean Jaurès...')
   await seedContract3(adminId, supabase)
+
+  console.log('🏥 Seeding Demo Tender — Hôpital Sainte-Marie (AO en cours)...')
+  await seedDemoTenderSainteMarie(adminId, supabase)
 
   console.log('✅ Seed complete')
 }
