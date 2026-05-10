@@ -7,8 +7,19 @@ import {
   activateEngagementsForContract,
   rejectEngagements,
   findSimilarEngagements,
+  getEvidenceForEngagement,
+  getEvidenceForEngagements,
 } from '@/lib/db/engagements'
 import { createContract } from '@/lib/db/contracts'
+import { createSite } from '@/lib/db/sites'
+import { createMission } from '@/lib/db/missions'
+import {
+  createIntervention,
+  updateInterventionStatus,
+  insertPhoto,
+  createValidation,
+  createAnomaly,
+} from '@/lib/db/interventions'
 
 const TEST_TENDER_TITLE = '__test_engagement_phase1_tender__'
 
@@ -326,6 +337,226 @@ describe('findSimilarEngagements (pg_trgm)', () => {
       expect(found).toBeUndefined() // extracted status should be excluded
     } finally {
       await cleanupTender(tenderC)
+    }
+  })
+})
+
+// ============================================================================
+// Phase 4 Slice 4.1 — Evidence aggregator
+// ============================================================================
+
+/**
+ * Deep cleanup helper for evidence tests : removes the site row created during
+ * the test (which would otherwise leak since contracts.deletion doesn't cascade
+ * to sites — sites.contract_id is set to null instead).
+ *
+ * Missions cascade from sites, and interventions/photos/anomalies/validations
+ * cascade from missions, so a single site DELETE collapses the whole tree.
+ */
+async function cleanupSitesByContract(contractId: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('sites').delete().eq('contract_id', contractId)
+}
+
+describe('getEvidenceForEngagement', () => {
+  it('returns empty evidence for non-existent engagement', async () => {
+    const e = await getEvidenceForEngagement('00000000-0000-0000-0000-999999999999')
+    expect(e.interventionsExecuted).toBe(0)
+    expect(e.photosCount).toBe(0)
+    expect(e.contractIds).toEqual([])
+  })
+
+  it('returns empty evidence for engagement with no missions', async () => {
+    const { id: tenderId } = await ensureTenderExists('test-evidence-empty')
+    try {
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Engagement isolé sans mission de test pour evidence',
+          source_ref: null,
+          category: 'frequency',
+          short_label: 'Test isolé',
+          measurable: true,
+          ai_confidence: 0.9,
+        }],
+      })
+      const e = await getEvidenceForEngagement(inserted[0].id)
+      expect(e.interventionsExecuted).toBe(0)
+      expect(e.photosCount).toBe(0)
+    } finally {
+      await cleanupTender(tenderId)
+    }
+  })
+
+  it('aggregates interventions, photos, anomalies, validations correctly', async () => {
+    const { id: tenderId } = await ensureTenderExists('test-evidence-full')
+    const supabase = createAdminClient()
+    const { data: admin } = await supabase
+      .from('users')
+      .select('id')
+      .eq('role', 'admin')
+      .limit(1)
+      .single()
+    const { data: client } = await supabase.from('clients').select('id').limit(1).single()
+    let contractId: string | null = null
+
+    try {
+      // Create engagement
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Engagement complet pour test evidence aggregator',
+          source_ref: null,
+          category: 'frequency',
+          short_label: 'Test complet',
+          measurable: true,
+          ai_confidence: 0.95,
+        }],
+      })
+      const engagementId = inserted[0].id
+
+      // Create contract + activate engagement
+      contractId = await createContract({
+        tender_id: tenderId,
+        name: 'Test contract evidence',
+        client_name: 'Test client evidence',
+        start_date: '2026-04-01',
+        created_by: null,
+      })
+      await activateEngagementsForContract(tenderId, contractId)
+
+      // Create site + mission covering this engagement
+      const siteId = await createSite({
+        client_id: client!.id,
+        contract_id: contractId,
+        name: 'Test site evidence',
+      })
+      const missionId = await createMission({
+        site_id: siteId,
+        name: 'Test mission evidence',
+        cadence: 'daily',
+        engagement_ids: [engagementId],
+        created_by: admin!.id,
+      })
+
+      // Create 2 interventions : 1 validated (with photos + anomaly), 1 completed (with photo)
+      const intv1 = await createIntervention({
+        mission_id: missionId,
+        scheduled_at: '2026-04-10T08:00:00.000Z',
+        created_by: admin!.id,
+      })
+      await updateInterventionStatus(intv1, 'validated', '2026-04-10T10:00:00.000Z')
+      await insertPhoto({
+        intervention_id: intv1,
+        checklist_item_id: null,
+        storage_path: `test/evidence/${intv1}/before.jpg`,
+        kind: 'before',
+        caption: null,
+        taken_by: admin!.id,
+      })
+      await insertPhoto({
+        intervention_id: intv1,
+        checklist_item_id: null,
+        storage_path: `test/evidence/${intv1}/after.jpg`,
+        kind: 'after',
+        caption: null,
+        taken_by: admin!.id,
+      })
+      await createValidation({
+        intervention_id: intv1,
+        validated_by: admin!.id,
+        comment: null,
+      })
+      await createAnomaly({
+        intervention_id: intv1,
+        category: 'materiel_casse',
+        reported_by: admin!.id,
+      })
+
+      const intv2 = await createIntervention({
+        mission_id: missionId,
+        scheduled_at: '2026-04-12T08:00:00.000Z',
+        created_by: admin!.id,
+      })
+      await updateInterventionStatus(intv2, 'completed', '2026-04-12T10:00:00.000Z')
+      await insertPhoto({
+        intervention_id: intv2,
+        checklist_item_id: null,
+        storage_path: `test/evidence/${intv2}/after.jpg`,
+        kind: 'after',
+        caption: null,
+        taken_by: admin!.id,
+      })
+
+      // Now check evidence
+      const e = await getEvidenceForEngagement(engagementId)
+      expect(e.interventionsExecuted).toBe(2)
+      expect(e.photosCount).toBe(3)
+      expect(e.anomaliesOpen).toBe(1)
+      expect(e.anomaliesResolved).toBe(0)
+      expect(e.validationsCount).toBe(1)
+      expect(e.validationRate).toBe(0.5)
+      expect(e.contractIds).toContain(contractId)
+      expect(e.contractNames).toContain('Test contract evidence')
+      expect(e.firstExecutedAt).toBeTruthy()
+      expect(e.lastExecutedAt).toBeTruthy()
+      expect(e.durationDays).toBeGreaterThanOrEqual(2)
+    } finally {
+      if (contractId) await cleanupSitesByContract(contractId)
+      await cleanupTender(tenderId)
+    }
+  })
+})
+
+describe('getEvidenceForEngagements (batch)', () => {
+  it('returns empty map for empty input', async () => {
+    const m = await getEvidenceForEngagements([])
+    expect(m.size).toBe(0)
+  })
+
+  it('returns map keyed by engagement_id with stats per engagement', async () => {
+    const { id: tenderId } = await ensureTenderExists('test-evidence-batch')
+    try {
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [
+          {
+            source_type: 'memoire_engagement',
+            source_excerpt: 'Premier engagement batch test pour aggregation multi',
+            source_ref: null,
+            category: 'frequency',
+            short_label: 'Batch test 1',
+            measurable: true,
+            ai_confidence: 0.9,
+          },
+          {
+            source_type: 'memoire_engagement',
+            source_excerpt: 'Second engagement batch test différent du premier',
+            source_ref: null,
+            category: 'quality',
+            short_label: 'Batch test 2',
+            measurable: true,
+            ai_confidence: 0.85,
+          },
+        ],
+      })
+      const eng1 = inserted[0].id
+      const eng2 = inserted[1].id
+
+      const evidence = await getEvidenceForEngagements([eng1, eng2])
+      expect(evidence.size).toBe(2)
+      expect(evidence.has(eng1)).toBe(true)
+      expect(evidence.has(eng2)).toBe(true)
+      // Both should be empty since no mission covers them
+      expect(evidence.get(eng1)!.interventionsExecuted).toBe(0)
+      expect(evidence.get(eng2)!.interventionsExecuted).toBe(0)
+    } finally {
+      await cleanupTender(tenderId)
     }
   })
 })

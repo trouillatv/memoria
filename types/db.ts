@@ -319,3 +319,30 @@ export interface DbInterventionValidation {
   validated_at: string
   comment: string | null
 }
+
+// =================================
+// Cross-tender matching evidence (Phase 4)
+// =================================
+
+/**
+ * Snapshot of execution evidence for an engagement.
+ * Aggregated facts only — never per-person metrics.
+ */
+export interface EngagementEvidence {
+  engagement_id: string
+  // Counts (aggregated, never per-person)
+  interventionsExecuted: number  // interventions completed or validated
+  photosCount: number             // photos taken across all interventions
+  anomaliesResolved: number       // anomalies resolved
+  anomaliesOpen: number           // anomalies still open
+  validationsCount: number        // interventions validated
+  // Temporal context
+  firstExecutedAt: string | null  // ISO date of first executed intervention
+  lastExecutedAt: string | null   // ISO date of last executed intervention
+  durationDays: number | null     // span in days between first and last
+  // Quality indicator — aggregated, not individual
+  validationRate: number          // 0-1, validated / executed (overall, not per agent)
+  // Provenance
+  contractIds: string[]           // contracts this engagement is linked to
+  contractNames: string[]         // for display
+}
