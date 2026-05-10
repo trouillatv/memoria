@@ -9,13 +9,14 @@ import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { AtelierMessageThread } from './AtelierMessageThread'
 import { CopiloteHeroCard } from './CopiloteHeroCard'
+import { HeroCompactRibbon } from './HeroCompactRibbon'
 import { ModeCard } from './ModeCard'
 import { resolveMode, modeCta, MAX_AGENTS } from './copilote-mode'
 import { loadSelectedAgents, saveSelectedAgents } from './agent-selection-storage'
 import { cn } from '@/lib/utils'
 import { pickThinkingPhrase } from './agent-thinking-phrases'
 import { SLASH_COMMANDS, type SlashCommand } from './slash-commands'
-import type { ChatAgentName, DbTenderChatMessage, DbTenderAnalysis } from '@/types/db'
+import type { ChatAgentName, DbAgentAnalysis, DbTenderChatMessage, DbTenderAnalysis } from '@/types/db'
 
 function autoGrow(el: HTMLTextAreaElement) {
   el.style.height = 'auto'
@@ -29,11 +30,12 @@ function autoGrow(el: HTMLTextAreaElement) {
 interface AtelierIATabProps {
   tenderId: string
   initialMessages: DbTenderChatMessage[]
+  agentAnalyses: DbAgentAnalysis[]
   tenderAnalysis: DbTenderAnalysis | null
   tenderTitle: string
 }
 
-export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
+export function AtelierIATab({ tenderId, initialMessages, agentAnalyses, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
   const [selectedAgents, setSelectedAgents] = useState<ChatAgentName[]>([])
 
@@ -166,6 +168,12 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
     <div className="flex flex-col h-full">
       {/* Thread scrollable */}
       <div className="flex-1 overflow-y-auto pb-4 rounded-xl border bg-card p-3">
+        {messages.length > 0 && (
+          <HeroCompactRibbon
+            agentAnalyses={agentAnalyses}
+            onPromptClick={handleHeroPromptClick}
+          />
+        )}
         <AtelierMessageThread
           messages={messages}
           tenderId={tenderId}
