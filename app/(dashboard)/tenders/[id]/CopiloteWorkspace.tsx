@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { AgentPanel } from './AgentPanel'
 import { AtelierIATab } from './AtelierIATab'
+import { AgentAnalysisDrawer } from './AgentAnalysisDrawer'
 import type { ChatAgentName, DbAgentAnalysis, DbTenderAnalysis, DbTenderChatMessage } from '@/types/db'
 
 interface CopiloteWorkspaceProps {
@@ -20,7 +21,11 @@ export function CopiloteWorkspace({
   tenderAnalysis,
   tenderTitle,
 }: CopiloteWorkspaceProps) {
-  const [, setViewingAgent] = useState<ChatAgentName | null>(null)
+  const [viewingAgent, setViewingAgent] = useState<ChatAgentName | null>(null)
+
+  const viewingAnalysis = viewingAgent
+    ? initialAgentAnalyses.find((a) => a.agent_name === viewingAgent) ?? null
+    : null
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-full">
@@ -35,7 +40,12 @@ export function CopiloteWorkspace({
         tenderAnalysis={tenderAnalysis}
         tenderTitle={tenderTitle}
       />
-      {/* AgentAnalysisDrawer wired in Task 6 */}
+      <AgentAnalysisDrawer
+        open={viewingAgent !== null}
+        analysis={viewingAnalysis}
+        tenderId={tenderId}
+        onOpenChange={(open) => { if (!open) setViewingAgent(null) }}
+      />
     </div>
   )
 }
