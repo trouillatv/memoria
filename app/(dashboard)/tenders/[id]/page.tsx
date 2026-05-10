@@ -10,6 +10,7 @@ import { TenderSynthese } from './TenderSynthese'
 import { TenderAnalyseDetaillee } from './TenderAnalyseDetaillee'
 import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
+import { CopiloteWorkspace } from './CopiloteWorkspace'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
 import { buildActivityFeed } from './activity-feed'
 
@@ -166,9 +167,10 @@ export default async function TenderDetailPage({
               <TenderMemoireTechnique tender={tender} analysis={analysis} />
             )}
             {view === 'atelier' && (
-              <AtelierIATab
+              <CopiloteWorkspace
                 tenderId={id}
                 initialMessages={chatMessages}
+                initialAgentAnalyses={agentAnalyses}
                 tenderAnalysis={analysis}
                 tenderTitle={tender.title}
               />
