@@ -16,7 +16,7 @@ import { loadSelectedAgents, saveSelectedAgents } from './agent-selection-storag
 import { cn } from '@/lib/utils'
 import { pickThinkingPhrase } from './agent-thinking-phrases'
 import { SLASH_COMMANDS, type SlashCommand } from './slash-commands'
-import type { ChatAgentName, DbAgentAnalysis, DbTenderChatMessage, DbTenderAnalysis } from '@/types/db'
+import type { ChatAgentName, DbTenderChatMessage, DbTenderAnalysis } from '@/types/db'
 
 function autoGrow(el: HTMLTextAreaElement) {
   el.style.height = 'auto'
@@ -30,12 +30,11 @@ function autoGrow(el: HTMLTextAreaElement) {
 interface AtelierIATabProps {
   tenderId: string
   initialMessages: DbTenderChatMessage[]
-  agentAnalyses: DbAgentAnalysis[]
   tenderAnalysis: DbTenderAnalysis | null
   tenderTitle: string
 }
 
-export function AtelierIATab({ tenderId, initialMessages, agentAnalyses, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
+export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
   const [selectedAgents, setSelectedAgents] = useState<ChatAgentName[]>([])
 
@@ -169,10 +168,7 @@ export function AtelierIATab({ tenderId, initialMessages, agentAnalyses, tenderA
       {/* Thread scrollable */}
       <div className="flex-1 overflow-y-auto pb-4 rounded-xl border bg-card p-3">
         {messages.length > 0 && (
-          <HeroCompactRibbon
-            agentAnalyses={agentAnalyses}
-            onPromptClick={handleHeroPromptClick}
-          />
+          <HeroCompactRibbon onPromptClick={handleHeroPromptClick} />
         )}
         <AtelierMessageThread
           messages={messages}

@@ -1,40 +1,27 @@
 'use client'
 
 import { useState } from 'react'
-import { Sparkles, X } from 'lucide-react'
+import { Lightbulb, X } from 'lucide-react'
 import { SUGGESTED_PROMPTS } from './CopiloteHeroCard'
-import type { ChatAgentName, DbAgentAnalysis } from '@/types/db'
+import type { ChatAgentName } from '@/types/db'
 
 interface HeroCompactRibbonProps {
-  agentAnalyses: DbAgentAnalysis[]
   onPromptClick: (prompt: string, agents: ChatAgentName[]) => void
 }
 
-export function HeroCompactRibbon({ agentAnalyses, onPromptClick }: HeroCompactRibbonProps) {
+export function HeroCompactRibbon({ onPromptClick }: HeroCompactRibbonProps) {
   const [overlayOpen, setOverlayOpen] = useState(false)
 
-  const total = 7
-  const ready = agentAnalyses.filter((a) => a.status === 'ready').length
-  const running = agentAnalyses.filter((a) => a.status === 'running').length
-  const generated = agentAnalyses.filter((a) => a.status !== 'pending').length
-  const toGenerate = total - generated
-
   return (
-    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b -mx-3 px-3 py-2 mb-3">
-      <div className="flex items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2 min-w-0">
-          <Sparkles className="h-3 w-3 text-emerald-600 shrink-0" />
-          <span className="font-medium truncate">{total} experts</span>
-          <span className="text-muted-foreground truncate">
-            · {ready} prêts · {running} en cours · {toGenerate} à générer
-          </span>
-        </div>
+    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm -mx-3 px-3 py-1 mb-2">
+      <div className="flex items-center justify-end">
         <button
           type="button"
           onClick={() => setOverlayOpen(true)}
-          className="text-xs text-foreground hover:underline whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
         >
-          Voir suggestions ▼
+          <Lightbulb className="h-3 w-3" />
+          Suggestions
         </button>
       </div>
 

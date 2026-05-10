@@ -58,7 +58,6 @@ export function CopiloteWorkspace({
       <AtelierIATab
         tenderId={tenderId}
         initialMessages={initialMessages}
-        agentAnalyses={initialAgentAnalyses}
         tenderAnalysis={tenderAnalysis}
         tenderTitle={tenderTitle}
       />
