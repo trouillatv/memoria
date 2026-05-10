@@ -830,18 +830,20 @@ create index tender_agent_runs_tender_idx on public.tender_agent_runs(tender_id,
 
 #### Roadmap d'activation
 
-| Phase | Contenu |
-|---|---|
-| MVP actuel | 3 onglets, agents `lecteur_ao` + `memoire_technique` + `opportunity_scorer` actifs |
-| V2 — Atelier IA | Migration `014_tender_chat_atelier.sql` (les 2 tables ci-dessus) + UI onglet « Atelier IA » avec chat + uploads + dropdown agent + nouveau `stratege_commercial` (8ᵉ agent) |
-| V2.1+ | Activation progressive des stubs (`conformite`, `contradicteur`, `financier`, `terrain`) selon le besoin client |
+| Phase | Statut | Contenu |
+|---|---|---|
+| MVP V1 | ✅ livré | 3 onglets analyse, agents `lecteur_ao` + `memoire_technique` + `opportunity_scorer` actifs |
+| **Plan 3.5 — Atelier IA single-agent** | ✅ livré | Migration `014_atelier_ia.sql` (`tender_chat_messages` + `tender_chat_attachments`) + 4ᵉ onglet « Atelier IA » : chat contextualisé, dropdown 7 agents (général, lecteur AO, mémoire technique, contradicteur, financier, terrain, conformité), upload PJ optionnel (≤5 MB), historique persistant |
+| **Plan 3.6 — Atelier IA multi-select agents** | 📝 prévu | Pattern B validé : remplacer le dropdown single-agent par un multi-select (1 à N agents). À l'envoi, les N agents répondent en **parallèle** (`Promise.all` de `chatWithAgent`), N bulles agent apparaissent dans le thread. Coût IA × N assumé. **Pas de débat inter-agents** (les agents ne se voient pas entre eux dans cette version). UX : checkbox group ou multi-select, avec compteur d'agents sélectionnés et estimation du coût/durée. |
+| Plan 3.7+ — débat inter-agents (Pattern C, hors scope court terme) | 🟡 idée | Ajouter un mode « débat » optionnel : après les réponses initiales en parallèle, un 2ᵉ tour où chaque agent peut lire et challenger les réponses des autres. UI : toggle « Lancer un débat ». Coût × N × rounds. À envisager seulement si le multi-select Plan 3.6 montre un vrai usage. |
+| V2.1+ | 🟡 ouvert | Activation explicite des derniers stubs si besoin client, agent `stratege_commercial` (8ᵉ agent), streaming token-par-token sur les agents lourds |
 
 #### Préparation MVP
 
 - ✅ `tender_documents` déjà 1..N (zéro modif schéma à faire)
-- ✅ Couche IA (`AIAgent` interface + registry) déjà extensible : ajouter `stratege_commercial` = 1 fichier
-- ✅ UI : un onglet placeholder « Atelier IA · Bientôt » est ajouté dès le MVP pour signaler la roadmap
-- ⏳ Tables `tender_chat_messages` + `tender_agent_runs` : documentées ici, NON migrées au MVP
+- ✅ Couche IA (`AIAgent` interface + registry) déjà extensible
+- ✅ Plan 3.5 livré → tables `tender_chat_messages` + `tender_chat_attachments` créées et fonctionnelles
+- ⏳ Plan 3.6 (multi-select) : aucune migration nécessaire, juste UI + Server Action en parallèle
 
 ---
 
