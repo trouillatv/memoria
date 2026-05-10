@@ -1,10 +1,15 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, MapPin, Clock } from 'lucide-react'
-import { getIntervention, listChecklistItemsByIntervention } from '@/lib/db/interventions'
+import {
+  getIntervention,
+  listChecklistItemsByIntervention,
+  listPhotosByIntervention,
+} from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
 
@@ -30,10 +35,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     )
   }
 
-  const [mission, checklistItems] = await Promise.all([
+  const [mission, checklistItems, photos] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
+    listPhotosByIntervention(id),
   ])
+
+  // Sign storage URLs (1h TTL) for thumbs
+  const signedUrlsMap = await getSignedPhotoUrls(photos.map((p) => p.storage_path))
+  const signedUrls = Object.fromEntries(signedUrlsMap)
 
   // Site for context
   const supabase = createAdminClient()
@@ -107,13 +117,14 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       <ChecklistMobile
         interventionId={id}
         items={checklistItems}
+        serverPhotos={photos}
+        signedUrls={signedUrls}
         canEdit={isInProgress || isAdmin}
       />
 
-      {/* Slice 3.3 ajoutera : photos par item */}
       {/* Slice 3.4 ajoutera : anomalies + terminer */}
       <p className="text-xs text-muted-foreground italic mt-8 text-center">
-        Photos et anomalies arrivent en slices 3.3 et 3.4
+        Anomalies et terminer arrivent en slice 3.4
       </p>
     </div>
   )

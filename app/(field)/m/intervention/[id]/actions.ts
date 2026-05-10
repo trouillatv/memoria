@@ -9,6 +9,7 @@ import {
   getIntervention,
   updateInterventionStatus,
   markChecklistItemDone,
+  insertPhoto,
 } from '@/lib/db/interventions'
 
 async function requireFieldAgent(): Promise<{ userId: string } | { error: string }> {
@@ -86,4 +87,61 @@ export async function toggleChecklistItemMobileAction(formData: FormData) {
     .maybeSingle()
   if (data?.intervention_id) revalidatePath(`/m/intervention/${data.intervention_id}`)
   return { ok: true as const }
+}
+
+// ----- Photo upload (mobile, chef_equipe-friendly) -----
+
+const photoKindSchema = z.enum(['before', 'after', 'anomaly', 'proof'])
+
+const uploadPhotoSchema = z.object({
+  intervention_id: z.string().uuid(),
+  checklist_item_id: z.string().uuid().nullable(),
+  kind: photoKindSchema,
+})
+
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024 // 10 MB
+
+export async function uploadPhotoMobileAction(formData: FormData) {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return auth
+
+  const file = formData.get('file')
+  if (!(file instanceof File) || file.size === 0) return { error: 'Photo manquante' }
+  if (file.size > MAX_PHOTO_BYTES) return { error: 'Photo trop lourde (max 10 Mo)' }
+  if (!file.type.startsWith('image/')) return { error: 'Format non supporté' }
+
+  const checklistItemRaw = formData.get('checklist_item_id') as string | null
+  const checklist_item_id = checklistItemRaw && checklistItemRaw !== '' ? checklistItemRaw : null
+
+  const parsed = uploadPhotoSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    checklist_item_id,
+    kind: formData.get('kind'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  // Upload to storage with server timestamp in path
+  const supabase = createAdminClient()
+  const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase().slice(0, 5)
+  const safeExt = /^[a-z0-9]+$/.test(ext) ? ext : 'jpg'
+  const ts = Date.now()
+  const storagePath = `${parsed.data.intervention_id}/${parsed.data.kind}-${ts}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const { error: uploadErr } = await supabase.storage
+    .from('intervention-photos')
+    .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+  if (uploadErr) return { error: `Upload échoué : ${uploadErr.message}` }
+
+  const photoId = await insertPhoto({
+    intervention_id: parsed.data.intervention_id,
+    checklist_item_id: parsed.data.checklist_item_id,
+    storage_path: storagePath,
+    kind: parsed.data.kind,
+    caption: null,
+    taken_by: auth.userId,
+  })
+
+  revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  return { ok: true as const, photoId, storagePath }
 }
