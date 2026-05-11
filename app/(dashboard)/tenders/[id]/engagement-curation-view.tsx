@@ -154,9 +154,6 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
                 ) : (
                   <>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] uppercase font-semibold tracking-widest text-muted-foreground">
-                        {e.category}
-                      </span>
                       <span className="text-[10px] text-muted-foreground">
                         conf. {e.ai_confidence?.toFixed(2) ?? '—'}
                       </span>
