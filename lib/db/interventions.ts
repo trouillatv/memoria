@@ -17,6 +17,145 @@ export async function listInterventionsByMission(missionId: string): Promise<DbI
   return data ?? []
 }
 
+// ===== Supervisor list query (cross-contract) =====
+
+export type SupervisorDateRange = 'today' | '7d' | '30d' | 'all'
+
+export interface SupervisorInterventionsQuery {
+  /** Filtre date par fenêtre prédéfinie. `all` = pas de borne basse, `today` = jour courant. */
+  dateRange?: SupervisorDateRange
+  /** Filtre statut intervention. */
+  status?: InterventionStatus
+  /** Filtre site (mission.site_id). */
+  siteId?: string
+  /** 0-based offset. */
+  offset?: number
+  /** Max items returned. */
+  limit?: number
+}
+
+export interface SupervisorInterventionRow {
+  id: string
+  scheduled_at: string
+  status: string
+  mission_id: string
+  skipped_reason: string | null
+  mission?: {
+    name: string
+    site?: {
+      name: string
+      contract?: { id: string; name: string; client_name: string } | null
+    } | null
+  } | null
+}
+
+export interface SupervisorInterventionsResult {
+  items: SupervisorInterventionRow[]
+  total: number
+}
+
+/**
+ * Liste paginée d'interventions pour la vue superviseur cross-contract.
+ * Supporte les filtres date, statut, site + pagination.
+ *
+ * Note : pour le filtre site, on filtre côté DB via `missions.site_id`. Sans
+ * possibilité native d'inner-join filter en PostgREST simple, on résout le set
+ * d'ids missions d'abord.
+ */
+export async function listInterventionsSupervisor(
+  query: SupervisorInterventionsQuery = {},
+): Promise<SupervisorInterventionsResult> {
+  const supabase = createAdminClient()
+
+  // Compute date lower bound from dateRange
+  const dateRange = query.dateRange ?? 'all'
+  let scheduledFromIso: string | null = null
+  if (dateRange === 'today') {
+    const today = new Date().toISOString().split('T')[0]
+    scheduledFromIso = `${today}T00:00:00`
+  } else if (dateRange === '7d') {
+    scheduledFromIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  } else if (dateRange === '30d') {
+    scheduledFromIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  }
+
+  // Resolve mission ids if siteId filter is present (can't filter on join in PostgREST).
+  let missionIdsForSite: string[] | null = null
+  if (query.siteId) {
+    const { data: missions, error: mErr } = await supabase
+      .from('missions')
+      .select('id')
+      .eq('site_id', query.siteId)
+      .is('deleted_at', null)
+    if (mErr) throw mErr
+    missionIdsForSite = (missions ?? []).map((m) => m.id)
+    if (missionIdsForSite.length === 0) {
+      // No missions on this site → empty result
+      return { items: [], total: 0 }
+    }
+  }
+
+  let q = supabase
+    .from('interventions')
+    .select(
+      `
+      id, scheduled_at, status, mission_id, skipped_reason,
+      mission:missions(id, name, site_id, site:sites(id, name, contract_id, contract:contracts(id, name, client_name)))
+    `,
+      { count: 'exact' },
+    )
+    .order('scheduled_at', { ascending: true })
+
+  if (scheduledFromIso) q = q.gte('scheduled_at', scheduledFromIso)
+  if (query.status) q = q.eq('status', query.status)
+  if (missionIdsForSite) q = q.in('mission_id', missionIdsForSite)
+
+  const offset = Math.max(0, query.offset ?? 0)
+  const limit = Math.max(1, query.limit ?? 50)
+  q = q.range(offset, offset + limit - 1)
+
+  const { data, error, count } = await q
+  if (error) throw error
+
+  type RawIntervention = {
+    id: string
+    scheduled_at: string
+    status: string
+    mission_id: string
+    skipped_reason: string | null
+    mission?: unknown
+  }
+
+  function pickOne<T>(value: unknown): T | null {
+    if (Array.isArray(value)) return (value[0] as T) ?? null
+    return (value as T | null) ?? null
+  }
+
+  const raw = (data ?? []) as unknown as RawIntervention[]
+  const items: SupervisorInterventionRow[] = raw.map((r) => {
+    const missionRaw = pickOne<{ name: string; site?: unknown }>(r.mission)
+    const siteRaw = missionRaw ? pickOne<{ name: string; contract?: unknown }>(missionRaw.site) : null
+    const contractRaw = siteRaw
+      ? pickOne<{ id: string; name: string; client_name: string }>(siteRaw.contract)
+      : null
+    return {
+      id: r.id,
+      scheduled_at: r.scheduled_at,
+      status: r.status,
+      mission_id: r.mission_id,
+      skipped_reason: r.skipped_reason,
+      mission: missionRaw
+        ? {
+            name: missionRaw.name,
+            site: siteRaw ? { name: siteRaw.name, contract: contractRaw } : null,
+          }
+        : null,
+    }
+  })
+
+  return { items, total: count ?? 0 }
+}
+
 export async function listInterventionsByContract(contractId: string): Promise<DbIntervention[]> {
   // Through sites and missions
   const supabase = createAdminClient()

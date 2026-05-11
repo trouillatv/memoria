@@ -5,8 +5,51 @@ import type { DbTender, DbTenderDocument, DbTenderAnalysis, TenderStatus } from 
 export interface TenderListQuery {
   status?: TenderStatus
   search?: string
+  /** 0-based offset. */
+  offset?: number
+  /** Max items returned. */
+  limit?: number
 }
 
+export interface TenderListResult {
+  items: DbTender[]
+  total: number
+}
+
+/**
+ * Liste paginée des AO du tenant.
+ * Filtres optionnels : status, search (title + client_name).
+ * Renvoie items + total pour permettre la pagination côté UI.
+ */
+export async function listTendersPaged(query: TenderListQuery = {}): Promise<TenderListResult> {
+  const supabase = await createServerClient()
+  let q = supabase
+    .from('tenders')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at', { count: 'exact' })
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  if (query.status) q = q.eq('status', query.status)
+  if (query.search) {
+    const s = query.search.replace(/[%_]/g, '\\$&')
+    q = q.or(`title.ilike.%${s}%,client_name.ilike.%${s}%`)
+  }
+
+  const offset = Math.max(0, query.offset ?? 0)
+  const limit = Math.max(1, query.limit ?? 50)
+  q = q.range(offset, offset + limit - 1)
+
+  const { data, error, count } = await q
+  if (error) throw error
+  return {
+    items: (data ?? []) as DbTender[],
+    total: count ?? 0,
+  }
+}
+
+/**
+ * Variante legacy non paginée — conservée pour compat. Renvoie l'array brut.
+ */
 export async function listTenders(query: TenderListQuery = {}): Promise<DbTender[]> {
   const supabase = await createServerClient()
   let q = supabase

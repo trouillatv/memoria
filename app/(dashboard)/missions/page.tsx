@@ -1,10 +1,21 @@
 import Link from 'next/link'
-import { Calendar, ClipboardList } from 'lucide-react'
+import { Calendar, ClipboardList, SearchX } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { FiltersBar } from '@/components/ui/filters-bar'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { PaginationBar } from '@/components/ui/pagination-bar'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventions } from '@/lib/recurrence/ensure-today'
+import {
+  listInterventionsSupervisor,
+  type SupervisorDateRange,
+} from '@/lib/db/interventions'
+import { listSites } from '@/lib/db/sites'
+import type { InterventionStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
+
+const PAGE_SIZE = 50
 
 const STATUS_BADGES: Record<string, string> = {
   planned:     'bg-slate-50 border-slate-200 text-slate-700',
@@ -18,22 +29,57 @@ const STATUS_LABELS: Record<string, string> = {
   planned: 'Planifiée', in_progress: 'En cours', completed: 'Terminée', validated: 'Validée', skipped: 'Sautée',
 }
 
+const STATUS_OPTIONS: Array<{ value: InterventionStatus; label: string }> = [
+  { value: 'planned',     label: 'Planifiée' },
+  { value: 'in_progress', label: 'En cours' },
+  { value: 'completed',   label: 'Terminée' },
+  { value: 'validated',   label: 'Validée' },
+  { value: 'skipped',     label: 'Sautée' },
+]
+
+const DATE_OPTIONS: Array<{ value: SupervisorDateRange; label: string }> = [
+  { value: 'today', label: "Aujourd'hui" },
+  { value: '7d',    label: '7 derniers jours' },
+  { value: '30d',   label: '30 derniers jours' },
+  { value: 'all',   label: 'Toute la période' },
+]
+
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
 }
 
-export default async function MissionsPage() {
-  // Show all upcoming + recent interventions cross-contract
-  const supabase = createAdminClient()
-  const today = new Date().toISOString().split('T')[0]
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+function parsePage(raw: string | undefined): number {
+  if (!raw) return 1
+  const n = Number.parseInt(raw, 10)
+  if (!Number.isFinite(n) || n < 1) return 1
+  return n
+}
+
+function parseDateRange(raw: string | undefined): SupervisorDateRange {
+  if (raw === 'today' || raw === '7d' || raw === '30d' || raw === 'all') return raw
+  // Default: voir tout ce qui est de la veille à venir (similaire à l'ancien comportement).
+  // On expose explicitement '30d' comme défaut visible.
+  return '30d'
+}
+
+export default async function MissionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    date?: string
+    status?: string
+    site?: string
+    page?: string
+  }>
+}) {
+  const params = await searchParams
+  const page = parsePage(params.page)
+  const dateRange = parseDateRange(params.date)
+  const status = (params.status as InterventionStatus | undefined) || undefined
+  const siteId = params.site || undefined
 
   // Slice 6.3 — Génération paresseuse silencieuse à l'échelle tenant.
-  // On scope par tous les templates actifs (RLS standard côté DB). Le helper
-  // est idempotent et silencieux (try/catch) — n'altère pas le rendu en cas
-  // d'échec. daysAhead=1 : on génère uniquement aujourd'hui pour le first paint
-  // superviseur (les 6 prochains jours seront générés au boot suivant ou par
-  // cron complémentaire à ajouter en complément si besoin futur).
+  const supabase = createAdminClient()
   const { data: activeTemplates } = await supabase
     .from('intervention_templates')
     .select('id')
@@ -44,57 +90,23 @@ export default async function MissionsPage() {
     await ensureTodayInterventions({ templateIds: activeTemplateIds, daysAhead: 1 })
   }
 
-  const { data: interventions } = await supabase
-    .from('interventions')
-    .select(`
-      id, scheduled_at, status, mission_id, skipped_reason,
-      mission:missions(id, name, site_id, site:sites(id, name, contract_id, contract:contracts(id, name, client_name)))
-    `)
-    .gte('scheduled_at', `${yesterday}T00:00:00`)
-    .order('scheduled_at', { ascending: true })
-    .limit(100)
+  // Fetch list of sites for the dropdown (sobre, tenant-scope via RLS admin).
+  const sites = await listSites()
 
-  // Supabase typing returns relations as arrays; normalize first
-  type RawIntervention = {
-    id: string
-    scheduled_at: string
-    status: string
-    mission_id: string
-    skipped_reason: string | null
-    mission?: unknown
-  }
-  type NormalizedItem = {
-    id: string
-    scheduled_at: string
-    status: string
-    skipped_reason: string | null
-    mission?: { name: string; site?: { name: string; contract?: { id: string; name: string; client_name: string } | null } | null } | null
-  }
-
-  function pickOne<T>(value: unknown): T | null {
-    if (Array.isArray(value)) return (value[0] as T) ?? null
-    return (value as T | null) ?? null
-  }
-
-  const raw = (interventions ?? []) as unknown as RawIntervention[]
-  const items: NormalizedItem[] = raw.map((r) => {
-    const missionRaw = pickOne<{ name: string; site?: unknown }>(r.mission)
-    const siteRaw = missionRaw ? pickOne<{ name: string; contract?: unknown }>(missionRaw.site) : null
-    const contractRaw = siteRaw ? pickOne<{ id: string; name: string; client_name: string }>(siteRaw.contract) : null
-    return {
-      id: r.id,
-      scheduled_at: r.scheduled_at,
-      status: r.status,
-      skipped_reason: r.skipped_reason,
-      mission: missionRaw
-        ? {
-            name: missionRaw.name,
-            site: siteRaw ? { name: siteRaw.name, contract: contractRaw } : null,
-          }
-        : null,
-    }
+  const { items, total } = await listInterventionsSupervisor({
+    dateRange,
+    status,
+    siteId,
+    offset: (page - 1) * PAGE_SIZE,
+    limit: PAGE_SIZE,
   })
 
+  const hasActiveFilters = Boolean(
+    (params.date && params.date !== '30d') || params.status || params.site,
+  )
+  const isEmpty = total === 0
+
+  const today = new Date().toISOString().split('T')[0]
   const upcoming = items.filter((i) => i.scheduled_at.split('T')[0] >= today)
   const past = items.filter((i) => i.scheduled_at.split('T')[0] < today)
 
@@ -108,17 +120,55 @@ export default async function MissionsPage() {
         <p className="text-sm text-muted-foreground">Vue cross-contrats des interventions à venir et récentes.</p>
       </header>
 
-      {upcoming.length === 0 && past.length === 0 && (
+      <FiltersBar
+        hideSearch
+        hasActiveFilters={hasActiveFilters}
+        resetParams={['date', 'status', 'site']}
+      >
+        <FilterSelect
+          paramName="date"
+          label="Période"
+          emptyLabel="30 derniers jours"
+          options={DATE_OPTIONS}
+        />
+        <FilterSelect
+          paramName="status"
+          label="Statut"
+          emptyLabel="Tous les statuts"
+          options={STATUS_OPTIONS}
+        />
+        <FilterSelect
+          paramName="site"
+          label="Site"
+          emptyLabel="Tous les sites"
+          options={sites.map((s) => ({ value: s.id, label: s.name }))}
+        />
+      </FiltersBar>
+
+      {isEmpty && hasActiveFilters && (
+        <div className="rounded-lg border bg-card">
+          <EmptyState
+            icon={SearchX}
+            title="Aucune intervention ne correspond à ces filtres"
+            description="Essayez de modifier ou de retirer les filtres."
+            primaryAction={
+              <Link href="/missions" className={cn(buttonVariants({ variant: 'outline' }))}>
+                Réinitialiser les filtres
+              </Link>
+            }
+            variant="compact"
+          />
+        </div>
+      )}
+
+      {isEmpty && !hasActiveFilters && (
         <div className="rounded-lg border bg-card">
           <EmptyState
             icon={ClipboardList}
             title="Aucune intervention planifiée"
             description="Créez une mission depuis un contrat actif, ou ajoutez une récurrence pour générer automatiquement des interventions chaque jour."
             primaryAction={
-              <Link
-                href="/contracts"
-                className={cn(buttonVariants({ variant: 'default' }))}
-              >
+              <Link href="/contracts" className={cn(buttonVariants({ variant: 'default' }))}>
                 Voir mes contrats
               </Link>
             }
@@ -147,6 +197,8 @@ export default async function MissionsPage() {
           </ul>
         </section>
       )}
+
+      <PaginationBar page={page} pageSize={PAGE_SIZE} total={total} />
     </div>
   )
 }

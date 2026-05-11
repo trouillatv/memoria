@@ -24,6 +24,48 @@ export async function listContracts(): Promise<DbContract[]> {
   return data ?? []
 }
 
+export interface ContractListQuery {
+  status?: ContractStatus
+  search?: string
+  offset?: number
+  limit?: number
+}
+
+export interface ContractListResult {
+  items: DbContract[]
+  total: number
+}
+
+/**
+ * Liste paginée des contrats du tenant.
+ * Filtres optionnels : status, search (name + client_name).
+ */
+export async function listContractsPaged(query: ContractListQuery = {}): Promise<ContractListResult> {
+  const supabase = createAdminClient()
+  let q = supabase
+    .from('contracts')
+    .select('*', { count: 'exact' })
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  if (query.status) q = q.eq('status', query.status)
+  if (query.search) {
+    const s = query.search.replace(/[%_]/g, '\\$&')
+    q = q.or(`name.ilike.%${s}%,client_name.ilike.%${s}%`)
+  }
+
+  const offset = Math.max(0, query.offset ?? 0)
+  const limit = Math.max(1, query.limit ?? 50)
+  q = q.range(offset, offset + limit - 1)
+
+  const { data, error, count } = await q
+  if (error) throw error
+  return {
+    items: (data ?? []) as DbContract[],
+    total: count ?? 0,
+  }
+}
+
 export async function createContract(input: {
   tender_id: string | null
   name: string

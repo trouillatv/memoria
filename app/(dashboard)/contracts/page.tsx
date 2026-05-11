@@ -1,11 +1,17 @@
 import Link from 'next/link'
-import { FileCheck } from 'lucide-react'
+import { FileCheck, SearchX } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
-import { listContracts } from '@/lib/db/contracts'
+import { FiltersBar } from '@/components/ui/filters-bar'
+import { FilterSelect } from '@/components/ui/filter-select'
+import { PaginationBar } from '@/components/ui/pagination-bar'
+import { listContractsPaged } from '@/lib/db/contracts'
 import { countEngagementsByContracts } from '@/lib/db/engagements'
+import type { ContractStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
+
+const PAGE_SIZE = 50
 
 const STATUS_COLORS: Record<string, string> = {
   active:     'bg-emerald-50 border-emerald-200 text-emerald-700',
@@ -14,11 +20,39 @@ const STATUS_COLORS: Record<string, string> = {
   archived:   'bg-muted border-border text-muted-foreground',
 }
 
-export default async function ContractsPage() {
-  const contracts = await listContracts()
+const CONTRACT_STATUS_OPTIONS: Array<{ value: ContractStatus; label: string }> = [
+  { value: 'active',     label: 'Actif' },
+  { value: 'paused',     label: 'En pause' },
+  { value: 'terminated', label: 'Terminé' },
+  { value: 'archived',   label: 'Archivé' },
+]
+
+function parsePage(raw: string | undefined): number {
+  if (!raw) return 1
+  const n = Number.parseInt(raw, 10)
+  if (!Number.isFinite(n) || n < 1) return 1
+  return n
+}
+
+export default async function ContractsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; search?: string; page?: string }>
+}) {
+  const params = await searchParams
+  const page = parsePage(params.page)
+  const { items: contracts, total } = await listContractsPaged({
+    status: params.status as ContractStatus | undefined,
+    search: params.search,
+    offset: (page - 1) * PAGE_SIZE,
+    limit: PAGE_SIZE,
+  })
 
   // Single query for all engagement counts, no N+1
   const countByContract = await countEngagementsByContracts(contracts.map((c) => c.id))
+
+  const hasActiveFilters = Boolean(params.status || params.search)
+  const isEmpty = total === 0
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -31,12 +65,40 @@ export default async function ContractsPage() {
         </div>
       </div>
 
+      <FiltersBar
+        searchPlaceholder="Rechercher un contrat…"
+        hasActiveFilters={hasActiveFilters}
+        resetParams={['status', 'search']}
+      >
+        <FilterSelect
+          paramName="status"
+          label="Statut"
+          emptyLabel="Tous les statuts"
+          options={CONTRACT_STATUS_OPTIONS}
+        />
+      </FiltersBar>
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{contracts.length} contrat{contracts.length > 1 ? 's' : ''}</CardTitle>
+          <CardTitle className="text-base">{total} contrat{total > 1 ? 's' : ''}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {contracts.length === 0 ? (
+          {isEmpty && hasActiveFilters ? (
+            <EmptyState
+              icon={SearchX}
+              title="Aucun contrat ne correspond à votre recherche"
+              description="Essayez de modifier ou de retirer vos filtres."
+              primaryAction={
+                <Link
+                  href="/contracts"
+                  className={cn(buttonVariants({ variant: 'outline' }))}
+                >
+                  Réinitialiser les filtres
+                </Link>
+              }
+              variant="compact"
+            />
+          ) : isEmpty ? (
             <EmptyState
               icon={FileCheck}
               title="Aucun contrat actif"
@@ -97,6 +159,8 @@ export default async function ContractsPage() {
           )}
         </CardContent>
       </Card>
+
+      <PaginationBar page={page} pageSize={PAGE_SIZE} total={total} />
     </div>
   )
 }
