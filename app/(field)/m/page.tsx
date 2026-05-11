@@ -1,27 +1,12 @@
 import Link from 'next/link'
 import { ArrowRight, MapPin, Clock, CheckCircle2, CalendarDays } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsByAgent } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
-
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planifiée',
-  in_progress: 'En cours',
-  completed: 'Terminée',
-  validated: 'Validée',
-  skipped: 'Sautée',
-}
-
-const STATUS_BADGES: Record<string, string> = {
-  planned: 'bg-slate-50 border-slate-200 text-slate-700',
-  in_progress: 'bg-sky-100 border-sky-300 text-sky-800',
-  completed: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-  validated: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped: 'bg-amber-50 border-amber-200 text-amber-800',
-}
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
@@ -232,9 +217,7 @@ function InterventionCard({
           <div className="min-w-0 flex-1">
             {(primary || isSkipped) && (
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium uppercase tracking-wider ${STATUS_BADGES[status] ?? STATUS_BADGES.planned}`}>
-                  {STATUS_LABELS[status] ?? status}
-                </span>
+                <StatusBadge status={status} />
                 {isSkipped && skippedReason && (
                   <span
                     className="text-[11px] text-amber-900/80 italic truncate"

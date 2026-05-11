@@ -11,28 +11,17 @@ import {
   listInterventionsSupervisor,
   type SupervisorDateRange,
 } from '@/lib/db/interventions'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { listSites } from '@/lib/db/sites'
 import type { InterventionStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 50
 
-const STATUS_BADGES: Record<string, string> = {
-  planned:     'bg-slate-50 border-slate-200 text-slate-700',
-  in_progress: 'bg-sky-50 border-sky-200 text-sky-700',
-  completed:   'bg-indigo-50 border-indigo-200 text-indigo-700',
-  validated:   'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped:     'bg-amber-50 border-amber-200 text-amber-800',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planifiée', in_progress: 'En cours', completed: 'Terminée', validated: 'Validée', skipped: 'Sautée',
-}
-
 const STATUS_OPTIONS: Array<{ value: InterventionStatus; label: string }> = [
   { value: 'planned',     label: 'Planifiée' },
   { value: 'in_progress', label: 'En cours' },
-  { value: 'completed',   label: 'Terminée' },
+  { value: 'completed',   label: 'Exécutée' },
   { value: 'validated',   label: 'Validée' },
   { value: 'skipped',     label: 'Sautée' },
 ]
@@ -231,9 +220,7 @@ function InterventionRow({ item }: { item: { id: string; scheduled_at: string; s
             </div>
           )}
         </div>
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] uppercase font-semibold tracking-widest shrink-0 ${STATUS_BADGES[item.status] ?? STATUS_BADGES.planned}`}>
-          {STATUS_LABELS[item.status] ?? item.status}
-        </span>
+        <StatusBadge status={item.status} className="shrink-0" />
       </Link>
     </li>
   )
