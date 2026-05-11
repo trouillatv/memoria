@@ -5,24 +5,9 @@ import { getContract } from '@/lib/db/contracts'
 import { listInterventionsByContract } from '@/lib/db/interventions'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listSitesByContract } from '@/lib/db/sites'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { ContractTabs } from '../contract-tabs'
 import { CreateInterventionInline } from './create-intervention-inline'
-
-const STATUS_COLORS: Record<string, string> = {
-  planned:     'bg-slate-50 border-slate-200 text-slate-700',
-  in_progress: 'bg-sky-50 border-sky-200 text-sky-700',
-  completed:   'bg-indigo-50 border-indigo-200 text-indigo-700',
-  validated:   'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped:     'bg-muted border-border text-muted-foreground',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  planned:     'Planifiée',
-  in_progress: 'En cours',
-  completed:   'Terminée',
-  validated:   'Validée',
-  skipped:     'Annulée',
-}
 
 function formatScheduledAt(iso: string): { date: string; time: string } {
   const d = new Date(iso)
@@ -100,9 +85,7 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] uppercase font-semibold tracking-widest ${STATUS_COLORS[i.status] ?? STATUS_COLORS.planned}`}>
-                          {STATUS_LABELS[i.status] ?? i.status}
-                        </span>
+                        <StatusBadge status={i.status} />
                         <Link
                           href={`/interventions/${i.id}`}
                           className="text-xs hover:underline whitespace-nowrap"
@@ -140,9 +123,7 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
                         <div className="text-xs text-muted-foreground">{site?.name ?? '—'}</div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] uppercase font-semibold tracking-widest ${STATUS_COLORS[i.status] ?? STATUS_COLORS.planned}`}>
-                          {STATUS_LABELS[i.status] ?? i.status}
-                        </span>
+                        <StatusBadge status={i.status} />
                         <Link
                           href={`/interventions/${i.id}`}
                           className="text-xs hover:underline whitespace-nowrap"

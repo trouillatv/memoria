@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { getContract } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
@@ -100,9 +101,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       <header className="space-y-1">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">{contract.name}</h1>
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium uppercase tracking-wider bg-emerald-50 border-emerald-200 text-emerald-700">
-            {contract.status}
-          </span>
+          <StatusBadge status={contract.status} size="md" />
         </div>
         <p className="text-sm text-muted-foreground">
           {contract.client_name} · démarré le {startLabel}

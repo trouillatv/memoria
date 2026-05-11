@@ -11,26 +11,11 @@ import {
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { ExecutionPanel } from './execution-panel'
 import { AnomaliesPanel } from './anomalies-panel'
 import { ValidationPanel } from './validation-panel'
 import { SkipInterventionTriggerSupervisor } from './skip-trigger'
-
-const STATUS_LABELS: Record<string, string> = {
-  planned:     'Planifiée',
-  in_progress: 'En cours',
-  completed:   'Terminée',
-  validated:   'Validée',
-  skipped:     'Sautée',
-}
-
-const STATUS_BADGES: Record<string, string> = {
-  planned:     'bg-slate-50 border-slate-200 text-slate-700',
-  in_progress: 'bg-sky-50 border-sky-200 text-sky-700',
-  completed:   'bg-indigo-50 border-indigo-200 text-indigo-700',
-  validated:   'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped:     'bg-amber-50 border-amber-200 text-amber-800',
-}
 
 export default async function InterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -89,9 +74,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
       <header className="space-y-2">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold">{mission?.name ?? 'Intervention'}</h1>
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium uppercase tracking-wider ${STATUS_BADGES[intervention.status] ?? STATUS_BADGES.planned}`}>
-            {STATUS_LABELS[intervention.status] ?? intervention.status}
-          </span>
+          <StatusBadge status={intervention.status} size="md" />
           {showProofLink && (
             <Link
               href={`/preuves/${intervention.id}`}

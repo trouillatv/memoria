@@ -28,6 +28,7 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
 import { ProofPhotoGrid } from './ProofPhotoGrid'
@@ -35,22 +36,6 @@ import { ProofChecklist } from './ProofChecklist'
 import { ProofValidations } from './ProofValidations'
 import { ProofAnomalies } from './ProofAnomalies'
 import { PrepareDossierButton } from './PrepareDossierButton'
-
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planifiée',
-  in_progress: 'En cours',
-  completed: 'Exécutée',
-  validated: 'Validée',
-  skipped: 'Sautée',
-}
-
-const STATUS_BADGES: Record<string, string> = {
-  planned: 'bg-slate-50 border-slate-200 text-slate-700',
-  in_progress: 'bg-sky-50 border-sky-200 text-sky-700',
-  completed: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-  validated: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped: 'bg-amber-50 border-amber-200 text-amber-800',
-}
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -118,7 +103,11 @@ export default async function ProofDetailPage({ params }: PageProps) {
               </span>
             </div>
           </div>
-          <StatusBadge status={proof.status} skipped={!!proof.skipped_at} />
+          <StatusBadge
+            status={proof.skipped_at ? 'skipped' : proof.status}
+            size="md"
+            className="shrink-0"
+          />
         </div>
 
         {proof.skipped_at && (
@@ -269,19 +258,6 @@ function Stat({
         <dd className="text-sm font-medium">{value}</dd>
       </div>
     </div>
-  )
-}
-
-function StatusBadge({ status, skipped }: { status: string; skipped: boolean }) {
-  const effective = skipped ? 'skipped' : status
-  const label = STATUS_LABELS[effective] ?? effective
-  const cls = STATUS_BADGES[effective] ?? STATUS_BADGES.planned
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] uppercase font-semibold tracking-widest shrink-0 ${cls}`}
-    >
-      {label}
-    </span>
   )
 }
 

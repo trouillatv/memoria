@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trash2, Edit3, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
+import { StatusBadge } from '@/components/ui/status-badge'
 import {
   curateEngagementAction,
   rejectEngagementsAction,
@@ -158,8 +159,8 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
                         conf. {e.ai_confidence?.toFixed(2) ?? '—'}
                       </span>
                       {e.status !== 'extracted' && (
-                        <span className="text-[10px] uppercase font-semibold text-emerald-700 ml-auto">
-                          {e.status}
+                        <span className="ml-auto">
+                          <StatusBadge status={e.status} />
                         </span>
                       )}
                     </div>

@@ -1,14 +1,13 @@
 import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
-import { buttonVariants } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
 import { listContracts } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
+import { getOnboardingProgress } from '@/lib/db/onboarding'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
-import { cn } from '@/lib/utils'
+import { WelcomeCard } from './WelcomeCard'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
@@ -119,7 +118,10 @@ async function summarizeContract(contractId: string, contractName: string, clien
 }
 
 export default async function DashboardPage() {
-  const contracts = await listContracts()
+  const [contracts, onboarding] = await Promise.all([
+    listContracts(),
+    getOnboardingProgress(),
+  ])
   const summaries = await Promise.all(
     contracts.map((c) => summarizeContract(c.id, c.name, c.client_name, c.status)),
   )
@@ -128,6 +130,11 @@ export default async function DashboardPage() {
   const others = summaries.filter((s) => s.status !== 'active')
   const attention = active.filter((s) => s.needsAttention)
   const ok = active.filter((s) => !s.needsAttention)
+
+  // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
+  // au-dessus du contenu existant. Le rideau tombe automatiquement dès qu'un
+  // contrat actif est créé : doctrine = aucune action user requise.
+  const showWelcome = !onboarding.hasActiveContract
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -141,65 +148,39 @@ export default async function DashboardPage() {
         </p>
       </header>
 
-      {contracts.length === 0 ? (
-        <div className="rounded-lg border bg-card">
-          <EmptyState
-            icon={Sparkles}
-            title="Commencez par votre premier AO"
-            description="NetoIAge vous accompagne du dépouillement de l'appel d'offres à la production des preuves d'exécution. Tout commence par l'import d'un AO."
-            primaryAction={
-              <Link
-                href="/tenders/new"
-                className={cn(buttonVariants({ variant: 'default' }))}
-              >
-                Importer un AO
-              </Link>
-            }
-            secondaryAction={
-              <Link
-                href="/contracts"
-                className={cn(buttonVariants({ variant: 'outline' }))}
-              >
-                Voir mes contrats
-              </Link>
-            }
-          />
-        </div>
-      ) : (
-        <>
-          {attention.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                Demandent attention ({attention.length})
-              </h2>
-              <ul className="space-y-2">
-                {attention.map((c) => <ContractRow key={c.id} summary={c} />)}
-              </ul>
-            </section>
-          )}
+      {showWelcome && <WelcomeCard progress={onboarding} />}
 
-          {ok.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                En bonne progression ({ok.length})
-              </h2>
-              <ul className="space-y-2">
-                {ok.map((c) => <ContractRow key={c.id} summary={c} />)}
-              </ul>
-            </section>
-          )}
+      {attention.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Demandent attention ({attention.length})
+          </h2>
+          <ul className="space-y-2">
+            {attention.map((c) => <ContractRow key={c.id} summary={c} />)}
+          </ul>
+        </section>
+      )}
 
-          {others.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                Inactifs ({others.length})
-              </h2>
-              <ul className="space-y-2">
-                {others.map((c) => <ContractRow key={c.id} summary={c} muted />)}
-              </ul>
-            </section>
-          )}
-        </>
+      {ok.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            En bonne progression ({ok.length})
+          </h2>
+          <ul className="space-y-2">
+            {ok.map((c) => <ContractRow key={c.id} summary={c} />)}
+          </ul>
+        </section>
+      )}
+
+      {others.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Inactifs ({others.length})
+          </h2>
+          <ul className="space-y-2">
+            {others.map((c) => <ContractRow key={c.id} summary={c} muted />)}
+          </ul>
+        </section>
       )}
     </div>
   )

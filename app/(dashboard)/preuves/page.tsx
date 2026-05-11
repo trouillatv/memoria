@@ -29,6 +29,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
 import { PaginationBar } from '@/components/ui/pagination-bar'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSites } from '@/lib/db/sites'
@@ -37,22 +38,6 @@ import { searchProofs, type ProofIntervention } from '@/lib/db/proofs'
 import { DateRangeFilter } from './DateRangeFilter'
 
 const PAGE_SIZE = 50
-
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planifiée',
-  in_progress: 'En cours',
-  completed: 'Exécutée',
-  validated: 'Validée',
-  skipped: 'Sautée',
-}
-
-const STATUS_BADGES: Record<string, string> = {
-  planned: 'bg-slate-50 border-slate-200 text-slate-700',
-  in_progress: 'bg-sky-50 border-sky-200 text-sky-700',
-  completed: 'bg-indigo-50 border-indigo-200 text-indigo-700',
-  validated: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped: 'bg-amber-50 border-amber-200 text-amber-800',
-}
 
 interface PageProps {
   searchParams: Promise<{
@@ -228,7 +213,10 @@ function ProofRow({ item }: { item: ProofIntervention }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-sm font-semibold truncate">{item.title}</span>
-            <StatusChip status={item.status} skipped={!!item.skipped_at} />
+            <StatusBadge
+              status={item.skipped_at ? 'skipped' : item.status}
+              className="shrink-0"
+            />
           </div>
           <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
             <MapPin className="h-3 w-3 shrink-0" aria-hidden />
@@ -270,15 +258,3 @@ function ProofRow({ item }: { item: ProofIntervention }) {
   )
 }
 
-function StatusChip({ status, skipped }: { status: string; skipped: boolean }) {
-  const effective = skipped ? 'skipped' : status
-  const label = STATUS_LABELS[effective] ?? effective
-  const cls = STATUS_BADGES[effective] ?? STATUS_BADGES.planned
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] uppercase font-semibold tracking-widest shrink-0 ${cls}`}
-    >
-      {label}
-    </span>
-  )
-}
