@@ -12,6 +12,8 @@ import {
   insertPhoto,
   createAnomaly,
 } from '@/lib/db/interventions'
+import { markInterventionSkipped } from '@/lib/db/intervention-templates'
+import { logAuditEvent } from '@/lib/audit/log'
 
 async function requireFieldAgent(): Promise<{ userId: string } | { error: string }> {
   const supabase = await createServerClient()
@@ -181,6 +183,68 @@ export async function createAnomalyMobileAction(formData: FormData) {
   })
 
   revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  return { ok: true as const }
+}
+
+// ----- Skip intervention ("Pas aujourd'hui", raison obligatoire) -----
+//
+// Doctrine Slice 6.4 :
+//   - Wording « Pas aujourd'hui », jamais « Annuler / Reporter / Skip » côté UX.
+//   - Raison obligatoire (texte libre, min 3 chars, max 500).
+//   - Un appel = un skip. Pas de mass-skip.
+//   - Bouton uniquement sur intervention `status === 'planned'` — refuse sinon.
+//   - Audit log best-effort (`mission.status_changed`, metadata={reason, skip: true}).
+
+const skipSchema = z.object({
+  intervention_id: z.string().uuid(),
+  reason: z.string().trim().min(3, 'La raison doit faire au moins 3 caractères').max(500),
+})
+
+export async function skipInterventionAction(formData: FormData) {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return auth
+
+  const parsed = skipSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    reason: formData.get('reason'),
+  })
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Données invalides' }
+  }
+
+  const intervention = await getIntervention(parsed.data.intervention_id)
+  if (!intervention) return { ok: false as const, error: 'Intervention introuvable' }
+
+  // Refuse si déjà commencée / terminée / déjà sautée — cohérence métier.
+  if (intervention.status !== 'planned') {
+    return {
+      ok: false as const,
+      error:
+        intervention.status === 'skipped'
+          ? 'Cette intervention est déjà marquée « pas aujourd’hui »'
+          : 'Cette intervention est déjà commencée',
+    }
+  }
+
+  await markInterventionSkipped(
+    parsed.data.intervention_id,
+    parsed.data.reason,
+    auth.userId
+  )
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'mission',
+    entityId: parsed.data.intervention_id,
+    action: 'status_changed',
+    metadata: { to: 'skipped', reason: parsed.data.reason, source: 'mobile' },
+  })
+
+  revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  revalidatePath('/m')
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  revalidatePath('/missions')
+
   return { ok: true as const }
 }
 

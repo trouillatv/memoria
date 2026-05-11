@@ -11,6 +11,7 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: 'En cours',
   completed: 'Terminée',
   validated: 'Validée',
+  skipped: 'Sautée',
 }
 
 const STATUS_BADGES: Record<string, string> = {
@@ -18,6 +19,11 @@ const STATUS_BADGES: Record<string, string> = {
   in_progress: 'bg-sky-100 border-sky-300 text-sky-800',
   completed: 'bg-indigo-50 border-indigo-200 text-indigo-700',
   validated: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  skipped: 'bg-amber-50 border-amber-200 text-amber-800',
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
 }
 
 function formatScheduledTime(iso: string): { day: string; time: string; isToday: boolean; isPast: boolean } {
@@ -128,6 +134,7 @@ export default async function FieldHomePage() {
                   siteName={site?.name ?? null}
                   scheduledAt={i.scheduled_at}
                   status={i.status}
+                  skippedReason={i.skipped_reason}
                   primary
                 />
               )
@@ -162,6 +169,7 @@ export default async function FieldHomePage() {
                   siteName={site?.name ?? null}
                   scheduledAt={i.scheduled_at}
                   status={i.status}
+                  skippedReason={i.skipped_reason}
                   primary={false}
                 />
               )
@@ -193,6 +201,7 @@ function InterventionCard({
   siteName,
   scheduledAt,
   status,
+  skippedReason,
   primary,
 }: {
   interventionId: string
@@ -200,33 +209,47 @@ function InterventionCard({
   siteName: string | null
   scheduledAt: string
   status: string
+  skippedReason: string | null
   primary: boolean
 }) {
   const { day, time, isToday } = formatScheduledTime(scheduledAt)
   const isInProgress = status === 'in_progress'
   const isCompleted = status === 'completed' || status === 'validated'
+  const isSkipped = status === 'skipped'
 
   return (
     <li>
       <Link
         href={`/m/intervention/${interventionId}`}
         className={`block rounded-xl border p-4 transition-colors active:bg-muted/40 ${
-          primary
-            ? 'bg-card border-foreground/10 hover:bg-muted/20'
-            : 'bg-muted/20 border-border hover:bg-muted/30'
+          isSkipped
+            ? 'bg-muted/30 border-border opacity-70 hover:bg-muted/40'
+            : primary
+              ? 'bg-card border-foreground/10 hover:bg-muted/20'
+              : 'bg-muted/20 border-border hover:bg-muted/30'
         }`}
         style={{ minHeight: primary ? 96 : 72 }}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {primary && (
-              <div className="flex items-center gap-2 mb-2">
+            {(primary || isSkipped) && (
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium uppercase tracking-wider ${STATUS_BADGES[status] ?? STATUS_BADGES.planned}`}>
                   {STATUS_LABELS[status] ?? status}
                 </span>
+                {isSkipped && skippedReason && (
+                  <span
+                    className="text-[11px] text-amber-900/80 italic truncate"
+                    title={skippedReason}
+                  >
+                    — {truncate(skippedReason, 50)}
+                  </span>
+                )}
               </div>
             )}
-            <div className="font-semibold text-base mb-1">{missionName}</div>
+            <div className={`font-semibold text-base mb-1 ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
+              {missionName}
+            </div>
             {siteName && (
               <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -241,7 +264,7 @@ function InterventionCard({
               </span>
             </div>
           </div>
-          {primary && !isCompleted && (
+          {primary && !isCompleted && !isSkipped && (
             <div className="flex flex-col items-center justify-center shrink-0">
               <div className="rounded-full bg-foreground text-background px-4 py-3 text-sm font-medium flex items-center gap-1" style={{ minHeight: 64, minWidth: 64 }}>
                 {isInProgress ? 'Reprendre' : 'Commencer'}
@@ -254,7 +277,7 @@ function InterventionCard({
               ✓
             </div>
           )}
-          {!primary && (
+          {(!primary || isSkipped) && (
             <ArrowRight className="h-4 w-4 text-muted-foreground mt-1 shrink-0" />
           )}
         </div>
