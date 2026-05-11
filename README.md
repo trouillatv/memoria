@@ -1,66 +1,151 @@
 # NetoIAge
 
-SaaS B2B pour entreprises de nettoyage professionnel : appels d'offres avec IA, gestion terrain mobile-first, rapports & bibliothèque AGP.
+> B2B SaaS pour entreprises de nettoyage français — **système de capital de preuves**.
+
+Pas un logiciel de nettoyage. Pas un outil IA AO. Un système qui transforme chaque
+intervention exécutée en preuve réutilisable :
+
+**AO gagné → Engagements extraits → Contrat → Missions → Interventions →
+Photos + Validations → Boucle de preuve → Réutilisation dans nouveaux AO**
+
+## Doctrine
+
+Le produit est gouverné par 4 principes immuables :
+
+1. **Le planning sert la preuve, pas la gestion des humains.** Pas d'`assigned_to`,
+   pas de `shift`, pas de rotation, pas de calendrier visuel, pas de KPI agent.
+2. **Anonymisation par défaut.** Les exports parlent d'"équipe terrain" — jamais
+   de prénoms. Override admin uniquement pour usage juridique.
+3. **Chaîne immuable.** Engagement → Mission → Intervention → Preuve. Aucun
+   bypass de niveau.
+4. **Sobriété calme.** Pas d'alerte rouge, pas de gamification, pas de tracking
+   analytics côté utilisateur.
+
+Détail complet : [`docs/superpowers/doctrines/planning-doctrine.md`](docs/superpowers/doctrines/planning-doctrine.md)
 
 ## Stack
 
-- **Frontend** : Next.js 16 + TypeScript + Tailwind v4 + shadcn/ui
-- **Backend** : Supabase Cloud (Postgres + Auth + Storage)
-- **IA** : multi-provider (mock / gemini / anthropic) via abstraction commune
+- Next.js 16 (App Router, Turbopack, Server Actions, Server Components)
+- TypeScript 5
+- Tailwind v4 (CSS-first @theme)
+- shadcn/ui + base-ui
+- Supabase Cloud (Postgres + Auth + Storage)
+- vitest 4 + @testing-library/react
+- @react-pdf/renderer pour les exports PDF horodatés
+- pg_trgm pour le matching cross-tender (Phase 4)
 
-## Démarrage local
+## Setup local
 
-1. **Cloner le repo** et `cd` dedans
-2. **Node.js 20+** requis (via nvm recommandé)
-3. **Installer les deps** :
+1. **Cloner et installer**
    ```bash
+   git clone https://github.com/trouillatv/netoiage.git
+   cd netoiage
    npm install
    ```
-4. **Variables d'environnement** : copier `.env.example` vers `.env.local` et remplir avec les valeurs de votre projet Supabase Cloud (URL + anon key + service_role key + access token).
-5. **Appliquer les migrations** sur votre projet Supabase Cloud :
+
+2. **Variables d'environnement** — copier `.env.example` vers `.env.local` et remplir :
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+   SUPABASE_SERVICE_ROLE_KEY=<service-role>
+   # AI provider (mock par défaut)
+   AI_PROVIDER=mock  # ou 'gemini' / 'anthropic'
+   # GOOGLE_GENAI_API_KEY=... ou ANTHROPIC_API_KEY=... selon le provider
+   INITIAL_ADMIN_EMAIL=admin@netoiage.nc
+   INITIAL_ADMIN_PASSWORD=netoiage2026
+   ```
+
+3. **Appliquer les migrations** (22 migrations `supabase/migrations/*.sql`) :
    ```bash
    npm run db:push
    ```
-6. **Créer l'admin initial** :
+
+4. **Créer l'admin initial** :
    ```bash
    npm run db:bootstrap-admin
    ```
-7. **Démarrer le dev server** :
+
+5. **Seeder les données de démo** :
+   ```bash
+   npm run db:seed-demo
+   ```
+   Crée 3 contrats (CHU Régional / Banque Centrale / École Jean Jaurès) +
+   1 AO démo en cours + templates de récurrence + interventions générées.
+
+6. **Lancer le dev server** :
    ```bash
    npm run dev
    ```
-   Ouvrir http://localhost:3000 et se connecter avec les valeurs de `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD`.
+   Ouvrir http://localhost:3000 et se connecter avec `INITIAL_ADMIN_EMAIL` /
+   `INITIAL_ADMIN_PASSWORD`.
 
-## Documentation
+## Commandes utiles
 
-- **Spec** : `docs/superpowers/specs/2026-05-09-netoiage-mvp-design.md`
-- **Plans d'implémentation** : `docs/superpowers/plans/`
-- **Review Plans 1-3** : `docs/REVIEW-PLANS-1-3.md`
+```bash
+npm run typecheck     # 0 erreur attendu
+npm run lint
+npm test              # vitest run — 337 tests (41 files passed, 1 skipped)
+npm run build && npm start  # mode prod (plus rapide qu'en dev pour la démo)
 
-## Securite
+# Smoke tests programmatiques (DB réelle, .env.local requis)
+npx tsx scripts/phase4-smoke.ts  # cross-tender matching
+npx tsx scripts/phase5-smoke.ts  # dossier de preuves
+npx tsx scripts/phase6-smoke.ts  # récurrence
+```
 
-### Tokens et secrets
+## Routes principales
 
-- **Aucun secret réel ne doit être commité dans ce repo.** `.env.local` est gitignored.
-- Si un token Supabase ou autre clé API a été exposé dans un chat, des logs, un message ou tout canal non-privé : **révoquer immédiatement le token concerné** et en générer un neuf.
-  - Tokens Supabase CLI : https://supabase.com/dashboard/account/tokens
-  - Service role keys : régénérables depuis le dashboard du projet Supabase
-- Le mot de passe `INITIAL_ADMIN_PASSWORD` est temporaire — il est forcé à être changé à la première connexion (`must_change_password` flag).
+| Route | Rôle | Quoi |
+|---|---|---|
+| `/login` | tous | Auth Supabase |
+| `/dashboard` | admin/manager | Cockpit exécutif (contrats actifs, alertes) |
+| `/tenders` | admin/manager | Liste AO + import + copilote IA |
+| `/tenders/[id]` | admin/manager | Mémoire technique, engagements, panel "Évidence disponible" |
+| `/contracts` | admin/manager | Liste contrats avec boucle de preuve |
+| `/contracts/[id]` | admin/manager | Cockpit contrat : sites, missions, récurrences, engagements |
+| `/missions` | admin/manager | Liste interventions filtrable (site/date/statut) |
+| `/preuves` | admin/manager | Dossier de preuves — recherche, détail, export PDF + partage |
+| `/m` | chef_equipe | Mobile field : missions du jour, capture photo, anomalies |
+| `/p/[token]` | public | Vue partagée d'une preuve (sans login) |
+| `/account` | tous | Profil + mot de passe |
+| `/admin/users` | admin | Gestion équipe |
 
-### Headers HTTP
+## Structure dossier
 
-À activer avant production : Content-Security-Policy, HSTS, X-Frame-Options. Pas configurés au MVP.
+- `app/(dashboard)/` — écrans desktop superviseur
+- `app/(field)/` — écrans mobile agent terrain (`/m`)
+- `app/(auth)/` — flow auth
+- `app/p/[token]/` — route publique anonymisée
+- `lib/db/` — helpers DB par entité (15 modules)
+- `lib/recurrence/` — moteur de récurrence
+- `lib/pdf/` — générateur PDF preuves
+- `services/ai/` — abstraction providers IA (mock/gemini/anthropic)
+- `supabase/migrations/` — schéma DB
+- `docs/superpowers/` — doctrine, plans, notes, specs
 
-## Scripts npm
+## Branches
 
-- `npm run dev` — serveur de dev (Turbopack)
-- `npm run build` — build production
-- `npm run typecheck` — `tsc --noEmit`
-- `npm test` — tests Vitest
-- `npm run db:push` — applique les migrations Supabase
-- `npm run db:bootstrap-admin` — crée l'utilisateur admin initial
-- `npm run gen:icons` — régénère les icônes PWA
+- `main` — production, déployé
+- `feat/<feature-name>` — feature branches, mergées via PR
 
-## Tests
+## Doc
 
-8 tests Vitest en place (audit logging, knowledge tags, AI mock provider, AI orchestrator). CI GitHub Actions sur push/PR vers main.
+- [`docs/superpowers/doctrines/planning-doctrine.md`](docs/superpowers/doctrines/planning-doctrine.md) — doctrine immuable
+- [`docs/superpowers/notes/2026-05-phase4-cross-tender-matching.md`](docs/superpowers/notes/2026-05-phase4-cross-tender-matching.md)
+- [`docs/superpowers/notes/2026-05-phase5-dossier-de-preuves.md`](docs/superpowers/notes/2026-05-phase5-dossier-de-preuves.md)
+- [`docs/superpowers/notes/2026-05-phase6-recurrence-simple.md`](docs/superpowers/notes/2026-05-phase6-recurrence-simple.md)
+- [`docs/superpowers/notes/2026-05-pilote-terrain-prep.md`](docs/superpowers/notes/2026-05-pilote-terrain-prep.md) — kit handoff pilote terrain
+
+## Sécurité
+
+- **Aucun secret réel ne doit être commité.** `.env.local` est gitignored.
+- Si un token Supabase ou autre clé API a été exposé (chat, logs, message) :
+  **révoquer immédiatement** et régénérer. Tokens Supabase CLI :
+  https://supabase.com/dashboard/account/tokens
+- Le mot de passe `INITIAL_ADMIN_PASSWORD` est temporaire — forcé à être changé
+  à la première connexion (flag `must_change_password`).
+- Headers HTTP à activer avant production : CSP, HSTS, X-Frame-Options.
+
+## License
+
+Propriétaire — usage interne NetoIAge / Aurélie Trouillat.
