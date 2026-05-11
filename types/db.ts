@@ -257,6 +257,27 @@ export interface DbMission {
 
 export type InterventionStatus = 'planned' | 'in_progress' | 'completed' | 'validated' | 'skipped'
 
+// Phase 6 — Récurrence simple
+export type InterventionFrequency = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'one_shot'
+export type InterventionSlot = 'morning' | 'afternoon' | 'evening'
+
+export interface DbInterventionTemplate {
+  id: string
+  mission_id: string
+  title: string
+  description: string | null
+  frequency: InterventionFrequency
+  slots: InterventionSlot[] | null
+  day_of_week: number | null
+  day_of_month: number | null
+  starts_on: string  // date ISO (YYYY-MM-DD)
+  ends_on: string | null
+  active: boolean
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
 export interface DbIntervention {
   id: string
   mission_id: string
@@ -268,6 +289,13 @@ export interface DbIntervention {
   created_at: string
   updated_at: string
   created_by: string | null
+  // Phase 6 — Récurrence simple
+  template_id: string | null
+  scheduled_for: string | null  // date ISO (YYYY-MM-DD)
+  slot: InterventionSlot | null
+  skipped_at: string | null
+  skipped_reason: string | null
+  skipped_by: string | null
 }
 
 export interface DbInterventionChecklistItem {
