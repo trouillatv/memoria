@@ -253,6 +253,8 @@ export interface DbMission {
   updated_at: string
   deleted_at: string | null
   created_by: string | null
+  // Phase 9 — Vue Semaine & Équipes (doctrine V2)
+  assigned_team_id: string | null
 }
 
 export type InterventionStatus = 'planned' | 'in_progress' | 'completed' | 'validated' | 'skipped'
@@ -296,6 +298,34 @@ export interface DbIntervention {
   skipped_at: string | null
   skipped_reason: string | null
   skipped_by: string | null
+  // Phase 9 — Vue Semaine & Équipes (doctrine V2)
+  assigned_team_id: string | null
+}
+
+// =================================
+// Phase 9 — Vue Semaine & Équipes (doctrine V2)
+// =================================
+
+// Doctrine V2 : conteneur logistique de couverture. JAMAIS unité analytique.
+// Pas de champ score / capacity / max_load / charge_max / performance.
+export interface DbTeam {
+  id: string
+  name: string
+  color: string | null
+  active: boolean
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
+// Composition d'équipe variable dans le temps.
+// left_at IS NULL = membre actif. Sinon = membre passé (historique conservé).
+export interface DbTeamMember {
+  id: string
+  team_id: string
+  user_id: string
+  joined_at: string
+  left_at: string | null
 }
 
 export interface DbInterventionChecklistItem {
