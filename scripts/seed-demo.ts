@@ -35,6 +35,10 @@ import {
   createValidation,
   createAnomaly,
 } from '@/lib/db/interventions'
+import {
+  createTemplate,
+  generateInterventionsFromTemplates,
+} from '@/lib/db/intervention-templates'
 import type {
   ChecklistTemplateItem,
   EngagementCategory,
@@ -43,6 +47,8 @@ import type {
   PhotoKind,
   MissionCadence,
   DbEngagement,
+  InterventionFrequency,
+  InterventionSlot,
 } from '@/types/db'
 
 // ---------------------------------------------------------------------------
@@ -248,6 +254,160 @@ async function findContractByName(
     .is('deleted_at', null)
     .maybeSingle()
   return data?.id ?? null
+}
+
+/**
+ * Looks up a mission by exact name on a given site. Used by the recurrence
+ * seed to attach templates to existing missions without depending on the
+ * order or IDs returned by createMission earlier in the seed.
+ */
+async function findMissionByName(
+  supabase: SupabaseAdmin,
+  siteId: string,
+  name: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('missions')
+    .select('id')
+    .eq('site_id', siteId)
+    .eq('name', name)
+    .is('deleted_at', null)
+    .maybeSingle()
+  return data?.id ?? null
+}
+
+/**
+ * Liste les sites d'un contrat (utilisé par le seed récurrences pour
+ * retrouver missions par site sans dépendre des IDs précédemment retournés).
+ */
+async function listSitesForContract(
+  supabase: SupabaseAdmin,
+  contractId: string
+): Promise<Array<{ id: string; name: string }>> {
+  const { data, error } = await supabase
+    .from('sites')
+    .select('id, name')
+    .eq('contract_id', contractId)
+    .is('deleted_at', null)
+  if (error) throw error
+  return data ?? []
+}
+
+/**
+ * Signature d'un template récurrent — utilisée pour l'idempotence du seed.
+ * On considère qu'un template est déjà présent s'il existe sur la même
+ * (mission_id, frequency, day_of_week, day_of_month, slots) — peu importe le
+ * titre. L'utilisateur peut renommer un template depuis l'UI sans qu'on le
+ * recrée derrière son dos.
+ */
+interface TemplateSeedParams {
+  title: string
+  description?: string | null
+  frequency: InterventionFrequency
+  slots?: InterventionSlot[] | null
+  day_of_week?: number | null
+  day_of_month?: number | null
+  starts_on?: string
+  ends_on?: string | null
+}
+
+function slotsKey(slots: InterventionSlot[] | null | undefined): string {
+  if (!slots || slots.length === 0) return '∅'
+  return [...slots].sort().join('+')
+}
+
+async function upsertTemplate(
+  supabase: SupabaseAdmin,
+  missionId: string,
+  params: TemplateSeedParams,
+  createdBy: string
+): Promise<{ id: string; created: boolean }> {
+  // Charge tous les templates existants de la mission (deleted_at null) puis
+  // matche en mémoire sur la signature (frequency + slots + day_of_week +
+  // day_of_month). Plus simple à raisonner qu'un WHERE composite avec NULLs.
+  const { data: existing, error } = await supabase
+    .from('intervention_templates')
+    .select('id, frequency, slots, day_of_week, day_of_month')
+    .eq('mission_id', missionId)
+    .is('deleted_at', null)
+  if (error) throw error
+
+  const targetKey = `${params.frequency}|${slotsKey(params.slots)}|${params.day_of_week ?? '∅'}|${params.day_of_month ?? '∅'}`
+  for (const t of existing ?? []) {
+    const k = `${t.frequency}|${slotsKey(t.slots as InterventionSlot[] | null)}|${t.day_of_week ?? '∅'}|${t.day_of_month ?? '∅'}`
+    if (k === targetKey) {
+      return { id: t.id as string, created: false }
+    }
+  }
+
+  const created = await createTemplate({
+    mission_id: missionId,
+    title: params.title,
+    description: params.description ?? null,
+    frequency: params.frequency,
+    slots: params.slots ?? null,
+    day_of_week: params.day_of_week ?? null,
+    day_of_month: params.day_of_month ?? null,
+    starts_on: params.starts_on ?? isoDate(new Date()),
+    ends_on: params.ends_on ?? null,
+    created_by: createdBy,
+  })
+  return { id: created.id, created: true }
+}
+
+/**
+ * Pour chaque (siteName → missionName → templates[]), crée idempotemment les
+ * templates et retourne les IDs créés ou retrouvés. À appeler une fois les
+ * missions du contrat existantes.
+ */
+async function seedTemplatesForContract(
+  supabase: SupabaseAdmin,
+  contractId: string,
+  contractLabel: string,
+  spec: Array<{
+    siteName: string
+    missionName: string
+    templates: TemplateSeedParams[]
+  }>,
+  adminId: string
+): Promise<string[]> {
+  const sites = await listSitesForContract(supabase, contractId)
+  const siteByName = new Map(sites.map((s) => [s.name, s.id]))
+  const ids: string[] = []
+  let created = 0
+  let reused = 0
+  let missingMission = 0
+
+  for (const entry of spec) {
+    const siteId = siteByName.get(entry.siteName)
+    if (!siteId) {
+      console.log(`    ↳ Site '${entry.siteName}' not found, skipping templates`)
+      continue
+    }
+    const missionId = await findMissionByName(supabase, siteId, entry.missionName)
+    if (!missionId) {
+      missingMission++
+      continue
+    }
+    for (const tpl of entry.templates) {
+      const { id, created: wasCreated } = await upsertTemplate(
+        supabase,
+        missionId,
+        tpl,
+        adminId
+      )
+      ids.push(id)
+      if (wasCreated) created++
+      else reused++
+    }
+  }
+
+  console.log(
+    `  ↳ [${contractLabel}] Templates récurrence : ${created} créés / ${reused} réutilisés${
+      missingMission ? ` (${missingMission} missions introuvables)` : ''
+    }`
+  )
+  return ids
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,6 +1562,247 @@ async function seedDemoTenderSainteMarie(adminId: string, supabase: SupabaseAdmi
 }
 
 // ---------------------------------------------------------------------------
+// RECURRENCES — Phase 6 (Slice 6.6)
+//
+// On définit des templates crédibles métier par contrat. Le seed est
+// idempotent : relancer la commande ne crée pas de doublons (signature
+// frequency+slots+day_of_week+day_of_month par mission). Après création, on
+// lance une génération paresseuse sur 7 jours pour rendre la démo
+// immédiatement vivante.
+// ---------------------------------------------------------------------------
+
+const TODAY_ISO = isoDate(new Date())
+
+// CHU Régional — mission spécifique par site (Tour Médecine / Tour Chirurgie /
+// Bâtiment Annexe). Bionettoyage 2x/jour, couloirs quotidiens en semaine,
+// audit hebdomadaire.
+function chuRecurrenceSpec() {
+  const sites = ['Tour Médecine', 'Tour Chirurgie', 'Bâtiment Annexe']
+  return sites.map((siteName) => ({
+    siteName,
+    missions: [
+      {
+        missionName: 'Bionettoyage quotidien sanitaires',
+        templates: [
+          {
+            title: 'Sanitaires — bionettoyage 2x/jour',
+            frequency: 'daily' as InterventionFrequency,
+            slots: ['morning', 'evening'] as InterventionSlot[],
+            starts_on: TODAY_ISO,
+          },
+        ],
+      },
+      {
+        missionName: 'Nettoyage couloirs',
+        templates: [
+          {
+            title: 'Couloirs — passage quotidien matin',
+            frequency: 'weekdays' as InterventionFrequency,
+            slots: ['morning'] as InterventionSlot[],
+            starts_on: TODAY_ISO,
+          },
+        ],
+      },
+      {
+        missionName: 'Audit qualité',
+        templates: [
+          {
+            title: 'Audit Hygiène Hospitalière — hebdomadaire (jeudi)',
+            frequency: 'weekly' as InterventionFrequency,
+            day_of_week: 4, // jeudi
+            slots: ['morning'] as InterventionSlot[],
+            starts_on: TODAY_ISO,
+          },
+        ],
+      },
+    ],
+  }))
+}
+
+// Banque Centrale — un seul site. Quotidien postes + vitres mensuelles.
+function banqueRecurrenceSpec() {
+  return [
+    {
+      siteName: 'Banque Centrale — Siège',
+      missions: [
+        {
+          missionName: 'Nettoyage quotidien étages',
+          templates: [
+            {
+              title: 'Postes & sanitaires — passage soir 5j/7',
+              frequency: 'weekdays' as InterventionFrequency,
+              slots: ['evening'] as InterventionSlot[],
+              starts_on: TODAY_ISO,
+            },
+            {
+              title: 'Sanitaires — passage renforcé 2x/jour',
+              frequency: 'daily' as InterventionFrequency,
+              slots: ['morning', 'afternoon'] as InterventionSlot[],
+              starts_on: TODAY_ISO,
+            },
+          ],
+        },
+        {
+          missionName: 'Vitres mensuelles',
+          templates: [
+            {
+              title: 'Vitres — passage mensuel (1er du mois)',
+              frequency: 'monthly' as InterventionFrequency,
+              day_of_month: 1,
+              slots: null,
+              starts_on: TODAY_ISO,
+            },
+          ],
+        },
+      ],
+    },
+  ]
+}
+
+// École Jean Jaurès — école principale + annexe maternelle.
+function ecoleRecurrenceSpec() {
+  return [
+    {
+      siteName: 'École principale',
+      missions: [
+        {
+          missionName: 'Nettoyage quotidien classes',
+          templates: [
+            {
+              title: 'Salles de classe — passage soir 5j/7',
+              frequency: 'weekdays' as InterventionFrequency,
+              slots: ['evening'] as InterventionSlot[],
+              starts_on: TODAY_ISO,
+            },
+          ],
+        },
+        {
+          missionName: 'Cantine 2x/jour HACCP',
+          templates: [
+            {
+              title: 'Cantine — après repas (HACCP, 5j/7)',
+              frequency: 'weekdays' as InterventionFrequency,
+              slots: ['afternoon'] as InterventionSlot[],
+              starts_on: TODAY_ISO,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      siteName: 'Annexe maternelle',
+      missions: [
+        {
+          missionName: 'Gymnase hebdo',
+          templates: [
+            {
+              title: 'Gymnase — passage hebdomadaire (mercredi)',
+              frequency: 'weekly' as InterventionFrequency,
+              day_of_week: 3, // mercredi
+              slots: ['evening'] as InterventionSlot[],
+              starts_on: TODAY_ISO,
+            },
+          ],
+        },
+      ],
+    },
+  ]
+}
+
+/**
+ * Aplatie la spec hiérarchique (site → mission → templates) au format attendu
+ * par seedTemplatesForContract.
+ */
+function flattenRecurrenceSpec(
+  spec: Array<{
+    siteName: string
+    missions: Array<{
+      missionName: string
+      templates: TemplateSeedParams[]
+    }>
+  }>
+): Array<{ siteName: string; missionName: string; templates: TemplateSeedParams[] }> {
+  const out: Array<{ siteName: string; missionName: string; templates: TemplateSeedParams[] }> = []
+  for (const s of spec) {
+    for (const m of s.missions) {
+      out.push({ siteName: s.siteName, missionName: m.missionName, templates: m.templates })
+    }
+  }
+  return out
+}
+
+/**
+ * Seed des templates de récurrence sur les 3 contrats démo, puis génération
+ * paresseuse 7 jours sur l'ensemble des templates ainsi créés/retrouvés.
+ */
+async function seedRecurrences(adminId: string, supabase: SupabaseAdmin) {
+  console.log('🔁 Seeding récurrences (Phase 6) ...')
+  const allTemplateIds: string[] = []
+
+  const chuId = await findContractByName(supabase, CHU_CONTRACT_NAME)
+  if (chuId) {
+    const ids = await seedTemplatesForContract(
+      supabase,
+      chuId,
+      'CHU',
+      flattenRecurrenceSpec(chuRecurrenceSpec()),
+      adminId
+    )
+    allTemplateIds.push(...ids)
+  } else {
+    console.log('  ↳ [CHU] contrat absent, skip')
+  }
+
+  const banqueId = await findContractByName(supabase, BANQUE_CONTRACT_NAME)
+  if (banqueId) {
+    const ids = await seedTemplatesForContract(
+      supabase,
+      banqueId,
+      'Banque',
+      flattenRecurrenceSpec(banqueRecurrenceSpec()),
+      adminId
+    )
+    allTemplateIds.push(...ids)
+  } else {
+    console.log('  ↳ [Banque] contrat absent, skip')
+  }
+
+  const ecoleId = await findContractByName(supabase, ECOLE_CONTRACT_NAME)
+  if (ecoleId) {
+    const ids = await seedTemplatesForContract(
+      supabase,
+      ecoleId,
+      'École',
+      flattenRecurrenceSpec(ecoleRecurrenceSpec()),
+      adminId
+    )
+    allTemplateIds.push(...ids)
+  } else {
+    console.log('  ↳ [École] contrat absent, skip')
+  }
+
+  if (allTemplateIds.length === 0) {
+    console.log('  ↳ Aucun template à générer (contrats démo absents)')
+    return
+  }
+
+  // Génération paresseuse 7 jours pour rendre la démo immédiatement vivante.
+  // Idempotente via UNIQUE (template_id, scheduled_for, slot) — re-running le
+  // seed ne dupliquera pas les interventions générées.
+  const fromDate = TODAY_ISO
+  const toDate = isoDate(daysFromNow(6)) // 7 jours inclus
+  const result = await generateInterventionsFromTemplates({
+    fromDate,
+    toDate,
+    templateIds: allTemplateIds,
+  })
+  console.log(
+    `  ↳ Génération 7 jours : ${result.generated} interventions créées / ` +
+      `${result.skipped} déjà présentes / ${result.templatesProcessed} templates`
+  )
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
@@ -1436,6 +1837,8 @@ async function main() {
 
   console.log('🏥 Seeding Demo Tender — Hôpital Sainte-Marie (AO en cours)...')
   await seedDemoTenderSainteMarie(adminId, supabase)
+
+  await seedRecurrences(adminId, supabase)
 
   console.log('✅ Seed complete')
 }
