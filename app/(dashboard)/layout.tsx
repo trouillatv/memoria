@@ -1,3 +1,4 @@
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { AppSidebar } from '@/components/layout/AppSidebar'
@@ -8,9 +9,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user) redirect('/login')
   if (user.must_change_password) redirect('/change-password')
 
-  // chef_equipe (agent terrain) ne doit PAS voir le dashboard desktop.
+  const pathname = (await headers()).get('x-pathname') ?? ''
+  const isAccountPage = pathname.startsWith('/account')
+
+  // chef_equipe (agent terrain) ne doit PAS voir le dashboard desktop —
+  // SAUF la page /account, accessible à tous les rôles.
   // Belt + suspenders avec le check role dans app/(field)/layout.tsx.
-  if (user.role === 'chef_equipe') redirect('/m')
+  if (user.role === 'chef_equipe' && !isAccountPage) redirect('/m')
 
   const fullName = user.full_name || user.email
   return (

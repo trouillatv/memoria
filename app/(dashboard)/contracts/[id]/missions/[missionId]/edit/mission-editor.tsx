@@ -130,14 +130,14 @@ export function MissionEditor({ mode, contractId, sites, engagements, initialMis
       {/* Engagement linkage */}
       <div className="space-y-3 rounded-lg border bg-card p-4">
         <div>
-          <h3 className="text-sm font-semibold">Engagements couverts</h3>
+          <h3 className="text-sm font-semibold">Promesses du contrat couvertes</h3>
           <p className="text-[11px] text-muted-foreground">
-            Cochez les engagements contractuels que cette mission permet de tenir. C&apos;est ce qui alimentera la Boucle de preuve.
+            Cochez les promesses contractuelles que cette mission permet de tenir. C&apos;est ce qui alimentera la Boucle de preuve.
           </p>
         </div>
 
         {engagements.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">Aucun engagement actif sur ce contrat.</p>
+          <p className="text-xs text-muted-foreground italic">Aucune promesse active sur ce contrat.</p>
         ) : (
           <div className="space-y-1.5 max-h-72 overflow-y-auto">
             {engagements.map((e) => {
@@ -149,13 +149,12 @@ export function MissionEditor({ mode, contractId, sites, engagements, initialMis
                     <div className="text-sm font-medium">{e.short_label}</div>
                     <div className="text-[11px] text-muted-foreground italic line-clamp-1">« {e.source_excerpt} »</div>
                   </div>
-                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground shrink-0">{e.category}</span>
                 </label>
               )
             })}
           </div>
         )}
-        <p className="text-[11px] text-muted-foreground">{engagementIds.length} engagement{engagementIds.length > 1 ? 's' : ''} sélectionné{engagementIds.length > 1 ? 's' : ''}</p>
+        <p className="text-[11px] text-muted-foreground">{engagementIds.length} promesse{engagementIds.length > 1 ? 's' : ''} sélectionnée{engagementIds.length > 1 ? 's' : ''}</p>
       </div>
 
       {/* Checklist template */}

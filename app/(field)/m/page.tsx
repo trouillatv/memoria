@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { ArrowRight, MapPin, Clock } from 'lucide-react'
+import { ArrowRight, MapPin, Clock, CheckCircle2, CalendarDays } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsByAgent } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
@@ -109,7 +110,16 @@ export default async function FieldHomePage() {
   })
 
   if (interventions.length === 0) {
-    return <EmptyState />
+    return (
+      <div className="rounded-lg border bg-card max-w-md">
+        <EmptyState
+          icon={CheckCircle2}
+          title="Pas d'intervention prévue aujourd'hui"
+          description="Profitez de votre journée. Vous serez prévenu au prochain ordre de mission."
+          variant="compact"
+        />
+      </div>
+    )
   }
 
   return (
@@ -144,11 +154,13 @@ export default async function FieldHomePage() {
       )}
 
       {todayInterventions.length === 0 && upcomingInterventions.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h1 className="text-xl font-semibold mb-2">Mes missions</h1>
-          <p className="text-base text-muted-foreground">
-            Vous n&apos;avez pas de mission aujourd&apos;hui. Voir les prochaines ci-dessous.
-          </p>
+        <div className="rounded-lg border bg-card">
+          <EmptyState
+            icon={CalendarDays}
+            title="Rien à faire aujourd'hui"
+            description={`Vous avez ${upcomingInterventions.length} intervention${upcomingInterventions.length > 1 ? 's' : ''} à venir cette semaine.`}
+            variant="compact"
+          />
         </div>
       )}
 
@@ -177,20 +189,6 @@ export default async function FieldHomePage() {
           </ul>
         </section>
       )}
-    </div>
-  )
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-lg border bg-card p-6 text-center max-w-md">
-      <h1 className="text-xl font-semibold mb-2">Mes missions</h1>
-      <p className="text-base text-muted-foreground">
-        Vous n&apos;avez pas de mission aujourd&apos;hui.
-      </p>
-      <p className="text-base text-muted-foreground mt-1">
-        À demain !
-      </p>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, MapPin } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, FileSearch } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -67,6 +67,17 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     intervention.status === 'skipped' || intervention.skipped_at !== null
   const isPlanned = intervention.status === 'planned'
 
+  // Slice B.5 — Raccourci vers le Dossier de preuves. Sobre, à droite du header.
+  // On le propose dès que la preuve a un intérêt : exécutée/validée/sautée,
+  // OU une trace existe déjà (photo, anomalie, validation).
+  const hasAnyTrace =
+    photos.length > 0 || anomalies.length > 0 || validation !== null
+  const showProofLink =
+    intervention.status === 'completed' ||
+    intervention.status === 'validated' ||
+    isSkipped ||
+    hasAnyTrace
+
   return (
     <div className="space-y-6 max-w-3xl">
       {site?.contract_id && (
@@ -76,11 +87,20 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
       )}
 
       <header className="space-y-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold">{mission?.name ?? 'Intervention'}</h1>
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium uppercase tracking-wider ${STATUS_BADGES[intervention.status] ?? STATUS_BADGES.planned}`}>
             {STATUS_LABELS[intervention.status] ?? intervention.status}
           </span>
+          {showProofLink && (
+            <Link
+              href={`/preuves/${intervention.id}`}
+              className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <FileSearch className="h-3.5 w-3.5" />
+              Voir dans Dossier de preuves
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
           <span className="inline-flex items-center gap-1">

@@ -1,0 +1,113 @@
+// Slice B.3 — Route GET /preuves/[id]/dossier
+// Génère un PDF "Dossier de preuves" on-demand (pas de storage).
+//
+// Doctrine impérative :
+//   - Auth obligatoire (admin/manager). Pas d'exposition publique : la version
+//     publique anonymisée passe par Slice B.4 = /p/[token].
+//   - Le ?tokenId=xxx (optionnel) charge un proof_share_tokens existant et hérite
+//     de son include_identities. Sinon, on prend la valeur de ?includeIdentities
+//     du query string (override admin direct, audit log côté server action seulement).
+//   - Anonymisation par défaut (includeIdentities=false).
+//   - PDF généré on-demand via @react-pdf/renderer.renderToBuffer. Le rendu est
+//     suffisamment rapide pour un download synchrone ; aucun storage long-terme.
+
+import { NextResponse } from 'next/server'
+import QRCode from 'qrcode'
+import { renderToBuffer } from '@react-pdf/renderer'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getProofDetail } from '@/lib/db/proofs'
+import { getShareTokenById } from '@/lib/db/proof-share'
+import { ProofDossierPdf } from '@/lib/pdf/proof-dossier'
+
+interface RouteCtx {
+  params: Promise<{ id: string }>
+}
+
+export async function GET(req: Request, ctx: RouteCtx) {
+  // 1. Auth — admin/manager uniquement.
+  const user = await getCurrentUserWithProfile()
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  }
+  if (user.role !== 'admin' && user.role !== 'manager') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  // 2. Resolve params + query.
+  const { id } = await ctx.params
+  const url = new URL(req.url)
+  const tokenIdParam = url.searchParams.get('tokenId')
+  const includeIdentitiesParam = url.searchParams.get('includeIdentities')
+
+  // 3. Resolve effective settings via le token si fourni, sinon depuis le query.
+  let includeIdentities = includeIdentitiesParam === 'true'
+  let shareUrl: string | null = null
+  let expiresAt: string | null = null
+
+  if (tokenIdParam) {
+    const tok = await getShareTokenById(tokenIdParam)
+    if (!tok) {
+      return NextResponse.json({ error: 'Token introuvable' }, { status: 404 })
+    }
+    if (tok.intervention_id !== id) {
+      return NextResponse.json({ error: 'Token incohérent' }, { status: 400 })
+    }
+    includeIdentities = tok.include_identities
+    expiresAt = tok.expires_at
+    // Reconstruit l'URL de partage publique pour l'afficher dans le footer du PDF.
+    const origin = url.origin
+    shareUrl = `${origin}/p/${tok.token}`
+  }
+
+  // 4. Charge le proof.
+  const proof = await getProofDetail(id)
+  if (!proof) {
+    return NextResponse.json({ error: 'Intervention introuvable' }, { status: 404 })
+  }
+
+  // 5. Génère le QR code (PNG data URL) si on a une shareUrl.
+  let qrDataUrl: string | null = null
+  if (shareUrl) {
+    try {
+      qrDataUrl = await QRCode.toDataURL(shareUrl, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        scale: 4,
+      })
+    } catch (e) {
+      console.warn('[dossier route] QR generation failed:', e)
+    }
+  }
+
+  // 6. Render le PDF.
+  let pdfBuffer: Buffer
+  try {
+    pdfBuffer = await renderToBuffer(
+      ProofDossierPdf({
+        proof,
+        qrDataUrl,
+        shareUrl,
+        generatedAt: new Date().toISOString(),
+        includeIdentities,
+        expiresAt,
+      }),
+    )
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'render error'
+    console.error('[dossier route] PDF render failed:', e)
+    return NextResponse.json({ error: `Erreur génération PDF: ${msg}` }, { status: 500 })
+  }
+
+  // 7. Response avec headers PDF.
+  const safeStub = id.slice(0, 8)
+  const filename = `dossier-preuves-${safeStub}.pdf`
+
+  // Convertir le Buffer Node en Uint8Array pour satisfaire BodyInit.
+  return new NextResponse(new Uint8Array(pdfBuffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+    },
+  })
+}

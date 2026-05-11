@@ -11,16 +11,6 @@ interface EvidencePanelProps {
   maxMatches?: number // default 8
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  frequency: 'text-sky-700 bg-sky-50 border-sky-200',
-  quality: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-  compliance: 'text-violet-700 bg-violet-50 border-violet-200',
-  delivery: 'text-orange-700 bg-orange-50 border-orange-200',
-  sla: 'text-amber-700 bg-amber-50 border-amber-200',
-  reporting: 'text-indigo-700 bg-indigo-50 border-indigo-200',
-  other: 'text-slate-700 bg-slate-50 border-slate-200',
-}
-
 function formatDuration(days: number | null): string | null {
   if (!days) return null
   if (days < 30) return `${days} jours`
@@ -153,27 +143,19 @@ function EvidenceCard({
   tenderId: string
   alreadyInsertedSet: Set<string>
 }) {
-  const categoryClass = CATEGORY_COLORS[engagement.category] ?? CATEGORY_COLORS.other
   const durationLabel = formatDuration(evidence.durationDays)
   const similarityPercent = Math.round(similarity * 100)
   const anomaliesTotal = evidence.anomaliesResolved + evidence.anomaliesOpen
 
   return (
     <li className="rounded-lg border bg-card p-3">
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold mb-0.5 line-clamp-2">
-            {engagement.short_label}
-          </div>
-          <div className="text-[11px] text-muted-foreground italic line-clamp-2">
-            « {engagement.source_excerpt} »
-          </div>
+      <div className="min-w-0 mb-2">
+        <div className="text-sm font-semibold mb-0.5 line-clamp-2">
+          {engagement.short_label}
         </div>
-        <span
-          className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] uppercase font-semibold tracking-widest shrink-0 ${categoryClass}`}
-        >
-          {engagement.category}
-        </span>
+        <div className="text-[11px] text-muted-foreground italic line-clamp-2">
+          « {engagement.source_excerpt} »
+        </div>
       </div>
 
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs my-3">

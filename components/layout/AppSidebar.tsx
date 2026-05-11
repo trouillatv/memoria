@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles } from 'lucide-react'
+import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 interface NavItem {
@@ -12,6 +12,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Tableau de bord',  icon: Sparkles,      roles: ['admin', 'manager'] },
   { href: '/missions',  label: 'Missions',         icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
+  { href: '/preuves',   label: 'Dossier de preuves', icon: FileSearch,   roles: ['admin', 'manager'] },
   { href: '/tenders',   label: "Appels d'offres",  icon: FileText,      roles: ['admin', 'manager'] },
   { href: '/contracts', label: 'Contrats',          icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/library',   label: 'Bibliothèque',     icon: BookOpen,      roles: ['admin', 'manager'] },
@@ -41,9 +42,15 @@ export function AppSidebar({ role, fullName }: { role: UserRole; fullName: strin
           </Link>
         ))}
       </nav>
-      <div className="border-t p-4">
-        <div className="text-xs text-muted-foreground">{fullName}</div>
-        <div className="text-xs">{role}</div>
+      <div className="border-t p-2">
+        <Link
+          href="/account"
+          className="block rounded-md px-2 py-2 hover:bg-accent transition-colors"
+          title="Mon compte"
+        >
+          <div className="text-xs text-muted-foreground truncate">{fullName}</div>
+          <div className="text-xs">{role}</div>
+        </Link>
       </div>
     </aside>
   )

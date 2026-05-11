@@ -8,18 +8,6 @@ import { EngagementCompliance } from './engagement-compliance'
 import { ContractTabs } from './contract-tabs'
 import type { EngagementComplianceRatios } from '@/types/db'
 
-function categoryColorClass(category: string): string {
-  switch (category) {
-    case 'frequency':  return 'text-sky-700 bg-sky-50 border-sky-200'
-    case 'quality':    return 'text-emerald-700 bg-emerald-50 border-emerald-200'
-    case 'compliance': return 'text-violet-700 bg-violet-50 border-violet-200'
-    case 'delivery':   return 'text-orange-700 bg-orange-50 border-orange-200'
-    case 'sla':        return 'text-amber-700 bg-amber-50 border-amber-200'
-    case 'reporting':  return 'text-indigo-700 bg-indigo-50 border-indigo-200'
-    default:           return 'text-slate-700 bg-slate-50 border-slate-200'
-  }
-}
-
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
 export default async function ContractPage({ params }: { params: Promise<{ id: string }> }) {
@@ -134,36 +122,31 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Engagements ({engagements.length})
+            Promesses du contrat ({engagements.length})
           </h2>
           {engagements.length > 0 && unplannedCount > 0 && (
             <Link
               href={`/contracts/${id}/missions`}
               className="text-xs text-muted-foreground hover:text-foreground hover:underline"
             >
-              {unplannedCount} engagement{unplannedCount > 1 ? 's' : ''} non couvert{unplannedCount > 1 ? 's' : ''} →
+              {unplannedCount} promesse{unplannedCount > 1 ? 's' : ''} non couverte{unplannedCount > 1 ? 's' : ''} →
             </Link>
           )}
         </div>
 
         {engagements.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border p-4">
-            Aucun engagement actif sur ce contrat.
+            Aucune promesse active sur ce contrat.
           </p>
         ) : (
           <ul className="space-y-3">
             {engagements.map((e) => (
               <li key={e.id} className="rounded-lg border p-4 bg-card">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold mb-0.5">{e.short_label}</div>
-                    <div className="text-[11px] text-muted-foreground italic line-clamp-2">
-                      « {e.source_excerpt} »
-                    </div>
+                <div className="min-w-0 mb-3">
+                  <div className="text-sm font-semibold mb-0.5">{e.short_label}</div>
+                  <div className="text-[11px] text-muted-foreground italic line-clamp-2">
+                    « {e.source_excerpt} »
                   </div>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] uppercase font-semibold tracking-widest shrink-0 ${categoryColorClass(e.category)}`}>
-                    {e.category}
-                  </span>
                 </div>
                 <EngagementCompliance ratios={computeRatios(e.id)} size="medium" />
               </li>
