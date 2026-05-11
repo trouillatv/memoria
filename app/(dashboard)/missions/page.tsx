@@ -1,7 +1,10 @@
 import Link from 'next/link'
-import { Calendar } from 'lucide-react'
+import { Calendar, ClipboardList } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventions } from '@/lib/recurrence/ensure-today'
+import { cn } from '@/lib/utils'
 
 const STATUS_BADGES: Record<string, string> = {
   planned:     'bg-slate-50 border-slate-200 text-slate-700',
@@ -106,11 +109,20 @@ export default async function MissionsPage() {
       </header>
 
       {upcoming.length === 0 && past.length === 0 && (
-        <div className="rounded-lg border bg-card p-6">
-          <p className="text-sm text-muted-foreground">
-            Aucune intervention planifiée. Créez-en une depuis un contrat dans l&apos;onglet{' '}
-            <Link href="/contracts" className="underline hover:text-foreground">Contrats</Link>.
-          </p>
+        <div className="rounded-lg border bg-card">
+          <EmptyState
+            icon={ClipboardList}
+            title="Aucune intervention planifiée"
+            description="Créez une mission depuis un contrat actif, ou ajoutez une récurrence pour générer automatiquement des interventions chaque jour."
+            primaryAction={
+              <Link
+                href="/contracts"
+                className={cn(buttonVariants({ variant: 'default' }))}
+              >
+                Voir mes contrats
+              </Link>
+            }
+          />
         </div>
       )}
 

@@ -1,11 +1,14 @@
 import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { listContracts } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
+import { cn } from '@/lib/utils'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
@@ -139,11 +142,28 @@ export default async function DashboardPage() {
       </header>
 
       {contracts.length === 0 ? (
-        <div className="rounded-lg border bg-card p-6">
-          <p className="text-sm text-muted-foreground">
-            Aucun contrat. Convertissez un AO finalisé via la page{' '}
-            <Link href="/tenders" className="underline hover:text-foreground">Appels d&apos;offres</Link> pour démarrer.
-          </p>
+        <div className="rounded-lg border bg-card">
+          <EmptyState
+            icon={Sparkles}
+            title="Commencez par votre premier AO"
+            description="NetoIAge vous accompagne du dépouillement de l'appel d'offres à la production des preuves d'exécution. Tout commence par l'import d'un AO."
+            primaryAction={
+              <Link
+                href="/tenders/new"
+                className={cn(buttonVariants({ variant: 'default' }))}
+              >
+                Importer un AO
+              </Link>
+            }
+            secondaryAction={
+              <Link
+                href="/contracts"
+                className={cn(buttonVariants({ variant: 'outline' }))}
+              >
+                Voir mes contrats
+              </Link>
+            }
+          />
         </div>
       ) : (
         <>

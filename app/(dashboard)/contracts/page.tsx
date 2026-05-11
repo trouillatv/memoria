@@ -1,7 +1,11 @@
 import Link from 'next/link'
+import { FileCheck } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 import { listContracts } from '@/lib/db/contracts'
 import { countEngagementsByContracts } from '@/lib/db/engagements'
+import { cn } from '@/lib/utils'
 
 const STATUS_COLORS: Record<string, string> = {
   active:     'bg-emerald-50 border-emerald-200 text-emerald-700',
@@ -33,12 +37,30 @@ export default async function ContractsPage() {
         </CardHeader>
         <CardContent className="p-0">
           {contracts.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-muted-foreground">
-              Aucun contrat. Convertissez un AO finalisé depuis la page{' '}
-              <Link href="/tenders" className="underline hover:text-foreground">
-                Appels d&apos;offres
-              </Link>.
-            </p>
+            <EmptyState
+              icon={FileCheck}
+              title="Aucun contrat actif"
+              description={
+                <>
+                  Convertissez un AO finalisé en contrat depuis la page{' '}
+                  <Link
+                    href="/tenders"
+                    className="text-foreground underline underline-offset-4 hover:no-underline"
+                  >
+                    Appels d&apos;offres
+                  </Link>
+                  . Le contrat devient le point d&apos;ancrage de vos missions et de la boucle de preuve.
+                </>
+              }
+              primaryAction={
+                <Link
+                  href="/tenders"
+                  className={cn(buttonVariants({ variant: 'default' }))}
+                >
+                  Voir mes AO
+                </Link>
+              }
+            />
           ) : (
             <ul className="divide-y">
               {contracts.map((c) => {
