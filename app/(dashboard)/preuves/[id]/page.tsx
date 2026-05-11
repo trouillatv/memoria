@@ -28,14 +28,13 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
 import { ProofPhotoGrid } from './ProofPhotoGrid'
 import { ProofChecklist } from './ProofChecklist'
 import { ProofValidations } from './ProofValidations'
 import { ProofAnomalies } from './ProofAnomalies'
+import { PrepareDossierButton } from './PrepareDossierButton'
 
 const STATUS_LABELS: Record<string, string> = {
   planned: 'Planifiée',
@@ -236,17 +235,17 @@ export default async function ProofDetailPage({ params }: PageProps) {
         </Card>
       )}
 
-      {/* Action principale (placeholder pour B.3) */}
+      {/* Action principale — Slice B.3 : dossier prêt en 2 minutes. */}
       <Card>
         <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h3 className="text-sm font-semibold">Préparer un dossier de preuves</h3>
             <p className="text-xs text-muted-foreground">
-              Génération d&apos;un PDF horodaté avec photos et QR de vérification.
-              Bientôt disponible.
+              PDF horodaté + QR de vérification + lien public temporaire.
+              Anonymisation par défaut.
             </p>
           </div>
-          <Button disabled>Préparer le dossier (PDF)</Button>
+          <PrepareDossierButton interventionId={proof.id} />
         </CardContent>
       </Card>
     </div>
