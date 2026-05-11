@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Calendar } from 'lucide-react'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ensureTodayInterventions } from '@/lib/recurrence/ensure-today'
 
 const STATUS_BADGES: Record<string, string> = {
   planned:     'bg-slate-50 border-slate-200 text-slate-700',
@@ -19,6 +20,22 @@ export default async function MissionsPage() {
   const supabase = createAdminClient()
   const today = new Date().toISOString().split('T')[0]
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  // Slice 6.3 — Génération paresseuse silencieuse à l'échelle tenant.
+  // On scope par tous les templates actifs (RLS standard côté DB). Le helper
+  // est idempotent et silencieux (try/catch) — n'altère pas le rendu en cas
+  // d'échec. daysAhead=1 : on génère uniquement aujourd'hui pour le first paint
+  // superviseur (les 6 prochains jours seront générés au boot suivant ou par
+  // cron complémentaire à ajouter en complément si besoin futur).
+  const { data: activeTemplates } = await supabase
+    .from('intervention_templates')
+    .select('id')
+    .eq('active', true)
+    .is('deleted_at', null)
+  const activeTemplateIds = (activeTemplates ?? []).map((t) => t.id)
+  if (activeTemplateIds.length > 0) {
+    await ensureTodayInterventions({ templateIds: activeTemplateIds, daysAhead: 1 })
+  }
 
   const { data: interventions } = await supabase
     .from('interventions')

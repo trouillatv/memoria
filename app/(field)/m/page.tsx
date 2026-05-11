@@ -4,6 +4,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsByAgent } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 
 const STATUS_LABELS: Record<string, string> = {
   planned: 'Planifiée',
@@ -40,10 +41,39 @@ function formatScheduledTime(iso: string): { day: string; time: string; isToday:
 export default async function FieldHomePage() {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
+
+  // Slice 6.3 — Génération paresseuse silencieuse AVANT le fetch des
+  // interventions du jour. On identifie les sites du chef_equipe via ses
+  // interventions existantes (où il est dans team[]), puis on déclenche la
+  // génération idempotente sur ces sites. La génération hérite du
+  // default_team de la mission pour rester visible côté agent.
+  // Si la génération échoue, le helper log silencieux + return zeros → le
+  // rendu de la page n'est jamais bloqué.
+  const supabase = createAdminClient()
+  const { data: agentInterventions } = await supabase
+    .from('interventions')
+    .select('mission:missions(site_id)')
+    .contains('team', [user.id])
+    .limit(200)
+  const agentSiteIds = Array.from(
+    new Set(
+      (agentInterventions ?? [])
+        .map((r) => {
+          const m = r.mission as { site_id?: string } | Array<{ site_id?: string }> | null
+          if (!m) return null
+          if (Array.isArray(m)) return m[0]?.site_id ?? null
+          return m.site_id ?? null
+        })
+        .filter((s): s is string => !!s)
+    )
+  )
+  if (agentSiteIds.length > 0) {
+    await ensureTodayInterventionsForSites(agentSiteIds, 1)
+  }
+
   const interventions = await listInterventionsByAgent(user.id)
 
   // Fetch missions + sites for context
-  const supabase = createAdminClient()
   const missionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))
   const missions = missionIds.length === 0
     ? []

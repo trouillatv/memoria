@@ -360,6 +360,24 @@ export async function generateInterventionsFromTemplates(params: {
     return { generated: 0, skipped: 0, templatesProcessed: 0 }
   }
 
+  // 4b. Fetch missions' default_team[] (héritage Slice 6.3) — les interventions
+  //    générées héritent du team par défaut de leur mission s'il existe, sinon
+  //    team=[]. Permet à un chef_equipe déjà membre de la team d'une mission
+  //    de voir automatiquement les interventions récurrentes sans intervention
+  //    manuelle (les filtres /m dépendent de `team` contains agent_id).
+  const missionIdsForTeam = Array.from(new Set(templates.map((t) => t.mission_id)))
+  const teamByMission = new Map<string, string[]>()
+  if (missionIdsForTeam.length > 0) {
+    const { data: missionsTeam, error: mtErr } = await supabase
+      .from('missions')
+      .select('id, default_team')
+      .in('id', missionIdsForTeam)
+    if (mtErr) throw mtErr
+    for (const m of missionsTeam ?? []) {
+      teamByMission.set(m.id, Array.isArray(m.default_team) ? m.default_team : [])
+    }
+  }
+
   // 5. Construire les rows à insérer
   type Row = {
     mission_id: string
@@ -382,6 +400,7 @@ export async function generateInterventionsFromTemplates(params: {
     const dates = enumerateDates(effectiveStart, effectiveEnd)
     const slots: (InterventionSlot | null)[] =
       tpl.slots && tpl.slots.length > 0 ? tpl.slots : [null]
+    const inheritedTeam = teamByMission.get(tpl.mission_id) ?? []
 
     for (const date of dates) {
       if (!matchesFrequency(tpl, date)) continue
@@ -394,7 +413,7 @@ export async function generateInterventionsFromTemplates(params: {
           scheduled_for: dateIso,
           slot,
           status: 'planned',
-          team: [],
+          team: inheritedTeam,
         })
       }
     }
