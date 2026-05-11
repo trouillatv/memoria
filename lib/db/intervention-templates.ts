@@ -467,6 +467,128 @@ export async function generateInterventionsFromTemplates(params: {
 }
 
 // ----------------------------------------------------------------------------
+// Stats par template (Slice 6.5)
+// ----------------------------------------------------------------------------
+
+/**
+ * Stats aggregate d'un template — jamais d'identité d'agent. Les chiffres
+ * servent au superviseur pour lire l'état de la récurrence d'un coup d'œil.
+ *
+ * - lastInterventionDate : date de la dernière intervention passée (<= today),
+ *   y compris executed / validated / planned / skipped.
+ * - lastInterventionStatus : status correspondant à lastInterventionDate.
+ * - nextInterventionDate : date de la prochaine intervention future (>= today)
+ *   non sautée.
+ * - interventionsThisWeek : nombre d'interventions planifiées entre today et
+ *   today+6 (inclus), hors skipped.
+ */
+export interface TemplateStats {
+  lastInterventionDate: string | null
+  lastInterventionStatus: InterventionStatus | null
+  nextInterventionDate: string | null
+  interventionsThisWeek: number
+}
+
+function todayUtcIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Stats pour un template unique. */
+export async function getTemplateStats(templateId: string): Promise<TemplateStats> {
+  const batch = await getTemplateStatsBatch([templateId])
+  return (
+    batch.get(templateId) ?? {
+      lastInterventionDate: null,
+      lastInterventionStatus: null,
+      nextInterventionDate: null,
+      interventionsThisWeek: 0,
+    }
+  )
+}
+
+/**
+ * Stats batchées — évite le N+1 sur la liste superviseur.
+ *
+ * Fetch UNE SEULE requête `interventions WHERE template_id IN (...)` puis
+ * réduit en mémoire (last/next/thisWeek). Coût ~ O(N) lignes pour la fenêtre
+ * de vie des templates listés ; acceptable pour un superviseur avec quelques
+ * dizaines de templates max.
+ */
+export async function getTemplateStatsBatch(
+  templateIds: string[]
+): Promise<Map<string, TemplateStats>> {
+  const out = new Map<string, TemplateStats>()
+  if (templateIds.length === 0) return out
+
+  // Initialisation par défaut pour chaque templateId
+  for (const id of templateIds) {
+    out.set(id, {
+      lastInterventionDate: null,
+      lastInterventionStatus: null,
+      nextInterventionDate: null,
+      interventionsThisWeek: 0,
+    })
+  }
+
+  const today = todayUtcIso()
+  const inSixDays = addDaysIso(today, 6)
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('interventions')
+    .select('template_id, scheduled_for, status, skipped_at')
+    .in('template_id', templateIds)
+  if (error) throw error
+
+  type Row = {
+    template_id: string | null
+    scheduled_for: string | null
+    status: InterventionStatus | null
+    skipped_at: string | null
+  }
+  for (const r of (data ?? []) as Row[]) {
+    if (!r.template_id || !r.scheduled_for) continue
+    const stats = out.get(r.template_id)
+    if (!stats) continue
+
+    // Last : <= today, max date — tous statuts confondus
+    if (r.scheduled_for <= today) {
+      if (
+        stats.lastInterventionDate === null ||
+        r.scheduled_for > stats.lastInterventionDate
+      ) {
+        stats.lastInterventionDate = r.scheduled_for
+        stats.lastInterventionStatus = r.status ?? null
+      }
+    }
+
+    // Next : >= today, hors skipped (skipped_at non null OU status='skipped')
+    const isSkipped = r.skipped_at !== null || r.status === 'skipped'
+    if (r.scheduled_for >= today && !isSkipped) {
+      if (
+        stats.nextInterventionDate === null ||
+        r.scheduled_for < stats.nextInterventionDate
+      ) {
+        stats.nextInterventionDate = r.scheduled_for
+      }
+    }
+
+    // ThisWeek : [today, today+6], hors skipped
+    if (r.scheduled_for >= today && r.scheduled_for <= inSixDays && !isSkipped) {
+      stats.interventionsThisWeek += 1
+    }
+  }
+
+  return out
+}
+
+// ----------------------------------------------------------------------------
 // Skip — un par appel, raison obligatoire
 // ----------------------------------------------------------------------------
 

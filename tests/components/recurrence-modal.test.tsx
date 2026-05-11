@@ -1,14 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RecurrenceModal } from '@/app/(dashboard)/contracts/[id]/missions/[missionId]/edit/RecurrenceModal'
+import type { DbInterventionTemplate } from '@/types/db'
 
-// Mock the server action — we just want to verify shape of calls.
+// Mock the server actions — we just want to verify shape of calls.
 const createRecurrenceMock = vi.fn(async (_input: unknown) => ({
+  ok: true as const,
+  templateId: 'tpl-1',
+}))
+const updateRecurrenceMock = vi.fn(async (_input: unknown) => ({
   ok: true as const,
   templateId: 'tpl-1',
 }))
 vi.mock('@/app/(dashboard)/contracts/[id]/recurrences-actions', () => ({
   createRecurrenceAction: (input: unknown) => createRecurrenceMock(input),
+  updateRecurrenceAction: (input: unknown) => updateRecurrenceMock(input),
 }))
 
 // next/navigation is referenced via useRouter().refresh()
@@ -166,5 +172,99 @@ describe('RecurrenceModal — submit validation', () => {
   it('does not render when open=false', () => {
     render(<RecurrenceModal {...baseProps} open={false} />)
     expect(screen.queryByText(/quand cette mission revient-elle/i)).not.toBeInTheDocument()
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Slice 6.5 — mode edition (prop `template` presente)
+// ----------------------------------------------------------------------------
+
+const baseTemplate: DbInterventionTemplate = {
+  id: 'tpl-existing-1',
+  mission_id: baseProps.missionId,
+  title: 'Bionettoyage 2x/jour',
+  description: null,
+  frequency: 'weekly',
+  slots: ['morning', 'evening'],
+  day_of_week: 2,
+  day_of_month: null,
+  starts_on: '2026-05-12',
+  ends_on: null,
+  active: true,
+  created_at: '2026-05-01T00:00:00.000Z',
+  created_by: null,
+  deleted_at: null,
+}
+
+describe('RecurrenceModal — mode edition (Slice 6.5)', () => {
+  beforeEach(() => {
+    createRecurrenceMock.mockClear()
+    updateRecurrenceMock.mockClear()
+  })
+
+  it('affiche le titre "Modifier la récurrence" en mode edition', () => {
+    render(<RecurrenceModal {...baseProps} template={baseTemplate} />)
+    expect(screen.getByText(/modifier la récurrence/i)).toBeInTheDocument()
+    expect(screen.queryByText(/quand cette mission revient-elle/i)).not.toBeInTheDocument()
+  })
+
+  it('preremplit frequency, day_of_week, slots, starts_on depuis le template', () => {
+    render(<RecurrenceModal {...baseProps} template={baseTemplate} />)
+    // frequency=weekly → radio weekly coche + selecteur day_of_week visible
+    const weeklyRadio = screen.getByLabelText(/une fois par semaine/i) as HTMLInputElement
+    expect(weeklyRadio.checked).toBe(true)
+
+    const select = screen.getByTestId('q-day-of-week').querySelector('select') as HTMLSelectElement
+    expect(select.value).toBe('2')
+
+    // slots : morning + evening selectionnes (aria-pressed=true)
+    expect(screen.getByTestId('slot-chip-morning')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('slot-chip-afternoon')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('slot-chip-evening')).toHaveAttribute('aria-pressed', 'true')
+
+    // starts_on prerempli
+    const dateInput = screen.getByLabelText(/à partir de quand/i) as HTMLInputElement
+    expect(dateInput.value).toBe('2026-05-12')
+  })
+
+  it('affiche le label de bouton "Enregistrer les modifications" en mode edition', () => {
+    render(<RecurrenceModal {...baseProps} template={baseTemplate} />)
+    const submit = screen.getByTestId('recurrence-submit')
+    expect(submit.textContent).toMatch(/enregistrer les modifications/i)
+  })
+
+  it('submit appelle updateRecurrenceAction (pas createRecurrenceAction) avec templateId', async () => {
+    render(<RecurrenceModal {...baseProps} template={baseTemplate} />)
+    fireEvent.click(screen.getByTestId('recurrence-submit'))
+
+    await waitFor(() => {
+      expect(updateRecurrenceMock).toHaveBeenCalledTimes(1)
+    })
+    expect(createRecurrenceMock).not.toHaveBeenCalled()
+
+    const arg = updateRecurrenceMock.mock.calls[0]?.[0] as unknown as {
+      templateId: string
+      frequency: string
+      day_of_week: number | null
+      slots: string[]
+      starts_on: string
+      contract_id: string
+    }
+    expect(arg.templateId).toBe(baseTemplate.id)
+    expect(arg.frequency).toBe('weekly')
+    expect(arg.day_of_week).toBe(2)
+    expect(arg.slots.sort()).toEqual(['evening', 'morning'])
+    expect(arg.starts_on).toBe('2026-05-12')
+    expect(arg.contract_id).toBe(baseProps.contractId)
+  })
+
+  it('en mode creation (sans template), submit appelle createRecurrenceAction', async () => {
+    render(<RecurrenceModal {...baseProps} />)
+    fireEvent.click(screen.getByTestId('recurrence-submit'))
+
+    await waitFor(() => {
+      expect(createRecurrenceMock).toHaveBeenCalledTimes(1)
+    })
+    expect(updateRecurrenceMock).not.toHaveBeenCalled()
   })
 })

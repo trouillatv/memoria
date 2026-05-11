@@ -1,19 +1,32 @@
 'use client'
 
-// Phase 6 — Recurrence simple — Slice 6.2
+// Phase 6 — Recurrence simple — Slice 6.2 + 6.5
 //
-// Modal de creation d'une recurrence depuis une mission. 4 questions max,
-// francais parle. Doctrine UX :
+// Modal de creation OU edition d'une recurrence depuis une mission. 4 questions
+// max, francais parle. Doctrine UX :
 //   - Wording "recurrence" (jamais "template", jamais "planning")
 //   - Creneaux nommes (Matin / Apres-midi / Soir), jamais d'horaires precis
 //   - Pas d'agent, pas de roulement, pas de preview calendrier
+//
+// Mode :
+//   - prop `template` absente → creation
+//   - prop `template` presente → edition (prerempli, titre adapte, action update)
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
-import { createRecurrenceAction, type CreateRecurrenceInput } from '../../../recurrences-actions'
-import type { InterventionFrequency, InterventionSlot } from '@/types/db'
+import {
+  createRecurrenceAction,
+  updateRecurrenceAction,
+  type CreateRecurrenceInput,
+  type UpdateRecurrenceInput,
+} from '../../../recurrences-actions'
+import type {
+  DbInterventionTemplate,
+  InterventionFrequency,
+  InterventionSlot,
+} from '@/types/db'
 
 interface RecurrenceModalProps {
   missionId: string
@@ -21,6 +34,8 @@ interface RecurrenceModalProps {
   contractId: string
   open: boolean
   onClose: () => void
+  /** Mode edition si fourni, mode creation sinon. */
+  template?: DbInterventionTemplate | null
 }
 
 const FREQUENCY_OPTIONS: { value: InterventionFrequency; label: string }[] = [
@@ -60,15 +75,48 @@ export function RecurrenceModal({
   contractId,
   open,
   onClose,
+  template,
 }: RecurrenceModalProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [frequency, setFrequency] = useState<InterventionFrequency>('daily')
-  const [dayOfWeek, setDayOfWeek] = useState<number | null>(null)
-  const [dayOfMonth, setDayOfMonth] = useState<number | null>(null)
-  const [slots, setSlots] = useState<Set<InterventionSlot>>(new Set())
-  const [startsOn, setStartsOn] = useState<string>(todayIso())
+  const isEdit = !!template
+
+  // Valeurs initiales — derives du template en mode edition, defaults sinon.
+  const initialFrequency: InterventionFrequency =
+    template?.frequency && template.frequency !== 'one_shot'
+      ? template.frequency
+      : (template?.frequency ?? 'daily')
+  const initialDayOfWeek = template?.day_of_week ?? null
+  const initialDayOfMonth = template?.day_of_month ?? null
+  const initialSlots = new Set<InterventionSlot>(template?.slots ?? [])
+  const initialStartsOn = template?.starts_on ?? todayIso()
+
+  const [frequency, setFrequency] = useState<InterventionFrequency>(initialFrequency)
+  const [dayOfWeek, setDayOfWeek] = useState<number | null>(initialDayOfWeek)
+  const [dayOfMonth, setDayOfMonth] = useState<number | null>(initialDayOfMonth)
+  const [slots, setSlots] = useState<Set<InterventionSlot>>(initialSlots)
+  const [startsOn, setStartsOn] = useState<string>(initialStartsOn)
   const [error, setError] = useState<string | null>(null)
+
+  // Resync quand template change (passage d'un template à un autre sans démontage)
+  useEffect(() => {
+    if (!open) return
+    if (template) {
+      setFrequency(template.frequency)
+      setDayOfWeek(template.day_of_week ?? null)
+      setDayOfMonth(template.day_of_month ?? null)
+      setSlots(new Set(template.slots ?? []))
+      setStartsOn(template.starts_on)
+      setError(null)
+    } else {
+      setFrequency('daily')
+      setDayOfWeek(null)
+      setDayOfMonth(null)
+      setSlots(new Set())
+      setStartsOn(todayIso())
+      setError(null)
+    }
+  }, [open, template])
 
   if (!open) return null
 
@@ -82,11 +130,13 @@ export function RecurrenceModal({
   }
 
   function reset() {
-    setFrequency('daily')
-    setDayOfWeek(null)
-    setDayOfMonth(null)
-    setSlots(new Set())
-    setStartsOn(todayIso())
+    if (!template) {
+      setFrequency('daily')
+      setDayOfWeek(null)
+      setDayOfMonth(null)
+      setSlots(new Set())
+      setStartsOn(todayIso())
+    }
     setError(null)
   }
 
@@ -103,6 +153,30 @@ export function RecurrenceModal({
   async function submit() {
     setError(null)
     if (!isValid) return
+
+    if (isEdit && template) {
+      const payload: UpdateRecurrenceInput = {
+        templateId: template.id,
+        contract_id: contractId,
+        frequency,
+        day_of_week: frequency === 'weekly' ? dayOfWeek : null,
+        day_of_month: frequency === 'monthly' ? dayOfMonth : null,
+        slots: Array.from(slots),
+        starts_on: startsOn,
+      }
+      startTransition(async () => {
+        const r = await updateRecurrenceAction(payload)
+        if (!r.ok) {
+          setError(r.error)
+          toast.error(r.error)
+          return
+        }
+        toast.success('Récurrence modifiée')
+        close()
+        router.refresh()
+      })
+      return
+    }
 
     const payload: CreateRecurrenceInput = {
       mission_id: missionId,
@@ -127,6 +201,11 @@ export function RecurrenceModal({
     })
   }
 
+  const modalTitle = isEdit ? 'Modifier la récurrence' : 'Quand cette mission revient-elle ?'
+  const submitLabel = pending
+    ? isEdit ? 'Enregistrement…' : 'Création…'
+    : isEdit ? 'Enregistrer les modifications' : 'Créer la récurrence'
+
   return (
     <div
       role="dialog"
@@ -141,7 +220,7 @@ export function RecurrenceModal({
         <div className="flex items-start justify-between gap-2">
           <div>
             <h2 id="recurrence-modal-title" className="text-lg font-semibold">
-              Quand cette mission revient-elle ?
+              {modalTitle}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               Mission : <span className="font-medium text-foreground">{missionName}</span>
@@ -288,7 +367,7 @@ export function RecurrenceModal({
             data-testid="recurrence-submit"
             className="px-3 py-1.5 rounded border bg-foreground text-background text-sm disabled:opacity-50"
           >
-            {pending ? 'Création…' : 'Créer la récurrence'}
+            {submitLabel}
           </button>
         </div>
       </div>
