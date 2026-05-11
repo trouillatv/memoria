@@ -20,14 +20,21 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import {
   formatWeekParam,
   getWeekBySite,
+  getWeekByTeam,
   parseWeekParam,
   type WeekRange,
+  type SiteRow,
+  type TeamRow,
 } from '@/lib/db/week-planning'
 import { listTeams } from '@/lib/db/teams'
 import { EmptyState } from '@/components/ui/empty-state'
 import { WeekNavigation } from './WeekNavigation'
 import { WeekGrid } from './WeekGrid'
 import { WeekGridClient } from './WeekGridClient'
+import { TeamWeekGrid } from './TeamWeekGrid'
+import { TeamWeekGridClient } from './TeamWeekGridClient'
+import { ViewModeToggle } from './ViewModeToggle'
+import { parseViewMode } from './view-mode-storage'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,7 +82,21 @@ function todayUtcIso(): string {
 }
 
 interface PageProps {
-  searchParams: Promise<{ week?: string }>
+  searchParams: Promise<{ week?: string; view?: string }>
+}
+
+function totalSite(rows: SiteRow[]): number {
+  return rows.reduce(
+    (acc, r) => acc + Object.values(r.days).reduce((s, d) => s + d.length, 0),
+    0,
+  )
+}
+
+function totalTeam(rows: TeamRow[]): number {
+  return rows.reduce(
+    (acc, r) => acc + Object.values(r.days).reduce((s, d) => s + d.length, 0),
+    0,
+  )
 }
 
 export default async function SemainePage({ searchParams }: PageProps) {
@@ -85,19 +106,24 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   const params = await searchParams
   const range = parseWeekParam(params.week)
-  const [rows, allTeams] = await Promise.all([
-    getWeekBySite(range),
+  const view = parseViewMode(params.view)
+
+  // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
+  // fait un appel supplémentaire à teams + team_members).
+  const [siteRows, teamRows, allTeams] = await Promise.all([
+    view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
+    view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
     listTeams(),
   ])
   const teams = allTeams
-    .filter((t) => t.active)
+    .filter((t) => t.active && !t.deleted_at)
     .map((t) => ({ id: t.id, name: t.name, color: t.color }))
   const todayIso = todayUtcIso()
 
-  const totalInterventions = rows.reduce(
-    (acc, r) => acc + Object.values(r.days).reduce((s, d) => s + d.length, 0),
-    0,
-  )
+  const total = view === 'site' ? totalSite(siteRows) : totalTeam(teamRows)
+  const isEmpty =
+    (view === 'site' && (siteRows.length === 0 || total === 0)) ||
+    (view === 'team' && total === 0)
 
   return (
     <div className="space-y-6">
@@ -108,16 +134,21 @@ export default async function SemainePage({ searchParams }: PageProps) {
             {formatWeekHeader(range)}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Vue Site &times; Jour. Organisation de la couverture. Aucune métrique de surveillance.
+            {view === 'site'
+              ? 'Vue Site × Jour. Organisation de la couverture. Aucune métrique de surveillance.'
+              : 'Vue Équipe × Jour (secondaire). Conteneurs logistiques. Aucune métrique de surveillance.'}
           </p>
           <p className="mt-1 text-xs text-muted-foreground/80">
             Identifiant semaine&nbsp;: <code className="font-mono">{formatWeekParam(range)}</code>
           </p>
         </div>
-        <WeekNavigation range={range} />
+        <div className="flex items-center gap-2">
+          <ViewModeToggle mode={view} />
+          <WeekNavigation range={range} />
+        </div>
       </header>
 
-      {rows.length === 0 || totalInterventions === 0 ? (
+      {isEmpty ? (
         <div className="rounded-lg border bg-card">
           <EmptyState
             icon={CalendarOff}
@@ -126,10 +157,14 @@ export default async function SemainePage({ searchParams }: PageProps) {
             variant="compact"
           />
         </div>
-      ) : (
-        <WeekGridClient rows={rows} todayIso={todayIso} teams={teams}>
-          <WeekGrid range={range} rows={rows} todayIso={todayIso} />
+      ) : view === 'site' ? (
+        <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams}>
+          <WeekGrid range={range} rows={siteRows} todayIso={todayIso} />
         </WeekGridClient>
+      ) : (
+        <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>
+          <TeamWeekGrid range={range} rows={teamRows} todayIso={todayIso} />
+        </TeamWeekGridClient>
       )}
     </div>
   )
