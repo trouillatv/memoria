@@ -1731,6 +1731,236 @@ function flattenRecurrenceSpec(
   return out
 }
 
+// ---------------------------------------------------------------------------
+// Teams (Phase 9 — Vue Semaine & Équipes) — seed enrichissement (Slice 9.6)
+// ---------------------------------------------------------------------------
+//
+// Doctrine V2 :
+//  - Les équipes sont des CONTENEURS LOGISTIQUES de couverture.
+//  - On affecte des missions ou interventions PLANIFIÉES à une équipe via
+//    `assigned_team_id`.
+//  - On laisse exprès certaines missions/interventions sans équipe pour
+//    démontrer la ligne "Non-affecté" (ambre discret) sur la vue semaine.
+//  - On crée aussi quelques chef_equipe (membres d'équipes) + on en laisse 1-2
+//    « orphelins » pour démontrer la section orphelins sur /equipes.
+//
+// Idempotent : upsert par `name` (la team est réutilisée si elle existe déjà,
+// les memberships sont insérés seulement si absents).
+
+const TEAM_SEEDS: Array<{ name: string; color: string }> = [
+  { name: 'Alpha', color: 'sky' },
+  { name: 'Beta', color: 'emerald' },
+  { name: 'Gamma', color: 'violet' },
+]
+
+// Quelques chef_equipe démo. Mot de passe identique (`Demo!2026`) pour la démo,
+// rotation au premier login (must_change_password=true côté trigger).
+// 3 affectés (1 par équipe), 2 orphelins (visibles section "Pas dans une équipe").
+const CHEF_EQUIPE_SEEDS: Array<{
+  email: string
+  fullName: string
+  assignTo: 'Alpha' | 'Beta' | 'Gamma' | null
+}> = [
+  { email: 'mehdi.demo@netoiage.local',   fullName: 'Mehdi Demo',   assignTo: 'Alpha' },
+  { email: 'lea.demo@netoiage.local',     fullName: 'Léa Demo',     assignTo: 'Alpha' },
+  { email: 'yann.demo@netoiage.local',    fullName: 'Yann Demo',    assignTo: 'Beta' },
+  { email: 'aicha.demo@netoiage.local',   fullName: 'Aïcha Demo',   assignTo: 'Beta' },
+  { email: 'tarek.demo@netoiage.local',   fullName: 'Tarek Demo',   assignTo: 'Gamma' },
+  // Orphelins (pas dans une équipe — visible bandeau /equipes)
+  { email: 'sofia.demo@netoiage.local',   fullName: 'Sofia Demo',   assignTo: null },
+  { email: 'mathieu.demo@netoiage.local', fullName: 'Mathieu Demo', assignTo: null },
+]
+
+const CHEF_EQUIPE_DEMO_PASSWORD = 'Demo!2026'
+
+async function ensureChefEquipe(
+  supabase: SupabaseAdmin,
+  email: string,
+  fullName: string
+): Promise<string> {
+  // 1) auth.users : recherche par email via listUsers
+  const { data: list, error: listErr } = await supabase.auth.admin.listUsers()
+  if (listErr) throw listErr
+  const existing = list?.users?.find((u) => u.email === email)
+  if (existing) {
+    // Ensure public.users row is set to chef_equipe + correct name (trigger
+    // default = chef_equipe déjà, mais on force au cas où).
+    await supabase
+      .from('users')
+      .update({ role: 'chef_equipe', full_name: fullName })
+      .eq('id', existing.id)
+    return existing.id
+  }
+
+  const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+    email,
+    password: CHEF_EQUIPE_DEMO_PASSWORD,
+    email_confirm: true,
+    user_metadata: { full_name: fullName, role: 'chef_equipe' },
+  })
+  if (createErr) throw createErr
+  if (!created.user) throw new Error(`Failed to create user ${email}`)
+
+  // Trigger handle_new_auth_user crée public.users avec role chef_equipe.
+  // On force le nom (l'email seul ne suffit pas pour un affichage propre).
+  const { error: upErr } = await supabase
+    .from('users')
+    .update({ role: 'chef_equipe', full_name: fullName })
+    .eq('id', created.user.id)
+  if (upErr) throw upErr
+
+  return created.user.id
+}
+
+async function ensureTeam(
+  supabase: SupabaseAdmin,
+  name: string,
+  color: string,
+  adminId: string
+): Promise<{ id: string; created: boolean }> {
+  const { data: existing, error: fetchErr } = await supabase
+    .from('teams')
+    .select('id')
+    .eq('name', name)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+  if (existing) return { id: existing.id as string, created: false }
+
+  const { data: created, error: insertErr } = await supabase
+    .from('teams')
+    .insert({ name, color, created_by: adminId })
+    .select('id')
+    .single()
+  if (insertErr) throw insertErr
+  return { id: created.id as string, created: true }
+}
+
+async function ensureMembership(
+  supabase: SupabaseAdmin,
+  teamId: string,
+  userId: string
+): Promise<boolean> {
+  const { data: existing } = await supabase
+    .from('team_members')
+    .select('id')
+    .eq('team_id', teamId)
+    .eq('user_id', userId)
+    .is('left_at', null)
+    .maybeSingle()
+  if (existing) return false
+
+  const { error: insertErr } = await supabase
+    .from('team_members')
+    .insert({ team_id: teamId, user_id: userId })
+  if (insertErr) throw insertErr
+  return true
+}
+
+/**
+ * Affecte (idempotent) une mission existante à une team par son nom de mission.
+ * Skip si la mission n'existe pas (ex: un contrat démo absent) ou si elle est
+ * déjà affectée à la bonne team.
+ */
+async function assignMissionToTeam(
+  supabase: SupabaseAdmin,
+  missionName: string,
+  teamId: string
+): Promise<boolean> {
+  const { data: missions, error: fetchErr } = await supabase
+    .from('missions')
+    .select('id, assigned_team_id')
+    .eq('name', missionName)
+    .is('deleted_at', null)
+  if (fetchErr) throw fetchErr
+  if (!missions || missions.length === 0) return false
+
+  let assigned = false
+  for (const m of missions) {
+    if (m.assigned_team_id === teamId) continue
+    const { error: upErr } = await supabase
+      .from('missions')
+      .update({ assigned_team_id: teamId })
+      .eq('id', m.id)
+    if (upErr) throw upErr
+    // Propage aux interventions PLANIFIÉES de cette mission (les exécutées
+    // restent figées : immuabilité preuve).
+    await supabase
+      .from('interventions')
+      .update({ assigned_team_id: teamId })
+      .eq('mission_id', m.id)
+      .eq('status', 'planned')
+      .is('assigned_team_id', null)
+    assigned = true
+  }
+  return assigned
+}
+
+async function seedTeams(adminId: string, supabase: SupabaseAdmin) {
+  console.log('👥 Seeding teams (Phase 9) ...')
+
+  // 1) Teams
+  const teamIdByName = new Map<string, string>()
+  for (const t of TEAM_SEEDS) {
+    const { id, created } = await ensureTeam(supabase, t.name, t.color, adminId)
+    teamIdByName.set(t.name, id)
+    console.log(`  ↳ Team ${t.name} (${t.color}) ${created ? 'créée' : 'déjà présente'}`)
+  }
+
+  // 2) Chef_equipe + memberships
+  let createdUsers = 0
+  let addedMemberships = 0
+  let orphanCount = 0
+  for (const c of CHEF_EQUIPE_SEEDS) {
+    const userId = await ensureChefEquipe(supabase, c.email, c.fullName)
+    if (c.assignTo) {
+      const teamId = teamIdByName.get(c.assignTo)
+      if (teamId) {
+        const added = await ensureMembership(supabase, teamId, userId)
+        if (added) addedMemberships++
+      }
+    } else {
+      orphanCount++
+    }
+    createdUsers++
+  }
+  console.log(
+    `  ↳ ${createdUsers} chef_equipe en place — ${addedMemberships} nouveaux memberships, ` +
+      `${orphanCount} laissés sans équipe (orphelins visibles /equipes)`
+  )
+
+  // 3) Affectations de missions à Alpha et Beta.
+  //    On vise quelques missions DÉMO existantes (CHU + Banque). Certaines
+  //    missions restent volontairement sans équipe → "Non-affecté" sur la vue
+  //    semaine.
+  const alphaId = teamIdByName.get('Alpha')!
+  const betaId = teamIdByName.get('Beta')!
+
+  const alphaTargets = [
+    'Bionettoyage quotidien sanitaires', // CHU — toutes occurrences (3 sites)
+    'Vitres mensuelles',                  // Banque
+  ]
+  const betaTargets = [
+    'Nettoyage couloirs',                 // CHU
+    'Open-space passage soir',            // Banque (si existe)
+  ]
+  // Gamma : on laisse vide pour démontrer une équipe seedée mais inutilisée
+  // (lignes vides côté grille Équipe — info-only, jamais alarme).
+
+  let assignedAlpha = 0
+  let assignedBeta = 0
+  for (const name of alphaTargets) {
+    if (await assignMissionToTeam(supabase, name, alphaId)) assignedAlpha++
+  }
+  for (const name of betaTargets) {
+    if (await assignMissionToTeam(supabase, name, betaId)) assignedBeta++
+  }
+  console.log(
+    `  ↳ Affectations missions : Alpha=${assignedAlpha}, Beta=${assignedBeta}, ` +
+      `Gamma=0 (vide volontaire, démo "équipe sans charge")`
+  )
+}
+
 /**
  * Seed des templates de récurrence sur les 3 contrats démo, puis génération
  * paresseuse 7 jours sur l'ensemble des templates ainsi créés/retrouvés.
@@ -1839,6 +2069,11 @@ async function main() {
   await seedDemoTenderSainteMarie(adminId, supabase)
 
   await seedRecurrences(adminId, supabase)
+
+  // Phase 9 — équipes + affectations missions. Doit tourner APRÈS les
+  // contrats et les récurrences pour pouvoir affecter les missions et leurs
+  // interventions planifiées générées.
+  await seedTeams(adminId, supabase)
 
   console.log('✅ Seed complete')
 }

@@ -1,0 +1,413 @@
+// Phase 9 — Vue Semaine & Équipes (Slice 9.3)
+//
+// Tests minimaux des composants /semaine.
+//
+// On vérifie :
+//   - Helpers purs : compactSlots, dominantTeam
+//   - WeekGridCell : rendu vide (—), affecté (●/●● + slots + TeamBadge),
+//     non-affecté (◯ ambre), accessibilité (aria-label, scope, data-testid)
+//   - WeekGrid : structure thead/tbody, 7 colonnes jours, label site + contrat
+//   - CellDrawer : event delegation au click cellule
+//
+// Doctrine V2 vérifiée :
+//   - Aucun render d'horaire précis dans les cellules
+//   - "Non-affecté" en cellule = ambre (jamais rouge)
+//   - Aucun affichage de métrique
+
+import { describe, it, expect } from 'vitest'
+import { render, screen, fireEvent, within } from '@testing-library/react'
+import { WeekGridCell, compactSlots, dominantTeam } from '@/app/(dashboard)/semaine/WeekGridCell'
+import { WeekGrid } from '@/app/(dashboard)/semaine/WeekGrid'
+import { CellDrawer } from '@/app/(dashboard)/semaine/CellDrawer'
+import type {
+  SiteRow,
+  WeekInterventionCell,
+  WeekRange,
+} from '@/lib/db/week-planning'
+
+// ----------------------------------------------------------------------------
+// Factories
+// ----------------------------------------------------------------------------
+
+function makeCell(overrides: Partial<WeekInterventionCell> = {}): WeekInterventionCell {
+  // Note : on N'UTILISE PAS `??` car certains champs (`slot`,
+  // `assigned_team_id`) acceptent `null` comme valeur signifiante du test.
+  const base: WeekInterventionCell = {
+    id: `i-${Math.random().toString(36).slice(2, 8)}`,
+    mission_id: 'm-1',
+    mission_name: 'Nettoyage hall',
+    site_id: 'site-1',
+    site_name: 'CHU Régional',
+    contract_id: 'c-1',
+    contract_name: 'Contrat Santé',
+    scheduled_for: '2026-05-11',
+    slot: 'morning',
+    status: 'planned',
+    skipped_at: null,
+    assigned_team_id: 't-alpha',
+    assigned_team_name: 'Alpha',
+    assigned_team_color: 'sky',
+  }
+  return { ...base, ...overrides }
+}
+
+const WEEK_RANGE: WeekRange = {
+  weekStart: '2026-05-11',
+  weekEnd: '2026-05-17',
+  weekNumber: 20,
+  year: 2026,
+}
+
+function emptyDays(): Record<string, WeekInterventionCell[]> {
+  const out: Record<string, WeekInterventionCell[]> = {}
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(Date.UTC(2026, 4, 11 + i))
+    out[d.toISOString().slice(0, 10)] = []
+  }
+  return out
+}
+
+function makeSiteRow(overrides: Partial<SiteRow> = {}): SiteRow {
+  return {
+    site_id: overrides.site_id ?? 'site-1',
+    site_name: overrides.site_name ?? 'CHU Régional',
+    contract_id: overrides.contract_id ?? 'c-1',
+    contract_name: overrides.contract_name ?? 'Contrat Santé',
+    days: overrides.days ?? emptyDays(),
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Helpers purs — compactSlots, dominantTeam
+// ----------------------------------------------------------------------------
+
+describe('compactSlots', () => {
+  it('renvoie chaîne vide pour aucune cellule', () => {
+    expect(compactSlots([])).toBe('')
+  })
+
+  it('mappe morning → m', () => {
+    expect(compactSlots([makeCell({ slot: 'morning' })])).toBe('m')
+  })
+
+  it('mappe afternoon → a', () => {
+    expect(compactSlots([makeCell({ slot: 'afternoon' })])).toBe('a')
+  })
+
+  it('mappe evening → s (soir)', () => {
+    expect(compactSlots([makeCell({ slot: 'evening' })])).toBe('s')
+  })
+
+  it('combine plusieurs slots dans l’ordre m → a → s', () => {
+    const cells = [
+      makeCell({ slot: 'evening' }),
+      makeCell({ slot: 'morning' }),
+    ]
+    expect(compactSlots(cells)).toBe('m+s')
+  })
+
+  it('dédoublonne les slots identiques', () => {
+    const cells = [
+      makeCell({ slot: 'morning', id: 'a' }),
+      makeCell({ slot: 'morning', id: 'b' }),
+    ]
+    expect(compactSlots(cells)).toBe('m')
+  })
+
+  it('ignore les slots null sans erreur', () => {
+    expect(compactSlots([makeCell({ slot: null })])).toBe('')
+  })
+
+  it('n’expose JAMAIS d’horaire précis (régression doctrine)', () => {
+    const out = compactSlots([
+      makeCell({ slot: 'morning' }),
+      makeCell({ slot: 'afternoon' }),
+      makeCell({ slot: 'evening' }),
+    ])
+    expect(out).not.toMatch(/\d/)
+    expect(out).toBe('m+a+s')
+  })
+})
+
+describe('dominantTeam', () => {
+  it('renvoie null si aucune intervention n’est affectée', () => {
+    expect(
+      dominantTeam([
+        makeCell({ assigned_team_id: null, assigned_team_name: null, assigned_team_color: null }),
+      ]),
+    ).toBeNull()
+  })
+
+  it('renvoie la team unique si une seule affectée', () => {
+    const team = dominantTeam([makeCell({ assigned_team_id: 't-alpha', assigned_team_name: 'Alpha' })])
+    expect(team?.id).toBe('t-alpha')
+    expect(team?.name).toBe('Alpha')
+  })
+
+  it('renvoie la team la plus fréquente en cas de mixage', () => {
+    const team = dominantTeam([
+      makeCell({ assigned_team_id: 't-alpha', assigned_team_name: 'Alpha' }),
+      makeCell({ assigned_team_id: 't-alpha', assigned_team_name: 'Alpha' }),
+      makeCell({ assigned_team_id: 't-beta', assigned_team_name: 'Beta' }),
+    ])
+    expect(team?.name).toBe('Alpha')
+  })
+
+  it('ignore les non-affectées dans le décompte', () => {
+    const team = dominantTeam([
+      makeCell({ assigned_team_id: null, assigned_team_name: null }),
+      makeCell({ assigned_team_id: 't-beta', assigned_team_name: 'Beta' }),
+    ])
+    expect(team?.name).toBe('Beta')
+  })
+})
+
+// ----------------------------------------------------------------------------
+// WeekGridCell
+// ----------------------------------------------------------------------------
+
+function renderInTable(child: React.ReactNode) {
+  return render(
+    <table>
+      <tbody>
+        <tr>{child}</tr>
+      </tbody>
+    </table>,
+  )
+}
+
+describe('WeekGridCell', () => {
+  it('rend un placeholder muted "—" quand aucune intervention', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[]}
+      />,
+    )
+    expect(screen.getByText('—')).toBeInTheDocument()
+    // pas de bouton interactif → pas de testid cell-trigger
+    expect(screen.queryByTestId('week-cell-s1-2026-05-11')).not.toBeInTheDocument()
+  })
+
+  it('affiche ● + slot + TeamBadge pour une mission affectée', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[
+          makeCell({
+            slot: 'morning',
+            assigned_team_id: 't-alpha',
+            assigned_team_name: 'Alpha',
+            assigned_team_color: 'sky',
+          }),
+        ]}
+      />,
+    )
+    const btn = screen.getByTestId('week-cell-s1-2026-05-11')
+    expect(btn).toBeInTheDocument()
+    expect(within(btn).getByText('●')).toBeInTheDocument()
+    expect(within(btn).getByText('m')).toBeInTheDocument()
+    expect(within(btn).getByText('Alpha')).toBeInTheDocument()
+  })
+
+  it('affiche ●● pour 2+ missions', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[
+          makeCell({ id: 'a', slot: 'morning' }),
+          makeCell({ id: 'b', slot: 'evening' }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('●●')).toBeInTheDocument()
+    expect(screen.getByText('m+s')).toBeInTheDocument()
+  })
+
+  it('affiche ◯ ambre + "Non-affecté" si AUCUNE intervention n’a d’équipe', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[
+          makeCell({
+            assigned_team_id: null,
+            assigned_team_name: null,
+            assigned_team_color: null,
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('◯')).toBeInTheDocument()
+    expect(screen.getByText(/non-affecté/i)).toBeInTheDocument()
+    const td = screen.getByTestId('week-cell-s1-2026-05-11').closest('td')
+    expect(td?.getAttribute('data-unassigned')).toBe('true')
+  })
+
+  it('ne JAMAIS rendre de couleur rouge pour "Non-affecté" (doctrine V2)', () => {
+    const { container } = renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[
+          makeCell({
+            assigned_team_id: null,
+            assigned_team_name: null,
+            assigned_team_color: null,
+          }),
+        ]}
+      />,
+    )
+    const html = container.innerHTML
+    // Aucune classe rose/red ne doit apparaître
+    expect(html).not.toMatch(/text-red-|bg-red-|text-rose-|bg-rose-/)
+    // Mais l'ambre est attendu
+    expect(html).toMatch(/amber/)
+  })
+
+  it('expose un aria-label lisible pour l’accessibilité', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU Régional"
+        cells={[
+          makeCell({
+            slot: 'morning',
+            assigned_team_id: 't-alpha',
+            assigned_team_name: 'Alpha',
+          }),
+        ]}
+      />,
+    )
+    const btn = screen.getByTestId('week-cell-s1-2026-05-11')
+    const label = btn.getAttribute('aria-label') ?? ''
+    expect(label).toContain('CHU Régional')
+    expect(label).toContain('2026-05-11')
+    expect(label).toContain('Alpha')
+  })
+
+  it('n’affiche jamais d’heure précise dans la cellule (régression doctrine)', () => {
+    const { container } = renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[makeCell({ slot: 'morning' }), makeCell({ slot: 'evening' })]}
+      />,
+    )
+    const text = container.textContent ?? ''
+    // Pas d'horaire type "08:00" ou "08h" ou "14h"
+    expect(text).not.toMatch(/\d{1,2}\s*[:h]\s*\d{0,2}/)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// WeekGrid
+// ----------------------------------------------------------------------------
+
+describe('WeekGrid', () => {
+  it('rend une table avec thead (Site + 7 colonnes Lun→Dim) et tbody', () => {
+    render(<WeekGrid range={WEEK_RANGE} rows={[]} todayIso="2026-05-11" />)
+    const grid = screen.getByTestId('week-grid')
+    expect(grid).toBeInTheDocument()
+    // 8 entêtes : Site + Lun..Dim
+    expect(within(grid).getByText(/^site$/i)).toBeInTheDocument()
+    for (const label of ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']) {
+      expect(within(grid).getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('affiche le site + le contrat dans la cellule de gauche', () => {
+    const row = makeSiteRow({ site_name: 'CHU Régional', contract_name: 'Santé Centre' })
+    render(<WeekGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />)
+    expect(screen.getByText('CHU Régional')).toBeInTheDocument()
+    expect(screen.getByText('Santé Centre')).toBeInTheDocument()
+  })
+
+  it('met en évidence la colonne du jour courant (data-today=true)', () => {
+    render(<WeekGrid range={WEEK_RANGE} rows={[]} todayIso="2026-05-13" />)
+    const grid = screen.getByTestId('week-grid')
+    const todayHeader = grid.querySelector('[data-date="2026-05-13"]')
+    expect(todayHeader?.getAttribute('data-today')).toBe('true')
+    const otherHeader = grid.querySelector('[data-date="2026-05-11"]')
+    expect(otherHeader?.getAttribute('data-today')).toBe('false')
+  })
+
+  it('rend 7 cellules de jours par ligne site', () => {
+    const row = makeSiteRow()
+    const { container } = render(
+      <WeekGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />,
+    )
+    const cells = container.querySelectorAll('[data-slot="week-grid-cell"]')
+    expect(cells.length).toBe(7)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// CellDrawer — event delegation
+// ----------------------------------------------------------------------------
+
+describe('CellDrawer', () => {
+  it('ouvre le drawer au click d’une cellule affectée et liste la mission', () => {
+    const days = emptyDays()
+    days['2026-05-11'] = [
+      makeCell({
+        id: 'i-1',
+        mission_name: 'Nettoyage hall',
+        slot: 'morning',
+        assigned_team_id: 't-alpha',
+        assigned_team_name: 'Alpha',
+        assigned_team_color: 'sky',
+      }),
+    ]
+    const row = makeSiteRow({ days })
+
+    render(
+      <CellDrawer rows={[row]} teams={[]} todayIso="2026-05-11">
+        <WeekGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />
+      </CellDrawer>,
+    )
+
+    fireEvent.click(screen.getByTestId('week-cell-site-1-2026-05-11'))
+    expect(screen.getByTestId('drawer-intervention-i-1')).toBeInTheDocument()
+    expect(screen.getByText('Nettoyage hall')).toBeInTheDocument()
+    // Le créneau "matin" est en français dans le drawer, JAMAIS d'heure
+    expect(screen.getByText(/créneau matin/i)).toBeInTheDocument()
+  })
+
+  it('affiche "Non-affecté" dans le drawer pour une intervention sans équipe', () => {
+    const days = emptyDays()
+    days['2026-05-11'] = [
+      makeCell({
+        id: 'i-2',
+        mission_name: 'Inspection',
+        assigned_team_id: null,
+        assigned_team_name: null,
+        assigned_team_color: null,
+      }),
+    ]
+    const row = makeSiteRow({ days })
+
+    render(
+      <CellDrawer rows={[row]} teams={[]} todayIso="2026-05-11">
+        <WeekGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />
+      </CellDrawer>,
+    )
+
+    fireEvent.click(screen.getByTestId('week-cell-site-1-2026-05-11'))
+    // "Non-affecté" apparaît à la fois dans la cellule cliquée et dans le drawer
+    // — on vérifie qu'il y a au moins une instance et que le panneau de
+    // détail de l'intervention est bien ouvert.
+    expect(screen.getAllByText(/non-affecté/i).length).toBeGreaterThan(0)
+    expect(screen.getByTestId('drawer-intervention-i-2')).toBeInTheDocument()
+  })
+})
