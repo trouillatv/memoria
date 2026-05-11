@@ -372,7 +372,7 @@ describe('CellDrawer', () => {
     const row = makeSiteRow({ days })
 
     render(
-      <CellDrawer rows={[row]}>
+      <CellDrawer rows={[row]} teams={[]} todayIso="2026-05-11">
         <WeekGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />
       </CellDrawer>,
     )
@@ -398,7 +398,7 @@ describe('CellDrawer', () => {
     const row = makeSiteRow({ days })
 
     render(
-      <CellDrawer rows={[row]}>
+      <CellDrawer rows={[row]} teams={[]} todayIso="2026-05-11">
         <WeekGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />
       </CellDrawer>,
     )

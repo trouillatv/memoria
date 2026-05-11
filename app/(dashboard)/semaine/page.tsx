@@ -1,8 +1,9 @@
-// Phase 9 — Vue Semaine & Équipes (Slice 9.3)
+// Phase 9 — Vue Semaine & Équipes (Slice 9.3, étendu 9.4)
 //
-// Page /semaine : Vue Site × Jour primaire (read-only en 9.3).
-// Le drag & drop + réassignation arrive en Slice 9.4, et la Vue Équipe ×
-// Jour en Slice 9.5.
+// Page /semaine : Vue Site × Jour primaire.
+// Slice 9.3 : read-only.
+// Slice 9.4 : drag & drop replanification + réassignation équipe.
+// La Vue Équipe × Jour arrive en Slice 9.5.
 //
 // Doctrine V2 (cf. docs/superpowers/doctrines/planning-doctrine.md V2) :
 //   - Vue Site × Jour PRIMAIRE (Équipe × Jour sera secondaire)
@@ -22,10 +23,11 @@ import {
   parseWeekParam,
   type WeekRange,
 } from '@/lib/db/week-planning'
+import { listTeams } from '@/lib/db/teams'
 import { EmptyState } from '@/components/ui/empty-state'
 import { WeekNavigation } from './WeekNavigation'
 import { WeekGrid } from './WeekGrid'
-import { CellDrawer } from './CellDrawer'
+import { WeekGridClient } from './WeekGridClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,7 +85,13 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   const params = await searchParams
   const range = parseWeekParam(params.week)
-  const rows = await getWeekBySite(range)
+  const [rows, allTeams] = await Promise.all([
+    getWeekBySite(range),
+    listTeams(),
+  ])
+  const teams = allTeams
+    .filter((t) => t.active)
+    .map((t) => ({ id: t.id, name: t.name, color: t.color }))
   const todayIso = todayUtcIso()
 
   const totalInterventions = rows.reduce(
@@ -119,9 +127,9 @@ export default async function SemainePage({ searchParams }: PageProps) {
           />
         </div>
       ) : (
-        <CellDrawer rows={rows}>
+        <WeekGridClient rows={rows} todayIso={todayIso} teams={teams}>
           <WeekGrid range={range} rows={rows} todayIso={todayIso} />
-        </CellDrawer>
+        </WeekGridClient>
       )}
     </div>
   )

@@ -1,7 +1,10 @@
-// Phase 9 — Vue Semaine & Équipes (Slice 9.3)
+'use client'
+
+// Phase 9 — Vue Semaine & Équipes (Slice 9.3, étendu Slice 9.4)
 //
-// Cellule (jour × site) de la grille semaine. Server component pur — pas de
-// drag & drop dans cette slice (cf. 9.4).
+// Cellule (jour × site) de la grille semaine. Client component depuis 9.4
+// (DnD via useDroppable). Slice 9.3 était un server component pur — la
+// promotion en client n'a aucun impact UX (pas de fetch, pas de state).
 //
 // Doctrine V2 imperative :
 //   - Créneaux nommés via lettres compactes (m / s / e), JAMAIS d'heures précises
@@ -13,6 +16,7 @@
 // (le bouton porte les data-attributes ; pas de prop function fournie ici,
 // pour rester server-renderable).
 
+import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
@@ -99,6 +103,8 @@ export interface WeekGridCellProps {
   siteName: string
   /** Interventions du jour pour ce site (peut être vide). */
   cells: WeekInterventionCell[]
+  /** Aujourd'hui yyyy-mm-dd UTC — passé pour désactiver le drop sur cellule passée. */
+  todayIso?: string
 }
 
 /**
@@ -112,7 +118,17 @@ export interface WeekGridCellProps {
  * Le click est intercepté par WeekGridClient via event delegation (lit
  * `data-cell-key`). Pas de couleur alarmante.
  */
-export function WeekGridCell({ date, siteId, siteName, cells }: WeekGridCellProps) {
+export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGridCellProps) {
+  const cellKey = `${siteId}::${date}`
+  const isPast = !!(todayIso && date < todayIso)
+  // useDroppable est toujours appelé pour respecter les règles de hooks.
+  // S'il n'y a pas de DndContext parent (test, server-rendering), il
+  // retourne simplement des valeurs neutres (setNodeRef no-op).
+  const droppable = useDroppable({
+    id: cellKey,
+    disabled: isPast,
+    data: { date, isPast, siteId },
+  })
   const isEmpty = cells.length === 0
   const team = isEmpty ? null : dominantTeam(cells)
   const slotsLabel = isEmpty ? '' : compactSlots(cells)
@@ -133,14 +149,20 @@ export function WeekGridCell({ date, siteId, siteName, cells }: WeekGridCellProp
 
   return (
     <td
+      ref={droppable.setNodeRef}
       data-slot="week-grid-cell"
       data-date={date}
       data-site-id={siteId}
+      data-cell-key={cellKey}
       data-empty={isEmpty ? 'true' : 'false'}
       data-unassigned={allUnassigned ? 'true' : 'false'}
+      data-past={isPast ? 'true' : 'false'}
+      data-over={droppable.isOver ? 'true' : 'false'}
       className={cn(
-        'border-l border-border/60 align-top p-2 min-w-[7rem]',
-        !isEmpty && 'hover:bg-accent/40 transition-colors',
+        'border-l border-border/60 align-top p-2 min-w-[7rem] transition-colors duration-200',
+        !isEmpty && 'hover:bg-accent/40',
+        droppable.isOver && !isPast && 'bg-brand-50/60 outline outline-2 outline-brand-300 outline-offset-[-2px]',
+        isPast && 'bg-muted/20',
       )}
     >
       {isEmpty ? (

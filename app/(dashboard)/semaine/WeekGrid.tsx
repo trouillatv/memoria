@@ -1,10 +1,14 @@
-// Phase 9 — Vue Semaine & Équipes (Slice 9.3)
+'use client'
+
+// Phase 9 — Vue Semaine & Équipes (Slice 9.3, étendu 9.4)
 //
-// Grille HTML sémantique Site × Jour. Server component.
+// Grille HTML sémantique Site × Jour. Promue en client component depuis 9.4
+// (cellules droppables via dnd-kit).
+//
 // 7 colonnes Lun → Dim. Lignes regroupées implicitement par contrat (libellé
 // contrat affiché dans la cellule de gauche, sous le nom du site).
 //
-// Wrappé par WeekGridClient (event delegation pour le drawer cellule).
+// Wrappé par WeekGridClient (DndContext + drawer + état drag).
 
 import type { SiteRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
 import { WeekGridCell } from './WeekGridCell'
@@ -84,7 +88,7 @@ export function WeekGrid({ range, rows, todayIso }: WeekGridProps) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <SiteGridRow key={row.site_id} row={row} days={days} />
+            <SiteGridRow key={row.site_id} row={row} days={days} todayIso={todayIso} />
           ))}
         </tbody>
       </table>
@@ -92,7 +96,15 @@ export function WeekGrid({ range, rows, todayIso }: WeekGridProps) {
   )
 }
 
-function SiteGridRow({ row, days }: { row: SiteRow; days: string[] }) {
+function SiteGridRow({
+  row,
+  days,
+  todayIso,
+}: {
+  row: SiteRow
+  days: string[]
+  todayIso: string
+}) {
   return (
     <tr className="border-t" data-site-id={row.site_id}>
       <th
@@ -115,6 +127,7 @@ function SiteGridRow({ row, days }: { row: SiteRow; days: string[] }) {
             siteId={row.site_id}
             siteName={row.site_name}
             cells={cells}
+            todayIso={todayIso}
           />
         )
       })}
