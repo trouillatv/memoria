@@ -14,6 +14,7 @@ import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
+import { SkipInterventionTrigger } from './skip-modal'
 
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -72,6 +73,8 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   const isPlanned = intervention.status === 'planned'
   const isCompleted =
     intervention.status === 'completed' || intervention.status === 'validated'
+  const isSkipped =
+    intervention.status === 'skipped' || intervention.skipped_at !== null
 
   const hasMissingRequired = checklistItems.some((i) => i.required && !i.done)
 
@@ -104,7 +107,20 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         </div>
       </header>
 
-      {isPlanned && <StartInterventionButton interventionId={id} />}
+      {isSkipped && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-1">
+          <div className="font-semibold">
+            Cette intervention a été marquée « pas aujourd&apos;hui »
+          </div>
+          {intervention.skipped_reason && (
+            <div className="text-sm">
+              Raison&nbsp;: {intervention.skipped_reason}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isSkipped && isPlanned && <StartInterventionButton interventionId={id} />}
 
       {isCompleted && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-base text-emerald-800">
@@ -133,6 +149,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
             interventionId={id}
             hasMissingRequired={hasMissingRequired}
           />
+        </div>
+      )}
+
+      {/* Slice 6.4 — Bouton « Pas aujourd'hui » sobre, uniquement si planned
+          (pas commencée, pas terminée, pas déjà sautée). Placé en bas, séparé
+          du CTA principal pour signaler l'usage exceptionnel. */}
+      {!isSkipped && isPlanned && (
+        <div className="mt-8 pt-4 border-t border-border">
+          <SkipInterventionTrigger interventionId={id} />
         </div>
       )}
     </div>

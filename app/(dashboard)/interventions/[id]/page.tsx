@@ -14,13 +14,14 @@ import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 import { ExecutionPanel } from './execution-panel'
 import { AnomaliesPanel } from './anomalies-panel'
 import { ValidationPanel } from './validation-panel'
+import { SkipInterventionTriggerSupervisor } from './skip-trigger'
 
 const STATUS_LABELS: Record<string, string> = {
   planned:     'Planifiée',
   in_progress: 'En cours',
   completed:   'Terminée',
   validated:   'Validée',
-  skipped:     'Annulée',
+  skipped:     'Sautée',
 }
 
 const STATUS_BADGES: Record<string, string> = {
@@ -28,7 +29,7 @@ const STATUS_BADGES: Record<string, string> = {
   in_progress: 'bg-sky-50 border-sky-200 text-sky-700',
   completed:   'bg-indigo-50 border-indigo-200 text-indigo-700',
   validated:   'bg-emerald-50 border-emerald-200 text-emerald-700',
-  skipped:     'bg-muted border-border text-muted-foreground',
+  skipped:     'bg-amber-50 border-amber-200 text-amber-800',
 }
 
 export default async function InterventionPage({ params }: { params: Promise<{ id: string }> }) {
@@ -61,6 +62,11 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   // Anomalies + validation are useable only when intervention is active enough
   const anomaliesCanCreate = intervention.status === 'in_progress' || intervention.status === 'completed'
 
+  // Slice 6.4 — État « Pas aujourd'hui »
+  const isSkipped =
+    intervention.status === 'skipped' || intervention.skipped_at !== null
+  const isPlanned = intervention.status === 'planned'
+
   return (
     <div className="space-y-6 max-w-3xl">
       {site?.contract_id && (
@@ -90,6 +96,21 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
+      {/* Slice 6.4 — Panneau « Pas aujourd'hui » : visible si skipped, masque
+          les actions d'exécution. Sinon : bouton sobre côté action si planned. */}
+      {isSkipped && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-1">
+          <div className="text-sm font-semibold text-amber-900">
+            Intervention marquée « pas aujourd&apos;hui »
+          </div>
+          {intervention.skipped_reason && (
+            <div className="text-sm text-amber-900/90">
+              Raison&nbsp;: {intervention.skipped_reason}
+            </div>
+          )}
+        </section>
+      )}
+
       <ExecutionPanel
         intervention={intervention}
         checklistItems={checklistItems}
@@ -114,6 +135,15 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-2">Notes</h2>
           <p className="text-sm whitespace-pre-wrap">{intervention.notes}</p>
         </section>
+      )}
+
+      {/* Slice 6.4 — Bouton « Pas aujourd'hui » uniquement si planifiée
+          (pas commencée, pas terminée, pas déjà sautée). Style sobre, fin de
+          page, sous les actions principales. */}
+      {!isSkipped && isPlanned && (
+        <div className="pt-2 max-w-sm">
+          <SkipInterventionTriggerSupervisor interventionId={intervention.id} />
+        </div>
       )}
     </div>
   )

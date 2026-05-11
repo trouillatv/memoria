@@ -15,6 +15,8 @@ import {
   createValidation,
   getValidationByIntervention,
 } from '@/lib/db/interventions'
+import { markInterventionSkipped } from '@/lib/db/intervention-templates'
+import { logAuditEvent } from '@/lib/audit/log'
 
 async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
   const supabase = await createServerClient()
@@ -272,6 +274,64 @@ export async function validateInterventionAction(formData: FormData) {
   await updateInterventionStatus(parsed.data.intervention_id, 'validated')
 
   revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  return { ok: true as const }
+}
+
+// ----- Skip intervention ("Pas aujourd'hui", raison obligatoire) — vue superviseur -----
+//
+// Doctrine Slice 6.4 — même comportement que la version mobile (cf.
+// app/(field)/m/intervention/[id]/actions.ts). Auth via requireManagerOrAdmin
+// (les chef_equipe utilisent la version mobile depuis /m).
+
+const skipSupervisorSchema = z.object({
+  intervention_id: z.string().uuid(),
+  reason: z.string().trim().min(3, 'La raison doit faire au moins 3 caractères').max(500),
+})
+
+export async function skipInterventionSupervisorAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = skipSupervisorSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    reason: formData.get('reason'),
+  })
+  if (!parsed.success) {
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Données invalides' }
+  }
+
+  const intervention = await getIntervention(parsed.data.intervention_id)
+  if (!intervention) return { ok: false as const, error: 'Intervention introuvable' }
+
+  if (intervention.status !== 'planned') {
+    return {
+      ok: false as const,
+      error:
+        intervention.status === 'skipped'
+          ? 'Cette intervention est déjà marquée « pas aujourd’hui »'
+          : 'Cette intervention est déjà commencée',
+    }
+  }
+
+  await markInterventionSkipped(
+    parsed.data.intervention_id,
+    parsed.data.reason,
+    auth.userId
+  )
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'mission',
+    entityId: parsed.data.intervention_id,
+    action: 'status_changed',
+    metadata: { to: 'skipped', reason: parsed.data.reason, source: 'supervisor' },
+  })
+
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  revalidatePath('/missions')
+  revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  revalidatePath('/m')
+
   return { ok: true as const }
 }
 
