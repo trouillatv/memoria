@@ -25,6 +25,7 @@
 // le résultat tient en quelques centaines de lignes.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 
 // ----------------------------------------------------------------------------
 // Types publics
@@ -336,4 +337,333 @@ function addDaysIso(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+// ============================================================================
+// Slice B.1 — getProofDetail : la profondeur de la preuve.
+// ============================================================================
+//
+// Doctrine impérative :
+//   - Anonymisation par défaut. team_size = taille du tableau (un compteur,
+//     pas une liste de noms). Validations exposent un rôle ("Équipe
+//     superviseur"), jamais une identité.
+//   - Tous les FAITS nécessaires en une seule passe DB. Le wedge est <3s
+//     entre clic sur ligne et page utile.
+//   - Calme : aucun jugement, aucun score, aucune métrique de performance.
+//   - Photos via signed URL valides 1h (helper storage existant). Suffisant
+//     pour la session de consultation, pas de fuite long-terme.
+
+export interface ProofPhoto {
+  id: string
+  url: string
+  thumbnail_url?: string
+  caption: string | null
+  taken_at: string
+  intervention_id: string
+  checklist_item_id: string | null
+  anomaly_id: string | null
+  kind: string
+}
+
+export interface ProofAnomaly {
+  id: string
+  description: string
+  reported_at: string
+  resolved_at: string | null
+  resolution_note: string | null
+  photos: ProofPhoto[]
+  category: string
+  status: string
+}
+
+export interface ProofValidation {
+  id: string
+  validated_at: string
+  comment: string | null
+  /** Rôle anonymisé : 'admin' | 'manager'. Le front render "Équipe superviseur". */
+  validator_role: string
+}
+
+export interface ProofChecklistItem {
+  id: string
+  label: string
+  completed: boolean
+  completed_at: string | null
+  required: boolean
+  position: number
+}
+
+export interface ProofDetail {
+  id: string
+  mission_id: string
+  mission_name: string
+  site_id: string
+  site_name: string
+  site_address: string | null
+  contract_id: string | null
+  contract_name: string | null
+  client_name: string | null
+  scheduled_for: string | null
+  scheduled_at: string
+  executed_at: string | null
+  status: string
+  skipped_at: string | null
+  skipped_reason: string | null
+  /** Taille anonymisée de l'équipe terrain (compteur, jamais les noms). */
+  team_size: number
+  /** Durée en minutes calculée si executed_at + scheduled_at disponibles. */
+  duration_minutes: number | null
+  notes: string | null
+  checklist: ProofChecklistItem[]
+  photos: ProofPhoto[]
+  anomalies: ProofAnomaly[]
+  validations: ProofValidation[]
+}
+
+export async function getProofDetail(interventionId: string): Promise<ProofDetail | null> {
+  const supabase = createAdminClient()
+
+  // 1. Intervention + mission + site + contract en une jointure.
+  const { data: rawIntervention, error: intErr } = await supabase
+    .from('interventions')
+    .select(
+      `
+      id,
+      mission_id,
+      scheduled_at,
+      scheduled_for,
+      executed_at,
+      status,
+      skipped_at,
+      skipped_reason,
+      team,
+      notes,
+      mission:missions!inner(
+        id,
+        name,
+        site:sites!inner(
+          id,
+          name,
+          address,
+          contract:contracts(id, name, client_name)
+        )
+      )
+    `,
+    )
+    .eq('id', interventionId)
+    .maybeSingle()
+
+  if (intErr) throw intErr
+  if (!rawIntervention) return null
+
+  type RawIntervention = {
+    id: string
+    mission_id: string
+    scheduled_at: string
+    scheduled_for: string | null
+    executed_at: string | null
+    status: string
+    skipped_at: string | null
+    skipped_reason: string | null
+    team: string[] | null
+    notes: string | null
+    mission?: unknown
+  }
+  const r = rawIntervention as unknown as RawIntervention
+
+  function pickOne<T>(value: unknown): T | null {
+    if (Array.isArray(value)) return (value[0] as T) ?? null
+    return (value as T | null) ?? null
+  }
+
+  const missionRaw = pickOne<{ id: string; name: string; site?: unknown }>(r.mission)
+  const siteRaw = missionRaw
+    ? pickOne<{ id: string; name: string; address: string | null; contract?: unknown }>(
+        missionRaw.site,
+      )
+    : null
+  const contractRaw = siteRaw
+    ? pickOne<{ id: string; name: string; client_name: string }>(siteRaw.contract)
+    : null
+
+  // 2. Checklist, photos, anomalies, validations en parallèle.
+  const [checklistRes, photosRes, anomaliesRes, validationsRes] = await Promise.all([
+    supabase
+      .from('intervention_checklist_items')
+      .select('id, label, required, position, done, done_at')
+      .eq('intervention_id', interventionId)
+      .order('position', { ascending: true }),
+    supabase
+      .from('intervention_photos')
+      .select('id, storage_path, caption, taken_at, kind, checklist_item_id, intervention_id')
+      .eq('intervention_id', interventionId)
+      .order('taken_at', { ascending: true }),
+    supabase
+      .from('intervention_anomalies')
+      .select(
+        'id, description, category, status, resolved_at, resolution_note, created_at',
+      )
+      .eq('intervention_id', interventionId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('intervention_validations')
+      .select('id, validated_at, comment, validated_by')
+      .eq('intervention_id', interventionId)
+      .order('validated_at', { ascending: true }),
+  ])
+
+  if (checklistRes.error) throw checklistRes.error
+  if (photosRes.error) throw photosRes.error
+  if (anomaliesRes.error) throw anomaliesRes.error
+  if (validationsRes.error) throw validationsRes.error
+
+  // 3. Photos : schéma Phase 5 ne porte pas de lien direct anomaly_id sur
+  //    intervention_photos. Le lien anomalies↔photos est implicite via
+  //    `kind = 'anomaly'` (toutes les photos d'anomalie d'une même intervention
+  //    sont rattachées globalement). On expose anomaly_id=null par défaut ;
+  //    la section "Anomalies" agrège séparément les photos `kind='anomaly'`
+  //    de la même intervention au niveau du rendu si besoin (B.5 polish).
+  type RawPhoto = {
+    id: string
+    storage_path: string
+    caption: string | null
+    taken_at: string
+    kind: string
+    checklist_item_id: string | null
+    intervention_id: string
+  }
+  const rawPhotos = (photosRes.data ?? []) as unknown as RawPhoto[]
+
+  // 4. Signed URLs en batch.
+  const signedMap = await getSignedPhotoUrls(rawPhotos.map((p) => p.storage_path))
+
+  const proofPhotos: ProofPhoto[] = rawPhotos.map((p) => ({
+    id: p.id,
+    url: signedMap.get(p.storage_path) ?? '',
+    caption: p.caption,
+    taken_at: p.taken_at,
+    intervention_id: p.intervention_id,
+    checklist_item_id: p.checklist_item_id,
+    anomaly_id: null,
+    kind: p.kind,
+  }))
+
+  // 5. Validators → roles (anonymisé : on rapporte le rôle, pas l'identité).
+  type RawValidation = {
+    id: string
+    validated_at: string
+    comment: string | null
+    validated_by: string
+  }
+  const rawValidations = (validationsRes.data ?? []) as unknown as RawValidation[]
+
+  const validatorIds = Array.from(new Set(rawValidations.map((v) => v.validated_by)))
+  const roleByUserId = new Map<string, string>()
+  if (validatorIds.length > 0) {
+    const { data: users, error: uErr } = await supabase
+      .from('users')
+      .select('id, role')
+      .in('id', validatorIds)
+    if (uErr) throw uErr
+    for (const u of users ?? []) {
+      const row = u as { id: string; role: string }
+      roleByUserId.set(row.id, row.role)
+    }
+  }
+
+  const validations: ProofValidation[] = rawValidations.map((v) => ({
+    id: v.id,
+    validated_at: v.validated_at,
+    comment: v.comment,
+    validator_role: roleByUserId.get(v.validated_by) ?? 'manager',
+  }))
+
+  // 6. Anomalies enrichies avec leurs photos.
+  type RawAnomaly = {
+    id: string
+    description: string | null
+    category: string
+    status: string
+    resolved_at: string | null
+    resolution_note: string | null
+    created_at: string
+  }
+  const rawAnomalies = (anomaliesRes.data ?? []) as unknown as RawAnomaly[]
+
+  // Schéma actuel : pas de FK directe photo→anomalie. Les photos `kind='anomaly'`
+  //  d'une intervention sont attachées à la première anomalie reportée (heuristique
+  //  visuelle) — la doctrine veut "voir les photos d'anomalie quelque part". Si
+  //  zéro anomalie reportée, ces photos restent dans la section Photos générale.
+  const anomalyPhotos = proofPhotos.filter((p) => p.kind === 'anomaly')
+
+  const anomalies: ProofAnomaly[] = rawAnomalies.map((a, idx) => ({
+    id: a.id,
+    description: a.description ?? '',
+    category: a.category,
+    status: a.status,
+    reported_at: a.created_at,
+    resolved_at: a.resolved_at,
+    resolution_note: a.resolution_note,
+    photos: idx === 0 ? anomalyPhotos : [],
+  }))
+
+  // 7. Checklist mapping.
+  type RawChecklist = {
+    id: string
+    label: string
+    required: boolean
+    position: number
+    done: boolean
+    done_at: string | null
+  }
+  const rawChecklist = (checklistRes.data ?? []) as unknown as RawChecklist[]
+
+  const checklist: ProofChecklistItem[] = rawChecklist.map((c) => ({
+    id: c.id,
+    label: c.label,
+    required: c.required,
+    position: c.position,
+    completed: c.done,
+    completed_at: c.done_at,
+  }))
+
+  // 8. Durée : on préfère executed_at - scheduled_at quand les deux sont là.
+  //    En l'état actuel du schéma, on n'a pas de started_at distinct, mais
+  //    executed_at marque la fin et scheduled_at la planification. C'est la
+  //    meilleure approximation calmement disponible.
+  let durationMinutes: number | null = null
+  if (r.executed_at && r.scheduled_at) {
+    const ms = new Date(r.executed_at).getTime() - new Date(r.scheduled_at).getTime()
+    if (ms > 0) {
+      durationMinutes = Math.round(ms / 60000)
+    }
+  }
+
+  // 9. team_size = longueur du tableau (anonymisation stricte).
+  const teamSize = Array.isArray(r.team) ? r.team.length : 0
+
+  return {
+    id: r.id,
+    mission_id: r.mission_id,
+    mission_name: missionRaw?.name ?? 'Intervention',
+    site_id: siteRaw?.id ?? '',
+    site_name: siteRaw?.name ?? '',
+    site_address: siteRaw?.address ?? null,
+    contract_id: contractRaw?.id ?? null,
+    contract_name: contractRaw?.name ?? null,
+    client_name: contractRaw?.client_name ?? null,
+    scheduled_for: r.scheduled_for,
+    scheduled_at: r.scheduled_at,
+    executed_at: r.executed_at,
+    status: r.status,
+    skipped_at: r.skipped_at,
+    skipped_reason: r.skipped_reason,
+    team_size: teamSize,
+    duration_minutes: durationMinutes,
+    notes: r.notes,
+    checklist,
+    photos: proofPhotos,
+    anomalies,
+    validations,
+  }
 }
