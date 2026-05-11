@@ -1,18 +1,137 @@
-# Doctrine Planning NetoIAge
+# Doctrine Planning NetoIAge — V2
 
 > **Document de référence** — toute personne (humain ou subagent IA) qui touche au planning, aux missions, aux interventions, au calendrier ou à l'app agent terrain DOIT lire et appliquer cette doctrine.
 
-**Date de validation** : 2026-05-10
-**Statut** : doctrine produit verrouillée
-**Portée** : missions, interventions, planning, calendrier, app agent (`/missions`, `/contracts/[id]/missions`, `/contracts/[id]/interventions`, `/m/*`)
+**Date V1** : 2026-05-10
+**Date V2** : 2026-05-12 (évolution doctrinale post-feedback terrain)
+**Statut** : V2 verrouillée — prévaut sur la V1 où il y a contradiction
+**Portée** : missions, interventions, planning, calendrier, app agent, vue semaine, équipes (`/missions`, `/contracts/[id]/missions`, `/contracts/[id]/interventions`, `/m/*`, `/semaine`, `/equipes`)
 
 ---
 
-## La phrase qui résume tout
+## La phrase qui résume tout — V2
 
-> **« Le planning sert la preuve, pas la gestion des humains. »**
+> **« On organise la couverture des engagements. On ne mesure jamais les humains. »**
 
 Si tu hésites face à une décision, reviens à cette phrase. Tout le reste découle.
+
+**Cette doctrine n'est pas philosophique. C'est une protection stratégique du positionnement produit.** Si on cède sur "on mesure les humains", NetoIAge devient un ERP parmi d'autres et entre en concurrence frontale avec Skello, Combo, Monday, Factorial, FM tools. La doctrine est le moat.
+
+---
+
+## V2 — Évolution doctrinale (2026-05-12)
+
+### Le pivot
+La V1 a refusé toute couche organisationnelle (pas de `assigned_to`, pas de vue semaine, pas de drag & drop) par peur de la dérive RH. **Le feedback terrain a montré que c'était trop restrictif** : les superviseurs cleaning pensent naturellement en semaine, sites, équipes, remplacement. Si NetoIAge ne couvre pas cette couche, ils retournent sur Excel — et le mobile terrain décroche, le moat s'effrite.
+
+**Le pivot V2** : le problème n'est pas le planning. Le problème est **qui devient l'objet du système**.
+
+### Trois couches strictement distinctes
+
+| Couche | Objet | Statut |
+|---|---|---|
+| 🟢 **Organisation** | Quoi faire, où, quand, par quelle ÉQUIPE | Autorisée, voire nécessaire |
+| 🔴 **Surveillance** | Qui a fait quoi, en combien de temps, en retard, qualité individuelle | **Interdit absolu** |
+| 💎 **Moat** | Preuves accumulées, réutilisation, dossier de preuves | Cœur produit |
+
+### Le test ultime central — V2
+
+> **« Si tous les humains étaient remplacés par des identifiants abstraits, la valeur métier resterait-elle intacte ? »**
+
+- **OUI** → la feature est dans la couche Organisation ou Moat. ✅
+- **NON** → la feature dérive vers Surveillance. ❌ refus.
+
+Ce test prévaut sur le test V1 (« est-ce que cette feature aide à réaliser ou documenter une mission ? ») qui était utile mais pas assez tranchant.
+
+### Le principe architectural V2
+
+**On affecte à une ÉQUIPE, jamais à un AGENT individuel.**
+
+L'équipe est un **conteneur de couverture**. Sa composition peut varier dans le temps sans impact sur les missions. L'agent terrain voit ses interventions **via son appartenance à une équipe**, jamais via une affectation nominative.
+
+```sql
+-- DB V2 :
+ALTER TABLE missions ADD COLUMN assigned_team_id uuid REFERENCES teams(id);
+ALTER TABLE interventions ADD COLUMN assigned_team_id uuid REFERENCES teams(id);
+-- TOUJOURS INTERDIT : assigned_to_user_id sur mission ou intervention.
+```
+
+### Vue semaine V2 — autorisée mais discrète
+
+Une grille Site × Jour devient autorisée. Mais avec 4 garde-fous :
+
+1. **Pas un Gantt, pas un Outlook.** Pas de slots horaires précis. Créneaux nommés (matin/après-midi/soir).
+2. **Vue Site × Jour = primaire.** Vue Équipe × Jour = secondaire/utilitaire, accès discret.
+3. **Lent, macro, calme.** Pas de dispatch temps réel. Pas de Trello live. Pas de tour de contrôle.
+4. **Aucune métrique d'équipe.** L'équipe est un conteneur logistique, pas une unité analytique.
+
+### Liste rouge V2 — équipe comme KPI déguisé
+
+Même sans métrique individuelle, les superviseurs vont naturellement comparer Alpha vs Beta. Le risque : "performance implicite d'équipe". **Interdiction explicite :**
+
+```
+❌ Charge équipe
+❌ Saturation équipe
+❌ Productivité équipe
+❌ Taux complétion équipe
+❌ Heatmap équipe
+❌ "Équipe la plus utilisée" / "la moins utilisée"
+❌ Indicateur de sous-utilisation
+❌ Comparaison inter-équipes
+❌ Score d'équipe
+```
+
+L'équipe affiche **uniquement** : sa composition (nombre de personnes) et les missions qui lui sont affectées. Aucune mesure.
+
+### Liste rouge V2 — dispatch temps réel
+
+Le produit peut éviter les KPI RH et devenir quand même une tour de contrôle anxiogène. **Interdiction explicite :**
+
+```
+❌ Drag/drop permanent / temps réel
+❌ Micro-réassignations minute par minute
+❌ Présence agent implicite ("en ligne", "actif")
+❌ Vue "ce qui se passe maintenant"
+❌ Refresh auto agressif
+❌ Live cursor / collaboration temps réel sur le planning
+❌ Notification supervisor "mission démarrée à l'instant"
+```
+
+Le planning reste **calme, macro, lent**. Pas de dispatch center.
+
+### Page Équipes isolée
+
+C'est le **SEUL endroit** où le superviseur voit des noms d'agents. Sur cette page :
+- Composition des équipes (membres listés)
+- Possibilité d'ajouter/retirer un agent d'une équipe
+- **ZÉRO métrique individuelle** (jamais d'historique d'activité, jamais de stats)
+
+Partout ailleurs en supervision : "Équipe Alpha (4 personnes)", jamais les noms.
+
+### Vocabulaire V2
+
+| ✅ Préférer | ❌ Éviter |
+|---|---|
+| Équipe Alpha | L'équipe de Mehdi |
+| Couverture du site | Capacité d'équipe |
+| Affecter une équipe | Assigner un agent |
+| Remplacement d'équipe | Remplacement d'agent |
+| Non-affecté | Sans staff |
+| Réassigner l'équipe | Réaffecter Mehdi |
+| Mission planifiée | Tâche assignée |
+| Composition d'équipe | Effectif |
+
+### Doctrine de réponse à la pression commerciale
+
+Quand un client demandera "combien d'heures Mehdi a fait cette semaine ?" :
+
+❌ NE PAS : "On peut ajouter ça"
+❌ NE PAS : "Peut-être dans une V2"
+✅ **DIRE** : "NetoIAge ne gère pas le temps de travail. Pour ça, branchez votre SIRH (Lucca, Skello, etc.). NetoIAge vous donne autre chose : les preuves de service rendu."
+
+**Le scope assumé est le moat.** Élargir = devenir générique = perdre le positionnement.
+
+---
 
 ---
 
@@ -344,4 +463,5 @@ Cette doctrine planning ajoute la **8e maxim** à la doctrine produit globale (l
 
 ---
 
-**Validation** : doctrine validée par l'utilisateur le 2026-05-10. Verrouillée.
+**Validation V1** : doctrine validée par l'utilisateur le 2026-05-10.
+**Validation V2** : évolution doctrinale validée par l'utilisateur le 2026-05-12. La V2 prévaut sur la V1 où il y a contradiction (notamment : vue semaine et affectation équipe deviennent autorisées sous conditions strictes).
