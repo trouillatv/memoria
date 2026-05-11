@@ -2,7 +2,15 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request })
+  const url = new URL(request.url)
+  const pathname = url.pathname
+
+  // Expose pathname to Server Components via header — used by (dashboard)/layout.tsx
+  // to special-case /account (accessible to all roles, including chef_equipe).
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', pathname)
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,7 +20,7 @@ export async function middleware(request: NextRequest) {
         getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
+          response = NextResponse.next({ request: { headers: requestHeaders } })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           )
@@ -22,8 +30,6 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const url = new URL(request.url)
-  const pathname = url.pathname
 
   const isAuthPage = pathname.startsWith('/login')
                   || pathname.startsWith('/accept-invite')
@@ -35,7 +41,8 @@ export async function middleware(request: NextRequest) {
                         || pathname.startsWith('/missions')
                         || pathname.startsWith('/reports')
                         || pathname.startsWith('/library')
-                        || pathname.startsWith('/settings'))
+                        || pathname.startsWith('/settings')
+                        || pathname.startsWith('/account'))
 
   if (!user && isProtectedPage) {
     const loginUrl = new URL('/login', request.url)
