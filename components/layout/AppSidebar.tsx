@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch } from 'lucide-react'
+import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch, Users } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 interface NavItem {
@@ -12,6 +12,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Tableau de bord',  icon: Sparkles,      roles: ['admin', 'manager'] },
   { href: '/missions',  label: 'Missions',         icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
+  { href: '/equipes',   label: 'Équipes',           icon: Users,         roles: ['admin', 'manager'] },
   { href: '/preuves',   label: 'Dossier de preuves', icon: FileSearch,   roles: ['admin', 'manager'] },
   { href: '/tenders',   label: "Appels d'offres",  icon: FileText,      roles: ['admin', 'manager'] },
   { href: '/contracts', label: 'Contrats',          icon: FileCheck,     roles: ['admin', 'manager'] },
