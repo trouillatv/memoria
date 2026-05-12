@@ -1,7 +1,12 @@
 import { notFound } from 'next/navigation'
 import { AlertTriangle, FileX } from 'lucide-react'
 import Link from 'next/link'
-import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
+import {
+  getTender,
+  getLatestTenderAnalysis,
+  getTenderDocument,
+  findSimilarTenderMemory,
+} from '@/lib/db/tenders'
 import { listChatMessages } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -15,6 +20,7 @@ import { TenderSidebar, type TenderView } from './TenderSidebar'
 import { buildActivityFeed } from './activity-feed'
 import { EvidencePanel } from './EvidencePanel'
 import { OutcomeTrigger } from './OutcomeDialog'
+import { TenderMemoryPanel } from './TenderMemoryPanel'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -49,6 +55,19 @@ export default async function TenderDetailPage({
     : [null, null, [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
+
+  // Mémoire commerciale MC-2 — rappel contextuel AO similaires.
+  // Affiché uniquement AVANT soumission (le moment où la mémoire sert), et
+  // jamais sur l'AO courant lui-même s'il a déjà un outcome (sinon c'est
+  // lui qu'on devrait analyser, pas comparer).
+  const showMemoryPanel =
+    (['draft', 'extracting', 'analyzing', 'ready'] as const).includes(
+      tender.status as 'draft' | 'extracting' | 'analyzing' | 'ready',
+    ) && tender.outcome === null
+
+  const similarTenders = showMemoryPanel
+    ? await findSimilarTenderMemory(tender.id)
+    : []
 
   // Generate signed URL for PDF source
   let pdfSignedUrl: string | null = null
@@ -138,6 +157,13 @@ export default async function TenderDetailPage({
               )}
             </div>
           </header>
+        )}
+
+        {/* Mémoire commerciale MC-2 — rappel AO similaires (avant soumission
+            uniquement, et jamais sur la vue atelier immersive). Silence positif
+            si zéro match. Doctrine V5 V1+V4 : descriptif passif uniquement. */}
+        {view !== 'atelier' && showMemoryPanel && similarTenders.length > 0 && (
+          <TenderMemoryPanel similarTenders={similarTenders} />
         )}
 
         {/* States — affichées indépendamment de la vue sélectionnée */}

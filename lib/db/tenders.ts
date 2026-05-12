@@ -240,6 +240,78 @@ export async function setTenderOutcome(input: SetTenderOutcomeInput): Promise<Db
   return data as DbTender
 }
 
+// =================================
+// Mémoire commerciale MC-2 — rappel contextuel AO similaires
+// Doctrine V5 verrou V1 : retourne des FAITS (AO passés gagnés/perdus),
+// aucun score commercial, aucune recommandation. L'UI rend en formulation
+// passive descriptive uniquement.
+// =================================
+
+export interface SimilarTenderMemory {
+  id: string
+  title: string
+  client_name: string | null
+  outcome: TenderOutcome
+  outcome_at: string | null
+  outcome_reason: string | null
+  outcome_tag: TenderOutcomeTag | null
+  similarity: number // 0..1
+}
+
+/**
+ * Trouve les AO passés (won/lost uniquement) dont title ou client_name
+ * matchent en trigram le tender courant.
+ *
+ * Tri : perdus d'abord (urgence mnemonique), puis outcome_at desc.
+ * Limit 5 par défaut.
+ *
+ * Si le tender courant n'a ni title ni client_name → retourne [].
+ *
+ * Repose sur la RPC `find_similar_tender_memory` (migration 030).
+ */
+export async function findSimilarTenderMemory(
+  currentTenderId: string,
+  options?: { threshold?: number; limit?: number }
+): Promise<SimilarTenderMemory[]> {
+  const threshold = options?.threshold ?? 0.25
+  const limit = options?.limit ?? 5
+
+  const supabase = createAdminClient()
+
+  // Récupère title + client_name du tender courant
+  const { data: current, error: currentErr } = await supabase
+    .from('tenders')
+    .select('id, title, client_name')
+    .eq('id', currentTenderId)
+    .maybeSingle()
+  if (currentErr || !current) return []
+
+  const title = (current.title ?? '').trim()
+  const clientName = (current.client_name ?? '').trim()
+  if (title.length === 0 && clientName.length === 0) return []
+
+  const { data, error } = await supabase.rpc('find_similar_tender_memory', {
+    p_current_tender_id: currentTenderId,
+    p_title: title,
+    p_client_name: clientName,
+    p_threshold: threshold,
+    p_limit: limit,
+  })
+  if (error) throw error
+  if (!data) return []
+
+  return (data as SimilarTenderMemory[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    client_name: row.client_name,
+    outcome: row.outcome,
+    outcome_at: row.outcome_at,
+    outcome_reason: row.outcome_reason,
+    outcome_tag: row.outcome_tag,
+    similarity: row.similarity,
+  }))
+}
+
 export async function countAnalysesToday(): Promise<number> {
   const supabase = createAdminClient()
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
