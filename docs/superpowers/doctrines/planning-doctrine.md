@@ -16,6 +16,14 @@ Cette phrase remplace toutes les précédentes. Tout le reste découle.
 
 ---
 
+## Principe directeur V5 (ajouté 2026-05-13 — gravé)
+
+> **« Le système réduit l'incertitude opérationnelle. Il n'amplifie jamais le pouvoir hiérarchique. »**
+
+Test final V5 pour toute feature : amplifie-t-elle le pouvoir hiérarchique (tracking timestamps, formulations injonctives, comparaisons inter-individus, classements implicites, surveillance d'usage) ? Si oui → refus, même si "humain qui signe" techniquement.
+
+---
+
 ## Pourquoi cette V5 doit être gravée avant le pilote
 
 Le terrain va injecter du bruit. Des demandes contradictoires vont arriver. Des urgences business vont pousser vers des dérives. La pression *"rajoutez juste ça"* peut casser silencieusement la doctrine.
@@ -217,12 +225,82 @@ Exemples potentiels post-pilote (à ne PAS coder avant observation terrain) :
 
 ---
 
-## Ajustements V5 — placeholders (à compléter)
+## Verrous complémentaires V5 (gravés 2026-05-13)
 
-L'utilisateur a annoncé **3 ajustements importants**. Le 1er est intégré (« mémoire » > « continuité » au Pilier 1). Les 2 autres restent à formaliser quand l'utilisateur les explicitera :
+### Verrou 1 — Mémoire ≠ recommandation
+Le système rappelle, contextualise, relie. Il ne recommande jamais une action commerciale.
+- ✅ « AO similaire perdu pour 'prix' il y a 4 mois »
+- ❌ « Baissez votre prix de 12% »
 
-- **[Ajustement 2 — à compléter]**
-- **[Ajustement 3 — à compléter]**
+Verbes interdits côté système : baissez, augmentez, contactez, relancez, négociez, proposez.
+
+### Verrou 2 — Briefing = sensation de maîtrise, jamais alerte
+Neuroergonomie. Même contenu, formulation opposée.
+- ✅ « Demain est couvert. 2 points méritent votre attention. »
+- ❌ « 4 anomalies ouvertes. 2 sites à risque. »
+
+Pas de chiffres bruts en début de phrase. Pas de couleur rouge. Toujours indiquer ce qui va bien AVANT ce qui demande attention.
+
+### Verrou 3 — "Clôturé" pas "résolu"
+Dans le cleaning, les problèmes ne sont presque jamais résolus définitivement. "Résolu" implique acceptation de responsabilité — juridiquement dangereux.
+- ✅ « Dossier clôturé · Incident traité · Réclamation refermée »
+- ❌ « Problème résolu · Issue closed »
+
+### Verrou 4 — Le système ne suggère JAMAIS de formulation de contrôle humain
+Le système ne propose pas de wording managérial dans les messages générés.
+- ❌ « Pense à... », « N'oublie pas... », « Cette fois... », « Merci de... », « Attention à... », « Tu dois... »
+- ✅ Formulations descriptives passives uniquement
+
+Différence cruciale :
+- ❌ « Fais attention au bloc B »
+- ✅ « Bloc B : humidité signalée hier »
+
+L'humain reste libre d'écrire ce qu'il veut. Le système ne le pousse PAS vers le micro-management. Sinon il devient un amplificateur de pouvoir hiérarchique passif-agressif.
+
+### Verrou 5 — L'édition humaine est volontairement contrainte
+Pas de textarea libre infinie = pas de mini-CMS quotidien = pas de charge mentale qui remonte.
+
+Actions limitées autorisées :
+- Toggle blocs ON/OFF
+- Note libre ≤ 140 chars
+- Emoji depuis palette restreinte
+- Réordonner blocs
+
+Refusé :
+- Réécrire les bullets générés par le système
+- Textarea libre infinie
+- Brouillons longue durée
+- Templates persistants
+
+Sinon : Maeva passe 25 min/soir dans le système et le bénéfice disparaît.
+
+### Verrou 6 — Aucun tracking de comportement humain interne
+Pas de timestamp d'envoi persisté en DB. Pas d'historique d'actions du manager. Pas de fréquence d'utilisation.
+
+Autorisé : badges UI temporaires (session/localStorage), purge automatique lendemain matin.
+
+Refusé : `last_briefing_sent_at`, `briefing_send_count`, `last_login_at` exposés en admin, "Maeva a envoyé hier à 19h32".
+
+Sinon : Patrick peut dire à Maeva « pourquoi tu envoies plus tard maintenant ? » → surveillance hiérarchique indirecte.
+
+### Test consolidé V5 (4 questions, dans cet ordre)
+
+Toute nouvelle feature doit répondre OUI / OUI / NON / NON :
+
+1. **Charge mentale** : réduit-elle le chaos, oublis, anxiété ? (OUI obligatoire)
+2. **Humains anonymes** : la valeur tient si humains = IDs abstraits ? (OUI obligatoire)
+3. **Frontière dominante** : lutte-t-elle contre WhatsApp/Excel sur leur fonction émotionnelle ? (NON obligatoire)
+4. **Pouvoir hiérarchique** : amplifie-t-elle un canal de surveillance ou de micro-management ? (NON obligatoire)
+
+---
+
+## Architecture conceptuelle V5
+
+> **NetoIAge = couche mémoire / structure / preuve**
+> **WhatsApp = couche émotionnelle / conversationnelle**
+> **Le manager humain = hub entre les deux**
+
+Le système prépare le plateau. L'humain choisit de servir.
 
 ---
 
