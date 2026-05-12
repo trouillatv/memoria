@@ -86,7 +86,7 @@ export function TenderSidebar({
     { view: 'synthese', label: 'Synthèse',          icon: LayoutDashboard },
     { view: 'analyse',  label: 'Analyse détaillée', icon: ListChecks      },
     { view: 'memoire',  label: 'Mémoire technique', icon: FileText        },
-    { view: 'atelier',  label: 'Copilote AO',        icon: MessageSquare,  count: kpis.chatMessagesCount > 0 ? kpis.chatMessagesCount : undefined },
+    { view: 'atelier',  label: 'Atelier IA',        icon: MessageSquare,  count: kpis.chatMessagesCount > 0 ? kpis.chatMessagesCount : undefined },
   ]
 
   async function handleArchive() {
@@ -180,7 +180,7 @@ export function TenderSidebar({
               {kpis.chatMessagesCount > 0 && (
                 <li className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                  <span>{kpis.chatMessagesCount} msg{kpis.chatMessagesCount > 1 ? 's' : ''} Copilote AO</span>
+                  <span>{kpis.chatMessagesCount} msg{kpis.chatMessagesCount > 1 ? 's' : ''} Atelier IA</span>
                 </li>
               )}
             </ul>
