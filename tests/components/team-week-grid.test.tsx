@@ -359,6 +359,52 @@ describe('TeamWeekGridCell', () => {
     )
     expect(screen.getByTestId('team-week-cell-unassigned-2026-05-11')).toBeInTheDocument()
   })
+
+  // UX V5 — Doctrine "passé = calme visuel" (motif hachuré sobre)
+  it('applique un style hachuré sobre quand la date est dans le passé', () => {
+    const { container } = renderInTable(
+      <TeamWeekGridCell
+        date="2026-05-10"
+        teamId="t-alpha"
+        teamName="Alpha"
+        cells={[]}
+        todayIso="2026-05-13"
+      />,
+    )
+    const cell = container.querySelector('[data-cell-key="team::t-alpha::2026-05-10"]')
+    expect(cell?.getAttribute('data-past')).toBe('true')
+    const style = cell?.getAttribute('style') ?? ''
+    expect(style).toContain('repeating-linear-gradient')
+    expect(style).not.toMatch(/text-decoration:\s*line-through/i)
+  })
+
+  it('n’applique PAS le style hachuré pour aujourd’hui ou le futur', () => {
+    const { container: today } = renderInTable(
+      <TeamWeekGridCell
+        date="2026-05-13"
+        teamId="t-alpha"
+        teamName="Alpha"
+        cells={[]}
+        todayIso="2026-05-13"
+      />,
+    )
+    const cellToday = today.querySelector('[data-cell-key="team::t-alpha::2026-05-13"]')
+    expect(cellToday?.getAttribute('data-past')).toBe('false')
+    expect(cellToday?.getAttribute('style') ?? '').not.toContain('repeating-linear-gradient')
+
+    const { container: future } = renderInTable(
+      <TeamWeekGridCell
+        date="2026-05-15"
+        teamId="t-alpha"
+        teamName="Alpha"
+        cells={[]}
+        todayIso="2026-05-13"
+      />,
+    )
+    const cellFuture = future.querySelector('[data-cell-key="team::t-alpha::2026-05-15"]')
+    expect(cellFuture?.getAttribute('data-past')).toBe('false')
+    expect(cellFuture?.getAttribute('style') ?? '').not.toContain('repeating-linear-gradient')
+  })
 })
 
 // ----------------------------------------------------------------------------

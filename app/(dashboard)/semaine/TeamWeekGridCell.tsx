@@ -172,6 +172,19 @@ export function TeamWeekGridCell({
   }
   const ariaLabel = ariaParts.join(' — ')
 
+  // UX V5 : cellule passée → fond slate-50 semi-transparent + motif hachuré
+  // diagonal sobre. Purement visuel décoratif : le contenu reste pleinement
+  // lisible, le clic reste autorisé (seul le drop SUR le passé est refusé,
+  // cf. useDroppable disabled=isPast). L'état `isOver` du drop reste
+  // prioritaire (il ne peut pas être actif si isPast, donc pas de conflit).
+  const pastCellStyle = isPast
+    ? {
+        backgroundImage:
+          'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(148, 163, 184, 0.08) 6px, rgba(148, 163, 184, 0.08) 7px)',
+        backgroundColor: 'rgba(248, 250, 252, 0.5)',
+      }
+    : undefined
+
   return (
     <td
       ref={droppable.setNodeRef}
@@ -182,13 +195,15 @@ export function TeamWeekGridCell({
       data-empty={isEmpty ? 'true' : 'false'}
       data-past={isPast ? 'true' : 'false'}
       data-over={droppable.isOver ? 'true' : 'false'}
+      style={pastCellStyle}
       className={cn(
         'border-l border-border/60 align-top p-2 min-w-[7rem] transition-colors duration-200',
         !isEmpty && 'hover:bg-accent/40',
         droppable.isOver &&
           !isPast &&
           'bg-brand-50/60 outline outline-2 outline-brand-300 outline-offset-[-2px]',
-        isPast && 'bg-muted/20',
+        // UX V5 : isPast applique un hachuré sobre via inline style (cf. pastCellStyle
+        // ci-dessus). Remplace l'ancien `bg-muted/20`.
       )}
     >
       {isEmpty ? (

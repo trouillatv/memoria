@@ -1,7 +1,13 @@
 import { notFound } from 'next/navigation'
 import { AlertTriangle, FileX } from 'lucide-react'
 import Link from 'next/link'
-import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
+import {
+  getTender,
+  getLatestTenderAnalysis,
+  getTenderDocument,
+  findSimilarTenderMemory,
+  getSignedVoiceNoteUrl,
+} from '@/lib/db/tenders'
 import { listChatMessages } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -14,6 +20,9 @@ import { CopiloteWorkspace } from './CopiloteWorkspace'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
 import { buildActivityFeed } from './activity-feed'
 import { EvidencePanel } from './EvidencePanel'
+import { OutcomeTrigger } from './OutcomeDialog'
+import { TenderMemoryPanel } from './TenderMemoryPanel'
+import { VoiceNoteRecorder } from './VoiceNoteRecorder'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -48,6 +57,26 @@ export default async function TenderDetailPage({
     : [null, null, [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
+
+  // Mémoire commerciale MC-2 — rappel contextuel AO similaires.
+  // Affiché uniquement AVANT soumission (le moment où la mémoire sert), et
+  // jamais sur l'AO courant lui-même s'il a déjà un outcome (sinon c'est
+  // lui qu'on devrait analyser, pas comparer).
+  const showMemoryPanel =
+    (['draft', 'extracting', 'analyzing', 'ready'] as const).includes(
+      tender.status as 'draft' | 'extracting' | 'analyzing' | 'ready',
+    ) && tender.outcome === null
+
+  const similarTenders = showMemoryPanel
+    ? await findSimilarTenderMemory(tender.id)
+    : []
+
+  // MC-4 — voice note DG sur AO finalisé (outcome NOT NULL).
+  // Archive personnelle, lecture privée admin/manager.
+  const hasFinalOutcome = tender.outcome !== null && tender.outcome !== 'pending'
+  const voiceNoteSignedUrl = hasFinalOutcome && tender.voice_note_path
+    ? await getSignedVoiceNoteUrl(tender.id)
+    : null
 
   // Generate signed URL for PDF source
   let pdfSignedUrl: string | null = null
@@ -114,13 +143,48 @@ export default async function TenderDetailPage({
         {/* H1 main (sauf atelier qui a sa propre UI immersive) */}
         {view !== 'atelier' && (isReady || isFailed) && (
           <header className="space-y-1">
-            <h1 className="text-2xl font-semibold">
-              {view === 'memoire' && 'Mémoire technique'}
-              {view === 'synthese' && 'Synthèse'}
-              {view === 'analyse' && 'Analyse détaillée'}
-            </h1>
-            <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-2xl font-semibold">
+                  {view === 'memoire' && 'Mémoire technique'}
+                  {view === 'synthese' && 'Synthèse'}
+                  {view === 'analyse' && 'Analyse détaillée'}
+                </h1>
+                <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
+              </div>
+              {/* Doctrine V5 — mémoire commerciale. Visible si l'AO est soumis
+                  OU déjà marqué (pour modifier). Jamais en push, jamais d'alerte. */}
+              {(tender.status === 'submitted' || tender.outcome !== null) && (
+                <div className="shrink-0">
+                  <OutcomeTrigger
+                    tenderId={id}
+                    currentOutcome={tender.outcome}
+                    currentReason={tender.outcome_reason}
+                    currentTag={tender.outcome_tag}
+                  />
+                </div>
+              )}
+            </div>
           </header>
+        )}
+
+        {/* Mémoire commerciale MC-2 — rappel AO similaires (avant soumission
+            uniquement, et jamais sur la vue atelier immersive). Silence positif
+            si zéro match. Doctrine V5 V1+V4 : descriptif passif uniquement. */}
+        {view !== 'atelier' && showMemoryPanel && similarTenders.length > 0 && (
+          <TenderMemoryPanel similarTenders={similarTenders} />
+        )}
+
+        {/* MC-4 — voice note DG sur AO finalisé. Doctrine V5 cas validé :
+            archive personnelle, déchargement + mémoire incarnée. Strictement
+            restreint à outcome NOT NULL. Jamais sur la vue atelier. */}
+        {view !== 'atelier' && hasFinalOutcome && (
+          <VoiceNoteRecorder
+            tenderId={id}
+            existingSignedUrl={voiceNoteSignedUrl}
+            existingDurationSeconds={tender.voice_note_duration_seconds}
+            existingRecordedAt={tender.voice_note_recorded_at}
+          />
         )}
 
         {/* States — affichées indépendamment de la vue sélectionnée */}

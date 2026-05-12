@@ -9,6 +9,8 @@ export type UserRole = 'admin' | 'manager' | 'chef_equipe'
 export type MissionStatus = 'pending' | 'in_progress' | 'completed' | 'issue'
 export type TenderStatus =
   | 'draft' | 'extracting' | 'analyzing' | 'ready' | 'failed' | 'submitted' | 'archived'
+export type TenderOutcome = 'pending' | 'won' | 'lost' | 'withdrawn' | 'not_responded'
+export type TenderOutcomeTag = 'prix' | 'qualite' | 'relation' | 'timing' | 'autre'
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
 export type AIProviderName = 'mock' | 'gemini' | 'anthropic' | 'openai'
 export type KnowledgeCategory =
@@ -58,6 +60,18 @@ export interface DbTender {
   created_by: string
   created_at: string
   deleted_at: string | null
+  // Mémoire commerciale — doctrine V5 verrou V1 (mémoire ≠ recommandation)
+  outcome: TenderOutcome | null
+  outcome_at: string | null
+  outcome_reason: string | null
+  outcome_tag: TenderOutcomeTag | null
+  outcome_set_by: string | null
+  // Mémoire commerciale MC-4 — voice note DG sur AO finalisé (doctrine V5 cas validé).
+  // Archive personnelle. Path interne bucket `tender-voice-notes`.
+  voice_note_path: string | null
+  voice_note_duration_seconds: number | null
+  voice_note_recorded_at: string | null
+  voice_note_recorded_by: string | null
 }
 
 export interface DbTenderDocument {
