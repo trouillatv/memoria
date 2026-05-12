@@ -714,7 +714,7 @@ async function seedInterventions(
         m.checklist.map((c, idx) => ({
           intervention_id: interventionId,
           label: c.label,
-          required: c.required,
+          required: c.required ?? true,
           position: idx,
           engagement_id: null,
         })),
@@ -726,7 +726,7 @@ async function seedInterventions(
         for (const item of insertedChecklist) {
           const shouldCheck =
             item.required ||
-            (missionIdx + i + item.sort_order) % 5 !== 0
+            (missionIdx + i + item.position) % 5 !== 0
           if (shouldCheck) {
             await markChecklistItemDone(item.id, adminId)
           }
