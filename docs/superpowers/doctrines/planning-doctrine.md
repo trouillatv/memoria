@@ -1,3 +1,233 @@
+# Doctrine NetoIAge — V5 (mémoire opérationnelle par la preuve)
+
+> ⚠️ **Cette V5 prévaut sur V3/V2/V1.** Elle ne porte plus uniquement sur le planning — elle définit la **nature du produit** entier, à la lumière de 6 scénarios humains analysés le 2026-05-13.
+
+**Date V5** : 2026-05-13
+**Statut** : V5 verrouillée — fondations comportementales gravées AVANT pilote terrain
+**Portée** : TOUT le produit (et non plus seulement planning/missions/interventions)
+
+---
+
+## La phrase qui résume tout — V5
+
+> **« NetoIAge est un système de mémoire opérationnelle par la preuve. Il réduit la charge mentale en augmentant la confiance. »**
+
+Cette phrase remplace toutes les précédentes. Tout le reste découle.
+
+---
+
+## Pourquoi cette V5 doit être gravée avant le pilote
+
+Le terrain va injecter du bruit. Des demandes contradictoires vont arriver. Des urgences business vont pousser vers des dérives. La pression *"rajoutez juste ça"* peut casser silencieusement la doctrine.
+
+**Le vrai danger maintenant n'est plus technique. C'est la dilution conceptuelle.** Cette V5 fixe les lois comportementales du produit avant que le terrain ne nous fasse oublier des nuances.
+
+---
+
+## Les 6 piliers V5
+
+### Pilier 1 — La nature du produit
+
+NetoIAge est un **système de mémoire opérationnelle par la preuve**. Pas un ERP. Pas un CRM. Pas un dispatching tool. Pas un SIRH. Pas un outil de ticketing.
+
+Catégorie nouvelle. La continuité opérationnelle observée est une **conséquence** de la mémoire accumulée (12 mois de preuves que la concurrence ne peut pas copier). La mémoire est le mécanisme. La continuité est l'effet.
+
+### Pilier 2 — Le critère de toute feature
+
+> **« Est-ce que cette feature réduit la charge mentale ? »**
+
+Si elle réduit le chaos, les oublis, les conflits, la préparation manuelle, l'anxiété de preuve, la dépendance à la mémoire humaine → elle est probablement dans la doctrine.
+
+Sinon : danger de dérive.
+
+Test corollaire :
+> **« Cette feature augmente-t-elle la confiance dans le système, ou demande-t-elle plus d'énergie à l'utilisateur ? »**
+
+Charge mentale ↓ et confiance ↑ sont **le même mouvement**, pas deux mouvements distincts.
+
+### Pilier 3 — La règle des frontières humaines
+
+> **« Le produit ne se bat jamais contre les outils humains déjà dominants quand ceux-ci remplissent mieux la fonction émotionnelle. »**
+
+Exemple structurel :
+- WhatsApp gagne la coordination chaude (7h45, un agent malade)
+- NetoIAge gagne la preuve froide (rapport mensuel, dossier de preuves)
+
+C'est une frontière saine, pas un échec.
+
+**Corollaire critique** (révélé par l'Agent 6 — anthropologue pilote) :
+> **« Mais NetoIAge doit empêcher le DG de transformer ces outils dominants en surveillance déléguée. »**
+
+Si l'UI anonymise mais que le DG poste les noms dans WhatsApp groupe, la doctrine est cassée hors plateforme. Voir Maxim 9 ci-dessous.
+
+### Pilier 4 — Le rapport au DG (auteur, jamais remplacé)
+
+> **« Le produit ne parle jamais à la place du DG. Il amplifie sa voix. »**
+
+Le DG reste l'auteur signataire :
+- Voice note du DG sur le rapport mensuel (sa vraie voix vit dans ses notes vocales WhatsApp, pas dans le français-administratif)
+- Signature manuscrite scannée sur les PDF
+- Co-branding sobre où l'entreprise du DG reste le héros visible
+
+Refus net : génération IA de la note du DG, "résumé automatique", "rapport intelligent", "synthèse IA". Tout texte généré machine désincarne le document et casse le moat.
+
+### Pilier 5 — Le rapport à l'agent terrain (transparence)
+
+> **« Le produit doit devenir oubliable pour l'agent terrain. Si Joseph pense au produit, le produit a échoué. »**
+
+L'agent doit pouvoir ouvrir, prendre une photo, terminer, repartir — sans charge cognitive.
+
+Le **vocabulaire de terrain** prime sur le vocabulaire consultant. Si le terrain dit "passage", le produit dit "passage" — pas "mission".
+
+La **dignité** prime sur la fonctionnalité : "Bonjour Joseph" en H1 a plus de valeur psychologique qu'un dashboard sophistiqué. Reconnaître l'existence humaine sans surveiller.
+
+### Pilier 6 — Le rapport au client final (infrastructure invisible)
+
+> **« NetoIAge est l'infrastructure invisible de crédibilité, jamais la star du document. »**
+
+Le héros visible du PDF doit rester l'entreprise cleaning (le prestataire du client final). Co-branding sobre :
+- Logo prestataire à gauche, marque NetoIAge à droite (footer)
+- Signature DG en bas
+- URL stable de vérification
+
+Le client ne veut pas un document "émis par un SaaS". Il veut un document **assumé par son prestataire**, soutenu par une infrastructure crédible.
+
+---
+
+## Distinction Pilier 4 ↔ Pilier 5 (cruciale)
+
+Formulation unifiée :
+
+> **« Le produit est transparent pour ceux qui exécutent, présent pour ceux qui signent. »**
+
+- Joseph exécute → produit oubliable (Pilier 5)
+- Patrick signe → produit amplifie sa voix (Pilier 4)
+- Sylvie reçoit → produit s'efface derrière le prestataire (Pilier 6)
+
+C'est la même doctrine vue depuis 3 personas.
+
+---
+
+## Maxims V5 (nouvelles)
+
+### Maxim 9 — Surveillance hors plateforme
+
+> **« Tout chiffre individuel sortant de la plateforme doit être anonymisé. Le DG ne nomme pas dans un canal collectif. »**
+
+Concrètement :
+- Tout export, copie, partage → anonymisation par défaut
+- Briefing pilote : pas de bilan nominatif WhatsApp
+- Coaching managérial du DG sur cette règle dès l'onboarding tenant
+- La doctrine ne protège pas seulement l'UI — elle protège la **culture managériale**
+
+### Maxim 10 — Confirmation personnelle uniquement
+
+> **« Un agent ne confirme que ce qu'il a personnellement fait. »**
+
+Concrètement :
+- Si Joseph clôture une intervention exécutée en réalité par Jérémy (hors pilote), fausse trace `taken_by` qui casse V3 + crée une bombe juridique
+- UX warning quand délégation détectée
+- Protège la traçabilité juridique long-terme
+
+---
+
+## Test ultime V5 (consolidé)
+
+Trois questions à appliquer à toute nouvelle feature, dans cet ordre :
+
+1. **Charge mentale** : *« Cette feature réduit-elle le chaos, les oublis, l'anxiété de l'utilisateur ? »*
+2. **Humains anonymes** : *« Si tous les humains étaient remplacés par des identifiants abstraits, la valeur métier resterait-elle intacte ? »* (V3, toujours valide)
+3. **Frontière dominante** : *« Cette feature essaie-t-elle de gagner contre un outil humain dominant (WhatsApp, Excel) sur sa fonction émotionnelle ? »*
+
+Une feature passe la doctrine **uniquement si** : réponse 1 = oui, réponse 2 = oui, réponse 3 = non.
+
+---
+
+## Le positionnement rare (cristal V5)
+
+> **« Le produit rassure plus qu'il n'automatise. »**
+
+La plupart des SaaS B2B essayent d'optimiser, mesurer, accélérer, surveiller, contrôler, remplacer.
+
+NetoIAge fait l'inverse :
+- **Stabilise** (mémoire qui ne s'efface pas)
+- **Mémorise** (chaque preuve compte)
+- **Rassure** (le DG sait, le client voit, l'agent oublie)
+- **Protège** (les preuves en cas de litige)
+- **Réduit** les conflits, les oublis, la dépendance à la mémoire humaine
+
+Plus subtil que les concurrents. Plus difficile à copier. Plus durable.
+
+---
+
+## L'unité des features sous "mémoire opérationnelle"
+
+Pourquoi cette catégorie est juste : elle **unifie** des features qui semblaient hétérogènes :
+
+| Feature | Type de mémoire |
+|---|---|
+| AO gagné/perdu + raison | Mémoire **décisionnelle commerciale** |
+| Rapport mensuel client | Mémoire **relationnelle client** (rituel) |
+| Dossier de preuves | Mémoire **factuelle d'incident** |
+| Renouvellement contrat | Mémoire **contractuelle long-terme** |
+| Récurrence missions | Mémoire **opérationnelle quotidienne** |
+| Audit ISO (futur) | Mémoire **qualité réglementaire** |
+| Historique anomalies | Mémoire **des problèmes résolus** |
+
+Toutes ces features accumulent **du contexte fiable dans le temps**. La concurrence ne peut pas copier le code — encore moins 12 mois de contexte. C'est le moat structurel.
+
+---
+
+## La doctrine doit survivre HORS de l'UI (cristal V5)
+
+Un produit peut être éthique dans son interface tout en générant des comportements toxiques autour de lui :
+- Export nominatif → screenshot WhatsApp → pression collective
+- Humiliation implicite "Sandrine 0 photos cette semaine 😱"
+- Micro-surveillance sociale au sein de l'équipe
+- Détournement des données extraites pour évaluer
+
+C'est précisément ce que la **Maxim 9** code. La doctrine V5 n'est donc pas seulement technique. Elle est **culturelle**.
+
+**Conséquence stratégique** : NetoIAge a vocation à devenir un **manifeste public** — pas un secret commercial. Rendre les piliers V5 visibles à l'extérieur crée :
+- Une **pression inverse** sur les utilisateurs ("je ne peux pas demander ça, c'est contre la charte")
+- Un **filtre commercial** (les clients alignés se reconnaissent, les non-alignés s'éliminent)
+- Un **positionnement intellectuel** difficile à copier (Salesforce ne peut pas dire "on ne mesure pas")
+
+---
+
+## Une nouvelle classe de features : "bridges vers outils humains existants"
+
+Le bouton *"Partager les détails dans WhatsApp"* (reco 3.A) est l'archétype d'une classe entière de features futures :
+
+- Faible complexité technique
+- Énorme utilité pratique
+- Respecte les usages humains enracinés
+- Ne tente pas de remplacer un comportement profond
+
+**Cette classe se distingue radicalement** de la classe "remplacement" qui caractérise la plupart des SaaS. Elle s'aligne avec le Pilier 3 (frontières humaines).
+
+Exemples potentiels post-pilote (à ne PAS coder avant observation terrain) :
+- Bouton "Copier le bilan mensuel dans la messagerie native"
+- Export "Fiche site PDF" pour impression (le cahier de Joseph reste, mais NetoIAge l'alimente)
+- Bouton "Envoyer ce dossier en pièce jointe à mon CRM externe"
+- Lien iCal pour intégration calendrier Outlook (read-only, jamais l'inverse)
+
+À chaque proposition future, appliquer le filtre :
+> *« Cette feature lutte contre un outil humain dominant ou complète son usage ? »*
+
+---
+
+## Ajustements V5 — placeholders (à compléter)
+
+L'utilisateur a annoncé **3 ajustements importants**. Le 1er est intégré (« mémoire » > « continuité » au Pilier 1). Les 2 autres restent à formaliser quand l'utilisateur les explicitera :
+
+- **[Ajustement 2 — à compléter]**
+- **[Ajustement 3 — à compléter]**
+
+---
+
+# (Suite de la doctrine V3 ci-dessous — préservée comme socle historique)
+
 # Doctrine Planning NetoIAge — V3
 
 > **Document de référence** — toute personne (humain ou subagent IA) qui touche au planning, aux missions, aux interventions, au calendrier ou à l'app agent terrain DOIT lire et appliquer cette doctrine.
