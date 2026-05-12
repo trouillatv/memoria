@@ -312,6 +312,91 @@ export async function findSimilarTenderMemory(
   }))
 }
 
+// =================================
+// Mémoire commerciale MC-3 — page journal des AO finalisés
+// Doctrine V5 verrou V1 : la mémoire rappelle, ne recommande pas.
+// Helper de liste pure — pas d'agrégat, pas de stat, pas de tendance.
+// =================================
+
+export interface TenderMemoryEntry {
+  id: string
+  title: string
+  client_name: string | null
+  status: TenderStatus
+  outcome: TenderOutcome
+  outcome_at: string
+  outcome_reason: string | null
+  outcome_tag: TenderOutcomeTag | null
+  created_at: string
+}
+
+export interface TenderMemoryFilters {
+  /** Restreint aux AO d'un outcome précis (won/lost/withdrawn/not_responded). */
+  outcome?: TenderOutcome
+  /** Restreint aux AO portant ce tag de raison. */
+  tag?: TenderOutcomeTag
+  /** Recherche ilike sur title ou client_name. */
+  search?: string
+  /** 0-based offset. */
+  offset?: number
+  /** Max items returned (default 30). */
+  limit?: number
+}
+
+export interface TenderMemoryResult {
+  items: TenderMemoryEntry[]
+  total: number
+}
+
+/**
+ * Liste paginée des AO finalisés (outcome NOT NULL, hors 'pending'),
+ * triés par outcome_at DESC. C'est le moteur de la page /tenders/memoire :
+ * un journal chronologique calme, descriptif.
+ *
+ * Doctrine V5 verrou V1 + V4 : aucune métrique calculée. Le helper
+ * retourne des faits bruts. L'UI rend en formulation passive uniquement.
+ *
+ * Filtres optionnels : outcome, tag, search (title + client_name).
+ */
+export async function listTenderMemory(
+  filters: TenderMemoryFilters = {},
+): Promise<TenderMemoryResult> {
+  // Admin client : permet le test direct hors request scope, et match le
+  // pattern de findSimilarTenderMemory. La sécurité de page est portée par
+  // la vérification de rôle dans le Server Component (admin/manager only).
+  const supabase = createAdminClient()
+
+  let q = supabase
+    .from('tenders')
+    .select(
+      'id, title, client_name, status, outcome, outcome_at, outcome_reason, outcome_tag, created_at',
+      { count: 'exact' },
+    )
+    .is('deleted_at', null)
+    .not('outcome', 'is', null)
+    .neq('outcome', 'pending')
+    .order('outcome_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+
+  if (filters.outcome) q = q.eq('outcome', filters.outcome)
+  if (filters.tag) q = q.eq('outcome_tag', filters.tag)
+  if (filters.search) {
+    const s = filters.search.replace(/[%_]/g, '\\$&')
+    q = q.or(`title.ilike.%${s}%,client_name.ilike.%${s}%`)
+  }
+
+  const offset = Math.max(0, filters.offset ?? 0)
+  const limit = Math.max(1, filters.limit ?? 30)
+  q = q.range(offset, offset + limit - 1)
+
+  const { data, error, count } = await q
+  if (error) throw error
+  return {
+    items: (data ?? []) as TenderMemoryEntry[],
+    total: count ?? 0,
+  }
+}
+
 export async function countAnalysesToday(): Promise<number> {
   const supabase = createAdminClient()
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()

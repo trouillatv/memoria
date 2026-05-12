@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
 import { PaginationBar } from '@/components/ui/pagination-bar'
-import { FileText, Plus, SearchX } from 'lucide-react'
+import { FileText, History, Plus, SearchX } from 'lucide-react'
 import { listTendersPaged } from '@/lib/db/tenders'
 import { TenderListTable } from './TenderListTable'
 import type { TenderStatus } from '@/types/db'
@@ -56,14 +56,25 @@ export default async function TendersPage({
             Liste des AO en cours d&apos;analyse, prêts à soumettre, soumis et archivés.
           </p>
         </div>
-        {/* base-ui Button ne supporte pas asChild — on utilise buttonVariants sur un Link */}
-        <Link
-          href="/tenders/new"
-          className={cn(buttonVariants({ variant: 'default' }), 'gap-1.5')}
-        >
-          <Plus className="h-4 w-4" />
-          Nouveau
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* Lien discret vers la mémoire des AO finalisés — c'est un journal,
+              pas un dashboard, donc pas dans la sidebar principale. */}
+          <Link
+            href="/tenders/memoire"
+            className={cn(buttonVariants({ variant: 'ghost' }), 'gap-1.5 text-muted-foreground')}
+          >
+            <History className="h-4 w-4" />
+            Mémoire
+          </Link>
+          {/* base-ui Button ne supporte pas asChild — on utilise buttonVariants sur un Link */}
+          <Link
+            href="/tenders/new"
+            className={cn(buttonVariants({ variant: 'default' }), 'gap-1.5')}
+          >
+            <Plus className="h-4 w-4" />
+            Nouveau
+          </Link>
+        </div>
       </div>
 
       <FiltersBar
