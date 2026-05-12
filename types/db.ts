@@ -316,6 +316,8 @@ export interface DbTeam {
   created_at: string
   created_by: string | null
   deleted_at: string | null
+  // Phase 10 — Référent d'équipe (point de contact opérationnel stable).
+  referent_user_id: string | null
 }
 
 // Composition d'équipe variable dans le temps.

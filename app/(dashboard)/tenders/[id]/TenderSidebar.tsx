@@ -130,7 +130,7 @@ export function TenderSidebar({
           <div className="text-xs text-muted-foreground">
             <span>Échéance : {deadline.label}</span>
             {deadline.daysLeft !== null && (
-              <span className={cn('ml-1 font-medium', deadline.daysLeft <= 7 ? 'text-rose-600' : deadline.daysLeft <= 30 ? 'text-amber-600' : 'text-muted-foreground')}>
+              <span className={cn('ml-1 font-medium', deadline.daysLeft < 0 ? 'text-muted-foreground italic' : deadline.daysLeft <= 7 ? 'text-amber-700' : deadline.daysLeft <= 30 ? 'text-amber-600' : 'text-muted-foreground')}>
                 {deadline.daysLeft > 0
                   ? `(J-${deadline.daysLeft})`
                   : deadline.daysLeft === 0

@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { Sparkles } from 'lucide-react'
+import { LayoutDashboard, AlertTriangle } from 'lucide-react'
 import { listContracts } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
-import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
+import { listInterventionsByContract, countPhotosByInterventions } from '@/lib/db/interventions'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
@@ -34,16 +34,11 @@ async function summarizeContract(contractId: string, contractName: string, clien
     missionEngagements.set(m.id, Array.isArray(m.engagement_ids) ? m.engagement_ids : [])
   }
 
-  // Photos count
-  const interventionPhotosCount = new Map<string, number>()
-  await Promise.all(
-    interventions
-      .filter((i) => COMPLETED_STATUSES.has(i.status))
-      .map(async (i) => {
-        const photos = await listPhotosByIntervention(i.id)
-        interventionPhotosCount.set(i.id, photos.length)
-      }),
-  )
+  // Photos count — 1 query batch au lieu de N (1 par intervention finie)
+  const completedInterventionIds = interventions
+    .filter((i) => COMPLETED_STATUSES.has(i.status))
+    .map((i) => i.id)
+  const interventionPhotosCount = await countPhotosByInterventions(completedInterventionIds)
 
   // Per-engagement aggregates
   const planned = new Set<string>()
@@ -140,7 +135,7 @@ export default async function DashboardPage() {
     <div className="space-y-6 max-w-5xl">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-emerald-600" />
+          <LayoutDashboard className="h-5 w-5 text-muted-foreground" />
           Tableau de bord
         </h1>
         <p className="text-sm text-muted-foreground">
@@ -151,8 +146,11 @@ export default async function DashboardPage() {
       {showWelcome && <WelcomeCard progress={onboarding} />}
 
       {attention.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+        <section className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
+          {/* Encadré ambre — JAMAIS rouge. La doctrine "sobriété calme" exige
+              un signal présent mais posé. Pas d'animation, pas d'exclamation. */}
+          <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <AlertTriangle className="h-4 w-4" aria-hidden />
             Demandent attention ({attention.length})
           </h2>
           <ul className="space-y-2">

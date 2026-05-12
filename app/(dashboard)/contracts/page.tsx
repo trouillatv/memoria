@@ -52,7 +52,7 @@ export default async function ContractsPage({
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Contrats</h1>
+          <h1 className="text-2xl font-semibold">Contrats</h1>
           <p className="text-sm text-muted-foreground">
             Contrats opérationnels créés depuis vos AO gagnés. Cockpit Boucle de preuve par contrat.
           </p>

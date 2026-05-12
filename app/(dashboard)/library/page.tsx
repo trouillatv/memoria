@@ -52,7 +52,7 @@ export default async function LibraryPage({
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Bibliothèque AGP</h1>
+          <h1 className="text-2xl font-semibold">Bibliothèque AGP</h1>
           <p className="text-sm text-muted-foreground">
             Capital IA de votre entreprise. Plus elle est riche, plus vos analyses d&apos;AO sont précises.
           </p>

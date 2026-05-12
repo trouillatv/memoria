@@ -23,6 +23,7 @@ import {
   addMemberToTeam,
   removeMemberFromTeam,
   getTeam,
+  setTeamReferent,
 } from '@/lib/db/teams'
 import { logAuditEvent } from '@/lib/audit/log'
 import { TEAM_BADGE_COLORS } from '@/components/ui/team-badge'
@@ -276,6 +277,61 @@ export async function removeMemberFromTeamAction(input: {
     return { ok: true }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur retrait du membre'
+    return { ok: false, error: msg }
+  }
+}
+
+// ----------------------------------------------------------------------------
+// setTeamReferentAction — Phase 10
+// ----------------------------------------------------------------------------
+
+const setReferentSchema = z.object({
+  teamId: z.string().uuid(),
+  userId: z.string().uuid().nullable(),
+})
+
+/**
+ * Désigne un référent d'équipe (point de contact stable). `null` = retire le
+ * référent sans remplaçant (transition tolérée, doctrine V3).
+ *
+ * Pas de vérif "le user doit être membre de l'équipe" — toléré pour ne pas
+ * bloquer les transitions (départ, congé). L'UI signalera mais ne bloquera pas.
+ */
+export async function setTeamReferentAction(input: {
+  teamId: string
+  userId: string | null
+}): Promise<MutateTeamResult> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return { ok: false, error: auth.error }
+
+  const parsed = setReferentSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+
+  const existing = await getTeam(parsed.data.teamId)
+  if (!existing) return { ok: false, error: 'Équipe introuvable' }
+
+  try {
+    await setTeamReferent({
+      teamId: parsed.data.teamId,
+      userId: parsed.data.userId,
+    })
+    await logAuditEvent({
+      userId: auth.userId,
+      entityType: 'site',
+      entityId: parsed.data.teamId,
+      action: 'updated',
+      metadata: {
+        kind: 'team_referent_changed',
+        team_id: parsed.data.teamId,
+        new_referent_user_id: parsed.data.userId,
+      },
+    })
+    revalidatePath('/equipes')
+    return { ok: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Erreur changement de référent'
     return { ok: false, error: msg }
   }
 }

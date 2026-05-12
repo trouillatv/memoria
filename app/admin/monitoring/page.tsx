@@ -8,7 +8,7 @@ export default async function AdminMonitoringPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold">Monitoring</h1>
+        <h1 className="text-2xl font-semibold">Monitoring</h1>
         <p className="text-sm text-muted-foreground">
           Activité récente. Les 100 dernières actions tracées.
         </p>

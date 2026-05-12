@@ -59,7 +59,7 @@ export default async function EquipesPage() {
     <div className="space-y-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
             <Users className="h-6 w-6 text-brand-600" />
             Équipes
           </h1>

@@ -45,7 +45,7 @@ export function EngagementCompliance({ ratios, size = 'medium' }: EngagementComp
               <span
                 data-testid={`compliance-dot-${SEGMENT_LABELS[i].toLowerCase()}`}
                 className={cn(
-                  'inline-block w-2.5 h-2.5 rounded-full border',
+                  'inline-block w-3 h-3 rounded-full border',
                   filled === 'full' && 'bg-emerald-500 border-emerald-600',
                   filled === 'half' && 'bg-amber-300 border-amber-500',
                   filled === 'empty' && 'bg-muted border-muted-foreground/30',

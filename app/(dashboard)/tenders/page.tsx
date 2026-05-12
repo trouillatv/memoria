@@ -51,7 +51,7 @@ export default async function TendersPage({
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold">Appels d&apos;offres</h1>
+          <h1 className="text-2xl font-semibold">Appels d&apos;offres</h1>
           <p className="text-sm text-muted-foreground">
             Liste des AO en cours d&apos;analyse, prêts à soumettre, soumis et archivés.
           </p>

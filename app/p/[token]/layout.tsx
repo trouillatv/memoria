@@ -34,7 +34,12 @@ export default function PublicProofLayout({
       </header>
 
       <main className="flex-1 py-6 sm:py-8 px-4 sm:px-6">
-        <div className="max-w-4xl mx-auto">{children}</div>
+        {/* "Document officiel encadré" — un cadre clair sur fond muted
+            permet au client mécontent de percevoir le sérieux du dossier.
+            Le shadow-sm reste discret pour rester sobre. */}
+        <div className="max-w-4xl mx-auto bg-card border border-border rounded-xl shadow-sm p-5 sm:p-7">
+          {children}
+        </div>
       </main>
 
       <footer className="py-4 px-4 sm:px-6 border-t bg-card text-center">

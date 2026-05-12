@@ -3,7 +3,7 @@ import { ArrowRight, MapPin, Clock, CheckCircle2, CalendarDays } from 'lucide-re
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listInterventionsByAgent } from '@/lib/db/interventions'
+import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
@@ -63,7 +63,7 @@ export default async function FieldHomePage() {
     await ensureTodayInterventionsForSites(agentSiteIds, 1)
   }
 
-  const interventions = await listInterventionsByAgent(user.id)
+  const interventions = await listInterventionsVisibleToUser(user.id)
 
   // Fetch missions + sites for context
   const missionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))

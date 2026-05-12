@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, CheckCircle2 } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -15,6 +15,7 @@ import { StartInterventionButton } from './start-intervention-button'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
 import { SkipInterventionTrigger } from './skip-modal'
+import { PhotoCaptureButton } from './photo-capture-button'
 
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -123,8 +124,9 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       {!isSkipped && isPlanned && <StartInterventionButton interventionId={id} />}
 
       {isCompleted && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-base text-emerald-800">
-          ✓ Mission {intervention.status === 'validated' ? 'validée' : 'terminée'}
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-base text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
+          <span>Mission {intervention.status === 'validated' ? 'validée' : 'terminée'}</span>
         </div>
       )}
 
@@ -159,6 +161,23 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         <div className="mt-8 pt-4 border-t border-border">
           <SkipInterventionTrigger interventionId={id} />
         </div>
+      )}
+
+      {/* FAB Photo libre — flottant en bas droite quand intervention en cours.
+          Action #1 du terrain : capturer une preuve sans dérouler la checklist. */}
+      {isInProgress && (
+        <>
+          <div className="h-20" aria-hidden /> {/* spacer pour éviter overlap CompleteButton */}
+          <div className="fixed bottom-6 right-6 z-20">
+            <PhotoCaptureButton
+              interventionId={id}
+              checklistItemId={null}
+              kind="proof"
+              label="Photo libre"
+              variant="fab"
+            />
+          </div>
+        </>
       )}
     </div>
   )

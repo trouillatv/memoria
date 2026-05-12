@@ -1,42 +1,42 @@
 'use client'
 
-// Phase 9 — Vue Semaine & Équipes (Slice 9.3, étendu Slice 9.4)
+// Phase 9 — Vue Semaine & Équipes (Slice 9.3, étendu 9.4, refonte 9.7)
 //
-// Cellule (jour × site) de la grille semaine. Client component depuis 9.4
-// (DnD via useDroppable). Slice 9.3 était un server component pur — la
-// promotion en client n'a aucun impact UX (pas de fetch, pas de state).
+// Cellule (jour × site) de la grille semaine.
 //
-// Doctrine V2 imperative :
-//   - Créneaux nommés via lettres compactes (m / s / e), JAMAIS d'heures précises
+// Slice 9.7 — Drag direct depuis la cellule (plus de drag via drawer) :
+//   - La cellule entière est draggable si elle contient ≥1 intervention `planned`.
+//     L'intervention "top" (créneau le plus matinal, puis mission alpha) est
+//     l'élément déplacé.
+//   - Quand un drag est actif, 3 chips `m / a / s` apparaissent en haut de la
+//     cellule cible (au survol). Drop sur un chip = date + créneau changés.
+//     Drop sur le fond = date changée, créneau préservé.
+//   - Le drawer (click cellule) reste pour consulter le détail / réassigner.
+//
+// Doctrine V2/V3 imperative :
+//   - Créneaux nommés via lettres compactes (m / s / a / e), JAMAIS d'heures
 //   - "Non-affecté" en cellule = ◯ ambre + texte muted, JAMAIS rouge
 //   - Aucune métrique exposée (pas de "x missions exécutées", pas de %)
-//   - Indicateur ● (1 mission) ou ●● (2+) — purement quantitatif et neutre
-//
-// Click → CellDrawer : implémenté via event delegation côté WeekGridClient
-// (le bouton porte les data-attributes ; pas de prop function fournie ici,
-// pour rester server-renderable).
+//   - La modification du créneau ne touche QUE l'intervention. Pour la mission
+//     elle-même → renvoyer vers /missions (toast hint, doctrine V3 référent).
 
-import { useDroppable } from '@dnd-kit/core'
+import { useDraggable, useDroppable, useDndContext } from '@dnd-kit/core'
+import { Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
+import type { InterventionSlot } from '@/types/db'
 
 // Lettres compactes — JAMAIS d'heure (8h, 14h, etc.).
 const SLOT_LETTER: Record<string, string> = {
   morning: 'm',
   afternoon: 'a',
-  evening: 's', // "soir" → s (cf. doctrine "matin/après-midi/soir")
+  evening: 's',
 }
 
-/**
- * Compacte les slots distincts d'une cellule en une chaîne stable triée :
- *   ['morning']                       → 'm'
- *   ['morning','evening']             → 'm+s'
- *   ['morning','afternoon','evening'] → 'm+a+s'
- *
- * `null` slot → ignoré (intervention "non créneau" — rare, généralement
- * one_shot sans créneau, on n'expose rien plutôt qu'un texte parasite).
- */
+const SLOTS_ORDER: InterventionSlot[] = ['morning', 'afternoon', 'evening']
+
+/** Compacte les slots distincts en `m`, `m+a`, `m+a+s`. */
 export function compactSlots(cells: WeekInterventionCell[]): string {
   const order: Array<keyof typeof SLOT_LETTER> = ['morning', 'afternoon', 'evening']
   const present = new Set(cells.map((c) => c.slot).filter((s): s is string => !!s))
@@ -44,7 +44,6 @@ export function compactSlots(cells: WeekInterventionCell[]): string {
   for (const slot of order) {
     if (present.has(slot)) parts.push(SLOT_LETTER[slot])
   }
-  // slots non standard (ex: import legacy) — on les ajoute en queue, alphabétique
   const nonStandard = Array.from(present)
     .filter((s) => !(s in SLOT_LETTER))
     .sort()
@@ -58,16 +57,7 @@ interface CellTeamInfo {
   color: string | null
 }
 
-/**
- * Réduit la liste d'interventions à la "team dominante" affichée sous le
- * dot. Si plusieurs équipes sont présentes dans la cellule, on affiche celle
- * qui a le plus d'interventions (ou la première par tri name). S'il y a des
- * interventions sans assignment, on affiche `null` ce qui déclenche le badge
- * "Non-affecté".
- *
- * Cas : `[A, A, B]` → A. `[A, null]` → A (le badge ambre ne s'affiche que
- * si TOUTES les interventions sont non-affectées).
- */
+/** Équipe "dominante" d'une cellule (plus d'interventions, puis tri alpha). */
 export function dominantTeam(cells: WeekInterventionCell[]): CellTeamInfo | null {
   const counts = new Map<string, { team: CellTeamInfo; count: number }>()
   for (const c of cells) {
@@ -95,45 +85,110 @@ export function dominantTeam(cells: WeekInterventionCell[]): CellTeamInfo | null
   return sorted[0]?.team ?? null
 }
 
+/** Sélectionne l'intervention "top" draggable. Statuts modifiables :
+ *   - `planned` : pas encore commencée, déplaçable librement
+ *   - `skipped` : ratée → réplanifier en avant est un cas légitime
+ * Statuts INTERDITS (preuves verrouillées V2) : in_progress, completed, validated.
+ * Tri : créneau le plus matinal d'abord, puis nom de mission alpha. */
+function pickTopDraggable(cells: WeekInterventionCell[]): WeekInterventionCell | null {
+  const candidates = cells.filter((c) => c.status === 'planned' || c.status === 'skipped')
+  if (candidates.length === 0) return null
+  const order: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 }
+  const sorted = [...candidates].sort((a, b) => {
+    const sa = order[a.slot ?? ''] ?? 99
+    const sb = order[b.slot ?? ''] ?? 99
+    if (sa !== sb) return sa - sb
+    return a.mission_name.localeCompare(b.mission_name, 'fr', { sensitivity: 'base' })
+  })
+  return sorted[0] ?? null
+}
+
+/** Merge plusieurs refs (callback ou MutableRefObject) en une seule callback. */
+function mergeRefs<T>(
+  ...refs: Array<((node: T | null) => void) | null | undefined>
+): (node: T | null) => void {
+  return (node: T | null) => {
+    for (const ref of refs) {
+      if (typeof ref === 'function') ref(node)
+    }
+  }
+}
+
 export interface WeekGridCellProps {
-  /** Date yyyy-mm-dd (clé dans days). */
   date: string
-  /** Site auquel cette cellule appartient (pour aria-label, drawer). */
   siteId: string
   siteName: string
-  /** Interventions du jour pour ce site (peut être vide). */
   cells: WeekInterventionCell[]
-  /** Aujourd'hui yyyy-mm-dd UTC — passé pour désactiver le drop sur cellule passée. */
   todayIso?: string
 }
 
-/**
- * Cellule visuelle de la grille semaine.
- *
- * États :
- *   - vide : `—` muted, non cliquable
- *   - N affectées : `●` (1) ou `●●` (2+) + slots compactés + TeamBadge
- *   - toutes non-affectées : `◯` ambre + texte "Non-affecté"
- *
- * Le click est intercepté par WeekGridClient via event delegation (lit
- * `data-cell-key`). Pas de couleur alarmante.
- */
 export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGridCellProps) {
   const cellKey = `${siteId}::${date}`
   const isPast = !!(todayIso && date < todayIso)
-  // useDroppable est toujours appelé pour respecter les règles de hooks.
-  // S'il n'y a pas de DndContext parent (test, server-rendering), il
-  // retourne simplement des valeurs neutres (setNodeRef no-op).
-  const droppable = useDroppable({
+
+  // ── Drag source : l'intervention "top" draggable de la cellule ────────────
+  // Slice 9.7 : on autorise le drag depuis une cellule PASSÉE (replanifier
+  // un lundi raté). On accepte aussi `skipped` (rattraper un raté). Le drop
+  // sur passé reste refusé côté serveur. Statuts verrouillés (in_progress,
+  // completed, validated) restent immuables → cellule non-draggable.
+  const topPlanned = pickTopDraggable(cells)
+  const dragId = topPlanned ? topPlanned.id : `__no_drag__${cellKey}`
+  const dragDisabled = !topPlanned
+  // Indicateur "verrouillé" : la cellule a des interventions mais aucune n'est
+  // draggable (toutes sont in_progress/completed/validated).
+  const isLocked = cells.length > 0 && !topPlanned
+
+  const {
+    setNodeRef: setDraggableRef,
+    listeners,
+    attributes,
+    isDragging,
+  } = useDraggable({
+    id: dragId,
+    disabled: dragDisabled,
+    data: {
+      sourceCellKey: cellKey,
+      siteId,
+      date,
+      slot: topPlanned?.slot ?? null,
+      interventionPreview: topPlanned
+        ? {
+            id: topPlanned.id,
+            missionName: topPlanned.mission_name,
+            siteName,
+            slot: topPlanned.slot,
+            teamName: topPlanned.assigned_team_name,
+            teamColor: topPlanned.assigned_team_color,
+          }
+        : null,
+    },
+  })
+
+  // ── Drop target : la cellule entière (date change, slot préservé) ──────────
+  const cellDroppable = useDroppable({
     id: cellKey,
     disabled: isPast,
-    data: { date, isPast, siteId },
+    data: { date, isPast, siteId, kind: 'cell' },
   })
+
+  // ── État global du drag (pour afficher les chips m/a/s) ────────────────────
+  const dndCtx = useDndContext()
+  const draggingSomething = dndCtx.active != null
+  const activeId = dndCtx.active?.id != null ? String(dndCtx.active.id) : null
+
+  const sourceCellFromActive = dndCtx.active?.data.current?.sourceCellKey as string | undefined
+  const isSourceCell = sourceCellFromActive === cellKey
+
+  // On affiche les chips dès qu'un drag est actif et que la cellule n'est pas
+  // passée. Y compris sur la cellule SOURCE → permet de changer juste le
+  // créneau sans changer de date (cas : "passer le matin en après-midi sur le
+  // même site, même jour").
+  const showChips = draggingSomething && !isPast && activeId !== null
+
   const isEmpty = cells.length === 0
   const team = isEmpty ? null : dominantTeam(cells)
   const slotsLabel = isEmpty ? '' : compactSlots(cells)
-  const allUnassigned =
-    cells.length > 0 && cells.every((c) => !c.assigned_team_id)
+  const allUnassigned = cells.length > 0 && cells.every((c) => !c.assigned_team_id)
   const dot = cells.length >= 2 ? '●●' : cells.length === 1 ? '●' : ''
 
   const ariaParts: string[] = [siteName, date]
@@ -147,9 +202,11 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
   }
   const ariaLabel = ariaParts.join(' — ')
 
+  const draggable = !dragDisabled
+
   return (
     <td
-      ref={droppable.setNodeRef}
+      ref={mergeRefs(cellDroppable.setNodeRef, setDraggableRef)}
       data-slot="week-grid-cell"
       data-date={date}
       data-site-id={siteId}
@@ -157,13 +214,27 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
       data-empty={isEmpty ? 'true' : 'false'}
       data-unassigned={allUnassigned ? 'true' : 'false'}
       data-past={isPast ? 'true' : 'false'}
-      data-over={droppable.isOver ? 'true' : 'false'}
+      data-locked={isLocked ? 'true' : 'false'}
+      data-over={cellDroppable.isOver ? 'true' : 'false'}
+      data-dragging={isDragging ? 'true' : 'false'}
+      title={
+        isLocked
+          ? 'Intervention(s) en cours ou exécutée(s) — preuve verrouillée'
+          : undefined
+      }
       className={cn(
-        'border-l border-border/60 align-top p-2 min-w-[7rem] transition-colors duration-200',
+        'relative border-l border-border/60 align-top p-2 min-w-[7rem] transition-colors duration-200',
         !isEmpty && 'hover:bg-accent/40',
-        droppable.isOver && !isPast && 'bg-brand-50/60 outline outline-2 outline-brand-300 outline-offset-[-2px]',
-        isPast && 'bg-muted/20',
+        draggable && 'cursor-grab',
+        isLocked && 'cursor-default',
+        isDragging && 'opacity-50',
+        cellDroppable.isOver && !isPast && !isSourceCell &&
+          'bg-brand-50/60 outline outline-2 outline-brand-300 outline-offset-[-2px]',
+        // Slice 9.7 : on retire le fond muted sur passé — la cellule reste pleinement
+        // visible (contenu identique aux autres jours). Seul le drop est refusé.
+        // isPast n'a plus d'effet visuel ici.
       )}
+      {...(draggable ? { ...attributes, ...listeners } : {})}
     >
       {isEmpty ? (
         <div className="text-muted-foreground/60 text-center text-sm" aria-label={ariaLabel}>
@@ -173,10 +244,14 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
         <button
           type="button"
           data-cell-trigger="true"
-          data-cell-key={`${siteId}::${date}`}
+          data-cell-key={cellKey}
+          // Slice 9.7 — stopPropagation : empêche le pointer down du bouton
+          // d'amorcer un drag sur le `<td>` parent. Le clic ouvre proprement
+          // le drawer sans déclencher de drag fantôme.
+          onPointerDownCapture={(e) => e.stopPropagation()}
           aria-label={ariaLabel}
           data-testid={`week-cell-${siteId}-${date}`}
-          className="flex flex-col items-start gap-1 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm cursor-pointer"
+          className="flex flex-col items-start gap-1 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
           <span className="flex items-baseline gap-1.5 text-sm">
             <span
@@ -206,6 +281,59 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
           ) : null}
         </button>
       )}
+
+      {/* Indicateur "verrouillé" — cellule avec uniquement des interventions
+          en cours/exécutées/validées. Lock icon discret en haut à droite. */}
+      {isLocked && (
+        <Lock
+          className="absolute top-1 right-1 h-3 w-3 text-muted-foreground/50 pointer-events-none"
+          aria-hidden
+        />
+      )}
+
+      {/* Chips m/a/s pendant un drag actif. Drop sur un chip = date + slot.
+          Sur la cellule SOURCE, on les rend semi-transparents pour ne pas
+          masquer le contenu visible en dessous. */}
+      {showChips && (
+        <div
+          className={cn(
+            'absolute -top-1.5 left-1 right-1 z-20 flex gap-0.5 rounded-md bg-card/95 backdrop-blur-sm shadow-md ring-1 ring-border p-0.5 pointer-events-auto',
+            isSourceCell && 'opacity-70',
+          )}
+          role="group"
+          aria-label="Choisir un créneau"
+        >
+          {SLOTS_ORDER.map((slot) => (
+            <SlotChip key={slot} cellKey={cellKey} slot={slot} />
+          ))}
+        </div>
+      )}
     </td>
+  )
+}
+
+/** Mini drop zone pour un créneau spécifique. Apparaît superposée à la cellule
+ * cible pendant le drag. id = `${cellKey}@${slot}` (parsé côté WeekGridClient). */
+function SlotChip({ cellKey, slot }: { cellKey: string; slot: InterventionSlot }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `${cellKey}@${slot}`,
+    data: { kind: 'slot-chip', slot, cellKey },
+  })
+  const label = SLOT_LETTER[slot] ?? slot
+  return (
+    <div
+      ref={setNodeRef}
+      data-slot-chip={slot}
+      className={cn(
+        // py-1.5 (vs py-1 initial) : cible touch ~40px de haut au lieu de ~28px.
+        'flex-1 text-center text-[11px] font-mono uppercase tracking-wider rounded py-1.5 transition-all border',
+        isOver
+          ? 'bg-brand-600 border-brand-700 text-white scale-105 shadow'
+          : 'bg-secondary border-border text-foreground/80 hover:bg-muted',
+      )}
+      aria-label={`Créneau ${slot}`}
+    >
+      {label}
+    </div>
   )
 }

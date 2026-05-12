@@ -31,6 +31,7 @@ import {
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
+import { formatDateLong, formatDuration } from '@/lib/format'
 import { ProofPhotoGrid } from './ProofPhotoGrid'
 import { ProofChecklist } from './ProofChecklist'
 import { ProofValidations } from './ProofValidations'
@@ -78,7 +79,7 @@ export default async function ProofDetailPage({ params }: PageProps) {
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold">{proof.mission_name}</h1>
+            <h1 className="text-2xl font-semibold">{proof.mission_name}</h1>
             <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3.5 w-3.5" />
@@ -120,6 +121,20 @@ export default async function ProofDetailPage({ params }: PageProps) {
         )}
       </div>
 
+      {/* Action principale en haut — c'est l'action métier #1 :
+          un superviseur ouvre une preuve pour partager un dossier au client. */}
+      <Card className="bg-muted/30">
+        <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold">Préparer un dossier de preuves</h3>
+            <p className="text-xs text-muted-foreground">
+              PDF horodaté + QR de vérification + lien public temporaire. Anonymisation par défaut.
+            </p>
+          </div>
+          <PrepareDossierButton interventionId={proof.id} />
+        </CardContent>
+      </Card>
+
       {/* Meta band : 4 stats sobres */}
       <Card>
         <CardContent className="py-3">
@@ -143,7 +158,12 @@ export default async function ProofDetailPage({ params }: PageProps) {
               label="Validations"
               value={String(proof.validations.length)}
             />
-            <Stat icon={AlertTriangle} label="Anomalies" value={anomaliesValue} />
+            <Stat
+              icon={AlertTriangle}
+              label="Anomalies"
+              value={anomaliesValue}
+              tone={proof.anomalies.length > 0 ? 'amber' : 'default'}
+            />
           </dl>
         </CardContent>
       </Card>
@@ -224,19 +244,6 @@ export default async function ProofDetailPage({ params }: PageProps) {
         </Card>
       )}
 
-      {/* Action principale — Slice B.3 : dossier prêt en 2 minutes. */}
-      <Card>
-        <CardContent className="py-4 flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h3 className="text-sm font-semibold">Préparer un dossier de preuves</h3>
-            <p className="text-xs text-muted-foreground">
-              PDF horodaté + QR de vérification + lien public temporaire.
-              Anonymisation par défaut.
-            </p>
-          </div>
-          <PrepareDossierButton interventionId={proof.id} />
-        </CardContent>
-      </Card>
     </div>
   )
 }
@@ -245,34 +252,40 @@ function Stat({
   icon: Icon,
   label,
   value,
+  tone = 'default',
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: string
+  tone?: 'default' | 'amber'
 }) {
+  // Doctrine : pas de rouge. L'ambre signale qu'une stat mérite l'œil
+  // (anomalies > 0) sans transformer la zone en alerte.
+  const isAmber = tone === 'amber'
   return (
-    <div className="flex items-start gap-2">
-      <Icon className="h-4 w-4 text-muted-foreground mt-0.5" />
-      <div>
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="text-sm font-medium">{value}</dd>
+    <div
+      className={
+        isAmber
+          ? 'flex items-start gap-2 rounded-md bg-amber-50/50 p-2 -m-2'
+          : 'flex items-start gap-2'
+      }
+    >
+      <Icon
+        className={
+          isAmber
+            ? 'h-4 w-4 text-amber-700 mt-0.5 shrink-0'
+            : 'h-4 w-4 text-muted-foreground mt-0.5 shrink-0'
+        }
+      />
+      <div className="min-w-0">
+        <dt className={isAmber ? 'text-xs text-amber-800' : 'text-xs text-muted-foreground'}>
+          {label}
+        </dt>
+        <dd className={isAmber ? 'text-sm font-medium text-amber-900' : 'text-sm font-medium'}>
+          {value}
+        </dd>
       </div>
     </div>
   )
 }
 
-function formatDateLong(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
-function formatDuration(min: number): string {
-  if (min < 60) return `${min} min`
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return m === 0 ? `${h} h` : `${h} h ${m}`
-}

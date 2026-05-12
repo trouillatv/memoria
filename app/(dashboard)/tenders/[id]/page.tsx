@@ -111,6 +111,18 @@ export default async function TenderDetailPage({
         ? 'min-w-0 h-[calc(100vh-3rem)] flex flex-col'
         : 'space-y-4 min-w-0'
       }>
+        {/* H1 main (sauf atelier qui a sa propre UI immersive) */}
+        {view !== 'atelier' && (isReady || isFailed) && (
+          <header className="space-y-1">
+            <h1 className="text-2xl font-semibold">
+              {view === 'memoire' && 'Mémoire technique'}
+              {view === 'synthese' && 'Synthèse'}
+              {view === 'analyse' && 'Analyse détaillée'}
+            </h1>
+            <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
+          </header>
+        )}
+
         {/* States — affichées indépendamment de la vue sélectionnée */}
         {isInProgress && <TenderAnalysisLoader id={id} />}
 

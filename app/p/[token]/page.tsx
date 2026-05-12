@@ -25,6 +25,7 @@
 import {
   ShieldX,
   ShieldAlert,
+  ShieldCheck,
   Clock,
   MapPin,
   Users,
@@ -47,6 +48,7 @@ import {
   recordShareAccess,
 } from '@/lib/db/proof-share'
 import { getProofDetail } from '@/lib/db/proofs'
+import { formatDateLong, formatDuration } from '@/lib/format'
 import { ProofPhotoGrid } from '@/app/(dashboard)/preuves/[id]/ProofPhotoGrid'
 import { ProofChecklist } from '@/app/(dashboard)/preuves/[id]/ProofChecklist'
 import { ProofValidations } from '@/app/(dashboard)/preuves/[id]/ProofValidations'
@@ -141,8 +143,9 @@ export default async function PublicProofPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
-      {/* Bandeau identités (si override admin activé) */}
-      {shareToken.include_identities && (
+      {/* Bandeau identités (si override admin activé) — sinon sous-header
+          sobre signalant l'anonymisation par défaut. Symétrie de l'information. */}
+      {shareToken.include_identities ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <strong>Vue avec identités.</strong>{' '}
           <span>
@@ -150,11 +153,16 @@ export default async function PublicProofPage({ params }: PageProps) {
             juridiques ou contractuelles.
           </span>
         </div>
+      ) : (
+        <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+          Identités masquées par défaut · Confidentialité préservée
+        </p>
       )}
 
       {/* Title section */}
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">{proof.mission_name}</h1>
+        <h1 className="text-2xl font-semibold">{proof.mission_name}</h1>
         <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="inline-flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" aria-hidden />
@@ -316,10 +324,14 @@ export default async function PublicProofPage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* Footnote expiration */}
-      <p className="text-xs text-muted-foreground text-center">
-        Ce lien expire le {expirationLabel}.
-      </p>
+      {/* Footnote expiration — encart léger pour donner du poids visuel
+          à l'information sans alarmer le client. */}
+      <div className="flex justify-center">
+        <div className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+          <ClockIcon className="h-3.5 w-3.5" aria-hidden />
+          Lien valable jusqu&apos;au {expirationLabel}
+        </div>
+      </div>
     </div>
   )
 }
@@ -344,18 +356,3 @@ function Stat({
   )
 }
 
-function formatDateLong(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
-
-function formatDuration(min: number): string {
-  if (min < 60) return `${min} min`
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return m === 0 ? `${h} h` : `${h} h ${m}`
-}

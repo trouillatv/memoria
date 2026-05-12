@@ -1,21 +1,134 @@
-# Doctrine Planning NetoIAge — V2
+# Doctrine Planning NetoIAge — V3
 
 > **Document de référence** — toute personne (humain ou subagent IA) qui touche au planning, aux missions, aux interventions, au calendrier ou à l'app agent terrain DOIT lire et appliquer cette doctrine.
 
 **Date V1** : 2026-05-10
 **Date V2** : 2026-05-12 (évolution doctrinale post-feedback terrain)
-**Statut** : V2 verrouillée — prévaut sur la V1 où il y a contradiction
-**Portée** : missions, interventions, planning, calendrier, app agent, vue semaine, équipes (`/missions`, `/contracts/[id]/missions`, `/contracts/[id]/interventions`, `/m/*`, `/semaine`, `/equipes`)
+**Date V3** : 2026-05-12 (participants contextuels — voir section V3 ci-dessous)
+**Statut** : V3 verrouillée — prévaut sur V2/V1 où il y a contradiction
+**Portée** : missions, interventions, planning, calendrier, app agent, vue semaine, équipes, **participants contextuels** (`/missions`, `/contracts/[id]/missions`, `/contracts/[id]/interventions`, `/m/*`, `/semaine`, `/equipes`)
 
 ---
 
-## La phrase qui résume tout — V2
+## La phrase qui résume tout — V3
 
 > **« On organise la couverture des engagements. On ne mesure jamais les humains. »**
+>
+> **« Connaître les humains dans un événement est autorisé. Calculer les humains est interdit. »**
 
-Si tu hésites face à une décision, reviens à cette phrase. Tout le reste découle.
+Si tu hésites face à une décision, reviens à ces phrases. Tout le reste découle.
 
 **Cette doctrine n'est pas philosophique. C'est une protection stratégique du positionnement produit.** Si on cède sur "on mesure les humains", NetoIAge devient un ERP parmi d'autres et entre en concurrence frontale avec Skello, Combo, Monday, Factorial, FM tools. La doctrine est le moat.
+
+---
+
+## V3 — Évolution doctrinale (2026-05-12, post-pivot participants)
+
+### Le pivot V3
+
+La V2 a installé l'équipe comme conteneur logistique unique. **Le feedback terrain a montré que c'était trop rigide** : un agent remplace un autre, Alpha aide Beta, le chef d'équipe réorganise le matin même, quelqu'un tombe malade. Le modèle "équipe fixe" **ment sur la réalité** — et le chef d'équipe maintient un WhatsApp parallèle. Cette **shadow surveillance hors plateforme** est plus dangereuse qu'une transparence cadrée dans l'app.
+
+**Le pivot V3** : autoriser les **participants contextuels** à l'intervention, avec garde-fous structurels qui empêchent toute dérive vers un modèle de calcul sur l'humain.
+
+### L'asymétrie fondamentale V3
+
+> ✅ **« Participants de l'intervention X »** — autorisé
+> ❌ **« Interventions de Pierre »** — interdit absolu
+
+L'UI parle d'**événements** (interventions, missions, sites). Jamais de personnes en tant qu'objets de recherche ou de vue. La personne apparaît **comme participante à un événement**, jamais comme sujet d'une vue dédiée.
+
+Cette asymétrie est **structurelle, pas cosmétique**. Elle est encodée dans :
+- la DB (PK composite `(intervention_id, user_id)`, pas d'index user_id seul)
+- les routes (pas de `/users/[id]`, pas de `/agents/[id]`)
+- les exports (whitelist de colonnes, jamais d'identité agent dans un export par défaut)
+- les helpers (interdiction `*ByUser`, `*ByAgent`, `rank*`, `*Stats`)
+
+### Les trois couches de vérité humaine
+
+| Couche | Statut DB | Sémantique | Confirmation requise |
+|---|---|---|---|
+| 🟦 **Équipe affectée** (`mission.assigned_team_id`, `intervention.assigned_team_id`) | Écrit en DB dès création | **Organisation prévue** | Aucune (signal organisationnel) |
+| 🟨 **Participants contextuels** (`intervention_participants`) | Écrit en DB **uniquement après confirmation chef d'équipe** | **Réalité contextuelle** | Confirmation explicite |
+| 🟩 **Actions nominatives** (`photo.taken_by`, `checklist_item.done_by`, `validation.validated_by`) | Écrit en DB à l'action | **Trace de preuve granulaire** | Implicite (l'action vaut confirmation) |
+
+### Règle V3 — Non-écriture automatique de vérité humaine
+
+> **« Ne jamais écrire automatiquement une vérité humaine non confirmée. »**
+
+L'équipe affectée donne une **suggestion** de participants pré-remplie dans l'UI mobile chef d'équipe. **Rien n'est écrit en DB tant que pas confirmé**. Si non confirmé : état UI "Participants non confirmés", pas de faux positif en base.
+
+Pourquoi : une vérité humaine fausse (écrite automatiquement) est pire qu'une absence de vérité. Les preuves juridiques sont attaquables si la base ment sur qui était là.
+
+### Vocabulaire de rôles — V3
+
+`intervention_participants.role` est un **enum strictement borné** à 2 valeurs :
+- `participant` — exécutant simple, présence factuelle
+- `referent` — point de contact opérationnel pour l'intervention (qui peut répondre si question)
+
+**Refus net** des termes suivants même si demandés : `responsable`, `chef`, `lead`, `senior`, `junior`, `trainee`, `superviseur`. Ces mots encodent une hiérarchie qui glissera vers KPI/blâme/évaluation.
+
+### Wording UI V3 — Autorisé vs Interdit
+
+| ✅ Autorisé | ❌ Interdit |
+|---|---|
+| Participants à cette intervention | Présents aujourd'hui |
+| Référent intervention | Responsable, chef, lead, senior |
+| Qui participe ? | Qui est présent ? |
+| Ajouter quelqu'un | Pointer / check-in |
+| Équipe affectée | Agents actifs ce mois |
+| Dossier de preuve de l'intervention | Historique de Pierre |
+| Photos prises pendant l'intervention | Activité de Pierre |
+| 3 intervenants identifiés (export anonymisé) | Productivité, rendement, score, classement |
+| Participants non confirmés | Présence non validée, pointage manquant |
+| (rien) | Ponctualité, retard, disponibilité, à l'heure |
+| (rien) | Fiabilité, régularité, performance individuelle |
+
+### Chevaux de Troie clients — Liste rouge V3
+
+À chaque demande client, appliquer le test : *« est-ce que ça transforme NetoIAge en ERP RH ? »*
+
+| Demande client | Réflexe doctrinal |
+|---|---|
+| « Combien de personnes sur mon site ce mois ? » | ✅ Agrégat numérique anonyme, OK |
+| « Quels agents ont fait quoi ? » | ⚠️ Client : agrégat anonyme OK ; interne : refuser le reverse lookup |
+| « Je veux noter mes agents » | ❌ Refus net. Pas le produit. |
+| « Pour ISO il me faut prouver la qualification de l'agent » | ⚠️ Champ profil simple OK, planning by qualification refus |
+| « Je veux planifier qui fait quoi la semaine prochaine » | 🚨 **Ligne rouge produit**. Person-level scheduling = ERP RH. Refus. |
+| « Récompenser les bons agents » | ❌ Gamification = mesure. Refus. |
+| « Tableau d'activité de mes équipes » | ⚠️ Coverage de sites = OK. Productivité humaine = refus. |
+| « Suivre les remplacements » | ✅ Par intervention OK. Par agent (« Pierre a remplacé 12 fois ») refus. |
+| « Application de pointage » | ❌ Refus. |
+| « Heures travaillées pour la paie » | ❌ Pas le produit. |
+| « Notifier un agent spécifique » | ❌ Refus. Communication via équipe. |
+| « Pourquoi je ne peux pas voir l'historique d'un de mes agents ? » | ✅ Réponse cadrée : *« NetoIAge documente le travail réalisé, pas l'activité des personnes. C'est ce qui le distingue d'un ERP. »* |
+
+### Hors-scope structurels — Refus net (même si demandé pendant l'implémentation)
+
+| Sujet | Verdict |
+|---|---|
+| `assigned_to_user_id` sur mission/intervention | ❌ |
+| Page `/users/[id]` ou `/agents/[id]` | ❌ |
+| Filtre « intervenant » sur `/preuves` | ❌ |
+| Colonne participants dans export Excel | ❌ |
+| `joined_at` / `left_at` sur `intervention_participants` | ❌ (reporté Phase ultérieure si vraiment besoin lié incident) |
+| Champs d'agrégat user-level (`user.total_*`, `user.last_active_at`, etc.) | ❌ |
+| `user_availability` / `user_calendar` / `user_shift` | ❌ |
+| `participation.evaluation` / `participation.rating` / `participation.note` | ❌ |
+| `user.hours_worked` / `intervention.duration_per_user` | ❌ |
+| Notifications nominatives à un agent | ❌ |
+| `user.qualifications[]` utilisé pour planning automatique | ❌ |
+| Rôles enum hors `participant | referent` | ❌ |
+| Index DB sur `intervention_participants.user_id` seul | ❌ (anti reverse-lookup natif) |
+| Helpers `*ByUser`, `*ByAgent`, `rank*`, `*Stats`, `getActivity*` | ❌ (test forbidden-symbols enforce) |
+
+### Garde-fous structurels Phase 10 (enforcement, pas texte)
+
+1. **Tests doctrinaux** : `tests/doctrine/forbidden-symbols.test.ts` grep le code pour symboles interdits. Build fail si trouvé.
+2. **Export whitelist** : `tests/doctrine/export-whitelist.test.ts` scanne `*/export/route.ts` et `*/p/[token]/*` pour interdire colonnes type agent_name.
+3. **PR template** : 5 cases doctrinales obligatoires (`.github/PULL_REQUEST_TEMPLATE.md`).
+4. **Refusals log** : `docs/superpowers/doctrines/refusals-log.md` — registre des refus produit avec date, demande, motif. Toute demande refusée y atterrit pour mémoire collective.
+5. **Pas de route `/users/[id]`** : verrou structurel. Une seule page liée à un utilisateur dans l'app = `/account` (son propre compte).
+6. **Anonymisation par défaut export public** : `/p/[token]` masque les identités sauf option admin explicite avec justification écrite ≥ 20 chars + audit log entry.
 
 ---
 

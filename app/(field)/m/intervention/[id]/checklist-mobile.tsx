@@ -167,7 +167,7 @@ export function ChecklistMobile({
                     }`}
                   >
                     {item.label}
-                    {item.required && <span className="ml-1 text-rose-500">*</span>}
+                    {item.required && <span className="ml-1 font-bold text-muted-foreground" aria-label="Obligatoire">*</span>}
                   </div>
                 </div>
               </button>

@@ -29,7 +29,7 @@ export function TenderMemoireTechnique({ tender, analysis }: TenderMemoireTechni
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">Mémoire technique généré par IA</h3>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Généré par IA</p>
         <TenderExportButtons markdown={memo} tenderTitle={tender.title} />
       </div>
 

@@ -20,10 +20,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const fullName = user.full_name || user.email
   return (
     <div className="min-h-screen bg-muted/20">
+      {/* Skip-link RGAA — invisible jusqu'au focus clavier */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-foreground focus:text-background focus:px-3 focus:py-2 focus:text-sm focus:shadow-lg"
+      >
+        Aller au contenu
+      </a>
       <AppSidebar role={user.role} fullName={fullName} />
       <div className="md:pl-60">
         <AppTopbar fullName={fullName} />
-        <main className="px-4 md:px-8 py-6 pb-24 md:pb-6">{children}</main>
+        <main id="main-content" className="px-4 md:px-8 py-6 pb-24 md:pb-6">{children}</main>
       </div>
     </div>
   )

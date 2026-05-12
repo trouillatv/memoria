@@ -28,6 +28,8 @@ export interface SupervisorInterventionsQuery {
   status?: InterventionStatus
   /** Filtre site (mission.site_id). */
   siteId?: string
+  /** Phase 10 — filtre par mission spécifique. */
+  missionId?: string
   /** 0-based offset. */
   offset?: number
   /** Max items returned. */
@@ -109,6 +111,7 @@ export async function listInterventionsSupervisor(
   if (scheduledFromIso) q = q.gte('scheduled_at', scheduledFromIso)
   if (query.status) q = q.eq('status', query.status)
   if (missionIdsForSite) q = q.in('mission_id', missionIdsForSite)
+  if (query.missionId) q = q.eq('mission_id', query.missionId)
 
   const offset = Math.max(0, query.offset ?? 0)
   const limit = Math.max(1, query.limit ?? 50)
@@ -180,6 +183,13 @@ export async function getIntervention(id: string): Promise<DbIntervention | null
   return data
 }
 
+/**
+ * Crée une intervention `planned` et calque automatiquement `scheduled_for`
+ * (date pure UTC, lue par /semaine et la génération paresseuse) et `slot`
+ * (matin/après-midi/soir, dérivé de l'heure UTC) à partir de `scheduled_at`.
+ * Sans ce calque, l'intervention reste invisible en Vue Semaine — bug récurrent
+ * découvert sur le seed NC et la création manuelle (mai 2026).
+ */
 export async function createIntervention(input: {
   mission_id: string
   scheduled_at: string
@@ -187,11 +197,17 @@ export async function createIntervention(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const d = new Date(input.scheduled_at)
+  const scheduled_for = d.toISOString().slice(0, 10)
+  const h = d.getUTCHours()
+  const slot = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
   const { data, error } = await supabase
     .from('interventions')
     .insert({
       mission_id: input.mission_id,
       scheduled_at: input.scheduled_at,
+      scheduled_for,
+      slot,
       team: input.team ?? [],
       status: 'planned' as InterventionStatus,
       created_by: input.created_by,
@@ -262,6 +278,31 @@ export async function listPhotosByIntervention(interventionId: string): Promise<
     .order('taken_at')
   if (error) throw error
   return data ?? []
+}
+
+/**
+ * Count photos for a batch of interventions in a single query.
+ * Returns a Map<intervention_id, count>. Missing IDs = 0.
+ * Utile sur /dashboard pour éviter le N+1 (1 query par intervention finie).
+ */
+export async function countPhotosByInterventions(
+  interventionIds: string[],
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>()
+  if (interventionIds.length === 0) return result
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_photos')
+    .select('intervention_id')
+    .in('intervention_id', interventionIds)
+  if (error) throw error
+
+  for (const row of data ?? []) {
+    const id = (row as { intervention_id: string }).intervention_id
+    result.set(id, (result.get(id) ?? 0) + 1)
+  }
+  return result
 }
 
 export async function insertPhoto(input: {
@@ -352,15 +393,25 @@ export async function createValidation(input: {
 }
 
 /**
- * List interventions where the given agent is in the team[] array.
- * Used by the mobile agent UI (/m).
+ * Liste les interventions visibles par l'utilisateur sur sa vue mobile
+ * opérationnelle (/m). C'est une query de **visibilité opérationnelle** :
+ * "qu'est-ce que ce chef d'équipe doit voir aujourd'hui ?", PAS une query
+ * analytique "que fait Pierre ?".
  *
- * Returns interventions ordered by scheduled_at ascending, within the past 24h
- * to next 7 days window. Slice 6.4 : les interventions « skipped » (Pas
- * aujourd'hui) sont conservées dans la liste — la doctrine veut un affichage
- * grisé + badge, pas une disparition. Le rendu côté UI applique le style.
+ * Doctrine V3 — Asymétrie événement vs personne :
+ *   - le résultat est borné dans une fenêtre temporelle courte (J-1 → J+7)
+ *   - il n'existe AUCUN écran qui exploite ce helper pour produire un
+ *     historique global, un dashboard agent, ou des stats individuelles
+ *   - tout usage hors `/m` doit être refusé en revue de code
+ *
+ * Renommé en Slice 10.1 (depuis `listInterventionsByAgent`) pour clarifier la
+ * sémantique opérationnelle vs analytique. Voir tests/doctrine/forbidden-symbols.test.ts.
+ *
+ * Slice 6.4 : les interventions « skipped » (Pas aujourd'hui) sont conservées
+ * dans la liste — la doctrine veut un affichage grisé + badge, pas une
+ * disparition. Le rendu côté UI applique le style.
  */
-export async function listInterventionsByAgent(agentId: string): Promise<DbIntervention[]> {
+export async function listInterventionsVisibleToUser(userId: string): Promise<DbIntervention[]> {
   const supabase = createAdminClient()
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -368,7 +419,7 @@ export async function listInterventionsByAgent(agentId: string): Promise<DbInter
   const { data, error } = await supabase
     .from('interventions')
     .select('*')
-    .contains('team', [agentId])
+    .contains('team', [userId])
     .gte('scheduled_at', yesterday)
     .lte('scheduled_at', inOneWeek)
     .order('scheduled_at', { ascending: true })

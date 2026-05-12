@@ -10,6 +10,7 @@ import { listMembersOfTeam, type TeamWithMemberCount } from '@/lib/db/teams'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
 import { ArchiveTeamButton } from './ArchiveTeamButton'
+import { TeamReferentEditor } from './TeamReferentEditor'
 
 interface Props {
   team: TeamWithMemberCount
@@ -32,6 +33,13 @@ export async function TeamRow({ team, availableUsers }: Props) {
     email: m.user.email,
   }))
 
+  // Référent : doctrine V3 — point de contact stable, jamais une hiérarchie.
+  const referent = team.referent
+    ? { id: team.referent.id, name: displayName(team.referent.full_name, team.referent.email) }
+    : null
+  // Pour mettre en exergue le référent dans la liste des membres
+  const referentId = referent?.id ?? null
+
   return (
     <div
       data-slot="team-row"
@@ -51,13 +59,35 @@ export async function TeamRow({ team, availableUsers }: Props) {
               Aucun membre — cliquez sur Éditer pour en ajouter.
             </span>
           ) : (
-            members.map((m, i) => (
-              <span key={m.id}>
-                {i > 0 && <span className="mx-2 text-muted-foreground">·</span>}
-                <span>{m.name}</span>
-              </span>
-            ))
+            members.map((m, i) => {
+              const isRef = m.id === referentId
+              return (
+                <span key={m.id}>
+                  {i > 0 && <span className="mx-2 text-muted-foreground">·</span>}
+                  <span className={isRef ? 'font-medium text-foreground' : ''}>
+                    {m.name}
+                  </span>
+                  {isRef && (
+                    <span
+                      className="ml-1 inline-flex items-center text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-600/10 align-middle"
+                      title="Référent de l'équipe"
+                    >
+                      Réf.
+                    </span>
+                  )}
+                </span>
+              )
+            })
           )}
+        </div>
+        <div className="mt-2">
+          <TeamReferentEditor
+            teamId={team.id}
+            teamName={team.name}
+            current={referent}
+            members={members}
+            availableUsers={availableUsers}
+          />
         </div>
       </div>
 

@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'NetoIAge',
     short_name: 'NetoIAge',
     description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
-    start_url: '/missions',
+    start_url: '/m',
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#0f172a',

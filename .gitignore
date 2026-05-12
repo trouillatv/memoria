@@ -45,3 +45,14 @@ next-env.d.ts
 # Supabase local
 supabase/.branches
 supabase/.temp
+
+# AI tooling — configs locales, ne pas versionner
+.claude/
+.agents/
+skills-lock.json
+
+# Logs locaux
+dev.log
+
+# Backups
+*.bak

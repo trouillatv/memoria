@@ -24,7 +24,7 @@ import {
   Clock,
 } from 'lucide-react'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
@@ -80,7 +80,7 @@ export default async function PreuvesPage({ searchParams }: PageProps) {
             <EmptyState
               icon={FileSearch}
               title="Quel dossier de preuves voulez-vous consulter ?"
-              description="Tapez le nom d'un site, une date, ou un mot-clé pour retrouver instantanément toutes les preuves d'intervention. Un client vous demande une justification, vous préparez un renouvellement ou un audit ? C'est ici."
+              description="Tapez le nom d'un site, une date, ou un mot-clé pour retrouver instantanément les preuves d'intervention."
             />
           </CardContent>
         </Card>
@@ -125,12 +125,10 @@ export default async function PreuvesPage({ searchParams }: PageProps) {
       ) : (
         <>
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {total} intervention{total > 1 ? 's' : ''} trouvée
-                {total > 1 ? 's' : ''}
-              </CardTitle>
-            </CardHeader>
+            <div className="px-6 py-2 text-sm text-muted-foreground border-b border-border/60 tabular-nums">
+              {total} intervention{total > 1 ? 's' : ''} trouvée
+              {total > 1 ? 's' : ''}
+            </div>
             <CardContent className="p-0">
               <ul className="divide-y">
                 {items.map((it) => (
@@ -149,7 +147,7 @@ export default async function PreuvesPage({ searchParams }: PageProps) {
 function Header() {
   return (
     <div>
-      <h1 className="text-2xl font-bold">Dossier de preuves</h1>
+      <h1 className="text-2xl font-semibold">Dossier de preuves</h1>
       <p className="text-sm text-muted-foreground">
         Retrouvez instantanément toutes les preuves d&apos;intervention. Pour une
         réclamation client, un renouvellement, une réunion ou un audit qualité.
@@ -208,7 +206,7 @@ function ProofRow({ item }: { item: ProofIntervention }) {
     <li>
       <Link
         href={`/preuves/${item.id}`}
-        className="flex items-start gap-3 px-6 py-3 hover:bg-muted/30 transition-colors"
+        className="flex items-start gap-4 px-6 py-3 hover:bg-muted/30 transition-colors"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -231,27 +229,38 @@ function ProofRow({ item }: { item: ProofIntervention }) {
             <Clock className="h-3 w-3 shrink-0" aria-hidden />
             <span>{dateFr}</span>
           </div>
-          <div className="text-xs mt-1.5 flex items-center gap-3 text-muted-foreground tabular-nums">
-            <span className="flex items-center gap-1">
-              <ImageIcon className="h-3 w-3" aria-hidden />
-              {item.photosCount}
-            </span>
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3" aria-hidden />
-              {item.validationsCount}
-            </span>
-            {item.anomaliesCount > 0 && (
-              <span
-                className="flex items-center gap-1"
-                title={`${item.anomaliesResolvedCount} résolue${
-                  item.anomaliesResolvedCount > 1 ? 's' : ''
-                } sur ${item.anomaliesCount}`}
-              >
-                <AlertTriangle className="h-3 w-3" aria-hidden />
-                {item.anomaliesCount}
-              </span>
-            )}
+          {/* Validations + anomalies en sous-ligne discrète */}
+          {(item.validationsCount > 0 || item.anomaliesCount > 0) && (
+            <div className="text-xs mt-1.5 flex items-center gap-3 text-muted-foreground tabular-nums">
+              {item.validationsCount > 0 && (
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden />
+                  {item.validationsCount} validation{item.validationsCount > 1 ? 's' : ''}
+                </span>
+              )}
+              {item.anomaliesCount > 0 && (
+                <span
+                  className="flex items-center gap-1 text-amber-700"
+                  title={`${item.anomaliesResolvedCount} résolue${
+                    item.anomaliesResolvedCount > 1 ? 's' : ''
+                  } sur ${item.anomaliesCount}`}
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden />
+                  {item.anomaliesCount} anomalie{item.anomaliesCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Compteur photos — cœur de la preuve, hiérarchisé à droite */}
+        <div className="shrink-0 flex flex-col items-end justify-center tabular-nums" aria-label={`${item.photosCount} photo${item.photosCount > 1 ? 's' : ''}`}>
+          <div className="flex items-center gap-1.5 text-sm font-medium">
+            <ImageIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <span>{item.photosCount}</span>
           </div>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+            photo{item.photosCount > 1 ? 's' : ''}
+          </span>
         </div>
       </Link>
     </li>

@@ -4,21 +4,17 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+  /* Palette `brand-*` : RÉSERVÉE à l'identité (logo, séparateur sidebar active,
+     icône de section "rare" comme Calendar de /semaine).
+     Pour toute UI fonctionnelle (boutons, focus rings, états interactifs),
+     utiliser `--primary` (cf. :root ci-dessous). Les deux sont bleus mais
+     `--primary` suit le dark mode, `brand-*` reste fixe = empreinte de marque. */
   --color-brand-50:  #eff6ff;
   --color-brand-100: #dbeafe;
   --color-brand-500: #3b82f6;
   --color-brand-600: #2563eb;
   --color-brand-700: #1d4ed8;
   --color-brand-900: #0f172a;
-
-  --color-pending-bg:     #fef3c7;
-  --color-pending-fg:     #92400e;
-  --color-in_progress-bg: #dbeafe;
-  --color-in_progress-fg: #1e40af;
-  --color-completed-bg:   #d1fae5;
-  --color-completed-fg:   #065f46;
-  --color-issue-bg:       #ffe4e6;
-  --color-issue-fg:       #9f1239;
 }
 
 @theme inline {

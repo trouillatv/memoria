@@ -12,6 +12,7 @@ interface Props {
   label: string
   disabled?: boolean
   onPhotoQueued?: () => void  // callback for parent to refresh local thumbs
+  variant?: 'default' | 'fab'  // fab = floating action button (gros, rond, position fixed à appliquer par parent)
 }
 
 export function PhotoCaptureButton({
@@ -21,6 +22,7 @@ export function PhotoCaptureButton({
   label,
   disabled,
   onPhotoQueued,
+  variant = 'default',
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [pending, startTransition] = useTransition()
@@ -54,17 +56,24 @@ export function PhotoCaptureButton({
     })
   }
 
+  const isFab = variant === 'fab'
+
   return (
     <>
       <button
         type="button"
         onClick={handleClick}
         disabled={disabled || pending}
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border bg-card active:bg-muted text-sm font-medium disabled:opacity-50"
-        style={{ minHeight: 44 }}
+        aria-label={isFab ? label : undefined}
+        className={
+          isFab
+            ? 'inline-flex items-center justify-center rounded-full bg-foreground text-background shadow-lg active:scale-95 transition-transform disabled:opacity-60 size-14'
+            : 'inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border bg-card active:bg-muted text-sm font-medium disabled:opacity-50'
+        }
+        style={isFab ? { minHeight: 56 } : { minHeight: 52 }}
       >
-        <Camera className="h-4 w-4" />
-        {label}
+        <Camera className={isFab ? 'h-6 w-6' : 'h-4 w-4'} />
+        {!isFab && label}
       </button>
       <input
         ref={inputRef}

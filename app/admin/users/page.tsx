@@ -32,7 +32,7 @@ export default async function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Utilisateurs</h1>
+        <h1 className="text-2xl font-semibold">Utilisateurs</h1>
         <p className="text-sm text-muted-foreground">
           {users.length} utilisateur{users.length > 1 ? 's' : ''}. Gestion centralisée — création, rôles, mot de passe.
         </p>
@@ -64,7 +64,9 @@ export default async function AdminUsersPage() {
                     <td className="px-3 py-2 text-xs">{u.full_name || '—'}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
-                        <Badge className={ROLE_BADGE[u.role]}>{ROLE_LABEL[u.role]}</Badge>
+                        <span className="inline-flex w-28 shrink-0">
+                          <Badge className={ROLE_BADGE[u.role]}>{ROLE_LABEL[u.role]}</Badge>
+                        </span>
                         <UserRoleSelect userId={u.id} currentRole={u.role} />
                       </div>
                     </td>

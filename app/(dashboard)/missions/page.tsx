@@ -1,10 +1,9 @@
 import Link from 'next/link'
-import { Calendar, ClipboardList, SearchX } from 'lucide-react'
+import { Calendar, ClipboardList, MapPin, SearchX, ChevronRight } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
-import { PaginationBar } from '@/components/ui/pagination-bar'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventions } from '@/lib/recurrence/ensure-today'
 import {
@@ -16,7 +15,10 @@ import { listSites } from '@/lib/db/sites'
 import type { InterventionStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
 
-const PAGE_SIZE = 50
+// Plus de pagination — le regroupement collapsé par site rend la liste lisible
+// même longue. Cap dur à 500 par sécurité (un superviseur n'a jamais besoin de
+// plus en pratique, et au-delà la page peut être lente).
+const HARD_LIMIT = 500
 
 const STATUS_OPTIONS: Array<{ value: InterventionStatus; label: string }> = [
   { value: 'planned',     label: 'Planifiée' },
@@ -37,17 +39,8 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
 }
 
-function parsePage(raw: string | undefined): number {
-  if (!raw) return 1
-  const n = Number.parseInt(raw, 10)
-  if (!Number.isFinite(n) || n < 1) return 1
-  return n
-}
-
 function parseDateRange(raw: string | undefined): SupervisorDateRange {
   if (raw === 'today' || raw === '7d' || raw === '30d' || raw === 'all') return raw
-  // Default: voir tout ce qui est de la veille à venir (similaire à l'ancien comportement).
-  // On expose explicitement '30d' comme défaut visible.
   return '30d'
 }
 
@@ -58,14 +51,14 @@ export default async function MissionsPage({
     date?: string
     status?: string
     site?: string
-    page?: string
+    mission?: string
   }>
 }) {
   const params = await searchParams
-  const page = parsePage(params.page)
   const dateRange = parseDateRange(params.date)
   const status = (params.status as InterventionStatus | undefined) || undefined
   const siteId = params.site || undefined
+  const missionId = params.mission || undefined
 
   // Slice 6.3 — Génération paresseuse silencieuse à l'échelle tenant.
   const supabase = createAdminClient()
@@ -79,19 +72,43 @@ export default async function MissionsPage({
     await ensureTodayInterventions({ templateIds: activeTemplateIds, daysAhead: 1 })
   }
 
-  // Fetch list of sites for the dropdown (sobre, tenant-scope via RLS admin).
+  // Sites + missions pour les filtres. Les missions sont scopées au site sélectionné
+  // si présent — sinon liste cross-site (peut être longue, on la garde simple).
   const sites = await listSites()
+  let missionOptions: Array<{ value: string; label: string }> = []
+  if (siteId) {
+    const { data: missionRows } = await supabase
+      .from('missions')
+      .select('id, name')
+      .eq('site_id', siteId)
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    missionOptions = (missionRows ?? []).map((m) => ({ value: m.id, label: m.name }))
+  } else {
+    const { data: missionRows } = await supabase
+      .from('missions')
+      .select('id, name, site:sites(name)')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+      .limit(200)
+    missionOptions = (missionRows ?? []).map((m) => {
+      const site = Array.isArray(m.site) ? m.site[0] : m.site
+      const siteName = (site as { name?: string } | null)?.name
+      return { value: m.id, label: siteName ? `${m.name} · ${siteName}` : m.name }
+    })
+  }
 
   const { items, total } = await listInterventionsSupervisor({
     dateRange,
     status,
     siteId,
-    offset: (page - 1) * PAGE_SIZE,
-    limit: PAGE_SIZE,
+    missionId,
+    offset: 0,
+    limit: HARD_LIMIT,
   })
 
   const hasActiveFilters = Boolean(
-    (params.date && params.date !== '30d') || params.status || params.site,
+    (params.date && params.date !== '30d') || params.status || params.site || params.mission,
   )
   const isEmpty = total === 0
 
@@ -112,7 +129,7 @@ export default async function MissionsPage({
       <FiltersBar
         hideSearch
         hasActiveFilters={hasActiveFilters}
-        resetParams={['date', 'status', 'site']}
+        resetParams={['date', 'status', 'site', 'mission']}
       >
         <FilterSelect
           paramName="date"
@@ -131,6 +148,12 @@ export default async function MissionsPage({
           label="Site"
           emptyLabel="Tous les sites"
           options={sites.map((s) => ({ value: s.id, label: s.name }))}
+        />
+        <FilterSelect
+          paramName="mission"
+          label="Mission"
+          emptyLabel="Toutes les missions"
+          options={missionOptions}
         />
       </FiltersBar>
 
@@ -170,9 +193,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
             À venir ({upcoming.length})
           </h2>
-          <ul className="space-y-1.5">
-            {upcoming.map((i) => <InterventionRow key={i.id} item={i} />)}
-          </ul>
+          <SiteGroupedList items={upcoming} accent="emerald" />
         </section>
       )}
 
@@ -181,13 +202,113 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Récentes ({past.length})
           </h2>
-          <ul className="space-y-1.5">
-            {past.map((i) => <InterventionRow key={i.id} item={i} />)}
-          </ul>
+          <SiteGroupedList items={past} accent="muted" />
         </section>
       )}
 
-      <PaginationBar page={page} pageSize={PAGE_SIZE} total={total} />
+      {total >= HARD_LIMIT && (
+        <p className="text-xs text-muted-foreground italic">
+          Affichage limité à {HARD_LIMIT} interventions sur cette période. Affinez la période ou le statut pour voir le reste.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Regroupement par site (collapsé) — quand aucun site n'est filtré.
+// `<details>` natif HTML : pas de JS, server-rendable, accessible, mémorisable.
+// ---------------------------------------------------------------------------
+
+type ListItem = {
+  id: string
+  scheduled_at: string
+  status: string
+  skipped_reason: string | null
+  mission?: {
+    name: string
+    site?: {
+      id?: string
+      name: string
+      contract?: { id: string; name: string; client_name: string } | null
+    } | null
+  } | null
+}
+
+interface Group {
+  siteKey: string
+  siteName: string
+  contractName: string | null
+  items: ListItem[]
+}
+
+function groupBySiteName(items: ListItem[]): Group[] {
+  const map = new Map<string, Group>()
+  for (const item of items) {
+    const siteName = item.mission?.site?.name ?? 'Sans site'
+    const contractName = item.mission?.site?.contract?.name ?? null
+    // Clé = site + contrat (pour distinguer si un nom de site existe sur 2 contrats)
+    const key = `${siteName}|${contractName ?? ''}`
+    const g = map.get(key)
+    if (g) {
+      g.items.push(item)
+    } else {
+      map.set(key, { siteKey: key, siteName, contractName, items: [item] })
+    }
+  }
+  // Tri alphabétique fr par site, sub-tri par contrat
+  return Array.from(map.values()).sort((a, b) => {
+    const c = a.siteName.localeCompare(b.siteName, 'fr', { sensitivity: 'base' })
+    if (c !== 0) return c
+    return (a.contractName ?? '').localeCompare(b.contractName ?? '', 'fr', { sensitivity: 'base' })
+  })
+}
+
+function SiteGroupedList({ items, accent }: { items: ListItem[]; accent: 'emerald' | 'muted' }) {
+  const groups = groupBySiteName(items)
+  return (
+    <div className="space-y-1.5">
+      {groups.map((g) => (
+        <details
+          key={g.siteKey}
+          className="group rounded-lg border bg-card overflow-hidden"
+        >
+          <summary
+            className={
+              'flex items-center justify-between gap-3 px-3 py-2.5 cursor-pointer select-none ' +
+              'hover:bg-muted/30 transition-colors list-none [&::-webkit-details-marker]:hidden ' +
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+            }
+          >
+            <div className="min-w-0 flex-1 flex items-center gap-2">
+              <ChevronRight
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+                aria-hidden
+              />
+              <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="text-sm font-medium truncate">{g.siteName}</span>
+              {g.contractName && (
+                <span className="text-xs text-muted-foreground truncate">· {g.contractName}</span>
+              )}
+            </div>
+            <span
+              className={
+                'text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ' +
+                (accent === 'emerald'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-muted text-muted-foreground')
+              }
+            >
+              {g.items.length}
+            </span>
+          </summary>
+          <ul className="space-y-1.5 px-3 pb-3 pt-1 border-t bg-muted/10">
+            {g.items.map((i) => (
+              <InterventionRow key={i.id} item={i} />
+            ))}
+          </ul>
+        </details>
+      ))}
     </div>
   )
 }

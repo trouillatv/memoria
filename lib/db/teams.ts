@@ -156,6 +156,8 @@ export async function archiveTeam(id: string): Promise<void> {
 
 export interface TeamWithMemberCount extends DbTeam {
   memberCount: number
+  /** Profil du référent (si désigné via teams.referent_user_id). */
+  referent: { id: string; full_name: string | null; email: string } | null
 }
 
 /**
@@ -188,10 +190,48 @@ export async function listTeamsWithMemberCount(): Promise<TeamWithMemberCount[]>
     counts.set(m.team_id, (counts.get(m.team_id) ?? 0) + 1)
   }
 
+  // Profils des référents (jointure manuelle pour éviter les surprises de typage)
+  const referentIds = Array.from(
+    new Set((teams as DbTeam[]).map((t) => t.referent_user_id).filter((id): id is string => !!id)),
+  )
+  const refMap = new Map<string, { id: string; full_name: string | null; email: string }>()
+  if (referentIds.length > 0) {
+    const { data: refUsers, error: rErr } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', referentIds)
+    if (rErr) throw rErr
+    for (const u of refUsers ?? []) {
+      refMap.set(u.id, { id: u.id, full_name: u.full_name, email: u.email })
+    }
+  }
+
   return (teams as DbTeam[]).map((t) => ({
     ...t,
     memberCount: counts.get(t.id) ?? 0,
+    referent: t.referent_user_id ? refMap.get(t.referent_user_id) ?? null : null,
   }))
+}
+
+/**
+ * Désigne ou retire le référent d'une équipe.
+ *
+ * Doctrine V3 :
+ *   - Référent = point de contact stable, pas une hiérarchie.
+ *   - `null` accepté (retrait sans remplacement immédiat).
+ *   - Pas de contrainte DB "le référent doit être membre" : tolérance
+ *     opérationnelle (transitions, départ sans relai immédiat).
+ */
+export async function setTeamReferent(input: {
+  teamId: string
+  userId: string | null
+}): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('teams')
+    .update({ referent_user_id: input.userId })
+    .eq('id', input.teamId)
+  if (error) throw error
 }
 
 // ----------------------------------------------------------------------------

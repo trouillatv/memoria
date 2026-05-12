@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, MapPin, FileSearch } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, FileSearch, Users } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -8,10 +8,12 @@ import {
   listAnomaliesByIntervention,
   getValidationByIntervention,
 } from '@/lib/db/interventions'
+import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { ParticipantsPanel } from './participants-panel'
 import { ExecutionPanel } from './execution-panel'
 import { AnomaliesPanel } from './anomalies-panel'
 import { ValidationPanel } from './validation-panel'
@@ -22,17 +24,28 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos, anomalies, validation] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation, participants] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
     listAnomaliesByIntervention(id),
     getValidationByIntervention(id),
+    listParticipantsForIntervention(id),
   ])
 
   const supabase = createAdminClient()
   const { data: site } = mission
     ? await supabase.from('sites').select('id, name, contract_id').eq('id', mission.site_id).maybeSingle()
+    : { data: null }
+
+  // Équipe affectée à l'intervention (organisation prévue, doctrine V3) — distincte
+  // des participants confirmés (réalité contextuelle).
+  const { data: assignedTeam } = intervention.assigned_team_id
+    ? await supabase
+        .from('teams')
+        .select('id, name, color')
+        .eq('id', intervention.assigned_team_id)
+        .maybeSingle()
     : { data: null }
 
   // Sign URLs for photos
@@ -98,6 +111,11 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
           )}
         </div>
       </header>
+
+      <ParticipantsPanel
+        assignedTeam={assignedTeam ? { name: assignedTeam.name, color: assignedTeam.color } : null}
+        participants={participants}
+      />
 
       {/* Slice 6.4 — Panneau « Pas aujourd'hui » : visible si skipped, masque
           les actions d'exécution. Sinon : bouton sobre côté action si planned. */}

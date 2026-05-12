@@ -21,15 +21,15 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b">
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
           <div className="text-sm">
             Bonjour <span className="font-semibold">{firstName}</span>
           </div>
           <SyncIndicator />
         </div>
       </header>
-      <main className="px-4 py-4">{children}</main>
-      <footer className="px-4 py-6 mt-12 border-t flex items-center gap-4">
+      <main className="max-w-md mx-auto px-4 py-4">{children}</main>
+      <footer className="max-w-md mx-auto px-4 py-6 mt-12 border-t flex items-center gap-4">
         <Link
           href="/account"
           className="text-xs text-muted-foreground hover:text-foreground underline"

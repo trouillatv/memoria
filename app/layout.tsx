@@ -27,7 +27,14 @@ export const viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      {/* suppressHydrationWarning sur <body> : neutralise les attributs injectés
+          par les extensions navigateur (ColorZilla `cz-shortcut-listen`,
+          Grammarly `data-gr-*`, LastPass `data-lastpass-*`, etc.) qui modifient
+          le DOM côté client avant l'hydration React. Sans effet sur le rendu. */}
+      <body
+        className={`${inter.variable} font-sans antialiased`}
+        suppressHydrationWarning
+      >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
           <Toaster />
