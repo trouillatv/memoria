@@ -180,7 +180,7 @@ export function TenderSidebar({
               {kpis.chatMessagesCount > 0 && (
                 <li className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                  <span>{kpis.chatMessagesCount} msg{kpis.chatMessagesCount > 1 ? 's' : ''} atelier</span>
+                  <span>{kpis.chatMessagesCount} msg{kpis.chatMessagesCount > 1 ? 's' : ''} Copilote AO</span>
                 </li>
               )}
             </ul>
