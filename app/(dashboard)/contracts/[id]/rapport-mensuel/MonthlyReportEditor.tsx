@@ -21,9 +21,17 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { Check, Copy, Download, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import type {
   MonthlyReportData,
@@ -60,6 +68,13 @@ export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEd
   const [note, setNote] = useState<string>('')
   const [isPending, startTransition] = useTransition()
 
+  // Slice E.2 — dialog "Rapport prêt" affichant les URLs après approbation.
+  const [readyDialog, setReadyDialog] = useState<{
+    shareUrl: string
+    pdfUrl: string
+    expiresAt: string
+  } | null>(null)
+
   function toggle(photoId: string) {
     setSelectedIds((current) => {
       const next = new Set(current)
@@ -88,13 +103,16 @@ export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEd
         selectedPhotoIds: Array.from(selectedIds),
         note: note.trim(),
       })
-      if (!res.ok) {
-        // Note : pour la slice E.1, le retour est toujours un message
-        // "disponible en E.2". On l'affiche tel quel, c'est un feedback honnête.
+      if (!res.ok || !res.shareUrl || !res.pdfUrl || !res.expiresAt) {
         toast.error(res.error ?? 'Erreur lors de la préparation du rapport.')
         return
       }
-      toast.success('Rapport prêt.')
+      toast.success('Rapport prêt — lien valable 30 jours.')
+      setReadyDialog({
+        shareUrl: res.shareUrl,
+        pdfUrl: res.pdfUrl,
+        expiresAt: res.expiresAt,
+      })
     })
   }
 
@@ -120,8 +138,124 @@ export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEd
           {isPending ? 'Préparation…' : 'Approuver et préparer le partage'}
         </Button>
       </div>
+
+      {/* Slice E.2 — Dialog "Rapport prêt" après approbation */}
+      <ReadyDialog
+        result={readyDialog}
+        onClose={() => setReadyDialog(null)}
+      />
     </div>
   )
+}
+
+// ----------------------------------------------------------------------------
+// Slice E.2 — Dialog "Rapport prêt" (download PDF + copy URL)
+// ----------------------------------------------------------------------------
+
+function ReadyDialog({
+  result,
+  onClose,
+}: {
+  result: { shareUrl: string; pdfUrl: string; expiresAt: string } | null
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+
+  async function copyShareUrl() {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result.shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      toast.success('Lien copié dans le presse-papiers')
+    } catch {
+      toast.error("Impossible de copier — sélectionnez l'URL manuellement.")
+    }
+  }
+
+  const expiresLabel = result ? formatExpiresAt(result.expiresAt) : ''
+
+  return (
+    <Dialog open={result !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Check className="size-4 text-emerald-600" aria-hidden />
+            Rapport prêt
+          </DialogTitle>
+          <DialogDescription>
+            Téléchargez le PDF horodaté ou partagez le lien public temporaire.
+          </DialogDescription>
+        </DialogHeader>
+
+        {result && (
+          <>
+            {/* Download PDF */}
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                PDF horodaté
+              </div>
+              <a
+                href={result.pdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full items-center justify-start gap-1.5 rounded-lg border border-border bg-background px-2.5 h-8 text-sm font-medium hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <Download className="size-4" />
+                Télécharger le PDF
+                <ExternalLink className="ml-auto size-3 opacity-50" />
+              </a>
+            </div>
+
+            {/* Share URL */}
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Lien public temporaire
+              </div>
+              <div className="flex items-center gap-2">
+                <code
+                  className="flex-1 truncate rounded-md border border-border bg-muted/30 px-2 py-1.5 text-xs"
+                  title={result.shareUrl}
+                >
+                  {result.shareUrl}
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyShareUrl}
+                  aria-label="Copier le lien"
+                >
+                  {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  <span className="ml-1">{copied ? 'Copié' : 'Copier'}</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Expire {expiresLabel}.</p>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <Button variant="outline" onClick={onClose}>
+            Fermer
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function formatExpiresAt(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return `le ${d.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })}`
+  } catch {
+    return ''
+  }
 }
 
 // ----------------------------------------------------------------------------
