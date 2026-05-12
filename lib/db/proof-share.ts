@@ -15,6 +15,10 @@
 
 import { randomBytes } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  getContractMonthlyReport,
+  type MonthlyReportData,
+} from '@/lib/db/monthly-report'
 
 // ----------------------------------------------------------------------------
 // Types
@@ -34,7 +38,8 @@ export interface CreateShareTokenInput {
 export interface ProofShareToken {
   id: string
   token: string
-  intervention_id: string
+  /** Slice E.2 : nullable depuis migration 026. NULL pour les tokens "rapport mensuel". */
+  intervention_id: string | null
   created_at: string
   created_by: string | null
   expires_at: string
@@ -42,6 +47,38 @@ export interface ProofShareToken {
   include_identities: boolean
   last_accessed_at: string | null
   access_count: number
+  /** Slice E.2 : contract référencé pour le cas rapport mensuel. */
+  contract_id: string | null
+  /** Slice E.2 : "YYYY-MM" pour le cas rapport mensuel. */
+  report_month: string | null
+  /** Slice E.2 : sélection figée des photos approuvées par le DG (1..12). */
+  selected_photo_ids: string[] | null
+  /** Slice E.2 : note libre du DG figée au moment de l'approbation. */
+  dg_note: string | null
+}
+
+/**
+ * Discriminant runtime : permet de filtrer un token "rapport mensuel"
+ * sans répéter la logique XOR partout.
+ */
+export function isMonthlyReportToken(t: ProofShareToken): boolean {
+  return t.contract_id !== null && t.report_month !== null
+}
+
+export interface CreateMonthlyReportTokenInput {
+  contractId: string
+  /** Format "YYYY-MM". */
+  reportMonth: string
+  /** Durée en jours. Default 30 (rapport mensuel = horizon long). Max 30. */
+  durationDays?: number
+  /** Sélection figée approuvée par le DG. Min 1, max 12 (cap applicatif Slice E.1). */
+  selectedPhotoIds: string[]
+  /** Note libre du DG (0-300 chars). */
+  dgNote: string
+  /** Override admin (default false). Cohérent avec dossier de preuves. */
+  includeIdentities?: boolean
+  /** Userid créateur (pour audit). */
+  createdBy?: string | null
 }
 
 // ----------------------------------------------------------------------------
@@ -49,9 +86,14 @@ export interface ProofShareToken {
 // ----------------------------------------------------------------------------
 
 const DEFAULT_DURATION_DAYS = 7
+const DEFAULT_MONTHLY_REPORT_DURATION_DAYS = 30
 const MAX_DURATION_DAYS = 30
 /** 24 octets → 32 chars base64url. Largement suffisant contre le brute force. */
 const TOKEN_BYTES = 24
+const MONTHLY_REPORT_PHOTOS_MIN = 1
+const MONTHLY_REPORT_PHOTOS_MAX = 12
+const MONTHLY_REPORT_NOTE_MAX = 300
+const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/
 
 // ----------------------------------------------------------------------------
 // Helpers internes
@@ -62,8 +104,8 @@ function generateToken(): string {
   return randomBytes(TOKEN_BYTES).toString('base64url')
 }
 
-function clampDurationDays(d: number | undefined): number {
-  if (!d || d <= 0) return DEFAULT_DURATION_DAYS
+function clampDurationDays(d: number | undefined, fallback = DEFAULT_DURATION_DAYS): number {
+  if (!d || d <= 0) return fallback
   return Math.min(MAX_DURATION_DAYS, Math.floor(d))
 }
 
@@ -197,6 +239,104 @@ export async function listShareTokensForIntervention(
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as ProofShareToken[]
+}
+
+// ----------------------------------------------------------------------------
+// Slice E.2 — Tokens "rapport mensuel" (contract_id + report_month)
+// ----------------------------------------------------------------------------
+
+/**
+ * Crée un share token pour un rapport mensuel client.
+ *
+ * - Default 30 jours (rapport mensuel = horizon long, vs 7 pour preuve unitaire).
+ * - Cap photos 1..12 (cohérent avec MonthlyReportEditor Slice E.1).
+ * - Cap note 0..300 chars (cohérent avec NoteSection Slice E.1).
+ * - intervention_id reste null ; la CHECK chk_token_kind impose le XOR.
+ *
+ * Throws si validation échoue (avant insertion) ou si la DB rejette
+ * (notamment la CHECK constraint si on tente d'insérer une combinaison invalide).
+ */
+export async function createMonthlyReportToken(
+  input: CreateMonthlyReportTokenInput,
+): Promise<ProofShareToken> {
+  // Validations applicatives — protections en plus des CHECK SQL.
+  if (!MONTH_REGEX.test(input.reportMonth)) {
+    throw new Error(`createMonthlyReportToken: reportMonth invalide "${input.reportMonth}" (attendu YYYY-MM)`)
+  }
+  if (
+    !Array.isArray(input.selectedPhotoIds) ||
+    input.selectedPhotoIds.length < MONTHLY_REPORT_PHOTOS_MIN ||
+    input.selectedPhotoIds.length > MONTHLY_REPORT_PHOTOS_MAX
+  ) {
+    throw new Error(
+      `createMonthlyReportToken: selectedPhotoIds doit contenir entre ${MONTHLY_REPORT_PHOTOS_MIN} et ${MONTHLY_REPORT_PHOTOS_MAX} ids.`,
+    )
+  }
+  if (typeof input.dgNote !== 'string' || input.dgNote.length > MONTHLY_REPORT_NOTE_MAX) {
+    throw new Error(
+      `createMonthlyReportToken: dgNote doit être une string de 0..${MONTHLY_REPORT_NOTE_MAX} caractères.`,
+    )
+  }
+
+  const days = clampDurationDays(input.durationDays, DEFAULT_MONTHLY_REPORT_DURATION_DAYS)
+  const tokenValue = generateToken()
+
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('proof_share_tokens')
+    .insert({
+      token: tokenValue,
+      intervention_id: null,
+      contract_id: input.contractId,
+      report_month: input.reportMonth,
+      selected_photo_ids: input.selectedPhotoIds,
+      dg_note: input.dgNote,
+      expires_at: expiresAtFromNow(days),
+      include_identities: input.includeIdentities ?? false,
+      created_by: input.createdBy ?? null,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as ProofShareToken
+}
+
+/**
+ * Récupère un token "rapport mensuel" + le dataset factuel associé.
+ *
+ * Retourne null si :
+ *   - Le token n'existe pas
+ *   - Le token est révoqué (revoked_at NOT NULL)
+ *   - Le token est expiré (expires_at < now)
+ *   - Le token n'est PAS un rapport mensuel (cas dossier de preuves)
+ *
+ * Le caller (page publique) peut distinguer "token inexistant" de
+ * "token révoqué/expiré" via getShareTokenByValueRaw avant d'appeler ce helper
+ * si besoin d'affichage dédié — pattern Phase 5 conservé.
+ */
+export async function getMonthlyReportFromToken(token: string): Promise<{
+  shareToken: ProofShareToken
+  reportData: MonthlyReportData
+  selectedPhotoIds: string[]
+  dgNote: string
+} | null> {
+  const shareToken = await getShareTokenByValue(token)
+  if (!shareToken) return null
+  if (!shareToken.contract_id || !shareToken.report_month) return null
+
+  const reportData = await getContractMonthlyReport(
+    shareToken.contract_id,
+    shareToken.report_month,
+  )
+  if (!reportData) return null
+
+  return {
+    shareToken,
+    reportData,
+    selectedPhotoIds: shareToken.selected_photo_ids ?? [],
+    dgNote: shareToken.dg_note ?? '',
+  }
 }
 
 /**

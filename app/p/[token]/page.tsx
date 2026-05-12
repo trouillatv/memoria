@@ -1,4 +1,5 @@
 // Slice B.4 — Route publique /p/[token] : vérification anonyme de preuve.
+// Slice E.2 — Étendue pour servir aussi les rapports mensuels client.
 //
 // Pourquoi cette route existe :
 //   Quand le DG cleaning partage un lien à son client mécontent, le client
@@ -18,6 +19,11 @@
 //     last_accessed_at. Pas de cookies, pas d'analytics tiers.
 //   - Bouton "Télécharger le PDF" pointe vers /p/[token]/pdf (route publique
 //     dédiée, pas la route dashboard /preuves/[id]/dossier qui exige auth).
+//
+// Slice E.2 — Dispatch :
+//   - Si shareToken.intervention_id NOT NULL → dossier de preuves (Phase 5)
+//   - Si shareToken.contract_id + report_month NOT NULL → rapport mensuel
+//   La CHECK chk_token_kind garantit le XOR au niveau DB.
 //
 // Note technique : on utilise getShareTokenByValueRaw pour distinguer les
 // trois cas d'erreur ; getShareTokenByValue retourne null pour les trois.
@@ -48,11 +54,13 @@ import {
   recordShareAccess,
 } from '@/lib/db/proof-share'
 import { getProofDetail } from '@/lib/db/proofs'
+import { getContractMonthlyReport } from '@/lib/db/monthly-report'
 import { formatDateLong, formatDuration } from '@/lib/format'
 import { ProofPhotoGrid } from '@/app/(dashboard)/preuves/[id]/ProofPhotoGrid'
 import { ProofChecklist } from '@/app/(dashboard)/preuves/[id]/ProofChecklist'
 import { ProofValidations } from '@/app/(dashboard)/preuves/[id]/ProofValidations'
 import { ProofAnomalies } from '@/app/(dashboard)/preuves/[id]/ProofAnomalies'
+import { MonthlyReportPublicView } from './MonthlyReportPublicView'
 
 // Force dynamic — ne JAMAIS cacher cette page. Chaque visite doit
 // re-valider le token (un revoke doit avoir effet immédiat) et incrémenter
@@ -107,10 +115,55 @@ export default async function PublicProofPage({ params }: PageProps) {
   }
 
   // Case 4 : token actif → on enregistre l'accès (best-effort, fire-and-forget)
-  //          et on charge le détail de la preuve.
+  //          et on dispatch selon le type de token.
   recordShareAccess(shareToken.id).catch((e) =>
     console.warn('[public-proof] recordShareAccess failed:', e),
   )
+
+  // ---- Slice E.2 : dispatch rapport mensuel client ---------------------
+  //   Si le token est de type rapport mensuel (contract_id + report_month),
+  //   on délègue à MonthlyReportPublicView. La CHECK chk_token_kind garantit
+  //   le XOR au niveau DB ; on teste ici par sûreté.
+  if (shareToken.contract_id && shareToken.report_month && !shareToken.intervention_id) {
+    let reportData
+    try {
+      reportData = await getContractMonthlyReport(
+        shareToken.contract_id,
+        shareToken.report_month,
+      )
+    } catch {
+      reportData = null
+    }
+    if (!reportData) {
+      return (
+        <EmptyState
+          icon={ShieldX}
+          title="Rapport indisponible"
+          description="Le rapport mensuel associé à ce lien n'est plus accessible. Contactez l'émetteur du lien."
+        />
+      )
+    }
+    return (
+      <MonthlyReportPublicView
+        token={token}
+        shareToken={shareToken}
+        reportData={reportData}
+        selectedPhotoIds={shareToken.selected_photo_ids ?? []}
+        dgNote={shareToken.dg_note ?? ''}
+      />
+    )
+  }
+
+  // ---- Slice B.4 : dossier de preuves intervention (cas historique) ----
+  if (!shareToken.intervention_id) {
+    return (
+      <EmptyState
+        icon={ShieldX}
+        title="Lien incomplet"
+        description="Ce lien n'est plus exploitable. Contactez l'émetteur pour obtenir un nouveau lien."
+      />
+    )
+  }
 
   const proof = await getProofDetail(shareToken.intervention_id)
   if (!proof) {

@@ -164,6 +164,12 @@ async function classifyToken(tokenValue: string): Promise<PublicTokenStatus> {
   if (new Date(raw.expires_at).getTime() < Date.now()) {
     return { kind: 'expired', expiresAt: raw.expires_at }
   }
+  if (!raw.intervention_id) {
+    // Slice E.2 — un token sans intervention_id est un rapport mensuel.
+    // Le test ne couvre que le cas dossier de preuves : on conserve ce
+    // helper "kind=active" en supposant l'invariant qu'on test ici.
+    throw new Error('classifyToken: token has no intervention_id (monthly report token).')
+  }
   return {
     kind: 'active',
     interventionId: raw.intervention_id,

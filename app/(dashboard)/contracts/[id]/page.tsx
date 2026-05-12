@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { FileBarChart } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getContract } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
@@ -99,21 +101,31 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   return (
     <div className="space-y-6 max-w-4xl">
       <header className="space-y-1">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{contract.name}</h1>
-          <StatusBadge status={contract.status} size="md" />
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold">{contract.name}</h1>
+              <StatusBadge status={contract.status} size="md" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {contract.client_name} · démarré le {startLabel}
+              {endLabel && ` · jusqu'au ${endLabel}`}
+            </p>
+            {contract.tender_id && (
+              <p className="text-xs text-muted-foreground">
+                <Link href={`/tenders/${contract.tender_id}`} className="underline hover:text-foreground">
+                  Voir l&apos;AO d&apos;origine →
+                </Link>
+              </p>
+            )}
+          </div>
+          <Link href={`/contracts/${id}/rapport-mensuel`} className="shrink-0">
+            <Button variant="outline">
+              <FileBarChart className="h-4 w-4" />
+              Rapport mensuel
+            </Button>
+          </Link>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {contract.client_name} · démarré le {startLabel}
-          {endLabel && ` · jusqu'au ${endLabel}`}
-        </p>
-        {contract.tender_id && (
-          <p className="text-xs text-muted-foreground">
-            <Link href={`/tenders/${contract.tender_id}`} className="underline hover:text-foreground">
-              Voir l&apos;AO d&apos;origine →
-            </Link>
-          </p>
-        )}
       </header>
 
       <ContractTabs contractId={id} active="overview" />
