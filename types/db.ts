@@ -66,6 +66,12 @@ export interface DbTender {
   outcome_reason: string | null
   outcome_tag: TenderOutcomeTag | null
   outcome_set_by: string | null
+  // Mémoire commerciale MC-4 — voice note DG sur AO finalisé (doctrine V5 cas validé).
+  // Archive personnelle. Path interne bucket `tender-voice-notes`.
+  voice_note_path: string | null
+  voice_note_duration_seconds: number | null
+  voice_note_recorded_at: string | null
+  voice_note_recorded_by: string | null
 }
 
 export interface DbTenderDocument {

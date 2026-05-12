@@ -6,6 +6,7 @@ import {
   getLatestTenderAnalysis,
   getTenderDocument,
   findSimilarTenderMemory,
+  getSignedVoiceNoteUrl,
 } from '@/lib/db/tenders'
 import { listChatMessages } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
@@ -21,6 +22,7 @@ import { buildActivityFeed } from './activity-feed'
 import { EvidencePanel } from './EvidencePanel'
 import { OutcomeTrigger } from './OutcomeDialog'
 import { TenderMemoryPanel } from './TenderMemoryPanel'
+import { VoiceNoteRecorder } from './VoiceNoteRecorder'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -68,6 +70,13 @@ export default async function TenderDetailPage({
   const similarTenders = showMemoryPanel
     ? await findSimilarTenderMemory(tender.id)
     : []
+
+  // MC-4 — voice note DG sur AO finalisé (outcome NOT NULL).
+  // Archive personnelle, lecture privée admin/manager.
+  const hasFinalOutcome = tender.outcome !== null && tender.outcome !== 'pending'
+  const voiceNoteSignedUrl = hasFinalOutcome && tender.voice_note_path
+    ? await getSignedVoiceNoteUrl(tender.id)
+    : null
 
   // Generate signed URL for PDF source
   let pdfSignedUrl: string | null = null
@@ -164,6 +173,18 @@ export default async function TenderDetailPage({
             si zéro match. Doctrine V5 V1+V4 : descriptif passif uniquement. */}
         {view !== 'atelier' && showMemoryPanel && similarTenders.length > 0 && (
           <TenderMemoryPanel similarTenders={similarTenders} />
+        )}
+
+        {/* MC-4 — voice note DG sur AO finalisé. Doctrine V5 cas validé :
+            archive personnelle, déchargement + mémoire incarnée. Strictement
+            restreint à outcome NOT NULL. Jamais sur la vue atelier. */}
+        {view !== 'atelier' && hasFinalOutcome && (
+          <VoiceNoteRecorder
+            tenderId={id}
+            existingSignedUrl={voiceNoteSignedUrl}
+            existingDurationSeconds={tender.voice_note_duration_seconds}
+            existingRecordedAt={tender.voice_note_recorded_at}
+          />
         )}
 
         {/* States — affichées indépendamment de la vue sélectionnée */}

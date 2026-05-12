@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Mic } from 'lucide-react'
 import type {
   TenderMemoryEntry as Entry,
 } from '@/lib/db/tenders'
@@ -33,6 +33,15 @@ function formatDate(iso: string): string {
     month: 'long',
     year: 'numeric',
   })
+}
+
+function formatVoiceNoteDuration(seconds: number | null): string {
+  if (!seconds || !Number.isFinite(seconds)) return ''
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  if (m === 0) return `${s}s`
+  if (s === 0) return `${m}min`
+  return `${m}min${s.toString().padStart(2, '0')}`
 }
 
 /**
@@ -73,6 +82,18 @@ export function TenderMemoryEntry({ entry }: { entry: Entry }) {
             <span className="text-xs text-muted-foreground">
               {formatDate(entry.outcome_at)}
             </span>
+            {entry.voice_note_path && (
+              <span
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                data-testid="tender-memory-voice-note"
+              >
+                <Mic className="h-3 w-3" aria-hidden="true" />
+                Note vocale
+                {entry.voice_note_duration_seconds
+                  ? ` · ${formatVoiceNoteDuration(entry.voice_note_duration_seconds)}`
+                  : ''}
+              </span>
+            )}
           </div>
           <div className="text-sm font-medium mb-0.5">{entry.title}</div>
           {entry.client_name && (

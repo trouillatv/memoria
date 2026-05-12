@@ -14,6 +14,8 @@ function fakeEntry(p: Partial<Entry>): Entry {
     outcome_reason: p.outcome_reason ?? null,
     outcome_tag: p.outcome_tag ?? null,
     created_at: p.created_at ?? '2025-12-22T10:00:00Z',
+    voice_note_path: p.voice_note_path ?? null,
+    voice_note_duration_seconds: p.voice_note_duration_seconds ?? null,
   }
 }
 

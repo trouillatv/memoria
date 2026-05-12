@@ -32,7 +32,7 @@ export async function listTendersPaged(query: TenderListQuery = {}): Promise<Ten
   const supabase = await createServerClient()
   let q = supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by', { count: 'exact' })
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by', { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -61,7 +61,7 @@ export async function listTenders(query: TenderListQuery = {}): Promise<DbTender
   const supabase = await createServerClient()
   let q = supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -79,7 +79,7 @@ export async function getTender(id: string): Promise<DbTender | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
@@ -233,7 +233,7 @@ export async function setTenderOutcome(input: SetTenderOutcomeInput): Promise<Db
       outcome_set_by: input.userId,
     })
     .eq('id', input.tenderId)
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
     .single()
 
   if (error || !data) throw error ?? new Error('outcome_update_failed')
@@ -328,6 +328,9 @@ export interface TenderMemoryEntry {
   outcome_reason: string | null
   outcome_tag: TenderOutcomeTag | null
   created_at: string
+  // MC-4 — signal sobre dans la liste mémoire (badge "Note vocale · 1min24").
+  voice_note_path: string | null
+  voice_note_duration_seconds: number | null
 }
 
 export interface TenderMemoryFilters {
@@ -369,7 +372,7 @@ export async function listTenderMemory(
   let q = supabase
     .from('tenders')
     .select(
-      'id, title, client_name, status, outcome, outcome_at, outcome_reason, outcome_tag, created_at',
+      'id, title, client_name, status, outcome, outcome_at, outcome_reason, outcome_tag, created_at, voice_note_path, voice_note_duration_seconds',
       { count: 'exact' },
     )
     .is('deleted_at', null)
@@ -395,6 +398,146 @@ export async function listTenderMemory(
     items: (data ?? []) as TenderMemoryEntry[],
     total: count ?? 0,
   }
+}
+
+// =================================
+// Mémoire commerciale MC-4 — voice note DG sur AO finalisé
+// Doctrine V5 cas validé : déchargement + mémoire incarnée.
+// Archive personnelle, pas une conversation. Lecture privée admin/manager.
+// =================================
+
+const VOICE_NOTE_BUCKET = 'tender-voice-notes'
+
+export interface SaveVoiceNoteInput {
+  tenderId: string
+  audioBlob: Blob
+  durationSeconds: number
+  recordedBy: string
+  /** Extension (sans point). Default 'webm'. */
+  extension?: string
+  /** Content type explicite. Default 'audio/webm'. */
+  contentType?: string
+}
+
+/**
+ * Sauvegarde une voice note sur le tender finalisé.
+ *
+ * Comportement :
+ * - Upload du Blob dans bucket Supabase Storage `tender-voice-notes`
+ *   à `{tenderId}/{timestamp}.{ext}`.
+ * - Si une voice note existe déjà → supprime l'ancien fichier avant.
+ * - UPDATE tenders SET voice_note_path, voice_note_duration_seconds,
+ *   voice_note_recorded_at=now(), voice_note_recorded_by.
+ *
+ * Caller responsabilité : vérifier que tender.outcome IS NOT NULL avant
+ * d'appeler (logique métier dans server action / page).
+ */
+export async function saveTenderVoiceNote(
+  input: SaveVoiceNoteInput,
+): Promise<{ path: string }> {
+  const duration = Math.round(input.durationSeconds)
+  if (!Number.isFinite(duration) || duration < 1 || duration > 180) {
+    throw new Error('voice_note_duration_out_of_range')
+  }
+
+  const supabase = createAdminClient()
+
+  // Récupère ancienne voice note pour suppression idempotente.
+  const { data: existing } = await supabase
+    .from('tenders')
+    .select('voice_note_path')
+    .eq('id', input.tenderId)
+    .maybeSingle()
+
+  const ext = (input.extension ?? 'webm').replace(/^\./, '')
+  const contentType = input.contentType ?? 'audio/webm'
+  const timestamp = Date.now()
+  const path = `${input.tenderId}/${timestamp}.${ext}`
+
+  const { error: uploadErr } = await supabase.storage
+    .from(VOICE_NOTE_BUCKET)
+    .upload(path, input.audioBlob, {
+      contentType,
+      upsert: false,
+    })
+  if (uploadErr) throw uploadErr
+
+  const { error: updateErr } = await supabase
+    .from('tenders')
+    .update({
+      voice_note_path: path,
+      voice_note_duration_seconds: duration,
+      voice_note_recorded_at: new Date().toISOString(),
+      voice_note_recorded_by: input.recordedBy,
+    })
+    .eq('id', input.tenderId)
+  if (updateErr) {
+    // Rollback du fichier uploadé pour rester cohérent.
+    await supabase.storage.from(VOICE_NOTE_BUCKET).remove([path]).catch(() => {})
+    throw updateErr
+  }
+
+  // Best-effort : supprime l'ancien fichier après le UPDATE réussi.
+  if (existing?.voice_note_path && existing.voice_note_path !== path) {
+    await supabase.storage
+      .from(VOICE_NOTE_BUCKET)
+      .remove([existing.voice_note_path])
+      .catch(() => {})
+  }
+
+  return { path }
+}
+
+/**
+ * Supprime la voice note du tender (storage + colonnes DB).
+ * Idempotent : si pas de voice note, no-op.
+ */
+export async function deleteTenderVoiceNote(tenderId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { data: existing } = await supabase
+    .from('tenders')
+    .select('voice_note_path')
+    .eq('id', tenderId)
+    .maybeSingle()
+
+  if (!existing?.voice_note_path) return
+
+  await supabase.storage
+    .from(VOICE_NOTE_BUCKET)
+    .remove([existing.voice_note_path])
+    .catch(() => {})
+
+  const { error } = await supabase
+    .from('tenders')
+    .update({
+      voice_note_path: null,
+      voice_note_duration_seconds: null,
+      voice_note_recorded_at: null,
+      voice_note_recorded_by: null,
+    })
+    .eq('id', tenderId)
+  if (error) throw error
+}
+
+/**
+ * Génère un signed URL (TTL 1h) pour la voice note du tender.
+ * Renvoie null si pas de voice note.
+ */
+export async function getSignedVoiceNoteUrl(
+  tenderId: string,
+): Promise<string | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('tenders')
+    .select('voice_note_path')
+    .eq('id', tenderId)
+    .maybeSingle()
+  if (error || !data?.voice_note_path) return null
+
+  const { data: signed } = await supabase.storage
+    .from(VOICE_NOTE_BUCKET)
+    .createSignedUrl(data.voice_note_path, 3600)
+  return signed?.signedUrl ?? null
 }
 
 export async function countAnalysesToday(): Promise<number> {
