@@ -13,6 +13,8 @@ import {
   getAOPipeline,
   getOpenAnomaliesStats,
   getAtRiskEngagements,
+  getContractsUnderTension,
+  getRecentActivity,
 } from '@/lib/db/dashboard'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
@@ -20,6 +22,9 @@ import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
 import { StatsBand } from './StatsBand'
 import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
+import { ContractsUnderTensionWidget } from './ContractsUnderTensionWidget'
+import { RecentActivityWidget } from './RecentActivityWidget'
+import { AnomaliesOldWidget } from './AnomaliesOldWidget'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
@@ -138,6 +143,8 @@ export default async function DashboardPage() {
     aoPipeline,
     anomaliesStats,
     atRiskEngagements,
+    contractsUnderTension,
+    recentActivity,
   ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
@@ -146,6 +153,8 @@ export default async function DashboardPage() {
     getAOPipeline(),
     getOpenAnomaliesStats(),
     getAtRiskEngagements(),
+    getContractsUnderTension(),
+    getRecentActivity(8),
   ])
 
   // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
@@ -187,9 +196,13 @@ export default async function DashboardPage() {
 
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
 
-      {/* Sections contrats existantes — préservées telles quelles.
-          Slice 11.3 (Activité récente + Contrats sous tension + Anomalies)
-          viendra s'insérer entre le widget at-risk et ces sections. */}
+      <ContractsUnderTensionWidget contracts={contractsUnderTension} />
+
+      <RecentActivityWidget events={recentActivity} />
+
+      <AnomaliesOldWidget oldCount={anomaliesStats.oldCount} />
+
+      {/* Sections contrats existantes — préservées telles quelles. */}
       {attention.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
           {/* Encadré ambre — JAMAIS rouge. La doctrine "sobriété calme" exige
