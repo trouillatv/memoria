@@ -1,13 +1,30 @@
 import Link from 'next/link'
-import { LayoutDashboard, AlertTriangle } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { AlertTriangle } from 'lucide-react'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listContracts } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, countPhotosByInterventions } from '@/lib/db/interventions'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
+import {
+  getWeekPulse,
+  getCapitalPreuves,
+  getAOPipeline,
+  getOpenAnomaliesStats,
+  getAtRiskEngagements,
+  getContractsUnderTension,
+  getRecentActivity,
+} from '@/lib/db/dashboard'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
 import { WelcomeCard } from './WelcomeCard'
+import { DashboardHeader } from './DashboardHeader'
+import { StatsBand } from './StatsBand'
+import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
+import { ContractsUnderTensionWidget } from './ContractsUnderTensionWidget'
+import { RecentActivityWidget } from './RecentActivityWidget'
+import { AnomaliesOldWidget } from './AnomaliesOldWidget'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
@@ -113,38 +130,79 @@ async function summarizeContract(contractId: string, contractName: string, clien
 }
 
 export default async function DashboardPage() {
-  const [contracts, onboarding] = await Promise.all([
+  const user = await getCurrentUserWithProfile()
+  if (!user) redirect('/login')
+  if (user.role === 'chef_equipe') redirect('/m')
+
+  // Queries en parallèle : page-globales + helpers cockpit 11.0.
+  const [
+    contracts,
+    onboarding,
+    weekPulse,
+    capital,
+    aoPipeline,
+    anomaliesStats,
+    atRiskEngagements,
+    contractsUnderTension,
+    recentActivity,
+  ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
+    getWeekPulse(),
+    getCapitalPreuves(),
+    getAOPipeline(),
+    getOpenAnomaliesStats(),
+    getAtRiskEngagements(),
+    getContractsUnderTension(),
+    getRecentActivity(8),
   ])
+
+  // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
+  // SEULE (mode bootstrap). Le rideau tombe automatiquement dès qu'un contrat
+  // actif est créé : doctrine = aucune action user requise.
+  const showWelcome = !onboarding.hasActiveContract
+  if (showWelcome) {
+    return (
+      <div className="space-y-6 max-w-5xl">
+        <WelcomeCard progress={onboarding} />
+      </div>
+    )
+  }
+
+  // Mode cockpit : header chaleureux + bandeau 4 stats + sections contrats existantes.
   const summaries = await Promise.all(
     contracts.map((c) => summarizeContract(c.id, c.name, c.client_name, c.status)),
   )
-
   const active = summaries.filter((s) => s.status === 'active')
   const others = summaries.filter((s) => s.status !== 'active')
   const attention = active.filter((s) => s.needsAttention)
   const ok = active.filter((s) => !s.needsAttention)
 
-  // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
-  // au-dessus du contenu existant. Le rideau tombe automatiquement dès qu'un
-  // contrat actif est créé : doctrine = aucune action user requise.
-  const showWelcome = !onboarding.hasActiveContract
+  const firstName = user.full_name?.split(' ')[0] ?? 'là'
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <LayoutDashboard className="h-5 w-5 text-muted-foreground" />
-          Tableau de bord
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Vue d&apos;ensemble des contrats actifs et de leur progression sur les engagements.
-        </p>
-      </header>
+    <div className="space-y-8 max-w-6xl">
+      <DashboardHeader
+        firstName={firstName}
+        activeContractsCount={active.length}
+      />
 
-      {showWelcome && <WelcomeCard progress={onboarding} />}
+      <StatsBand
+        weekPulse={weekPulse}
+        capital={capital}
+        aoPipeline={aoPipeline}
+        anomalies={anomaliesStats}
+      />
 
+      <AtRiskEngagementsWidget engagements={atRiskEngagements} />
+
+      <ContractsUnderTensionWidget contracts={contractsUnderTension} />
+
+      <RecentActivityWidget events={recentActivity} />
+
+      <AnomaliesOldWidget oldCount={anomaliesStats.oldCount} />
+
+      {/* Sections contrats existantes — préservées telles quelles. */}
       {attention.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
           {/* Encadré ambre — JAMAIS rouge. La doctrine "sobriété calme" exige

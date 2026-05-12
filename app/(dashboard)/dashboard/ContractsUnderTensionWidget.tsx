@@ -1,0 +1,94 @@
+import Link from 'next/link'
+import { TrendingDown, ArrowRight } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import type { ContractUnderTension } from '@/lib/db/dashboard'
+
+interface Props {
+  contracts: ContractUnderTension[]
+}
+
+/**
+ * Widget « Contrats sous tension » (Slice 11.3).
+ *
+ * Liste les contrats dont la boucle de preuve faiblit
+ * (globalScore < 0.7 ou un segment < 0.5) sur les 30 derniers jours.
+ *
+ * SegmentBar visualise les 5 segments PROMIS/PLANIFIÉ/EXÉCUTÉ/PROUVÉ/VALIDÉ
+ * en mini-barres ambre (segment < 0.5) ou emerald (>= 0.5).
+ *
+ * N'apparaît PAS si zéro contrat sous tension (silence positif).
+ * Doctrine V3 : focus sur le contrat (boucle), aucune mention humaine.
+ */
+export function ContractsUnderTensionWidget({ contracts }: Props) {
+  if (contracts.length === 0) return null
+
+  return (
+    <Card data-slot="contracts-under-tension">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <TrendingDown className="h-4 w-4 text-amber-600" strokeWidth={1.75} />
+          <span>Contrats sous tension</span>
+          <span className="text-muted-foreground font-normal text-xs">({contracts.length})</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <ul className="divide-y">
+          {contracts.map((c) => (
+            <li key={c.contract_id} className="px-6 py-3">
+              <Link
+                href={`/contracts/${c.contract_id}`}
+                className="block hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+              >
+                <div className="flex items-start justify-between gap-3 mb-1.5">
+                  <div className="text-sm font-medium truncate">{c.contract_name}</div>
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                    Boucle {Math.round(c.globalScore * 100)}%
+                  </span>
+                </div>
+                <SegmentBar segments={c.segmentScores} />
+                <div className="text-xs text-muted-foreground mt-2 flex items-center justify-between">
+                  <span>{c.reasonDetail}</span>
+                  <span className="inline-flex items-center gap-1 group-hover:text-foreground">
+                    Voir
+                    <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SegmentBar({ segments }: { segments: ContractUnderTension['segmentScores'] }) {
+  const items = [
+    { key: 'promised', label: 'PROMIS', value: segments.promised },
+    { key: 'planned', label: 'PLANIFIÉ', value: segments.planned },
+    { key: 'executed', label: 'EXÉCUTÉ', value: segments.executed },
+    { key: 'proven', label: 'PROUVÉ', value: segments.proven },
+    { key: 'validated', label: 'VALIDÉ', value: segments.validated },
+  ] as const
+  return (
+    <div className="flex gap-1" data-testid="segment-bar">
+      {items.map((s) => {
+        const isLow = s.value < 0.5
+        return (
+          <div
+            key={s.key}
+            data-testid={`segment-${s.key}`}
+            data-low={isLow ? 'true' : 'false'}
+            className={`flex-1 h-1.5 rounded-full ${isLow ? 'bg-amber-300' : 'bg-emerald-300'} relative`}
+            title={`${s.label} : ${Math.round(s.value * 100)}%`}
+          >
+            <div
+              className={`h-full rounded-full ${isLow ? 'bg-amber-500' : 'bg-emerald-500'}`}
+              style={{ width: `${Math.round(s.value * 100)}%` }}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
