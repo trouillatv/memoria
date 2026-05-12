@@ -308,6 +308,53 @@ describe('WeekGridCell', () => {
     // Pas d'horaire type "08:00" ou "08h" ou "14h"
     expect(text).not.toMatch(/\d{1,2}\s*[:h]\s*\d{0,2}/)
   })
+
+  // UX V5 — Doctrine "passé = calme visuel" (motif hachuré sobre)
+  it('applique un style hachuré sobre quand la date est dans le passé', () => {
+    const { container } = renderInTable(
+      <WeekGridCell
+        date="2026-05-10"
+        siteId="s1"
+        siteName="CHU"
+        cells={[]}
+        todayIso="2026-05-13"
+      />,
+    )
+    const cell = container.querySelector('[data-cell-key="s1::2026-05-10"]')
+    expect(cell?.getAttribute('data-past')).toBe('true')
+    const style = cell?.getAttribute('style') ?? ''
+    expect(style).toContain('repeating-linear-gradient')
+    // Esthétique calme : pas de barré, pas d'opacity brutale sur le contenu
+    expect(style).not.toMatch(/text-decoration:\s*line-through/i)
+  })
+
+  it('n’applique PAS le style hachuré pour aujourd’hui ou le futur', () => {
+    const { container: today } = renderInTable(
+      <WeekGridCell
+        date="2026-05-13"
+        siteId="s1"
+        siteName="CHU"
+        cells={[]}
+        todayIso="2026-05-13"
+      />,
+    )
+    const cellToday = today.querySelector('[data-cell-key="s1::2026-05-13"]')
+    expect(cellToday?.getAttribute('data-past')).toBe('false')
+    expect(cellToday?.getAttribute('style') ?? '').not.toContain('repeating-linear-gradient')
+
+    const { container: future } = renderInTable(
+      <WeekGridCell
+        date="2026-05-15"
+        siteId="s1"
+        siteName="CHU"
+        cells={[]}
+        todayIso="2026-05-13"
+      />,
+    )
+    const cellFuture = future.querySelector('[data-cell-key="s1::2026-05-15"]')
+    expect(cellFuture?.getAttribute('data-past')).toBe('false')
+    expect(cellFuture?.getAttribute('style') ?? '').not.toContain('repeating-linear-gradient')
+  })
 })
 
 // ----------------------------------------------------------------------------

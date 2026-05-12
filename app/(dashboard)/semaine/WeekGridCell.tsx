@@ -204,6 +204,20 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
 
   const draggable = !dragDisabled
 
+  // UX V5 : cellule passée → fond slate-50 semi-transparent + motif hachuré
+  // diagonal sobre. Purement visuel décoratif : le contenu reste pleinement
+  // lisible, le clic et le drag depuis la cellule restent autorisés (seul le
+  // drop SUR le passé est refusé, cf. useDroppable disabled=isPast). L'état
+  // `isOver` du drop reste prioritaire car il override via className.
+  const pastCellStyle =
+    isPast && !cellDroppable.isOver
+      ? {
+          backgroundImage:
+            'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(148, 163, 184, 0.08) 6px, rgba(148, 163, 184, 0.08) 7px)',
+          backgroundColor: 'rgba(248, 250, 252, 0.5)',
+        }
+      : undefined
+
   return (
     <td
       ref={mergeRefs(cellDroppable.setNodeRef, setDraggableRef)}
@@ -222,6 +236,7 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
           ? 'Intervention(s) en cours ou exécutée(s) — preuve verrouillée'
           : undefined
       }
+      style={pastCellStyle}
       className={cn(
         'relative border-l border-border/60 align-top p-2 min-w-[7rem] transition-colors duration-200',
         !isEmpty && 'hover:bg-accent/40',
@@ -230,9 +245,8 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
         isDragging && 'opacity-50',
         cellDroppable.isOver && !isPast && !isSourceCell &&
           'bg-brand-50/60 outline outline-2 outline-brand-300 outline-offset-[-2px]',
-        // Slice 9.7 : on retire le fond muted sur passé — la cellule reste pleinement
-        // visible (contenu identique aux autres jours). Seul le drop est refusé.
-        // isPast n'a plus d'effet visuel ici.
+        // UX V5 : isPast applique un hachuré sobre via inline style (cf. pastCellStyle
+        // ci-dessus). Sobre, esthétique calme, ne modifie aucun comportement.
       )}
       {...(draggable ? { ...attributes, ...listeners } : {})}
     >
