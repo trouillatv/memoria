@@ -12,12 +12,14 @@ import {
   getCapitalPreuves,
   getAOPipeline,
   getOpenAnomaliesStats,
+  getAtRiskEngagements,
 } from '@/lib/db/dashboard'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
 import { StatsBand } from './StatsBand'
+import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
@@ -135,6 +137,7 @@ export default async function DashboardPage() {
     capital,
     aoPipeline,
     anomaliesStats,
+    atRiskEngagements,
   ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
@@ -142,6 +145,7 @@ export default async function DashboardPage() {
     getCapitalPreuves(),
     getAOPipeline(),
     getOpenAnomaliesStats(),
+    getAtRiskEngagements(),
   ])
 
   // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
@@ -181,10 +185,11 @@ export default async function DashboardPage() {
         anomalies={anomaliesStats}
       />
 
+      <AtRiskEngagementsWidget engagements={atRiskEngagements} />
+
       {/* Sections contrats existantes — préservées telles quelles.
-          Slice 11.2 (Engagements à surveiller) et 11.3 (Activité récente +
-          Contrats sous tension + Anomalies) viendront s'insérer entre le
-          StatsBand et ces sections. */}
+          Slice 11.3 (Activité récente + Contrats sous tension + Anomalies)
+          viendra s'insérer entre le widget at-risk et ces sections. */}
       {attention.length > 0 && (
         <section className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
           {/* Encadré ambre — JAMAIS rouge. La doctrine "sobriété calme" exige
