@@ -1,6 +1,13 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { DbTender, DbTenderDocument, DbTenderAnalysis, TenderStatus } from '@/types/db'
+import type {
+  DbTender,
+  DbTenderDocument,
+  DbTenderAnalysis,
+  TenderStatus,
+  TenderOutcome,
+  TenderOutcomeTag,
+} from '@/types/db'
 
 export interface TenderListQuery {
   status?: TenderStatus
@@ -25,7 +32,7 @@ export async function listTendersPaged(query: TenderListQuery = {}): Promise<Ten
   const supabase = await createServerClient()
   let q = supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at', { count: 'exact' })
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by', { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -54,7 +61,7 @@ export async function listTenders(query: TenderListQuery = {}): Promise<DbTender
   const supabase = await createServerClient()
   let q = supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -72,7 +79,7 @@ export async function getTender(id: string): Promise<DbTender | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
@@ -177,6 +184,60 @@ export async function insertTenderAnalysis(input: Omit<DbTenderAnalysis, 'id' | 
     .single()
   if (error || !data) throw error ?? new Error('No id')
   return data.id
+}
+
+// =================================
+// Mémoire commerciale — doctrine V5 verrou V1 (mémoire ≠ recommandation)
+// =================================
+
+export interface SetTenderOutcomeInput {
+  tenderId: string
+  outcome: TenderOutcome
+  reason?: string // 0..200 chars (trim). Ignoré si outcome === 'pending'.
+  tag?: TenderOutcomeTag // Ignoré si outcome === 'pending'.
+  /** UUID de l'utilisateur qui pose l'étiquette (manager/admin). */
+  userId: string
+}
+
+/**
+ * Pose le statut sortie d'un AO + raison + tag.
+ *
+ * Doctrine V5 verrou V1 :
+ * - Le système enregistre ce que Patrick déclare. Il ne calcule rien.
+ * - Aucun score. Aucune next_action. Aucune relance.
+ *
+ * Règles de cohérence :
+ * - outcome === 'pending' → reason et tag forcés à NULL (juste "en attente client").
+ * - outcome IN (won, lost, withdrawn, not_responded) → reason/tag optionnels.
+ * - reason trimmé, max 200 chars (CHECK DB en garde-fou).
+ */
+export async function setTenderOutcome(input: SetTenderOutcomeInput): Promise<DbTender> {
+  const supabase = createAdminClient()
+
+  const trimmedReason = input.reason?.trim() ?? ''
+  if (trimmedReason.length > 200) {
+    throw new Error('outcome_reason_too_long')
+  }
+
+  const isPending = input.outcome === 'pending'
+  const reasonToWrite = isPending ? null : (trimmedReason.length > 0 ? trimmedReason : null)
+  const tagToWrite = isPending ? null : (input.tag ?? null)
+
+  const { data, error } = await supabase
+    .from('tenders')
+    .update({
+      outcome: input.outcome,
+      outcome_at: new Date().toISOString(),
+      outcome_reason: reasonToWrite,
+      outcome_tag: tagToWrite,
+      outcome_set_by: input.userId,
+    })
+    .eq('id', input.tenderId)
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by')
+    .single()
+
+  if (error || !data) throw error ?? new Error('outcome_update_failed')
+  return data as DbTender
 }
 
 export async function countAnalysesToday(): Promise<number> {

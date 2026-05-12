@@ -14,6 +14,7 @@ import { CopiloteWorkspace } from './CopiloteWorkspace'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
 import { buildActivityFeed } from './activity-feed'
 import { EvidencePanel } from './EvidencePanel'
+import { OutcomeTrigger } from './OutcomeDialog'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -114,12 +115,28 @@ export default async function TenderDetailPage({
         {/* H1 main (sauf atelier qui a sa propre UI immersive) */}
         {view !== 'atelier' && (isReady || isFailed) && (
           <header className="space-y-1">
-            <h1 className="text-2xl font-semibold">
-              {view === 'memoire' && 'Mémoire technique'}
-              {view === 'synthese' && 'Synthèse'}
-              {view === 'analyse' && 'Analyse détaillée'}
-            </h1>
-            <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-2xl font-semibold">
+                  {view === 'memoire' && 'Mémoire technique'}
+                  {view === 'synthese' && 'Synthèse'}
+                  {view === 'analyse' && 'Analyse détaillée'}
+                </h1>
+                <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
+              </div>
+              {/* Doctrine V5 — mémoire commerciale. Visible si l'AO est soumis
+                  OU déjà marqué (pour modifier). Jamais en push, jamais d'alerte. */}
+              {(tender.status === 'submitted' || tender.outcome !== null) && (
+                <div className="shrink-0">
+                  <OutcomeTrigger
+                    tenderId={id}
+                    currentOutcome={tender.outcome}
+                    currentReason={tender.outcome_reason}
+                    currentTag={tender.outcome_tag}
+                  />
+                </div>
+              )}
+            </div>
           </header>
         )}
 
