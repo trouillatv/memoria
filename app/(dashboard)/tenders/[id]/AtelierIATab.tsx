@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Paperclip, Loader2, X } from 'lucide-react'
+import { Send, Paperclip, Loader2, X, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { sendChatMessageAction } from './atelier-actions'
 import { toast } from 'sonner'
@@ -165,6 +165,20 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
 
   return (
     <div className="flex flex-col h-full">
+      {/* Toolbar : Export du dossier de préparation (Sprint 8). */}
+      <div className="flex items-center justify-end mb-2">
+        <a
+          href={`/tenders/${tenderId}/atelier-export.pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-card hover:bg-muted/40 text-sm transition-colors"
+          title="Télécharger le dossier de préparation au format PDF"
+        >
+          <FileDown className="h-4 w-4" />
+          Exporter le dossier
+        </a>
+      </div>
+
       {/* Thread scrollable */}
       <div className="flex-1 overflow-y-auto pb-4 rounded-xl border bg-card p-3">
         {messages.length > 0 && (
