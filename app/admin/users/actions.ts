@@ -120,6 +120,60 @@ export async function forcePasswordResetAction(formData: FormData) {
   return { ok: true }
 }
 
+// Sprint 4 PC — admin/manager peut éditer le téléphone d'un user.
+// Format E.164 validé côté DB (CHECK) ET côté server (zod).
+// Doctrine V5 : coordonnée de contact, jamais signal comportemental.
+async function requireAdminOrManager() {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const role = await getUserRoleById(user.id)
+  if (role !== 'admin' && role !== 'manager') throw new Error('Forbidden')
+  return user.id
+}
+
+const phoneSchema = z.object({
+  userId: z.string().uuid(),
+  phone: z
+    .string()
+    .trim()
+    // Tolère espaces/tirets en entrée — normalisation côté action.
+    .transform((s) => s.replace(/[\s.\-_]/g, ''))
+    .refine((s) => s === '' || /^\+[0-9]{7,15}$/.test(s), {
+      message: 'Format E.164 attendu (ex : +687123456)',
+    }),
+})
+
+export async function updateUserPhoneAction(formData: FormData) {
+  const actorId = await requireAdminOrManager()
+  const parsed = phoneSchema.safeParse({
+    userId: formData.get('userId'),
+    phone: formData.get('phone'),
+  })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Format invalide' }
+  }
+
+  const supabase = createAdminClient()
+  const value = parsed.data.phone === '' ? null : parsed.data.phone
+  const { error } = await supabase
+    .from('users')
+    .update({ phone: value })
+    .eq('id', parsed.data.userId)
+  if (error) return { error: 'Impossible de mettre à jour le numéro.' }
+
+  await logAuditEvent({
+    userId: actorId,
+    entityType: 'user',
+    entityId: parsed.data.userId,
+    action: 'updated',
+    metadata: { field: 'phone', cleared: value === null },
+  })
+  revalidatePath('/admin/users')
+  revalidatePath('/admin/preparation')
+  return { ok: true }
+}
+
 const deleteSchema = z.object({ userId: z.string().uuid() })
 
 export async function deleteUserAction(formData: FormData) {

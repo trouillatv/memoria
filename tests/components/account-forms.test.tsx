@@ -41,6 +41,7 @@ describe('AccountProfileForm', () => {
     render(
       <AccountProfileForm
         initialFullName="Jean Dupont"
+        initialPhone={null}
         email="jean@example.com"
         roleLabel="Manager"
       />,
@@ -55,6 +56,7 @@ describe('AccountProfileForm', () => {
     render(
       <AccountProfileForm
         initialFullName="Jean Dupont"
+        initialPhone={null}
         email="jean@example.com"
         roleLabel="Manager"
       />,
@@ -71,6 +73,7 @@ describe('AccountProfileForm', () => {
     render(
       <AccountProfileForm
         initialFullName="Jean Dupont"
+        initialPhone={null}
         email="jean@example.com"
         roleLabel="Manager"
       />,
@@ -85,6 +88,7 @@ describe('AccountProfileForm', () => {
     render(
       <AccountProfileForm
         initialFullName="Jean Dupont"
+        initialPhone={null}
         email="jean@example.com"
         roleLabel="Manager"
       />,
@@ -95,7 +99,9 @@ describe('AccountProfileForm', () => {
     await waitFor(() => {
       expect(updateProfileMock).toHaveBeenCalledTimes(1)
     })
-    expect(updateProfileMock).toHaveBeenCalledWith({ full_name: 'Marie Curie' })
+    // Sprint 4 PC — la signature inclut désormais `phone` (chaîne vide = pas
+    // de modification effective, mais le champ est toujours envoyé).
+    expect(updateProfileMock).toHaveBeenCalledWith({ full_name: 'Marie Curie', phone: '' })
     await waitFor(() => {
       expect(toastSuccess).toHaveBeenCalledWith('Profil mis à jour.')
     })
@@ -106,6 +112,7 @@ describe('AccountProfileForm', () => {
     render(
       <AccountProfileForm
         initialFullName="Jean Dupont"
+        initialPhone={null}
         email="jean@example.com"
         roleLabel="Manager"
       />,

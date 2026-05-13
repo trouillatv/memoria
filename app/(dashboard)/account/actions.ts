@@ -6,7 +6,13 @@ import { createClient } from '@/lib/supabase/server'
 
 interface UpdateProfileInput {
   full_name: string
+  // Sprint 4 PC — Téléphone WhatsApp (Maxim 9 : 1-à-1, jamais groupe).
+  // null/undefined = pas modifié. Chaîne vide = suppression. Format E.164 attendu.
+  phone?: string | null
 }
+
+/** Validation E.164 stricte : +<7-15 chiffres>. */
+const E164_REGEX = /^\+[0-9]{7,15}$/
 
 interface ChangePasswordInput {
   current_password: string
@@ -33,13 +39,35 @@ export async function updateProfileAction(
     return { ok: false, error: 'Vous devez être connecté.' }
   }
 
+  // Téléphone optionnel — normalise puis valide format E.164.
+  // - undefined : pas de changement
+  // - '' : suppression du numéro
+  // - sinon : doit matcher +[7-15 chiffres]
+  const patch: Record<string, unknown> = { full_name: fullName }
+  if (input.phone !== undefined) {
+    const phoneRaw = (input.phone ?? '').trim()
+    if (phoneRaw === '') {
+      patch.phone = null
+    } else {
+      // Tolère espaces/tirets en entrée et normalise.
+      const normalized = phoneRaw.replace(/[\s.\-_]/g, '')
+      if (!E164_REGEX.test(normalized)) {
+        return {
+          ok: false,
+          error: "Le numéro doit être au format international (ex : +687123456).",
+        }
+      }
+      patch.phone = normalized
+    }
+  }
+
   const { error } = await supabase
     .from('users')
-    .update({ full_name: fullName })
+    .update(patch)
     .eq('id', user.id)
 
   if (error) {
-    return { ok: false, error: 'Impossible de mettre à jour votre nom.' }
+    return { ok: false, error: 'Impossible de mettre à jour votre profil.' }
   }
 
   revalidatePath('/account')

@@ -5,6 +5,7 @@ import { CreateUserForm } from './CreateUserForm'
 import { UserRoleSelect } from './UserRoleSelect'
 import { ForcePasswordResetButton } from './ForcePasswordResetButton'
 import { DeleteUserButton } from './DeleteUserButton'
+import { UserPhoneEdit } from './UserPhoneEdit'
 import type { UserRole } from '@/types/db'
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -50,6 +51,7 @@ export default async function AdminUsersPage() {
                   <th className="text-left px-3 py-2">Email</th>
                   <th className="text-left px-3 py-2">Nom</th>
                   <th className="text-left px-3 py-2">Rôle</th>
+                  <th className="text-left px-3 py-2">Téléphone (WhatsApp)</th>
                   <th className="text-left px-3 py-2">Mdp</th>
                   <th className="text-left px-3 py-2">Créé le</th>
                   <th className="text-right px-3 py-2">Actions</th>
@@ -57,7 +59,7 @@ export default async function AdminUsersPage() {
               </thead>
               <tbody className="divide-y">
                 {users.length === 0 ? (
-                  <tr><td colSpan={6} className="px-3 py-8 text-center text-xs text-muted-foreground">Aucun utilisateur.</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-8 text-center text-xs text-muted-foreground">Aucun utilisateur.</td></tr>
                 ) : users.map((u) => (
                   <tr key={u.id} className="hover:bg-muted/20">
                     <td className="px-3 py-2 font-mono text-xs">{u.email}</td>
@@ -69,6 +71,9 @@ export default async function AdminUsersPage() {
                         </span>
                         <UserRoleSelect userId={u.id} currentRole={u.role} />
                       </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <UserPhoneEdit userId={u.id} currentPhone={u.phone} />
                     </td>
                     <td className="px-3 py-2 text-xs">
                       {u.must_change_password ? <span className="text-amber-700">À changer</span> : <span className="text-muted-foreground">OK</span>}

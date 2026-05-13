@@ -25,6 +25,9 @@ export interface DbUser {
   must_change_password: boolean
   created_at: string
   deleted_at: string | null
+  // Sprint 4 PC — coordonnée WhatsApp 1-à-1 (Maxim 9 : jamais groupe collectif).
+  // Format E.164 imposé par CHECK constraint en DB (migration 035).
+  phone: string | null
 }
 
 export interface DbActivityLog {
