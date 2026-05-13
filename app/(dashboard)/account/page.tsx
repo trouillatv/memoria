@@ -33,6 +33,7 @@ export default async function AccountPage() {
         <CardContent>
           <AccountProfileForm
             initialFullName={user.full_name ?? ''}
+            initialPhone={user.phone}
             email={user.email}
             roleLabel={ROLE_LABELS[user.role] ?? user.role}
           />
