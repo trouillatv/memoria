@@ -22,14 +22,13 @@ alter table public.site_notes
   add constraint chk_active_until_only_a_savoir
   check (active_until is null or kind = 'a_savoir');
 
--- Index partiel : À savoir actifs (kind=a_savoir, non expirés, non supprimés).
--- Optimise l'affichage de la bannière sur la fiche site et au démarrage
--- d'une intervention.
+-- Index partiel : À savoir non supprimés.
+-- Note : on n'inclut pas le filtre `active_until >= current_date` dans le
+-- WHERE de l'index car current_date n'est pas IMMUTABLE. Le filtre temporel
+-- s'applique à la requête (cf. listSiteASavoirActive côté JS).
 create index if not exists idx_site_notes_a_savoir_active
-  on public.site_notes(site_id, created_at desc)
-  where kind = 'a_savoir'
-    and deleted_at is null
-    and (active_until is null or active_until >= current_date);
+  on public.site_notes(site_id, active_until nulls first, created_at desc)
+  where kind = 'a_savoir' and deleted_at is null;
 
 comment on column public.site_notes.kind is
   '« note » = observation passée descriptive. « a_savoir » = info utile à l''arrivée, optionnellement temporaire (active_until).';

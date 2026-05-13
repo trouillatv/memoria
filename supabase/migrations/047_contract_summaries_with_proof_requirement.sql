@@ -14,7 +14,11 @@
 --   - 'medium' : moyenne couverture 0.5..0.85
 --   - 'low' : moyenne couverture < 0.5 ou trous documentés
 
-create or replace function public.contract_summaries(p_contract_ids uuid[])
+-- DROP nécessaire car on change la signature (return type) de la fonction
+-- existante de migration 039.
+drop function if exists public.contract_summaries(uuid[]);
+
+create function public.contract_summaries(p_contract_ids uuid[])
 returns table (
   contract_id uuid,
   engagements_total int,
