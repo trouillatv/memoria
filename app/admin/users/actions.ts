@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -15,6 +16,12 @@ async function requireAdmin() {
   const role = await getUserRoleById(user.id)
   if (role !== 'admin') throw new Error('Forbidden')
   return user.id
+}
+
+// Mdp temporaire aléatoire — 16 caractères base64url, ~96 bits d'entropie.
+// Affiché une seule fois à l'admin via le toast, jamais loggué en clair.
+function generateTempPassword(): string {
+  return randomBytes(12).toString('base64url')
 }
 
 const createSchema = z.object({
@@ -49,28 +56,34 @@ export async function createUserAction(formData: FormData) {
         metadata: { mode: 'invite', email: parsed.data.email, role: parsed.data.role },
       })
     }
-  } else {
-    const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'netoiage2026'
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: parsed.data.email,
-      password: tempPassword,
-      email_confirm: true,
-      app_metadata: { role: parsed.data.role },
-      user_metadata: { full_name: parsed.data.full_name, role: parsed.data.role },
-    })
-    if (error) return { error: error.message }
-    if (data.user) {
-      await updateUserProfileAsAdmin(data.user.id, { role: parsed.data.role, full_name: parsed.data.full_name, must_change_password: true })
-      await logAuditEvent({
-        userId: adminId, entityType: 'user', entityId: data.user.id,
-        action: 'created',
-        metadata: { mode: 'temp_password', email: parsed.data.email, role: parsed.data.role },
-      })
-    }
+    return { ok: true as const }
   }
 
+  // Mode temp_password : génère un mdp aléatoire à usage unique.
+  const tempPassword = generateTempPassword()
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: parsed.data.email,
+    password: tempPassword,
+    email_confirm: true,
+    app_metadata: { role: parsed.data.role, must_change_password: true },
+    user_metadata: { full_name: parsed.data.full_name, role: parsed.data.role },
+  })
+  if (error) return { error: error.message }
+  if (!data.user) return { error: 'Création échouée' }
+
+  await updateUserProfileAsAdmin(data.user.id, {
+    role: parsed.data.role,
+    full_name: parsed.data.full_name,
+    must_change_password: true,
+  })
+  await logAuditEvent({
+    userId: adminId, entityType: 'user', entityId: data.user.id,
+    action: 'created',
+    metadata: { mode: 'temp_password', email: parsed.data.email, role: parsed.data.role },
+  })
+
   revalidatePath('/admin/users')
-  return { ok: true }
+  return { ok: true as const, password: tempPassword }
 }
 
 const roleSchema = z.object({
@@ -88,13 +101,24 @@ export async function changeUserRoleAction(formData: FormData) {
 
   const beforeRole = await getUserRoleById(parsed.data.userId)
   await updateUserRoleAsAdmin(parsed.data.userId, parsed.data.role as UserRole)
+
+  // Synchronise le rôle dans app_metadata du JWT pour que les RLS le voient
+  // sans attendre 1h de refresh JWT.
+  const supabase = createAdminClient()
+  const { data: existing } = await supabase.auth.admin.getUserById(parsed.data.userId)
+  if (existing.user) {
+    await supabase.auth.admin.updateUserById(parsed.data.userId, {
+      app_metadata: { ...(existing.user.app_metadata ?? {}), role: parsed.data.role },
+    })
+  }
+
   await logAuditEvent({
     userId: adminId, entityType: 'user', entityId: parsed.data.userId,
     action: 'role_changed',
     metadata: { from: beforeRole, to: parsed.data.role },
   })
   revalidatePath('/admin/users')
-  return { ok: true }
+  return { ok: true as const }
 }
 
 const forceResetSchema = z.object({ userId: z.string().uuid() })
@@ -108,8 +132,16 @@ export async function forcePasswordResetAction(formData: FormData) {
   const targetRole = await getUserRoleById(parsed.data.userId)
   if (targetRole === 'admin') return { error: 'Reset admin via Supabase Studio uniquement' }
 
-  const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'netoiage2026'
-  await supabase.auth.admin.updateUserById(parsed.data.userId, { password: tempPassword })
+  const tempPassword = generateTempPassword()
+  const { data: existing } = await supabase.auth.admin.getUserById(parsed.data.userId)
+  const appMetadata = { ...(existing.user?.app_metadata ?? {}), must_change_password: true }
+
+  const { error } = await supabase.auth.admin.updateUserById(parsed.data.userId, {
+    password: tempPassword,
+    app_metadata: appMetadata,
+  })
+  if (error) return { error: error.message }
+
   await updateUserProfileAsAdmin(parsed.data.userId, { must_change_password: true })
   await logAuditEvent({
     userId: adminId, entityType: 'user', entityId: parsed.data.userId,
@@ -117,7 +149,7 @@ export async function forcePasswordResetAction(formData: FormData) {
     metadata: { temp_password_set: true },
   })
   revalidatePath('/admin/users')
-  return { ok: true }
+  return { ok: true as const, password: tempPassword }
 }
 
 // Sprint 4 PC — admin/manager peut éditer le téléphone d'un user.
@@ -170,7 +202,6 @@ export async function updateUserPhoneAction(formData: FormData) {
     metadata: { field: 'phone', cleared: value === null },
   })
   revalidatePath('/admin/users')
-  revalidatePath('/admin/preparation')
   return { ok: true }
 }
 

@@ -96,7 +96,7 @@ export default async function AdminUsersPage() {
       <Card className="border-amber-200 bg-amber-50">
         <CardHeader><CardTitle className="text-xs uppercase tracking-wider text-amber-700">Procédure de réinitialisation</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-900 space-y-2">
-          <p>Le bouton <strong>Reset</strong> remet le mot de passe à la valeur de <code className="bg-white px-1 rounded font-mono">INITIAL_ADMIN_PASSWORD</code> (variable d&apos;environnement) et force l&apos;utilisateur à en choisir un nouveau à sa prochaine connexion.</p>
+          <p>Le bouton <strong>Reset</strong> génère un mot de passe aléatoire à usage unique, affiché immédiatement après la confirmation. Communiquez-le par un canal sécurisé. L&apos;utilisateur devra le changer à sa prochaine connexion.</p>
           <p><strong>Comptes admin</strong> : reset désactivé pour des raisons de sécurité ; passer par Supabase Studio.</p>
         </CardContent>
       </Card>

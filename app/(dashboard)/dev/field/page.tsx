@@ -1,6 +1,9 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { notFound } from 'next/navigation'
 
 export default async function DevFieldPage() {
+  // Page de debug : indisponible en production (audit sécurité 2026-05-13).
+  if (process.env.NODE_ENV === 'production') notFound()
   const supabase = createAdminClient()
 
   const [sites, missions, interventions, checklistItems, photos, anomalies, validations] = await Promise.all([

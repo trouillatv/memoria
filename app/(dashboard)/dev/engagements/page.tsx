@@ -1,7 +1,9 @@
 import { listAllEngagements } from '@/lib/db/engagements'
 import { listContracts } from '@/lib/db/contracts'
+import { notFound } from 'next/navigation'
 
 export default async function DevEngagementsPage() {
+  if (process.env.NODE_ENV === 'production') notFound()
   const [engagements, contracts] = await Promise.all([
     listAllEngagements(),
     listContracts(),

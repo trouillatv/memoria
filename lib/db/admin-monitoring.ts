@@ -1,5 +1,19 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
+// Monitoring admin — exception doctrinale assumée.
+//
+// La doctrine V5 interdit en principe les métriques per-user. Ici, à la demande
+// explicite du DG (2026-05-13), on conserve :
+//   - tableau utilisateurs avec dernière connexion et nb actions sur la période
+//   - feed d'activité nominatif
+//
+// Justification : surface admin uniquement (rôle admin), usage hygiène
+// d'identité + traçabilité opérationnelle, pas RH/évaluation. Voir
+// docs/10_JOURNAL_DECISIONS.md.
+//
+// Garde-fou : aucune de ces données ne doit jamais sortir vers un manager,
+// un chef d'équipe, ou un client. Aucun PDF, aucun rapport, aucun export.
+
 export type PeriodDays = 7 | 30 | 90
 
 function cutoff(period: PeriodDays): string {

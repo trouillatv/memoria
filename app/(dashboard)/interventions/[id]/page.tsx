@@ -12,7 +12,7 @@ import {
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ParticipantsPanel } from './participants-panel'
 import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
@@ -59,8 +59,8 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         .maybeSingle()
     : { data: null }
 
-  // Sign URLs for photos
-  const signedUrls = await getSignedPhotoUrls(photos.map((p) => p.storage_path))
+  // Sign URLs for photos (variante thumb 400×400 — gain bande passante).
+  const signedUrls = await getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path))
 
   const scheduledDate = new Date(intervention.scheduled_at)
   const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {

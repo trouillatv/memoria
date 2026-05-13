@@ -4,6 +4,47 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-13 — Monitoring admin : exception doctrinale assumée pour métriques per-user
+
+**Décision** : `/admin/monitoring` conserve un tableau utilisateurs avec dernière connexion + nombre d'actions sur la période, ainsi qu'un feed nominatif de l'activité récente. Décision prise par le DG après audit doctrinal qui a identifié la violation de Doctrine V5.
+
+**Raison** : le DG a un besoin réel d'hygiène opérationnelle (« qui s'est logué, pour faire quoi »). Le strict respect de la doctrine V5 sur cette surface empêcherait l'admin de diagnostiquer un compte abandonné, un chef d'équipe qui n'utilise pas l'outil, ou un manager qui ne fait pas son travail. Cette surface est admin-only et ne sort jamais vers les utilisateurs concernés.
+
+**Garde-fous explicites** :
+- Surface admin uniquement (RLS + check de rôle en tête de page)
+- Aucune de ces données ne sort jamais en PDF, en export, vers un manager ou vers un client
+- Pas de classement, pas de score, pas de comparaison inter-utilisateurs visible
+- Le contexte du tableau reste « hygiène d'identité », pas « évaluation des performances »
+
+**Alternative écartée** : version anonymisée par rôle (« 3 chefs d'équipe actifs, 47 actions »). Trop floue pour diagnostiquer des problèmes opérationnels concrets.
+
+**Impact code** : commentaire d'avertissement en tête de `lib/db/admin-monitoring.ts` pour qu'aucun futur dev ne réutilise ces helpers ailleurs.
+
+---
+
+## 2026-05-13 — Mot de passe temporaire aléatoire à usage unique (sécurité)
+
+**Décision** : le fallback hardcodé `'netoiage2026'` dans `createUserAction` et `forcePasswordResetAction` est supprimé. Chaque création de compte en mode temp_password et chaque reset génère un mot de passe aléatoire (16 chars base64url, ~96 bits d'entropie) affiché une seule fois à l'admin dans un dialog.
+
+**Raison** : audit sécurité a identifié le fallback hardcodé comme vulnérabilité critique. Tout compte créé partageait le même mot de passe initial — bombe à retardement si la variable d'env n'était pas configurée en prod.
+
+**Impact code** : `app/admin/users/actions.ts`, `app/admin/users/CreateUserForm.tsx`, `app/admin/users/ForcePasswordResetButton.tsx`, `app/admin/users/page.tsx`.
+
+---
+
+## 2026-05-13 — Middleware enforce must_change_password sur toutes les routes
+
+**Décision** : création d'un `middleware.ts` racine qui vérifie le flag `app_metadata.must_change_password` du JWT et redirige vers `/change-password` toute requête authentifiée tant que le flag est actif.
+
+**Raison** : audit sécurité a montré que `must_change_password` n'était vérifié qu'au login. Un utilisateur pouvait obtenir un JWT via cURL, sauter la redirection, et appeler n'importe quelle server action avec le mot de passe temporaire. Le middleware ferme cette porte.
+
+**Impact code** :
+- `middleware.ts` (nouveau, racine)
+- `app/admin/users/actions.ts` : `createUserAction` (temp mode) et `forcePasswordResetAction` posent `app_metadata.must_change_password = true` via l'admin API
+- `app/(auth)/change-password/actions.ts` : efface `app_metadata.must_change_password` via l'admin API après changement réussi
+
+---
+
 ## 2026-05-13 — Monitoring admin : requêtes live, pas d'agrégats précalculés
 
 **Décision** : le monitoring admin (`/admin/monitoring`) utilise des requêtes SQL directes à chaque chargement de page. Pas de table de métriques, pas de cron.

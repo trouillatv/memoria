@@ -11,7 +11,7 @@ import { getMission } from '@/lib/db/missions'
 import { listSiteNotes } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { formatRelativeShort } from '@/lib/format'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
@@ -51,8 +51,8 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     listPhotosByIntervention(id),
   ])
 
-  // Sign storage URLs (1h TTL) for thumbs
-  const signedUrlsMap = await getSignedPhotoUrls(photos.map((p) => p.storage_path))
+  // Sign storage URLs (1h TTL) — variante thumb 400×400 pour la liste mobile.
+  const signedUrlsMap = await getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path))
   const signedUrls = Object.fromEntries(signedUrlsMap)
 
   // Site for context — champs structurés inclus pour l'écran terrain

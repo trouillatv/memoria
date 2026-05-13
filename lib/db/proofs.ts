@@ -25,7 +25,7 @@
 // le résultat tient en quelques centaines de lignes.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 
 // ----------------------------------------------------------------------------
 // Types publics
@@ -534,8 +534,8 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
   }
   const rawPhotos = (photosRes.data ?? []) as unknown as RawPhoto[]
 
-  // 4. Signed URLs en batch.
-  const signedMap = await getSignedPhotoUrls(rawPhotos.map((p) => p.storage_path))
+  // 4. Signed URLs en batch (variante thumb 400×400 — gain bande passante).
+  const signedMap = await getSignedPhotoUrlsThumb(rawPhotos.map((p) => p.storage_path))
 
   const proofPhotos: ProofPhoto[] = rawPhotos.map((p) => ({
     id: p.id,

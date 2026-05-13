@@ -18,7 +18,7 @@
 // même reste service en lecture admin.
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { getContractContinuity } from '@/lib/db/contracts'
 
 // ============================================================================
@@ -641,9 +641,9 @@ async function buildPhotoCandidates(
     }
   }
 
-  // Signed URLs en batch.
+  // Signed URLs en batch (variante thumb — gain bande passante sur grille mensuelle).
   const paths = finalPick.map((p) => p.storage_path)
-  const signedMap = await getSignedPhotoUrls(paths)
+  const signedMap = await getSignedPhotoUrlsThumb(paths)
 
   return finalPick.map((p) => {
     const mId = missionByIntervention.get(p.intervention_id)
