@@ -27,7 +27,8 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
 import { SiteNotesPopover } from './SiteNotesPopover'
-import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
+import { BriefingShareModal } from './BriefingShareModal'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
@@ -71,10 +72,18 @@ export default async function BriefingPage({
 
   const briefing = await buildEveningBriefing(target)
 
-  // Texte format pour WhatsApp/email — Doctrine V5 Pilier 3 : Maeva colle dans
-  // son canal habituel, on prépare le bon texte.
   const briefingShareText = formatBriefingShareText(briefing)
   const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
+
+  const supabase = await createServerClient()
+  const { data: usersWithPhone } = await supabase
+    .from('users')
+    .select('id, full_name, email, role, phone')
+    .is('deleted_at', null)
+    .not('phone', 'is', null)
+    .order('full_name')
+
+  const isManager = user.role === 'manager' || user.role === 'admin'
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -89,10 +98,12 @@ export default async function BriefingPage({
           </p>
         </div>
         {briefing.interventionsCount > 0 && (
-          <ShareInterventionButton
+          <BriefingShareModal
             text={briefingShareText}
             url={briefingUrl}
-            label="Partager le briefing"
+            date={briefing.date}
+            isManager={isManager}
+            usersWithPhone={(usersWithPhone ?? []) as import('./BriefingShareModal').UserWithPhone[]}
           />
         )}
       </header>
@@ -304,7 +315,7 @@ async function buildAbsoluteUrl(path: string): Promise<string> {
 
 /**
  * Texte WhatsApp pour le briefing. Doctrine V5 :
- *  - agrégats uniquement (jamais de noms d'agent)
+ *  - noms de sites et d'équipes inclus (jamais de noms d'agent individuel)
  *  - phrase calme, pas d'urgence injonctive
  *  - lien vers la page briefing à la fin
  */
@@ -314,14 +325,27 @@ function formatBriefingShareText(
   const dateText = formatDateLong(b.date)
   const lines: string[] = [`Briefing — ${dateText}`]
   lines.push(`• ${b.interventionsCount} intervention${b.interventionsCount > 1 ? 's' : ''} prévue${b.interventionsCount > 1 ? 's' : ''}`)
-  lines.push(`• ${b.teamsCount} équipe${b.teamsCount > 1 ? 's' : ''} mobilisée${b.teamsCount > 1 ? 's' : ''}`)
+
+  const SLOT_ABBR: Record<string, string> = { morning: 'matin', afternoon: 'après-midi', evening: 'soir' }
+  if (b.coverageBySite.length > 0) {
+    lines.push('')
+    lines.push('Couverture :')
+    for (const s of b.coverageBySite) {
+      const teamsList = s.teams.map((t) => t.name).join(', ')
+      const slotStr = s.slots.map((sl) => SLOT_ABBR[sl] ?? sl).join('/')
+      const suffix = slotStr ? ` (${slotStr})` : ''
+      lines.push(teamsList ? `• ${s.site_name} — ${teamsList}${suffix}` : `• ${s.site_name}${suffix}`)
+    }
+  }
+
   if (b.sitesWithoutCoverage.length > 0) {
+    lines.push('')
     const names = b.sitesWithoutCoverage.slice(0, 3).map((s) => s.name).join(', ')
     const more = b.sitesWithoutCoverage.length > 3 ? ` (+${b.sitesWithoutCoverage.length - 3})` : ''
-    lines.push(`• ${b.sitesWithoutCoverage.length} site${b.sitesWithoutCoverage.length > 1 ? 's' : ''} sans couverture : ${names}${more}`)
+    lines.push(`Sans couverture : ${names}${more}`)
   }
   if (b.unassignedInterventions.length > 0) {
-    lines.push(`• ${b.unassignedInterventions.length} à affecter`)
+    lines.push(`• ${b.unassignedInterventions.length} intervention${b.unassignedInterventions.length > 1 ? 's' : ''} à affecter`)
   }
   if (b.contractsExpiringSoon.length > 0) {
     lines.push(`• ${b.contractsExpiringSoon.length} contrat${b.contractsExpiringSoon.length > 1 ? 's' : ''} à renouveler dans les 60j`)
