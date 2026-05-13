@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { showTimeSavedToast } from '@/components/ui/time-saved-toast'
 import {
   Dialog,
   DialogContent,
@@ -95,7 +96,8 @@ export function OutcomeDialog({
         toast.error(r.error ?? 'Échec de l\'enregistrement')
         return
       }
-      toast.success('Résultat enregistré')
+      // Sprint 5 UX-9 — Temps retrouvé : confirmation discrète et factuelle.
+      showTimeSavedToast('Résultat enregistré')
       onOpenChange(false)
     })
   }

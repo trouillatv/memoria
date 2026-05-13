@@ -22,6 +22,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Check, Copy, Download, ExternalLink, Eye, ShieldCheck } from 'lucide-react'
+import { showTimeSavedToast } from '@/components/ui/time-saved-toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -111,6 +112,7 @@ export function MonthlyReportEditor({ data, contractId, month, previousNote }: M
       toast.error('Sélectionnez au moins une photo.')
       return
     }
+    const photoCount = selectedIds.size
     startTransition(async () => {
       const res = await approveAndPrepareReportAction({
         contractId,
@@ -122,7 +124,10 @@ export function MonthlyReportEditor({ data, contractId, month, previousNote }: M
         toast.error(res.error ?? 'Erreur lors de la préparation du rapport.')
         return
       }
-      toast.success('Rapport prêt — lien valable 30 jours.')
+      // Sprint 5 UX-9 — Temps retrouvé : reconnaissance discrète, pas marketing.
+      showTimeSavedToast(
+        `Rapport préparé · ${photoCount} photo${photoCount > 1 ? 's' : ''} sélectionnée${photoCount > 1 ? 's' : ''}`,
+      )
       setReadyDialog({
         shareUrl: res.shareUrl,
         pdfUrl: res.pdfUrl,
@@ -142,6 +147,7 @@ export function MonthlyReportEditor({ data, contractId, month, previousNote }: M
       />
       <AnomaliesResolvedSection anomalies={data.anomaliesResolved} />
       <AnomaliesOpenSection anomalies={data.anomaliesStillOpen} />
+      <ContinuitySection data={data} />
       <CumulativeSection data={data} />
       <NoteSection
         note={note}
@@ -585,7 +591,7 @@ function CumulativeSection({ data }: { data: MonthlyReportData }) {
           <span className="tabular-nums font-semibold">
             {c.totalInterventionsExecuted.toLocaleString('fr-FR')}
           </span>{' '}
-          interventions ·{' '}
+          interventions documentées ·{' '}
           <span className="tabular-nums font-semibold">
             {c.totalPhotos.toLocaleString('fr-FR')}
           </span>{' '}
@@ -593,11 +599,54 @@ function CumulativeSection({ data }: { data: MonthlyReportData }) {
           <span className="tabular-nums font-semibold">
             {c.totalAnomaliesResolved.toLocaleString('fr-FR')}
           </span>{' '}
-          anomalies résolues
+          incidents traités
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           {c.daysSinceStart} jour{c.daysSinceStart > 1 ? 's' : ''} de prestation.
         </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Section : Continuité du service (Sprint 5 UX-9, Doctrine V5)
+// ----------------------------------------------------------------------------
+//
+// Compteurs factuels passifs. Pas de score, pas de comparaison entre contrats.
+// Argument commercial par l'évidence. Verrou V1 (mémoire ≠ recommandation) et
+// verrou V4 (pas de formulation de contrôle).
+
+function ContinuitySection({ data }: { data: MonthlyReportData }) {
+  const ctt = data.continuity
+  if (!ctt) return null
+  return (
+    <Card data-testid="continuity-section">
+      <CardHeader>
+        <CardTitle className="text-base">Continuité du service</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <dl className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+          <div>
+            <dt className="text-xs text-muted-foreground">Depuis le démarrage</dt>
+            <dd className="font-semibold tabular-nums">
+              {ctt.daysSinceStart.toLocaleString('fr-FR')} jour
+              {ctt.daysSinceStart > 1 ? 's' : ''}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Mois consécutifs couverts</dt>
+            <dd className="font-semibold tabular-nums">
+              {ctt.consecutiveMonthsWithIntervention}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Semaines sans interruption</dt>
+            <dd className="font-semibold tabular-nums">
+              {ctt.weeksWithoutInterruption}
+            </dd>
+          </div>
+        </dl>
       </CardContent>
     </Card>
   )

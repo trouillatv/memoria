@@ -17,6 +17,7 @@
 import * as React from 'react'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { showTimeSavedToast } from '@/components/ui/time-saved-toast'
 import {
   Check,
   Copy,
@@ -314,7 +315,8 @@ function ReadyStep({
       await navigator.clipboard.writeText(result.shareUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-      toast.success('Lien copié dans le presse-papiers')
+      // Sprint 5 UX-9 — Temps retrouvé : reconnaissance discrète et factuelle.
+      showTimeSavedToast('Dossier prêt à partager · lien copié')
     } catch {
       toast.error('Impossible de copier — sélectionnez l\'URL manuellement.')
     }

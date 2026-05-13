@@ -22,6 +22,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { addSiteNoteAction } from './site-note-actions'
+import { showTimeSavedToast } from '@/components/ui/time-saved-toast'
 
 interface Props {
   siteId: string
@@ -50,6 +51,8 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
       if (result.ok) {
         setOpen(false)
         setBody('')
+        // Sprint 5 UX-9 — Temps retrouvé : confirmation discrète et factuelle.
+        showTimeSavedToast('Note ajoutée à ce site')
         router.refresh()
       } else {
         setError(result.error)

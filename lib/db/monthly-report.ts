@@ -19,6 +19,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { getContractContinuity } from '@/lib/db/contracts'
 
 // ============================================================================
 // Types publics
@@ -95,6 +96,18 @@ export interface MonthlyReportData {
     totalAnomaliesResolved: number
     daysSinceStart: number
   }
+
+  /**
+   * Sprint 5 UX-9 — Preuve de continuité (Doctrine V5, verrou V1).
+   * Compteurs factuels passifs de stabilité du service. Pas de score, pas de
+   * comparaison entre contrats. Argument commercial par l'évidence.
+   * Optionnel : helper getContractContinuity peut être null (contrat sans data).
+   */
+  continuity?: {
+    daysSinceStart: number
+    consecutiveMonthsWithIntervention: number
+    weeksWithoutInterruption: number
+  } | null
 
   // Photos candidates (jusqu'à 30, le DG en sélectionnera 6-12 dans l'UI Slice E.1)
   photoCandidates: ReportPhotoCandidate[]
@@ -421,7 +434,23 @@ export async function getContractMonthlyReport(
     photosByInterventionMonth: groupIntvIdsWithPhoto(photosMonth),
   })
 
-  // ---- 12. Compose.
+  // ---- 12. Sprint 5 UX-9 — Preuve de continuité (Doctrine V5).
+  //         Compteurs factuels passifs, lus depuis le helper dédié.
+  let continuity: MonthlyReportData['continuity'] = null
+  try {
+    const ctt = await getContractContinuity(contract.id as string)
+    if (ctt) {
+      continuity = {
+        daysSinceStart: ctt.daysSinceStart,
+        consecutiveMonthsWithIntervention: ctt.consecutiveMonthsWithIntervention,
+        weeksWithoutInterruption: ctt.weeksWithoutInterruption,
+      }
+    }
+  } catch {
+    continuity = null
+  }
+
+  // ---- 13. Compose.
   return {
     contract: {
       id: contract.id as string,
@@ -447,6 +476,7 @@ export async function getContractMonthlyReport(
       totalAnomaliesResolved,
       daysSinceStart,
     },
+    continuity,
     photoCandidates,
     anomaliesResolved: anomaliesResolvedList,
     anomaliesStillOpen: anomaliesStillOpenList,
@@ -487,6 +517,7 @@ function buildEmptyReport(
       totalAnomaliesResolved: 0,
       daysSinceStart: Math.max(0, daysBetween(contract.start_date, period.lastDay)),
     },
+    continuity: null,
     photoCandidates: [],
     anomaliesResolved: [],
     anomaliesStillOpen: [],

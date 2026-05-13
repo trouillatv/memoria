@@ -15,6 +15,7 @@ import {
   getAtRiskEngagements,
   getContractsUnderTension,
   getRecentActivity,
+  getTenantCumulativeStats,
 } from '@/lib/db/dashboard'
 import { countClosedThisMonth } from '@/lib/db/proof-share'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
@@ -156,6 +157,7 @@ export default async function DashboardPage() {
     contractsUnderTension,
     recentActivity,
     dossiersClosedThisMonth,
+    tenantCumulative,
   ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
@@ -167,6 +169,7 @@ export default async function DashboardPage() {
     getContractsUnderTension(),
     getRecentActivity(8),
     getDossiersClosedThisMonth(),
+    getTenantCumulativeStats(),
   ])
 
   // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
@@ -263,6 +266,23 @@ export default async function DashboardPage() {
           <ul className="space-y-2">
             {others.map((c) => <ContractRow key={c.id} summary={c} muted />)}
           </ul>
+        </section>
+      )}
+
+      {/* Sprint 5 UX-9 — Bandeau Capital cumulé tenant (Doctrine V5).
+          Ligne unique très sobre, gris muted. Compteurs factuels passifs.
+          Pas un widget hero. Argument commercial par l'évidence. */}
+      {(tenantCumulative.totalInterventions > 0 ||
+        tenantCumulative.totalPhotos > 0 ||
+        tenantCumulative.totalAnomaliesResolved > 0) && (
+        <section
+          data-testid="tenant-cumulative-band"
+          className="text-xs text-muted-foreground tabular-nums pt-2"
+        >
+          Depuis le démarrage :{' '}
+          {tenantCumulative.totalInterventions.toLocaleString('fr-FR')} interventions documentées ·{' '}
+          {tenantCumulative.totalPhotos.toLocaleString('fr-FR')} photos ·{' '}
+          {tenantCumulative.totalAnomaliesResolved.toLocaleString('fr-FR')} incidents traités
         </section>
       )}
     </div>
