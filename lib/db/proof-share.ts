@@ -55,6 +55,12 @@ export interface ProofShareToken {
   selected_photo_ids: string[] | null
   /** Slice E.2 : note libre du DG figée au moment de l'approbation. */
   dg_note: string | null
+  /** Sprint 6 (verrou V3) : timestamp de clôture mentale du dossier. NULL = ouvert. */
+  closed_at: string | null
+  /** Sprint 6 : user (manager+) ayant clôturé. NULL si rouvert ou pas encore clôturé. */
+  closed_by: string | null
+  /** Sprint 6 : note libre 0..200 chars (cap applicatif). NULL ou string. */
+  closure_note: string | null
 }
 
 /**
@@ -402,4 +408,117 @@ export async function recordShareAccess(tokenId: string): Promise<void> {
   } catch (e) {
     console.warn('[proof-share] recordShareAccess failed:', e)
   }
+}
+
+// ----------------------------------------------------------------------------
+// Sprint 6 — Fermeture mentale (doctrine V5 verrou V3)
+// ----------------------------------------------------------------------------
+//
+// Wording impératif : "Dossier clôturé" / "Échange finalisé" / "Incident traité"
+// / "Réclamation refermée". JAMAIS "résolu" / "resolved" / "issue closed".
+// Le cleaning : "résolu" implique acceptation de responsabilité = juridiquement
+// dangereux. La doctrine V5 verrou V3 ferme cette porte par convention forte.
+
+/** Cap applicatif sur la note de clôture, cohérent avec le chk_ DB (255). */
+const CLOSURE_NOTE_MAX = 200
+
+export interface CloseProofShareTokenInput {
+  /** UUID du token à clôturer (NB : tokenId, pas la valeur du token). */
+  tokenId: string
+  /** User id (manager+) ayant clôturé. Audit + dignité. */
+  closedBy?: string | null
+  /** Note libre 0..200 chars. Trim côté caller — on garde tel quel ici. */
+  note?: string
+}
+
+/**
+ * Clôture un dossier de preuves partagé (Sprint 6, verrou V3).
+ *
+ * - "Clôturer" est mental, pas juridique : le dossier reste consultable via
+ *   l'URL publique tant que le lien n'est pas révoqué/expiré. La clôture est
+ *   un signal d'apaisement, pas une révocation.
+ * - Throw si tokenId inexistant.
+ * - Throw si déjà clôturé (closed_at NOT NULL) — protection contre les
+ *   double-submits côté UI.
+ */
+export async function closeProofShareToken(
+  input: CloseProofShareTokenInput,
+): Promise<void> {
+  if (input.note != null && input.note.length > CLOSURE_NOTE_MAX) {
+    throw new Error(
+      `closeProofShareToken: note trop longue (${input.note.length} > ${CLOSURE_NOTE_MAX} chars).`,
+    )
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: existing, error: rErr } = await supabase
+    .from('proof_share_tokens')
+    .select('id, closed_at')
+    .eq('id', input.tokenId)
+    .maybeSingle()
+  if (rErr) throw rErr
+  if (!existing) {
+    throw new Error(`closeProofShareToken: token introuvable (${input.tokenId}).`)
+  }
+  if ((existing as { closed_at: string | null }).closed_at) {
+    throw new Error('Dossier déjà clôturé.')
+  }
+
+  const noteValue =
+    typeof input.note === 'string' && input.note.trim().length > 0
+      ? input.note.trim()
+      : null
+
+  const { error } = await supabase
+    .from('proof_share_tokens')
+    .update({
+      closed_at: new Date().toISOString(),
+      closed_by: input.closedBy ?? null,
+      closure_note: noteValue,
+    })
+    .eq('id', input.tokenId)
+  if (error) throw error
+}
+
+/**
+ * Rouvre un dossier précédemment clôturé (Sprint 6).
+ *
+ * Cas d'usage : Patrick clique par erreur sur "Clôturer" depuis un mobile.
+ * Idempotent : appeler sur un dossier déjà ouvert ne lève pas d'erreur (on
+ * reset les 3 champs en NULL sans condition).
+ */
+export async function reopenProofShareToken(tokenId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('proof_share_tokens')
+    .update({
+      closed_at: null,
+      closed_by: null,
+      closure_note: null,
+    })
+    .eq('id', tokenId)
+  if (error) throw error
+}
+
+/**
+ * Compte les dossiers clôturés depuis le 1er du mois courant (UTC).
+ *
+ * Utilisé par le widget cockpit "N dossiers clôturés ce mois". On reste
+ * factuel : nombre brut, pas de moyenne, pas de comparaison inter-mois.
+ * Doctrine V5 pilier 5 : sensation de maîtrise, jamais alerte.
+ */
+export async function countClosedThisMonth(): Promise<number> {
+  const supabase = createAdminClient()
+  const now = new Date()
+  const startOfMonthUtc = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
+  ).toISOString()
+
+  const { count, error } = await supabase
+    .from('proof_share_tokens')
+    .select('id', { count: 'exact', head: true })
+    .gte('closed_at', startOfMonthUtc)
+  if (error) throw error
+  return count ?? 0
 }

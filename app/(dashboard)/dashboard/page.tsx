@@ -16,6 +16,7 @@ import {
   getContractsUnderTension,
   getRecentActivity,
 } from '@/lib/db/dashboard'
+import { countClosedThisMonth } from '@/lib/db/proof-share'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
 import type { EngagementComplianceRatios } from '@/types/db'
 import { WelcomeCard } from './WelcomeCard'
@@ -27,6 +28,15 @@ import { RecentActivityWidget } from './RecentActivityWidget'
 import { AnomaliesOldWidget } from './AnomaliesOldWidget'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
+
+/**
+ * Sprint 6 — Helper wrapper sur countClosedThisMonth() pour le widget
+ * "N dossiers clôturés ce mois". Doctrine V5 verrou V3 : on garde le
+ * verbe "clôturer", on ne dit JAMAIS "résolu". Silence positif si N = 0.
+ */
+async function getDossiersClosedThisMonth(): Promise<number> {
+  return countClosedThisMonth()
+}
 
 interface ContractSummary {
   id: string
@@ -145,6 +155,7 @@ export default async function DashboardPage() {
     atRiskEngagements,
     contractsUnderTension,
     recentActivity,
+    dossiersClosedThisMonth,
   ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
@@ -155,6 +166,7 @@ export default async function DashboardPage() {
     getAtRiskEngagements(),
     getContractsUnderTension(),
     getRecentActivity(8),
+    getDossiersClosedThisMonth(),
   ])
 
   // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
@@ -193,6 +205,21 @@ export default async function DashboardPage() {
         aoPipeline={aoPipeline}
         anomalies={anomaliesStats}
       />
+
+      {/* Sprint 6 — Compteur calme "Dossiers clôturés ce mois" (verrou V3).
+          Silence positif : on n'affiche RIEN si 0 (pas d'état vide pesant). */}
+      {dossiersClosedThisMonth > 0 && (
+        <p
+          data-testid="dossiers-closed-this-month"
+          className="text-sm text-slate-700"
+        >
+          <span className="tabular-nums font-semibold">
+            {dossiersClosedThisMonth.toLocaleString('fr-FR')}
+          </span>{' '}
+          dossier{dossiersClosedThisMonth > 1 ? 's' : ''} clôturé
+          {dossiersClosedThisMonth > 1 ? 's' : ''} ce mois.
+        </p>
+      )}
 
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
 
