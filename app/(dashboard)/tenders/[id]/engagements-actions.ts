@@ -5,8 +5,11 @@ import { revalidatePath } from 'next/cache'
 import { runEngagementExtractionAgent } from '@/services/ai/engagement-extraction'
 import {
   activateEngagementsForContract,
+  archiveEngagement,
   bulkInsertEngagements,
+  createEngagementManual,
   curateEngagement,
+  hasLinkedInterventions,
   listEngagementsByTender,
   rejectEngagements,
 } from '@/lib/db/engagements'
@@ -66,6 +69,7 @@ const curateSchema = z.object({
   short_label: z.string().min(3).max(100).optional(),
   category: z.enum(['frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other']).optional(),
   measurable: z.boolean().optional(),
+  proof_requirement: z.enum(['photo', 'anomaly_documented', 'none']).optional(),
 })
 
 export async function curateEngagementAction(formData: FormData) {
@@ -80,6 +84,7 @@ export async function curateEngagementAction(formData: FormData) {
     short_label: formData.get('short_label') || undefined,
     category: formData.get('category') || undefined,
     measurable,
+    proof_requirement: formData.get('proof_requirement') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
@@ -112,6 +117,65 @@ export async function rejectEngagementsAction(formData: FormData) {
     return { error: e instanceof Error ? e.message : 'reject failed' }
   }
   return { ok: true as const, count: parsed.data.ids.length }
+}
+
+const archiveSchema = z.object({
+  id: z.string().uuid(),
+  reason: z.string().min(3).max(200),
+})
+
+export async function archiveEngagementAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = archiveSchema.safeParse({
+    id: formData.get('id'),
+    reason: formData.get('reason'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  const hasStarted = await hasLinkedInterventions(parsed.data.id)
+  if (hasStarted) return { error: 'Des interventions sont liées — seul le label est modifiable' }
+
+  try {
+    await archiveEngagement(parsed.data.id, parsed.data.reason)
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'archive failed' }
+  }
+  return { ok: true as const }
+}
+
+const createManualEngagementSchema = z.object({
+  tender_id: z.string().uuid(),
+  short_label: z.string().min(3).max(100),
+  category: z.enum(['frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other']),
+})
+
+export async function createEngagementManualAction(formData: FormData) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const parsed = createManualEngagementSchema.safeParse({
+    tender_id: formData.get('tender_id'),
+    short_label: formData.get('short_label'),
+    category: formData.get('category'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  try {
+    await createEngagementManual({
+      tender_id: parsed.data.tender_id,
+      contract_id: null,
+      short_label: parsed.data.short_label,
+      category: parsed.data.category,
+      created_by: auth.userId,
+    })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'create failed' }
+  }
+
+  revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
+  return { ok: true as const }
 }
 
 const createContractSchema = z.object({

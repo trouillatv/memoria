@@ -10,6 +10,8 @@ import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/
 import { EngagementCompliance } from './engagement-compliance'
 import { ContractTabs } from './contract-tabs'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
+import { DossierConfidenceBadge } from '@/components/ui/dossier-confidence-badge'
+import { getContractSummaries } from '@/lib/db/dashboard'
 import type { EngagementComplianceRatios } from '@/types/db'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
@@ -19,12 +21,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions, interventions, continuity] = await Promise.all([
+  const [engagements, missions, interventions, continuity, summaryMap] = await Promise.all([
     listEngagementsByContract(id),
     listMissionsByContract(id),
     listInterventionsByContract(id),
     getContractContinuity(id),
+    getContractSummaries([id]),
   ])
+  const summary = summaryMap.get(id) ?? null
 
   // Build mission_id → engagement_ids map
   const missionEngagements = new Map<string, string[]>()
@@ -107,9 +111,15 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       <header className="space-y-1">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-semibold">{contract.name}</h1>
               <StatusBadge status={contract.status} size="md" />
+              {summary && summary.engagementsTotal > 0 && (
+                <DossierConfidenceBadge
+                  level={summary.confidenceLevel}
+                  proofCoverage={summary.proofCoverage}
+                />
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
               {contract.client_name} · démarré le {startLabel}

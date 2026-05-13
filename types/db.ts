@@ -204,6 +204,10 @@ export type EngagementStatus =
   | 'completed'
   | 'archived'
 
+// Phase 4.1 (migration 046) — Niveau de preuve attendu pour considérer
+// l'engagement comme exécuté de façon défendable.
+export type EngagementProofRequirement = 'photo' | 'anomaly_documented' | 'none'
+
 export interface DbEngagement {
   id: string
   tender_id: string
@@ -216,6 +220,7 @@ export interface DbEngagement {
   measurable: boolean
   ai_confidence: number | null
   status: EngagementStatus
+  proof_requirement: EngagementProofRequirement
   created_at: string
   updated_at: string
   created_by: string | null

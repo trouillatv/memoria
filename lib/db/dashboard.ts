@@ -955,10 +955,14 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
 // faisait ~120 requêtes en parallèle pour 30 contrats.
 // ============================================================================
 
+export type ContractConfidenceLevel = 'high' | 'medium' | 'low'
+
 export interface ContractSummary {
   contractId: string
   engagementsTotal: number
   averageRatios: EngagementComplianceRatios
+  proofCoverage: number
+  confidenceLevel: ContractConfidenceLevel
   needsAttention: boolean
 }
 
@@ -978,6 +982,8 @@ export async function getContractSummaries(contractIds: string[]): Promise<Map<s
     executed: number
     proven: number
     validated: number
+    proof_coverage: number
+    confidence_level: ContractConfidenceLevel
     needs_attention: boolean
   }>) {
     map.set(row.contract_id, {
@@ -990,6 +996,8 @@ export async function getContractSummaries(contractIds: string[]): Promise<Map<s
         proven: Number(row.proven ?? 0),
         validated: Number(row.validated ?? 0),
       },
+      proofCoverage: Number(row.proof_coverage ?? 0),
+      confidenceLevel: row.confidence_level ?? 'low',
       needsAttention: row.needs_attention,
     })
   }

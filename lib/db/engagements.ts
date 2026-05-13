@@ -96,19 +96,68 @@ export async function bulkInsertEngagements(input: {
 
 export async function curateEngagement(
   id: string,
-  patch: { short_label?: string; category?: EngagementCategory; measurable?: boolean }
+  patch: {
+    short_label?: string
+    category?: EngagementCategory
+    measurable?: boolean
+    proof_requirement?: 'photo' | 'anomaly_documented' | 'none'
+  }
 ): Promise<void> {
   const supabase = createAdminClient()
-  const updates: Record<string, unknown> = { status: 'curated' as EngagementStatus }
+
+  // Fetch current status to decide whether to advance it or keep it.
+  const { data: current, error: fetchErr } = await supabase
+    .from('engagements')
+    .select('status')
+    .eq('id', id)
+    .in('status', ['extracted', 'curated', 'active'])
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+  if (!current) throw new Error('Engagement introuvable ou non modifiable')
+
+  const nextStatus: EngagementStatus = current.status === 'extracted' ? 'curated' : current.status as EngagementStatus
+  const updates: Record<string, unknown> = { status: nextStatus }
   if (patch.short_label !== undefined) updates.short_label = patch.short_label
   if (patch.category !== undefined) updates.category = patch.category
   if (patch.measurable !== undefined) updates.measurable = patch.measurable
+  if (patch.proof_requirement !== undefined) updates.proof_requirement = patch.proof_requirement
+
   const { error } = await supabase
     .from('engagements')
     .update(updates)
     .eq('id', id)
-    .eq('status', 'extracted')
   if (error) throw error
+}
+
+export async function createEngagementManual(input: {
+  tender_id?: string | null
+  contract_id?: string | null
+  short_label: string
+  category: EngagementCategory
+  created_by: string | null
+}): Promise<DbEngagement> {
+  const supabase = createAdminClient()
+  // status is 'active' when directly linked to a contract, otherwise 'extracted'
+  const status: EngagementStatus = input.contract_id ? 'active' : 'extracted'
+  const { data, error } = await supabase
+    .from('engagements')
+    .insert({
+      tender_id: input.tender_id ?? null,
+      contract_id: input.contract_id ?? null,
+      source_type: 'manual' as EngagementSourceType,
+      source_excerpt: input.short_label,
+      source_ref: null,
+      category: input.category,
+      short_label: input.short_label,
+      measurable: false,
+      ai_confidence: null,
+      status,
+      created_by: input.created_by,
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
 }
 
 export async function rejectEngagements(ids: string[]): Promise<void> {
@@ -137,13 +186,34 @@ export async function activateEngagementsForContract(
   return data?.length ?? 0
 }
 
-export async function archiveEngagement(id: string): Promise<void> {
+export async function archiveEngagement(id: string, reason?: string): Promise<void> {
   const supabase = createAdminClient()
+  const updates: Record<string, unknown> = { status: 'archived' as EngagementStatus }
+  if (reason) {
+    updates.source_ref = { archived_reason: reason, archived_at: new Date().toISOString() }
+  }
   const { error } = await supabase
     .from('engagements')
-    .update({ status: 'archived' as EngagementStatus })
+    .update(updates)
     .eq('id', id)
   if (error) throw error
+}
+
+/** Vérifie si un engagement a au moins une intervention in_progress/completed/validated liée. */
+export async function hasLinkedInterventions(engagementId: string): Promise<boolean> {
+  const supabase = createAdminClient()
+  const { data: missions } = await supabase
+    .from('missions')
+    .select('id')
+    .contains('engagement_ids', [engagementId])
+    .is('deleted_at', null)
+  if (!missions || missions.length === 0) return false
+  const { count } = await supabase
+    .from('interventions')
+    .select('id', { count: 'exact', head: true })
+    .in('mission_id', missions.map((m) => m.id))
+    .in('status', ['in_progress', 'completed', 'validated'])
+  return (count ?? 0) > 0
 }
 
 // ============================================================================
