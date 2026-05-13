@@ -18,6 +18,7 @@ const LABELS: Record<string, string> = {
   tenders: "Appels d'offres",
   contracts: 'Contrats',
   sites: 'Sites',
+  preparation: 'Préparation',
   library: 'Bibliothèque',
   reports: 'Rapports',
   admin: 'Administration',

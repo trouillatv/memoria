@@ -199,6 +199,7 @@ export async function updateUserPhoneAction(formData: FormData) {
     metadata: { field: 'phone', cleared: value === null },
   })
   revalidatePath('/admin/users')
+  revalidatePath('/briefing')
   return { ok: true }
 }
 

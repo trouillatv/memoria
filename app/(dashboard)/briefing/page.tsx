@@ -25,9 +25,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
+import { generateChefEquipePreparations } from '@/lib/db/chef-equipe-preparation'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
 import { SiteNotesPopover } from './SiteNotesPopover'
 import { BriefingShareModal } from './BriefingShareModal'
+import { EnvoisSection } from './EnvoisSection'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
@@ -70,7 +72,10 @@ export default async function BriefingPage({
     ? params.date
     : tomorrowUtcIso()
 
-  const briefing = await buildEveningBriefing(target)
+  const [briefing, preparations] = await Promise.all([
+    buildEveningBriefing(target),
+    generateChefEquipePreparations(target),
+  ])
 
   const briefingShareText = formatBriefingShareText(briefing)
   const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
@@ -290,6 +295,11 @@ export default async function BriefingPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Préparation des envois WhatsApp — fusion ex /preparation 2026-05-14.
+          Section action : liste compacte des chefs d'équipe ayant un passage
+          demain + drawer latéral pour relire/éditer le message et l'envoyer. */}
+      <EnvoisSection preparations={preparations} />
 
       {/* Lien semaine */}
       <div className="pt-4">

@@ -50,10 +50,25 @@ function formatDate(iso: string | null): string {
 
 export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: ActivityEntry[] }) {
   const [roleFilter, setRoleFilter] = useState<string>('')
+  // Filtres dédiés au tableau utilisateurs (indépendants du filtre feed).
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('')
+  const [userStatusFilter, setUserStatusFilter] = useState<string>('')
+  const [userQuery, setUserQuery] = useState<string>('')
 
   const filteredFeed = roleFilter
     ? feed.filter(e => e.user_role === roleFilter)
     : feed
+
+  const normalizedQuery = userQuery.trim().toLowerCase()
+  const filteredUsers = stats.users.filter((u) => {
+    if (userRoleFilter && u.role !== userRoleFilter) return false
+    if (userStatusFilter && u.status !== userStatusFilter) return false
+    if (normalizedQuery) {
+      const haystack = `${u.full_name ?? ''} ${u.email}`.toLowerCase()
+      if (!haystack.includes(normalizedQuery)) return false
+    }
+    return true
+  })
 
   return (
     <div className="space-y-8">
@@ -78,7 +93,57 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
 
       {/* Tableau utilisateurs */}
       <section>
-        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Utilisateurs ({stats.users.length})</h2>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Utilisateurs ({filteredUsers.length}
+            {filteredUsers.length !== stats.users.length && ` / ${stats.users.length}`})
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="search"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+              placeholder="Rechercher nom, email..."
+              className="rounded border px-2 py-1 text-xs bg-background w-44"
+              aria-label="Rechercher un utilisateur"
+            />
+            <select
+              value={userRoleFilter}
+              onChange={(e) => setUserRoleFilter(e.target.value)}
+              className="rounded border px-2 py-1 text-xs bg-background"
+              aria-label="Filtrer par rôle"
+            >
+              <option value="">Tous les rôles</option>
+              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="chef_equipe">Chef équipe</option>
+            </select>
+            <select
+              value={userStatusFilter}
+              onChange={(e) => setUserStatusFilter(e.target.value)}
+              className="rounded border px-2 py-1 text-xs bg-background"
+              aria-label="Filtrer par statut"
+            >
+              <option value="">Tous les statuts</option>
+              <option value="active">Actif</option>
+              <option value="dormant">Dormant</option>
+              <option value="inactive">Inactif</option>
+            </select>
+            {(userQuery || userRoleFilter || userStatusFilter) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUserQuery('')
+                  setUserRoleFilter('')
+                  setUserStatusFilter('')
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+              >
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
         <div className="rounded-lg border overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
@@ -91,7 +156,7 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
               </tr>
             </thead>
             <tbody className="divide-y">
-              {stats.users.map(u => (
+              {filteredUsers.map(u => (
                 <tr key={u.id} className="hover:bg-muted/20">
                   <td className="px-3 py-2">
                     <div className="font-medium">{u.full_name ?? '—'}</div>
@@ -107,8 +172,14 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
                   </td>
                 </tr>
               ))}
-              {stats.users.length === 0 && (
-                <tr><td colSpan={5} className="px-3 py-8 text-center text-sm text-muted-foreground">Aucun utilisateur</td></tr>
+              {filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    {stats.users.length === 0
+                      ? 'Aucun utilisateur'
+                      : 'Aucun utilisateur ne correspond aux filtres.'}
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

@@ -48,6 +48,9 @@ export interface EveningBriefing {
       memberNames: string[]
       referentName: string | null
     }>
+    /** Slots distincts (morning/afternoon/evening) ordonnés. Utilisé par
+     *  le texte de partage WhatsApp pour qualifier chaque ligne. */
+    slots: string[]
     recentNotes: Array<{ body: string; created_at: string }>
     fields: {
       address: string | null
@@ -124,7 +127,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
   // après une requête batch sur team_members + users.
   const siteCoverage = new Map<
     string,
-    { name: string; count: number; teams: Map<string, TeamLite> }
+    { name: string; count: number; teams: Map<string, TeamLite>; slots: Set<string> }
   >()
   const unassigned: EveningBriefing['unassignedInterventions'] = []
 
@@ -136,11 +139,12 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     const team = pickOne(r.team)
     const entry =
       siteCoverage.get(site.id) ??
-      { name: site.name, count: 0, teams: new Map<string, TeamLite>() }
+      { name: site.name, count: 0, teams: new Map<string, TeamLite>(), slots: new Set<string>() }
     entry.count += 1
     if (team?.id && !entry.teams.has(team.id)) {
       entry.teams.set(team.id, { id: team.id, name: team.name, color: team.color ?? null })
     }
+    if (r.slot) entry.slots.add(r.slot)
     siteCoverage.set(site.id, entry)
 
     if (!r.assigned_team_id) {
@@ -295,6 +299,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
             referentName: comp?.referentName ?? null,
           }
         }),
+      slots: ['morning', 'afternoon', 'evening'].filter((s) => c.slots.has(s)),
       recentNotes: notesBySiteId.get(siteId) ?? [],
       fields: fieldsBySiteId.get(siteId) ?? {
         address: null,
