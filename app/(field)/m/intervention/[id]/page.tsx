@@ -5,17 +5,22 @@ import {
   getIntervention,
   listChecklistItemsByIntervention,
   listPhotosByIntervention,
+  getSiteResumeContext,
 } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
+import { listSiteNotes } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
+import { formatRelativeShort } from '@/lib/format'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
 import { SkipInterventionTrigger } from './skip-modal'
 import { PhotoCaptureButton } from './photo-capture-button'
+import { AddSiteNoteButton } from './AddSiteNoteButton'
+import { SiteResumeCard } from './SiteResumeCard'
 
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -58,6 +63,19 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         .eq('id', mission.site_id)
         .maybeSingle()
     : { data: null }
+
+  // Sprint 2 — Mémoire des lieux + Mode reprise.
+  // Notes courtes du site (3-5 affichées max) et contexte de reprise si
+  // dernier passage > 7 jours ou premier passage.
+  const siteId = mission?.site_id ?? null
+  const siteNotes = siteId ? await listSiteNotes(siteId, 5) : []
+  const resumeContext = siteId
+    ? await getSiteResumeContext(siteId, user.id)
+    : null
+  const showResumeMode =
+    resumeContext !== null &&
+    (resumeContext.daysSinceLastVisit === null ||
+      resumeContext.daysSinceLastVisit > 7)
 
   const scheduledDate = new Date(intervention.scheduled_at)
   const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {
@@ -134,6 +152,41 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
           Mission en cours — cochez les tâches au fur et à mesure
         </div>
+      )}
+
+      {/* Sprint 2 — Mode reprise du site (au-dessus de "À savoir") */}
+      {siteId && showResumeMode && resumeContext && (
+        <SiteResumeCard siteId={siteId} context={resumeContext} />
+      )}
+
+      {/* Sprint 2 — Section « À savoir pour ce site ».
+          Silence positif : si 0 notes → section absente, pas de placeholder. */}
+      {siteId && siteNotes.length > 0 && (
+        <section aria-labelledby="site-notes-heading">
+          <h2
+            id="site-notes-heading"
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2"
+          >
+            <MapPin className="h-3 w-3" />À savoir pour ce site
+          </h2>
+          <ul className="space-y-1.5">
+            {siteNotes.slice(0, 5).map((note) => (
+              <li key={note.id} className="text-sm leading-relaxed">
+                • {note.body}
+                <span className="text-[10px] text-muted-foreground/60 ml-2">
+                  ({formatRelativeShort(note.created_at)})
+                </span>
+              </li>
+            ))}
+          </ul>
+          <AddSiteNoteButton siteId={siteId} />
+        </section>
+      )}
+
+      {/* Cas : pas de notes ET pas de mode reprise → on permet quand même
+          d'ajouter une note (premier ajout). Bouton discret seul. */}
+      {siteId && siteNotes.length === 0 && !showResumeMode && (
+        <AddSiteNoteButton siteId={siteId} />
       )}
 
       <ChecklistMobile

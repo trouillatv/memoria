@@ -244,6 +244,18 @@ export interface DbSite {
   deleted_at: string | null
 }
 
+// Mémoire des lieux — Sprint 2 doctrine V5.
+// Notes courtes vivantes par site (140 chars max). PAS un wiki.
+// Format descriptif passif uniquement (verrou V4).
+export interface DbSiteNote {
+  id: string
+  site_id: string
+  body: string
+  created_at: string
+  created_by: string | null
+  deleted_at: string | null
+}
+
 export type MissionCadence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'on_demand'
 
 export interface ChecklistTemplateItem {

@@ -1,9 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listSiteNotes } from '@/lib/db/sites'
 import type {
   DbIntervention, InterventionStatus,
   DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind,
   DbInterventionAnomaly, AnomalyCategory, AnomalyStatus,
   DbInterventionValidation,
+  DbSiteNote,
 } from '@/types/db'
 
 export async function listInterventionsByMission(missionId: string): Promise<DbIntervention[]> {
@@ -425,4 +427,129 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
     .order('scheduled_at', { ascending: true })
   if (error) throw error
   return data ?? []
+}
+
+// =================================
+// Mémoire des lieux — Sprint 2 doctrine V5 (Mode reprise)
+//
+// Contexte de reprise pour un utilisateur qui revient sur un site après absence.
+// AUCUNE recommandation — uniquement des faits descriptifs (verrou V4).
+// La logique reste **opérationnelle** : "qu'est-ce qui s'est passé ici" et non
+// "qu'est-ce que Joseph fait habituellement". On lit le dernier passage du
+// user courant pour calibrer la fenêtre, jamais pour comparer ou mesurer.
+// =================================
+
+export interface SiteResumeAnomaly {
+  id: string
+  description: string
+  resolved_at: string | null
+  created_at: string
+}
+
+export interface SiteResumeContext {
+  /** Nombre de jours depuis le dernier passage validé du user sur ce site. null = jamais venu. */
+  daysSinceLastVisit: number | null
+  /** ISO de la dernière intervention completed/validated du user sur ce site. */
+  lastVisitAt: string | null
+  /** Notes du site créées dans les 30 derniers jours (max 10, tri desc). */
+  recentSiteNotes: DbSiteNote[]
+  /** Anomalies sur ce site dans les 30 derniers jours (max 10, tri desc). */
+  recentAnomalies: SiteResumeAnomaly[]
+}
+
+/**
+ * Calcule le contexte de reprise d'un site pour un user donné.
+ * Utilisé sur /m/intervention/[id] pour afficher l'encart « Reprise » quand
+ * daysSinceLastVisit est null ou > 7.
+ *
+ * Doctrine : on lit l'historique du **site**, pas l'historique de la personne.
+ * Le filtre par user sert UNIQUEMENT à calibrer la fenêtre de reprise (a-t-il
+ * besoin d'un rappel ?), jamais à produire un score ou un ratio par agent.
+ */
+export async function getSiteResumeContext(
+  siteId: string,
+  userId: string,
+): Promise<SiteResumeContext> {
+  const supabase = createAdminClient()
+  const now = new Date()
+  const thirtyDaysAgoIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  // 1. Dernière intervention du user sur ce site, completed ou validated.
+  //    On passe par missions.site_id → interventions.mission_id.
+  const { data: missions } = await supabase
+    .from('missions')
+    .select('id')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+  const missionIds = (missions ?? []).map((m) => m.id)
+
+  let lastVisitAt: string | null = null
+  if (missionIds.length > 0) {
+    const { data: lastIntv } = await supabase
+      .from('interventions')
+      .select('executed_at, scheduled_at, status')
+      .in('mission_id', missionIds)
+      .contains('team', [userId])
+      .in('status', ['completed', 'validated'])
+      .order('executed_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+    const row = lastIntv?.[0]
+    if (row) {
+      lastVisitAt = row.executed_at ?? row.scheduled_at ?? null
+    }
+  }
+
+  const daysSinceLastVisit = lastVisitAt
+    ? Math.floor((now.getTime() - new Date(lastVisitAt).getTime()) / (1000 * 60 * 60 * 24))
+    : null
+
+  // 2. site_notes des 30 derniers jours (max 10). On filtre côté JS sur la fenêtre
+  //    pour réutiliser listSiteNotes (tri desc déjà appliqué côté DB).
+  const allNotes = await listSiteNotes(siteId, 20)
+  const recentSiteNotes = allNotes.filter((n) => n.created_at >= thirtyDaysAgoIso).slice(0, 10)
+
+  // 3. anomalies des 30 derniers jours sur ce site (via missions).
+  let recentAnomalies: SiteResumeAnomaly[] = []
+  if (missionIds.length > 0) {
+    // Récupère les ids interventions du site.
+    const { data: siteInterventions } = await supabase
+      .from('interventions')
+      .select('id')
+      .in('mission_id', missionIds)
+    const intvIds = (siteInterventions ?? []).map((i) => i.id)
+
+    if (intvIds.length > 0) {
+      const { data: anomalies } = await supabase
+        .from('intervention_anomalies')
+        .select('id, description, category_other, resolved_at, created_at')
+        .in('intervention_id', intvIds)
+        .gte('created_at', thirtyDaysAgoIso)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      recentAnomalies = (anomalies ?? []).map((a) => {
+        const raw = a as {
+          id: string
+          description: string | null
+          category_other: string | null
+          resolved_at: string | null
+          created_at: string
+        }
+        return {
+          id: raw.id,
+          // Fallback : la description peut être null, on tombe sur category_other puis "—".
+          description: raw.description ?? raw.category_other ?? '—',
+          resolved_at: raw.resolved_at,
+          created_at: raw.created_at,
+        }
+      })
+    }
+  }
+
+  return {
+    daysSinceLastVisit,
+    lastVisitAt,
+    recentSiteNotes,
+    recentAnomalies,
+  }
 }
