@@ -31,12 +31,14 @@ import {
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
+import { listShareTokensForIntervention } from '@/lib/db/proof-share'
 import { formatDateLong, formatDuration } from '@/lib/format'
 import { ProofPhotoGrid } from './ProofPhotoGrid'
 import { ProofChecklist } from './ProofChecklist'
 import { ProofValidations } from './ProofValidations'
 import { ProofAnomalies } from './ProofAnomalies'
 import { PrepareDossierButton } from './PrepareDossierButton'
+import { ShareTokensSection } from './ShareTokensSection'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -50,6 +52,10 @@ export default async function ProofDetailPage({ params }: PageProps) {
   const { id } = await params
   const proof = await getProofDetail(id)
   if (!proof) notFound()
+
+  // Sprint 6 — Lecture des share tokens actifs (non révoqués) pour la
+  // section "Liens de partage actifs" qui expose le cycle de vie + clôture.
+  const shareTokens = await listShareTokensForIntervention(id)
 
   const dateSource = proof.executed_at ?? proof.scheduled_at
   const dateLabel = dateSource
@@ -134,6 +140,9 @@ export default async function ProofDetailPage({ params }: PageProps) {
           <PrepareDossierButton interventionId={proof.id} />
         </CardContent>
       </Card>
+
+      {/* Sprint 6 — Cycle de vie des liens partagés + clôture mentale (verrou V3) */}
+      <ShareTokensSection tokens={shareTokens} />
 
       {/* Meta band : 4 stats sobres */}
       <Card>
