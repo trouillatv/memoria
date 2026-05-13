@@ -49,6 +49,9 @@ export interface ChefEquipePreparation {
     aSavoir: string[]
     /** Compteurs continuité par contrat concerné. Max 2 lignes. */
     continuite: string[]
+    /** Infos d'accès par site (code entrée, contact, horaires…). Format passif,
+     *  une ligne par site concerné. Silencieux si aucun champ renseigné. */
+    accesInfos: string[]
   }
 }
 
@@ -225,6 +228,50 @@ export async function generateChefEquipePreparations(
     notesBySite.set(n.site_id, arr)
   }
 
+  // 5.b) Pré-charger les champs structurés "fiche site" pour les sites
+  // concernés. Format passif (code, contact, horaires), descriptif uniquement.
+  type SiteAccessRow = {
+    id: string
+    access_code: string | null
+    alarm_code: string | null
+    contact_name: string | null
+    contact_phone: string | null
+    access_hours: string | null
+  }
+  const accessBySite = new Map<string, Omit<SiteAccessRow, 'id'>>()
+  if (allSiteIds.size > 0) {
+    const { data: accessRows } = await supabase
+      .from('sites')
+      .select(
+        'id, access_code, alarm_code, contact_name, contact_phone, access_hours',
+      )
+      .in('id', Array.from(allSiteIds))
+    for (const a of (accessRows ?? []) as SiteAccessRow[]) {
+      const { id, ...rest } = a
+      accessBySite.set(id, rest)
+    }
+  }
+
+  function buildAccessLine(
+    siteName: string,
+    a: Omit<SiteAccessRow, 'id'> | undefined,
+  ): string | null {
+    if (!a) return null
+    const parts: string[] = []
+    if (a.access_code) parts.push(`code ${a.access_code}`)
+    if (a.alarm_code) parts.push(`alarme ${a.alarm_code}`)
+    if (a.contact_name && a.contact_phone) {
+      parts.push(`${a.contact_name} ${a.contact_phone}`)
+    } else if (a.contact_phone) {
+      parts.push(a.contact_phone)
+    } else if (a.contact_name) {
+      parts.push(a.contact_name)
+    }
+    if (a.access_hours) parts.push(a.access_hours)
+    if (parts.length === 0) return null
+    return `${siteName} : ${parts.join(' · ')}`
+  }
+
   // 6) Pré-charger les compteurs continuité par contrat concerné (lazy import).
   //    On regroupe par contractId pour ne lancer qu'un getContractContinuity par
   //    contrat (déduplication). Les contractId null sont ignorés.
@@ -314,6 +361,16 @@ export async function generateChefEquipePreparations(
       if (continuiteLines.length >= 2) break
     }
 
+    // Accès : une ligne par site concerné dont au moins un champ est rempli.
+    const accesInfos: string[] = []
+    const seenSites = new Set<string>()
+    for (const p of passages) {
+      if (seenSites.has(p.siteId)) continue
+      seenSites.add(p.siteId)
+      const line = buildAccessLine(p.siteName, accessBySite.get(p.siteId))
+      if (line) accesInfos.push(line)
+    }
+
     result.push({
       userId,
       userFullName: chef.full_name ?? '—',
@@ -327,6 +384,7 @@ export async function generateChefEquipePreparations(
         })),
         aSavoir: aSavoirRaw,
         continuite: continuiteLines,
+        accesInfos,
       },
     })
   }

@@ -16,7 +16,7 @@ import {
   applySiteExtendedToFormData,
   hasAnyExtendedField,
 } from './SiteExtendedFields'
-import { SiteFieldsDisplay } from './SiteFieldsDisplay'
+import { SiteFieldsDisplay, hasAnySiteField } from './SiteFieldsDisplay'
 
 interface Props {
   site: SiteWithStats
@@ -82,7 +82,9 @@ export function SiteGlobalRow({ site, inactive }: Props) {
     startTransition(async () => {
       const r = await deleteSiteAction(fd)
       if (r && 'error' in r && r.error) {
-        // Message explicatif (long) — toast plus persistant.
+        // Fallback : si jamais une dépendance échappe au check côté UI
+        // (race condition, donnée créée entre temps), on garde le toast
+        // long pour ne pas perdre le message.
         toast.error(r.error, { duration: 8000 })
       } else {
         toast.success('Site supprimé')
@@ -90,6 +92,30 @@ export function SiteGlobalRow({ site, inactive }: Props) {
       }
     })
   }
+
+  // Delete bloqué côté UI dès qu'il y a une donnée liée (les counts viennent
+  // déjà du chargement de la page, donc pas de query supplémentaire). Cohérent
+  // avec la doctrine V5 : aucun historique n'est jamais perdu.
+  const blockers: string[] = []
+  if (site.missions_count > 0) {
+    blockers.push(`${site.missions_count} mission${site.missions_count > 1 ? 's' : ''}`)
+  }
+  if (site.interventions_count > 0) {
+    blockers.push(
+      `${site.interventions_count} intervention${site.interventions_count > 1 ? 's' : ''}`,
+    )
+  }
+  if (site.site_notes_count > 0) {
+    blockers.push(
+      `${site.site_notes_count} note${site.site_notes_count > 1 ? 's' : ''} mémoire`,
+    )
+  }
+  const deleteDisabled = blockers.length > 0
+  const deleteTitle = deleteDisabled
+    ? `Suppression impossible : lié à ${blockers.join(', ')}. ` +
+      `Le site basculera automatiquement en « Inactif » 6 mois après ` +
+      `sa dernière intervention.`
+    : 'Supprimer ce site (aucune donnée liée).'
 
   const muted = inactive ? 'opacity-60' : ''
 
@@ -166,12 +192,15 @@ export function SiteGlobalRow({ site, inactive }: Props) {
     )
   }
 
+  const hasFields = hasAnySiteField(site)
+
   return (
-    <li className={`rounded-lg border p-4 bg-card ${muted}`}>
-      <div className="flex items-start justify-between gap-3">
+    <li className={`rounded-lg border bg-card overflow-hidden ${muted}`}>
+      {/* Cluster A — Identification primaire : nom + badges + actions */}
+      <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold">{site.name}</span>
+            <span className="text-base font-semibold leading-tight">{site.name}</span>
             {site.contract_name && (
               <Link
                 href={`/contracts/${site.contract_id}/sites`}
@@ -195,21 +224,6 @@ export function SiteGlobalRow({ site, inactive }: Props) {
               {site.notes}
             </div>
           )}
-          <div className="pt-1">
-            <SiteFieldsDisplay site={site} />
-          </div>
-          <div className="text-[11px] text-muted-foreground tabular-nums flex items-center gap-3 flex-wrap pt-1">
-            <span>{site.missions_count} mission{site.missions_count > 1 ? 's' : ''}</span>
-            <span>·</span>
-            <span>
-              {site.interventions_count} intervention
-              {site.interventions_count > 1 ? 's' : ''}
-            </span>
-            <span>·</span>
-            <span>{site.site_notes_count} note{site.site_notes_count > 1 ? 's' : ''}</span>
-            <span>·</span>
-            <span>Dernière interv. {formatLastDate(site.last_intervention_at)}</span>
-          </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <button
@@ -224,14 +238,36 @@ export function SiteGlobalRow({ site, inactive }: Props) {
           <button
             type="button"
             onClick={remove}
-            disabled={pending}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-red-700 disabled:opacity-50"
-            aria-label="Supprimer le site"
+            disabled={pending || deleteDisabled}
+            title={deleteTitle}
+            aria-label={deleteTitle}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Supprimer
           </button>
         </div>
+      </div>
+
+      {/* Cluster B — Infos pratiques (séparé visuellement par fond + bordure top) */}
+      {hasFields && (
+        <div className="border-t bg-slate-50/60 px-4 py-2">
+          <SiteFieldsDisplay site={site} />
+        </div>
+      )}
+
+      {/* Cluster C — Méta-données : counts + dernière intervention */}
+      <div className="border-t px-4 py-2 text-[11px] text-muted-foreground tabular-nums flex items-center gap-3 flex-wrap">
+        <span>{site.missions_count} mission{site.missions_count > 1 ? 's' : ''}</span>
+        <span aria-hidden>·</span>
+        <span>
+          {site.interventions_count} intervention
+          {site.interventions_count > 1 ? 's' : ''}
+        </span>
+        <span aria-hidden>·</span>
+        <span>{site.site_notes_count} note{site.site_notes_count > 1 ? 's' : ''}</span>
+        <span aria-hidden>·</span>
+        <span>Dernière interv. {formatLastDate(site.last_intervention_at)}</span>
       </div>
     </li>
   )

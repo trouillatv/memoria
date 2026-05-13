@@ -65,9 +65,10 @@ export function buildWhatsAppMessage(args: {
   includePassages: boolean
   includeASavoir: boolean
   includeContinuite: boolean
+  includeAcces: boolean
   freeNote: string
 }): string {
-  const { preparation: p, includePassages, includeASavoir, includeContinuite, freeNote } = args
+  const { preparation: p, includePassages, includeASavoir, includeContinuite, includeAcces, freeNote } = args
   const firstName = firstNameOf(p.userFullName)
   const dateFr = formatDateShortFr(p.forDate)
 
@@ -80,6 +81,14 @@ export function buildWhatsAppMessage(args: {
       lines.push(
         `• ${passage.time} — ${passage.siteName} (${passage.missionShortLabel})`,
       )
+    }
+  }
+
+  if (includeAcces && p.blocks.accesInfos.length > 0) {
+    lines.push('')
+    lines.push('Accès :')
+    for (const info of p.blocks.accesInfos) {
+      lines.push(`• ${info}`)
     }
   }
 
@@ -120,6 +129,7 @@ export function ChefEquipeCard({
   preparation: ChefEquipePreparation
 }) {
   const [includePassages, setIncludePassages] = useState(true)
+  const [includeAcces, setIncludeAcces] = useState(true)
   const [includeASavoir, setIncludeASavoir] = useState(true)
   const [includeContinuite, setIncludeContinuite] = useState(true)
   const [freeNote, setFreeNote] = useState('')
@@ -146,9 +156,10 @@ export function ChefEquipeCard({
         includePassages,
         includeASavoir,
         includeContinuite,
+        includeAcces,
         freeNote,
       }),
-    [preparation, includePassages, includeASavoir, includeContinuite, freeNote],
+    [preparation, includePassages, includeASavoir, includeContinuite, includeAcces, freeNote],
   )
 
   const phoneOk = Boolean(preparation.userPhone)
@@ -213,6 +224,27 @@ export function ChefEquipeCard({
                     ({p.missionShortLabel})
                   </span>
                 </li>
+              ))}
+            </ul>
+          )}
+        </ToggleBlock>
+
+        {/* Bloc accès — fiche site (code entrée, contact, horaires). */}
+        <ToggleBlock
+          id={`acces-${preparation.userId}`}
+          label={`Accès (${preparation.blocks.accesInfos.length})`}
+          checked={includeAcces}
+          onCheckedChange={setIncludeAcces}
+          disabled={preparation.blocks.accesInfos.length === 0}
+        >
+          {preparation.blocks.accesInfos.length === 0 ? (
+            <p className="text-xs italic text-muted-foreground">
+              Aucune info d&apos;accès renseignée sur les sites concernés.
+            </p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {preparation.blocks.accesInfos.map((a, idx) => (
+                <li key={idx}>• {a}</li>
               ))}
             </ul>
           )}

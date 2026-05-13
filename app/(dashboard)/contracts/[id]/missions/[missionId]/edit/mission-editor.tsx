@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, X, GripVertical } from 'lucide-react'
 import { toast } from 'sonner'
 import { createMissionAction, updateMissionAction } from '../../../missions-actions'
+import { SiteSelector } from './SiteSelector'
 import type { DbSite, DbEngagement, DbMission, MissionCadence, ChecklistTemplateItem } from '@/types/db'
 
 interface MissionEditorProps {
@@ -99,30 +100,13 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
 
         <div className="space-y-1.5">
           <label className="text-xs text-muted-foreground">Site *</label>
-          <select
+          <SiteSelector
+            sites={sites.map((s) => ({ id: s.id, name: s.name }))}
+            otherSites={otherSites}
             value={siteId}
-            onChange={(e) => setSiteId(e.target.value)}
+            onChange={setSiteId}
             disabled={mode === 'edit' || pending}
-            className="w-full rounded border p-2 text-sm bg-background"
-          >
-            {otherSites && otherSites.length > 0 ? (
-              <>
-                <optgroup label="Ce contrat">
-                  {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </optgroup>
-                <optgroup label="Autres sites du tenant">
-                  {otherSites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.contract_name ? ` — ${s.contract_name}` : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              </>
-            ) : (
-              sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
-            )}
-          </select>
+          />
           {mode === 'edit' && (
             <p className="text-[11px] text-muted-foreground italic">Le site n&apos;est pas modifiable après création.</p>
           )}

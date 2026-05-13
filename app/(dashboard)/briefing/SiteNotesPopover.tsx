@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { MessageSquare } from 'lucide-react'
+import { Info, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   SiteFieldsDisplay,
@@ -175,8 +175,8 @@ export function SiteNotesPopover({ siteName, notes, fields }: Props) {
         onMouseEnter={() => hasContent && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={cn(
-          'inline-flex items-center gap-1 font-medium transition-colors',
-          hasContent && 'cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground/60',
+          'inline-flex items-center gap-1.5 font-medium transition-colors',
+          hasContent && 'cursor-pointer hover:text-brand-700',
           !hasContent && 'cursor-default',
         )}
         aria-expanded={visible}
@@ -184,10 +184,20 @@ export function SiteNotesPopover({ siteName, notes, fields }: Props) {
       >
         {siteName}
         {hasContent && (
-          <MessageSquare
-            className="h-3 w-3 text-muted-foreground/60 shrink-0"
-            aria-hidden
-          />
+          // Chip "fiche" visible sur mobile (pas hover-only). Bordure + pastille
+          // si notes datées présentes pour signaler "il y a de l'info récente".
+          <span className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-1.5 py-0.5 text-[10px] font-normal text-brand-700 uppercase tracking-wider">
+            <Info className="h-2.5 w-2.5" aria-hidden />
+            fiche
+            {notes.length > 0 && (
+              <span
+                className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] rounded-full bg-brand-600 text-white text-[9px] font-semibold tabular-nums px-1"
+                aria-label={`${notes.length} note${notes.length > 1 ? 's' : ''} de mémoire`}
+              >
+                {notes.length}
+              </span>
+            )}
+          </span>
         )}
       </button>
       {mounted && panel && createPortal(panel, document.body)}

@@ -21,6 +21,7 @@ import { SkipInterventionTrigger } from './skip-modal'
 import { PhotoCaptureButton } from './photo-capture-button'
 import { AddSiteNoteButton } from './AddSiteNoteButton'
 import { SiteResumeCard } from './SiteResumeCard'
+import { SiteAccessCard } from './SiteAccessCard'
 
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -54,12 +55,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   const signedUrlsMap = await getSignedPhotoUrls(photos.map((p) => p.storage_path))
   const signedUrls = Object.fromEntries(signedUrlsMap)
 
-  // Site for context
+  // Site for context — champs structurés inclus pour l'écran terrain
+  // (code d'entrée, contact, accès… utiles à l'arrivée sur site).
   const supabase = createAdminClient()
   const { data: site } = mission
     ? await supabase
         .from('sites')
-        .select('id, name, address')
+        .select(
+          'id, name, address, notes, access_code, alarm_code, contact_name, contact_phone, access_hours, access_instructions',
+        )
         .eq('id', mission.site_id)
         .maybeSingle()
     : { data: null }
@@ -115,6 +119,11 @@ export default async function FieldInterventionPage({ params }: { params: Promis
             <div className="min-w-0">
               <div>{site.name}</div>
               {site.address && <div className="text-sm">{site.address}</div>}
+              {site.notes && (
+                <div className="text-sm italic text-slate-600 mt-1 whitespace-pre-wrap">
+                  {site.notes}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -153,6 +162,13 @@ export default async function FieldInterventionPage({ params }: { params: Promis
           Mission en cours — cochez les tâches au fur et à mesure
         </div>
       )}
+
+      {/* Fiche site — infos pratiques (code entrée, contact, accès).
+          Affichée en haut juste après le header (besoin EN ARRIVANT).
+          Repliée par défaut si intervention déjà in_progress : l'agent
+          est sur place, le code n'est plus utile, on libère la place
+          pour la checklist. */}
+      {site && <SiteAccessCard site={site} collapsed={isInProgress} />}
 
       {/* Sprint 2 — Mode reprise du site (au-dessus de "À savoir") */}
       {siteId && showResumeMode && resumeContext && (

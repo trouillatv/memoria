@@ -9,7 +9,7 @@
 // vers "Inactif" et reste consultable indéfiniment.
 
 import { redirect } from 'next/navigation'
-import { MapPin } from 'lucide-react'
+import { MapPin, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSitesGlobal, isSiteInactive } from '@/lib/db/sites'
 import { SiteGlobalRow } from './SiteGlobalRow'
@@ -67,12 +67,13 @@ export default async function SitesGlobalPage() {
           </section>
 
           {inactive.length > 0 && (
-            <details className="space-y-3 group">
-              <summary className="cursor-pointer text-sm font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-2 select-none">
+            <details className="space-y-3 group [&_summary::-webkit-details-marker]:hidden [&_summary::marker]:hidden">
+              <summary className="cursor-pointer text-sm font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 select-none">
+                <ChevronRight
+                  className="h-3.5 w-3.5 transition-transform group-open:rotate-90"
+                  aria-hidden
+                />
                 Inactifs ({inactive.length})
-                <span className="text-[10px] font-normal normal-case tracking-normal text-muted-foreground/70 group-open:hidden">
-                  · cliquer pour afficher
-                </span>
               </summary>
               <ul className="space-y-2 mt-3">
                 {inactive.map((s) => (

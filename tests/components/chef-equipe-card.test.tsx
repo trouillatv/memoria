@@ -33,6 +33,7 @@ function makePreparation(
         'Lapérouse : code accès changé lundi',
       ],
       continuite: ['CHT : 23 passages consécutifs sans rupture'],
+      accesInfos: [],
     },
     ...override,
   }
@@ -95,6 +96,7 @@ describe('ChefEquipeCard', () => {
       includePassages: true,
       includeASavoir: true,
       includeContinuite: true,
+      includeAcces: true,
       freeNote: '',
     })
     const noASavoir = buildWhatsAppMessage({
@@ -102,6 +104,7 @@ describe('ChefEquipeCard', () => {
       includePassages: true,
       includeASavoir: false,
       includeContinuite: true,
+      includeAcces: true,
       freeNote: '',
     })
     expect(allOn).toMatch(/À savoir/)
