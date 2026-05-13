@@ -163,19 +163,22 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         </div>
       )}
 
-      {/* FAB Photo libre — flottant en bas droite quand intervention en cours.
-          Action #1 du terrain : capturer une preuve sans dérouler la checklist. */}
+      {/* J2 — Bouton photo pleine-largeur sticky bas, 80px de haut.
+          Doctrine V5 Pilier 5 : humidité du bloc + gants → un FAB rond rate
+          2 photos sur 3. Cible large + texte gros = taux de capture plus haut. */}
       {isInProgress && (
         <>
-          <div className="h-20" aria-hidden /> {/* spacer pour éviter overlap CompleteButton */}
-          <div className="fixed bottom-6 right-6 z-20">
-            <PhotoCaptureButton
-              interventionId={id}
-              checklistItemId={null}
-              kind="proof"
-              label="Photo libre"
-              variant="fab"
-            />
+          <div className="h-24" aria-hidden /> {/* spacer pour éviter overlap CompleteButton */}
+          <div className="fixed bottom-0 inset-x-0 z-20 p-3 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none">
+            <div className="pointer-events-auto max-w-md mx-auto">
+              <PhotoCaptureButton
+                interventionId={id}
+                checklistItemId={null}
+                kind="proof"
+                label="Prendre une photo"
+                variant="fullwidth"
+              />
+            </div>
           </div>
         </>
       )}

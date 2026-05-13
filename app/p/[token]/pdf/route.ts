@@ -32,6 +32,11 @@ import {
 } from '@/lib/db/proof-share'
 import { ProofDossierPdf } from '@/lib/pdf/proof-dossier'
 import { MonthlyReportPdf } from '@/lib/pdf/monthly-report'
+import { getTenantName } from '@/lib/tenant'
+import {
+  ensureVerificationTokenForIntervention,
+  ensureVerificationTokenForMonthlyReport,
+} from '@/lib/db/proof-verification'
 
 // Force dynamic — chaque téléchargement re-valide le token côté serveur.
 export const dynamic = 'force-dynamic'
@@ -64,13 +69,37 @@ export async function GET(req: Request, ctx: RouteCtx) {
     console.warn('[public-pdf] recordShareAccess failed:', e),
   )
 
-  // 3. QR code pointant vers cette même route publique (HTML) — c'est le lien
-  //    que l'auditeur scanne pour vérifier.
+  // 3. QR code — Slice S3 Doctrine V5 Pilier 6 :
+  //    Le QR pointe vers la route STABLE `/v/[verification_token]`, PAS vers
+  //    `/p/[share_token]` (qui expire en 7-30j). Sylvie peut archiver le PDF
+  //    et le vérifier dans 3 ans même après expiration du share_token.
+  //    Fallback : si la création du verification_token échoue (race condition,
+  //    table absente, etc.), on retombe sur l'URL share — la vérif fonctionne
+  //    tant que le share n'a pas expiré.
   const origin = new URL(req.url).origin
   const shareUrl = `${origin}/p/${shareToken.token}`
+  let qrUrl = shareUrl
+  try {
+    const vt = shareToken.intervention_id
+      ? await ensureVerificationTokenForIntervention({
+          interventionId: shareToken.intervention_id,
+          tenantName: getTenantName(),
+        })
+      : shareToken.contract_id && shareToken.report_month
+        ? await ensureVerificationTokenForMonthlyReport({
+            contractId: shareToken.contract_id,
+            reportMonth: shareToken.report_month,
+            tenantName: getTenantName(),
+          })
+        : null
+    if (vt) qrUrl = `${origin}/v/${vt.token}`
+  } catch (e) {
+    console.warn('[public-pdf] verification token creation failed (using share url fallback):', e)
+  }
+
   let qrDataUrl: string | null = null
   try {
-    qrDataUrl = await QRCode.toDataURL(shareUrl, {
+    qrDataUrl = await QRCode.toDataURL(qrUrl, {
       errorCorrectionLevel: 'M',
       margin: 1,
       scale: 4,
@@ -133,6 +162,8 @@ async function renderDossierProofPdf(input: {
         generatedAt: new Date().toISOString(),
         includeIdentities: input.includeIdentities,
         expiresAt: input.expiresAt,
+        // Slice S1 — Pilier 6 : prestataire en hero du PDF
+        tenantName: getTenantName(),
       }),
     )
   } catch (e) {
@@ -191,6 +222,8 @@ async function renderMonthlyReportPdf(input: {
         shareUrl: input.shareUrl,
         generatedAt: new Date().toISOString(),
         expiresAt: shareToken.expires_at,
+        // Slice S1 — Pilier 6 : prestataire en hero du PDF
+        tenantName: getTenantName(),
       }),
     )
   } catch (e) {

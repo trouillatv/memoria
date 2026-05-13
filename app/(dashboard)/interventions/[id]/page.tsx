@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import Link from 'next/link'
 import { ArrowLeft, Calendar, MapPin, FileSearch, Users } from 'lucide-react'
 import {
@@ -14,6 +15,16 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrls } from '@/lib/storage/intervention-photos'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ParticipantsPanel } from './participants-panel'
+import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
+import { formatInterventionShareText } from '@/lib/share/format-intervention'
+
+/** Origin absolu calculé depuis les headers (cohérent avec prepareProofDossierAction). */
+async function buildAbsoluteUrl(path: string): Promise<string> {
+  const h = await headers()
+  const proto = h.get('x-forwarded-proto') ?? 'http'
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+  return `${proto}://${host}${path}`
+}
 import { ExecutionPanel } from './execution-panel'
 import { AnomaliesPanel } from './anomalies-panel'
 import { ValidationPanel } from './validation-panel'
@@ -88,15 +99,28 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold">{mission?.name ?? 'Intervention'}</h1>
           <StatusBadge status={intervention.status} size="md" />
-          {showProofLink && (
-            <Link
-              href={`/preuves/${intervention.id}`}
-              className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              <FileSearch className="h-3.5 w-3.5" />
-              Voir dans Dossier de preuves
-            </Link>
-          )}
+          {/* M1 — Bouton "Partager" (WhatsApp, email, etc.). Côté droit. */}
+          <div className="ml-auto inline-flex items-center gap-3">
+            <ShareInterventionButton
+              text={formatInterventionShareText({
+                missionName: mission?.name ?? 'Intervention',
+                siteName: site?.name ?? '',
+                scheduledFor: intervention.scheduled_for ?? intervention.scheduled_at.slice(0, 10),
+                slot: intervention.slot,
+              })}
+              url={await buildAbsoluteUrl(`/interventions/${intervention.id}`)}
+              variant="inline"
+            />
+            {showProofLink && (
+              <Link
+                href={`/preuves/${intervention.id}`}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <FileSearch className="h-3.5 w-3.5" />
+                Voir dans Dossier de preuves
+              </Link>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
           <span className="inline-flex items-center gap-1">

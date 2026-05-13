@@ -8,6 +8,19 @@ import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 
+/** J1 — Prénom de l'agent à partir du `full_name` (1er mot). Fallback : local-part
+ * de l'email avant `@` capitalisée. Évite « Bonjour user@email.com » disgracieux. */
+function firstNameOf(fullName: string | null, email: string): string {
+  const trimmed = (fullName ?? '').trim()
+  if (trimmed.length > 0) {
+    const first = trimmed.split(/\s+/)[0]
+    if (first) return first
+  }
+  const local = (email.split('@')[0] ?? email).trim()
+  if (local.length === 0) return ''
+  return local[0].toUpperCase() + local.slice(1)
+}
+
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
 }
@@ -111,7 +124,12 @@ export default async function FieldHomePage() {
     <div className="space-y-6 max-w-md">
       {todayInterventions.length > 0 && (
         <section className="space-y-3">
-          <h1 className="text-xl font-semibold">Mes missions</h1>
+          {/* J1 — Doctrine V5 Pilier 5 : dignité > sophistication.
+              Reconnaître Joseph par son prénom avant de lui afficher une liste.
+              Le vocabulaire ("mission" vs "passage") sera arbitré par A/B pilote. */}
+          <h1 className="text-xl font-semibold">
+            Bonjour {firstNameOf(user.full_name, user.email)}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {todayInterventions.length === 1
               ? '1 mission aujourd’hui'

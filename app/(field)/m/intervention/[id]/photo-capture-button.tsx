@@ -12,7 +12,11 @@ interface Props {
   label: string
   disabled?: boolean
   onPhotoQueued?: () => void  // callback for parent to refresh local thumbs
-  variant?: 'default' | 'fab'  // fab = floating action button (gros, rond, position fixed à appliquer par parent)
+  /** Variantes :
+   *  - `default` : bouton inline classique
+   *  - `fab` : floating action button rond (position fixed à appliquer par parent)
+   *  - `fullwidth` : J2 — bouton pleine-largeur 80px, parent applique position sticky bottom */
+  variant?: 'default' | 'fab' | 'fullwidth'
 }
 
 export function PhotoCaptureButton({
@@ -57,6 +61,25 @@ export function PhotoCaptureButton({
   }
 
   const isFab = variant === 'fab'
+  const isFullWidth = variant === 'fullwidth'
+
+  // Styles par variante. `fullwidth` (J2 Doctrine V5 Pilier 5) : 80px de haut,
+  // pleine largeur, texte gros, cible doigt + gants + humidité optimisée.
+  let className: string
+  let style: React.CSSProperties
+  if (isFab) {
+    className =
+      'inline-flex items-center justify-center rounded-full bg-foreground text-background shadow-lg active:scale-95 transition-transform disabled:opacity-60 size-14'
+    style = { minHeight: 56 }
+  } else if (isFullWidth) {
+    className =
+      'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold text-base active:scale-[0.98] transition-transform shadow-lg disabled:opacity-60'
+    style = { minHeight: 80 }
+  } else {
+    className =
+      'inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border bg-card active:bg-muted text-sm font-medium disabled:opacity-50'
+    style = { minHeight: 52 }
+  }
 
   return (
     <>
@@ -65,14 +88,10 @@ export function PhotoCaptureButton({
         onClick={handleClick}
         disabled={disabled || pending}
         aria-label={isFab ? label : undefined}
-        className={
-          isFab
-            ? 'inline-flex items-center justify-center rounded-full bg-foreground text-background shadow-lg active:scale-95 transition-transform disabled:opacity-60 size-14'
-            : 'inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border bg-card active:bg-muted text-sm font-medium disabled:opacity-50'
-        }
-        style={isFab ? { minHeight: 56 } : { minHeight: 52 }}
+        className={className}
+        style={style}
       >
-        <Camera className={isFab ? 'h-6 w-6' : 'h-4 w-4'} />
+        <Camera className={isFab || isFullWidth ? 'h-6 w-6' : 'h-4 w-4'} />
         {!isFab && label}
       </button>
       <input

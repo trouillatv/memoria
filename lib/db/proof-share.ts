@@ -303,6 +303,39 @@ export async function createMonthlyReportToken(
 }
 
 /**
+ * MC-6 — Récupère la note du DG du DERNIER rapport mensuel approuvé pour un
+ * contrat, en excluant le mois en cours (`excludeMonth`). Pour pré-remplir le
+ * champ « Note du DG » du mois suivant et réduire la peur de la page blanche.
+ *
+ * Doctrine V5 Pilier 2 : réduit la charge mentale. La voix de Patrick est
+ * la SIENNE, on le rappelle juste de sa note précédente, jamais d'IA générative.
+ *
+ * Renvoie null si aucun rapport antérieur n'existe.
+ */
+export async function getLastMonthlyReportNote(input: {
+  contractId: string
+  excludeMonth: string // yyyy-mm
+}): Promise<{ month: string; note: string } | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('proof_share_tokens')
+    .select('report_month, dg_note')
+    .eq('contract_id', input.contractId)
+    .not('report_month', 'is', null)
+    .neq('report_month', input.excludeMonth)
+    .is('revoked_at', null)
+    .not('dg_note', 'is', null)
+    .order('report_month', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  if (!data || !data.report_month) return null
+  const note = (data.dg_note ?? '').trim()
+  if (note.length === 0) return null
+  return { month: data.report_month, note }
+}
+
+/**
  * Récupère un token "rapport mensuel" + le dataset factuel associé.
  *
  * Retourne null si :

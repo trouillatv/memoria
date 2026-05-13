@@ -384,13 +384,14 @@ export function ProofDossierPdf({
       creator="NetoIAge — Preuves vérifiables"
     >
       <Page size="A4" style={styles.page}>
-        {/* Header (apparait en haut de la première page seulement) */}
+        {/* Header — Slice S1 Pilier 6 : prestataire en hero, NetoIAge en footer.
+            Si tenantName absent : fallback "Votre entreprise" (jamais "NETOIAGE"). */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.brand}>NETOIAGE</Text>
-            <Text style={styles.brandSubtitle}>
-              {tenantName ? `${tenantName} · ` : ''}Dossier de preuves
+            <Text style={styles.brand}>
+              {((tenantName ?? '').trim() || 'Votre entreprise').toUpperCase()}
             </Text>
+            <Text style={styles.brandSubtitle}>Dossier de preuves</Text>
           </View>
           <View style={styles.headerRight}>
             <Text>Généré le {fmtDateTime(generatedAt)}</Text>
@@ -580,7 +581,7 @@ export function ProofDossierPdf({
               <Text style={styles.footerUrl}>Lien public non encore généré</Text>
             )}
             <Text style={styles.footerWatermark}>
-              Preuves NetoIAge — vérifiables via QR code · Généré le {fmtDateTime(generatedAt)}
+              Infrastructure : NetoIAge · Vérifiable via QR code · Généré le {fmtDateTime(generatedAt)}
             </Text>
           </View>
           <Text

@@ -21,7 +21,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Check, Copy, Download, ExternalLink } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, Eye, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -49,9 +49,22 @@ interface MonthlyReportEditorProps {
   data: MonthlyReportData
   contractId: string
   month: string
+  /** MC-6 — Dernière note du DG (mois précédent approuvé) pour pré-remplissage. */
+  previousNote?: { month: string; note: string } | null
 }
 
-export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEditorProps) {
+const MONTHS_FR_FULL = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+]
+
+function formatMonthFr(yyyymm: string): string {
+  const [y, m] = yyyymm.split('-').map(Number)
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return yyyymm
+  return `${MONTHS_FR_FULL[m - 1]} ${y}`
+}
+
+export function MonthlyReportEditor({ data, contractId, month, previousNote }: MonthlyReportEditorProps) {
   // Pré-sélection par défaut : les PHOTOS_DEFAULT premières candidates.
   // L'algorithme côté helper place déjà en tête les photos avec caption non
   // vide puis applique la diversité site, donc cette tranche est "intelligente"
@@ -67,6 +80,8 @@ export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEd
   const [selectedIds, setSelectedIds] = useState<Set<string>>(defaultSelected)
   const [note, setNote] = useState<string>('')
   const [isPending, startTransition] = useTransition()
+  // MC-5 — Preview dialog : Patrick voit le rapport sans créer de share token.
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   // Slice E.2 — dialog "Rapport prêt" affichant les URLs après approbation.
   const [readyDialog, setReadyDialog] = useState<{
@@ -128,11 +143,24 @@ export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEd
       <AnomaliesResolvedSection anomalies={data.anomaliesResolved} />
       <AnomaliesOpenSection anomalies={data.anomaliesStillOpen} />
       <CumulativeSection data={data} />
-      <NoteSection note={note} onChange={setNote} />
+      <NoteSection
+        note={note}
+        onChange={setNote}
+        previousNote={previousNote}
+      />
 
       <div className="flex items-center justify-end gap-2 pt-2">
         <Button variant="outline" onClick={() => history.back()} disabled={isPending}>
           Annuler
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setPreviewOpen(true)}
+          disabled={isPending || selectedIds.size < 1}
+          title="Aperçu de ce que verra le client"
+        >
+          <Eye className="size-4" />
+          Aperçu
         </Button>
         <Button onClick={handleApprove} disabled={isPending || selectedIds.size < 1}>
           {isPending ? 'Préparation…' : 'Approuver et préparer le partage'}
@@ -143,6 +171,16 @@ export function MonthlyReportEditor({ data, contractId, month }: MonthlyReportEd
       <ReadyDialog
         result={readyDialog}
         onClose={() => setReadyDialog(null)}
+      />
+
+      {/* MC-5 — Preview dialog : voir le rapport tel que Sylvie le verra. */}
+      <PreviewDialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        data={data}
+        selectedIds={selectedIds}
+        note={note}
+        month={month}
       />
     </div>
   )
@@ -572,11 +610,16 @@ function CumulativeSection({ data }: { data: MonthlyReportData }) {
 function NoteSection({
   note,
   onChange,
+  previousNote,
 }: {
   note: string
   onChange: (v: string) => void
+  previousNote?: { month: string; note: string } | null
 }) {
   const remaining = NOTE_MAX - note.length
+  // MC-6 — Le link n'apparaît que si une note antérieure existe ET que le
+  // champ est vide (sinon ça surprendrait : effacer ce que l'utilisateur a écrit).
+  const canReuse = !!previousNote && note.length === 0
   return (
     <Card>
       <CardHeader>
@@ -595,9 +638,23 @@ function NoteSection({
           placeholder="Votre voix — pas l'IA. Une ligne ou deux suffisent."
           aria-label="Note du dirigeant"
         />
-        <p className="text-xs text-muted-foreground text-right tabular-nums">
-          {remaining} / {NOTE_MAX}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          {canReuse ? (
+            <button
+              type="button"
+              onClick={() => onChange(previousNote!.note.slice(0, NOTE_MAX))}
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+              title={previousNote!.note}
+            >
+              Reprendre la note de {formatMonthFr(previousNote!.month)}
+            </button>
+          ) : (
+            <span aria-hidden />
+          )}
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {remaining} / {NOTE_MAX}
+          </p>
+        </div>
       </CardContent>
     </Card>
   )
@@ -628,4 +685,137 @@ function formatDayLong(iso: string): string {
   } catch {
     return iso
   }
+}
+
+// ----------------------------------------------------------------------------
+// MC-5 — Preview dialog : vue client avant approbation
+// ----------------------------------------------------------------------------
+//
+// Doctrine V5 Pilier 4 — Patrick voit ce que Sylvie verra AVANT d'engager
+// (réduit l'anxiété du "trou noir post-envoi"). Pas de share token créé.
+// Pas de PDF généré. Juste un rendu visuel des éléments-clés : photos
+// sélectionnées + note du DG + stats du mois.
+
+function PreviewDialog({
+  open,
+  onClose,
+  data,
+  selectedIds,
+  note,
+  month,
+}: {
+  open: boolean
+  onClose: () => void
+  data: MonthlyReportData
+  selectedIds: Set<string>
+  note: string
+  month: string
+}) {
+  const selectedPhotos = data.photoCandidates.filter((p) => selectedIds.has(p.id))
+  const monthLabel = data.period.monthLabel
+  // Pour cohérence visuelle avec /p/[token] : on affiche en-tête anonymisé,
+  // stats agrégées, photos sélectionnées, note du DG.
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Aperçu du rapport</DialogTitle>
+          <DialogDescription>
+            Ce que verra le client {data.contract.client_name} après votre approbation.
+            Aucun lien n&apos;est créé tant que vous n&apos;avez pas cliqué sur
+            « Approuver et préparer le partage ».
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 text-sm">
+          {/* Sous-header sobre */}
+          <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+            Document factuel anonymisé · Vérifiable via QR code
+          </p>
+
+          {/* Titre */}
+          <div>
+            <h3 className="text-lg font-semibold">
+              Rapport mensuel — {data.contract.client_name}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {data.contract.name} · {monthLabel} ({month})
+            </p>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <PreviewStat n={data.counts.interventionsExecuted} label="interventions" />
+            <PreviewStat n={data.counts.photosCount} label="photos" />
+            <PreviewStat n={data.counts.anomaliesResolved} label="anomalies résolues" />
+            <PreviewStat n={data.counts.validationsCount} label="validations" />
+          </div>
+
+          {/* Note DG */}
+          {note.trim().length > 0 ? (
+            <div className="rounded-md border bg-muted/30 p-3">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                Note du dirigeant
+              </div>
+              <p className="text-sm whitespace-pre-wrap">{note.trim()}</p>
+            </div>
+          ) : (
+            <p className="text-xs italic text-muted-foreground">
+              Aucune note du dirigeant — ce mois-ci sera livré sans message personnel.
+            </p>
+          )}
+
+          {/* Photos sélectionnées */}
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+              Photos partagées ({selectedPhotos.length})
+            </div>
+            {selectedPhotos.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">
+                Aucune photo sélectionnée.
+              </p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {selectedPhotos.map((p) => (
+                  <div
+                    key={p.id}
+                    className="relative aspect-square rounded-md overflow-hidden border bg-muted"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.thumbnail_url ?? p.url}
+                      alt={p.caption ?? 'Photo'}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                    {p.site_name && (
+                      <span className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] px-1.5 py-0.5 truncate">
+                        {p.site_name}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <Button variant="outline" onClick={onClose}>
+            Fermer
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PreviewStat({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-2">
+      <div className="text-xl font-semibold tabular-nums">{n.toLocaleString('fr-FR')}</div>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+    </div>
+  )
 }

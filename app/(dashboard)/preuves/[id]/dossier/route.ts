@@ -18,6 +18,8 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
 import { getShareTokenById } from '@/lib/db/proof-share'
 import { ProofDossierPdf } from '@/lib/pdf/proof-dossier'
+import { getTenantName } from '@/lib/tenant'
+import { ensureVerificationTokenForIntervention } from '@/lib/db/proof-verification'
 
 interface RouteCtx {
   params: Promise<{ id: string }>
@@ -65,11 +67,23 @@ export async function GET(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: 'Intervention introuvable' }, { status: 404 })
   }
 
-  // 5. Génère le QR code (PNG data URL) si on a une shareUrl.
+  // 5. Génère le QR code (PNG data URL) — Slice S3 : pointe vers l'URL de
+  //    vérification STABLE plutôt que vers le share_token temporaire.
   let qrDataUrl: string | null = null
-  if (shareUrl) {
+  let qrTarget: string | null = null
+  try {
+    const vt = await ensureVerificationTokenForIntervention({
+      interventionId: id,
+      tenantName: getTenantName(),
+    })
+    qrTarget = `${url.origin}/v/${vt.token}`
+  } catch (e) {
+    console.warn('[dossier route] verification token creation failed (using share url fallback):', e)
+    qrTarget = shareUrl
+  }
+  if (qrTarget) {
     try {
-      qrDataUrl = await QRCode.toDataURL(shareUrl, {
+      qrDataUrl = await QRCode.toDataURL(qrTarget, {
         errorCorrectionLevel: 'M',
         margin: 1,
         scale: 4,
@@ -90,6 +104,8 @@ export async function GET(req: Request, ctx: RouteCtx) {
         generatedAt: new Date().toISOString(),
         includeIdentities,
         expiresAt,
+        // Slice S1 — Pilier 6 : prestataire en hero du PDF
+        tenantName: getTenantName(),
       }),
     )
   } catch (e) {

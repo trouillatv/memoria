@@ -508,6 +508,10 @@ export function MonthlyReportPdf({
 // Sous-composants
 // ----------------------------------------------------------------------------
 
+// Slice S1 — Doctrine V5 Pilier 6 « Infrastructure invisible ».
+// Le hero visuel = le prestataire (tenantName en gros). NetoIAge passe en
+// footer ("Infrastructure : NetoIAge"). Le client doit reconnaître son
+// prestataire en premier, l'outil en second.
 function PdfHeader({
   tenantName,
   generatedAt,
@@ -517,13 +521,12 @@ function PdfHeader({
   generatedAt: string
   expiresAt?: string | null
 }) {
+  const displayName = (tenantName ?? '').trim() || 'Votre entreprise'
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
-        <Text style={styles.brand}>NETOIAGE</Text>
-        <Text style={styles.brandSubtitle}>
-          {tenantName ? `${tenantName} · ` : ''}Rapport mensuel
-        </Text>
+        <Text style={styles.brand}>{displayName.toUpperCase()}</Text>
+        <Text style={styles.brandSubtitle}>Rapport mensuel</Text>
       </View>
       <View style={styles.headerRight}>
         <Text>Généré le {fmtDateTime(generatedAt)}</Text>
@@ -603,7 +606,7 @@ function PdfFooter({
           <Text style={styles.footerUrl}>Lien public non encore généré</Text>
         )}
         <Text style={styles.footerWatermark}>
-          NetoIAge — Rapport mensuel · Généré le {fmtDateTime(generatedAt)}
+          Infrastructure : NetoIAge · Généré le {fmtDateTime(generatedAt)}
         </Text>
       </View>
       <Text

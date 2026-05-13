@@ -8,7 +8,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch, Users, Calendar } from 'lucide-react'
+import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch, Users, Calendar, CalendarCheck } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +22,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Tableau de bord',  icon: Sparkles,      roles: ['admin', 'manager'] },
   { href: '/semaine',   label: 'Semaine',           icon: Calendar,      roles: ['admin', 'manager'] },
+  { href: '/briefing',  label: 'Briefing du soir',  icon: CalendarCheck, roles: ['admin', 'manager'] },
   { href: '/missions',  label: 'Missions',         icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
   { href: '/equipes',   label: 'Équipes',           icon: Users,         roles: ['admin', 'manager'] },
   { href: '/preuves',   label: 'Dossier de preuves', icon: FileSearch,   roles: ['admin', 'manager'] },

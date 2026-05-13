@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getContractMonthlyReport } from '@/lib/db/monthly-report'
+import { getLastMonthlyReportNote } from '@/lib/db/proof-share'
 import { MonthlyReportEditor } from './MonthlyReportEditor'
 import { MonthNavigation } from './MonthNavigation'
 
@@ -55,6 +56,16 @@ export default async function MonthlyReportPage({ params, searchParams }: PagePr
   }
   if (!data) notFound()
 
+  // MC-6 — Note du dernier rapport mensuel approuvé (pré-remplissage proposé).
+  // Best-effort : si la requête échoue, on ignore silencieusement (la feature
+  // est une commodité, jamais bloquante).
+  let previousNote: { month: string; note: string } | null = null
+  try {
+    previousNote = await getLastMonthlyReportNote({ contractId: id, excludeMonth: month })
+  } catch {
+    previousNote = null
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 py-4">
       <Link
@@ -74,7 +85,12 @@ export default async function MonthlyReportPage({ params, searchParams }: PagePr
 
       <MonthNavigation contractId={id} currentMonth={month} />
 
-      <MonthlyReportEditor data={data} contractId={id} month={month} />
+      <MonthlyReportEditor
+        data={data}
+        contractId={id}
+        month={month}
+        previousNote={previousNote}
+      />
     </div>
   )
 }

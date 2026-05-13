@@ -10,6 +10,7 @@ import { ChevronRight, Home } from 'lucide-react'
 const LABELS: Record<string, string> = {
   dashboard: 'Tableau de bord',
   semaine: 'Semaine',
+  briefing: 'Briefing du soir',
   missions: 'Missions',
   equipes: 'Équipes',
   preuves: 'Dossier de preuves',
