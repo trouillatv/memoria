@@ -22,6 +22,36 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-14 — Discipline produit post-audits : verrou V6 + registre features
+
+**Décision** : après les 5 audits de rôle (DG, Manager, Chef d'équipe, Cliente, Avocate) + 5 audits techniques sur les Phases 1-4 livrées, formalisation d'un **principe d'attention minimale** (verrou V6) et création d'un **registre des features refusées** pour éviter la dérive ERP.
+
+**Raison** : les 9 audits ont identifié ~20 frictions réelles. Beaucoup de solutions paresseuses (push notifications, ticketing client, score de criticité, auto-distribution planning, portail extranet) ramèneraient NetoIAge vers Progiclean/PROPRET. La discipline produit est désormais la principale source de différenciation.
+
+**Impact code** :
+- `docs/09_REGLES_DE_MODIFICATION.md` : nouveau verrou V6 « Principe d'attention minimale »
+- `docs/11_REGISTRE_FEATURES.md` : nouveau document trackant sprints livrés, en cours, reportées (post-pilote), refusées (anti-doctrine)
+
+**Features explicitement refusées et inscrites en registre** :
+- Push notifications temps réel anomalies
+- Tri par criticité avec champ severity
+- Score d'urgence
+- Auto-distribution planning
+- Module ticketing client
+- Portail extranet client
+- Email auto multi-destinataires
+- Suivi de qui a lu quoi (côté collaborateurs internes)
+
+**Features reportées post-pilote réel** (à reconsidérer après retour terrain, pas avant) :
+- Mode prise de poste
+- Patterns récurrents
+- Transmission silencieuse à l'archivage user
+- Voix sur À savoir + anomalies
+
+**Phrase produit consolidée** : *NetoIAge = l'endroit où la mémoire opérationnelle survit aux humains, et tient juridiquement, sans demander leur attention.*
+
+---
+
 ## 2026-05-14 — Mot de passe temporaire partagé `netoiage2026` (revert)
 
 **Décision DG (revert)** : mot de passe temporaire en dur, `netoiage2026`, pour toutes les créations en mode temp_password et tous les resets. Pas de variable d'environnement, pas de dialog d'affichage à la création/au reset.

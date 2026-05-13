@@ -30,6 +30,25 @@ Ces règles ne sont pas négociables. Elles protègent l'éthique du produit.
 - Notes de site = faits descriptifs (140 chars max), pas d'évaluation ni de jugement
 - Exemple OK : "Code alarme changé en avril" / Interdit : "Chef d'équipe souvent en retard sur ce site"
 
+### Verrou V6 — Principe d'attention minimale (2026-05-14)
+
+NetoIAge prend l'angle inverse des outils B2B classiques : **minimiser l'attention demandée à l'utilisateur**, jamais la maximiser. Slack, Salesforce, Notion et tous leurs équivalents maximisent l'attention pour maximiser l'usage. NetoIAge fait le contraire — l'utilisateur ouvre l'app quand il en a besoin, l'app ne le sollicite jamais sans raison vitale.
+
+**Test à appliquer à chaque feature nouvelle** : *est-ce qu'elle ajoute une demande d'attention non sollicitée ?*
+- Si oui → **refusée par défaut**.
+- Exceptions acceptables : (1) urgence vitale réelle (très rare), (2) demande explicite et configurable de l'utilisateur.
+
+**Décisions de conception qui en découlent** :
+- Une anomalie nouvelle → apparaît dans le briefing du soir, jamais en push.
+- Un contrat sous tension → phrase neutre dans la liste, jamais un badge rouge clignotant.
+- Un dossier consulté par un client → tracé en audit log, jamais surfacé en notification.
+- Un événement résolu → disparaît silencieusement, sans toast triomphal.
+- Une nouvelle information sur un site → apparaît la prochaine fois qu'on ouvre le site, jamais poussée à tous.
+
+**Implication pratique** : tous les fix demandés par les utilisateurs du type « envoie-moi une notification quand X » doivent être challengés. La solution doctrine-aligned est presque toujours : surfacer dans la vue suivante, pas interrompre maintenant.
+
+---
+
 ### Verrou V4.1 : « À savoir » descriptifs, jamais directifs (Phase 3, migration 045)
 - `site_notes.kind = 'a_savoir'` = information utile à l'arrivée sur site, optionnellement temporaire (`active_until`).
 - Doit décrire le **lieu** (« Portail à fermer à 19h selon usage », « Client absent jusqu'au 20 mai »).
