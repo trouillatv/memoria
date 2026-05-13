@@ -257,10 +257,19 @@ export interface DbSite {
 // Mémoire des lieux — Sprint 2 doctrine V5.
 // Notes courtes vivantes par site (140 chars max). PAS un wiki.
 // Format descriptif passif uniquement (verrou V4).
+//
+// Phase 3.1 (migration 045) : distinction note vs a_savoir.
+//   - note : observation passée descriptive
+//   - a_savoir : information utile à l'arrivée sur site, peut avoir une date
+//     d'expiration (active_until). Reste descriptif du lieu, jamais directif.
+export type SiteNoteKind = 'note' | 'a_savoir'
+
 export interface DbSiteNote {
   id: string
   site_id: string
   body: string
+  kind: SiteNoteKind
+  active_until: string | null
   created_at: string
   created_by: string | null
   deleted_at: string | null

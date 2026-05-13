@@ -200,7 +200,12 @@ export function SiteGlobalRow({ site, inactive }: Props) {
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-base font-semibold leading-tight">{site.name}</span>
+            <Link
+              href={`/sites/${site.id}`}
+              className="text-base font-semibold leading-tight hover:underline"
+            >
+              {site.name}
+            </Link>
             {site.contract_name && (
               <Link
                 href={`/contracts/${site.contract_id}/sites`}

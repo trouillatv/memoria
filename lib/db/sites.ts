@@ -13,6 +13,18 @@ export async function listSites(): Promise<DbSite[]> {
   return data ?? []
 }
 
+export async function getSiteById(siteId: string): Promise<DbSite | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('sites')
+    .select('*')
+    .eq('id', siteId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (error) throw error
+  return (data ?? null) as DbSite | null
+}
+
 export async function listSitesByContract(contractId: string): Promise<DbSite[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -328,6 +340,9 @@ export async function listSiteNotes(siteId: string, limit?: number): Promise<DbS
  * `created_by` est récupéré du contexte auth — sans user → throws (la policy
  * INSERT exige created_by = auth.uid()).
  *
+ * Phase 3.1 (migration 045) : ajout de kind (note|a_savoir) et active_until.
+ * active_until ne peut être posé que sur kind='a_savoir' (contrainte DB).
+ *
  * Doctrine V5 : édition contrainte. Pas de wording managérial côté UI ; la
  * validation backend reste neutre (contrainte de longueur uniquement, pas de
  * lexique imposé sur le contenu — le système ne juge pas les mots de l'humain).
@@ -335,6 +350,8 @@ export async function listSiteNotes(siteId: string, limit?: number): Promise<DbS
 export async function createSiteNote(input: {
   siteId: string
   body: string
+  kind?: 'note' | 'a_savoir'
+  activeUntil?: string | null
 }): Promise<DbSiteNote> {
   const trimmed = input.body.trim()
   if (trimmed.length < 3) {
@@ -342,6 +359,10 @@ export async function createSiteNote(input: {
   }
   if (trimmed.length > 140) {
     throw new Error('Note trop longue (140 caractères maximum)')
+  }
+  const kind = input.kind ?? 'note'
+  if (kind === 'note' && input.activeUntil) {
+    throw new Error('active_until ne s\'applique qu\'aux À savoir')
   }
 
   // Récupère l'utilisateur authentifié pour created_by (cohérent avec la RLS).
@@ -356,12 +377,34 @@ export async function createSiteNote(input: {
     .insert({
       site_id: input.siteId,
       body: trimmed,
+      kind,
+      active_until: kind === 'a_savoir' ? (input.activeUntil ?? null) : null,
       created_by: user.id,
     })
     .select('*')
     .single()
   if (error) throw error
   return data as DbSiteNote
+}
+
+/**
+ * Liste les « À savoir » actifs (kind='a_savoir', non expirés, non supprimés)
+ * d'un site. Affichés en bannière sur la fiche site et au démarrage d'une
+ * intervention. Pas de tracking de lecture, pas d'acquittement.
+ */
+export async function listSiteASavoirActive(siteId: string): Promise<DbSiteNote[]> {
+  const supabase = createAdminClient()
+  const today = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('site_notes')
+    .select('*')
+    .eq('site_id', siteId)
+    .eq('kind', 'a_savoir')
+    .is('deleted_at', null)
+    .or(`active_until.is.null,active_until.gte.${today}`)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbSiteNote[]
 }
 
 /**

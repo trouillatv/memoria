@@ -30,6 +30,15 @@ Ces règles ne sont pas négociables. Elles protègent l'éthique du produit.
 - Notes de site = faits descriptifs (140 chars max), pas d'évaluation ni de jugement
 - Exemple OK : "Code alarme changé en avril" / Interdit : "Chef d'équipe souvent en retard sur ce site"
 
+### Verrou V4.1 : « À savoir » descriptifs, jamais directifs (Phase 3, migration 045)
+- `site_notes.kind = 'a_savoir'` = information utile à l'arrivée sur site, optionnellement temporaire (`active_until`).
+- Doit décrire le **lieu** (« Portail à fermer à 19h selon usage », « Client absent jusqu'au 20 mai »).
+- Ne doit **JAMAIS** désigner ou instruire une **personne** (« Joseph doit X », « Tu dois faire Y », « Toujours rappeler à l'agent de Z »).
+- Aucun acquittement de lecture, aucun tracking, aucune notification push.
+- Le mot « consigne » a été délibérément remplacé par « À savoir » pour casser l'héritage administratif/militaire de la directive.
+
+Patterns à éviter dans le body : « doit », « il faut », « obligatoire », « impératif », pronoms tu/vous adressés à une personne. Si un manager veut donner une directive, c'est entre lui et son équipe — hors système.
+
 ---
 
 ## Patterns de code obligatoires
