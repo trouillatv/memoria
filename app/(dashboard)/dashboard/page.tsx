@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Shield } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listContracts } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
@@ -201,6 +202,21 @@ export default async function DashboardPage() {
         firstName={firstName}
         activeContractsCount={active.length}
       />
+
+      {/* Sprint 3 — UX-8 Mode litige express : bouton sobre, immédiatement
+          visible, jamais alarmant. Doctrine V5 verrou V4 : wording strictement
+          passif (« Préparer ma défense », pas « ALERTE litige »). */}
+      <div>
+        <Link href="/litige" data-testid="dashboard-litige-link">
+          <Button
+            variant="outline"
+            className="border-amber-200 text-amber-900 hover:bg-amber-50"
+          >
+            <Shield className="h-4 w-4 mr-2" />
+            Préparer ma défense
+          </Button>
+        </Link>
+      </div>
 
       <StatsBand
         weekPulse={weekPulse}
