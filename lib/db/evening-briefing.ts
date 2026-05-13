@@ -50,6 +50,7 @@ export interface EveningBriefing {
     }>
     recentNotes: Array<{ body: string; created_at: string }>
     fields: {
+      address: string | null
       access_code: string | null
       alarm_code: string | null
       contact_name: string | null
@@ -235,6 +236,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
   const notesBySiteId = new Map<string, Array<{ body: string; created_at: string }>>()
   type SiteFieldsRow = {
     id: string
+    address: string | null
     access_code: string | null
     alarm_code: string | null
     contact_name: string | null
@@ -254,7 +256,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
       supabase
         .from('sites')
         .select(
-          'id, access_code, alarm_code, contact_name, contact_phone, access_hours, access_instructions',
+          'id, address, access_code, alarm_code, contact_name, contact_phone, access_hours, access_instructions',
         )
         .in('id', coveredSiteIds),
     ])
@@ -295,6 +297,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
         }),
       recentNotes: notesBySiteId.get(siteId) ?? [],
       fields: fieldsBySiteId.get(siteId) ?? {
+        address: null,
         access_code: null,
         alarm_code: null,
         contact_name: null,

@@ -3,8 +3,11 @@
 // Sprint 4 PC — Card chef d'équipe sur /preparation (Doctrine V5).
 //
 // Maeva consulte cette card le soir, ajuste 3 toggles + une note libre 140
-// chars max, puis ouvre wa.me/<phone>?text=<message encodé> pour envoyer
-// individuellement (Maxim 9 : jamais groupe collectif).
+// chars max, puis ouvre api.whatsapp.com/send?phone=…&text=… pour envoyer
+// individuellement (Maxim 9 : jamais groupe collectif). On utilise
+// api.whatsapp.com/send (et non wa.me) pour la compatibilité Windows :
+// wa.me redirige sur Windows vers une page « Continue to Chat » qui échoue
+// à pré-remplir le message.
 //
 // Verrous gravés ici :
 //   - V4 : aucune formulation de contrôle pré-générée (helper DB l'a filtré).
@@ -78,8 +81,9 @@ export function buildWhatsAppMessage(args: {
 
   if (includePassages && p.blocks.passages.length > 0) {
     for (const passage of p.blocks.passages) {
+      const teamSuffix = passage.teamName ? ` · ${passage.teamName}` : ''
       lines.push(
-        `• ${passage.time} — ${passage.siteName} (${passage.missionShortLabel})`,
+        `• ${passage.time} — ${passage.siteName}${teamSuffix} (${passage.missionShortLabel})`,
       )
     }
   }
@@ -116,11 +120,14 @@ export function buildWhatsAppMessage(args: {
   return lines.join('\n')
 }
 
-/** Construit le lien wa.me 1-à-1 (Maxim 9). Pas de groupe collectif. */
-function buildWaMeLink(phone: string, message: string): string {
-  // wa.me attend le numéro sans le `+`.
+/** Construit le lien WhatsApp 1-à-1 cross-platform (Maxim 9).
+ *  api.whatsapp.com/send fonctionne mieux que wa.me sur Windows
+ *  (pas de page « Continue to Chat » intermédiaire). Sur mobile/Mac
+ *  ça ouvre WhatsApp Desktop/Web pareil. */
+function buildWhatsAppLink(phone: string, message: string): string {
+  // L'endpoint attend le numéro sans le `+` initial.
   const digits = phone.replace(/^\+/, '')
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+  return `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(message)}`
 }
 
 export function ChefEquipeCard({
@@ -163,7 +170,7 @@ export function ChefEquipeCard({
   )
 
   const phoneOk = Boolean(preparation.userPhone)
-  const waLink = phoneOk ? buildWaMeLink(preparation.userPhone!, message) : null
+  const waLink = phoneOk ? buildWhatsAppLink(preparation.userPhone!, message) : null
 
   const markSent = () => {
     try {
@@ -219,7 +226,10 @@ export function ChefEquipeCard({
               {preparation.blocks.passages.map((p, idx) => (
                 <li key={idx}>
                   <span className="font-medium tabular-nums">{p.time}</span>{' '}
-                  — {p.siteName}{' '}
+                  — {p.siteName}
+                  {p.teamName && (
+                    <span className="text-muted-foreground"> · {p.teamName}</span>
+                  )}{' '}
                   <span className="text-muted-foreground">
                     ({p.missionShortLabel})
                   </span>

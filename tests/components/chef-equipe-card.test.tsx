@@ -25,8 +25,8 @@ function makePreparation(
     forDate: '2026-05-14',
     blocks: {
       passages: [
-        { time: '7h', siteName: 'CHT', missionShortLabel: 'bionettoyage' },
-        { time: '14h', siteName: 'Lapérouse', missionShortLabel: 'tournée AM' },
+        { time: '7h', siteName: 'CHT', missionShortLabel: 'bionettoyage', teamName: null },
+        { time: '14h', siteName: 'Lapérouse', missionShortLabel: 'tournée AM', teamName: null },
       ],
       aSavoir: [
         'CHT : humidité signalée hier',
@@ -74,15 +74,18 @@ describe('ChefEquipeCard', () => {
     expect(screen.queryByTestId('wa-send-link')).toBeNull()
   })
 
-  it('téléphone OK → bouton "Envoyer" actif avec wa.me URL générée', () => {
+  it('téléphone OK → bouton "Envoyer" actif avec api.whatsapp.com URL générée', () => {
     render(<ChefEquipeCard preparation={makePreparation()} />)
     const link = screen.getByTestId('wa-send-link') as HTMLAnchorElement
     expect(link).toBeInTheDocument()
     const href = link.getAttribute('href') ?? ''
-    // wa.me sans le `+` initial
-    expect(href.startsWith('https://wa.me/687123456?text=')).toBe(true)
+    // api.whatsapp.com/send — endpoint cross-platform (Windows-friendly),
+    // sans le `+` initial.
+    expect(
+      href.startsWith('https://api.whatsapp.com/send?phone=687123456&text='),
+    ).toBe(true)
     // Le message encodé contient le prénom et la mention "Demain"
-    const decoded = decodeURIComponent(href.split('?text=')[1] ?? '')
+    const decoded = decodeURIComponent(href.split('&text=')[1] ?? '')
     expect(decoded).toMatch(/Salut Joseph/)
     expect(decoded).toMatch(/Demain/)
     expect(decoded).toMatch(/CHT/)
@@ -113,6 +116,45 @@ describe('ChefEquipeCard', () => {
     expect(noASavoir).not.toMatch(/humidité signalée hier/)
     // Passages doivent toujours être là
     expect(noASavoir).toMatch(/CHT/)
+  })
+
+  it('WhatsApp message inclut le nom d\'équipe si présent', () => {
+    const prep = makePreparation({
+      blocks: {
+        passages: [
+          {
+            time: '7h',
+            siteName: 'Lycée Lapérouse',
+            missionShortLabel: 'Sols hall',
+            teamName: 'Équipe Alpha',
+          },
+          {
+            time: '14h',
+            siteName: 'CHT',
+            missionShortLabel: 'tournée AM',
+            teamName: null,
+          },
+        ],
+        aSavoir: [],
+        continuite: [],
+        accesInfos: [],
+      },
+    })
+    const msg = buildWhatsAppMessage({
+      preparation: prep,
+      includePassages: true,
+      includeASavoir: true,
+      includeContinuite: true,
+      includeAcces: true,
+      freeNote: '',
+    })
+    // Passage avec teamName → ` · Équipe Alpha ` doit apparaître AVANT la mission
+    expect(msg).toMatch(
+      /• 7h — Lycée Lapérouse · Équipe Alpha \(Sols hall\)/,
+    )
+    // Passage sans teamName → format classique, pas de séparateur ` · `
+    expect(msg).toMatch(/• 14h — CHT \(tournée AM\)/)
+    expect(msg).not.toMatch(/14h — CHT ·/)
   })
 
   it('note 140 chars max → input limité', () => {

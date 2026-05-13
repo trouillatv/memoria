@@ -20,6 +20,7 @@ interface Note {
 }
 
 interface SiteFields {
+  address: string | null
   access_code: string | null
   alarm_code: string | null
   contact_name: string | null

@@ -2,10 +2,11 @@
 // uniquement les champs renseignés. Variantes : 'inline' (page sites, plus
 // d'espace) et 'compact' (popover briefing, dense).
 
-import { KeyRound, Lock, Phone, Clock, MapPinned } from 'lucide-react'
+import { KeyRound, Lock, Phone, Clock, MapPinned, MapPin } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 interface SiteFields {
+  address: string | null
   access_code: string | null
   alarm_code: string | null
   contact_name: string | null
@@ -16,7 +17,8 @@ interface SiteFields {
 
 export function hasAnySiteField(s: SiteFields): boolean {
   return Boolean(
-    s.access_code ||
+    s.address ||
+      s.access_code ||
       s.alarm_code ||
       s.contact_name ||
       s.contact_phone ||
@@ -39,6 +41,9 @@ export function SiteFieldsDisplay({ site, variant = 'inline' }: Props) {
       : site.contact_name || site.contact_phone || null
 
   const items: Array<{ icon: typeof KeyRound; label: string; value: string }> = []
+  if (site.address) {
+    items.push({ icon: MapPin, label: 'Adresse', value: site.address })
+  }
   if (site.access_code) {
     items.push({ icon: KeyRound, label: 'Code entrée', value: site.access_code })
   }

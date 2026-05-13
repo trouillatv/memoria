@@ -34,6 +34,8 @@ export interface ChefEquipePassage {
   siteName: string
   /** Libellé court de la mission (mission.name tronqué si besoin). */
   missionShortLabel: string
+  /** Nom de l'équipe assignée à l'intervention, si renseignée (sinon null). */
+  teamName: string | null
 }
 
 export interface ChefEquipePreparation {
@@ -117,7 +119,7 @@ export async function generateChefEquipePreparations(
   const { data: interventions, error: iErr } = await supabase
     .from('interventions')
     .select(
-      `id, slot, team,
+      `id, slot, team, assigned_team_id,
        mission:missions!inner(
          id, name,
          site:sites!inner(id, name, contract_id)
@@ -131,6 +133,7 @@ export async function generateChefEquipePreparations(
     id: string
     slot: InterventionSlot | null
     team: string[] | null
+    assigned_team_id: string | null
     mission:
       | { id: string; name: string; site: { id: string; name: string; contract_id: string | null } | { id: string; name: string; contract_id: string | null }[] | null }
       | Array<{ id: string; name: string; site: { id: string; name: string; contract_id: string | null } | { id: string; name: string; contract_id: string | null }[] | null }>
@@ -174,6 +177,25 @@ export async function generateChefEquipePreparations(
   for (const u of (usersData ?? []) as DbUserRow[]) chefById.set(u.id, u)
   if (chefById.size === 0) return []
 
+  // 3.b) Résolution batch des noms d'équipes assignées (interventions.assigned_team_id).
+  //      Le nom d'équipe est utile dans le briefing WhatsApp pour que le chef sache
+  //      à quelle équipe est affectée chaque passage (ex. « Équipe Alpha »).
+  const teamIdSet = new Set<string>()
+  for (const r of rows) {
+    if (r.assigned_team_id) teamIdSet.add(r.assigned_team_id)
+  }
+  const teamNameById = new Map<string, string>()
+  if (teamIdSet.size > 0) {
+    const { data: teamRows } = await supabase
+      .from('teams')
+      .select('id, name')
+      .in('id', Array.from(teamIdSet))
+      .is('deleted_at', null)
+    for (const t of (teamRows ?? []) as Array<{ id: string; name: string }>) {
+      teamNameById.set(t.id, t.name)
+    }
+  }
+
   // 4) Grouper par chef d'équipe → liste de passages.
   type Passage = ChefEquipePassage & {
     siteId: string
@@ -186,6 +208,9 @@ export async function generateChefEquipePreparations(
     if (!mission) continue
     const site = pickOne(mission.site)
     if (!site) continue
+    const teamName = r.assigned_team_id
+      ? teamNameById.get(r.assigned_team_id) ?? null
+      : null
     for (const uid of r.team ?? []) {
       if (!chefById.has(uid)) continue
       const arr = passagesByChef.get(uid) ?? []
@@ -193,6 +218,7 @@ export async function generateChefEquipePreparations(
         time: slotToTimeFr(r.slot),
         siteName: site.name,
         missionShortLabel: shortMissionLabel(mission.name),
+        teamName,
         siteId: site.id,
         contractId: site.contract_id,
       })
@@ -229,9 +255,10 @@ export async function generateChefEquipePreparations(
   }
 
   // 5.b) Pré-charger les champs structurés "fiche site" pour les sites
-  // concernés. Format passif (code, contact, horaires), descriptif uniquement.
+  // concernés. Format passif (adresse, code, contact, horaires), descriptif uniquement.
   type SiteAccessRow = {
     id: string
+    address: string | null
     access_code: string | null
     alarm_code: string | null
     contact_name: string | null
@@ -243,7 +270,7 @@ export async function generateChefEquipePreparations(
     const { data: accessRows } = await supabase
       .from('sites')
       .select(
-        'id, access_code, alarm_code, contact_name, contact_phone, access_hours',
+        'id, address, access_code, alarm_code, contact_name, contact_phone, access_hours',
       )
       .in('id', Array.from(allSiteIds))
     for (const a of (accessRows ?? []) as SiteAccessRow[]) {
@@ -258,6 +285,7 @@ export async function generateChefEquipePreparations(
   ): string | null {
     if (!a) return null
     const parts: string[] = []
+    if (a.address) parts.push(a.address)
     if (a.access_code) parts.push(`code ${a.access_code}`)
     if (a.alarm_code) parts.push(`alarme ${a.alarm_code}`)
     if (a.contact_name && a.contact_phone) {
@@ -381,6 +409,7 @@ export async function generateChefEquipePreparations(
           time: p.time,
           siteName: p.siteName,
           missionShortLabel: p.missionShortLabel,
+          teamName: p.teamName,
         })),
         aSavoir: aSavoirRaw,
         continuite: continuiteLines,
