@@ -16,13 +16,36 @@ async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: st
   return { userId: user.id }
 }
 
+// Champs structurés "fiche site" — migration 036. Tous facultatifs, max 500
+// chars (200 pour les codes courts), pour rester opérationnel sans devenir CMS.
+const siteFieldsSchema = {
+  access_code: z.string().max(200).optional(),
+  alarm_code: z.string().max(200).optional(),
+  contact_name: z.string().max(200).optional(),
+  contact_phone: z.string().max(50).optional(),
+  access_hours: z.string().max(200).optional(),
+  access_instructions: z.string().max(1000).optional(),
+}
+
 const createSiteSchema = z.object({
   contract_id: z.string().uuid(),
   client_id: z.string().uuid(),
   name: z.string().min(1).max(200),
   address: z.string().max(500).optional(),
   notes: z.string().max(2000).optional(),
+  ...siteFieldsSchema,
 })
+
+function pickSiteFields(formData: FormData) {
+  return {
+    access_code: formData.get('access_code') || undefined,
+    alarm_code: formData.get('alarm_code') || undefined,
+    contact_name: formData.get('contact_name') || undefined,
+    contact_phone: formData.get('contact_phone') || undefined,
+    access_hours: formData.get('access_hours') || undefined,
+    access_instructions: formData.get('access_instructions') || undefined,
+  }
+}
 
 /**
  * Find or create a "client" record matching the contract's client_name.
@@ -67,6 +90,7 @@ export async function createSiteAction(formData: FormData) {
     name: formData.get('name'),
     address: formData.get('address') || undefined,
     notes: formData.get('notes') || undefined,
+    ...pickSiteFields(formData),
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
@@ -79,6 +103,12 @@ export async function createSiteAction(formData: FormData) {
     name: parsed.data.name,
     address: parsed.data.address ?? null,
     notes: parsed.data.notes ?? null,
+    access_code: parsed.data.access_code ?? null,
+    alarm_code: parsed.data.alarm_code ?? null,
+    contact_name: parsed.data.contact_name ?? null,
+    contact_phone: parsed.data.contact_phone ?? null,
+    access_hours: parsed.data.access_hours ?? null,
+    access_instructions: parsed.data.access_instructions ?? null,
   })
 
   revalidatePath(`/contracts/${parsed.data.contract_id}/sites`)
@@ -92,6 +122,7 @@ const updateSiteSchema = z.object({
   name: z.string().min(1).max(200),
   address: z.string().max(500).optional(),
   notes: z.string().max(2000).optional(),
+  ...siteFieldsSchema,
 })
 
 export async function updateSiteAction(formData: FormData) {
@@ -104,6 +135,7 @@ export async function updateSiteAction(formData: FormData) {
     name: formData.get('name'),
     address: formData.get('address') || undefined,
     notes: formData.get('notes') || undefined,
+    ...pickSiteFields(formData),
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
@@ -111,6 +143,12 @@ export async function updateSiteAction(formData: FormData) {
     name: parsed.data.name,
     address: parsed.data.address ?? null,
     notes: parsed.data.notes ?? null,
+    access_code: parsed.data.access_code ?? null,
+    alarm_code: parsed.data.alarm_code ?? null,
+    contact_name: parsed.data.contact_name ?? null,
+    contact_phone: parsed.data.contact_phone ?? null,
+    access_hours: parsed.data.access_hours ?? null,
+    access_instructions: parsed.data.access_instructions ?? null,
   })
 
   revalidatePath(`/contracts/${parsed.data.contract_id}/sites`)

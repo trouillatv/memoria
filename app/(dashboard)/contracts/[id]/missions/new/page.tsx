@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { getContract } from '@/lib/db/contracts'
-import { listSitesByContract } from '@/lib/db/sites'
+import { listSitesByContract, listSitesGlobal } from '@/lib/db/sites'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { MissionEditor } from '../[missionId]/edit/mission-editor'
 
@@ -16,12 +16,18 @@ export default async function NewMissionPage({
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [sites, engagements] = await Promise.all([
+  const [sites, engagements, allSites] = await Promise.all([
     listSitesByContract(id),
     listEngagementsByContract(id),
+    listSitesGlobal(),
   ])
+  // Sites rattachés à d'autres contrats (réutilisation cross-contrat).
+  const contractSiteIds = new Set(sites.map((s) => s.id))
+  const otherSites = allSites
+    .filter((s) => !contractSiteIds.has(s.id))
+    .map((s) => ({ id: s.id, name: s.name, contract_name: s.contract_name }))
 
-  if (sites.length === 0) {
+  if (sites.length === 0 && otherSites.length === 0) {
     return (
       <div className="max-w-2xl rounded-lg border border-amber-200 bg-amber-50 p-6">
         <p className="text-sm text-amber-800">
@@ -42,6 +48,7 @@ export default async function NewMissionPage({
         mode="create"
         contractId={id}
         sites={sites}
+        otherSites={otherSites}
         engagements={engagements}
         defaultSiteId={defaultSiteId}
       />

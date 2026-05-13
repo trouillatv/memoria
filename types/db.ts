@@ -243,6 +243,13 @@ export interface DbSite {
   name: string
   address: string | null
   notes: string | null
+  // Champs structurés "fiche site" (migration 036). Tous facultatifs.
+  access_code: string | null
+  alarm_code: string | null
+  contact_name: string | null
+  contact_phone: string | null
+  access_hours: string | null
+  access_instructions: string | null
   created_at: string
   deleted_at: string | null
 }

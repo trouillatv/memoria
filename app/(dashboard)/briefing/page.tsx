@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
+import { SiteNotesPopover } from './SiteNotesPopover'
 import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
 import { headers } from 'next/headers'
 
@@ -139,29 +140,29 @@ export default async function BriefingPage({
           ) : (
             <ul className="space-y-2 text-sm">
               {briefing.coverageBySite.map((s) => (
-                <li key={s.site_name} className="space-y-0.5">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <span className="font-medium">{s.site_name}</span>
-                    <span className="inline-flex items-center gap-2 flex-wrap shrink-0">
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {s.count} interv.
-                      </span>
-                      {s.teams.map((t) => (
-                        <TeamCompositionPopover
-                          key={t.id}
-                          teamName={t.name}
-                          teamColor={t.color}
-                          memberNames={t.memberNames}
-                          referentName={t.referentName}
-                        />
-                      ))}
+                <li
+                  key={s.site_name}
+                  className="flex items-start justify-between gap-3 flex-wrap"
+                >
+                  <SiteNotesPopover
+                    siteName={s.site_name}
+                    notes={s.recentNotes}
+                    fields={s.fields}
+                  />
+                  <span className="inline-flex items-center gap-2 flex-wrap shrink-0">
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {s.count} interv.
                     </span>
-                  </div>
-                  {s.recentNotes.length > 0 && (
-                    <p className="text-[11px] text-muted-foreground italic pl-0.5 line-clamp-2">
-                      {s.recentNotes.map((n) => n.body).join(' · ')}
-                    </p>
-                  )}
+                    {s.teams.map((t) => (
+                      <TeamCompositionPopover
+                        key={t.id}
+                        teamName={t.name}
+                        teamColor={t.color}
+                        memberNames={t.memberNames}
+                        referentName={t.referentName}
+                      />
+                    ))}
+                  </span>
                 </li>
               ))}
             </ul>

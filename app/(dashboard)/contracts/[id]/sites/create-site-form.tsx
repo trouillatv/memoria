@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createSiteAction } from '../sites-actions'
+import {
+  SiteExtendedFields,
+  emptySiteExtendedState,
+  applySiteExtendedToFormData,
+} from '@/app/(dashboard)/sites/SiteExtendedFields'
 
 export function CreateSiteForm({ contractId, clientName: _clientName }: { contractId: string; clientName: string }) {
   const router = useRouter()
@@ -13,9 +18,11 @@ export function CreateSiteForm({ contractId, clientName: _clientName }: { contra
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
+  const [extended, setExtended] = useState(emptySiteExtendedState())
 
   function reset() {
     setName(''); setAddress(''); setNotes('')
+    setExtended(emptySiteExtendedState())
   }
 
   async function submit() {
@@ -29,6 +36,7 @@ export function CreateSiteForm({ contractId, clientName: _clientName }: { contra
     fd.set('name', name.trim())
     if (address.trim()) fd.set('address', address.trim())
     if (notes.trim()) fd.set('notes', notes.trim())
+    applySiteExtendedToFormData(fd, extended)
 
     startTransition(async () => {
       const r = await createSiteAction(fd)
@@ -76,6 +84,11 @@ export function CreateSiteForm({ contractId, clientName: _clientName }: { contra
         <label className="text-xs text-muted-foreground">Notes (optionnel)</label>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full rounded border p-2 text-sm" rows={2} maxLength={2000} disabled={pending} />
       </div>
+      <SiteExtendedFields
+        state={extended}
+        onChange={(patch) => setExtended((s) => ({ ...s, ...patch }))}
+        disabled={pending}
+      />
       <div className="flex justify-end gap-2">
         <button type="button" onClick={() => { setOpen(false); reset() }} disabled={pending} className="px-3 py-1.5 rounded border text-sm disabled:opacity-50">
           Annuler

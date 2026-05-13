@@ -36,8 +36,8 @@ export interface EveningBriefing {
   /** Sites avec multiple interventions ce jour (signal positif coverage).
    *  `teams` = équipes affectées avec couleur + composition (membres + référent),
    *  pour afficher un popover esthétique au hover/click.
-   *  `recentNotes` = 1-2 dernières notes mémoire des lieux (site_notes) — colonne
-   *  discrète pour rappeler les infos pratiques (code d'entrée, accès, etc.). */
+   *  `recentNotes` = jusqu'à 5 dernières notes mémoire des lieux (site_notes).
+   *  `fields` = champs structurés "fiche site" (code entrée, contact, etc.). */
   coverageBySite: Array<{
     site_name: string
     count: number
@@ -49,6 +49,14 @@ export interface EveningBriefing {
       referentName: string | null
     }>
     recentNotes: Array<{ body: string; created_at: string }>
+    fields: {
+      access_code: string | null
+      alarm_code: string | null
+      contact_name: string | null
+      contact_phone: string | null
+      access_hours: string | null
+      access_instructions: string | null
+    }
   }>
   /** Contrats dont la date de fin tombe dans les 60 prochains jours.
    *  Signal proactif renouvellement, jamais un score de risque. Tri end_date asc. */
@@ -221,27 +229,49 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     })
   }
 
-  // 5.a) Mémoire des lieux — 2 dernières site_notes actives par site couvert
-  // (batch 1 requête pour éviter N+1). Colonne discrète : code d'entrée, accès…
+  // 5.a) Mémoire des lieux — 5 dernières site_notes actives par site couvert
+  // + champs structurés (code entrée, contact, etc.) en 2 requêtes batch.
   const coveredSiteIds = Array.from(siteCoverage.keys())
   const notesBySiteId = new Map<string, Array<{ body: string; created_at: string }>>()
+  type SiteFieldsRow = {
+    id: string
+    access_code: string | null
+    alarm_code: string | null
+    contact_name: string | null
+    contact_phone: string | null
+    access_hours: string | null
+    access_instructions: string | null
+  }
+  const fieldsBySiteId = new Map<string, Omit<SiteFieldsRow, 'id'>>()
   if (coveredSiteIds.length > 0) {
-    const { data: noteRows } = await supabase
-      .from('site_notes')
-      .select('site_id, body, created_at')
-      .in('site_id', coveredSiteIds)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-    for (const n of (noteRows ?? []) as Array<{
+    const [notesRes, fieldsRes] = await Promise.all([
+      supabase
+        .from('site_notes')
+        .select('site_id, body, created_at')
+        .in('site_id', coveredSiteIds)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('sites')
+        .select(
+          'id, access_code, alarm_code, contact_name, contact_phone, access_hours, access_instructions',
+        )
+        .in('id', coveredSiteIds),
+    ])
+    for (const n of (notesRes.data ?? []) as Array<{
       site_id: string
       body: string
       created_at: string
     }>) {
       const arr = notesBySiteId.get(n.site_id) ?? []
-      if (arr.length < 2) {
+      if (arr.length < 5) {
         arr.push({ body: n.body, created_at: n.created_at })
         notesBySiteId.set(n.site_id, arr)
       }
+    }
+    for (const f of (fieldsRes.data ?? []) as SiteFieldsRow[]) {
+      const { id, ...rest } = f
+      fieldsBySiteId.set(id, rest)
     }
   }
 
@@ -264,6 +294,14 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
           }
         }),
       recentNotes: notesBySiteId.get(siteId) ?? [],
+      fields: fieldsBySiteId.get(siteId) ?? {
+        access_code: null,
+        alarm_code: null,
+        contact_name: null,
+        contact_phone: null,
+        access_hours: null,
+        access_instructions: null,
+      },
     }))
     .sort((a, b) => a.site_name.localeCompare(b.site_name, 'fr', { sensitivity: 'base' }))
 

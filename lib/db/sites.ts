@@ -25,15 +25,233 @@ export async function listSitesByContract(contractId: string): Promise<DbSite[]>
   return data ?? []
 }
 
-export async function updateSite(
-  id: string,
-  patch: { name?: string; address?: string | null; notes?: string | null },
-): Promise<void> {
+/**
+ * Vue globale d'un site enrichie pour la page /sites :
+ *  - rattachement contrat lisible (nom + statut)
+ *  - dernière intervention exécutée (pour le seuil d'inactivité 6 mois)
+ *  - compteurs de dépendances (pour décider si delete possible)
+ */
+export interface SiteWithStats extends DbSite {
+  contract_name: string | null
+  contract_status: string | null
+  last_intervention_at: string | null
+  missions_count: number
+  interventions_count: number
+  site_notes_count: number
+}
+
+/** Liste tous les sites actifs du tenant, enrichis pour l'affichage global. */
+export async function listSitesGlobal(): Promise<SiteWithStats[]> {
+  const supabase = createAdminClient()
+
+  const { data: sites, error } = await supabase
+    .from('sites')
+    .select('*, contract:contracts(name, status)')
+    .is('deleted_at', null)
+    .order('name')
+  if (error) throw error
+  const rows = (sites ?? []) as Array<
+    DbSite & {
+      contract:
+        | { name: string; status: string }
+        | { name: string; status: string }[]
+        | null
+    }
+  >
+
+  if (rows.length === 0) return []
+  const siteIds = rows.map((s) => s.id)
+
+  // Charge en parallèle : missions par site (1 query), interventions exécutées
+  // par site (via missions), site_notes par site.
+  const [missionsRes, notesRes] = await Promise.all([
+    supabase
+      .from('missions')
+      .select('id, site_id, deleted_at')
+      .in('site_id', siteIds)
+      .is('deleted_at', null),
+    supabase
+      .from('site_notes')
+      .select('site_id, deleted_at')
+      .in('site_id', siteIds)
+      .is('deleted_at', null),
+  ])
+  if (missionsRes.error) throw missionsRes.error
+  if (notesRes.error) throw notesRes.error
+
+  const missionsBySite = new Map<string, string[]>()
+  for (const m of (missionsRes.data ?? []) as Array<{ id: string; site_id: string }>) {
+    const arr = missionsBySite.get(m.site_id) ?? []
+    arr.push(m.id)
+    missionsBySite.set(m.site_id, arr)
+  }
+  const allMissionIds = Array.from(missionsBySite.values()).flat()
+
+  // Interventions exécutées sur ces missions (signal d'activité)
+  let interventionsBySite = new Map<string, number>()
+  let lastBySite = new Map<string, string>()
+  if (allMissionIds.length > 0) {
+    const { data: ints, error: iErr } = await supabase
+      .from('interventions')
+      .select('mission_id, executed_at, status')
+      .in('mission_id', allMissionIds)
+      .in('status', ['completed', 'validated'])
+    if (iErr) throw iErr
+    // Map mission → site for reverse lookup
+    const missionToSite = new Map<string, string>()
+    for (const [sid, mids] of missionsBySite.entries()) {
+      for (const mid of mids) missionToSite.set(mid, sid)
+    }
+    for (const i of (ints ?? []) as Array<{
+      mission_id: string
+      executed_at: string | null
+    }>) {
+      const sid = missionToSite.get(i.mission_id)
+      if (!sid) continue
+      interventionsBySite.set(sid, (interventionsBySite.get(sid) ?? 0) + 1)
+      if (i.executed_at) {
+        const prev = lastBySite.get(sid)
+        if (!prev || i.executed_at > prev) lastBySite.set(sid, i.executed_at)
+      }
+    }
+  }
+
+  const notesBySite = new Map<string, number>()
+  for (const n of (notesRes.data ?? []) as Array<{ site_id: string }>) {
+    notesBySite.set(n.site_id, (notesBySite.get(n.site_id) ?? 0) + 1)
+  }
+
+  return rows.map((s) => {
+    const c = Array.isArray(s.contract) ? s.contract[0] ?? null : s.contract
+    return {
+      id: s.id,
+      client_id: s.client_id,
+      contract_id: s.contract_id,
+      name: s.name,
+      address: s.address,
+      notes: s.notes,
+      access_code: s.access_code,
+      alarm_code: s.alarm_code,
+      contact_name: s.contact_name,
+      contact_phone: s.contact_phone,
+      access_hours: s.access_hours,
+      access_instructions: s.access_instructions,
+      created_at: s.created_at,
+      deleted_at: s.deleted_at,
+      contract_name: c?.name ?? null,
+      contract_status: c?.status ?? null,
+      last_intervention_at: lastBySite.get(s.id) ?? null,
+      missions_count: missionsBySite.get(s.id)?.length ?? 0,
+      interventions_count: interventionsBySite.get(s.id) ?? 0,
+      site_notes_count: notesBySite.get(s.id) ?? 0,
+    }
+  })
+}
+
+export interface SiteDependencies {
+  missionsCount: number
+  interventionsCount: number
+  siteNotesCount: number
+}
+
+/**
+ * Compte les dépendances d'un site pour décider si on peut le supprimer.
+ * Renvoie 0/0/0 si aucune donnée — alors le delete est autorisé.
+ */
+export async function getSiteDependencies(siteId: string): Promise<SiteDependencies> {
+  const supabase = createAdminClient()
+  const [missionsRes, notesRes] = await Promise.all([
+    supabase
+      .from('missions')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .is('deleted_at', null),
+    supabase
+      .from('site_notes')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .is('deleted_at', null),
+  ])
+  if (missionsRes.error) throw missionsRes.error
+  if (notesRes.error) throw notesRes.error
+
+  // Interventions : pas de site_id direct, on passe par les missions du site.
+  let interventionsCount = 0
+  const { data: missionIds, error: mErr } = await supabase
+    .from('missions')
+    .select('id')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+  if (mErr) throw mErr
+  const ids = (missionIds ?? []).map((m) => m.id as string)
+  if (ids.length > 0) {
+    const { count, error: iErr } = await supabase
+      .from('interventions')
+      .select('id', { count: 'exact', head: true })
+      .in('mission_id', ids)
+    if (iErr) throw iErr
+    interventionsCount = count ?? 0
+  }
+
+  return {
+    missionsCount: missionsRes.count ?? 0,
+    interventionsCount,
+    siteNotesCount: notesRes.count ?? 0,
+  }
+}
+
+/**
+ * Soft-delete un site (deleted_at = now()). Idempotent : ne touche pas un
+ * site déjà supprimé. C'est au caller de vérifier les dépendances via
+ * getSiteDependencies() AVANT d'appeler ceci pour respecter la doctrine
+ * « jamais perdre de l'historique ».
+ */
+export async function softDeleteSite(siteId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('sites')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', siteId)
+    .is('deleted_at', null)
+  if (error) throw error
+}
+
+/** Site inactif = dernière intervention exécutée il y a >6 mois (ou jamais). */
+export function isSiteInactive(lastInterventionAt: string | null): boolean {
+  if (!lastInterventionAt) return false // sans intervention = nouveau, pas inactif
+  const sixMonthsAgo = new Date()
+  sixMonthsAgo.setUTCMonth(sixMonthsAgo.getUTCMonth() - 6)
+  return new Date(lastInterventionAt) < sixMonthsAgo
+}
+
+export interface SiteFieldsPatch {
+  name?: string
+  address?: string | null
+  notes?: string | null
+  access_code?: string | null
+  alarm_code?: string | null
+  contact_name?: string | null
+  contact_phone?: string | null
+  access_hours?: string | null
+  access_instructions?: string | null
+}
+
+export async function updateSite(id: string, patch: SiteFieldsPatch): Promise<void> {
   const supabase = createAdminClient()
   const update: Record<string, unknown> = {}
-  if (patch.name !== undefined) update.name = patch.name
-  if (patch.address !== undefined) update.address = patch.address
-  if (patch.notes !== undefined) update.notes = patch.notes
+  for (const k of [
+    'name',
+    'address',
+    'notes',
+    'access_code',
+    'alarm_code',
+    'contact_name',
+    'contact_phone',
+    'access_hours',
+    'access_instructions',
+  ] as const) {
+    if (patch[k] !== undefined) update[k] = patch[k]
+  }
   if (Object.keys(update).length === 0) return
   const { error } = await supabase
     .from('sites')
@@ -49,6 +267,12 @@ export async function createSite(input: {
   name: string
   address?: string | null
   notes?: string | null
+  access_code?: string | null
+  alarm_code?: string | null
+  contact_name?: string | null
+  contact_phone?: string | null
+  access_hours?: string | null
+  access_instructions?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -59,6 +283,12 @@ export async function createSite(input: {
       name: input.name,
       address: input.address ?? null,
       notes: input.notes ?? null,
+      access_code: input.access_code ?? null,
+      alarm_code: input.alarm_code ?? null,
+      contact_name: input.contact_name ?? null,
+      contact_phone: input.contact_phone ?? null,
+      access_hours: input.access_hours ?? null,
+      access_instructions: input.access_instructions ?? null,
     })
     .select('id')
     .single()

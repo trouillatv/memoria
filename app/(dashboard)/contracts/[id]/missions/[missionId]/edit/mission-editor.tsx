@@ -11,6 +11,9 @@ interface MissionEditorProps {
   mode: 'create' | 'edit'
   contractId: string
   sites: DbSite[]
+  /** Sites du tenant rattachés à d'autres contrats — permet la réutilisation
+   *  cross-contrat (ex. un site historique sans nouveau contrat). Optionnel. */
+  otherSites?: Array<{ id: string; name: string; contract_name: string | null }>
   engagements: DbEngagement[]
   initialMission?: DbMission
   defaultSiteId?: string
@@ -24,7 +27,7 @@ const CADENCE_OPTIONS: { value: MissionCadence; label: string }[] = [
   { value: 'on_demand', label: 'À la demande' },
 ]
 
-export function MissionEditor({ mode, contractId, sites, engagements, initialMission, defaultSiteId }: MissionEditorProps) {
+export function MissionEditor({ mode, contractId, sites, otherSites, engagements, initialMission, defaultSiteId }: MissionEditorProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
@@ -102,10 +105,31 @@ export function MissionEditor({ mode, contractId, sites, engagements, initialMis
             disabled={mode === 'edit' || pending}
             className="w-full rounded border p-2 text-sm bg-background"
           >
-            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {otherSites && otherSites.length > 0 ? (
+              <>
+                <optgroup label="Ce contrat">
+                  {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </optgroup>
+                <optgroup label="Autres sites du tenant">
+                  {otherSites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.contract_name ? ` — ${s.contract_name}` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)
+            )}
           </select>
           {mode === 'edit' && (
             <p className="text-[11px] text-muted-foreground italic">Le site n&apos;est pas modifiable après création.</p>
+          )}
+          {mode === 'create' && otherSites && otherSites.length > 0 && (
+            <p className="text-[11px] text-muted-foreground italic">
+              Vous pouvez réutiliser un site existant d&apos;un autre contrat.
+            </p>
           )}
         </div>
 
