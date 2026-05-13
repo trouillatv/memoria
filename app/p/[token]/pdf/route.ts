@@ -37,6 +37,7 @@ import {
   ensureVerificationTokenForIntervention,
   ensureVerificationTokenForMonthlyReport,
 } from '@/lib/db/proof-verification'
+import { downloadFrozenPdf } from '@/lib/pdf/freeze-dossier'
 
 // Force dynamic — chaque téléchargement re-valide le token côté serveur.
 export const dynamic = 'force-dynamic'
@@ -64,10 +65,36 @@ export async function GET(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: 'Lien expiré' }, { status: 403 })
   }
 
-  // 2. Audit : best-effort, ne bloque pas la génération.
-  recordShareAccess(shareToken.id).catch((e) =>
+  // 2. Audit atomique (RPC migration 042) : append-only dans share_access_log
+  //    + incrément atomique du compteur. Capture IP / user-agent.
+  const reqHeaders = req.headers
+  const xff = reqHeaders.get('x-forwarded-for')
+  const ip = xff ? xff.split(',')[0]?.trim() : (reqHeaders.get('x-real-ip') ?? null)
+  const userAgent = reqHeaders.get('user-agent') ?? null
+  recordShareAccess(shareToken.id, 'downloaded', { ip, userAgent }).catch((e) =>
     console.warn('[public-pdf] recordShareAccess failed:', e),
   )
+
+  // 2.5. Phase 1.2 — Si le PDF est figé (dossier clôturé), on le sert directement.
+  // Immutabilité bit-à-bit garantie : le PDF servi en 2030 est identique à celui
+  // figé à la clôture. Aucune regénération possible une fois le dossier figé.
+  if (shareToken.frozen_pdf_path && shareToken.frozen_pdf_sha256) {
+    const frozen = await downloadFrozenPdf(
+      shareToken.frozen_pdf_path,
+      shareToken.frozen_pdf_sha256,
+    )
+    if (frozen.ok) {
+      const stub = shareToken.intervention_id?.slice(0, 8) ?? 'dossier'
+      return new NextResponse(new Uint8Array(frozen.buffer), {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="dossier-preuves-${stub}.pdf"`,
+          'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+        },
+      })
+    }
+    console.error('[public-pdf] frozen PDF unavailable, falling back to live render:', frozen.error)
+  }
 
   // 3. QR code — Slice S3 Doctrine V5 Pilier 6 :
   //    Le QR pointe vers la route STABLE `/v/[verification_token]`, PAS vers

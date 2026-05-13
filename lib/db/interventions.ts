@@ -314,6 +314,12 @@ export async function insertPhoto(input: {
   kind: PhotoKind
   caption: string | null
   taken_by: string | null
+  // Intégrité cryptographique (migration 040 — Phase 1.1)
+  sha256?: string | null
+  mime_type?: string | null
+  size_bytes?: number | null
+  client_timestamp?: string | null
+  hash_origin?: 'verified' | 'retroactive' | 'unknown'
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase

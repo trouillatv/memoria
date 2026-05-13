@@ -61,6 +61,12 @@ export interface ProofShareToken {
   closed_by: string | null
   /** Sprint 6 : note libre 0..200 chars (cap applicatif). NULL ou string. */
   closure_note: string | null
+  /** Phase 1.2 (migration 041) : path du PDF figé dans bucket frozen-dossiers. */
+  frozen_pdf_path: string | null
+  /** Phase 1.2 : SHA-256 du PDF figé. Vérification d'intégrité. */
+  frozen_pdf_sha256: string | null
+  /** Phase 1.2 : timestamp du gel (peut différer de closed_at). */
+  frozen_at: string | null
 }
 
 /**
@@ -379,31 +385,27 @@ export async function getMonthlyReportFromToken(token: string): Promise<{
 }
 
 /**
- * Enregistre un accès sur le token (incrémente access_count + maj last_accessed_at).
+ * Enregistre un accès sur le token via RPC atomique (Phase 1.3, migration 042).
  *
- * Best-effort : si ça échoue, on ne casse PAS l'affichage public. On émet un warn.
- * Pas de RPC atomique pour rester simple ; un accès simultané peut faire perdre 1
- * unité dans le compteur, c'est acceptable pour une métrique d'audit.
+ * INSERT append-only dans share_access_log + incrément atomique du compteur
+ * sur proof_share_tokens, dans une seule transaction. Plus de read-then-write
+ * et plus de perte d'unités sur accès simultanés.
+ *
+ * Best-effort côté caller : un échec ne casse pas l'affichage public.
  */
-export async function recordShareAccess(tokenId: string): Promise<void> {
+export async function recordShareAccess(
+  tokenId: string,
+  kind: 'viewed' | 'downloaded' = 'viewed',
+  context?: { ip?: string | null; userAgent?: string | null },
+): Promise<void> {
   const supabase = createAdminClient()
   try {
-    // Lit-then-write — pas d'atomicité forte, mais suffisant pour audit.
-    const { data, error: rErr } = await supabase
-      .from('proof_share_tokens')
-      .select('access_count')
-      .eq('id', tokenId)
-      .maybeSingle()
-    if (rErr) throw rErr
-    const current = (data as { access_count: number } | null)?.access_count ?? 0
-
-    const { error } = await supabase
-      .from('proof_share_tokens')
-      .update({
-        access_count: current + 1,
-        last_accessed_at: new Date().toISOString(),
-      })
-      .eq('id', tokenId)
+    const { error } = await supabase.rpc('record_share_access', {
+      p_token_id: tokenId,
+      p_kind: kind,
+      p_ip: context?.ip ?? null,
+      p_user_agent: context?.userAgent ?? null,
+    })
     if (error) throw error
   } catch (e) {
     console.warn('[proof-share] recordShareAccess failed:', e)

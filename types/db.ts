@@ -389,6 +389,13 @@ export interface DbInterventionPhoto {
   caption: string | null
   taken_at: string
   taken_by: string | null
+  // Intégrité cryptographique — migration 040 (Phase 1.1).
+  // Lien indéfalsifiable entre la ligne DB et le fichier dans le bucket.
+  sha256: string | null
+  mime_type: string | null
+  size_bytes: number | null
+  client_timestamp: string | null
+  hash_origin: 'verified' | 'retroactive' | 'unknown'
 }
 
 export type AnomalyCategory = 'eau_coupee' | 'materiel_casse' | 'acces_bloque' | 'produit_manquant' | 'autre'

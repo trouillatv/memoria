@@ -20,6 +20,7 @@ import { getShareTokenById } from '@/lib/db/proof-share'
 import { ProofDossierPdf } from '@/lib/pdf/proof-dossier'
 import { getTenantName } from '@/lib/tenant'
 import { ensureVerificationTokenForIntervention } from '@/lib/db/proof-verification'
+import { downloadFrozenPdf } from '@/lib/pdf/freeze-dossier'
 
 interface RouteCtx {
   params: Promise<{ id: string }>
@@ -59,6 +60,25 @@ export async function GET(req: Request, ctx: RouteCtx) {
     // Reconstruit l'URL de partage publique pour l'afficher dans le footer du PDF.
     const origin = url.origin
     shareUrl = `${origin}/p/${tok.token}`
+
+    // Phase 1.2 — Si le PDF est figé (dossier clôturé), on le sert tel quel.
+    // Garantit l'immutabilité bit-à-bit : le PDF consulté en 2030 est identique
+    // à celui produit au moment de la clôture.
+    if (tok.frozen_pdf_path && tok.frozen_pdf_sha256) {
+      const frozen = await downloadFrozenPdf(tok.frozen_pdf_path, tok.frozen_pdf_sha256)
+      if (frozen.ok) {
+        const safeStub = id.slice(0, 8)
+        const filename = `dossier-preuves-${safeStub}.pdf`
+        return new NextResponse(new Uint8Array(frozen.buffer), {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+          },
+        })
+      }
+      console.error('[dossier route] frozen PDF unavailable, falling back to live render:', frozen.error)
+    }
   }
 
   // 4. Charge le proof.

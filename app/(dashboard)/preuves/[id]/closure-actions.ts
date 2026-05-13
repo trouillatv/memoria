@@ -10,6 +10,7 @@
 // Audit log systématique (toute clôture/réouverture est tracée pour le DG).
 
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import { z } from 'zod'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import {
@@ -18,6 +19,7 @@ import {
   getShareTokenById,
 } from '@/lib/db/proof-share'
 import { logAuditEvent } from '@/lib/audit/log'
+import { freezeProofDossierPdf } from '@/lib/pdf/freeze-dossier'
 
 // ----------------------------------------------------------------------------
 // Types
@@ -85,6 +87,22 @@ export async function closeDossierAction(
   if (existing.closed_at) return { ok: false, error: 'Dossier déjà clôturé.' }
 
   try {
+    // Phase 1.2 — Freeze AVANT clôture : on capture le PDF figé. Si le freeze
+    // échoue, on ne clôture pas (atomicité). Le dossier ne devient "clôturé"
+    // que si on a la preuve immuable correspondante.
+    // Le freeze est skip pour les rapports mensuels (pas encore supporté).
+    if (existing.intervention_id) {
+      const h = await headers()
+      const proto = h.get('x-forwarded-proto') ?? 'http'
+      const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+      const origin = `${proto}://${host}`
+
+      const freezeResult = await freezeProofDossierPdf(parsed.data.tokenId, origin)
+      if (!freezeResult.ok) {
+        return { ok: false, error: `Impossible de figer le PDF : ${freezeResult.error}` }
+      }
+    }
+
     await closeProofShareToken({
       tokenId: parsed.data.tokenId,
       closedBy: auth.userId,
@@ -100,6 +118,7 @@ export async function closeDossierAction(
         kind: 'proof_dossier_closed', // doctrine V3 : "closed", pas "resolved"
         token_id: parsed.data.tokenId,
         has_note: !!parsed.data.note,
+        frozen: !!existing.intervention_id,
       },
     })
 

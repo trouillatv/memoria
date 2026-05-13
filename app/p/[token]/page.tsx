@@ -53,6 +53,7 @@ import {
   getShareTokenByValueRaw,
   recordShareAccess,
 } from '@/lib/db/proof-share'
+import { headers } from 'next/headers'
 import { getProofDetail } from '@/lib/db/proofs'
 import { getContractMonthlyReport } from '@/lib/db/monthly-report'
 import { formatDateLong, formatDuration } from '@/lib/format'
@@ -115,8 +116,13 @@ export default async function PublicProofPage({ params }: PageProps) {
   }
 
   // Case 4 : token actif → on enregistre l'accès (best-effort, fire-and-forget)
-  //          et on dispatch selon le type de token.
-  recordShareAccess(shareToken.id).catch((e) =>
+  //          via la RPC atomique (migration 042). Capture IP / user-agent pour
+  //          traçabilité forensique en cas de litige.
+  const hdrs = await headers()
+  const xff = hdrs.get('x-forwarded-for')
+  const ip = xff ? xff.split(',')[0]?.trim() : (hdrs.get('x-real-ip') ?? null)
+  const userAgent = hdrs.get('user-agent') ?? null
+  recordShareAccess(shareToken.id, 'viewed', { ip, userAgent }).catch((e) =>
     console.warn('[public-proof] recordShareAccess failed:', e),
   )
 

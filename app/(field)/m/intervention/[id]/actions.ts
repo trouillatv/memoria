@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -100,6 +101,7 @@ const uploadPhotoSchema = z.object({
   intervention_id: z.string().uuid(),
   checklist_item_id: z.string().uuid().nullable(),
   kind: photoKindSchema,
+  client_timestamp: z.string().datetime().nullable().optional(),
 })
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024 // 10 MB
@@ -115,11 +117,14 @@ export async function uploadPhotoMobileAction(formData: FormData) {
 
   const checklistItemRaw = formData.get('checklist_item_id') as string | null
   const checklist_item_id = checklistItemRaw && checklistItemRaw !== '' ? checklistItemRaw : null
+  const clientTimestampRaw = formData.get('client_timestamp') as string | null
+  const client_timestamp = clientTimestampRaw && clientTimestampRaw !== '' ? clientTimestampRaw : null
 
   const parsed = uploadPhotoSchema.safeParse({
     intervention_id: formData.get('intervention_id'),
     checklist_item_id,
     kind: formData.get('kind'),
+    client_timestamp,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
@@ -131,6 +136,12 @@ export async function uploadPhotoMobileAction(formData: FormData) {
   const storagePath = `${parsed.data.intervention_id}/${parsed.data.kind}-${ts}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`
 
   const buffer = Buffer.from(await file.arrayBuffer())
+
+  // Intégrité cryptographique : hash SHA-256 du contenu binaire avant upload.
+  // Le hash + le storage_path + le timestamp serveur lient indissociablement
+  // la photo en base au fichier dans le bucket (migration 040, Phase 1.1).
+  const sha256 = createHash('sha256').update(buffer).digest('hex')
+
   const { error: uploadErr } = await supabase.storage
     .from('intervention-photos')
     .upload(storagePath, buffer, { contentType: file.type, upsert: false })
@@ -143,6 +154,11 @@ export async function uploadPhotoMobileAction(formData: FormData) {
     kind: parsed.data.kind,
     caption: null,
     taken_by: auth.userId,
+    sha256,
+    mime_type: file.type,
+    size_bytes: buffer.length,
+    client_timestamp: parsed.data.client_timestamp ?? null,
+    hash_origin: 'verified',
   })
 
   revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)

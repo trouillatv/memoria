@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -148,6 +149,10 @@ export async function uploadInterventionPhotoAction(formData: FormData) {
   const storagePath = `${parsed.data.intervention_id}/${parsed.data.kind}-${ts}.${safeExt}`
 
   const buffer = Buffer.from(await file.arrayBuffer())
+
+  // Intégrité cryptographique (migration 040, Phase 1.1).
+  const sha256 = createHash('sha256').update(buffer).digest('hex')
+
   const { error: uploadErr } = await supabase.storage
     .from('intervention-photos')
     .upload(storagePath, buffer, { contentType: file.type, upsert: false })
@@ -160,6 +165,10 @@ export async function uploadInterventionPhotoAction(formData: FormData) {
     kind: parsed.data.kind,
     caption: parsed.data.caption ?? null,
     taken_by: auth.userId,
+    sha256,
+    mime_type: file.type,
+    size_bytes: buffer.length,
+    hash_origin: 'verified',
   })
 
   revalidatePath(`/interventions/${parsed.data.intervention_id}`)
