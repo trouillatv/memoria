@@ -22,13 +22,26 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
-## 2026-05-13 — Mot de passe temporaire aléatoire à usage unique (sécurité)
+## 2026-05-14 — Mot de passe temporaire partagé `netoiage2026` (revert)
 
-**Décision** : le fallback hardcodé `'netoiage2026'` dans `createUserAction` et `forcePasswordResetAction` est supprimé. Chaque création de compte en mode temp_password et chaque reset génère un mot de passe aléatoire (16 chars base64url, ~96 bits d'entropie) affiché une seule fois à l'admin dans un dialog.
+**Décision DG (revert)** : mot de passe temporaire en dur, `netoiage2026`, pour toutes les créations en mode temp_password et tous les resets. Pas de variable d'environnement, pas de dialog d'affichage à la création/au reset.
 
-**Raison** : audit sécurité a identifié le fallback hardcodé comme vulnérabilité critique. Tout compte créé partageait le même mot de passe initial — bombe à retardement si la variable d'env n'était pas configurée en prod.
+**Raison** : la version aléatoire à usage unique (livrée le 2026-05-13 suite à l'audit) ajoutait un dialog modal et un copier-coller manuel à chaque création/reset. UX trop friction pour le DG. La doctrine de l'app vise la simplicité opérationnelle.
 
-**Impact code** : `app/admin/users/actions.ts`, `app/admin/users/CreateUserForm.tsx`, `app/admin/users/ForcePasswordResetButton.tsx`, `app/admin/users/page.tsx`.
+**Garde-fous compensatoires conservés** :
+- `must_change_password` flag posé en DB ET en `app_metadata.must_change_password` du JWT
+- Middleware racine `middleware.ts` redirige toute requête authentifiée vers `/change-password` tant que le flag est actif — empêche un attaquant qui connaîtrait `netoiage2026` d'utiliser un compte non encore initialisé sans changer le mdp
+- L'attaque résiduelle reste : si un attaquant connaît l'email d'un user fraîchement créé/reseté et qu'il bat l'user à la première connexion, il peut prendre le contrôle du compte. Mitigation : prévenir l'user de la création par un canal différent (SMS/WhatsApp), et lui demander de se connecter rapidement.
+
+**Impact code** : revert de `app/admin/users/actions.ts`, `CreateUserForm.tsx`, `ForcePasswordResetButton.tsx`, `page.tsx`.
+
+---
+
+## 2026-05-13 — Mot de passe temporaire aléatoire (annulé le 2026-05-14)
+
+**Décision (annulée)** : génération aléatoire 96 bits par création/reset, affichée une fois dans un dialog admin.
+
+**Annulé** : voir entrée 2026-05-14 ci-dessus. Le compromis UX/sécurité a été tranché en faveur de l'UX.
 
 ---
 

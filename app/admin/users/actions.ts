@@ -1,7 +1,6 @@
 'use server'
 
 import { z } from 'zod'
-import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -18,11 +17,11 @@ async function requireAdmin() {
   return user.id
 }
 
-// Mdp temporaire aléatoire — 16 caractères base64url, ~96 bits d'entropie.
-// Affiché une seule fois à l'admin via le toast, jamais loggué en clair.
-function generateTempPassword(): string {
-  return randomBytes(12).toString('base64url')
-}
+// Mdp temporaire partagé — décision DG 2026-05-14.
+// Le même mot de passe pour tous les comptes créés en mode temp_password et
+// pour tous les resets. Le flag must_change_password + middleware enforce
+// le changement à la première connexion. Voir docs/10_JOURNAL_DECISIONS.md.
+const TEMP_PASSWORD = 'netoiage2026'
 
 const createSchema = z.object({
   email: z.string().email(),
@@ -59,11 +58,10 @@ export async function createUserAction(formData: FormData) {
     return { ok: true as const }
   }
 
-  // Mode temp_password : génère un mdp aléatoire à usage unique.
-  const tempPassword = generateTempPassword()
+  // Mode temp_password : mdp partagé connu de l'admin.
   const { data, error } = await supabase.auth.admin.createUser({
     email: parsed.data.email,
-    password: tempPassword,
+    password: TEMP_PASSWORD,
     email_confirm: true,
     app_metadata: { role: parsed.data.role, must_change_password: true },
     user_metadata: { full_name: parsed.data.full_name, role: parsed.data.role },
@@ -83,7 +81,7 @@ export async function createUserAction(formData: FormData) {
   })
 
   revalidatePath('/admin/users')
-  return { ok: true as const, password: tempPassword }
+  return { ok: true as const }
 }
 
 const roleSchema = z.object({
@@ -132,12 +130,11 @@ export async function forcePasswordResetAction(formData: FormData) {
   const targetRole = await getUserRoleById(parsed.data.userId)
   if (targetRole === 'admin') return { error: 'Reset admin via Supabase Studio uniquement' }
 
-  const tempPassword = generateTempPassword()
   const { data: existing } = await supabase.auth.admin.getUserById(parsed.data.userId)
   const appMetadata = { ...(existing.user?.app_metadata ?? {}), must_change_password: true }
 
   const { error } = await supabase.auth.admin.updateUserById(parsed.data.userId, {
-    password: tempPassword,
+    password: TEMP_PASSWORD,
     app_metadata: appMetadata,
   })
   if (error) return { error: error.message }
@@ -149,7 +146,7 @@ export async function forcePasswordResetAction(formData: FormData) {
     metadata: { temp_password_set: true },
   })
   revalidatePath('/admin/users')
-  return { ok: true as const, password: tempPassword }
+  return { ok: true as const }
 }
 
 // Sprint 4 PC — admin/manager peut éditer le téléphone d'un user.
