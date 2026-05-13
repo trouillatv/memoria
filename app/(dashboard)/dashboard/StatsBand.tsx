@@ -43,6 +43,14 @@ export function StatsBand({ weekPulse, capital, aoPipeline, anomalies }: StatsBa
         <Stat value={aoPipeline.analyzing} label="en analyse" />
         <Stat value={aoPipeline.ready} label="prêt à soumettre" />
         <Stat value={aoPipeline.submitted} label="soumis" />
+        {aoPipeline.renewalsDue > 0 && (
+          <Stat
+            value={aoPipeline.renewalsDue}
+            label="à renouveler ≤ 60j"
+            icon={AlertTriangle}
+            tone="amber"
+          />
+        )}
       </StatCard>
 
       <StatCard icon={AlertTriangle} title="Anomalies ouvertes" testId="stat-anomalies">
@@ -86,21 +94,32 @@ interface StatProps {
   value: number
   label: string
   muted?: boolean
+  icon?: LucideIcon
+  tone?: 'default' | 'amber'
 }
 
-function Stat({ value, label, muted }: StatProps) {
+function Stat({ value, label, muted, icon: Icon, tone = 'default' }: StatProps) {
+  const valueClass = muted
+    ? 'tabular-nums font-semibold text-sm text-muted-foreground'
+    : tone === 'amber'
+      ? 'tabular-nums font-semibold text-lg text-amber-700'
+      : 'tabular-nums font-semibold text-lg'
+  const labelClass =
+    tone === 'amber' ? 'text-xs text-amber-700' : 'text-xs text-muted-foreground'
   return (
     <div className="flex items-baseline gap-1.5">
-      <span
-        className={
-          muted
-            ? 'tabular-nums font-semibold text-sm text-muted-foreground'
-            : 'tabular-nums font-semibold text-lg'
-        }
-      >
-        {value.toLocaleString('fr-FR')}
-      </span>
-      <span className="text-xs text-muted-foreground">{label}</span>
+      {Icon && (
+        <Icon
+          className={
+            tone === 'amber'
+              ? 'h-3.5 w-3.5 text-amber-600 self-center'
+              : 'h-3.5 w-3.5 text-muted-foreground self-center'
+          }
+          aria-hidden
+        />
+      )}
+      <span className={valueClass}>{value.toLocaleString('fr-FR')}</span>
+      <span className={labelClass}>{label}</span>
     </div>
   )
 }

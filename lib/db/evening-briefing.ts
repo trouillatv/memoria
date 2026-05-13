@@ -33,8 +33,32 @@ export interface EveningBriefing {
     site_name: string
     slot: string | null
   }>
-  /** Sites avec multiple interventions ce jour (signal positif coverage). */
-  coverageBySite: Array<{ site_name: string; count: number; team_names: string[] }>
+  /** Sites avec multiple interventions ce jour (signal positif coverage).
+   *  `teams` = équipes affectées avec couleur + composition (membres + référent),
+   *  pour afficher un popover esthétique au hover/click.
+   *  `recentNotes` = 1-2 dernières notes mémoire des lieux (site_notes) — colonne
+   *  discrète pour rappeler les infos pratiques (code d'entrée, accès, etc.). */
+  coverageBySite: Array<{
+    site_name: string
+    count: number
+    teams: Array<{
+      id: string
+      name: string
+      color: string | null
+      memberNames: string[]
+      referentName: string | null
+    }>
+    recentNotes: Array<{ body: string; created_at: string }>
+  }>
+  /** Contrats dont la date de fin tombe dans les 60 prochains jours.
+   *  Signal proactif renouvellement, jamais un score de risque. Tri end_date asc. */
+  contractsExpiringSoon: Array<{
+    id: string
+    name: string
+    client_name: string
+    end_date: string
+    daysUntilEnd: number
+  }>
 }
 
 export async function buildEveningBriefing(targetDate: string): Promise<EveningBriefing> {
@@ -45,18 +69,19 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .from('interventions')
     .select(
       `id, slot, assigned_team_id,
-       team:teams(name),
+       team:teams(id, name, color),
        mission:missions!inner(name, site:sites!inner(id, name, contract:contracts(name)))`,
     )
     .eq('scheduled_for', targetDate)
     .in('status', ['planned', 'in_progress'])
   if (error) throw error
 
+  type TeamLite = { id: string; name: string; color: string | null }
   type Row = {
     id: string
     slot: string | null
     assigned_team_id: string | null
-    team: { name: string } | { name: string }[] | null
+    team: TeamLite | TeamLite[] | null
     mission: {
       name: string
       site:
@@ -85,8 +110,13 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
   }
   const teamsCount = teamIds.size
 
-  // 3) Sites couverts
-  const siteCoverage = new Map<string, { name: string; count: number; teams: Set<string> }>()
+  // 3) Sites couverts. On stocke les équipes par ID unique (dedup) avec
+  // couleur, nom. La composition (membres + référent) est ajoutée à la fin
+  // après une requête batch sur team_members + users.
+  const siteCoverage = new Map<
+    string,
+    { name: string; count: number; teams: Map<string, TeamLite> }
+  >()
   const unassigned: EveningBriefing['unassignedInterventions'] = []
 
   for (const r of interventions) {
@@ -95,9 +125,13 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     const site = pickOne(mission.site)
     if (!site) continue
     const team = pickOne(r.team)
-    const entry = siteCoverage.get(site.id) ?? { name: site.name, count: 0, teams: new Set<string>() }
+    const entry =
+      siteCoverage.get(site.id) ??
+      { name: site.name, count: 0, teams: new Map<string, TeamLite>() }
     entry.count += 1
-    if (team?.name) entry.teams.add(team.name)
+    if (team?.id && !entry.teams.has(team.id)) {
+      entry.teams.set(team.id, { id: team.id, name: team.name, color: team.color ?? null })
+    }
     siteCoverage.set(site.id, entry)
 
     if (!r.assigned_team_id) {
@@ -107,6 +141,59 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
         site_name: site.name,
         slot: r.slot,
       })
+    }
+  }
+
+  // 3.b) Composition des équipes couvertes : membres actifs + référent.
+  // Pour éviter N+1, on batch sur tous les team_ids vus.
+  const allTeamIds = Array.from(
+    new Set(
+      Array.from(siteCoverage.values()).flatMap((s) => Array.from(s.teams.keys())),
+    ),
+  )
+  const teamComposition = new Map<
+    string,
+    { memberNames: string[]; referentName: string | null }
+  >()
+  if (allTeamIds.length > 0) {
+    const [{ data: members }, { data: teamRows }] = await Promise.all([
+      supabase
+        .from('team_members')
+        .select('team_id, user:users(full_name, email)')
+        .in('team_id', allTeamIds)
+        .is('left_at', null),
+      supabase
+        .from('teams')
+        .select('id, referent:users!teams_referent_user_id_fkey(full_name, email)')
+        .in('id', allTeamIds),
+    ])
+    type UserLite = { full_name: string | null; email: string }
+    const displayName = (u: UserLite | null | undefined): string =>
+      (u?.full_name ?? '').trim() || (u?.email.split('@')[0] ?? '?')
+
+    for (const m of (members ?? []) as Array<{
+      team_id: string
+      user: UserLite | UserLite[] | null
+    }>) {
+      const u = pickOne(m.user)
+      if (!u) continue
+      const c = teamComposition.get(m.team_id) ?? { memberNames: [], referentName: null }
+      c.memberNames.push(displayName(u))
+      teamComposition.set(m.team_id, c)
+    }
+    for (const t of (teamRows ?? []) as Array<{
+      id: string
+      referent: UserLite | UserLite[] | null
+    }>) {
+      const ref = pickOne(t.referent)
+      if (!ref) continue
+      const c = teamComposition.get(t.id) ?? { memberNames: [], referentName: null }
+      c.referentName = displayName(ref)
+      teamComposition.set(t.id, c)
+    }
+    // Tri alpha des membres pour chaque équipe
+    for (const c of teamComposition.values()) {
+      c.memberNames.sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
     }
   }
 
@@ -134,14 +221,86 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     })
   }
 
-  // 5) Coverage by site (positif — pour affichage rassurant)
-  const coverageBySite = Array.from(siteCoverage.values())
-    .map((c) => ({
+  // 5.a) Mémoire des lieux — 2 dernières site_notes actives par site couvert
+  // (batch 1 requête pour éviter N+1). Colonne discrète : code d'entrée, accès…
+  const coveredSiteIds = Array.from(siteCoverage.keys())
+  const notesBySiteId = new Map<string, Array<{ body: string; created_at: string }>>()
+  if (coveredSiteIds.length > 0) {
+    const { data: noteRows } = await supabase
+      .from('site_notes')
+      .select('site_id, body, created_at')
+      .in('site_id', coveredSiteIds)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+    for (const n of (noteRows ?? []) as Array<{
+      site_id: string
+      body: string
+      created_at: string
+    }>) {
+      const arr = notesBySiteId.get(n.site_id) ?? []
+      if (arr.length < 2) {
+        arr.push({ body: n.body, created_at: n.created_at })
+        notesBySiteId.set(n.site_id, arr)
+      }
+    }
+  }
+
+  // 5.b) Coverage by site (positif — pour affichage rassurant). Enrichi avec
+  // membres + référent pour le popover et notes récentes pour la mémoire.
+  const coverageBySite = Array.from(siteCoverage.entries())
+    .map(([siteId, c]) => ({
       site_name: c.name,
       count: c.count,
-      team_names: Array.from(c.teams).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' })),
+      teams: Array.from(c.teams.values())
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
+        .map((t) => {
+          const comp = teamComposition.get(t.id)
+          return {
+            id: t.id,
+            name: t.name,
+            color: t.color,
+            memberNames: comp?.memberNames ?? [],
+            referentName: comp?.referentName ?? null,
+          }
+        }),
+      recentNotes: notesBySiteId.get(siteId) ?? [],
     }))
     .sort((a, b) => a.site_name.localeCompare(b.site_name, 'fr', { sensitivity: 'base' }))
+
+  // 6) Contrats expirants — fenêtre 60 jours, signal renouvellement.
+  const horizon = new Date()
+  horizon.setUTCDate(horizon.getUTCDate() + 60)
+  const horizonIso = horizon.toISOString().slice(0, 10)
+  const todayShort = new Date().toISOString().slice(0, 10)
+  const { data: expiringRows } = await supabase
+    .from('contracts')
+    .select('id, name, client_name, end_date, status')
+    .gte('end_date', todayShort)
+    .lte('end_date', horizonIso)
+    .in('status', ['active', 'paused'])
+    .order('end_date', { ascending: true })
+  const contractsExpiringSoon = ((expiringRows ?? []) as Array<{
+    id: string
+    name: string
+    client_name: string
+    end_date: string
+  }>).map((c) => {
+    const days = Math.max(
+      0,
+      Math.round(
+        (new Date(c.end_date + 'T00:00:00Z').getTime() -
+          new Date(todayShort + 'T00:00:00Z').getTime()) /
+          (24 * 3600 * 1000),
+      ),
+    )
+    return {
+      id: c.id,
+      name: c.name,
+      client_name: c.client_name,
+      end_date: c.end_date,
+      daysUntilEnd: days,
+    }
+  })
 
   return {
     date: targetDate,
@@ -152,6 +311,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     ),
     unassignedInterventions: unassigned,
     coverageBySite,
+    contractsExpiringSoon,
   }
 }
 

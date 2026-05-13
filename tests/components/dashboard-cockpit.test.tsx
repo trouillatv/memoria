@@ -26,7 +26,7 @@ function makeCapital(p: Partial<CapitalPreuves> = {}): CapitalPreuves {
   }
 }
 function makeAO(p: Partial<AOPipeline> = {}): AOPipeline {
-  return { analyzing: 0, ready: 0, submitted: 0, ...p }
+  return { analyzing: 0, ready: 0, submitted: 0, renewalsDue: 0, ...p }
 }
 function makeAnomalies(p: Partial<OpenAnomaliesStats> = {}): OpenAnomaliesStats {
   return { total: 0, oldCount: 0, ...p }

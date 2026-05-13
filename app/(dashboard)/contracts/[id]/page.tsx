@@ -9,6 +9,7 @@ import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
 import { ContractTabs } from './contract-tabs'
+import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import type { EngagementComplianceRatios } from '@/types/db'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
@@ -101,6 +102,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* Enregistre le nom du contrat dans le breadcrumb (remplace l'UUID). */}
+      <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header className="space-y-1">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">

@@ -1,18 +1,30 @@
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import { getContract } from '@/lib/db/contracts'
-import { listSitesByContract } from '@/lib/db/sites'
+import { listSitesByContract, listSiteNotes } from '@/lib/db/sites'
 import { ContractTabs } from '../contract-tabs'
 import { CreateSiteForm } from './create-site-form'
+import { SiteRow } from './SiteRow'
+import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
+
+const NOTES_PER_SITE = 5
 
 export default async function ContractSitesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const contract = await getContract(id)
   if (!contract) notFound()
   const sites = await listSitesByContract(id)
+  // Mémoire des lieux : pré-charger les 5 dernières notes par site (parallèle).
+  const notesBySite = new Map<string, Awaited<ReturnType<typeof listSiteNotes>>>()
+  await Promise.all(
+    sites.map(async (s) => {
+      const notes = await listSiteNotes(s.id, NOTES_PER_SITE)
+      notesBySite.set(s.id, notes)
+    }),
+  )
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header>
         <h1 className="text-2xl font-semibold">{contract.name}</h1>
         <p className="text-sm text-muted-foreground">{contract.client_name}</p>
@@ -36,21 +48,12 @@ export default async function ContractSitesPage({ params }: { params: Promise<{ 
         ) : (
           <ul className="space-y-2">
             {sites.map((s) => (
-              <li key={s.id} className="rounded-lg border p-4 bg-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">{s.name}</div>
-                    {s.address && <div className="text-xs text-muted-foreground">{s.address}</div>}
-                    {s.notes && <div className="text-xs text-muted-foreground italic mt-1">{s.notes}</div>}
-                  </div>
-                  <Link
-                    href={`/contracts/${id}/missions?site=${s.id}`}
-                    className="text-xs text-foreground hover:underline whitespace-nowrap shrink-0"
-                  >
-                    Voir missions →
-                  </Link>
-                </div>
-              </li>
+              <SiteRow
+                key={s.id}
+                contractId={id}
+                site={s}
+                notes={notesBySite.get(s.id) ?? []}
+              />
             ))}
           </ul>
         )}

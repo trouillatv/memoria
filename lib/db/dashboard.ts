@@ -61,6 +61,9 @@ export interface AOPipeline {
   ready: number
   /** AO soumis. */
   submitted: number
+  /** Contrats actifs/paused dont la fin tombe dans les 60 prochains jours
+   *  — signal proactif de renouvellement à anticiper. */
+  renewalsDue: number
 }
 
 export interface OpenAnomaliesStats {
@@ -204,8 +207,12 @@ export async function getTenantCumulativeStats(): Promise<TenantCumulativeStats>
  */
 export async function getAOPipeline(): Promise<AOPipeline> {
   const supabase = createAdminClient()
+  const today = new Date().toISOString().slice(0, 10)
+  const horizon = new Date()
+  horizon.setUTCDate(horizon.getUTCDate() + 60)
+  const horizonIso = horizon.toISOString().slice(0, 10)
 
-  const [analyzingRes, readyRes, submittedRes] = await Promise.all([
+  const [analyzingRes, readyRes, submittedRes, renewalsRes] = await Promise.all([
     supabase
       .from('tenders')
       .select('id', { count: 'exact', head: true })
@@ -221,15 +228,23 @@ export async function getAOPipeline(): Promise<AOPipeline> {
       .select('id', { count: 'exact', head: true })
       .eq('status', 'submitted')
       .is('deleted_at', null),
+    supabase
+      .from('contracts')
+      .select('id', { count: 'exact', head: true })
+      .gte('end_date', today)
+      .lte('end_date', horizonIso)
+      .in('status', ['active', 'paused']),
   ])
   if (analyzingRes.error) throw analyzingRes.error
   if (readyRes.error) throw readyRes.error
   if (submittedRes.error) throw submittedRes.error
+  if (renewalsRes.error) throw renewalsRes.error
 
   return {
     analyzing: analyzingRes.count ?? 0,
     ready: readyRes.count ?? 0,
     submitted: submittedRes.count ?? 0,
+    renewalsDue: renewalsRes.count ?? 0,
   }
 }
 

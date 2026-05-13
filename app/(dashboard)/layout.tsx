@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { AppTopbar } from '@/components/layout/AppTopbar'
+import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -27,11 +28,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
       >
         Aller au contenu
       </a>
-      <AppSidebar role={user.role} fullName={fullName} />
-      <div className="md:pl-60">
-        <AppTopbar fullName={fullName} />
-        <main id="main-content" className="px-4 md:px-8 py-6 pb-24 md:pb-6">{children}</main>
-      </div>
+      <BreadcrumbProvider>
+        <AppSidebar role={user.role} fullName={fullName} />
+        <div className="md:pl-60">
+          <AppTopbar fullName={fullName} />
+          <main id="main-content" className="px-4 md:px-8 py-6 pb-24 md:pb-6">{children}</main>
+        </div>
+      </BreadcrumbProvider>
     </div>
   )
 }

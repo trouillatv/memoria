@@ -6,6 +6,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight, Home } from 'lucide-react'
+import { useBreadcrumbLabels } from './BreadcrumbProvider'
 
 const LABELS: Record<string, string> = {
   dashboard: 'Tableau de bord',
@@ -34,13 +35,23 @@ interface Crumb {
   label: string
 }
 
-function buildCrumbs(pathname: string): Crumb[] {
+function buildCrumbs(
+  pathname: string,
+  dynamicLabels: ReadonlyMap<string, string>,
+): Crumb[] {
   const segments = pathname.split('/').filter(Boolean)
   const out: Crumb[] = []
   let accum = ''
   for (const seg of segments) {
     accum += '/' + seg
-    if (UUID_RE.test(seg)) continue
+    if (UUID_RE.test(seg)) {
+      // Si un label dynamique a été enregistré pour cet UUID, on l'affiche.
+      const dyn = dynamicLabels.get(seg)
+      if (dyn && dyn.trim().length > 0) {
+        out.push({ href: accum, label: dyn })
+      }
+      continue
+    }
     const label = LABELS[seg] ?? seg
     out.push({ href: accum, label })
   }
@@ -49,7 +60,8 @@ function buildCrumbs(pathname: string): Crumb[] {
 
 export function Breadcrumb() {
   const pathname = usePathname() ?? ''
-  const crumbs = buildCrumbs(pathname)
+  const dynamicLabels = useBreadcrumbLabels()
+  const crumbs = buildCrumbs(pathname, dynamicLabels)
   if (crumbs.length === 0) return null
 
   // Toujours préfixer par un Accueil (icône maison) pour donner un chemin complet

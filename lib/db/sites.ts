@@ -25,6 +25,24 @@ export async function listSitesByContract(contractId: string): Promise<DbSite[]>
   return data ?? []
 }
 
+export async function updateSite(
+  id: string,
+  patch: { name?: string; address?: string | null; notes?: string | null },
+): Promise<void> {
+  const supabase = createAdminClient()
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name
+  if (patch.address !== undefined) update.address = patch.address
+  if (patch.notes !== undefined) update.notes = patch.notes
+  if (Object.keys(update).length === 0) return
+  const { error } = await supabase
+    .from('sites')
+    .update(update)
+    .eq('id', id)
+    .is('deleted_at', null)
+  if (error) throw error
+}
+
 export async function createSite(input: {
   client_id: string
   contract_id: string | null

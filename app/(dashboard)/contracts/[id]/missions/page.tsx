@@ -6,6 +6,7 @@ import { listSitesByContract } from '@/lib/db/sites'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { ContractTabs } from '../contract-tabs'
+import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
 const CADENCE_LABELS: Record<string, string> = {
   daily: 'Quotidienne',
@@ -44,6 +45,7 @@ export default async function ContractMissionsPage({
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header>
         <h1 className="text-2xl font-semibold">{contract.name}</h1>
         <p className="text-sm text-muted-foreground">{contract.client_name}</p>

@@ -8,6 +8,7 @@ import { listSitesByContract } from '@/lib/db/sites'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ContractTabs } from '../contract-tabs'
 import { CreateInterventionInline } from './create-intervention-inline'
+import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
 function formatScheduledAt(iso: string): { date: string; time: string } {
   const d = new Date(iso)
@@ -38,6 +39,7 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header>
         <h1 className="text-2xl font-semibold">{contract.name}</h1>
         <p className="text-sm text-muted-foreground">{contract.client_name}</p>

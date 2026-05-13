@@ -229,11 +229,12 @@ describe('lib/db/dashboard — Slice 11.0', () => {
     expect(capital.totalContractsActive).toBeGreaterThanOrEqual(1) // notre contrat test
   })
 
-  it('getAOPipeline retourne {analyzing, ready, submitted} >= 0', async () => {
+  it('getAOPipeline retourne {analyzing, ready, submitted, renewalsDue} >= 0', async () => {
     const pipeline = await getAOPipeline()
     expect(pipeline.analyzing).toBeGreaterThanOrEqual(0)
     expect(pipeline.ready).toBeGreaterThanOrEqual(1) // notre tender test
     expect(pipeline.submitted).toBeGreaterThanOrEqual(0)
+    expect(pipeline.renewalsDue).toBeGreaterThanOrEqual(0)
   })
 
   it('getOpenAnomaliesStats : oldCount <= total', async () => {

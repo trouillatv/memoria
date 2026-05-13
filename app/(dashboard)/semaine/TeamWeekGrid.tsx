@@ -17,6 +17,7 @@
 
 import type { TeamRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
 import { cn } from '@/lib/utils'
+import { TeamBadge } from '@/components/ui/team-badge'
 import { TeamWeekGridCell } from './TeamWeekGridCell'
 
 const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -154,10 +155,13 @@ function TeamGridRow({
             </span>
           ) : (
             <>
-              <span className="font-medium text-foreground leading-tight">
-                {row.team_name}
-              </span>
-              <span className="text-[11px] text-muted-foreground leading-tight">
+              <TeamBadge
+                name={row.team_name}
+                color={row.team_color}
+                size="md"
+                className="self-start"
+              />
+              <span className="text-[11px] text-muted-foreground leading-tight mt-1">
                 {formatMemberCount(row.member_count)}
               </span>
             </>

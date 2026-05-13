@@ -18,11 +18,16 @@ import {
   MapPin,
   AlertTriangle,
   ShieldCheck,
+  FileCheck,
+  Clock,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
+import { TeamCompositionPopover } from './TeamCompositionPopover'
+import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
+import { headers } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -65,16 +70,30 @@ export default async function BriefingPage({
 
   const briefing = await buildEveningBriefing(target)
 
+  // Texte format pour WhatsApp/email — Doctrine V5 Pilier 3 : Maeva colle dans
+  // son canal habituel, on prépare le bon texte.
+  const briefingShareText = formatBriefingShareText(briefing)
+  const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
+
   return (
     <div className="space-y-6 max-w-3xl">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <CalendarCheck className="h-6 w-6 text-brand-600" />
-          Briefing du soir
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Préparation de la couverture pour {formatDateLong(briefing.date)}.
-        </p>
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <CalendarCheck className="h-6 w-6 text-brand-600" />
+            Briefing du soir
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Préparation de la couverture pour {formatDateLong(briefing.date)}.
+          </p>
+        </div>
+        {briefing.interventionsCount > 0 && (
+          <ShareInterventionButton
+            text={briefingShareText}
+            url={briefingUrl}
+            label="Partager le briefing"
+          />
+        )}
       </header>
 
       {/* 4 chiffres clés */}
@@ -118,16 +137,31 @@ export default async function BriefingPage({
               Aucune intervention planifiée demain.
             </p>
           ) : (
-            <ul className="space-y-1.5 text-sm">
+            <ul className="space-y-2 text-sm">
               {briefing.coverageBySite.map((s) => (
-                <li key={s.site_name} className="flex items-start justify-between gap-3">
-                  <span className="font-medium">{s.site_name}</span>
-                  <span className="text-xs text-muted-foreground inline-flex items-center gap-2 shrink-0">
-                    <span className="tabular-nums">{s.count} interv.</span>
-                    {s.team_names.length > 0 && (
-                      <span className="italic">— {s.team_names.join(', ')}</span>
-                    )}
-                  </span>
+                <li key={s.site_name} className="space-y-0.5">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <span className="font-medium">{s.site_name}</span>
+                    <span className="inline-flex items-center gap-2 flex-wrap shrink-0">
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {s.count} interv.
+                      </span>
+                      {s.teams.map((t) => (
+                        <TeamCompositionPopover
+                          key={t.id}
+                          teamName={t.name}
+                          teamColor={t.color}
+                          memberNames={t.memberNames}
+                          referentName={t.referentName}
+                        />
+                      ))}
+                    </span>
+                  </div>
+                  {s.recentNotes.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground italic pl-0.5 line-clamp-2">
+                      {s.recentNotes.map((n) => n.body).join(' · ')}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -194,6 +228,57 @@ export default async function BriefingPage({
         </Card>
       )}
 
+      {/* Contrats à renouveler (signal proactif renouvellement). */}
+      {briefing.contractsExpiringSoon.length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <FileCheck className="h-4 w-4 text-amber-600" />
+              Contrats à renouveler ({briefing.contractsExpiringSoon.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-2 italic">
+              Fin de contrat dans les 60 prochains jours. Anticipez les
+              négociations.
+            </p>
+            <ul className="space-y-1.5 text-sm">
+              {briefing.contractsExpiringSoon.map((c) => {
+                const tone =
+                  c.daysUntilEnd <= 14
+                    ? 'bg-red-100 text-red-800'
+                    : c.daysUntilEnd <= 30
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-muted text-muted-foreground'
+                return (
+                  <li key={c.id} className="flex items-start justify-between gap-3">
+                    <Link
+                      href={`/contracts/${c.id}`}
+                      className="min-w-0 flex-1 hover:underline truncate"
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {' '}· {c.client_name}
+                      </span>
+                    </Link>
+                    <Badge
+                      className={`shrink-0 text-[10px] inline-flex items-center gap-1 ${tone}`}
+                    >
+                      <Clock className="h-2.5 w-2.5" aria-hidden />
+                      {c.daysUntilEnd === 0
+                        ? "aujourd'hui"
+                        : c.daysUntilEnd === 1
+                          ? 'demain'
+                          : `dans ${c.daysUntilEnd} j`}
+                    </Badge>
+                  </li>
+                )
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Lien semaine */}
       <div className="pt-4">
         <Link
@@ -205,6 +290,42 @@ export default async function BriefingPage({
       </div>
     </div>
   )
+}
+
+// Helpers --------------------------------------------------------------------
+
+async function buildAbsoluteUrl(path: string): Promise<string> {
+  const h = await headers()
+  const proto = h.get('x-forwarded-proto') ?? 'http'
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+  return `${proto}://${host}${path}`
+}
+
+/**
+ * Texte WhatsApp pour le briefing. Doctrine V5 :
+ *  - agrégats uniquement (jamais de noms d'agent)
+ *  - phrase calme, pas d'urgence injonctive
+ *  - lien vers la page briefing à la fin
+ */
+function formatBriefingShareText(
+  b: Awaited<ReturnType<typeof buildEveningBriefing>>,
+): string {
+  const dateText = formatDateLong(b.date)
+  const lines: string[] = [`Briefing — ${dateText}`]
+  lines.push(`• ${b.interventionsCount} intervention${b.interventionsCount > 1 ? 's' : ''} prévue${b.interventionsCount > 1 ? 's' : ''}`)
+  lines.push(`• ${b.teamsCount} équipe${b.teamsCount > 1 ? 's' : ''} mobilisée${b.teamsCount > 1 ? 's' : ''}`)
+  if (b.sitesWithoutCoverage.length > 0) {
+    const names = b.sitesWithoutCoverage.slice(0, 3).map((s) => s.name).join(', ')
+    const more = b.sitesWithoutCoverage.length > 3 ? ` (+${b.sitesWithoutCoverage.length - 3})` : ''
+    lines.push(`• ${b.sitesWithoutCoverage.length} site${b.sitesWithoutCoverage.length > 1 ? 's' : ''} sans couverture : ${names}${more}`)
+  }
+  if (b.unassignedInterventions.length > 0) {
+    lines.push(`• ${b.unassignedInterventions.length} à affecter`)
+  }
+  if (b.contractsExpiringSoon.length > 0) {
+    lines.push(`• ${b.contractsExpiringSoon.length} contrat${b.contractsExpiringSoon.length > 1 ? 's' : ''} à renouveler dans les 60j`)
+  }
+  return lines.join('\n')
 }
 
 function BriefStat({
