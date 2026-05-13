@@ -461,22 +461,45 @@ export function MonthlyReportPdf({
       </Page>
 
       {/* ---------------------------------------------------------------- */}
-      {/* Page 4 — Capital cumulé + note du DG                              */}
+      {/* Page 4 — Continuité + Capital cumulé + note du DG                 */}
       {/* ---------------------------------------------------------------- */}
       <Page size="A4" style={styles.page}>
+        {/* Sprint 5 UX-9 — Continuité du service (Doctrine V5).
+            Compteurs factuels passifs. Argument commercial par l'évidence. */}
+        {data.continuity && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Continuité du service</Text>
+            <View style={styles.cumulativeBox}>
+              <Text style={styles.cumulativeLine}>
+                {data.continuity.daysSinceStart.toLocaleString('fr-FR')} jour
+                {data.continuity.daysSinceStart > 1 ? 's' : ''} depuis le démarrage du contrat
+              </Text>
+              <Text style={styles.cumulativeLine}>
+                {data.continuity.consecutiveMonthsWithIntervention} mois consécutif
+                {data.continuity.consecutiveMonthsWithIntervention > 1 ? 's' : ''} couvert
+                {data.continuity.consecutiveMonthsWithIntervention > 1 ? 's' : ''}
+              </Text>
+              <Text style={styles.cumulativeLine}>
+                {data.continuity.weeksWithoutInterruption} semaine
+                {data.continuity.weeksWithoutInterruption > 1 ? 's' : ''} sans interruption
+              </Text>
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
             Capital cumulé depuis le {fmtDayLong(data.contract.start_date)}
           </Text>
           <View style={styles.cumulativeBox}>
             <Text style={styles.cumulativeLine}>
-              {c.totalInterventionsExecuted.toLocaleString('fr-FR')} interventions exécutées
+              {c.totalInterventionsExecuted.toLocaleString('fr-FR')} interventions documentées
             </Text>
             <Text style={styles.cumulativeLine}>
               {c.totalPhotos.toLocaleString('fr-FR')} photos archivées
             </Text>
             <Text style={styles.cumulativeLine}>
-              {c.totalAnomaliesResolved.toLocaleString('fr-FR')} anomalies résolues
+              {c.totalAnomaliesResolved.toLocaleString('fr-FR')} incidents traités
             </Text>
             <Text style={styles.cumulativeFootnote}>
               {c.daysSinceStart} jour{c.daysSinceStart > 1 ? 's' : ''} de prestation.

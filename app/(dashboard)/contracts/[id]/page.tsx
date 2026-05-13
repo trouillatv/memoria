@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { FileBarChart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { getContract } from '@/lib/db/contracts'
+import { getContract, getContractContinuity } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
@@ -18,10 +18,11 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions, interventions] = await Promise.all([
+  const [engagements, missions, interventions, continuity] = await Promise.all([
     listEngagementsByContract(id),
     listMissionsByContract(id),
     listInterventionsByContract(id),
+    getContractContinuity(id),
   ])
 
   // Build mission_id → engagement_ids map
@@ -129,6 +130,48 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       </header>
 
       <ContractTabs contractId={id} active="overview" />
+
+      {/* Sprint 5 UX-9 — Continuité du service (Doctrine V5).
+          Compteurs factuels passifs. Pas de score, pas de comparaison entre
+          contrats. Argument commercial par l'évidence. */}
+      {continuity && continuity.totalExecutedInterventions > 0 && (
+        <section
+          className="rounded-lg border bg-card p-4"
+          data-testid="contract-continuity"
+        >
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+            Continuité du service
+          </h2>
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">Depuis le démarrage</dt>
+              <dd className="font-semibold tabular-nums">
+                {continuity.daysSinceStart} jours
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Dernière intervention</dt>
+              <dd className="font-semibold tabular-nums">
+                {continuity.daysSinceLastIntervention === 0
+                  ? "Aujourd'hui"
+                  : `il y a ${continuity.daysSinceLastIntervention} jour${continuity.daysSinceLastIntervention > 1 ? 's' : ''}`}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Mois consécutifs couverts</dt>
+              <dd className="font-semibold tabular-nums">
+                {continuity.consecutiveMonthsWithIntervention}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Semaines sans rupture</dt>
+              <dd className="font-semibold tabular-nums">
+                {continuity.weeksWithoutInterruption}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">

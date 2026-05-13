@@ -6,13 +6,17 @@ vi.mock('@/app/(dashboard)/tenders/[id]/outcome-actions', () => ({
   setTenderOutcomeAction: vi.fn(async () => ({ ok: true })),
 }))
 
-// Mock sonner (toast) pour éviter les side effects dans jsdom.
-vi.mock('sonner', () => ({
-  toast: {
+// Mock sonner (toast) pour éviter les side effects dans jsdom. Sprint 5 UX-9 :
+// `toast` doit être callable comme fonction (showTimeSavedToast l'invoque
+// directement) tout en exposant success/error pour les autres appels.
+vi.mock('sonner', () => {
+  const fn = Object.assign(vi.fn(), {
     success: vi.fn(),
     error: vi.fn(),
-  },
-}))
+    info: vi.fn(),
+  })
+  return { toast: fn }
+})
 
 import { OutcomeDialog } from '@/app/(dashboard)/tenders/[id]/OutcomeDialog'
 import { setTenderOutcomeAction } from '@/app/(dashboard)/tenders/[id]/outcome-actions'

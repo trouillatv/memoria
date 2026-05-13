@@ -37,6 +37,23 @@ export interface CapitalPreuves {
   totalContractsActive: number
 }
 
+/**
+ * Sprint 5 UX-9 — Capital cumulé tenant (Doctrine V5).
+ *
+ * Compteurs factuels passifs pour le bandeau pied de dashboard. Pas de score,
+ * pas de comparaison, pas de classement. Argument commercial par l'évidence.
+ *
+ * Verrou V1 (mémoire ≠ recommandation) : faits bruts uniquement.
+ */
+export interface TenantCumulativeStats {
+  /** Interventions executed (completed|validated) tous contrats actifs confondus. */
+  totalInterventions: number
+  /** Photos archivées (lien intervention.mission.site.contract actif). */
+  totalPhotos: number
+  /** Anomalies clôturées (resolved_at non null). */
+  totalAnomaliesResolved: number
+}
+
 export interface AOPipeline {
   /** AO en cours d'analyse ou d'extraction. */
   analyzing: number
@@ -141,6 +158,43 @@ export async function getCapitalPreuves(): Promise<CapitalPreuves> {
     totalPhotos: photosRes.count ?? 0,
     totalInterventionsExecuted: interventionsRes.count ?? 0,
     totalContractsActive: contractsRes.count ?? 0,
+  }
+}
+
+/**
+ * getTenantCumulativeStats : capital cumulé tenant (Sprint 5 UX-9, Doctrine V5).
+ *
+ * Trois compteurs factuels pour le bandeau pied de dashboard :
+ *   - interventions executed (completed|validated)
+ *   - photos archivées (count global)
+ *   - anomalies clôturées (resolved_at non null)
+ *
+ * Doctrine : aucune agrégation par personne, aucun classement, aucun score.
+ */
+export async function getTenantCumulativeStats(): Promise<TenantCumulativeStats> {
+  const supabase = createAdminClient()
+
+  const [interventionsRes, photosRes, anomaliesRes] = await Promise.all([
+    supabase
+      .from('interventions')
+      .select('id', { count: 'exact', head: true })
+      .in('status', EXECUTED_STATUSES as unknown as string[]),
+    supabase
+      .from('intervention_photos')
+      .select('id', { count: 'exact', head: true }),
+    supabase
+      .from('intervention_anomalies')
+      .select('id', { count: 'exact', head: true })
+      .not('resolved_at', 'is', null),
+  ])
+  if (interventionsRes.error) throw interventionsRes.error
+  if (photosRes.error) throw photosRes.error
+  if (anomaliesRes.error) throw anomaliesRes.error
+
+  return {
+    totalInterventions: interventionsRes.count ?? 0,
+    totalPhotos: photosRes.count ?? 0,
+    totalAnomaliesResolved: anomaliesRes.count ?? 0,
   }
 }
 
