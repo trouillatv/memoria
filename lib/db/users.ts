@@ -62,15 +62,58 @@ export async function softDeleteUserAsAdmin(userId: string): Promise<void> {
 
 /**
  * Récupère le rôle d'un utilisateur (par son id).
- * Renvoie null si pas trouvé. Utilise le service role pour bypass RLS.
- * Utilisé pour les checks d'autorisation côté Server Action (ex. requireAdmin).
+ *
+ * Stratégie défense en profondeur (audit sécurité 2026-05-13) :
+ *   - Self-read (userId = user authentifié courant) : passe par le server client,
+ *     RLS applicable, pas de bypass.
+ *   - Cross-user (admin lit un autre user) : fallback admin client (bypass RLS).
+ *
+ * Renvoie null si pas trouvé. Utilisé pour les checks d'autorisation côté
+ * Server Action (ex. requireAdmin).
  */
 export async function getUserRoleById(userId: string): Promise<UserRole | null> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
+  // 1. Tentative server client (RLS-aware) : autorise la lecture de soi.
+  try {
+    const serverSb = await createServerClient()
+    const { data: { user } } = await serverSb.auth.getUser()
+    if (user?.id === userId) {
+      const { data } = await serverSb
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .is('deleted_at', null)
+        .maybeSingle()
+      if (data?.role) return data.role as UserRole
+    }
+  } catch {
+    // Pas de session ou pas de cookies (ex: appel depuis script) — fallback admin.
+  }
+
+  // 2. Fallback admin (cross-user lookup ou pas de session).
+  const adminSb = createAdminClient()
+  const { data, error } = await adminSb
     .from('users')
     .select('role')
     .eq('id', userId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (error || !data) return null
+  return data.role as UserRole
+}
+
+/**
+ * Récupère le rôle du user authentifié courant via server client (RLS).
+ * API préférée pour le code neuf — pas de bypass admin par défaut.
+ * Renvoie null si pas de session ou compte supprimé.
+ */
+export async function getCurrentUserRole(): Promise<UserRole | null> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data, error } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', user.id)
     .is('deleted_at', null)
     .maybeSingle()
   if (error || !data) return null

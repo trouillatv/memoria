@@ -32,6 +32,20 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-13 — Défense en profondeur sur la lecture du rôle utilisateur
+
+**Décision** : `getUserRoleById(userId)` tente d'abord le server client (RLS appliqué) pour les self-reads. Fallback admin client uniquement pour les lookups cross-user (admin lisant un autre user) ou les contextes sans session (scripts).
+
+Ajout d'un `getCurrentUserRole()` pour le code neuf — API préférée, jamais d'admin par défaut.
+
+**Raison** : audit a montré que toutes les `requireAdmin/requireManagerOrAdmin/requireFieldAgent` des 20 fichiers de server actions appellent `getUserRoleById` en bypass admin. La nouvelle stratégie ferme ce vecteur quand l'utilisateur lit son propre rôle (cas dominant), sans casser les call sites existants.
+
+**Migration future restante** : la couche `lib/db/` utilise massivement l'admin client (~150 call sites). Migration progressive recommandée — priorité aux fonctions user-scope (`listInterventionsVisibleToUser`, `getSiteResumeContext`, etc.) qui devraient passer en server client + RLS. Les agrégats admin (dashboard, monitoring, audit log) gardent l'admin client à juste titre.
+
+**Impact code** : `lib/db/users.ts` (transparent — aucun call site à modifier). `lib/auth/require.ts` ajouté comme point central pour le code neuf.
+
+---
+
 ## 2026-05-13 — Middleware enforce must_change_password sur toutes les routes
 
 **Décision** : création d'un `middleware.ts` racine qui vérifie le flag `app_metadata.must_change_password` du JWT et redirige vers `/change-password` toute requête authentifiée tant que le flag est actif.

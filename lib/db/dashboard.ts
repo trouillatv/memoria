@@ -1,3 +1,5 @@
+import type { EngagementComplianceRatios } from '@/types/db'
+
 // Phase 11 — Slice 11.0 : helpers DB cockpit dashboard.
 //
 // Doctrine V3 stricte appliquée :
@@ -945,4 +947,51 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
 
   events.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0))
   return events.slice(0, limit)
+}
+
+// ============================================================================
+// getContractSummaries — wrapper sur RPC contract_summaries (migration 039)
+// Remplace la boucle JS Promise.all(contracts.map(summarizeContract)) qui
+// faisait ~120 requêtes en parallèle pour 30 contrats.
+// ============================================================================
+
+export interface ContractSummary {
+  contractId: string
+  engagementsTotal: number
+  averageRatios: EngagementComplianceRatios
+  needsAttention: boolean
+}
+
+export async function getContractSummaries(contractIds: string[]): Promise<Map<string, ContractSummary>> {
+  if (contractIds.length === 0) return new Map()
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('contract_summaries', { p_contract_ids: contractIds })
+  if (error) {
+    console.error('[getContractSummaries]', error)
+    return new Map()
+  }
+  const map = new Map<string, ContractSummary>()
+  for (const row of (data ?? []) as Array<{
+    contract_id: string
+    engagements_total: number
+    planned: number
+    executed: number
+    proven: number
+    validated: number
+    needs_attention: boolean
+  }>) {
+    map.set(row.contract_id, {
+      contractId: row.contract_id,
+      engagementsTotal: row.engagements_total,
+      averageRatios: {
+        promised: row.engagements_total > 0,
+        planned: Number(row.planned ?? 0),
+        executed: Number(row.executed ?? 0),
+        proven: Number(row.proven ?? 0),
+        validated: Number(row.validated ?? 0),
+      },
+      needsAttention: row.needs_attention,
+    })
+  }
+  return map
 }

@@ -4,9 +4,6 @@ import { AlertTriangle, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listContracts } from '@/lib/db/contracts'
-import { listEngagementsByContract } from '@/lib/db/engagements'
-import { listMissionsByContract } from '@/lib/db/missions'
-import { listInterventionsByContract, countPhotosByInterventions } from '@/lib/db/interventions'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
 import {
   getWeekPulse,
@@ -17,6 +14,7 @@ import {
   getContractsUnderTension,
   getRecentActivity,
   getTenantCumulativeStats,
+  getContractSummaries,
 } from '@/lib/db/dashboard'
 import { countClosedThisMonth } from '@/lib/db/proof-share'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
@@ -28,8 +26,6 @@ import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
 import { ContractsUnderTensionWidget } from './ContractsUnderTensionWidget'
 import { RecentActivityWidget } from './RecentActivityWidget'
 import { AnomaliesOldWidget } from './AnomaliesOldWidget'
-
-const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
 /**
  * Sprint 6 — Helper wrapper sur countClosedThisMonth() pour le widget
@@ -48,97 +44,6 @@ interface ContractSummary {
   engagementsTotal: number
   averageRatios: EngagementComplianceRatios
   needsAttention: boolean
-}
-
-async function summarizeContract(contractId: string, contractName: string, clientName: string, status: string): Promise<ContractSummary> {
-  const [engagements, missions, interventions] = await Promise.all([
-    listEngagementsByContract(contractId),
-    listMissionsByContract(contractId),
-    listInterventionsByContract(contractId),
-  ])
-
-  // Build mission_id → engagement_ids map
-  const missionEngagements = new Map<string, string[]>()
-  for (const m of missions) {
-    missionEngagements.set(m.id, Array.isArray(m.engagement_ids) ? m.engagement_ids : [])
-  }
-
-  // Photos count — 1 query batch au lieu de N (1 par intervention finie)
-  const completedInterventionIds = interventions
-    .filter((i) => COMPLETED_STATUSES.has(i.status))
-    .map((i) => i.id)
-  const interventionPhotosCount = await countPhotosByInterventions(completedInterventionIds)
-
-  // Per-engagement aggregates
-  const planned = new Set<string>()
-  const interventionsByEngagement = new Map<string, { total: number; executed: number; proven: number; validated: number }>()
-
-  for (const m of missions) {
-    const eIds = missionEngagements.get(m.id) ?? []
-    for (const eId of eIds) {
-      planned.add(eId)
-      if (!interventionsByEngagement.has(eId)) {
-        interventionsByEngagement.set(eId, { total: 0, executed: 0, proven: 0, validated: 0 })
-      }
-    }
-  }
-
-  for (const intv of interventions) {
-    const eIds = missionEngagements.get(intv.mission_id) ?? []
-    for (const eId of eIds) {
-      const acc = interventionsByEngagement.get(eId)
-      if (!acc) continue
-      acc.total += 1
-      if (COMPLETED_STATUSES.has(intv.status)) {
-        acc.executed += 1
-        if ((interventionPhotosCount.get(intv.id) ?? 0) > 0) acc.proven += 1
-        if (intv.status === 'validated') acc.validated += 1
-      }
-    }
-  }
-
-  // Average ratios across engagements
-  const n = engagements.length
-  if (n === 0) {
-    return {
-      id: contractId, name: contractName, client: clientName, status,
-      engagementsTotal: 0,
-      averageRatios: { promised: false, planned: 0, executed: 0, proven: 0, validated: 0 },
-      needsAttention: false,
-    }
-  }
-
-  let plannedSum = 0
-  let executedSum = 0
-  let provenSum = 0
-  let validatedSum = 0
-  for (const e of engagements) {
-    const stats = interventionsByEngagement.get(e.id)
-    plannedSum += planned.has(e.id) ? 1 : 0
-    const total = stats?.total ?? 0
-    executedSum += total > 0 ? (stats?.executed ?? 0) / total : 0
-    provenSum += (stats?.executed ?? 0) > 0 ? (stats?.proven ?? 0) / (stats?.executed ?? 0) : 0
-    validatedSum += (stats?.executed ?? 0) > 0 ? (stats?.validated ?? 0) / (stats?.executed ?? 0) : 0
-  }
-
-  const avg: EngagementComplianceRatios = {
-    promised: true,
-    planned: plannedSum / n,
-    executed: executedSum / n,
-    proven: provenSum / n,
-    validated: validatedSum / n,
-  }
-
-  // « Needs attention » : tout segment en dessous de 0.7
-  const minSegment = Math.min(avg.planned, avg.executed, avg.proven, avg.validated)
-  const needsAttention = minSegment < 0.7 && avg.planned > 0  // ignore les contrats vides
-
-  return {
-    id: contractId, name: contractName, client: clientName, status,
-    engagementsTotal: n,
-    averageRatios: avg,
-    needsAttention,
-  }
 }
 
 export default async function DashboardPage() {
@@ -186,9 +91,22 @@ export default async function DashboardPage() {
   }
 
   // Mode cockpit : header chaleureux + bandeau 4 stats + sections contrats existantes.
-  const summaries = await Promise.all(
-    contracts.map((c) => summarizeContract(c.id, c.name, c.client_name, c.status)),
-  )
+  // Perf : 1 seule RPC SQL au lieu de N×4 queries (migration 039).
+  const summaryMap = await getContractSummaries(contracts.map((c) => c.id))
+  const summaries: ContractSummary[] = contracts.map((c) => {
+    const s = summaryMap.get(c.id)
+    return {
+      id: c.id,
+      name: c.name,
+      client: c.client_name,
+      status: c.status,
+      engagementsTotal: s?.engagementsTotal ?? 0,
+      averageRatios: s?.averageRatios ?? {
+        promised: false, planned: 0, executed: 0, proven: 0, validated: 0,
+      },
+      needsAttention: s?.needsAttention ?? false,
+    }
+  })
   const active = summaries.filter((s) => s.status === 'active')
   const others = summaries.filter((s) => s.status !== 'active')
   const attention = active.filter((s) => s.needsAttention)
