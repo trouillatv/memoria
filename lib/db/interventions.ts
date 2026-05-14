@@ -472,18 +472,62 @@ export async function createValidation(input: {
  */
 export async function listInterventionsVisibleToUser(userId: string): Promise<DbIntervention[]> {
   const supabase = createAdminClient()
+
+  // V5.1 fix : récupérer les team_ids actives de l'user.
+  // Les interventions doctrine V2 utilisent `assigned_team_id` (pas le legacy
+  // `team` array). Sans ce join, Moana / les chefs ne voient AUCUNE
+  // intervention même quand ils sont membres actifs d'une équipe affectée.
+  const { data: memberships } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', userId)
+    .is('left_at', null)
+  const teamIds = (memberships ?? []).map((m) => m.team_id)
+
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  const { data, error } = await supabase
+  // V5.1 — join missions pour filtrer les missions système ("Traces libres
+  // du site", cadence='on_demand') qui polluent /m.
+  let q = supabase
     .from('interventions')
-    .select('*')
-    .contains('team', [userId])
+    .select('*, mission_cadence:missions!inner(cadence, name)')
     .gte('scheduled_at', yesterday)
     .lte('scheduled_at', inOneWeek)
     .order('scheduled_at', { ascending: true })
+
+  if (teamIds.length > 0) {
+    // Combine : user dans le team[] legacy OU assigned_team_id ∈ teams actives
+    q = q.or(
+      `team.cs.{${userId}},assigned_team_id.in.(${teamIds.join(',')})`,
+    )
+  } else {
+    // Pas de team active : fallback sur le legacy team[]
+    q = q.contains('team', [userId])
+  }
+
+  const { data, error } = await q
   if (error) throw error
-  return data ?? []
+
+  // V5.1 — exclure les interventions sur missions système (Traces libres du site)
+  type RawWithMission = DbIntervention & {
+    mission_cadence?:
+      | { cadence?: string | null; name?: string | null }
+      | Array<{ cadence?: string | null; name?: string | null }>
+      | null
+  }
+  const filtered = (data ?? []).filter((r: unknown) => {
+    const row = r as RawWithMission
+    const m = Array.isArray(row.mission_cadence) ? row.mission_cadence[0] : row.mission_cadence
+    if (!m) return true
+    return m.cadence !== 'on_demand'
+  })
+
+  // Strip the joined field pour préserver le type DbIntervention
+  return filtered.map((r: unknown) => {
+    const { mission_cadence: _omit, ...rest } = r as RawWithMission
+    return rest as DbIntervention
+  })
 }
 
 // =================================

@@ -35,7 +35,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${inter.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        {/* V5.1 — mode clair par défaut. Plus de detection auto OS qui
+            poussait l'app mobile en dark mode sur les iPhones configurés en
+            mode sombre. Le toggle ThemeToggle reste fonctionnel : l'user
+            peut explicitement passer en dark via le toggle, sa préférence
+            sera persistée en localStorage. */}
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           {children}
           <Toaster />
         </ThemeProvider>
