@@ -33,9 +33,11 @@ export async function changePasswordAction(formData: FormData) {
     await admin.auth.admin.updateUserById(user.id, { app_metadata: cleanMeta })
   }
 
-  // Force un refresh de session côté client pour récupérer le nouveau JWT
-  // sans must_change_password.
-  await supabase.auth.refreshSession()
-
-  redirect('/missions')
+  // V5.1 fix : refreshSession côté serveur ne propage pas toujours le nouveau
+  // JWT au cookie avant le redirect, ce qui cause une boucle (proxy middleware
+  // lit l'ancien JWT avec must_change_password=true). On force un signOut puis
+  // redirect vers login — l'user retape son nouveau mdp pour confirmer, et le
+  // login génère un JWT propre. UX un peu plus longue mais déterministe.
+  await supabase.auth.signOut()
+  redirect('/login?password_changed=1')
 }
