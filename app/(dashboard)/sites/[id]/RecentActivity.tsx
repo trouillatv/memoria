@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Camera, AlertTriangle, FileText, CheckSquare } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { RecentActivityItem } from '@/lib/db/site-cockpit'
@@ -47,11 +48,10 @@ export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
       {items.map((item) => {
         const Icon = KIND_ICON[item.kind]
         const iconColor = KIND_ICON_COLOR[item.kind]
-        return (
-          <li
-            key={`${item.kind}-${item.id}`}
-            className="flex items-start gap-2 rounded px-2 py-1.5 hover:bg-muted/40"
-          >
+        const href = item.interventionId ? `/interventions/${item.interventionId}` : null
+
+        const inner = (
+          <>
             <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline justify-between gap-2 flex-wrap">
@@ -74,6 +74,23 @@ export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
                 </ul>
               )}
             </div>
+          </>
+        )
+
+        return (
+          <li key={`${item.kind}-${item.id}`}>
+            {href ? (
+              <Link
+                href={href}
+                className="flex items-start gap-2 rounded px-2 py-1.5 hover:bg-muted/40 transition-colors"
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div className="flex items-start gap-2 rounded px-2 py-1.5">
+                {inner}
+              </div>
+            )}
           </li>
         )
       })}
