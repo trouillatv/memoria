@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 import { Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { toggleChecklistItemMobileAction } from './actions'
@@ -36,8 +35,6 @@ export function ChecklistMobile({
   signedUrls,
   canEdit,
 }: Props) {
-  const router = useRouter()
-  const [pending, startTransition] = useTransition()
   const [optimistic, setOptimistic] = useState<Record<string, boolean>>({})
   // keyed by checklistItemId or 'free'
   const [localPhotos, setLocalPhotos] = useState<Record<string, ThumbForItem[]>>({})
@@ -101,21 +98,26 @@ export function ChecklistMobile({
     if (!canEdit) return
     const currentDone = optimistic[item.id] !== undefined ? optimistic[item.id] : item.done
     const newDone = !currentDone
+    // Optimistic UI immediat — bascule instantanee cote utilisateur
     setOptimistic((prev) => ({ ...prev, [item.id]: newDone }))
 
     const fd = new FormData()
     fd.set('id', item.id)
     fd.set('done', newDone.toString())
 
-    startTransition(async () => {
+    // V5.1 fix UX : pas de startTransition + pas de router.refresh().
+    // - startTransition marquait l'update comme "non urgent" -> React deferre
+    //   le render qui suit, donnant une sensation de lenteur.
+    // - router.refresh() re-fetchait toutes les RSC props (500-1000ms sur 4G NC),
+    //   bloquant l'UI pendant la sync.
+    // Le state optimistic + le toast d'erreur en cas de fail couvrent le besoin.
+    void (async () => {
       const r = await toggleChecklistItemMobileAction(fd)
       if (r && 'error' in r && r.error) {
         setOptimistic((prev) => ({ ...prev, [item.id]: !newDone }))
         toast.error(r.error)
-      } else {
-        router.refresh()
       }
-    })
+    })()
   }
 
   const doneCount = items.filter((i) => {
@@ -151,7 +153,7 @@ export function ChecklistMobile({
                 style={{ minHeight: 64 }}
               >
                 <span
-                  className={`shrink-0 w-11 h-11 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  className={`shrink-0 w-11 h-11 rounded-full border-2 flex items-center justify-center ${
                     isDone
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-card border-foreground/40'
