@@ -57,7 +57,7 @@ async function backfill() {
     )
   let aStored = 0
   let aTotal = 0
-  for (const a of (anomalies ?? []) as Array<{
+  for (const a of (anomalies ?? []) as unknown as Array<{
     id: string
     description: string | null
     category: string
@@ -91,7 +91,7 @@ async function backfill() {
     .not('caption', 'is', null)
   let pStored = 0
   let pTotal = 0
-  for (const p of (photos ?? []) as Array<{
+  for (const p of (photos ?? []) as unknown as Array<{
     id: string
     caption: string | null
     intervention: { mission: { site_id: string } | { site_id: string }[] } | null
