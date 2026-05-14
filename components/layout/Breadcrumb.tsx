@@ -67,7 +67,11 @@ export function Breadcrumb() {
   // Les crumbs de préfixe sont rendus AVANT ceux dérivés du pathname.
   // Permet aux routes plates (ex. /interventions/[id]) de remonter un
   // contexte parent (Contrats > Nom contrat) injecté côté page.
-  const crumbs = [...prefixCrumbs, ...buildCrumbs(pathname, dynamicLabels)]
+  // Dédupliquer : si un prefixCrumb a le même href qu'un crumb pathname, on
+  // garde la version préfixe (plus intentionnelle) et on retire la version pathname.
+  const prefixHrefs = new Set(prefixCrumbs.map((c) => c.href))
+  const pathCrumbs = buildCrumbs(pathname, dynamicLabels).filter((c) => !prefixHrefs.has(c.href))
+  const crumbs = [...prefixCrumbs, ...pathCrumbs]
   if (crumbs.length === 0) return null
 
   // Toujours préfixer par un Accueil (icône maison) pour donner un chemin complet

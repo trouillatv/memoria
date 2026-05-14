@@ -35,9 +35,10 @@ export interface SiteIdentity {
   address: string | null
   contractId: string | null
   contractName: string | null
+  clientId: string | null
   clientName: string | null
-  contractStartedAt: string | null  // ISO — pour "Contrat depuis octobre 2023"
-  teamsSucceeded: number  // nombre d'équipes distinctes ayant été affectées
+  contractStartedAt: string | null
+  teamsSucceeded: number
 }
 
 export interface SiteCurrentState {
@@ -238,7 +239,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
 
   const { data: site } = await supabase
     .from('sites')
-    .select('id, name, address, contract_id, created_at')
+    .select('id, name, address, contract_id, client_id, created_at')
     .eq('id', siteId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -246,17 +247,27 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
 
   let contractName: string | null = null
   let clientName: string | null = null
+  let clientId: string | null = (site as { client_id?: string | null }).client_id ?? null
   let contractStartedAt: string | null = null
+
+  // Résoudre le nom du client directement depuis la table clients
+  if (clientId) {
+    const { data: clientRow } = await supabase
+      .from('clients')
+      .select('name')
+      .eq('id', clientId)
+      .maybeSingle()
+    if (clientRow) clientName = (clientRow as { name: string }).name
+  }
+
   if (site.contract_id) {
     const { data: contract } = await supabase
       .from('contracts')
-      .select('name, client_name, start_date, created_at')
+      .select('name, start_date, created_at')
       .eq('id', site.contract_id)
       .maybeSingle()
     if (contract) {
       contractName = contract.name as string | null
-      clientName = contract.client_name as string | null
-      // start_date peut ne pas exister selon schéma — fallback created_at
       contractStartedAt = (contract.start_date as string | null) ?? (contract.created_at as string | null)
     }
   }
@@ -291,6 +302,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
     address: (site.address as string | null) ?? null,
     contractId: (site.contract_id as string | null) ?? null,
     contractName,
+    clientId,
     clientName,
     contractStartedAt,
     teamsSucceeded,

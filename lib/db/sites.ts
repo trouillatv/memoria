@@ -46,6 +46,8 @@ export async function listSitesByContract(contractId: string): Promise<DbSite[]>
 export interface SiteWithStats extends DbSite {
   contract_name: string | null
   contract_status: string | null
+  /** Nom du client (CHT, OPT…) pour le regroupement dans la liste. */
+  client_display_name: string | null
   last_intervention_at: string | null
   missions_count: number
   interventions_count: number
@@ -58,16 +60,14 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
 
   const { data: sites, error } = await supabase
     .from('sites')
-    .select('*, contract:contracts(name, status)')
+    .select('*, contract:contracts(name, status), client:clients(name)')
     .is('deleted_at', null)
     .order('name')
   if (error) throw error
   const rows = (sites ?? []) as Array<
     DbSite & {
-      contract:
-        | { name: string; status: string }
-        | { name: string; status: string }[]
-        | null
+      contract: { name: string; status: string } | { name: string; status: string }[] | null
+      client: { name: string } | { name: string }[] | null
     }
   >
 
@@ -135,6 +135,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
 
   return rows.map((s) => {
     const c = Array.isArray(s.contract) ? s.contract[0] ?? null : s.contract
+    const cl = Array.isArray(s.client) ? s.client[0] ?? null : s.client
     return {
       id: s.id,
       client_id: s.client_id,
@@ -152,6 +153,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       deleted_at: s.deleted_at,
       contract_name: c?.name ?? null,
       contract_status: c?.status ?? null,
+      client_display_name: cl?.name ?? null,
       last_intervention_at: lastBySite.get(s.id) ?? null,
       missions_count: missionsBySite.get(s.id)?.length ?? 0,
       interventions_count: interventionsBySite.get(s.id) ?? 0,

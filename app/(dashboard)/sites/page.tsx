@@ -1,15 +1,15 @@
-// Page Sites globale (cross-contrat).
+// Page Sites globale (cross-contrat) — groupée par client.
 //
-// Réservée admin/manager. Liste tous les sites du tenant, séparés en deux
-// sections : Actifs / Inactifs (dernière intervention > 6 mois). Permet
-// d'éditer chaque site et de le supprimer SI aucune donnée n'y est liée.
+// Réservée admin/manager. Liste tous les sites du tenant, groupés par client
+// (CHT, OPT, Dumbea Mall…). Permet d'éditer chaque site et de le supprimer
+// SI aucune donnée n'y est liée.
 //
 // Doctrine V5 : aucun historique n'est jamais perdu. Un site avec des
 // missions/interventions/notes ne peut PAS être supprimé — il vieillit
 // vers "Inactif" et reste consultable indéfiniment.
 
 import { redirect } from 'next/navigation'
-import { MapPin, ChevronRight } from 'lucide-react'
+import { MapPin, ChevronRight, Building2 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSitesGlobal, isSiteInactive } from '@/lib/db/sites'
 import { SiteGlobalRow } from './SiteGlobalRow'
@@ -23,19 +23,30 @@ export default async function SitesGlobalPage() {
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/m')
 
   const sites = await listSitesGlobal()
-  const active = sites.filter((s) => !isSiteInactive(s.last_intervention_at))
-  const inactive = sites.filter((s) => isSiteInactive(s.last_intervention_at))
+
+  // Grouper par client
+  type Group = { clientName: string | null; clientId: string | null; sites: typeof sites }
+  const groupMap = new Map<string, Group>()
+  for (const s of sites) {
+    const key = s.client_id ?? '__no_client__'
+    if (!groupMap.has(key)) {
+      groupMap.set(key, { clientName: s.client_display_name, clientId: s.client_id ?? null, sites: [] })
+    }
+    groupMap.get(key)!.sites.push(s)
+  }
+  const groups = Array.from(groupMap.values()).sort((a, b) =>
+    (a.clientName ?? '').localeCompare(b.clientName ?? '', 'fr', { sensitivity: 'base' }),
+  )
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-8 max-w-4xl">
       <header>
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <MapPin className="h-6 w-6 text-brand-600" />
+          <MapPin className="h-6 w-6 text-sky-600" />
           Sites
         </h1>
         <p className="text-sm text-muted-foreground">
-          Tous les sites du tenant, indépendamment du contrat. Édition possible.
-          Un site avec des données liées (missions, interventions, notes)
+          Tous les sites, groupés par client. Un site avec des données liées
           ne peut pas être supprimé — il bascule en « Inactif » après 6 mois
           sans intervention.
         </p>
@@ -48,41 +59,53 @@ export default async function SitesGlobalPage() {
           </p>
         </div>
       ) : (
-        <>
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-              Actifs ({active.length})
-            </h2>
-            {active.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">
-                Aucun site actif. Tous les sites enregistrés sont devenus inactifs.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {active.map((s) => (
-                  <SiteGlobalRow key={s.id} site={s} />
-                ))}
-              </ul>
-            )}
-          </section>
+        <div className="space-y-8">
+          {groups.map((g) => {
+            const active = g.sites.filter((s) => !isSiteInactive(s.last_intervention_at))
+            const inactive = g.sites.filter((s) => isSiteInactive(s.last_intervention_at))
+            return (
+              <section key={g.clientId ?? '__no_client__'} className="space-y-3">
+                {/* En-tête client */}
+                <div className="flex items-center gap-2 pb-1 border-b">
+                  <Building2 className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
+                  <h2 className="text-sm font-semibold">
+                    {g.clientName ?? 'Client non associé'}
+                  </h2>
+                  <span className="text-xs text-muted-foreground ml-auto tabular-nums">
+                    {g.sites.length} site{g.sites.length > 1 ? 's' : ''}
+                  </span>
+                </div>
 
-          {inactive.length > 0 && (
-            <details className="space-y-3 group [&_summary::-webkit-details-marker]:hidden [&_summary::marker]:hidden">
-              <summary className="cursor-pointer text-sm font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 select-none">
-                <ChevronRight
-                  className="h-3.5 w-3.5 transition-transform group-open:rotate-90"
-                  aria-hidden
-                />
-                Inactifs ({inactive.length})
-              </summary>
-              <ul className="space-y-2 mt-3">
-                {inactive.map((s) => (
-                  <SiteGlobalRow key={s.id} site={s} inactive />
-                ))}
-              </ul>
-            </details>
-          )}
-        </>
+                {/* Sites actifs */}
+                {active.length > 0 && (
+                  <ul className="space-y-2 pl-6">
+                    {active.map((s) => (
+                      <SiteGlobalRow key={s.id} site={s} />
+                    ))}
+                  </ul>
+                )}
+
+                {/* Sites inactifs (repliables) */}
+                {inactive.length > 0 && (
+                  <details className="pl-6 group [&_summary::-webkit-details-marker]:hidden [&_summary::marker]:hidden">
+                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 select-none">
+                      <ChevronRight
+                        className="h-3 w-3 transition-transform group-open:rotate-90"
+                        aria-hidden
+                      />
+                      {inactive.length} inactif{inactive.length > 1 ? 's' : ''}
+                    </summary>
+                    <ul className="space-y-2 mt-2 opacity-60">
+                      {inactive.map((s) => (
+                        <SiteGlobalRow key={s.id} site={s} inactive />
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </section>
+            )
+          })}
+        </div>
       )}
     </div>
   )

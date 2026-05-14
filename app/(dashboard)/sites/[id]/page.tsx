@@ -30,7 +30,7 @@ import {
   getSiteTransmissionReadings,
   getSiteRecentPhotos,
 } from '@/lib/db/site-cockpit'
-import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
+import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ASavoirManager } from './ASavoirManager'
 import { TraceStream } from './TraceStream'
 import { IdentityHeader } from './IdentityHeader'
@@ -100,6 +100,12 @@ export default async function SitePage({ params }: PageProps) {
   return (
     <div className="space-y-6 max-w-4xl">
       <DynamicCrumb segmentId={id} label={identity.name} />
+      {identity.clientName && (
+        <BreadcrumbPrefix crumbs={[
+          { href: '/sites', label: 'Sites' },
+          { href: '/sites', label: identity.clientName },
+        ]} />
+      )}
       <Link
         href="/sites"
         className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
