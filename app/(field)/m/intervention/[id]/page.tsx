@@ -32,9 +32,24 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   if (!intervention) notFound()
 
   // Defensive : verify the user is in the team (RLS would also block, but better UX message)
+  // V5.1 fix : check legacy team[] ET assigned_team_id via team_members
+  // (doctrine V2). Sans le 2e check, les chefs comme Moana sont rejetes
+  // meme quand ils sont membres actifs de la team affectee a l'intervention.
   const isAdmin = user.role === 'admin' || user.role === 'manager'
-  const isInTeam = intervention.team.includes(user.id)
-  if (!isAdmin && !isInTeam) {
+  const isInLegacyTeam = intervention.team.includes(user.id)
+  let isInAssignedTeam = false
+  if (!isAdmin && !isInLegacyTeam && intervention.assigned_team_id) {
+    const supabase = createAdminClient()
+    const { data: membership } = await supabase
+      .from('team_members')
+      .select('user_id')
+      .eq('team_id', intervention.assigned_team_id)
+      .eq('user_id', user.id)
+      .is('left_at', null)
+      .maybeSingle()
+    isInAssignedTeam = !!membership
+  }
+  if (!isAdmin && !isInLegacyTeam && !isInAssignedTeam) {
     return (
       <div className="rounded-lg border bg-card p-6 max-w-md">
         <p className="text-base">Cette mission n&apos;est pas la vôtre.</p>
