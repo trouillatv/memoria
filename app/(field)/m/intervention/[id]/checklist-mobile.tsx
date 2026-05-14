@@ -149,18 +149,18 @@ export function ChecklistMobile({
                 type="button"
                 onClick={() => toggle(item)}
                 disabled={!canEdit}
-                className="w-full flex items-center gap-3 text-left active:bg-muted/50 disabled:opacity-70 -m-2 p-2 rounded-lg"
-                style={{ minHeight: 64 }}
+                className="w-full flex items-center gap-3 text-left active:bg-muted/50 disabled:opacity-70 -m-1 p-1 rounded-lg"
+                style={{ minHeight: 52 }}
               >
                 <span
-                  className={`shrink-0 w-11 h-11 rounded-full border-2 flex items-center justify-center ${
+                  className={`shrink-0 w-9 h-9 rounded-full border-2 flex items-center justify-center ${
                     isDone
                       ? 'bg-emerald-500 border-emerald-500'
                       : 'bg-card border-foreground/40'
                   }`}
                   aria-hidden
                 >
-                  {isDone && <Check className="h-6 w-6 text-white" strokeWidth={3} />}
+                  {isDone && <Check className="h-5 w-5 text-white" strokeWidth={3} />}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div
