@@ -167,7 +167,6 @@ export function ChecklistMobile({
                     }`}
                   >
                     {item.label}
-                    {item.required && <span className="ml-1 font-bold text-muted-foreground" aria-label="Obligatoire">*</span>}
                   </div>
                 </div>
               </button>
@@ -224,9 +223,9 @@ export function ChecklistMobile({
         </div>
       )}
 
-      {items.some((i) => i.required) && (
-        <p className="text-xs text-muted-foreground italic">* Tâche obligatoire</p>
-      )}
+      {/* V5.1 — retrait du marqueur "* Tâche obligatoire" : pas bloquant en
+          pratique (soft-required avec commentaire au moment du Terminer).
+          Aligne avec la grammaire descriptive V5.1 : pas d'injonction. */}
     </div>
   )
 }
