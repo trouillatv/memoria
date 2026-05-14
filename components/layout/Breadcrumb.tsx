@@ -6,7 +6,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronRight, Home } from 'lucide-react'
-import { useBreadcrumbLabels } from './BreadcrumbProvider'
+import { useBreadcrumbLabels, useBreadcrumbPrefix } from './BreadcrumbProvider'
 
 const LABELS: Record<string, string> = {
   dashboard: 'Tableau de bord',
@@ -63,7 +63,11 @@ function buildCrumbs(
 export function Breadcrumb() {
   const pathname = usePathname() ?? ''
   const dynamicLabels = useBreadcrumbLabels()
-  const crumbs = buildCrumbs(pathname, dynamicLabels)
+  const prefixCrumbs = useBreadcrumbPrefix()
+  // Les crumbs de préfixe sont rendus AVANT ceux dérivés du pathname.
+  // Permet aux routes plates (ex. /interventions/[id]) de remonter un
+  // contexte parent (Contrats > Nom contrat) injecté côté page.
+  const crumbs = [...prefixCrumbs, ...buildCrumbs(pathname, dynamicLabels)]
   if (crumbs.length === 0) return null
 
   // Toujours préfixer par un Accueil (icône maison) pour donner un chemin complet
@@ -101,7 +105,7 @@ export function Breadcrumb() {
           // évite la redondance "🏠 › Tableau de bord".
           if (onHome) return null
           return (
-            <li key={c.href} className="flex items-center gap-1 min-w-0">
+            <li key={`${i}-${c.href}`} className="flex items-center gap-1 min-w-0">
               <ChevronRight
                 className="h-3 w-3 shrink-0 text-muted-foreground/40"
                 aria-hidden

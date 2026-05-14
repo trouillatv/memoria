@@ -29,17 +29,42 @@ function displayName(fullName: string | null, email: string): string {
 
 async function listAllChefsEquipe(): Promise<MemberLite[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, full_name, email')
-    .eq('role', 'chef_equipe')
-    .is('deleted_at', null)
-    .order('full_name', { ascending: true })
-  if (error) throw error
-  return (data ?? []).map((u) => ({
+  const [{ data: users, error: uErr }, { data: memberships, error: mErr }] =
+    await Promise.all([
+      supabase
+        .from('users')
+        .select('id, full_name, email')
+        .eq('role', 'chef_equipe')
+        .is('deleted_at', null)
+        .order('full_name', { ascending: true }),
+      // Memberships actives + nom de l'équipe associée — pour signaler dans
+      // le sélecteur "déjà dans Équipe X" et éviter les doublons cross-équipes.
+      supabase
+        .from('team_members')
+        .select('user_id, team:teams(id, name, deleted_at)')
+        .is('left_at', null),
+    ])
+  if (uErr) throw uErr
+  if (mErr) throw mErr
+
+  type TeamLite = { id: string; name: string; deleted_at: string | null }
+  const teamsByUser = new Map<string, string[]>()
+  for (const m of (memberships ?? []) as Array<{
+    user_id: string
+    team: TeamLite | TeamLite[] | null
+  }>) {
+    const t = Array.isArray(m.team) ? m.team[0] ?? null : m.team
+    if (!t || t.deleted_at) continue
+    const arr = teamsByUser.get(m.user_id) ?? []
+    arr.push(t.name)
+    teamsByUser.set(m.user_id, arr)
+  }
+
+  return (users ?? []).map((u) => ({
     id: u.id,
     name: displayName(u.full_name, u.email),
     email: u.email,
+    currentTeamNames: teamsByUser.get(u.id) ?? [],
   }))
 }
 

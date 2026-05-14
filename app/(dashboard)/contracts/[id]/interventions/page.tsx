@@ -1,21 +1,36 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar } from 'lucide-react'
+import { Calendar, AlertTriangle, Users } from 'lucide-react'
 import { getContract } from '@/lib/db/contracts'
 import { listInterventionsByContract } from '@/lib/db/interventions'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listSitesByContract } from '@/lib/db/sites'
+import { listTeams } from '@/lib/db/teams'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ContractTabs } from '../contract-tabs'
 import { CreateInterventionInline } from './create-intervention-inline'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
-function formatScheduledAt(iso: string): { date: string; time: string } {
+function formatDate(iso: string): string {
   const d = new Date(iso)
-  return {
-    date: d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' }),
-    time: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-  }
+  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' })
+}
+
+const SLOT_BADGE: Record<string, { label: string; class: string }> = {
+  morning: { label: 'matin', class: 'bg-amber-50 border-amber-200 text-amber-900' },
+  afternoon: { label: 'après-midi', class: 'bg-sky-50 border-sky-200 text-sky-900' },
+  evening: { label: 'soir', class: 'bg-indigo-50 border-indigo-200 text-indigo-900' },
+}
+
+function hexToPale(hex: string | null | undefined): string | undefined {
+  if (!hex) return undefined
+  const clean = hex.replace(/^#/, '').trim()
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return undefined
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  const mix = (c: number) => Math.round(c * 0.12 + 255 * 0.88)
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`
 }
 
 export default async function ContractInterventionsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,14 +38,16 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [interventions, missions, sites] = await Promise.all([
+  const [interventions, missions, sites, teams] = await Promise.all([
     listInterventionsByContract(id),
     listMissionsByContract(id),
     listSitesByContract(id),
+    listTeams(),
   ])
 
   const missionById = new Map(missions.map((m) => [m.id, m]))
   const siteById = new Map(sites.map((s) => [s.id, s]))
+  const teamById = new Map(teams.map((t) => [t.id, t]))
 
   // Group by date (YYYY-MM-DD) for visual grouping
   const today = new Date().toISOString().split('T')[0]
@@ -68,37 +85,15 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
               À venir ({upcoming.length})
             </h3>
             <ul className="space-y-2">
-              {upcoming.map((i) => {
-                const mission = missionById.get(i.mission_id)
-                const site = mission ? siteById.get(mission.site_id) : null
-                const { date, time } = formatScheduledAt(i.scheduled_at)
-                return (
-                  <li key={i.id} className="rounded-lg border p-3 bg-card">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <Calendar className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-sm font-medium">{date}</span>
-                          <span className="text-xs text-muted-foreground">{time}</span>
-                        </div>
-                        <div className="text-sm">{mission?.name ?? '—'}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {site?.name ?? '—'}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <StatusBadge status={i.status} />
-                        <Link
-                          href={`/interventions/${i.id}`}
-                          className="text-xs hover:underline whitespace-nowrap"
-                        >
-                          Ouvrir →
-                        </Link>
-                      </div>
-                    </div>
-                  </li>
-                )
-              })}
+              {upcoming.map((i) => (
+                <InterventionRow
+                  key={i.id}
+                  intervention={i}
+                  missionById={missionById}
+                  siteById={siteById}
+                  teamById={teamById}
+                />
+              ))}
             </ul>
           </div>
         )}
@@ -109,34 +104,16 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
               Historique ({past.length})
             </h3>
             <ul className="space-y-2">
-              {past.slice(0, 30).map((i) => {
-                const mission = missionById.get(i.mission_id)
-                const site = mission ? siteById.get(mission.site_id) : null
-                const { date, time } = formatScheduledAt(i.scheduled_at)
-                return (
-                  <li key={i.id} className="rounded-lg border p-3 bg-card opacity-90">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm">{date}</span>
-                          <span className="text-xs text-muted-foreground">{time}</span>
-                        </div>
-                        <div className="text-sm">{mission?.name ?? '—'}</div>
-                        <div className="text-xs text-muted-foreground">{site?.name ?? '—'}</div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <StatusBadge status={i.status} />
-                        <Link
-                          href={`/interventions/${i.id}`}
-                          className="text-xs hover:underline whitespace-nowrap"
-                        >
-                          Ouvrir →
-                        </Link>
-                      </div>
-                    </div>
-                  </li>
-                )
-              })}
+              {past.slice(0, 30).map((i) => (
+                <InterventionRow
+                  key={i.id}
+                  intervention={i}
+                  missionById={missionById}
+                  siteById={siteById}
+                  teamById={teamById}
+                  muted
+                />
+              ))}
             </ul>
             {past.length > 30 && (
               <p className="text-xs text-muted-foreground italic">+{past.length - 30} interventions plus anciennes</p>
@@ -151,5 +128,96 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
         )}
       </section>
     </div>
+  )
+}
+
+interface InterventionRowProps {
+  intervention: {
+    id: string
+    scheduled_at: string
+    scheduled_for: string | null
+    slot: 'morning' | 'afternoon' | 'evening' | null
+    status: string
+    mission_id: string
+    assigned_team_id: string | null
+  }
+  missionById: Map<string, { id: string; name: string; site_id: string }>
+  siteById: Map<string, { id: string; name: string }>
+  teamById: Map<string, { id: string; name: string; color: string | null }>
+  muted?: boolean
+}
+
+function InterventionRow({
+  intervention: i,
+  missionById,
+  siteById,
+  teamById,
+  muted,
+}: InterventionRowProps) {
+  const mission = missionById.get(i.mission_id)
+  const site = mission ? siteById.get(mission.site_id) : null
+  const team = i.assigned_team_id ? teamById.get(i.assigned_team_id) : null
+  const slotInfo = i.slot ? SLOT_BADGE[i.slot] : null
+  const isPlanned = i.status === 'planned'
+  const showNoTeamWarning = isPlanned && !i.assigned_team_id
+
+  return (
+    <li className={`rounded-lg border p-3 bg-card ${muted ? 'opacity-90' : ''}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <Calendar className="h-3 w-3 text-muted-foreground" aria-hidden />
+            <span className="text-sm font-medium">{formatDate(i.scheduled_at)}</span>
+            {slotInfo && (
+              <span
+                className={`inline-flex items-center text-[10px] uppercase tracking-wider rounded-full border px-1.5 py-0.5 ${slotInfo.class}`}
+                title="Créneau"
+              >
+                {slotInfo.label}
+              </span>
+            )}
+          </div>
+          <div className="text-sm font-medium">{site?.name ?? '—'}</div>
+          <div className="text-xs text-muted-foreground">{mission?.name ?? '—'}</div>
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+            {team ? (
+              <span
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full border"
+                style={{
+                  backgroundColor: hexToPale(team.color),
+                  borderColor: team.color ?? undefined,
+                }}
+                title="Équipe affectée"
+              >
+                <span
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ backgroundColor: team.color ?? '#94a3b8' }}
+                  aria-hidden
+                />
+                <Users className="h-2.5 w-2.5" aria-hidden />
+                {team.name}
+              </span>
+            ) : showNoTeamWarning ? (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"
+                title="Aucune équipe affectée à cette intervention"
+              >
+                <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
+                Sans équipe
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusBadge status={i.status} />
+          <Link
+            href={`/interventions/${i.id}`}
+            className="text-xs hover:underline whitespace-nowrap"
+          >
+            Ouvrir →
+          </Link>
+        </div>
+      </div>
+    </li>
   )
 }

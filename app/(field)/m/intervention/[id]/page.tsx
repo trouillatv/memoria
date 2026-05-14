@@ -112,12 +112,12 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       </Link>
 
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold">{mission?.name ?? 'Intervention'}</h1>
+        <h1 className="text-xl font-semibold">{site?.name ?? 'Intervention'}</h1>
         {site && (
           <div className="flex items-start gap-1.5 text-base text-muted-foreground">
             <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
             <div className="min-w-0">
-              <div>{site.name}</div>
+              {mission && <div>{mission.name}</div>}
               {site.address && <div className="text-sm">{site.address}</div>}
               {site.notes && (
                 <div className="text-sm italic text-slate-600 mt-1 whitespace-pre-wrap">
@@ -138,7 +138,7 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       {isSkipped && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-1">
           <div className="font-semibold">
-            Cette intervention a été marquée « pas aujourd&apos;hui »
+            Opération annulée pour ce jour
           </div>
           {intervention.skipped_reason && (
             <div className="text-sm">

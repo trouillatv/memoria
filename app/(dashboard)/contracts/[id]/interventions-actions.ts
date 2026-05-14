@@ -19,32 +19,31 @@ async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: st
 
 const createInterventionSchema = z.object({
   mission_id: z.string().uuid(),
-  scheduled_at: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)),
+  // Doctrine V2 : créneau explicite (matin/après-midi/soir), pas d'heure
+  // précise. La date est une yyyy-mm-dd.
+  scheduled_for: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
+  slot: z.enum(['morning', 'afternoon', 'evening']),
 })
 
 export async function createInterventionAction(formData: FormData) {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return auth
 
-  // Allow plain ISO without TZ (datetime-local input gives e.g. '2026-05-15T08:00')
-  const scheduled_at_raw = formData.get('scheduled_at') as string
-  const scheduled_at_iso = scheduled_at_raw.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(scheduled_at_raw)
-    ? scheduled_at_raw
-    : `${scheduled_at_raw}:00.000Z`
-
   const parsed = createInterventionSchema.safeParse({
     mission_id: formData.get('mission_id'),
-    scheduled_at: scheduled_at_iso,
+    scheduled_for: formData.get('scheduled_for'),
+    slot: formData.get('slot'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
   const mission = await getMission(parsed.data.mission_id)
   if (!mission) return { error: 'Mission introuvable' }
 
-  // Create intervention
+  // Create intervention — mode recommandé scheduled_for + slot.
   const interventionId = await createIntervention({
     mission_id: parsed.data.mission_id,
-    scheduled_at: parsed.data.scheduled_at,
+    scheduled_for: parsed.data.scheduled_for,
+    slot: parsed.data.slot,
     created_by: auth.userId,
   })
 

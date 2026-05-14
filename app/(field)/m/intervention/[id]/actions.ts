@@ -42,6 +42,17 @@ export async function startInterventionMobileAction(formData: FormData) {
   const intervention = await getIntervention(parsed.data.id)
   if (!intervention) return { error: 'Intervention introuvable' }
 
+  // Garde-fou Doctrine V3 : une intervention sans équipe affectée
+  // (organisation prévue) ne peut pas être démarrée. Le briefing du soir
+  // signale ces interventions, et cohérence avec /sites/[id] : on ne démarre
+  // pas un travail dont personne n'est responsable.
+  if (intervention.status === 'planned' && !intervention.assigned_team_id) {
+    return {
+      error:
+        "Cette intervention n'a pas d'équipe affectée. Demande au gérant de l'affecter avant de démarrer.",
+    }
+  }
+
   // Only allow start if currently planned. If already in_progress, this is a no-op success
   // (handles concurrent agent on same intervention — pas de panic, juste idempotent)
   if (intervention.status === 'planned') {
@@ -237,7 +248,7 @@ export async function skipInterventionAction(formData: FormData) {
       ok: false as const,
       error:
         intervention.status === 'skipped'
-          ? 'Cette intervention est déjà marquée « pas aujourd’hui »'
+          ? 'Cette opération est déjà annulée pour ce jour'
           : 'Cette intervention est déjà commencée',
     }
   }

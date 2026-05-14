@@ -14,6 +14,8 @@ function makeWeekPulse(p: Partial<WeekPulse> = {}): WeekPulse {
     interventionsExecuted: 0,
     photosCount: 0,
     validationsCount: 0,
+    unassignedCount: 0,
+    conflictCount: 0,
     ...p,
   }
 }

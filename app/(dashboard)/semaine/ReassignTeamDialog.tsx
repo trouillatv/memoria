@@ -35,6 +35,10 @@ export interface ReassignTeamOption {
   id: string
   name: string
   color: string | null
+  /** Si l'équipe est déjà sur un AUTRE site au même créneau (date+slot) que
+   *  l'intervention cible, on stocke le nom du site occupant ici. Le radio
+   *  est alors désactivé côté UI — évite le clic vers une erreur server. */
+  conflict?: { siteName: string } | null
 }
 
 interface Props {
@@ -114,17 +118,30 @@ export function ReassignTeamDialog({
               Aucune équipe active. Créez-en une depuis la page Équipes.
             </p>
           ) : (
-            teams.map((t) => (
-              <OptionRow
-                key={t.id}
-                value={t.id}
-                selected={selected === t.id}
-                onSelect={() => setSelected(t.id)}
-                disabled={pending}
-              >
-                <TeamBadge name={t.name} color={t.color} size="sm" />
-              </OptionRow>
-            ))
+            teams.map((t) => {
+              const blocked = Boolean(t.conflict)
+              return (
+                <OptionRow
+                  key={t.id}
+                  value={t.id}
+                  selected={selected === t.id}
+                  onSelect={() => setSelected(t.id)}
+                  disabled={pending || blocked}
+                >
+                  <span className="inline-flex items-center gap-2 flex-wrap min-w-0">
+                    <TeamBadge name={t.name} color={t.color} size="sm" />
+                    {blocked && t.conflict && (
+                      <span
+                        className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
+                        title="Cette équipe est déjà affectée à un autre site sur ce créneau"
+                      >
+                        déjà sur {t.conflict.siteName}
+                      </span>
+                    )}
+                  </span>
+                </OptionRow>
+              )
+            })
           )}
         </fieldset>
 

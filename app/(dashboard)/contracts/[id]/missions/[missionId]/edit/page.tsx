@@ -11,6 +11,7 @@ import { describeTemplate, formatDateFr } from '@/lib/recurrence/describe'
 import { MissionEditor } from './mission-editor'
 import { RecurrenceSection } from './RecurrenceSection'
 import { RecurrenceRowActions } from './RecurrenceRowActions'
+import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import type { InterventionStatus } from '@/types/db'
 
 // Wording statut FR — aggregate, jamais d'identite d'agent.
@@ -45,6 +46,10 @@ export default async function EditMissionPage({
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* Breadcrumb : remplace les UUIDs par les noms (Contrats > [contrat] >
+          Missions > [mission] > Édition). */}
+      <DynamicCrumb segmentId={contract.id} label={contract.name} />
+      <DynamicCrumb segmentId={mission.id} label={mission.name} />
       <header>
         <h1 className="text-2xl font-semibold">Édition mission</h1>
         <p className="text-sm text-muted-foreground">

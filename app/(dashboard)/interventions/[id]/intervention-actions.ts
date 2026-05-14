@@ -41,6 +41,12 @@ export async function startInterventionAction(formData: FormData) {
   if (intervention.status !== 'planned') {
     return { error: `Statut courant: ${intervention.status}. Démarrer impossible.` }
   }
+  // Garde-fou Doctrine V3 : pas d'organisation prévue → pas de démarrage.
+  if (!intervention.assigned_team_id) {
+    return {
+      error: "Cette intervention n'a pas d'équipe affectée. Affecte-la avant de démarrer.",
+    }
+  }
 
   await updateInterventionStatus(parsed.data.id, 'in_progress')
   revalidatePath(`/interventions/${parsed.data.id}`)
@@ -317,7 +323,7 @@ export async function skipInterventionSupervisorAction(formData: FormData) {
       ok: false as const,
       error:
         intervention.status === 'skipped'
-          ? 'Cette intervention est déjà marquée « pas aujourd’hui »'
+          ? 'Cette opération est déjà annulée pour ce jour'
           : 'Cette intervention est déjà commencée',
     }
   }

@@ -36,6 +36,10 @@ export interface MemberLite {
   id: string
   name: string
   email: string
+  /** Noms des autres équipes actives auxquelles cet utilisateur appartient
+   *  déjà — utile dans le sélecteur d'ajout pour éviter d'ajouter quelqu'un
+   *  qui est déjà dans une autre équipe sans le savoir. Optionnel. */
+  currentTeamNames?: string[]
 }
 
 interface Props {
@@ -96,7 +100,7 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Composition — {teamName}</DialogTitle>
           <DialogDescription>
@@ -168,11 +172,27 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
                     <SelectValue placeholder="Choisir une personne…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {candidates.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name} — {u.email}
-                      </SelectItem>
-                    ))}
+                    {candidates.map((u) => {
+                      // Exclut l'équipe courante (qu'on est en train d'éditer)
+                      // des "autres équipes" affichées dans le badge.
+                      const otherTeams = (u.currentTeamNames ?? []).filter(
+                        (n) => n !== teamName,
+                      )
+                      return (
+                        <SelectItem key={u.id} value={u.id}>
+                          <span className="inline-flex items-center gap-2 flex-wrap">
+                            <span>
+                              {u.name} — {u.email}
+                            </span>
+                            {otherTeams.length > 0 && (
+                              <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                déjà dans {otherTeams.join(', ')}
+                              </span>
+                            )}
+                          </span>
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
                 <Button

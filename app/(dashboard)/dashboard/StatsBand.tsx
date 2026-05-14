@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import { Activity, ShieldCheck, FileText, AlertTriangle, type LucideIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import type {
@@ -31,6 +32,34 @@ export function StatsBand({ weekPulse, capital, aoPipeline, anomalies }: StatsBa
         <Stat value={weekPulse.interventionsExecuted} label="interventions" />
         <Stat value={weekPulse.photosCount} label="photos" />
         <Stat value={weekPulse.validationsCount} label="validations" />
+        {weekPulse.unassignedCount > 0 && (
+          <Link
+            href="/semaine#vigilance-heading"
+            className="block rounded hover:bg-muted/30 -mx-1 px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Voir le détail sur la page Semaine"
+          >
+            <Stat
+              value={weekPulse.unassignedCount}
+              label="sans équipe →"
+              icon={AlertTriangle}
+              tone="amber"
+            />
+          </Link>
+        )}
+        {weekPulse.conflictCount > 0 && (
+          <Link
+            href="/semaine#vigilance-heading"
+            className="block rounded hover:bg-muted/30 -mx-1 px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title="Voir le détail sur la page Semaine"
+          >
+            <Stat
+              value={weekPulse.conflictCount}
+              label="conflit(s) équipe →"
+              icon={AlertTriangle}
+              tone="amber"
+            />
+          </Link>
+        )}
       </StatCard>
 
       <StatCard icon={ShieldCheck} title="Capital de preuves" testId="stat-capital">

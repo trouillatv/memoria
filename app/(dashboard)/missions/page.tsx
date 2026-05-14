@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Calendar, ClipboardList, MapPin, SearchX, ChevronRight } from 'lucide-react'
+import { Calendar, ClipboardList, MapPin, SearchX, ChevronRight, AlertTriangle, Users } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { FiltersBar } from '@/components/ui/filters-bar'
@@ -223,8 +223,11 @@ export default async function MissionsPage({
 type ListItem = {
   id: string
   scheduled_at: string
+  slot: 'morning' | 'afternoon' | 'evening' | null
   status: string
   skipped_reason: string | null
+  assigned_team_id: string | null
+  team: { id: string; name: string; color: string | null } | null
   mission?: {
     name: string
     site?: {
@@ -233,6 +236,33 @@ type ListItem = {
       contract?: { id: string; name: string; client_name: string } | null
     } | null
   } | null
+}
+
+const SLOT_BADGE: Record<string, { label: string; class: string }> = {
+  morning: {
+    label: 'matin',
+    class: 'bg-amber-50 border-amber-200 text-amber-900',
+  },
+  afternoon: {
+    label: 'après-midi',
+    class: 'bg-sky-50 border-sky-200 text-sky-900',
+  },
+  evening: {
+    label: 'soir',
+    class: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+  },
+}
+
+/** Convertit un hex en fond très pâle (10% saturation) pour pastilles équipe. */
+function hexToPale(hex: string | null | undefined): string | undefined {
+  if (!hex) return undefined
+  const clean = hex.replace(/^#/, '').trim()
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return undefined
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  const mix = (c: number) => Math.round(c * 0.12 + 255 * 0.88)
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`
 }
 
 interface Group {
@@ -313,24 +343,64 @@ function SiteGroupedList({ items, accent }: { items: ListItem[]; accent: 'emeral
   )
 }
 
-function InterventionRow({ item }: { item: { id: string; scheduled_at: string; status: string; skipped_reason: string | null; mission?: { name: string; site?: { name: string; contract?: { id: string; name: string; client_name: string } | null } | null } | null } }) {
+function InterventionRow({ item }: { item: ListItem }) {
   const date = new Date(item.scheduled_at)
   const dateLabel = date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' })
-  const timeLabel = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   const isSkipped = item.status === 'skipped'
+  const isPlanned = item.status === 'planned'
+  const slotInfo = item.slot ? SLOT_BADGE[item.slot] : null
+  const showNoTeamWarning = isPlanned && !item.assigned_team_id
   return (
     <li className={`rounded border p-3 bg-card ${isSkipped ? 'opacity-70 bg-muted/30' : ''}`}>
       <Link href={`/interventions/${item.id}`} className="flex items-start justify-between gap-3 -m-3 p-3 hover:bg-muted/20 rounded transition-colors">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <span className="text-sm font-medium">{dateLabel}</span>
-            <span className="text-xs text-muted-foreground">{timeLabel}</span>
+            {slotInfo && (
+              <span
+                className={`inline-flex items-center text-[10px] uppercase tracking-wider rounded-full border px-1.5 py-0.5 ${slotInfo.class}`}
+                title="Créneau"
+              >
+                {slotInfo.label}
+              </span>
+            )}
           </div>
-          <div className={`text-sm ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
-            {item.mission?.name ?? '—'}
+          <div className={`text-sm font-medium ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
+            {item.mission?.site?.name ?? '—'}
           </div>
           <div className="text-xs text-muted-foreground">
-            {item.mission?.site?.contract?.name ?? '—'} · {item.mission?.site?.name ?? '—'}
+            {item.mission?.name ?? '—'}
+            {item.mission?.site?.contract?.name && (
+              <span> · {item.mission.site.contract.name}</span>
+            )}
+          </div>
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+            {item.team ? (
+              <span
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full border"
+                style={{
+                  backgroundColor: hexToPale(item.team.color),
+                  borderColor: item.team.color ?? undefined,
+                }}
+                title="Équipe affectée à l'intervention"
+              >
+                <span
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ backgroundColor: item.team.color ?? '#94a3b8' }}
+                  aria-hidden
+                />
+                <Users className="h-2.5 w-2.5" aria-hidden />
+                {item.team.name}
+              </span>
+            ) : showNoTeamWarning ? (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5"
+                title="Aucune équipe affectée à cette intervention"
+              >
+                <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
+                Sans équipe
+              </span>
+            ) : null}
           </div>
           {isSkipped && item.skipped_reason && (
             <div

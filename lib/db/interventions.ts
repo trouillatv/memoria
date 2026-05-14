@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteNotes } from '@/lib/db/sites'
 import type {
-  DbIntervention, InterventionStatus,
+  DbIntervention, InterventionStatus, InterventionSlot,
   DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind,
   DbInterventionAnomaly, AnomalyCategory, AnomalyStatus,
   DbInterventionValidation,
@@ -41,9 +41,14 @@ export interface SupervisorInterventionsQuery {
 export interface SupervisorInterventionRow {
   id: string
   scheduled_at: string
+  scheduled_for: string | null
+  slot: InterventionSlot | null
   status: string
   mission_id: string
   skipped_reason: string | null
+  /** Équipe affectée (organisation prévue, doctrine V3). Null si non affectée. */
+  assigned_team_id: string | null
+  team: { id: string; name: string; color: string | null } | null
   mission?: {
     name: string
     site?: {
@@ -103,7 +108,9 @@ export async function listInterventionsSupervisor(
     .from('interventions')
     .select(
       `
-      id, scheduled_at, status, mission_id, skipped_reason,
+      id, scheduled_at, scheduled_for, slot, status, mission_id, skipped_reason,
+      assigned_team_id,
+      team:teams(id, name, color),
       mission:missions(id, name, site_id, site:sites(id, name, contract_id, contract:contracts(id, name, client_name)))
     `,
       { count: 'exact' },
@@ -125,9 +132,13 @@ export async function listInterventionsSupervisor(
   type RawIntervention = {
     id: string
     scheduled_at: string
+    scheduled_for: string | null
+    slot: InterventionSlot | null
     status: string
     mission_id: string
     skipped_reason: string | null
+    assigned_team_id: string | null
+    team?: unknown
     mission?: unknown
   }
 
@@ -143,12 +154,17 @@ export async function listInterventionsSupervisor(
     const contractRaw = siteRaw
       ? pickOne<{ id: string; name: string; client_name: string }>(siteRaw.contract)
       : null
+    const teamRaw = pickOne<{ id: string; name: string; color: string | null }>(r.team)
     return {
       id: r.id,
       scheduled_at: r.scheduled_at,
+      scheduled_for: r.scheduled_for,
+      slot: r.slot,
       status: r.status,
       mission_id: r.mission_id,
       skipped_reason: r.skipped_reason,
+      assigned_team_id: r.assigned_team_id,
+      team: teamRaw,
       mission: missionRaw
         ? {
             name: missionRaw.name,
@@ -186,28 +202,63 @@ export async function getIntervention(id: string): Promise<DbIntervention | null
 }
 
 /**
- * Crée une intervention `planned` et calque automatiquement `scheduled_for`
- * (date pure UTC, lue par /semaine et la génération paresseuse) et `slot`
- * (matin/après-midi/soir, dérivé de l'heure UTC) à partir de `scheduled_at`.
- * Sans ce calque, l'intervention reste invisible en Vue Semaine — bug récurrent
- * découvert sur le seed NC et la création manuelle (mai 2026).
+ * Crée une intervention `planned`.
+ *
+ * Deux modes d'appel :
+ *   - Mode RECOMMANDÉ : passer `scheduled_for` (date YYYY-MM-DD) + `slot`
+ *     (matin/après-midi/soir). Doctrine V2 — créneaux nommés explicites,
+ *     jamais d'heures précises. Le `scheduled_at` (timestamp UTC) est dérivé
+ *     mécaniquement pour rester en cohérence avec les colonnes existantes.
+ *   - Mode legacy : passer `scheduled_at` (timestamp UTC). `scheduled_for`
+ *     et `slot` sont dérivés depuis l'heure UTC. Fragile en multi-timezone
+ *     mais conservé pour compat (seed, scripts dev).
+ *
+ * Sans `scheduled_for` ni `scheduled_at`, throws.
  */
+const SLOT_HOUR_UTC: Record<'morning' | 'afternoon' | 'evening', number> = {
+  morning: 6,
+  afternoon: 12,
+  evening: 18,
+}
+
 export async function createIntervention(input: {
   mission_id: string
-  scheduled_at: string
+  /** Mode legacy — déconseillé sauf seed/scripts dev. */
+  scheduled_at?: string
+  /** Mode recommandé — date pure YYYY-MM-DD. */
+  scheduled_for?: string
+  /** Mode recommandé — créneau explicite. */
+  slot?: 'morning' | 'afternoon' | 'evening'
   team?: string[]
   created_by: string | null
 }): Promise<string> {
+  let scheduled_for: string
+  let slot: 'morning' | 'afternoon' | 'evening'
+  let scheduled_at: string
+
+  if (input.scheduled_for && input.slot) {
+    scheduled_for = input.scheduled_for
+    slot = input.slot
+    const hh = String(SLOT_HOUR_UTC[slot]).padStart(2, '0')
+    scheduled_at = `${scheduled_for}T${hh}:00:00.000Z`
+  } else if (input.scheduled_at) {
+    scheduled_at = input.scheduled_at
+    const d = new Date(scheduled_at)
+    scheduled_for = d.toISOString().slice(0, 10)
+    const h = d.getUTCHours()
+    slot = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
+  } else {
+    throw new Error(
+      'createIntervention : fournir (scheduled_for + slot) ou scheduled_at',
+    )
+  }
+
   const supabase = createAdminClient()
-  const d = new Date(input.scheduled_at)
-  const scheduled_for = d.toISOString().slice(0, 10)
-  const h = d.getUTCHours()
-  const slot = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
   const { data, error } = await supabase
     .from('interventions')
     .insert({
       mission_id: input.mission_id,
-      scheduled_at: input.scheduled_at,
+      scheduled_at,
       scheduled_for,
       slot,
       team: input.team ?? [],

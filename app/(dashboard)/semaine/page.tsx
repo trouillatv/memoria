@@ -29,7 +29,9 @@ import {
   type TeamRow,
 } from '@/lib/db/week-planning'
 import { listTeams } from '@/lib/db/teams'
+import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import { WeekNavigation } from './WeekNavigation'
+import { WeekVigilanceSection } from './WeekVigilance'
 import { CreateInterventionDialog, type MissionOption } from './CreateInterventionDialog'
 import { WeekGrid } from './WeekGrid'
 import { WeekGridClient } from './WeekGridClient'
@@ -79,8 +81,20 @@ function formatWeekHeader(range: WeekRange): string {
   )} au ${formatDateLongWithYear(range.weekEnd)}`
 }
 
+/**
+ * "Aujourd'hui" ancré sur le fuseau Pacific/Noumea (pilote NC, UTC+11).
+ *  Évite que le jour bascule prématurément quand le superviseur consulte
+ *  depuis l'Europe (UTC+1/+2) tard le soir : à 1h du matin en France, on
+ *  est encore en milieu de journée à Nouméa, donc "aujourd'hui" doit
+ *  refléter la réalité de l'équipe terrain.
+ */
 function todayUtcIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return new Intl.DateTimeFormat('fr-CA', {
+    timeZone: 'Pacific/Noumea',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
 }
 
 interface PageProps {
@@ -167,12 +181,13 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
-  const [siteRows, teamRows, allTeams, missionOptions, memberCounts] = await Promise.all([
+  const [siteRows, teamRows, allTeams, missionOptions, memberCounts, vigilance] = await Promise.all([
     view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
     view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
     listTeams(),
     fetchMissionOptions(),
     fetchTeamMemberCounts(),
+    getWeekVigilance(range.weekStart, range.weekEnd),
   ])
   const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
   const teams = activeTeams.map((t) => ({ id: t.id, name: t.name, color: t.color }))
@@ -278,6 +293,10 @@ export default async function SemainePage({ searchParams }: PageProps) {
           {' · '}
           <span className="italic text-amber-700/80">Non-affecté</span> = à attribuer à une équipe
         </p>
+
+        {/* Vigilance — interventions sans équipe + conflits d'équipe sur le
+            même créneau. Silence positif si aucun signal. */}
+        <WeekVigilanceSection data={vigilance} />
       </div>
     </div>
   )

@@ -28,6 +28,13 @@ export interface WeekPulse {
   photosCount: number
   /** Validations superviseur sur ces interventions (compteur anonyme). */
   validationsCount: number
+  /** Vigilance semaine — interventions sans équipe sur la semaine en cours
+   *  (planned/in_progress). Signal proactif pour rapatrier les oubliés. */
+  unassignedCount: number
+  /** Vigilance semaine — équipes affectées à 2+ sites différents sur le
+   *  même créneau (date+slot) dans la semaine en cours. Donnée historique
+   *  ou bypass : ne devrait jamais arriver en pratique. */
+  conflictCount: number
 }
 
 export interface CapitalPreuves {
@@ -102,6 +109,14 @@ export async function getWeekPulse(): Promise<WeekPulse> {
   const supabase = createAdminClient()
   const since = startOfWeekIso()
 
+  // Borne fin de semaine (dimanche 23:59:59 UTC) pour la vigilance.
+  const sinceDate = new Date(since)
+  const endDate = new Date(sinceDate)
+  endDate.setUTCDate(endDate.getUTCDate() + 6)
+  endDate.setUTCHours(23, 59, 59, 999)
+  const weekStartIso = since.slice(0, 10)
+  const weekEndIso = endDate.toISOString().slice(0, 10)
+
   const { data: interventions, error: intErr } = await supabase
     .from('interventions')
     .select('id')
@@ -110,11 +125,23 @@ export async function getWeekPulse(): Promise<WeekPulse> {
   if (intErr) throw intErr
 
   const ids = (interventions ?? []).map((i) => i.id as string)
+
+  // Vigilance — chargée en parallèle (helper indépendant).
+  const { getWeekVigilance } = await import('@/lib/db/week-vigilance')
+  const vigilancePromise = getWeekVigilance(weekStartIso, weekEndIso)
+
   if (ids.length === 0) {
-    return { interventionsExecuted: 0, photosCount: 0, validationsCount: 0 }
+    const v = await vigilancePromise
+    return {
+      interventionsExecuted: 0,
+      photosCount: 0,
+      validationsCount: 0,
+      unassignedCount: v.unassigned.length,
+      conflictCount: v.conflicts.length,
+    }
   }
 
-  const [photosRes, validationsRes] = await Promise.all([
+  const [photosRes, validationsRes, vigilance] = await Promise.all([
     supabase
       .from('intervention_photos')
       .select('id', { count: 'exact', head: true })
@@ -123,6 +150,7 @@ export async function getWeekPulse(): Promise<WeekPulse> {
       .from('intervention_validations')
       .select('id', { count: 'exact', head: true })
       .in('intervention_id', ids),
+    vigilancePromise,
   ])
   if (photosRes.error) throw photosRes.error
   if (validationsRes.error) throw validationsRes.error
@@ -131,6 +159,8 @@ export async function getWeekPulse(): Promise<WeekPulse> {
     interventionsExecuted: ids.length,
     photosCount: photosRes.count ?? 0,
     validationsCount: validationsRes.count ?? 0,
+    unassignedCount: vigilance.unassigned.length,
+    conflictCount: vigilance.conflicts.length,
   }
 }
 

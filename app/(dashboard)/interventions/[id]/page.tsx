@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, MapPin, FileSearch, Users } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, FileSearch } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -11,12 +11,15 @@ import {
 } from '@/lib/db/interventions'
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { getMission } from '@/lib/db/missions'
+import { listTeams } from '@/lib/db/teams'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ParticipantsPanel } from './participants-panel'
+import { AssignTeamButton } from './AssignTeamButton'
 import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
 import { formatInterventionShareText } from '@/lib/share/format-intervention'
+import { BreadcrumbPrefix, DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
 /** Origin absolu calculé depuis les headers (cohérent avec prepareProofDossierAction). */
 async function buildAbsoluteUrl(path: string): Promise<string> {
@@ -59,14 +62,100 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         .maybeSingle()
     : { data: null }
 
+  // Contract pour breadcrumb (chemin Contrats > X > Interventions).
+  const { data: contract } = site?.contract_id
+    ? await supabase
+        .from('contracts')
+        .select('id, name')
+        .eq('id', site.contract_id)
+        .maybeSingle()
+    : { data: null }
+
+  // Liste des équipes pour le bouton Affecter/Réassigner (visible tant que
+  // l'intervention est planned — immuabilité preuve après).
+  const allTeams = await listTeams()
+
+  // Pré-calcul des conflits par équipe : pour chaque équipe, est-elle déjà
+  // affectée à un AUTRE site sur le même créneau (date+slot) ?
+  // Permet d'afficher "déjà sur [site]" dans le dialog et de désactiver
+  // l'option — éviter le clic qui mène à une erreur server.
+  type SiteLite = { name: string }
+  type MissionLite = { site: SiteLite | SiteLite[] | null }
+  type ConflictRow = {
+    assigned_team_id: string
+    mission: MissionLite | MissionLite[] | null
+  }
+  const teamConflicts = new Map<string, string>()
+  if (intervention.slot) {
+    const { data: sameSlotRows } = await supabase
+      .from('interventions')
+      .select(
+        `assigned_team_id, mission:missions!inner(site:sites!inner(name))`,
+      )
+      .eq('scheduled_for', intervention.scheduled_for)
+      .eq('slot', intervention.slot)
+      .in('status', ['planned', 'in_progress'])
+      .neq('id', intervention.id)
+      .not('assigned_team_id', 'is', null)
+    const pick = <T,>(v: T | T[] | null): T | null =>
+      v === null ? null : Array.isArray(v) ? v[0] ?? null : v
+    for (const r of (sameSlotRows ?? []) as ConflictRow[]) {
+      const mission = pick(r.mission)
+      const site = mission ? pick(mission.site) : null
+      if (!site) continue
+      // Si une équipe est déjà sur plusieurs sites (data corrompue), on
+      // garde le premier — c'est suffisant pour signaler le conflit.
+      if (!teamConflicts.has(r.assigned_team_id)) {
+        teamConflicts.set(r.assigned_team_id, site.name)
+      }
+    }
+  }
+
+  const teamOptions = allTeams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    conflict: teamConflicts.has(t.id)
+      ? { siteName: teamConflicts.get(t.id)! }
+      : null,
+  }))
+
   // Sign URLs for photos (variante thumb 400×400 — gain bande passante).
   const signedUrls = await getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path))
 
-  const scheduledDate = new Date(intervention.scheduled_at)
-  const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {
-    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
-  })
-  const timeLabel = scheduledDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  // On formatte la date depuis scheduled_for (date logique) plutôt que
+  // scheduled_at (timestamp UTC) — évite les décalages de fuseau qui
+  // affichaient parfois "vendredi 15 mai" pour scheduled_for=14.
+  const dateLabel = (() => {
+    if (!intervention.scheduled_for) return 'Date non précisée'
+    const [y, m, d] = intervention.scheduled_for.split('-').map(Number)
+    if (!y || !m || !d) return intervention.scheduled_for
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    })
+  })()
+  // Créneau nommé, jamais d'heures précises (doctrine V2).
+  const SLOT_FR: Record<string, string> = {
+    morning: 'matin',
+    afternoon: 'après-midi',
+    evening: 'soir',
+  }
+  // Code couleur cohérent : lever du soleil / plein jour / crépuscule.
+  const SLOT_BADGE_CLASS: Record<string, string> = {
+    morning: 'bg-amber-50 border-amber-200 text-amber-900',
+    afternoon: 'bg-sky-50 border-sky-200 text-sky-900',
+    evening: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+  }
+  const slotLabel = intervention.slot
+    ? SLOT_FR[intervention.slot] ?? intervention.slot
+    : 'créneau non précisé'
+  const slotBadgeClass = intervention.slot
+    ? SLOT_BADGE_CLASS[intervention.slot] ?? 'bg-muted/30 border-border text-foreground'
+    : 'bg-muted/30 border-border text-foreground'
 
   // Anomalies + validation are useable only when intervention is active enough
   const anomaliesCanCreate = intervention.status === 'in_progress' || intervention.status === 'completed'
@@ -89,6 +178,20 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* Injection du chemin d'accès breadcrumb : Contrats > [Contrat].
+          Le segment "Interventions" est déjà généré naturellement par le
+          pathname /interventions/[id], pas besoin de le réinjecter. */}
+      {contract && (
+        <BreadcrumbPrefix
+          crumbs={[
+            { href: '/contracts', label: 'Contrats' },
+            { href: `/contracts/${contract.id}`, label: contract.name },
+          ]}
+        />
+      )}
+      {/* Renomme l'UUID de l'URL par le nom de la mission dans le breadcrumb. */}
+      {mission && <DynamicCrumb segmentId={intervention.id} label={mission.name} />}
+
       {site?.contract_id && (
         <Link href={`/contracts/${site.contract_id}/interventions`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3 w-3" /> Retour au contrat
@@ -97,7 +200,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
 
       <header className="space-y-2">
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-semibold">{mission?.name ?? 'Intervention'}</h1>
+          <h1 className="text-2xl font-semibold">{site?.name ?? 'Intervention'}</h1>
           <StatusBadge status={intervention.status} size="md" />
           {/* M1 — Bouton "Partager" (WhatsApp, email, etc.). Côté droit. */}
           <div className="ml-auto inline-flex items-center gap-3">
@@ -125,12 +228,18 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
           <span className="inline-flex items-center gap-1">
             <Calendar className="h-3.5 w-3.5" />
-            {dateLabel} · {timeLabel}
+            {dateLabel}
           </span>
-          {site && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${slotBadgeClass}`}
+            title="Créneau de l'intervention (doctrine V2 : matin/après-midi/soir)"
+          >
+            Créneau&nbsp;: {slotLabel}
+          </span>
+          {mission && (
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5" />
-              {site.name}
+              {mission.name}
             </span>
           )}
         </div>
@@ -140,13 +249,25 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         assignedTeam={assignedTeam ? { name: assignedTeam.name, color: assignedTeam.color } : null}
         participants={participants}
       />
+      {/* Bouton Affecter / Réassigner équipe — visible tant que l'intervention
+          est planned. Au-delà, l'équipe est figée (immuabilité preuve). */}
+      {isPlanned && (
+        <div className="flex justify-end -mt-2">
+          <AssignTeamButton
+            interventionId={intervention.id}
+            interventionLabel={mission?.name ?? 'Intervention'}
+            currentTeamId={intervention.assigned_team_id}
+            teams={teamOptions}
+          />
+        </div>
+      )}
 
       {/* Slice 6.4 — Panneau « Pas aujourd'hui » : visible si skipped, masque
           les actions d'exécution. Sinon : bouton sobre côté action si planned. */}
       {isSkipped && (
         <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-1">
           <div className="text-sm font-semibold text-amber-900">
-            Intervention marquée « pas aujourd&apos;hui »
+            Opération annulée pour ce jour
           </div>
           {intervention.skipped_reason && (
             <div className="text-sm text-amber-900/90">

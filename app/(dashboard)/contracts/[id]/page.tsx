@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { FileBarChart } from 'lucide-react'
+import { FileBarChart, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getContract, getContractContinuity } from '@/lib/db/contracts'
@@ -102,7 +102,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       })
     : null
 
-  const unplannedCount = engagements.filter((e) => !planned.has(e.id)).length
+  const unplannedEngagements = engagements.filter((e) => !planned.has(e.id))
+  const unplannedCount = unplannedEngagements.length
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -183,6 +184,52 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </dd>
             </div>
           </dl>
+        </section>
+      )}
+
+      {/* Avertissement : engagements non couverts par aucune mission.
+          Placé juste après "Continuité du service" pour le voir en haut,
+          avant la liste détaillée des promesses ci-dessous. */}
+      {unplannedCount > 0 && (
+        <section
+          aria-labelledby="unplanned-engagements-heading"
+          className="rounded-lg border border-amber-200 bg-amber-50/40 p-4 space-y-3"
+        >
+          <h2
+            id="unplanned-engagements-heading"
+            className="text-sm font-semibold inline-flex items-center gap-2 text-amber-900"
+          >
+            <AlertTriangle className="h-4 w-4" aria-hidden />
+            Promesses non couvertes par une mission ({unplannedCount})
+          </h2>
+          <p className="text-xs text-amber-900/80">
+            Ces engagements contractuels ne sont rattachés à aucune mission.
+            Tant qu&apos;ils ne sont pas cochés dans la fiche d&apos;une mission,
+            ils ne contribueront pas à la preuve de tenue du contrat — même
+            si le travail est physiquement effectué.
+          </p>
+          <ul className="space-y-1.5 text-sm">
+            {unplannedEngagements.map((e) => (
+              <li key={e.id} className="flex items-baseline gap-2">
+                <span className="text-amber-700 shrink-0">•</span>
+                <span>
+                  <span className="font-medium text-amber-900">{e.short_label}</span>
+                  {e.source_excerpt && (
+                    <span className="text-amber-900/70 italic">
+                      {' '}— « {e.source_excerpt.slice(0, 80)}
+                      {e.source_excerpt.length > 80 ? '…' : ''} »
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link
+            href={`/contracts/${id}/missions`}
+            className="inline-flex items-center text-xs font-medium text-amber-900 hover:text-amber-950 underline underline-offset-4"
+          >
+            Aller aux missions pour les rattacher →
+          </Link>
         </section>
       )}
 

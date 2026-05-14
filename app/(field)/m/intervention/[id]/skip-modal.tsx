@@ -45,7 +45,7 @@ export function SkipInterventionTrigger({ interventionId, action }: Props) {
         style={{ minHeight: 48 }}
         data-testid="skip-trigger"
       >
-        Pas aujourd&apos;hui
+        Annuler l&apos;opération de ce jour
       </button>
       {open && (
         <SkipModal
@@ -132,11 +132,11 @@ function SkipModal({
         <div className="p-5 space-y-4">
           <div className="space-y-1.5">
             <h2 id="skip-modal-title" className="text-lg font-semibold">
-              Pas aujourd&apos;hui&nbsp;?
+              Annuler l&apos;opération de ce jour&nbsp;?
             </h2>
             <p className="text-sm text-muted-foreground">
               Indiquez la raison. L&apos;intervention restera visible, marquée
-              comme non effectuée aujourd&apos;hui.
+              comme annulée pour ce jour.
             </p>
           </div>
 
