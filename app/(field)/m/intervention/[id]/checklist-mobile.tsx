@@ -146,7 +146,7 @@ export function ChecklistMobile({
               <button
                 type="button"
                 onClick={() => toggle(item)}
-                disabled={!canEdit || pending}
+                disabled={!canEdit}
                 className="w-full flex items-center gap-3 text-left active:bg-muted/50 disabled:opacity-70 -m-2 p-2 rounded-lg"
                 style={{ minHeight: 64 }}
               >
