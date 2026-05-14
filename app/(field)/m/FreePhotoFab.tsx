@@ -49,15 +49,17 @@ export function FreePhotoFab({ sites }: { sites: FreePhotoFabSite[] }) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <div className="fixed inset-x-0 bottom-0 p-4 bg-background border-t safe-bottom">
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold text-base active:scale-[0.98] transition-transform shadow-lg"
-            style={{ minHeight: 80 }}
-          >
-            <Camera className="h-6 w-6" />
-            Photo libre sur un site
-          </button>
+        <SheetTrigger
+          render={
+            <button
+              type="button"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold text-base active:scale-[0.98] transition-transform shadow-lg"
+              style={{ minHeight: 80 }}
+            />
+          }
+        >
+          <Camera className="h-6 w-6" />
+          Photo libre sur un site
         </SheetTrigger>
       </div>
 
