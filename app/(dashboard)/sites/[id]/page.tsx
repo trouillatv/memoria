@@ -30,6 +30,7 @@ import {
   getSiteTransmissionReadings,
   getSiteRecentPhotos,
 } from '@/lib/db/site-cockpit'
+import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import { ASavoirManager } from './ASavoirManager'
 import { TraceStream } from './TraceStream'
 import { IdentityHeader } from './IdentityHeader'
@@ -81,7 +82,7 @@ export default async function SitePage({ params }: PageProps) {
     getSiteTeamPresences(id, 14),
     getSiteReadings(id),
     getSiteMemoryMeta(id),
-    getSiteRecentPhotos(id, 4),
+    getSiteRecentPhotos(id, 9),
   ])
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
@@ -98,6 +99,7 @@ export default async function SitePage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <DynamicCrumb segmentId={id} label={identity.name} />
       <Link
         href="/sites"
         className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
@@ -166,7 +168,7 @@ export default async function SitePage({ params }: PageProps) {
             <TeamPresencesList presences={teamPresences} />
             {sitePhotos.length > 0 && (
               <div className="border-t pt-3">
-                <SitePhotoGallery photos={sitePhotos} siteId={id} />
+                <SitePhotoGallery photos={sitePhotos} />
               </div>
             )}
           </CardContent>

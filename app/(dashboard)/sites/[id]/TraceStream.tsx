@@ -49,13 +49,18 @@ interface Props {
 
 export function TraceStream({ events, meta }: Props) {
   if (events.length === 0) {
-    // V5.1.4 — Empty state lieu-centric (Vincent 2026-05-15). Plutôt que
-    // "pas d'événement", on parle de la mémoire qui démarre.
-    if (meta?.firstTraceAt && meta.totalTraces > 0) {
+    if (meta && (meta.executedInterventions > 0 || meta.photoCount > 0)) {
+      const parts: string[] = []
+      if (meta.executedInterventions > 0)
+        parts.push(`${meta.executedInterventions} passage${meta.executedInterventions > 1 ? 's' : ''}`)
+      if (meta.tasksCompleted > 0)
+        parts.push(`${meta.tasksCompleted} tâche${meta.tasksCompleted > 1 ? 's' : ''} réalisée${meta.tasksCompleted > 1 ? 's' : ''}`)
+      if (meta.photoCount > 0)
+        parts.push(`${meta.photoCount} photo${meta.photoCount > 1 ? 's' : ''}`)
+      const since = meta.firstTraceAt ? ` depuis ${formatMonthYear(meta.firstTraceAt).toLowerCase()}` : ''
       return (
         <p className="text-sm text-muted-foreground">
-          {meta.totalTraces} trace{meta.totalTraces > 1 ? 's' : ''} déposée
-          {meta.totalTraces > 1 ? 's' : ''} depuis {formatMonthYear(meta.firstTraceAt).toLowerCase()}.
+          {parts.join(' · ')}{since}.
         </p>
       )
     }
@@ -68,9 +73,24 @@ export function TraceStream({ events, meta }: Props) {
 
   const now = new Date()
 
+  // Summary header when we have enriched meta
+  const summaryParts: string[] = []
+  if (meta) {
+    if (meta.executedInterventions > 0)
+      summaryParts.push(`${meta.executedInterventions} passage${meta.executedInterventions > 1 ? 's' : ''}`)
+    if (meta.tasksCompleted > 0)
+      summaryParts.push(`${meta.tasksCompleted} tâche${meta.tasksCompleted > 1 ? 's' : ''} réalisée${meta.tasksCompleted > 1 ? 's' : ''}`)
+    if (meta.photoCount > 0)
+      summaryParts.push(`${meta.photoCount} photo${meta.photoCount > 1 ? 's' : ''}`)
+  }
+
   return (
-    <ol className="space-y-0">
-      {events.map((event, idx) => {
+    <div className="space-y-3">
+      {summaryParts.length > 0 && (
+        <p className="text-xs text-muted-foreground">{summaryParts.join(' · ')}</p>
+      )}
+      <ol className="space-y-0">
+        {events.map((event, idx) => {
         const ageDays = ageDaysSince(event.occurredAt, now)
         const salience = salienceOf(event)
         const opacity = opacityOf(salience, ageDays)
@@ -110,6 +130,7 @@ export function TraceStream({ events, meta }: Props) {
         )
       })}
     </ol>
+    </div>
   )
 }
 

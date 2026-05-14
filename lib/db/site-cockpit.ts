@@ -84,6 +84,12 @@ export interface SiteAnomalyEntry {
 export interface SiteMemoryMeta {
   firstTraceAt: string | null  // ISO de la première trace (photo/anomalie/note)
   totalTraces: number
+  /** Passages d'intervention exécutés toutes fenêtres confondues. */
+  executedInterventions: number
+  /** Tâches checklist marquées done. */
+  tasksCompleted: number
+  /** Photos déposées. */
+  photoCount: number
   /** Dernière anomalie cicatrisée (descriptive pour empty state Anomalies). */
   lastHealed: {
     description: string
@@ -117,6 +123,8 @@ export interface SiteRhythmDay {
   isToday: boolean
   isWeekend: boolean
   count: number
+  /** Tooltip : une ligne par équipe passée ce jour ("Équipe Nord — Moana, Ana"). */
+  tooltipLines: string[]
 }
 
 // V5.1.4 — Présences humaines récentes : prénoms uniques des personnes qui
@@ -135,9 +143,16 @@ export interface HumanPresences {
 // collective, pas surveillance individuelle"). Swap doctrinal majeur :
 // l'équipe est un container logistique, pas une personne — pas de fiche
 // profil possible, pas de reverse-lookup. C'est la mémoire organisationnelle.
+export interface TeamPresenceEntry {
+  name: string
+  /** ISO date du dernier passage exécuté sur la fenêtre. */
+  lastPassageAt: string
+  /** Prénoms des membres actifs (left_at IS NULL). */
+  memberNames: string[]
+}
+
 export interface TeamPresences {
-  /** Noms d'équipes uniques, ordre alphabétique (anti-leaderboard). */
-  teamNames: string[]
+  teams: TeamPresenceEntry[]
   /** Fenêtre temporelle en jours. */
   periodDays: number
 }
@@ -977,6 +992,7 @@ export async function getSiteRecentRhythm(
       isToday: i === 0,
       isWeekend: weekday === 0 || weekday === 6,
       count: 0,
+      tooltipLines: [],
     })
   }
   const indexByDate = new Map(days.map((d, idx) => [d.date, idx]))
@@ -987,21 +1003,28 @@ export async function getSiteRecentRhythm(
 
   const { data: interventionsAll } = await supabase
     .from('interventions')
-    .select('id, executed_at')
+    .select('id, executed_at, assigned_team_id')
     .in('mission_id', missionIds)
     .gte('executed_at', sinceIso)
   const interventionRows = (interventionsAll ?? []) as Array<{
     id: string
     executed_at: string | null
+    assigned_team_id: string | null
   }>
   const interventionIds = interventionRows.map((i) => i.id)
 
-  // Interventions exécutées
+  // Interventions exécutées — count + collect team per day
+  const teamsByDate = new Map<string, Set<string>>()
   for (const i of interventionRows) {
     if (!i.executed_at) continue
     const day = i.executed_at.slice(0, 10)
     const idx = indexByDate.get(day)
     if (idx !== undefined) days[idx].count += 1
+    if (i.assigned_team_id) {
+      const set = teamsByDate.get(day) ?? new Set()
+      set.add(i.assigned_team_id)
+      teamsByDate.set(day, set)
+    }
   }
 
   if (interventionIds.length > 0) {
@@ -1037,6 +1060,50 @@ export async function getSiteRecentRhythm(
   for (const n of (notes ?? []) as Array<{ created_at: string }>) {
     const idx = indexByDate.get(n.created_at.slice(0, 10))
     if (idx !== undefined) days[idx].count += 1
+  }
+
+  // Tooltip : résoudre noms d'équipes + membres pour les jours avec passages
+  const allTeamIds = Array.from(new Set(Array.from(teamsByDate.values()).flatMap((s) => Array.from(s))))
+  if (allTeamIds.length > 0) {
+    const [{ data: teams }, { data: memberships }] = await Promise.all([
+      supabase.from('teams').select('id, name').in('id', allTeamIds),
+      supabase.from('team_members').select('team_id, user_id').in('team_id', allTeamIds).is('left_at', null),
+    ])
+    const teamNameById = new Map(
+      ((teams ?? []) as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]),
+    )
+    const memberUserIds = Array.from(
+      new Set(((memberships ?? []) as Array<{ team_id: string; user_id: string }>).map((m) => m.user_id)),
+    )
+    let memberNameById = new Map<string, string>()
+    if (memberUserIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .in('id', memberUserIds)
+      for (const u of (users ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+        memberNameById.set(u.id, firstNameOf(u.full_name, u.email))
+      }
+    }
+    const membersByTeam = new Map<string, string[]>()
+    for (const m of (memberships ?? []) as Array<{ team_id: string; user_id: string }>) {
+      const name = memberNameById.get(m.user_id)
+      if (!name) continue
+      const arr = membersByTeam.get(m.team_id) ?? []
+      arr.push(name)
+      membersByTeam.set(m.team_id, arr)
+    }
+    for (const [date, teamIdSet] of teamsByDate) {
+      const idx = indexByDate.get(date)
+      if (idx === undefined) continue
+      days[idx].tooltipLines = Array.from(teamIdSet)
+        .map((tid) => {
+          const tName = teamNameById.get(tid) ?? tid
+          const members = (membersByTeam.get(tid) ?? []).sort((a, b) => a.localeCompare(b, 'fr'))
+          return members.length > 0 ? `${tName} — ${members.join(', ')}` : tName
+        })
+        .sort()
+    }
   }
 
   return days
@@ -1158,42 +1225,80 @@ export async function getSiteTeamPresences(
     .is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id)
   if (missionIds.length === 0) {
-    return { teamNames: [], periodDays }
+    return { teams: [], periodDays }
   }
 
   const sinceIso = new Date(Date.now() - periodDays * 86_400_000).toISOString()
 
   const { data: interventions } = await supabase
     .from('interventions')
-    .select('assigned_team_id')
+    .select('assigned_team_id, executed_at')
     .in('mission_id', missionIds)
     .gte('executed_at', sinceIso)
     .not('executed_at', 'is', null)
     .not('assigned_team_id', 'is', null)
 
-  const teamIds = Array.from(
-    new Set(
-      ((interventions ?? []) as Array<{ assigned_team_id: string }>).map(
-        (i) => i.assigned_team_id,
-      ),
-    ),
-  )
+  const rows = (interventions ?? []) as Array<{
+    assigned_team_id: string
+    executed_at: string
+  }>
 
-  if (teamIds.length === 0) {
-    return { teamNames: [], periodDays }
+  // Last passage per team
+  const lastByTeam = new Map<string, string>()
+  for (const r of rows) {
+    const prev = lastByTeam.get(r.assigned_team_id)
+    if (!prev || r.executed_at > prev) lastByTeam.set(r.assigned_team_id, r.executed_at)
   }
 
-  const { data: teams } = await supabase
-    .from('teams')
-    .select('id, name')
-    .in('id', teamIds)
+  const teamIds = Array.from(lastByTeam.keys())
+  if (teamIds.length === 0) {
+    return { teams: [], periodDays }
+  }
 
-  const teamNames = ((teams ?? []) as Array<{ id: string; name: string }>)
-    .map((t) => t.name)
-    .filter((n) => n.length > 0)
-    .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
+  const [{ data: teams }, { data: memberships }] = await Promise.all([
+    supabase.from('teams').select('id, name').in('id', teamIds),
+    supabase
+      .from('team_members')
+      .select('team_id, user_id')
+      .in('team_id', teamIds)
+      .is('left_at', null),
+  ])
 
-  return { teamNames, periodDays }
+  const memberUserIds = Array.from(
+    new Set(((memberships ?? []) as Array<{ team_id: string; user_id: string }>).map((m) => m.user_id)),
+  )
+
+  let nameById = new Map<string, string>()
+  if (memberUserIds.length > 0) {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', memberUserIds)
+    for (const u of (users ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+      nameById.set(u.id, firstNameOf(u.full_name, u.email))
+    }
+  }
+
+  // Build membership map: teamId → memberNames
+  const membersByTeam = new Map<string, string[]>()
+  for (const m of (memberships ?? []) as Array<{ team_id: string; user_id: string }>) {
+    const name = nameById.get(m.user_id)
+    if (!name) continue
+    const arr = membersByTeam.get(m.team_id) ?? []
+    arr.push(name)
+    membersByTeam.set(m.team_id, arr)
+  }
+
+  const entries: TeamPresenceEntry[] = ((teams ?? []) as Array<{ id: string; name: string }>)
+    .filter((t) => t.name.length > 0)
+    .map((t) => ({
+      name: t.name,
+      lastPassageAt: lastByTeam.get(t.id) ?? '',
+      memberNames: (membersByTeam.get(t.id) ?? []).sort((a, b) => a.localeCompare(b, 'fr')),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
+
+  return { teams: entries, periodDays }
 }
 
 // =============================================================================
@@ -1895,7 +2000,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const missionIds = (missions ?? []).map((m) => m.id)
 
   if (missionIds.length === 0) {
-    return { firstTraceAt: null, totalTraces: 0, lastHealed: null }
+    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastHealed: null }
   }
 
   const { data: interventionsAll } = await supabase
@@ -1905,11 +2010,10 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const interventionIds = (interventionsAll ?? []).map((i) => i.id)
 
   if (interventionIds.length === 0) {
-    return { firstTraceAt: null, totalTraces: 0, lastHealed: null }
+    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastHealed: null }
   }
 
-  // Première trace + total
-  const [photosRes, anomaliesRes, notesRes] = await Promise.all([
+  const [photosRes, anomaliesRes, notesRes, executedRes, tasksRes] = await Promise.all([
     supabase
       .from('intervention_photos')
       .select('taken_at', { count: 'exact' })
@@ -1930,6 +2034,18 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(1),
+    supabase
+      .from('interventions')
+      .select('id', { count: 'exact' })
+      .in('id', interventionIds)
+      .not('executed_at', 'is', null)
+      .limit(1),
+    supabase
+      .from('intervention_checklist_items')
+      .select('id', { count: 'exact' })
+      .in('intervention_id', interventionIds)
+      .eq('done', true)
+      .limit(1),
   ])
 
   const candidates: Array<{ at: string }> = []
@@ -1940,7 +2056,10 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
     ? candidates.sort((a, b) => a.at.localeCompare(b.at))[0].at
     : null
 
-  const totalTraces = (photosRes.count ?? 0) + (notesRes.count ?? 0)
+  const photoCount = photosRes.count ?? 0
+  const totalTraces = photoCount + (notesRes.count ?? 0)
+  const executedInterventions = executedRes.count ?? 0
+  const tasksCompleted = tasksRes.count ?? 0
 
   const lastHealedRow = (anomaliesRes.data ?? [])[0] as
     | {
@@ -1958,7 +2077,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
       }
     : null
 
-  return { firstTraceAt, totalTraces, lastHealed }
+  return { firstTraceAt, totalTraces, executedInterventions, tasksCompleted, photoCount, lastHealed }
 }
 
 // =============================================================================
@@ -1973,6 +2092,10 @@ export interface SitePhotoEntry {
   kind: string
   takenAt: string
   interventionId: string
+  /** Prénom de l'auteur, résolu côté serveur. */
+  takenByName: string | null
+  /** Lieu extrait de la caption (bloc B, couloir…), null si non détecté. */
+  locationHint: string | null
 }
 
 /**
@@ -2005,7 +2128,7 @@ export async function getSiteRecentPhotos(
   // On récupère plus pour pouvoir trier, puis on coupe à limit.
   const { data: photosRaw } = await supabase
     .from('intervention_photos')
-    .select('id, storage_path, caption, kind, taken_at, intervention_id')
+    .select('id, storage_path, caption, kind, taken_at, intervention_id, taken_by')
     .in('intervention_id', interventionIds)
     .not('storage_path', 'is', null)
     .order('taken_at', { ascending: false })
@@ -2018,6 +2141,7 @@ export async function getSiteRecentPhotos(
     kind: string
     taken_at: string
     intervention_id: string
+    taken_by: string | null
   }
 
   const rows = (photosRaw ?? []) as PhotoRow[]
@@ -2032,6 +2156,19 @@ export async function getSiteRecentPhotos(
   const top = rows.slice(0, limit)
   if (top.length === 0) return []
 
+  // Résolution des prénoms en batch
+  const authorIds = [...new Set(top.map((p) => p.taken_by).filter((id): id is string => !!id))]
+  const nameById = new Map<string, string>()
+  if (authorIds.length > 0) {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', authorIds)
+    for (const u of (users ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+      nameById.set(u.id, firstNameOf(u.full_name, u.email))
+    }
+  }
+
   const storagePaths = top.map((p) => p.storage_path)
   const urlMap = await getSignedPhotoUrlsThumb(storagePaths)
 
@@ -2043,6 +2180,8 @@ export async function getSiteRecentPhotos(
       kind: p.kind,
       takenAt: p.taken_at,
       interventionId: p.intervention_id,
+      takenByName: p.taken_by ? nameById.get(p.taken_by) ?? null : null,
+      locationHint: p.caption ? extractFirstPlace(p.caption) : null,
     }))
     .filter((p) => p.signedUrl)
 }
