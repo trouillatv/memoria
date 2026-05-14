@@ -42,7 +42,7 @@ export function CompleteButton({ interventionId, hasMissingRequired: _hasMissing
     return (
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Que s&apos;est-il passé&nbsp;?</h3>
+          <h3 className="text-base font-semibold">Vous n&apos;avez pas coché toutes les tâches.</h3>
           <button
             type="button"
             onClick={() => {
@@ -58,7 +58,7 @@ export function CompleteButton({ interventionId, hasMissingRequired: _hasMissing
           </button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Une note rapide pour le superviseur, en quelques mots.
+          Pourquoi&nbsp;? Un mot pour expliquer au superviseur.
         </p>
         <textarea
           value={comment}
