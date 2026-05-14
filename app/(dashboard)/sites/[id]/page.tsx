@@ -84,8 +84,10 @@ export default async function SitePage({ params }: PageProps) {
   // Vincent 2026-05-15 : "Quand Moana reprend un site, on lui montre les
   // bribes de mémoire laissées par Anaïs."
   const transmissions = await getSiteTransmissionReadings(id, continuity)
+  // V5.1.4 — Plafond 6 fragments max (Vincent 2026-05-15) :
+  // "L'IA qui parle tout le temps devient du bruit."
   const enrichedReadings = {
-    readings: [...transmissions, ...readings.readings].slice(0, 8),
+    readings: [...transmissions, ...readings.readings].slice(0, 6),
   }
 
   if (!identity) notFound()

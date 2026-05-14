@@ -33,6 +33,14 @@ interface MonthlyReportPublicViewProps {
   reportData: MonthlyReportData
   selectedPhotoIds: string[]
   dgNote: string
+  /**
+   * V5.1.4 — Strophe descriptive du mois (Vincent 2026-05-15).
+   * Phrases factuelles extraites algorithmiquement (Résonances / Persistances /
+   * Absences) — 3 max. ZÉRO titre technique côté client. Le client doit
+   * RESSENTIR que le système se souvient, jamais voir qu'on lui montre une
+   * "feature IA". Pas de mention "Résonances/Persistances/IA". Juste 3 phrases.
+   */
+  siteReadingTexts?: string[]
 }
 
 export function MonthlyReportPublicView({
@@ -41,6 +49,7 @@ export function MonthlyReportPublicView({
   reportData,
   selectedPhotoIds,
   dgNote,
+  siteReadingTexts = [],
 }: MonthlyReportPublicViewProps) {
   // On filtre les photos sélectionnées dans l'ordre du dataset (déjà
   // priorisé par le helper : captions d'abord, diversité site, date desc).
@@ -90,6 +99,19 @@ export function MonthlyReportPublicView({
       {/* Note du DG (read-only) */}
       {dgNote.trim().length > 0 && (
         <DgNoteSection note={dgNote} clientName={reportData.contract.client_name} />
+      )}
+
+      {/* V5.1.4 — Strophe IA (Vincent 2026-05-15). Phrases factuelles
+          descriptives, sans titre technique. Le client ressent que le
+          système se souvient du lieu — il ne voit pas de "feature IA". */}
+      {siteReadingTexts.length > 0 && (
+        <div className="rounded-md border border-border/60 bg-muted/15 px-5 py-5 space-y-2">
+          {siteReadingTexts.slice(0, 3).map((text, idx) => (
+            <p key={idx} className="text-sm leading-relaxed text-foreground/85">
+              {text}
+            </p>
+          ))}
+        </div>
       )}
 
       {/* Téléchargement PDF */}

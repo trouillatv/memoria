@@ -2,6 +2,12 @@ import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteResumeContext } from '@/lib/db/interventions'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  getSiteReadings,
+  getSiteHumanContinuity,
+  getSiteTransmissionReadings,
+} from '@/lib/db/site-cockpit'
+import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 
 /**
@@ -82,11 +88,19 @@ export default async function FieldSitePage({
     .maybeSingle()
   if (!site) notFound()
 
-  const [pastVisitDays, resume] = await Promise.all([
+  const [pastVisitDays, resume, siteReadings, siteContinuity] = await Promise.all([
     countDistinctVisitDays(user.id, siteId),
     getSiteResumeContext(siteId, user.id),
+    getSiteReadings(siteId),
+    getSiteHumanContinuity(siteId),
   ])
   const nthPassage = pastVisitDays + 1
+
+  // V5.1.4 — Mémoire IA périphérique (Vincent 2026-05-15)
+  const siteTransmissions = await getSiteTransmissionReadings(siteId, siteContinuity)
+  const enrichedSiteReadings = {
+    readings: [...siteTransmissions, ...siteReadings.readings],
+  }
 
   // Dernière trace notable : on prend la plus récente entre la première
   // anomalie et la première site_note (qui sont déjà triées DESC par
@@ -124,6 +138,12 @@ export default async function FieldSitePage({
           Dernière trace ici : {formatTraceDate(lastNotable.date)},{' '}
           {lastNotable.text}.
         </p>
+      )}
+
+      {/* V5.1.4 — Mémoire IA périphérique. Doctrine : présence ambiante
+          discrète, 2 fragments max, gris léger. Joseph peut l'ignorer. */}
+      {enrichedSiteReadings.readings.length > 0 && (
+        <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
       )}
 
       <SpontaneousCapturePanel siteId={siteId} />

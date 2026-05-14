@@ -62,6 +62,7 @@ import { ProofChecklist } from '@/app/(dashboard)/preuves/[id]/ProofChecklist'
 import { ProofValidations } from '@/app/(dashboard)/preuves/[id]/ProofValidations'
 import { ProofAnomalies } from '@/app/(dashboard)/preuves/[id]/ProofAnomalies'
 import { MonthlyReportPublicView } from './MonthlyReportPublicView'
+import { getContractTopReadings } from '@/lib/db/site-cockpit'
 
 // Force dynamic — ne JAMAIS cacher cette page. Chaque visite doit
 // re-valider le token (un revoke doit avoir effet immédiat) et incrémenter
@@ -149,6 +150,10 @@ export default async function PublicProofPage({ params }: PageProps) {
         />
       )
     }
+    // V5.1.4 — Strophe IA du mois (Vincent 2026-05-15) : phrases factuelles
+    // descriptives, plafond 3, ZÉRO titre technique côté client.
+    const siteReadingTexts = await getContractTopReadings(shareToken.contract_id, 3)
+
     return (
       <MonthlyReportPublicView
         token={token}
@@ -156,6 +161,7 @@ export default async function PublicProofPage({ params }: PageProps) {
         reportData={reportData}
         selectedPhotoIds={shareToken.selected_photo_ids ?? []}
         dgNote={shareToken.dg_note ?? ''}
+        siteReadingTexts={siteReadingTexts}
       />
     )
   }

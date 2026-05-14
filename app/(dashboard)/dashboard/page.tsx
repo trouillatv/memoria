@@ -26,6 +26,8 @@ import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
 import { ContractsUnderTensionWidget } from './ContractsUnderTensionWidget'
 import { RecentActivityWidget } from './RecentActivityWidget'
 import { AnomaliesOldWidget } from './AnomaliesOldWidget'
+import { TenantMorningReadingCard } from './TenantMorningReadingCard'
+import { getTenantTopMorningReading } from '@/lib/db/site-cockpit'
 
 /**
  * Sprint 6 — Helper wrapper sur countClosedThisMonth() pour le widget
@@ -64,6 +66,7 @@ export default async function DashboardPage() {
     recentActivity,
     dossiersClosedThisMonth,
     tenantCumulative,
+    morningReading,
   ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
@@ -76,6 +79,7 @@ export default async function DashboardPage() {
     getRecentActivity(8),
     getDossiersClosedThisMonth(),
     getTenantCumulativeStats(),
+    getTenantTopMorningReading(),
   ])
 
   // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
@@ -120,6 +124,11 @@ export default async function DashboardPage() {
         firstName={firstName}
         activeContractsCount={active.length}
       />
+
+      {/* V5.1.4 — "Ce que les lieux disent ce matin" (Vincent 2026-05-15).
+          1 fragment max. Si rien d'émergent → la Card ne s'affiche pas.
+          Phénomène rare, pas un feed. */}
+      <TenantMorningReadingCard data={morningReading} />
 
       {/* Sprint 3 — UX-8 Mode litige express : bouton sobre, immédiatement
           visible, jamais alarmant. Doctrine V5 verrou V4 : wording strictement

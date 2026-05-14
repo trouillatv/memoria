@@ -21,6 +21,12 @@ import { SkipInterventionTrigger } from './skip-modal'
 import { AddSiteNoteButton } from './AddSiteNoteButton'
 import { SiteResumeCard } from './SiteResumeCard'
 import { SiteAccessCard } from './SiteAccessCard'
+import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
+import {
+  getSiteReadings,
+  getSiteHumanContinuity,
+  getSiteTransmissionReadings,
+} from '@/lib/db/site-cockpit'
 
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -94,6 +100,20 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     resumeContext !== null &&
     (resumeContext.daysSinceLastVisit === null ||
       resumeContext.daysSinceLastVisit > 7)
+
+  // V5.1.4 — IA perceptive périphérique sur mobile chef d'équipe (Vincent 2026-05-15).
+  // "Joseph arrive sur le lieu avec connaissance préalable du tissu."
+  // Plafond UI dur : 2 fragments max sur mobile, présence ambiante constante.
+  const siteReadings = siteId ? await getSiteReadings(siteId) : { readings: [] }
+  const siteContinuity = siteId
+    ? await getSiteHumanContinuity(siteId)
+    : { predecessors: [], totalChiefs: 0, teamsSucceeded: 0 }
+  const siteTransmissions = siteId
+    ? await getSiteTransmissionReadings(siteId, siteContinuity)
+    : []
+  const enrichedSiteReadings = {
+    readings: [...siteTransmissions, ...siteReadings.readings],
+  }
 
   const scheduledDate = new Date(intervention.scheduled_at)
   const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {
@@ -209,6 +229,14 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       {/* Sprint 2 — Mode reprise du site (au-dessus de "À savoir") */}
       {siteId && showResumeMode && resumeContext && (
         <SiteResumeCard siteId={siteId} context={resumeContext} />
+      )}
+
+      {/* V5.1.4 — Lectures du lieu (présence périphérique discrète).
+          Doctrine Vincent 2026-05-15 : toujours visible, jamais conditionnelle.
+          2 fragments max, typo gris léger — c'est la mémoire qui accompagne,
+          pas l'IA qui interrompt. Joseph peut l'ignorer ou s'en saisir. */}
+      {siteId && enrichedSiteReadings.readings.length > 0 && (
+        <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
       )}
 
       {/* Sprint 2 — Section « À savoir pour ce site ».

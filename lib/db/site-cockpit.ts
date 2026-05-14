@@ -1361,7 +1361,7 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     readings.push({
       kind: 'recurring_place',
       axis: 'resonance',
-      text: `${capitalize(p.label)} revient ${p.countRecent} fois dans les traces récentes.`,
+      text: `${capitalize(p.label)} revient — ${p.countRecent} fois.`,
     })
   }
 
@@ -1377,7 +1377,7 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     readings.push({
       kind: 'absent_pattern',
       axis: 'absence',
-      text: `${capitalize(p.label)} n'est plus mentionné ${relativeWeeksLabel(p.lastSeen)}.`,
+      text: `${capitalize(p.label)} absent ${relativeWeeksLabel(p.lastSeen)}.`,
     })
   }
 
@@ -1468,7 +1468,7 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
       resonances.push({
         kind: 'resonance_note_anomaly',
         axis: 'resonance',
-        text: `La consigne « ${noteShort} » de ${noteMonth} fait écho à l'anomalie « ${anomalyShort.toLowerCase()} ».`,
+        text: `Consigne de ${noteMonth} (« ${noteShort} ») → anomalie « ${anomalyShort.toLowerCase()} ».`,
       })
       resonanceSeenAnomalies.add(a.id)
       if (resonances.length >= 2) break
@@ -1696,6 +1696,171 @@ function spanMonthsLabel(months: number): string {
   const remainder = months % 12
   if (remainder === 0) return years === 1 ? '1 an' : `${years} ans`
   return `${years} an${years > 1 ? 's' : ''} et ${remainder} mois`
+}
+
+// =============================================================================
+// SECTION — COCKPIT MATIN : "Ce que les lieux disent ce matin"
+// =============================================================================
+
+export interface TenantMorningReading {
+  /** 1 seul fragment, ou null si le moteur n'a rien à révéler ce matin. */
+  reading: SiteReading | null
+  siteName: string | null
+  siteId: string | null
+}
+
+/**
+ * Vincent 2026-05-15 — pilier doctrinal "phénomènes rares" :
+ *
+ *   "Une IA qui parle tout le temps devient du bruit. Une IA qui se tait
+ *    crée de la valeur quand elle parle. Sur le dashboard matin : 1 fragment
+ *    MAXIMUM. Pas 2. Pas 4. Un."
+ *
+ * On parcourt les sites des contrats actifs du tenant (cap 15 pour rester
+ * tenable au scale pilote), on récolte leurs lectures, et on retourne UN
+ * fragment selon une priorité éditoriale fixe :
+ *   1. transmission (relais — pertinent quand un chef vient de prendre)
+ *   2. resonance_note_anomaly (écho temporel — densité humaine forte)
+ *   3. persistence_place (motif qui résiste)
+ *   4. absent_pattern (silence visible)
+ *   5. recurring_place (retour de lieu)
+ *   6. resolved_not_returned (cicatrice qui ne revient pas)
+ *
+ * Si aucun site n'a de reading → retourne null. Le cockpit affiche du vide
+ * assumé, jamais de remplissage type "Aucun signal" ou "Tout est calme".
+ */
+const PRIORITY_BY_KIND: Record<SiteReading['kind'], number> = {
+  transmission: 1,
+  resonance_note_anomaly: 2,
+  persistence_place: 3,
+  absent_pattern: 4,
+  recurring_place: 5,
+  resolved_not_returned: 6,
+}
+
+/**
+ * Récolte agrégée des readings de tous les sites d'un contrat, classés par
+ * priorité éditoriale, capés à `limit`.
+ *
+ * Usage : page publique `/p/[token]` (rapport mensuel client). Vincent
+ * 2026-05-15 : "Sur les surfaces client externe, zéro sophistication visible.
+ * Le client doit ressentir 'ce système se souvient', pas voir une feature IA."
+ * Donc on retourne uniquement `string[]` (les textes), pas la structure
+ * SiteReading complète — le composant client n'a pas à connaître les axes.
+ */
+export async function getContractTopReadings(
+  contractId: string,
+  limit = 3,
+): Promise<string[]> {
+  const supabase = createAdminClient()
+  const { data: sites } = await supabase
+    .from('sites')
+    .select('id')
+    .eq('contract_id', contractId)
+    .is('deleted_at', null)
+    .limit(10)
+
+  const siteIds = (sites ?? []).map((s) => s.id)
+  if (siteIds.length === 0) return []
+
+  const allReadings = await Promise.all(
+    siteIds.map(async (siteId) => {
+      const [r, c] = await Promise.all([
+        getSiteReadings(siteId),
+        getSiteHumanContinuity(siteId),
+      ])
+      const t = await getSiteTransmissionReadings(siteId, c)
+      return [...t, ...r.readings]
+    }),
+  )
+
+  const flat: SiteReading[] = allReadings.flat()
+  if (flat.length === 0) return []
+
+  flat.sort((a, b) => {
+    const pa = PRIORITY_BY_KIND[a.kind] ?? 99
+    const pb = PRIORITY_BY_KIND[b.kind] ?? 99
+    return pa - pb
+  })
+
+  // Dédupliquer par texte exact (au cas où plusieurs sites ressortent la même
+  // tournure, ce qui est rare mais possible).
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const r of flat) {
+    if (seen.has(r.text)) continue
+    seen.add(r.text)
+    result.push(r.text)
+    if (result.length >= limit) break
+  }
+  return result
+}
+
+export async function getTenantTopMorningReading(): Promise<TenantMorningReading> {
+  const supabase = createAdminClient()
+
+  // Sites des contrats actifs (cap 15 sites pour V1 pilote).
+  const { data: sites } = await supabase
+    .from('sites')
+    .select('id, name, contract:contracts(status)')
+    .is('deleted_at', null)
+    .limit(50) // cap dur pour éviter d'imploser à scale
+
+  const activeSites = ((sites ?? []) as Array<{
+    id: string
+    name: string
+    contract: { status: string } | { status: string }[] | null
+  }>)
+    .filter((s) => {
+      const c = Array.isArray(s.contract) ? s.contract[0] : s.contract
+      return c?.status === 'active'
+    })
+    .slice(0, 15)
+
+  if (activeSites.length === 0) {
+    return { reading: null, siteName: null, siteId: null }
+  }
+
+  // Récolte des readings de chaque site, en parallèle
+  const allReadings = await Promise.all(
+    activeSites.map(async (s) => {
+      const [readings, continuity] = await Promise.all([
+        getSiteReadings(s.id),
+        getSiteHumanContinuity(s.id),
+      ])
+      const transmissions = await getSiteTransmissionReadings(s.id, continuity)
+      const combined = [...transmissions, ...readings.readings]
+      return { siteId: s.id, siteName: s.name, readings: combined }
+    }),
+  )
+
+  // Aplatir et choisir par priorité, en cas d'égalité on prend le 1er (ordre
+  // alphabétique des sites — anti-ranking, prévisibilité).
+  type Candidate = { siteId: string; siteName: string; reading: SiteReading }
+  const candidates: Candidate[] = []
+  for (const s of allReadings) {
+    for (const r of s.readings) {
+      candidates.push({ siteId: s.siteId, siteName: s.siteName, reading: r })
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { reading: null, siteName: null, siteId: null }
+  }
+
+  candidates.sort((a, b) => {
+    const pa = PRIORITY_BY_KIND[a.reading.kind] ?? 99
+    const pb = PRIORITY_BY_KIND[b.reading.kind] ?? 99
+    if (pa !== pb) return pa - pb
+    return a.siteName.localeCompare(b.siteName, 'fr', { sensitivity: 'base' })
+  })
+
+  const top = candidates[0]
+  return {
+    reading: top.reading,
+    siteName: top.siteName,
+    siteId: top.siteId,
+  }
 }
 
 // =============================================================================
