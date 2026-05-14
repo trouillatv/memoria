@@ -18,7 +18,6 @@ import { StartInterventionButton } from './start-intervention-button'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
 import { SkipInterventionTrigger } from './skip-modal'
-import { PhotoCaptureButton } from './photo-capture-button'
 import { AddSiteNoteButton } from './AddSiteNoteButton'
 import { SiteResumeCard } from './SiteResumeCard'
 import { SiteAccessCard } from './SiteAccessCard'
@@ -247,25 +246,9 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         </div>
       )}
 
-      {/* J2 — Bouton photo pleine-largeur sticky bas, 80px de haut.
-          Doctrine V5 Pilier 5 : humidité du bloc + gants → un FAB rond rate
-          2 photos sur 3. Cible large + texte gros = taux de capture plus haut. */}
-      {isInProgress && (
-        <>
-          <div className="h-24" aria-hidden /> {/* spacer pour éviter overlap CompleteButton */}
-          <div className="fixed bottom-0 inset-x-0 z-20 p-3 bg-gradient-to-t from-background via-background/95 to-transparent pointer-events-none">
-            <div className="pointer-events-auto max-w-md mx-auto">
-              <PhotoCaptureButton
-                interventionId={id}
-                checklistItemId={null}
-                kind="proof"
-                label="Prendre une photo"
-                variant="fullwidth"
-              />
-            </div>
-          </div>
-        </>
-      )}
+      {/* V5.1 — Bouton photo sticky bas retiré : redondant avec les boutons
+          photo de la checklist (1 par item) et avec le FAB Photo libre sur
+          /m/site/[id] pour les traces spontanées. */}
     </div>
   )
 }

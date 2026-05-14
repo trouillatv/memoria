@@ -44,6 +44,13 @@ function formatScheduledTime(iso: string): { day: string; time: string; isToday:
   }
 }
 
+// V5.1 — Doctrine V2 : créneaux nommés, JAMAIS d'heures précises.
+const SLOT_LABELS: Record<string, string> = {
+  morning: 'Matin',
+  afternoon: 'Après-midi',
+  evening: 'Soir',
+}
+
 export default async function FieldHomePage() {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
@@ -166,6 +173,7 @@ export default async function FieldHomePage() {
                   missionName={mission?.name ?? 'Intervention'}
                   siteName={site?.name ?? null}
                   scheduledAt={i.scheduled_at}
+                  slot={i.slot ?? null}
                   status={i.status}
                   skippedReason={i.skipped_reason}
                   primary
@@ -203,6 +211,7 @@ export default async function FieldHomePage() {
                   missionName={mission?.name ?? 'Intervention'}
                   siteName={site?.name ?? null}
                   scheduledAt={i.scheduled_at}
+                  slot={i.slot ?? null}
                   status={i.status}
                   skippedReason={i.skipped_reason}
                   primary={false}
@@ -222,6 +231,7 @@ function InterventionCard({
   missionName,
   siteName,
   scheduledAt,
+  slot,
   status,
   skippedReason,
   primary,
@@ -230,11 +240,13 @@ function InterventionCard({
   missionName: string
   siteName: string | null
   scheduledAt: string
+  slot: string | null
   status: string
   skippedReason: string | null
   primary: boolean
 }) {
-  const { day, time, isToday } = formatScheduledTime(scheduledAt)
+  const { day, isToday } = formatScheduledTime(scheduledAt)
+  const slotLabel = slot ? SLOT_LABELS[slot] ?? null : null
   const isInProgress = status === 'in_progress'
   const isCompleted = status === 'completed' || status === 'validated'
   const isSkipped = status === 'skipped'
@@ -280,7 +292,7 @@ function InterventionCard({
               <Clock className="h-3.5 w-3.5 shrink-0" />
               <span>
                 {!isToday && day + ' · '}
-                {time}
+                {slotLabel ?? '—'}
               </span>
             </div>
           </div>
