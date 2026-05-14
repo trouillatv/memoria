@@ -3,9 +3,7 @@
 import { z } from 'zod'
 import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
-import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUserRoleById } from '@/lib/db/users'
 import {
   getIntervention,
   updateInterventionStatus,
@@ -15,20 +13,7 @@ import {
 } from '@/lib/db/interventions'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
-
-async function requireFieldAgent(): Promise<{ userId: string } | { error: string }> {
-  const supabase = await createServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: 'Not authenticated' }
-  const role = await getUserRoleById(user.id)
-  // chef_equipe = production agent. admin/manager = QA on /m.
-  if (role !== 'chef_equipe' && role !== 'admin' && role !== 'manager') {
-    return { error: 'Forbidden' }
-  }
-  return { userId: user.id }
-}
+import { requireFieldAgent } from '@/lib/field/auth'
 
 const idSchema = z.object({ id: z.string().uuid() })
 

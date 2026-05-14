@@ -2,7 +2,14 @@
  * IndexedDB-backed photo queue for the mobile agent app.
  *
  * Stores photos that haven't been uploaded yet (or failed and need retry).
- * Each entry: { tempId, blob, interventionId, checklistItemId, kind, takenAt, attempts, lastAttemptAt }
+ *
+ * Deux modes (V5.1) :
+ *   - **legacy** : entry liée à une intervention pré-planifiée
+ *     ({ interventionId, checklistItemId, kind: 'before|after|anomaly|proof' })
+ *   - **spontané** : entry liée à un site (trace libre hors workflow planifié)
+ *     ({ siteId, intent: 'passage'|'anomaly', kind: 'passage'|'anomaly', clientUuid })
+ *
+ * Le drain (use-photo-uploader) route vers la bonne server action selon le mode.
  *
  * The queue is "fire and forget" — UI shows the photo immediately from local
  * cache, the queue handles upload silently in the background.
@@ -20,24 +27,45 @@
  *
  * On ne supprime JAMAIS automatiquement une entry, même après 6 tentatives.
  * Les photos restent en sécurité sur l'appareil tant qu'elles ne sont pas envoyées.
+ *
+ * V5.1 (2026-05-14) — ajout des champs siteId, intent, clientUuid pour le
+ * mode spontané. clientUuid sert d'identité idempotente côté serveur
+ * (ON CONFLICT DO NOTHING sur intervention_photos.client_uuid, migration 051).
  */
 
 const DB_NAME = 'netoiage-field'
 const STORE_NAME = 'photo-queue'
 const DB_VERSION = 1
 
+export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage'
+
 export interface QueuedPhoto {
   tempId: string
   blob: Blob
   filename: string
   mimeType: string
-  interventionId: string
+  /** Mode legacy : intervention pré-planifiée. Mutuellement exclusif avec siteId. */
+  interventionId?: string
   checklistItemId: string | null
-  kind: 'before' | 'after' | 'anomaly' | 'proof'
+  /** Mode spontané (V5.1) : trace libre sur un site. Mutuellement exclusif avec interventionId. */
+  siteId?: string
+  /** Mode spontané (V5.1) : nature de la trace (passage banal / anomalie). */
+  intent?: 'passage' | 'anomaly'
+  kind: PhotoKind
   takenAt: number   // epoch ms
   attempts: number
   lastAttemptAt?: number  // epoch ms — used for backoff readiness
   lastError?: string
+  /** V5.1 : UUID v4 généré côté client, sert d'idempotence côté serveur.
+   *  Optionnel pour rétrocompat avec entries legacy en queue avant V5.1. */
+  clientUuid?: string
+}
+
+/** Discriminant côté drain : retourne le mode de l'entry. */
+export function queuedPhotoMode(p: QueuedPhoto): 'legacy' | 'spontaneous' | 'invalid' {
+  if (p.interventionId && !p.siteId) return 'legacy'
+  if (p.siteId && !p.interventionId) return 'spontaneous'
+  return 'invalid'
 }
 
 // Backoff progression (ms). Index = number of failed attempts so far.
@@ -102,12 +130,36 @@ function openDb(): Promise<IDBDatabase> {
 export async function queuePhoto(
   input: Omit<QueuedPhoto, 'tempId' | 'attempts' | 'takenAt'>
 ): Promise<QueuedPhoto> {
+  // Garde-fou XOR : exactement un des deux modes (legacy intervention OU
+  // spontané site). Sinon erreur immédiate côté caller — empêche les entries
+  // ambiguës d'entrer dans la queue.
+  const hasIntervention = !!input.interventionId
+  const hasSite = !!input.siteId
+  if (hasIntervention === hasSite) {
+    throw new Error(
+      `queuePhoto: il faut exactement un de (interventionId, siteId). Reçu : ` +
+      `interventionId=${input.interventionId ?? 'null'}, siteId=${input.siteId ?? 'null'}.`
+    )
+  }
+
+  // V5.1 — pour le mode spontané, générer un clientUuid v4 si non fourni par
+  // le caller. Sert d'idempotence côté serveur (ON CONFLICT sur
+  // intervention_photos.client_uuid, migration 051).
+  // crypto.randomUUID() est dispo en client moderne ; fallback inline si absent.
+  let clientUuid = input.clientUuid
+  if (hasSite && !clientUuid) {
+    clientUuid = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  }
+
   const db = await openDb()
   const entry: QueuedPhoto = {
     tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     takenAt: Date.now(),
     attempts: 0,
     ...input,
+    clientUuid,
   }
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')

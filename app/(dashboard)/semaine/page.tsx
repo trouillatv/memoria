@@ -28,6 +28,7 @@ import {
   type SiteRow,
   type TeamRow,
 } from '@/lib/db/week-planning'
+import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import { WeekNavigation } from './WeekNavigation'
@@ -138,6 +139,9 @@ async function fetchMissionOptions(): Promise<MissionOption[]> {
       | { name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }
       | Array<{ name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }>
   }>) {
+    // V5.1 — Exclure les missions système ("Traces libres du site") du picker
+    // de planification. Cf. lib/db/system-missions.ts.
+    if (isSystemMissionName(m.name)) continue
     const site = Array.isArray(m.site) ? m.site[0] : m.site
     if (!site || site.deleted_at) continue
     const contract = Array.isArray(site.contract) ? site.contract[0] : site.contract

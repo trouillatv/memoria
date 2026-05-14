@@ -4,6 +4,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { LogoutButton } from './m/logout-button'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
+import { FieldSyncDrainer } from './sync-drainer'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -39,6 +40,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
         <LogoutButton />
       </footer>
       <SyncToastBridge />
+      <FieldSyncDrainer />
     </div>
   )
 }

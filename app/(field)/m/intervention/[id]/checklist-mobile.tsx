@@ -6,7 +6,7 @@ import { Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { toggleChecklistItemMobileAction } from './actions'
 import { PhotoCaptureButton } from './photo-capture-button'
-import { usePhotoUploader } from './use-photo-uploader'
+import { usePhotoUploader } from '@/lib/field/use-photo-uploader'
 import {
   listQueuedPhotosByIntervention,
   blobToDataUrl,

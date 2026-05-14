@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/interventions'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { listSites } from '@/lib/db/sites'
+import { isSystemMissionName } from '@/lib/db/system-missions'
 import type { InterventionStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
 
@@ -74,6 +75,11 @@ export default async function MissionsPage({
 
   // Sites + missions pour les filtres. Les missions sont scopées au site sélectionné
   // si présent — sinon liste cross-site (peut être longue, on la garde simple).
+  //
+  // V5.1 — On exclut les missions système ("Traces libres du site") des filtres :
+  // elles servent uniquement de container interne pour les traces déposées
+  // spontanément côté mobile et n'ont pas leur place dans une vue de
+  // supervision des missions planifiées. Cf. lib/db/system-missions.ts.
   const sites = await listSites()
   let missionOptions: Array<{ value: string; label: string }> = []
   if (siteId) {
@@ -83,7 +89,9 @@ export default async function MissionsPage({
       .eq('site_id', siteId)
       .is('deleted_at', null)
       .order('name', { ascending: true })
-    missionOptions = (missionRows ?? []).map((m) => ({ value: m.id, label: m.name }))
+    missionOptions = (missionRows ?? [])
+      .filter((m) => !isSystemMissionName(m.name))
+      .map((m) => ({ value: m.id, label: m.name }))
   } else {
     const { data: missionRows } = await supabase
       .from('missions')
@@ -91,14 +99,16 @@ export default async function MissionsPage({
       .is('deleted_at', null)
       .order('name', { ascending: true })
       .limit(200)
-    missionOptions = (missionRows ?? []).map((m) => {
-      const site = Array.isArray(m.site) ? m.site[0] : m.site
-      const siteName = (site as { name?: string } | null)?.name
-      return { value: m.id, label: siteName ? `${m.name} · ${siteName}` : m.name }
-    })
+    missionOptions = (missionRows ?? [])
+      .filter((m) => !isSystemMissionName(m.name))
+      .map((m) => {
+        const site = Array.isArray(m.site) ? m.site[0] : m.site
+        const siteName = (site as { name?: string } | null)?.name
+        return { value: m.id, label: siteName ? `${m.name} · ${siteName}` : m.name }
+      })
   }
 
-  const { items, total } = await listInterventionsSupervisor({
+  const { items: rawItems, total: rawTotal } = await listInterventionsSupervisor({
     dateRange,
     status,
     siteId,
@@ -106,6 +116,15 @@ export default async function MissionsPage({
     offset: 0,
     limit: HARD_LIMIT,
   })
+
+  // V5.1 — Exclure les interventions sur missions système ("Traces libres du
+  // site"). Ces interventions sont créées automatiquement côté mobile pour
+  // attacher les traces déposées hors workflow planifié — elles polluent la
+  // vue de supervision si on les expose. Cf. lib/db/system-missions.ts.
+  const items = rawItems.filter(
+    (i) => !i.mission?.name || !isSystemMissionName(i.mission.name),
+  )
+  const total = rawTotal - (rawItems.length - items.length)
 
   const hasActiveFilters = Boolean(
     (params.date && params.date !== '30d') || params.status || params.site || params.mission,

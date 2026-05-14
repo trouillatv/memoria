@@ -67,6 +67,18 @@ export interface ProofShareToken {
   frozen_pdf_sha256: string | null
   /** Phase 1.2 : timestamp du gel (peut différer de closed_at). */
   frozen_at: string | null
+  /** V5.1 Slice 4 (migration 050) : mode de rendu du token.
+   *  'proof_dossier' (default, legacy /p/[token]) ou
+   *  'monthly_capsule' / 'incident_capsule' (rendu /c/[token] capsule WhatsApp). */
+  presentation_kind: 'proof_dossier' | 'monthly_capsule' | 'incident_capsule'
+}
+
+/** V5.1 — Discriminant runtime : token de présentation capsule WhatsApp. */
+export function isCapsuleToken(t: ProofShareToken): boolean {
+  return (
+    t.presentation_kind === 'monthly_capsule' ||
+    t.presentation_kind === 'incident_capsule'
+  )
 }
 
 /**
