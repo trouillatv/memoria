@@ -1081,8 +1081,6 @@ export async function getSiteRecentRhythm(
     executed_at: string | null
     assigned_team_id: string | null
   }>
-  const interventionIds = interventionRows.map((i) => i.id)
-
   // Interventions exécutées — count + collect team per day
   const teamsByDate = new Map<string, Set<string>>()
   for (const i of interventionRows) {
@@ -1095,41 +1093,6 @@ export async function getSiteRecentRhythm(
       set.add(i.assigned_team_id)
       teamsByDate.set(day, set)
     }
-  }
-
-  if (interventionIds.length > 0) {
-    const [photosRes, anomaliesRes] = await Promise.all([
-      supabase
-        .from('intervention_photos')
-        .select('taken_at')
-        .in('intervention_id', interventionIds)
-        .gte('taken_at', sinceIso),
-      supabase
-        .from('intervention_anomalies')
-        .select('created_at')
-        .in('intervention_id', interventionIds)
-        .gte('created_at', sinceIso),
-    ])
-    for (const p of (photosRes.data ?? []) as Array<{ taken_at: string }>) {
-      const idx = indexByDate.get(p.taken_at.slice(0, 10))
-      if (idx !== undefined) days[idx].count += 1
-    }
-    for (const a of (anomaliesRes.data ?? []) as Array<{ created_at: string }>) {
-      const idx = indexByDate.get(a.created_at.slice(0, 10))
-      if (idx !== undefined) days[idx].count += 1
-    }
-  }
-
-  // Notes du site
-  const { data: notes } = await supabase
-    .from('site_notes')
-    .select('created_at')
-    .eq('site_id', siteId)
-    .is('deleted_at', null)
-    .gte('created_at', sinceIso)
-  for (const n of (notes ?? []) as Array<{ created_at: string }>) {
-    const idx = indexByDate.get(n.created_at.slice(0, 10))
-    if (idx !== undefined) days[idx].count += 1
   }
 
   // Tooltip : résoudre noms d'équipes + membres pour les jours avec passages
