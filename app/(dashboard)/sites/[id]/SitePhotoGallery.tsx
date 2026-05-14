@@ -1,38 +1,41 @@
 import Link from 'next/link'
 import type { SitePhotoEntry } from '@/lib/db/site-cockpit'
 
-export function SitePhotoGallery({ photos }: { photos: SitePhotoEntry[] }) {
-  if (photos.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground italic">
-        Pas de photo déposée sur ce site.
-      </p>
-    )
-  }
+interface Props {
+  photos: SitePhotoEntry[]
+  siteId: string
+}
+
+export function SitePhotoGallery({ photos, siteId }: Props) {
+  if (photos.length === 0) return null
 
   return (
-    <div className="grid grid-cols-3 gap-2">
-      {photos.map((p) => (
-        <Link
-          key={p.id}
-          href={`/interventions/${p.interventionId}`}
-          className="group block overflow-hidden rounded-md border bg-muted"
-          aria-label={p.caption ?? "Voir l'intervention"}
-        >
-          <div className="aspect-square relative overflow-hidden">
+    <div className="space-y-2">
+      <div className="grid grid-cols-4 gap-1">
+        {photos.map((p) => (
+          <Link
+            key={p.id}
+            href={`/sites/${siteId}/photos`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block overflow-hidden rounded border bg-muted aspect-square"
+          >
             <img
               src={p.signedUrl}
               alt={p.caption ?? ''}
-              className="absolute inset-0 h-full w-full object-cover transition-opacity group-hover:opacity-80"
+              className="h-full w-full object-cover hover:opacity-80 transition-opacity"
             />
-          </div>
-          {p.caption && (
-            <p className="px-1.5 py-1 text-[10px] leading-snug text-muted-foreground truncate">
-              {p.caption}
-            </p>
-          )}
-        </Link>
-      ))}
+          </Link>
+        ))}
+      </div>
+      <Link
+        href={`/sites/${siteId}/photos`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[10px] text-muted-foreground hover:underline"
+      >
+        Voir toutes les photos →
+      </Link>
     </div>
   )
 }

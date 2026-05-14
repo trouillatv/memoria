@@ -43,28 +43,25 @@ export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
   }
 
   return (
-    <ul className="space-y-1.5">
+    <ul className="space-y-1">
       {items.map((item) => {
         const Icon = KIND_ICON[item.kind]
         const iconColor = KIND_ICON_COLOR[item.kind]
         return (
           <li
             key={`${item.kind}-${item.id}`}
-            className="flex items-start gap-3 rounded border bg-card p-3"
+            className="flex items-start gap-2 rounded px-2 py-1.5 hover:bg-muted/40"
           >
-            <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
-
+            <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
             <div className="flex-1 min-w-0">
-              <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <span className="text-sm font-medium">{item.primary}</span>
-                <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <span className="text-xs leading-snug">{item.primary}</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
                   {formatDateLabel(item.occurredAt)}
                 </span>
               </div>
               {item.secondary && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {item.secondary}
-                </p>
+                <p className="text-[10px] text-muted-foreground">{item.secondary}</p>
               )}
             </div>
           </li>

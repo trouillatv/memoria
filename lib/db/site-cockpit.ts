@@ -512,13 +512,18 @@ export async function getSiteRecentActivity(
     const place = extractFirstPlace(...g.captions)
     const countLabel = `${g.count} trace${g.count > 1 ? 's' : ''}`
 
+    const firstCaption = g.captions[0] ?? null
     let primary: string
     let secondary: string | null
-    if (place) {
-      primary = `${actorName} a documenté le ${place}.`
-      secondary = `${countLabel} déposée${g.count > 1 ? 's' : ''}.`
+    if (firstCaption) {
+      const cap = firstCaption.length > 90 ? firstCaption.slice(0, 87) + '…' : firstCaption
+      primary = cap
+      secondary = actorName + (g.count > 1 ? ` · ${countLabel}` : '')
+    } else if (place) {
+      primary = `${actorName} — ${place}.`
+      secondary = g.count > 1 ? countLabel : null
     } else {
-      primary = `${actorName} a déposé ${countLabel}.`
+      primary = `${actorName} — ${countLabel}`
       secondary = null
     }
 
@@ -1162,7 +1167,8 @@ export async function getSiteTeamPresences(
     .from('interventions')
     .select('assigned_team_id')
     .in('mission_id', missionIds)
-    .gte('scheduled_at', sinceIso)
+    .gte('executed_at', sinceIso)
+    .not('executed_at', 'is', null)
     .not('assigned_team_id', 'is', null)
 
   const teamIds = Array.from(

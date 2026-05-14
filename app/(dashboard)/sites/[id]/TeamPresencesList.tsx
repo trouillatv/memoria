@@ -20,7 +20,7 @@ export function TeamPresencesList({ presences }: { presences: TeamPresences }) {
   if (presences.teamNames.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic">
-        Aucune équipe affectée ces {presences.periodDays} derniers jours.
+        Aucune équipe ces {presences.periodDays} derniers jours.
       </p>
     )
   }

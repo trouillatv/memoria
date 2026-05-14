@@ -78,10 +78,10 @@ export default async function SitePage({ params }: PageProps) {
     listSiteASavoirActive(id),
     getSiteMemoryTimeline(id, { limit: 200 }),
     getSiteRecentRhythm(id, 14),
-    getSiteTeamPresences(id, 30),
+    getSiteTeamPresences(id, 14),
     getSiteReadings(id),
     getSiteMemoryMeta(id),
-    getSiteRecentPhotos(id, 9),
+    getSiteRecentPhotos(id, 4),
   ])
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
@@ -127,19 +127,27 @@ export default async function SitePage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* COUCHE 3 — IA perceptive */}
-      {enrichedReadings.readings.length > 0 && (
-        <Card className="bg-[#fafaf7] border-foreground/10">
-          <CardHeader>
-            <CardTitle className="text-base font-medium">Lectures du lieu</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-2 pb-6">
-            <SiteReadingsList data={enrichedReadings} />
-          </CardContent>
-        </Card>
-      )}
+      {/* COUCHE 3 — Lectures du lieu (IA perceptive) — toujours visible */}
+      <Card className="bg-[#fafaf7] border-foreground/10">
+        <CardHeader>
+          <CardTitle className="text-base font-medium">Lectures du lieu</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-2 pb-6">
+          <SiteReadingsList data={enrichedReadings} />
+        </CardContent>
+      </Card>
 
-      {/* COUCHE 2 — Rythme + équipes */}
+      {/* Mémoire du lieu — remontée */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Mémoire du lieu</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TraceStream events={timeline} meta={memoryMeta} />
+        </CardContent>
+      </Card>
+
+      {/* COUCHE 2 — Rythme | Équipes & photos (fusionnés) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
@@ -152,25 +160,18 @@ export default async function SitePage({ params }: PageProps) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Équipes présentes</CardTitle>
+            <CardTitle>Équipes — 14 derniers jours</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <TeamPresencesList presences={teamPresences} />
+            {sitePhotos.length > 0 && (
+              <div className="border-t pt-3">
+                <SitePhotoGallery photos={sitePhotos} siteId={id} />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Galerie photos — traces visuelles du lieu */}
-      {sitePhotos.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Photos du lieu</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SitePhotoGallery photos={sitePhotos} />
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader>
@@ -203,22 +204,13 @@ export default async function SitePage({ params }: PageProps) {
         )}
       </div>
 
-      {/* Activité récente — en bas, texte uniquement */}
+      {/* Activité récente — bas, compact */}
       <Card>
         <CardHeader>
           <CardTitle>Activité récente</CardTitle>
         </CardHeader>
         <CardContent>
           <RecentActivity items={recentActivity} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Mémoire du lieu</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TraceStream events={timeline} meta={memoryMeta} />
         </CardContent>
       </Card>
     </div>
