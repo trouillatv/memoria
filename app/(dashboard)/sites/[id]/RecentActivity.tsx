@@ -1,4 +1,4 @@
-import { Camera, AlertTriangle, FileText } from 'lucide-react'
+import { Camera, AlertTriangle, FileText, CheckSquare } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { RecentActivityItem } from '@/lib/db/site-cockpit'
 
@@ -22,14 +22,14 @@ function formatDateLabel(iso: string): string {
 const KIND_ICON: Record<RecentActivityItem['kind'], LucideIcon> = {
   photo: Camera,
   anomaly: AlertTriangle,
-  intervention: FileText,
+  intervention: CheckSquare,
   site_note: FileText,
 }
 
 const KIND_ICON_COLOR: Record<RecentActivityItem['kind'], string> = {
   photo: 'text-sky-600',
   anomaly: 'text-amber-600',
-  intervention: 'text-muted-foreground',
+  intervention: 'text-emerald-600',
   site_note: 'text-muted-foreground',
 }
 
@@ -62,6 +62,16 @@ export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
               </div>
               {item.secondary && (
                 <p className="text-[10px] text-muted-foreground">{item.secondary}</p>
+              )}
+              {item.tasks && item.tasks.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {item.tasks.map((t, i) => (
+                    <li key={i} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="h-1 w-1 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                      {t}
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </li>

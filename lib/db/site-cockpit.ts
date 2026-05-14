@@ -54,13 +54,13 @@ export interface RecentActivityItem {
   kind: 'photo' | 'anomaly' | 'site_note' | 'intervention'
   id: string
   occurredAt: string
-  primary: string  // "Joseph a documenté le bloc pédiatrie." / "Plomberie bloc B."
-  secondary: string | null  // "3 traces déposées." / "anomalie ouverte mardi."
-  saliencePrimary: boolean  // pour le rendu visuel (● vs ·)
-  // V5.1.3 — Vignette unique du passage si applicable. URL signée, aspect natif
-  // préservé (jamais crop). Doctrine "trace ponctuelle, pas galerie".
+  primary: string
+  secondary: string | null
+  saliencePrimary: boolean
   photoUrl: string | null
-  interventionId: string | null  // pour lien vers contexte source
+  interventionId: string | null
+  /** Tâches cochées lors du passage (kind='intervention' uniquement). */
+  tasks: string[] | null
 }
 
 export interface SiteAnomalyEntry {
@@ -82,15 +82,13 @@ export interface SiteAnomalyEntry {
 // Permet aux empty states de parler de la mémoire du lieu plutôt que de l'absence
 // brute. "5 traces déposées depuis février 2026" plutôt que "Aucun événement."
 export interface SiteMemoryMeta {
-  firstTraceAt: string | null  // ISO de la première trace (photo/anomalie/note)
+  firstTraceAt: string | null
   totalTraces: number
-  /** Passages d'intervention exécutés toutes fenêtres confondues. */
   executedInterventions: number
-  /** Tâches checklist marquées done. */
   tasksCompleted: number
-  /** Photos déposées. */
   photoCount: number
-  /** Dernière anomalie cicatrisée (descriptive pour empty state Anomalies). */
+  /** ISO de la dernière tâche cochée (done_at). */
+  lastTaskCompletedAt: string | null
   lastHealed: {
     description: string
     resolvedAt: string
@@ -442,12 +440,9 @@ export async function getSiteRecentActivity(
   const interventionIds = (interventionsAll ?? []).map((i) => i.id)
   if (interventionIds.length === 0) return []
 
-  // 3 sources :
-  //   - intervention_photos (passages = un actor + N photos)
-  //   - intervention_anomalies (anomalies ouvertes / résolues)
-  //   - site_notes (notes courtes du site)
+  const sinceIso7d = new Date(Date.now() - 7 * 86_400_000).toISOString()
 
-  const [photosRes, anomaliesRes, notesRes] = await Promise.all([
+  const [photosRes, anomaliesRes, notesRes, executedRes] = await Promise.all([
     supabase
       .from('intervention_photos')
       .select('id, intervention_id, taken_at, taken_by, kind, storage_path, caption')
@@ -467,6 +462,15 @@ export async function getSiteRecentActivity(
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(10),
+    // Passages exécutés récents (7 j) pour afficher les tâches cochées
+    supabase
+      .from('interventions')
+      .select('id, executed_at, assigned_team_id')
+      .in('id', interventionIds)
+      .not('executed_at', 'is', null)
+      .gte('executed_at', sinceIso7d)
+      .order('executed_at', { ascending: false })
+      .limit(20),
   ])
 
   // Agréger les photos par (intervention_id, day, taken_by) pour faire des "passages".
@@ -549,8 +553,9 @@ export async function getSiteRecentActivity(
       primary,
       secondary,
       saliencePrimary: true,
-      photoUrl: null, // signée plus bas en batch
+      photoUrl: null,
       interventionId: g.first.intervention_id,
+      tasks: null,
     })
   }
 
@@ -577,6 +582,7 @@ export async function getSiteRecentActivity(
       saliencePrimary: isOpen,
       photoUrl: null,
       interventionId: a.intervention_id,
+      tasks: null,
     })
   }
 
@@ -593,7 +599,59 @@ export async function getSiteRecentActivity(
       saliencePrimary: false,
       photoUrl: null,
       interventionId: null,
+      tasks: null,
     })
+  }
+
+  // Passages exécutés avec tâches cochées
+  type ExecRow = { id: string; executed_at: string; assigned_team_id: string | null }
+  const execRows = (executedRes.data ?? []) as ExecRow[]
+  if (execRows.length > 0) {
+    const execInterventionIds = execRows.map((r) => r.id)
+    const teamIds = Array.from(new Set(execRows.map((r) => r.assigned_team_id).filter((id): id is string => !!id)))
+
+    const [checklistRes, teamsRes] = await Promise.all([
+      supabase
+        .from('intervention_checklist_items')
+        .select('intervention_id, label, done_at')
+        .in('intervention_id', execInterventionIds)
+        .eq('done', true)
+        .order('done_at', { ascending: true }),
+      teamIds.length > 0
+        ? supabase.from('teams').select('id, name').in('id', teamIds)
+        : Promise.resolve({ data: [] }),
+    ])
+
+    const teamNameById = new Map(
+      ((teamsRes.data ?? []) as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]),
+    )
+
+    type CheckRow = { intervention_id: string; label: string; done_at: string | null }
+    const tasksByIntervention = new Map<string, string[]>()
+    for (const c of (checklistRes.data ?? []) as CheckRow[]) {
+      const arr = tasksByIntervention.get(c.intervention_id) ?? []
+      arr.push(c.label)
+      tasksByIntervention.set(c.intervention_id, arr)
+    }
+
+    for (const r of execRows) {
+      const tasks = tasksByIntervention.get(r.id) ?? []
+      const teamName = r.assigned_team_id ? (teamNameById.get(r.assigned_team_id) ?? null) : null
+      const taskCount = tasks.length
+      const primary = teamName ?? 'Passage'
+      const secondary = taskCount > 0 ? `${taskCount} tâche${taskCount > 1 ? 's' : ''} réalisée${taskCount > 1 ? 's' : ''}` : 'Passage sans tâche cochée'
+      items.push({
+        kind: 'intervention',
+        id: r.id,
+        occurredAt: r.executed_at,
+        primary,
+        secondary,
+        saliencePrimary: taskCount > 0,
+        photoUrl: null,
+        interventionId: r.id,
+        tasks: tasks.length > 0 ? tasks : null,
+      })
+    }
   }
 
   // Tri global DESC + cap au limit
@@ -2000,7 +2058,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const missionIds = (missions ?? []).map((m) => m.id)
 
   if (missionIds.length === 0) {
-    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastHealed: null }
+    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastTaskCompletedAt: null, lastHealed: null }
   }
 
   const { data: interventionsAll } = await supabase
@@ -2010,7 +2068,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const interventionIds = (interventionsAll ?? []).map((i) => i.id)
 
   if (interventionIds.length === 0) {
-    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastHealed: null }
+    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastTaskCompletedAt: null, lastHealed: null }
   }
 
   const [photosRes, anomaliesRes, notesRes, executedRes, tasksRes] = await Promise.all([
@@ -2042,9 +2100,10 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
       .limit(1),
     supabase
       .from('intervention_checklist_items')
-      .select('id', { count: 'exact' })
+      .select('id, done_at', { count: 'exact' })
       .in('intervention_id', interventionIds)
       .eq('done', true)
+      .order('done_at', { ascending: false })
       .limit(1),
   ])
 
@@ -2060,6 +2119,9 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const totalTraces = photoCount + (notesRes.count ?? 0)
   const executedInterventions = executedRes.count ?? 0
   const tasksCompleted = tasksRes.count ?? 0
+
+  const lastTaskRow = ((tasksRes.data ?? []) as Array<{ done_at: string | null }>)[0]
+  const lastTaskCompletedAt = lastTaskRow?.done_at ?? null
 
   const lastHealedRow = (anomaliesRes.data ?? [])[0] as
     | {
@@ -2077,7 +2139,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
       }
     : null
 
-  return { firstTraceAt, totalTraces, executedInterventions, tasksCompleted, photoCount, lastHealed }
+  return { firstTraceAt, totalTraces, executedInterventions, tasksCompleted, photoCount, lastTaskCompletedAt, lastHealed }
 }
 
 // =============================================================================

@@ -17,6 +17,17 @@ function formatMonthYear(iso: string): string {
   return m.charAt(0).toUpperCase() + m.slice(1)
 }
 
+const FR_MONTHS_SHORT = ['jan.', 'fév.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000)
+  if (diffDays < 1 && d.getDate() === now.getDate()) return "aujourd'hui"
+  if (diffDays === 1 || (diffDays < 2 && d.getDate() !== now.getDate())) return 'hier'
+  return `${d.getDate()} ${FR_MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : ''}`
+}
+
 /**
  * V5.1.4 — Mémoire du lieu / TraceStream, style cohérent shadcn.
  *
@@ -58,9 +69,10 @@ export function TraceStream({ events, meta }: Props) {
       if (meta.photoCount > 0)
         parts.push(`${meta.photoCount} photo${meta.photoCount > 1 ? 's' : ''}`)
       const since = meta.firstTraceAt ? ` depuis ${formatMonthYear(meta.firstTraceAt).toLowerCase()}` : ''
+      const lastTask = meta.lastTaskCompletedAt ? ` — dernière tâche le ${formatShortDate(meta.lastTaskCompletedAt)}` : ''
       return (
         <p className="text-sm text-muted-foreground">
-          {parts.join(' · ')}{since}.
+          {parts.join(' · ')}{since}{lastTask}.
         </p>
       )
     }
@@ -73,7 +85,7 @@ export function TraceStream({ events, meta }: Props) {
 
   const now = new Date()
 
-  // Summary header when we have enriched meta
+  // Summary header
   const summaryParts: string[] = []
   if (meta) {
     if (meta.executedInterventions > 0)
@@ -83,11 +95,14 @@ export function TraceStream({ events, meta }: Props) {
     if (meta.photoCount > 0)
       summaryParts.push(`${meta.photoCount} photo${meta.photoCount > 1 ? 's' : ''}`)
   }
+  const lastTaskSuffix = meta?.lastTaskCompletedAt
+    ? ` — dernière tâche le ${formatShortDate(meta.lastTaskCompletedAt)}`
+    : ''
 
   return (
     <div className="space-y-3">
       {summaryParts.length > 0 && (
-        <p className="text-xs text-muted-foreground">{summaryParts.join(' · ')}</p>
+        <p className="text-xs text-muted-foreground">{summaryParts.join(' · ')}{lastTaskSuffix}</p>
       )}
       <ol className="space-y-0">
         {events.map((event, idx) => {
