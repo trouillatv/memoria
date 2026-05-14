@@ -51,6 +51,14 @@ const SLOT_LABELS: Record<string, string> = {
   evening: 'Soir',
 }
 
+// V5.1 — Badge créneau coloré (signature visuelle descriptive du moment de
+// la journée). Teintes douces -100/-900, pas saturées alarmistes.
+const SLOT_BADGE_CLASSES: Record<string, string> = {
+  morning: 'bg-amber-100 text-amber-900 border-amber-200',
+  afternoon: 'bg-sky-100 text-sky-900 border-sky-200',
+  evening: 'bg-indigo-100 text-indigo-900 border-indigo-200',
+}
+
 export default async function FieldHomePage() {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
@@ -247,6 +255,9 @@ function InterventionCard({
 }) {
   const { day, isToday } = formatScheduledTime(scheduledAt)
   const slotLabel = slot ? SLOT_LABELS[slot] ?? null : null
+  const slotBadgeClass = slot
+    ? SLOT_BADGE_CLASSES[slot] ?? 'bg-muted text-foreground border-border'
+    : 'bg-muted text-foreground border-border'
   const isInProgress = status === 'in_progress'
   const isCompleted = status === 'completed' || status === 'validated'
   const isSkipped = status === 'skipped'
@@ -288,12 +299,20 @@ function InterventionCard({
                 <span className="truncate">{siteName}</span>
               </div>
             )}
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <Clock className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                {!isToday && day + ' · '}
-                {slotLabel ?? '—'}
-              </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {!isToday && (
+                <div className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                  <span>{day}</span>
+                </div>
+              )}
+              {slotLabel && (
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${slotBadgeClass}`}
+                >
+                  {slotLabel}
+                </span>
+              )}
             </div>
           </div>
           {primary && !isCompleted && !isSkipped && (
