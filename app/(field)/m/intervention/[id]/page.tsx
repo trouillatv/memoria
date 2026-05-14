@@ -101,10 +101,25 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     day: 'numeric',
     month: 'long',
   })
-  const timeLabel = scheduledDate.toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  // V5.1 — créneau nommé (Matin/Après-midi/Soir) au lieu de l'heure précise.
+  // Cohérent avec la doctrine V2 : créneaux nommés, jamais d'heures.
+  const SLOT_LABELS: Record<string, string> = {
+    morning: 'Matin',
+    afternoon: 'Après-midi',
+    evening: 'Soir',
+  }
+  // Badge coloré doux selon le créneau (teinte chaude → froide au fil du jour).
+  // Cohérent doctrine V5.1 : pas de couleur sémantique alarmiste, juste
+  // une signature visuelle descriptive du moment.
+  const SLOT_BADGE_CLASSES: Record<string, string> = {
+    morning: 'bg-amber-100 text-amber-900 border-amber-200',
+    afternoon: 'bg-sky-100 text-sky-900 border-sky-200',
+    evening: 'bg-indigo-100 text-indigo-900 border-indigo-200',
+  }
+  const slotLabel = intervention.slot ? SLOT_LABELS[intervention.slot] : null
+  const slotBadgeClass = intervention.slot
+    ? SLOT_BADGE_CLASSES[intervention.slot] ?? 'bg-muted text-foreground border-border'
+    : 'bg-muted text-foreground border-border'
 
   const isInProgress = intervention.status === 'in_progress'
   const isPlanned = intervention.status === 'planned'
@@ -141,11 +156,18 @@ export default async function FieldInterventionPage({ params }: { params: Promis
             </div>
           </div>
         )}
-        <div className="flex items-center gap-1.5 text-base text-muted-foreground">
-          <Clock className="h-4 w-4 shrink-0" />
-          <span>
-            {dateLabel} · {timeLabel}
-          </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center gap-1.5 text-base text-muted-foreground">
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>{dateLabel}</span>
+          </div>
+          {slotLabel && (
+            <span
+              className={`inline-flex items-center px-2.5 py-1 rounded-full border text-sm font-medium ${slotBadgeClass}`}
+            >
+              {slotLabel}
+            </span>
+          )}
         </div>
       </header>
 
