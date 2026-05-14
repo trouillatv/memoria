@@ -154,13 +154,23 @@ export async function updateUserProfileAsAdmin(
 /**
  * Marque must_change_password = false pour le user authentifié courant.
  * Pour les flows accept-invite et change-password.
- * Utilise le client serveur (cookies), passe par RLS auto-only.
+ *
+ * ⚠️ V5.1 fix : la colonne must_change_password est protégée par RLS contre
+ * les UPDATE par le user lui-même (seuls admin/manager ont accès direct).
+ * Le client serveur (createServerClient) déclenche un UPDATE silencieux qui
+ * affecte 0 lignes et renvoie error=null — la table n'est jamais nettoyée
+ * et l'user boucle sur /change-password.
+ *
+ * On utilise createAdminClient (service role) pour bypass RLS. L'auth est
+ * vérifiée explicitement ci-dessous : on update uniquement la ligne du user
+ * courant, pas une ligne arbitraire.
  */
 export async function clearMustChangePasswordForCurrentUser(): Promise<void> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
-  const { error } = await supabase
+  const admin = createAdminClient()
+  const { error } = await admin
     .from('users')
     .update({ must_change_password: false })
     .eq('id', user.id)
