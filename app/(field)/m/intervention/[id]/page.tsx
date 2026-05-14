@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Clock, Check } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -149,7 +149,7 @@ export default async function FieldInterventionPage({ params }: { params: Promis
               {mission && <div>{mission.name}</div>}
               {site.address && <div className="text-sm">{site.address}</div>}
               {site.notes && (
-                <div className="text-sm italic text-slate-600 mt-1 whitespace-pre-wrap">
+                <div className="text-sm italic text-muted-foreground mt-1 whitespace-pre-wrap">
                   {site.notes}
                 </div>
               )}
@@ -172,12 +172,12 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       </header>
 
       {isSkipped && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-1">
-          <div className="font-semibold">
+        <div className="rounded-lg border border-l-4 border-l-[#8a3030]/60 border-border bg-muted/20 p-4 text-sm space-y-1">
+          <div className="font-semibold text-foreground">
             Opération annulée pour ce jour
           </div>
           {intervention.skipped_reason && (
-            <div className="text-sm">
+            <div className="text-sm text-muted-foreground">
               Raison&nbsp;: {intervention.skipped_reason}
             </div>
           )}
@@ -187,15 +187,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       {!isSkipped && isPlanned && <StartInterventionButton interventionId={id} />}
 
       {isCompleted && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-base text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 shrink-0" />
+        <div className="rounded-lg border border-border bg-muted/30 p-4 text-base text-foreground flex items-center gap-2">
+          <Check className="h-5 w-5 shrink-0 text-muted-foreground" />
           <span>Mission {intervention.status === 'validated' ? 'validée' : 'terminée'}</span>
         </div>
       )}
 
       {isInProgress && (
-        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
-          Mission en cours — cochez les tâches au fur et à mesure
+        <div className="rounded-lg border-l-2 border-l-foreground border-y border-r border-border bg-card p-3 text-sm text-muted-foreground">
+          Mission en cours — les tâches se cochent au fur et à mesure.
         </div>
       )}
 

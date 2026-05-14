@@ -146,7 +146,7 @@ export default async function FieldHomePage() {
           <EmptyState
             icon={CheckCircle2}
             title="Pas d'intervention prévue aujourd'hui"
-            description="Profitez de votre journée. Vous serez prévenu au prochain ordre de mission."
+            description="La page se mettra à jour quand une mission sera planifiée."
             variant="compact"
           />
         </div>

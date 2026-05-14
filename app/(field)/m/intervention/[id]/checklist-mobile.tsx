@@ -142,7 +142,7 @@ export function ChecklistMobile({
             <li
               key={item.id}
               className={`rounded-xl border p-4 ${
-                isDone ? 'bg-emerald-50/40 border-emerald-200' : 'bg-card border-border'
+                isDone ? 'bg-muted/30 border-border' : 'bg-card border-border'
               }`}
             >
               <button
@@ -155,12 +155,12 @@ export function ChecklistMobile({
                 <span
                   className={`shrink-0 w-9 h-9 rounded-full border-2 flex items-center justify-center ${
                     isDone
-                      ? 'bg-emerald-500 border-emerald-500'
+                      ? 'bg-foreground border-foreground'
                       : 'bg-card border-foreground/40'
                   }`}
                   aria-hidden
                 >
-                  {isDone && <Check className="h-5 w-5 text-white" strokeWidth={3} />}
+                  {isDone && <Check className="h-5 w-5 text-background" strokeWidth={3} />}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div
@@ -242,26 +242,24 @@ const KIND_LABEL: Record<string, string> = {
 function PhotoThumb({ thumb }: { thumb: ThumbForItem }) {
   const url = thumb.dataUrl ?? thumb.signedUrl
   if (!url) return null
+  // V5.1 — étiquette neutre par défaut, seule l'anomalie garde une signature
+  // colorée (scar #8a3030) cohérente avec la palette doctrinale.
+  const labelClass =
+    thumb.kind === 'anomaly'
+      ? 'bg-[#8a3030]/85'
+      : 'bg-foreground/75'
   return (
     <div className="relative">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={url}
         alt={thumb.kind}
-        className={`w-14 h-14 rounded-lg object-cover border ${
-          thumb.isLocal ? 'border-amber-300 opacity-90' : 'border-border'
+        className={`w-14 h-14 rounded-lg object-cover border border-border ${
+          thumb.isLocal ? 'opacity-75' : ''
         }`}
       />
       <span
-        className={`absolute bottom-0 left-0 right-0 text-[8px] font-bold tracking-wider px-0.5 py-px text-center text-white ${
-          thumb.kind === 'before'
-            ? 'bg-slate-700/80'
-            : thumb.kind === 'after'
-            ? 'bg-emerald-700/80'
-            : thumb.kind === 'anomaly'
-            ? 'bg-amber-700/80'
-            : 'bg-sky-700/80'
-        }`}
+        className={`absolute bottom-0 left-0 right-0 text-[8px] font-bold tracking-wider px-0.5 py-px text-center text-background ${labelClass}`}
       >
         {KIND_LABEL[thumb.kind] ?? thumb.kind.toUpperCase()}
       </span>

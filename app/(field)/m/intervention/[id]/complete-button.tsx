@@ -32,7 +32,7 @@ export function CompleteButton({ interventionId, hasMissingRequired: _hasMissing
           toast.error(r.error)
         }
       } else if (r && 'ok' in r) {
-        toast.success('Mission terminée. Bon travail.', { duration: 2000 })
+        toast.success('Mission terminée', { duration: 2000 })
         router.push('/m')
       }
     })

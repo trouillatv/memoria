@@ -20,8 +20,11 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   const firstName = baseName.split(' ')[0] ?? baseName
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b">
+    <div className="min-h-screen" style={{ background: '#fafafa' }}>
+      <header
+        className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08]"
+        style={{ background: 'rgba(250, 250, 250, 0.95)' }}
+      >
         <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
           <div className="text-sm">
             Bonjour <span className="font-semibold">{firstName}</span>
@@ -30,14 +33,15 @@ export default async function FieldLayout({ children }: { children: React.ReactN
         </div>
       </header>
       <main className="max-w-md mx-auto px-4 py-4">{children}</main>
-      <footer className="max-w-md mx-auto px-4 py-6 mt-12 border-t flex items-center gap-4">
+      <footer className="max-w-md mx-auto px-4 py-6 mt-12 border-t border-foreground/[0.08] flex items-center gap-3 text-sm">
+        <LogoutButton />
+        <span aria-hidden className="text-muted-foreground/60">·</span>
         <Link
           href="/account"
-          className="text-xs text-muted-foreground hover:text-foreground underline"
+          className="text-xs text-muted-foreground hover:text-foreground"
         >
           Mon compte
         </Link>
-        <LogoutButton />
       </footer>
       <SyncToastBridge />
       <FieldSyncDrainer />
