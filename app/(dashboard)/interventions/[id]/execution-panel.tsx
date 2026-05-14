@@ -17,6 +17,7 @@ const KIND_LABELS: Record<PhotoKind, string> = {
   after: 'Après',
   anomaly: 'Anomalie',
   proof: 'Preuve',
+  passage: 'Passage', // V5.1 Slice 1 — trace libre hors workflow planifié
 }
 
 const KIND_COLORS: Record<PhotoKind, string> = {
@@ -24,6 +25,7 @@ const KIND_COLORS: Record<PhotoKind, string> = {
   after: 'bg-emerald-50 border-emerald-200 text-emerald-700',
   anomaly: 'bg-amber-50 border-amber-200 text-amber-700',
   proof: 'bg-sky-50 border-sky-200 text-sky-700',
+  passage: 'bg-slate-50 border-slate-200 text-slate-600', // V5.1 — couleur sobre (grammaire descriptive)
 }
 
 interface Props {

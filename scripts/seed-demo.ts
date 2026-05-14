@@ -117,6 +117,7 @@ const PHOTO_COLORS: Record<PhotoKind, string> = {
   after: '#10b981', // emerald-500
   proof: '#0ea5e9', // sky-500
   anomaly: '#dc2626', // red-600
+  passage: '#64748b', // slate-500 (V5.1 — couleur sobre)
 }
 
 async function uploadSeedPhoto(
