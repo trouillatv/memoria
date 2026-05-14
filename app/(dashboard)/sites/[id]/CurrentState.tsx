@@ -1,17 +1,12 @@
 import type { SiteCurrentState } from '@/lib/db/site-cockpit'
-import { SectionTitle } from './SectionTitle'
 
 /**
- * V5.1.3 — Section 2 : ÉTAT ACTUEL
+ * V5.1.4 — Section État actuel : 4 stats compactes pattern shadcn.
  *
- * "Le glance 3 secondes." 4 chiffres typographiques, font-light, sur paper
- * crème. AUCUNE card colorée, AUCUN donut, AUCUNE comparaison delta.
- *
- * PIÈGES À ÉVITER (verrou doctrinal V5.1) :
- *   ❌ "Aucune anomalie active" en empty state → félicitation implicite
+ * Doctrine produit (reste valide) :
+ *   ❌ pas de delta de comparaison
+ *   ❌ pas de couleur d'alerte sur "anomalies ouvertes"
  *   ✅ "0 anomalie ouverte" (statut technique, pas évaluation)
- *   ❌ ajouter "+2 vs avril" / delta de comparaison
- *   ❌ couleur d'alerte sur "anomalies ouvertes" — la saillance vit en Section 4
  */
 
 const SLOT_LABELS: Record<string, string> = {
@@ -50,35 +45,32 @@ export function CurrentState({ state }: { state: SiteCurrentState }) {
   const next = formatNextPassage(state.nextScheduledAt, state.nextScheduledSlot)
 
   return (
-    <section className="space-y-6">
-      <SectionTitle>État actuel</SectionTitle>
-      <div className="flex flex-wrap gap-x-12 gap-y-10 md:gap-x-16 pt-2">
-        <Stat
-          value={state.passagesThisMonth}
-          label="passages ce mois"
-        />
-        <Stat
-          value={state.openAnomalies}
-          label={state.openAnomalies === 1 ? 'anomalie ouverte' : 'anomalies ouvertes'}
-        />
-        <Stat
-          value={lastLabel}
-          label="dernier passage"
-          detail={
-            state.lastPassageActor
-              ? state.lastPassagePhotoCount > 0
-                ? `${state.lastPassageActor}, ${state.lastPassagePhotoCount} photo${state.lastPassagePhotoCount > 1 ? 's' : ''}`
-                : state.lastPassageActor
-              : null
-          }
-        />
-        <Stat
-          value={next.day}
-          label="prochain passage"
-          detail={next.slot || null}
-        />
-      </div>
-    </section>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <Stat
+        value={state.passagesThisMonth}
+        label="passages ce mois"
+      />
+      <Stat
+        value={state.openAnomalies}
+        label={state.openAnomalies === 1 ? 'anomalie ouverte' : 'anomalies ouvertes'}
+      />
+      <Stat
+        value={lastLabel}
+        label="dernier passage"
+        detail={
+          state.lastPassageActor
+            ? state.lastPassagePhotoCount > 0
+              ? `${state.lastPassageActor}, ${state.lastPassagePhotoCount} photo${state.lastPassagePhotoCount > 1 ? 's' : ''}`
+              : state.lastPassageActor
+            : null
+        }
+      />
+      <Stat
+        value={next.day}
+        label="prochain passage"
+        detail={next.slot || null}
+      />
+    </div>
   )
 }
 
@@ -92,21 +84,15 @@ function Stat({
   detail?: string | null
 }) {
   return (
-    <div className="min-w-0">
-      <div
-        className="text-5xl font-light tabular-nums leading-none tracking-tight"
-        style={{ color: '#0a0a0a' }}
-      >
+    <div className="space-y-1">
+      <div className="text-2xl font-semibold tabular-nums leading-none">
         {value}
       </div>
-      <div
-        className="text-[11px] uppercase tracking-[0.14em] leading-snug mt-3"
-        style={{ color: '#888' }}
-      >
+      <div className="text-xs text-muted-foreground leading-snug">
         {label}
       </div>
       {detail && (
-        <div className="text-xs italic leading-snug mt-2" style={{ color: '#555' }}>
+        <div className="text-xs text-muted-foreground italic">
           {detail}
         </div>
       )}

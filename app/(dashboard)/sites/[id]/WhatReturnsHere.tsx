@@ -1,42 +1,29 @@
+import { Badge } from '@/components/ui/badge'
 import type { WhatReturnsHere as TReturns } from '@/lib/db/site-cockpit'
-import { SectionTitle } from './SectionTitle'
 
 /**
- * V5.1.3 — Section 6 : CE QUI REVIENT
+ * V5.1.4 — Mots récurrents, pattern shadcn (Badge variant secondary).
  *
- * Doctrine Vincent 2026-05-14 : extraction de motifs faibles humains.
- * "L'IA n'écrit pas, elle révèle." Comptage de termes récurrents
- * (≥3 occurrences) sur le corpus narratif du site (anomalies, notes,
- * intervention notes). Ordre alphabétique strict pour éviter ranking visuel.
+ * Doctrine produit (reste valide) :
+ *   ❌ pas de tag-cloud avec tailles variables (suggère ranking)
+ *   ❌ pas de fréquence affichée (quantification → reverse-lookup)
+ *   ❌ pas de "AI insights" / ✨ (IA bavarde interdite)
+ *   ✅ ordre alphabétique strict (évite ranking visuel)
  *
- * PIÈGES À ÉVITER :
- *   ❌ "Mots importants" / "Tags principaux" → injonction interdite
- *   ❌ tag-cloud avec tailles variables → suggère ranking
- *   ❌ afficher la fréquence ("bloc B (12)") → quantification
- *   ❌ "AI insights" / "✨" → IA bavarde interdite
- *
- * Si liste vide → ne pas afficher la section (l'absence est elle-même
- * un signal — pas de motif récurrent encore détecté).
+ * Si pas de mots, le composant n'est pas rendu (cf. page.tsx qui le wrappe
+ * dans Card conditionnellement).
  */
 
 export function WhatReturnsHere({ data }: { data: TReturns }) {
   if (data.words.length === 0) return null
 
   return (
-    <section className="space-y-4">
-      <SectionTitle>Ce qui revient</SectionTitle>
-      <p className="text-base leading-relaxed pt-2" style={{ color: '#555' }}>
-        {data.words.map((word, idx) => (
-          <span key={word}>
-            {word}
-            {idx < data.words.length - 1 && (
-              <span aria-hidden style={{ color: '#c0c0c0' }}>
-                {' · '}
-              </span>
-            )}
-          </span>
-        ))}
-      </p>
-    </section>
+    <div className="flex flex-wrap gap-1.5">
+      {data.words.map((word) => (
+        <Badge key={word} variant="secondary" className="font-normal">
+          {word}
+        </Badge>
+      ))}
+    </div>
   )
 }

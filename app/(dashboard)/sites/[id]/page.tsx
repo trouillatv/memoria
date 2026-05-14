@@ -1,41 +1,18 @@
-// V5.1.3 — Page Site = cerveau perceptif du produit.
+// V5.1.4 — Page Site refondue en style cohérent avec le reste de l'app
+// (pattern shadcn, cards, icônes Lucide, palette sémantique sky/emerald/amber).
 //
-// Doctrine Vincent 2026-05-14 :
-//   "Un lieu lisible plutôt qu'un lieu monitoré."
+// Doctrine Vincent 2026-05-14 : "toutes les pages sont jolies type Missions —
+// celle-ci doit l'être aussi". Le style éditorial paper-crème V5.1.3 était
+// une expérimentation qui rompait avec l'app. On revient à la cohérence visuelle.
 //
-// Architecture en 7 sections, lecture progressive descendante :
-//   1. IDENTITÉ            — le lieu avant les données
-//   2. ÉTAT ACTUEL         — 4 chiffres typographiques (glance 3 sec)
-//   3. ACTIVITÉ RÉCENTE    — colonne respirante ● / · (vivant)
-//   4. ANOMALIES           — bordure-gauche cicatrice persistante
-//   5. CONTINUITÉ HUMAINE  — succession nominale, jamais qualifiée
-//   6. CE QUI REVIENT      — motifs faibles humains (extraction, pas IA bavarde)
-//   7. MÉMOIRE DU LIEU     — substrat fading (lecture lente)
-//
-// ============================================================
-// DOCTRINE WORDING V5.1 — Page Site
-// ============================================================
-//
-// PIÈGE 1 — Empty states félicitants
-//   ❌ "Aucune anomalie active." / "Tout va bien sur ce site."
-//   ✅ "Aucune anomalie ouverte sur ce site." (statut technique)
-//   Règle : un empty state décrit une absence factuelle, jamais positive.
-//
-// PIÈGE 2 — Modalisateurs et qualifieurs IA
-//   ❌ "Mois calme", "Saison agitée", "Site bien tenu"
-//   ✅ Compte brut + fenêtre : "3 anomalies ouvertes", "12 passages ce mois"
-//   Règle : l'IA sélectionne dans le dépôt humain, jamais qualifieur.
-//
-// PIÈGE 3 — Qualifications humaines
-//   ❌ "Hervé connaissait parfaitement ce lieu."
-//   ❌ "Joseph suit ce site avec attention."
-//   ✅ "Hervé a tenu ce site 4 ans." (temporel, contextuel)
-//   Règle V5.1.3 : les humains peuvent être nommés, jamais qualifiés.
-//
-// ============================================================
+// Les RÈGLES PRODUIT restent strictes (descriptif jamais juge, humains nommés
+// jamais qualifiés, pas de KPI humains, pas de scoring agent, pas de
+// reverse-lookup individuel). Seul le STYLE s'aligne sur l'app.
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
+import { MapPin } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
@@ -46,6 +23,11 @@ import {
   getSiteAnomalies,
   getSiteHumanContinuity,
   getSiteWhatReturns,
+  getSiteRecentRhythm,
+  getSiteTeamPresences,
+  getSiteReadings,
+  getSiteMemoryMeta,
+  getSiteTransmissionReadings,
 } from '@/lib/db/site-cockpit'
 import { ASavoirManager } from './ASavoirManager'
 import { TraceStream } from './TraceStream'
@@ -55,7 +37,9 @@ import { RecentActivity } from './RecentActivity'
 import { AnomaliesList } from './AnomaliesList'
 import { HumanContinuityList } from './HumanContinuity'
 import { WhatReturnsHere } from './WhatReturnsHere'
-import { SectionTitle } from './SectionTitle'
+import { SiteRhythm } from './SiteRhythm'
+import { TeamPresencesList } from './TeamPresencesList'
+import { SiteReadingsList } from './SiteReadingsList'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -68,68 +52,161 @@ export default async function SitePage({ params }: PageProps) {
 
   const { id } = await params
 
-  // Toutes les données chargées en parallèle
-  const [identity, currentState, recentActivity, anomalies, continuity, whatReturns, aSavoirActive, timeline] =
-    await Promise.all([
-      getSiteIdentity(id),
-      getSiteCurrentState(id),
-      getSiteRecentActivity(id, 10),
-      getSiteAnomalies(id),
-      getSiteHumanContinuity(id),
-      getSiteWhatReturns(id),
-      listSiteASavoirActive(id),
-      getSiteMemoryTimeline(id, { limit: 200 }),
-    ])
+  const [
+    identity,
+    currentState,
+    recentActivity,
+    anomalies,
+    continuity,
+    whatReturns,
+    aSavoirActive,
+    timeline,
+    rhythm,
+    teamPresences,
+    readings,
+    memoryMeta,
+  ] = await Promise.all([
+    getSiteIdentity(id),
+    getSiteCurrentState(id),
+    getSiteRecentActivity(id, 10),
+    getSiteAnomalies(id),
+    getSiteHumanContinuity(id),
+    getSiteWhatReturns(id),
+    listSiteASavoirActive(id),
+    getSiteMemoryTimeline(id, { limit: 200 }),
+    getSiteRecentRhythm(id, 14),
+    getSiteTeamPresences(id, 30),
+    getSiteReadings(id),
+    getSiteMemoryMeta(id),
+  ])
+
+  // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
+  // Vincent 2026-05-15 : "Quand Moana reprend un site, on lui montre les
+  // bribes de mémoire laissées par Anaïs."
+  const transmissions = await getSiteTransmissionReadings(id, continuity)
+  const enrichedReadings = {
+    readings: [...transmissions, ...readings.readings].slice(0, 8),
+  }
 
   if (!identity) notFound()
 
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: '#fafafa' }}
-    >
-      <div className="max-w-2xl mx-auto px-6 md:px-10 py-16">
-        <Link
-          href="/sites"
-          className="text-xs hover:underline inline-flex items-center gap-1"
-          style={{ color: '#888' }}
-        >
-          ← Sites
-        </Link>
+    <div className="space-y-6 max-w-4xl">
+      <Link
+        href="/sites"
+        className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+      >
+        ← Sites
+      </Link>
 
-        <div className="space-y-20 mt-8">
-          {/* Section 1 — IDENTITÉ */}
-          <IdentityHeader site={identity} />
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+          <MapPin className="h-5 w-5 text-sky-600" />
+          {identity.name}
+        </h1>
+        <IdentityHeader site={identity} />
+      </header>
 
-          {/* À savoir actifs — bloc consigne, juste après l'identité */}
-          {aSavoirActive.length > 0 && (
-            <ASavoirManager siteId={id} active={aSavoirActive} />
-          )}
+      {aSavoirActive.length > 0 && (
+        <ASavoirManager siteId={id} active={aSavoirActive} />
+      )}
 
-          {/* Section 2 — ÉTAT ACTUEL */}
+      {/* COUCHE 1 — Cockpit opérationnel (lecture 3 sec) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>État actuel</CardTitle>
+        </CardHeader>
+        <CardContent>
           <CurrentState state={currentState} />
+        </CardContent>
+      </Card>
 
-          {/* Section 3 — ACTIVITÉ RÉCENTE */}
-          <RecentActivity items={recentActivity} />
+      {/* COUCHE 3 — IA perceptive (Vincent 2026-05-15) :
+          phrases factuelles extraites algorithmiquement de patterns faibles.
+          Affichée HAUT pour souligner sa nature singulière. Card distinctive
+          (background paper crème, padding amplifié) — c'est la signature IA
+          du produit, elle doit RESPIRER différemment des sections shadcn
+          uniformes. "Lecture lente." */}
+      {enrichedReadings.readings.length > 0 && (
+        <Card className="bg-[#fafaf7] border-foreground/10">
+          <CardHeader>
+            <CardTitle className="text-base font-medium">Lectures du lieu</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-2 pb-6">
+            <SiteReadingsList data={enrichedReadings} />
+          </CardContent>
+        </Card>
+      )}
 
-          {/* Section 4 — ANOMALIES / CICATRICES */}
-          <AnomaliesList anomalies={anomalies} />
+      {/* COUCHE 2 — Lecture du lieu (lecture 30 sec) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Rythme du lieu</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SiteRhythm days={rhythm} />
+          </CardContent>
+        </Card>
 
-          {/* Section 5 — CONTINUITÉ HUMAINE */}
-          <HumanContinuityList continuity={continuity} />
-
-          {/* Section 6 — CE QUI REVIENT */}
-          <WhatReturnsHere data={whatReturns} />
-
-          {/* Section 7 — MÉMOIRE DU LIEU (substrat) */}
-          <section className="space-y-4">
-            <SectionTitle>Mémoire du lieu</SectionTitle>
-            <div className="pt-2">
-              <TraceStream events={timeline} />
-            </div>
-          </section>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Équipes présentes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TeamPresencesList presences={teamPresences} />
+          </CardContent>
+        </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Activité récente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RecentActivity items={recentActivity} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Anomalies</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AnomaliesList anomalies={anomalies} meta={memoryMeta} />
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Continuité humaine</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <HumanContinuityList continuity={continuity} />
+          </CardContent>
+        </Card>
+
+        {whatReturns.words.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ce qui revient</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WhatReturnsHere data={whatReturns} />
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Mémoire du lieu</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TraceStream events={timeline} meta={memoryMeta} />
+        </CardContent>
+      </Card>
     </div>
   )
 }

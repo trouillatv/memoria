@@ -1,33 +1,22 @@
+import { Users } from 'lucide-react'
 import type { HumanContinuity } from '@/lib/db/site-cockpit'
-import { SectionTitle } from './SectionTitle'
 
 /**
- * V5.1.3 — Section 5 : CONTINUITÉ HUMAINE
+ * V5.1.4 — Continuité humaine, pattern shadcn cohérent.
  *
- * Liste descriptive non-cliquable. Pas un classement, pas un leaderboard.
- *
- * VERROU DOCTRINAL V5.1.3 (Vincent 2026-05-14) :
+ * VERROU DOCTRINAL V5.1.3 — Vincent 2026-05-14 :
  *   ✅ Les humains peuvent être nommés.
  *   ❌ Ils ne peuvent jamais être qualifiés.
  *
- * Test du dev : peut-on remplacer le prénom par "le passage de mardi"
- * sans perdre le sens ? Si oui = descriptif (OK). Si non = on a glissé
- * vers la qualification de la personne (KO).
+ * Pas d'avatar, pas de cliquabilité (créerait page profil = reverse-lookup
+ * interdit). Pas de star, pas de classement, pas de pourcentage.
  *
  * Acceptable :
  *   ✅ "Hervé a tenu ce site 4 ans." (temporel, contextuel)
  *   ✅ "Sosefo a repris en mai." (relais)
  * Interdit :
  *   ❌ "Hervé connaissait parfaitement ce lieu." (qualitatif)
- *   ❌ "Joseph suit ce site avec attention." (qualitatif)
  *   ❌ "Joseph 92% des passages." (mesure individuelle)
- *
- * PIÈGES À ÉVITER :
- *   ❌ avatar rond / initiales en cercle
- *   ❌ bouton "Voir le profil"
- *   ❌ stars / notation / classement
- *   ❌ pourcentage "X : 60% des passages"
- *   ❌ cliquabilité (créerait page profil = reverse-lookup interdit V3)
  */
 
 function formatMonthYear(iso: string): string {
@@ -49,46 +38,61 @@ function spanLabel(months: number): string {
 export function HumanContinuityList({ continuity }: { continuity: HumanContinuity }) {
   if (continuity.predecessors.length === 0) {
     return (
-      <section className="space-y-4">
-        <SectionTitle>Continuité humaine</SectionTitle>
-        <p className="text-sm italic" style={{ color: '#888' }}>
-          Ce site n&apos;a pas encore trouvé son chef d&apos;équipe.
-        </p>
-      </section>
+      <p className="text-sm text-muted-foreground italic">
+        Ce site n&apos;a pas encore trouvé son chef d&apos;équipe.
+      </p>
     )
   }
 
+  // V5.1.4 — Reformulation en transmission narrative (Vincent 2026-05-15) :
+  // "Moana a repris ce lieu en mai 2026. Avant elle : Anaïs."
+  // Le current chef en haut comme une phrase, le reste comme prédécesseurs.
+  // Sujet principal = le LIEU (qui change de main), pas le ranking d'individus.
+  const current = continuity.predecessors.find((p) => p.isCurrent)
+  const predecessors = continuity.predecessors.filter((p) => !p.isCurrent)
+
   return (
-    <section className="space-y-4">
-      <SectionTitle>Continuité humaine</SectionTitle>
-      <ol className="pt-2 space-y-6">
-        {continuity.predecessors.map((p, idx) => {
-          const startLabel = formatMonthYear(p.firstSeenAt)
-          const endLabel = p.isCurrent ? "aujourd'hui" : formatMonthYear(p.lastSeenAt)
-          const span = spanLabel(p.spanMonths)
-          return (
-            <li key={`${p.firstName}-${idx}`}>
-              <div className="text-xl font-normal leading-snug" style={{ color: '#0a0a0a' }}>
-                {p.firstName}
-              </div>
-              <div
-                className="text-sm italic leading-snug mt-1"
-                style={{ color: '#555' }}
-              >
-                {startLabel} — {endLabel}
-                {p.isCurrent ? (
-                  <span className="not-italic" style={{ color: '#0a0a0a' }}>
-                    {' '}
-                    (en cours)
-                  </span>
-                ) : (
-                  <>, {span}</>
-                )}
-              </div>
-            </li>
-          )
-        })}
-      </ol>
-    </section>
+    <div className="space-y-3">
+      {current ? (
+        <div className="flex items-start gap-2.5">
+          <Users className="h-3.5 w-3.5 shrink-0 mt-1 text-emerald-600" aria-hidden />
+          <p className="text-sm">
+            <span className="font-medium">{current.firstName}</span> a repris
+            ce lieu en {formatMonthYear(current.firstSeenAt).toLowerCase()}.
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground italic">
+          Personne n&apos;assure actuellement la continuité sur ce lieu.
+        </p>
+      )}
+
+      {predecessors.length > 0 && (
+        <div className="pl-6">
+          <p className="text-xs text-muted-foreground mb-1">
+            Avant {current ? (predecessors.length === 1 ? 'elle/lui' : 'eux') : 'cela'} :
+          </p>
+          <ol className="space-y-1">
+            {predecessors.map((p, idx) => {
+              const startLabel = formatMonthYear(p.firstSeenAt)
+              const endLabel = formatMonthYear(p.lastSeenAt)
+              const span = spanLabel(p.spanMonths)
+              return (
+                <li key={`${p.firstName}-${idx}`} className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{p.firstName}</span>{' '}
+                  · {startLabel} — {endLabel}, {span}
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      )}
+
+      {continuity.teamsSucceeded > 1 && (
+        <p className="text-xs text-muted-foreground italic pl-6">
+          Ce lieu connaît sa {continuity.teamsSucceeded === 2 ? 'deuxième' : `${continuity.teamsSucceeded}ème`} équipe.
+        </p>
+      )}
+    </div>
   )
 }

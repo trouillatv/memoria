@@ -56,3 +56,4 @@ dev.log
 
 # Backups
 *.bak
+.env*.local

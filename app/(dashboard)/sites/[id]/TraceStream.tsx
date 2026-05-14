@@ -1,5 +1,8 @@
 import Link from 'next/link'
+import { AlertTriangle, FileText, Camera, Info } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import type { SiteMemoryEvent } from '@/lib/db/site-memory'
+import type { SiteMemoryMeta } from '@/lib/db/site-cockpit'
 import { salienceOf } from '@/lib/perception/salience'
 import { opacityOf, ageDaysSince } from '@/lib/perception/fading'
 import {
@@ -8,33 +11,57 @@ import {
   shouldRenderSilenceMarker,
 } from '@/lib/perception/gaps'
 
+function formatMonthYear(iso: string): string {
+  const d = new Date(iso)
+  const m = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  return m.charAt(0).toUpperCase() + m.slice(1)
+}
+
 /**
- * V5.1 Slice 3 — Flux stratifié de traces.
+ * V5.1.4 — Mémoire du lieu / TraceStream, style cohérent shadcn.
  *
- * Substrat sédimentaire, pas timeline. Chaque event a une opacity calculée
- * côté serveur (salience × age decay). Les gaps verticaux sont
- * proportionnels au temps écoulé entre events (limite 220px), avec
- * micro-repère textuel qualitatif au-delà de 14j de silence.
- *
- * Cicatrices :
- *   - Anomalie active : bordure-gauche 2px noire pleine
- *   - Anomalie en cours (status=open mais ancienne) : idem, mais opacity baissée
- *   - Anomalie résolue : bordure-gauche 1.5px grise persistante
- *   - Anomalie ignorée : bordure-gauche 1px gris clair quasi-transparente
- *
- * Aucun titre de section temporelle ("Mai", "Avril"). Aucun chiffre saillant.
- * Aucune couleur sémantique. Le passage du temps est un matériau visuel.
+ * Garde la sémantique stratifiée (opacity fading, gaps proportionnels au
+ * silence, cicatrice persistante pour anomalies) — c'est doctrinal, pas
+ * stylistique. Mais visuellement aligné avec le reste de l'app (text-sm,
+ * text-muted-foreground, icônes Lucide, palette sémantique).
  */
+
+const TYPE_ICON: Record<SiteMemoryEvent['type'], LucideIcon> = {
+  intervention: FileText,
+  photo: Camera,
+  anomaly: AlertTriangle,
+  note: Info,
+  a_savoir: Info,
+}
+
+const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
+  intervention: 'text-muted-foreground',
+  photo: 'text-sky-600',
+  anomaly: 'text-amber-600',
+  note: 'text-muted-foreground',
+  a_savoir: 'text-muted-foreground',
+}
 
 interface Props {
   events: SiteMemoryEvent[]
+  meta?: SiteMemoryMeta
 }
 
-export function TraceStream({ events }: Props) {
+export function TraceStream({ events, meta }: Props) {
   if (events.length === 0) {
+    // V5.1.4 — Empty state lieu-centric (Vincent 2026-05-15). Plutôt que
+    // "pas d'événement", on parle de la mémoire qui démarre.
+    if (meta?.firstTraceAt && meta.totalTraces > 0) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          {meta.totalTraces} trace{meta.totalTraces > 1 ? 's' : ''} déposée
+          {meta.totalTraces > 1 ? 's' : ''} depuis {formatMonthYear(meta.firstTraceAt).toLowerCase()}.
+        </p>
+      )
+    }
     return (
-      <p className="text-sm text-muted-foreground py-8 text-center border rounded-lg">
-        Pas encore d&apos;événement enregistré sur ce lieu.
+      <p className="text-sm text-muted-foreground italic">
+        Le lieu commence à se documenter.
       </p>
     )
   }
@@ -42,14 +69,12 @@ export function TraceStream({ events }: Props) {
   const now = new Date()
 
   return (
-    <ol className="relative">
+    <ol className="space-y-0">
       {events.map((event, idx) => {
         const ageDays = ageDaysSince(event.occurredAt, now)
         const salience = salienceOf(event)
         const opacity = opacityOf(salience, ageDays)
 
-        // Calcul du gap avec l'event précédent (events triés DESC, donc
-        // "précédent dans l'array" = plus récent dans le temps).
         const prev = events[idx - 1]
         const daysBetween = prev
           ? Math.max(
@@ -57,16 +82,16 @@ export function TraceStream({ events }: Props) {
               Math.floor(
                 (new Date(prev.occurredAt).getTime() -
                   new Date(event.occurredAt).getTime()) /
-                  86_400_000
-              )
+                  86_400_000,
+              ),
             )
           : 0
-        const gapPx = idx === 0 ? 0 : gapHeightPx(daysBetween)
+        const gapPx = idx === 0 ? 0 : Math.min(gapHeightPx(daysBetween), 80)
         const showSilence = idx > 0 && shouldRenderSilenceMarker(daysBetween)
         const silenceText = showSilence ? silenceLabel(daysBetween) : null
 
         return (
-          <li key={`${event.type}-${event.id}`} className="relative">
+          <li key={`${event.type}-${event.id}`}>
             {idx > 0 && (
               <div
                 aria-hidden
@@ -74,7 +99,7 @@ export function TraceStream({ events }: Props) {
                 className="relative flex items-center justify-center"
               >
                 {silenceText && (
-                  <span className="text-[12px] italic text-muted-foreground/70 select-none">
+                  <span className="text-xs italic text-muted-foreground/60 select-none">
                     {silenceText}
                   </span>
                 )}
@@ -95,57 +120,50 @@ interface TraceLineProps {
 }
 
 function TraceLine({ event, opacity, ageDays }: TraceLineProps) {
-  // Bordure gauche pour les anomalies — cicatrice persistante.
-  // Couleur dégradée selon le statut + l'âge.
-  let borderLeft: string | undefined
-  let borderColor: string | undefined
+  // Bordure gauche cicatrice anomalie — doctrinal, persistante même après
+  // résolution. Conservée mais en palette sémantique amber/muted.
+  let borderClass = ''
   if (event.type === 'anomaly') {
     const status = event.status ?? 'open'
     if (status === 'open') {
-      borderLeft = '2px solid'
-      borderColor = ageDays < 14 ? '#0a0a0a' : '#555555'
+      borderClass = ageDays < 14 ? 'border-l-2 border-amber-500' : 'border-l-2 border-amber-300'
     } else if (status === 'resolved') {
-      borderLeft = ageDays < 90 ? '1.5px solid' : '1px solid'
-      borderColor = ageDays < 90 ? '#888888' : '#c0c0c0'
+      borderClass = ageDays < 90 ? 'border-l-2 border-muted-foreground/40' : 'border-l border-muted-foreground/20'
     } else {
-      borderLeft = '1px solid'
-      borderColor = '#e8e8e8'
+      borderClass = 'border-l border-muted-foreground/10'
     }
   }
 
-  // Format date sobre — pas de "il y a X jours" qui interpréterait l'âge.
-  // Juste la date factuelle. Pour les events ≤ 1 semaine, garder un repère
-  // contextuel sec ("aujourd'hui", "hier", jour de la semaine).
   const dateLabel = formatDateLabel(event.occurredAt, ageDays)
+  const Icon = TYPE_ICON[event.type]
+  const iconColor = TYPE_ICON_COLOR[event.type]
 
   const inner = (
     <div
-      className="py-2 px-3 transition-opacity"
-      style={{
-        opacity,
-        borderLeft,
-        borderLeftColor: borderColor,
-        paddingLeft: borderLeft ? 12 : undefined,
-      }}
+      className={`flex items-start gap-2.5 py-2 px-2 ${borderClass}`}
+      style={{ opacity, paddingLeft: borderClass ? 12 : 8 }}
     >
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <span className="text-[15px] leading-tight">{event.title}</span>
-        <span className="text-[12px] text-muted-foreground tabular-nums shrink-0">
-          {dateLabel}
-        </span>
+      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <span className="text-sm leading-snug">{event.title}</span>
+          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+            {dateLabel}
+          </span>
+        </div>
+        {event.detail && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+            {event.detail}
+          </p>
+        )}
       </div>
-      {event.detail && (
-        <p className="text-[13px] text-muted-foreground mt-1 line-clamp-2">
-          {event.detail}
-        </p>
-      )}
     </div>
   )
 
   const href = event.interventionId ? `/interventions/${event.interventionId}` : null
   if (href) {
     return (
-      <Link href={href} className="block hover:bg-muted/30 rounded-sm">
+      <Link href={href} className="block hover:bg-muted/30 rounded transition-colors">
         {inner}
       </Link>
     )

@@ -13,6 +13,14 @@ export interface PhotoTransform {
 // Preset thumbnail — gros gain bande passante sur listes et grilles.
 const THUMB_TRANSFORM: PhotoTransform = { width: 400, height: 400, resize: 'cover', quality: 70 }
 
+// V5.1.3 — Preset SANS crop (doctrine Vincent 2026-05-14) :
+// "Pas de crop agressif. Préférer voir des bandes plutôt que tronquer la
+// vérité spatiale. La rugosité du terrain est l'information." Aspect ratio
+// natif préservé (width seul → height calculée par Supabase). À utiliser pour
+// vignettes page Site (Activité récente, Anomalies).
+const THUMB_PRESERVE_AR_NARROW: PhotoTransform = { width: 200, quality: 75 }
+const THUMB_PRESERVE_AR_MEDIUM: PhotoTransform = { width: 400, quality: 75 }
+
 function buildOptions(transform?: PhotoTransform) {
   if (!transform) return undefined
   return { transform }
@@ -81,4 +89,13 @@ export async function getSignedPhotoUrlsThumb(storagePaths: string[]): Promise<M
 
 export async function getSignedPhotoUrlsFull(storagePaths: string[]): Promise<Map<string, string>> {
   return getSignedPhotoUrls(storagePaths)
+}
+
+// V5.1.3 — Vignettes page Site, aspect ratio préservé (jamais crop).
+export async function getSignedPhotoUrlsNarrow(storagePaths: string[]): Promise<Map<string, string>> {
+  return getSignedPhotoUrls(storagePaths, THUMB_PRESERVE_AR_NARROW)
+}
+
+export async function getSignedPhotoUrlsMedium(storagePaths: string[]): Promise<Map<string, string>> {
+  return getSignedPhotoUrls(storagePaths, THUMB_PRESERVE_AR_MEDIUM)
 }

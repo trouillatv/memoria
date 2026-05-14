@@ -1,15 +1,11 @@
 import type { SiteIdentity } from '@/lib/db/site-cockpit'
 
 /**
- * V5.1.3 — Section 1 : IDENTITÉ
+ * V5.1.4 — Sous-titre / métadonnées du site, sous le H1 rendu par page.tsx.
  *
- * "Le lieu avant les données." L'identité est le titre de la page —
- * pas de H2 minuscule au-dessus. La règle "H2 uppercase" commence à
- * partir de la Section 2.
- *
- * Doctrine wording (cf. memory netoiage-grille-pensee-produit) :
- * — sujet principal = le site, pas l'humain
- * — humains peuvent être nommés, jamais qualifiés
+ * Pattern shadcn standard : text-sm text-muted-foreground.
+ * Doctrine : "X équipes se sont succédé ici" reste affiché car descriptif
+ * et continuité-centric. Pas d'avatar, pas de profil cliquable.
  */
 
 function formatStartedAt(iso: string | null): string | null {
@@ -21,30 +17,25 @@ function formatStartedAt(iso: string | null): string | null {
 
 export function IdentityHeader({ site }: { site: SiteIdentity }) {
   const startedLabel = formatStartedAt(site.contractStartedAt)
+  const subtitleParts = [
+    site.contractName,
+    site.clientName,
+    site.address,
+    startedLabel ? `depuis ${startedLabel}` : null,
+  ].filter(Boolean)
 
   return (
-    <header className="space-y-1">
-      <h1
-        className="text-4xl font-semibold tracking-tight leading-[1.1]"
-        style={{ color: '#0a0a0a' }}
-      >
-        {site.name}
-      </h1>
-      {site.contractName && (
-        <p className="text-lg leading-snug mt-1" style={{ color: '#555' }}>
-          {site.contractName}
+    <div className="space-y-1">
+      {subtitleParts.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {subtitleParts.join(' · ')}
         </p>
       )}
-      <div className="text-sm leading-relaxed mt-6 space-y-0.5" style={{ color: '#888' }}>
-        {startedLabel && <div>Contrat depuis {startedLabel}</div>}
-        {site.clientName && <div>{site.clientName}</div>}
-        {site.address && <div>{site.address}</div>}
-      </div>
       {site.teamsSucceeded > 1 && (
-        <p className="text-sm italic mt-6" style={{ color: '#555' }}>
+        <p className="text-xs text-muted-foreground italic">
           {site.teamsSucceeded} équipes se sont succédé ici.
         </p>
       )}
-    </header>
+    </div>
   )
 }
