@@ -392,7 +392,7 @@ export interface DbInterventionChecklistItem {
   done_by: string | null
 }
 
-export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof'
+export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage'
 
 export interface DbInterventionPhoto {
   id: string
