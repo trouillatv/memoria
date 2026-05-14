@@ -28,6 +28,7 @@ import {
   getSiteReadings,
   getSiteMemoryMeta,
   getSiteTransmissionReadings,
+  getSiteRecentPhotos,
 } from '@/lib/db/site-cockpit'
 import { ASavoirManager } from './ASavoirManager'
 import { TraceStream } from './TraceStream'
@@ -40,6 +41,7 @@ import { WhatReturnsHere } from './WhatReturnsHere'
 import { SiteRhythm } from './SiteRhythm'
 import { TeamPresencesList } from './TeamPresencesList'
 import { SiteReadingsList } from './SiteReadingsList'
+import { SitePhotoGallery } from './SitePhotoGallery'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -65,6 +67,7 @@ export default async function SitePage({ params }: PageProps) {
     teamPresences,
     readings,
     memoryMeta,
+    sitePhotos,
   ] = await Promise.all([
     getSiteIdentity(id),
     getSiteCurrentState(id),
@@ -78,6 +81,7 @@ export default async function SitePage({ params }: PageProps) {
     getSiteTeamPresences(id, 30),
     getSiteReadings(id),
     getSiteMemoryMeta(id),
+    getSiteRecentPhotos(id, 9),
   ])
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
@@ -123,12 +127,7 @@ export default async function SitePage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* COUCHE 3 — IA perceptive (Vincent 2026-05-15) :
-          phrases factuelles extraites algorithmiquement de patterns faibles.
-          Affichée HAUT pour souligner sa nature singulière. Card distinctive
-          (background paper crème, padding amplifié) — c'est la signature IA
-          du produit, elle doit RESPIRER différemment des sections shadcn
-          uniformes. "Lecture lente." */}
+      {/* COUCHE 3 — IA perceptive */}
       {enrichedReadings.readings.length > 0 && (
         <Card className="bg-[#fafaf7] border-foreground/10">
           <CardHeader>
@@ -140,7 +139,7 @@ export default async function SitePage({ params }: PageProps) {
         </Card>
       )}
 
-      {/* COUCHE 2 — Lecture du lieu (lecture 30 sec) */}
+      {/* COUCHE 2 — Rythme + équipes */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
@@ -161,14 +160,17 @@ export default async function SitePage({ params }: PageProps) {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Activité récente</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <RecentActivity items={recentActivity} />
-        </CardContent>
-      </Card>
+      {/* Galerie photos — traces visuelles du lieu */}
+      {sitePhotos.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Photos du lieu</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <SitePhotoGallery photos={sitePhotos} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -200,6 +202,16 @@ export default async function SitePage({ params }: PageProps) {
           </Card>
         )}
       </div>
+
+      {/* Activité récente — en bas, texte uniquement */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Activité récente</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RecentActivity items={recentActivity} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

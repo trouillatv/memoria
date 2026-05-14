@@ -22,6 +22,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getSignedPhotoUrlsNarrow,
   getSignedPhotoUrlsMedium,
+  getSignedPhotoUrlsThumb,
 } from '@/lib/storage/intervention-photos'
 
 // =============================================================================
@@ -1952,4 +1953,90 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
     : null
 
   return { firstTraceAt, totalTraces, lastHealed }
+}
+
+// =============================================================================
+// SECTION — GALERIE PHOTOS
+// =============================================================================
+
+export interface SitePhotoEntry {
+  id: string
+  signedUrl: string
+  caption: string | null
+  /** kind : 'passage' | 'anomaly' | 'anomaly_evidence' | 'before' | 'after' | 'proof' */
+  kind: string
+  takenAt: string
+  interventionId: string
+}
+
+/**
+ * Photos les plus pertinentes du site pour la galerie page Site.
+ * Priorité : anomaly_evidence > captioned > recent.
+ * Max 9 photos (grille 3×3).
+ */
+export async function getSiteRecentPhotos(
+  siteId: string,
+  limit = 9,
+): Promise<SitePhotoEntry[]> {
+  const supabase = createAdminClient()
+
+  const { data: missions } = await supabase
+    .from('missions')
+    .select('id')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+  const missionIds = (missions ?? []).map((m) => m.id)
+  if (missionIds.length === 0) return []
+
+  const { data: interventionsAll } = await supabase
+    .from('interventions')
+    .select('id')
+    .in('mission_id', missionIds)
+  const interventionIds = (interventionsAll ?? []).map((i) => i.id)
+  if (interventionIds.length === 0) return []
+
+  // Priorité photos : anomaly evidence > captioned > recent.
+  // On récupère plus pour pouvoir trier, puis on coupe à limit.
+  const { data: photosRaw } = await supabase
+    .from('intervention_photos')
+    .select('id, storage_path, caption, kind, taken_at, intervention_id')
+    .in('intervention_id', interventionIds)
+    .not('storage_path', 'is', null)
+    .order('taken_at', { ascending: false })
+    .limit(limit * 4)
+
+  type PhotoRow = {
+    id: string
+    storage_path: string
+    caption: string | null
+    kind: string
+    taken_at: string
+    intervention_id: string
+  }
+
+  const rows = (photosRaw ?? []) as PhotoRow[]
+
+  // Score de pertinence : anomaly* = 0, caption présente = 1, autres = 2.
+  const score = (r: PhotoRow): number => {
+    if (r.kind === 'anomaly_evidence' || r.kind === 'anomaly') return 0
+    if (r.caption) return 1
+    return 2
+  }
+  rows.sort((a, b) => score(a) - score(b) || b.taken_at.localeCompare(a.taken_at))
+  const top = rows.slice(0, limit)
+  if (top.length === 0) return []
+
+  const storagePaths = top.map((p) => p.storage_path)
+  const urlMap = await getSignedPhotoUrlsThumb(storagePaths)
+
+  return top
+    .map((p) => ({
+      id: p.id,
+      signedUrl: urlMap.get(p.storage_path) ?? '',
+      caption: p.caption,
+      kind: p.kind,
+      takenAt: p.taken_at,
+      interventionId: p.intervention_id,
+    }))
+    .filter((p) => p.signedUrl)
 }

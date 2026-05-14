@@ -1,30 +1,15 @@
 import type { SiteRhythmDay } from '@/lib/db/site-cockpit'
 
 /**
- * V5.1.4 — Rythme du lieu : 14 jours en lecture verticale, lecture BINAIRE.
+ * Rythme du lieu — 14 jours en bande horizontale.
  *
- * Doctrine Vincent 2026-05-15 (après recadrage Claude) :
- *   "Tu montres l'EXISTENCE, pas l'intensité.
- *    Une densité de puces ●●●●● devient un contribution graph GitHub
- *    en monospace — l'œil compare les jours, le cerveau évalue.
- *    Reste sur trace / pas de trace."
+ * Doctrine : binaire (trace / pas de trace). Un jour avec trace affiche
+ * un indicateur plein, sans trace un indicateur vide. Pas d'intensité,
+ * pas de comptage visuel — on montre l'EXISTENCE, pas la quantité.
  *
- * Donc : un jour a une trace OU n'en a pas. Pas de comptage visuel.
- * Aujourd'hui mis en avant typo (font-medium).
- * Week-end en muted-foreground.
- *
- * PIÈGES À ÉVITER :
- *   ❌ histogramme ascii avec hauteur variable → bar chart déguisé
- *   ❌ ●●●●● variable → contribution graph en monospace
- *   ❌ couleurs sémantiques (rouge si peu, vert si beaucoup) → évaluation
- *   ❌ moyenne / médiane / "rythme habituel" → interprétation interdite
+ * Aujourd'hui : colonne mise en avant (ring + fond léger).
+ * Week-end sans trace : muted.
  */
-
-function markFor(count: number): string {
-  // Binaire : il s'est passé quelque chose ce jour, ou non.
-  return count > 0 ? '●' : '—'
-}
-
 export function SiteRhythm({ days }: { days: SiteRhythmDay[] }) {
   if (days.length === 0) return null
 
@@ -38,25 +23,51 @@ export function SiteRhythm({ days }: { days: SiteRhythmDay[] }) {
   }
 
   return (
-    <ol className="font-mono text-sm tabular-nums space-y-0.5">
-      {days.map((d) => {
-        const isWeekendEmpty = d.isWeekend && d.count === 0
-        const isToday = d.isToday
-        return (
-          <li
-            key={d.date}
-            className={`flex items-baseline gap-3 ${
-              isToday ? 'font-medium' : ''
-            } ${isWeekendEmpty && !isToday ? 'text-muted-foreground' : ''}`}
-          >
-            <span className="w-10 shrink-0">{d.weekdayLabel}</span>
-            <span className="w-5 shrink-0 text-right">{d.dayMonthLabel}</span>
-            <span className={d.count > 0 ? 'text-foreground' : 'text-muted-foreground/40'}>
-              {markFor(d.count)}
-            </span>
-          </li>
-        )
-      })}
-    </ol>
+    <div className="overflow-x-auto -mx-1 px-1">
+      <div className="flex gap-1 min-w-0">
+        {days.map((d) => {
+          const hasTrace = d.count > 0
+          const dimmed = d.isWeekend && !hasTrace && !d.isToday
+
+          return (
+            <div
+              key={d.date}
+              className={`flex flex-col items-center gap-1 flex-1 min-w-[2.5rem] rounded-md px-0.5 py-2 ${
+                d.isToday
+                  ? 'bg-foreground/5 ring-1 ring-foreground/20'
+                  : ''
+              } ${dimmed ? 'opacity-40' : ''}`}
+            >
+              {/* Jour de la semaine — 3 lettres sans point */}
+              <span
+                className={`text-[10px] uppercase tracking-wide leading-none ${
+                  d.isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                {d.weekdayLabel.replace('.', '')}
+              </span>
+
+              {/* Numéro du mois */}
+              <span
+                className={`text-xs tabular-nums leading-none ${
+                  d.isToday ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                {d.dayMonthLabel}
+              </span>
+
+              {/* Indicateur trace */}
+              <div
+                className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
+                  hasTrace
+                    ? 'bg-foreground'
+                    : 'border border-border'
+                }`}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
