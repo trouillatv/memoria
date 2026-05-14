@@ -89,6 +89,7 @@ const KIND_LABELS: Record<QueuedPhoto['kind'], string> = {
   after: 'Après',
   anomaly: 'Anomalie',
   proof: 'Preuve',
+  passage: 'Passage', // V5.1 Slice 1 — trace libre déposée hors workflow planifié
 }
 
 function QueueRow({ entry }: { entry: QueuedPhoto }) {
