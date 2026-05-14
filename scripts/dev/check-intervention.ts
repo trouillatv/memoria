@@ -26,14 +26,38 @@ async function q(sql: string) {
   return r.json()
 }
 
-const id = 'f2a88d0b-522a-404a-afc7-718e52454a45'
 ;(async () => {
-  const rows = await q(
-    `select i.id, i.status, i.scheduled_for, i.slot, i.assigned_team_id,
-            t.name as team_name, t.color as team_color
-     from interventions i
-     left join teams t on t.id = i.assigned_team_id
-     where i.id = '${id}';`,
+  // 1) Interventions demain (15 mai 2026)
+  console.log('=== Interventions du 2026-05-15 ===')
+  const tomorrow = await q(
+    `select id, status, slot, assigned_team_id, team
+     from interventions
+     where scheduled_for = '2026-05-15'
+     order by slot;`,
   )
-  console.log(rows)
+  console.log(tomorrow)
+
+  // 2) Équipe Nouméa Centre — membres actifs
+  console.log('\n=== Membres actifs équipe Nouméa Centre ===')
+  const members = await q(
+    `select tm.user_id, u.full_name, u.email, u.role
+     from team_members tm
+     join teams t on t.id = tm.team_id
+     join users u on u.id = tm.user_id
+     where t.name ilike '%Nouméa Centre%'
+       and tm.left_at is null
+       and u.deleted_at is null;`,
+  )
+  console.log(members)
+
+  // 3) Sofia Demo : ses team_members
+  console.log('\n=== Sofia Demo — appartenances équipe ===')
+  const sofia = await q(
+    `select u.id, u.full_name, u.role, t.name as team_name, tm.left_at
+     from users u
+     left join team_members tm on tm.user_id = u.id
+     left join teams t on t.id = tm.team_id
+     where u.full_name ilike '%Sofia%';`,
+  )
+  console.log(sofia)
 })().catch((e) => { console.error(e); process.exit(1) })

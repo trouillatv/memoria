@@ -7,6 +7,7 @@ import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
+import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 
 /** J1 — Prénom de l'agent à partir du `full_name` (1er mot). Fallback : local-part
  * de l'email avant `@` capitalisée. Évite « Bonjour user@email.com » disgracieux. */
@@ -76,6 +77,22 @@ export default async function FieldHomePage() {
     await ensureTodayInterventionsForSites(agentSiteIds, 1)
   }
 
+  // V5.1 Slice 1 — Sites disponibles pour le FAB "Photo libre". Liste plus
+  // large que celle dérivée des interventions visibles (J-1 → J+7) : on
+  // exploite agentSiteIds (200 dernières interventions où l'agent est dans
+  // team) pour permettre le dépôt spontané sur un site déjà visité même hors
+  // de la fenêtre planning courante.
+  let fabSites: FreePhotoFabSite[] = []
+  if (agentSiteIds.length > 0) {
+    const { data: allAgentSites } = await supabase
+      .from('sites')
+      .select('id, name')
+      .in('id', agentSiteIds)
+      .is('deleted_at', null)
+      .order('name')
+    fabSites = allAgentSites ?? []
+  }
+
   const interventions = await listInterventionsVisibleToUser(user.id)
 
   // Fetch missions + sites for context
@@ -109,19 +126,22 @@ export default async function FieldHomePage() {
 
   if (interventions.length === 0) {
     return (
-      <div className="rounded-lg border bg-card max-w-md">
-        <EmptyState
-          icon={CheckCircle2}
-          title="Pas d'intervention prévue aujourd'hui"
-          description="Profitez de votre journée. Vous serez prévenu au prochain ordre de mission."
-          variant="compact"
-        />
-      </div>
+      <>
+        <div className="rounded-lg border bg-card max-w-md">
+          <EmptyState
+            icon={CheckCircle2}
+            title="Pas d'intervention prévue aujourd'hui"
+            description="Profitez de votre journée. Vous serez prévenu au prochain ordre de mission."
+            variant="compact"
+          />
+        </div>
+        <FreePhotoFab sites={fabSites} />
+      </>
     )
   }
 
   return (
-    <div className="space-y-6 max-w-md">
+    <div className="space-y-6 max-w-md pb-32">
       {todayInterventions.length > 0 && (
         <section className="space-y-3">
           {/* J1 — Doctrine V5 Pilier 5 : dignité > sophistication.
@@ -192,6 +212,7 @@ export default async function FieldHomePage() {
           </ul>
         </section>
       )}
+      <FreePhotoFab sites={fabSites} />
     </div>
   )
 }

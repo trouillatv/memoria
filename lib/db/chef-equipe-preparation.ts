@@ -148,11 +148,48 @@ export async function generateChefEquipePreparations(
   const rows = (interventions ?? []) as Row[]
   if (rows.length === 0) return []
 
-  // 2) Tous les userIds qui apparaissent dans au moins une `team[]`.
+  // 2.a) Fallback team[] vide : si une intervention a un `assigned_team_id`
+  //      mais que `team[]` est vide (cas courant après affectation via le
+  //      dialog d'équipe — qui ne touche pas team[]), on résout les membres
+  //      actifs de l'équipe pour qu'ils reçoivent quand même leur briefing.
+  const teamsToExpand = new Set<string>()
+  for (const r of rows) {
+    if ((!r.team || r.team.length === 0) && r.assigned_team_id) {
+      teamsToExpand.add(r.assigned_team_id)
+    }
+  }
+  const usersByTeam = new Map<string, string[]>()
+  if (teamsToExpand.size > 0) {
+    const { data: members } = await supabase
+      .from('team_members')
+      .select('team_id, user_id')
+      .in('team_id', Array.from(teamsToExpand))
+      .is('left_at', null)
+    for (const m of (members ?? []) as Array<{ team_id: string; user_id: string }>) {
+      const arr = usersByTeam.get(m.team_id) ?? []
+      arr.push(m.user_id)
+      usersByTeam.set(m.team_id, arr)
+    }
+  }
+  // Map intervention.id → effective team (team[] enrichi du fallback).
+  const effectiveTeamById = new Map<string, string[]>()
+  for (const r of rows) {
+    const direct = (r.team ?? []).filter((u) => typeof u === 'string' && u.length > 0)
+    if (direct.length > 0) {
+      effectiveTeamById.set(r.id, direct)
+    } else if (r.assigned_team_id) {
+      effectiveTeamById.set(r.id, usersByTeam.get(r.assigned_team_id) ?? [])
+    } else {
+      effectiveTeamById.set(r.id, [])
+    }
+  }
+
+  // 2.b) Tous les userIds (avec fallback) qui apparaissent dans au moins
+  //      une intervention demain.
   const userIdSet = new Set<string>()
   for (const r of rows) {
-    for (const uid of r.team ?? []) {
-      if (typeof uid === 'string' && uid.length > 0) userIdSet.add(uid)
+    for (const uid of effectiveTeamById.get(r.id) ?? []) {
+      userIdSet.add(uid)
     }
   }
   if (userIdSet.size === 0) return []
@@ -211,7 +248,8 @@ export async function generateChefEquipePreparations(
     const teamName = r.assigned_team_id
       ? teamNameById.get(r.assigned_team_id) ?? null
       : null
-    for (const uid of r.team ?? []) {
+    // Utilise team[] enrichi du fallback assigned_team_id → membres actifs.
+    for (const uid of effectiveTeamById.get(r.id) ?? []) {
       if (!chefById.has(uid)) continue
       const arr = passagesByChef.get(uid) ?? []
       arr.push({

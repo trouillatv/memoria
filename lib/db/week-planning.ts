@@ -21,6 +21,7 @@
 //   - Toute fonction qui agrège un KPI par personne ou par équipe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSystemMissionName } from '@/lib/db/system-missions'
 
 // ----------------------------------------------------------------------------
 // Types publics
@@ -221,6 +222,11 @@ export async function listInterventionsForWeek(
     if (!r.scheduled_for) continue
     const mission = pickOne(r.mission as { name: string; site: unknown } | Array<{ name: string; site: unknown }>)
     if (!mission) continue
+    // V5.1 — Exclure les missions système (Traces libres du site) du planning.
+    // Ces missions servent uniquement de container pour les traces déposées
+    // spontanément côté mobile, elles n'ont jamais à apparaître dans la vue
+    // semaine ni dans aucun planning. Cf. lib/db/system-missions.ts.
+    if (isSystemMissionName(mission.name)) continue
     const site = pickOne(
       mission.site as
         | { id: string; name: string; contract: unknown }
