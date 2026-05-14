@@ -23,15 +23,18 @@ export async function changePasswordAction(formData: FormData) {
 
   await clearMustChangePasswordForCurrentUser()
 
-  // Efface aussi le flag dans app_metadata pour que le middleware (qui lit le JWT)
+  // Efface le flag dans app_metadata pour que le middleware (qui lit le JWT)
   // ne renvoie plus l'utilisateur sur /change-password.
+  //
+  // ⚠️ Supabase Admin API : updateUserById fait un MERGE sur app_metadata,
+  // pas un REPLACE. Supprimer la clé de l'objet (`delete cleanMeta.x`) ne
+  // fonctionne pas — Supabase garde l'ancienne valeur. Il faut explicitement
+  // set la clé à `false` (ou `null`) pour la "neutraliser".
+  // Le proxy middleware check `=== true`, donc false suffit.
   const admin = createAdminClient()
-  const { data: existing } = await admin.auth.admin.getUserById(user.id)
-  if (existing.user) {
-    const cleanMeta = { ...(existing.user.app_metadata ?? {}) }
-    delete cleanMeta.must_change_password
-    await admin.auth.admin.updateUserById(user.id, { app_metadata: cleanMeta })
-  }
+  await admin.auth.admin.updateUserById(user.id, {
+    app_metadata: { must_change_password: false },
+  })
 
   // V5.1 fix : refreshSession côté serveur ne propage pas toujours le nouveau
   // JWT au cookie avant le redirect, ce qui cause une boucle (proxy middleware
