@@ -21,8 +21,10 @@ export async function proxy(request: NextRequest) {
   // Bypass : routes publiques + assets internes Next. Pas besoin d'aller
   // chercher la session pour ces URLs.
   if (
+    pathname === '/' ||
     pathname.startsWith('/p/') ||
     pathname.startsWith('/v/') ||
+    pathname.startsWith('/c/') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
@@ -54,6 +56,7 @@ export async function proxy(request: NextRequest) {
   const isAuthPage = pathname.startsWith('/login')
                   || pathname.startsWith('/accept-invite')
                   || pathname.startsWith('/change-password')
+                  || pathname.startsWith('/forgot-password')
 
   const isProtectedPage = !isAuthPage
                        && (pathname.startsWith('/admin')
