@@ -2,7 +2,7 @@ import Link from 'next/link'
 import {
   Shield, ClipboardList, Camera, FileText, Users, TrendingUp,
   CheckCircle2, ArrowRight, Building2, HardHat, Briefcase,
-  Sparkles, Brain, Zap, BookOpen,
+  AlertTriangle, Clock, Layers,
 } from 'lucide-react'
 
 export default function LandingPage() {
@@ -29,22 +29,17 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-6 py-20 md:py-28">
         <div className="grid gap-12 md:grid-cols-2 md:items-center">
           <div className="space-y-6">
-            <div className="flex flex-wrap gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-                Gestion terrain · Preuves · Appels d'offres
-              </div>
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
-                <Sparkles className="h-3 w-3" /> Propulsé par l'IA
-              </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+              Entreprises de nettoyage · Nouvelle-Calédonie
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-gray-900 md:text-5xl">
-              Chaque intervention<br />
-              <span className="text-brand-600">laisse une trace.</span><br />
+              Vos équipes passent.<br />
+              <span className="text-brand-600">Les traces restent.</span><br />
               Faites-en un capital.
             </h1>
             <p className="text-lg text-gray-500 leading-relaxed">
-              MemorIA transforme chaque passage de vos équipes en preuve irréfutable.
-              Planification, documentation terrain, rapports clients — tout en un.
+              MemorIA documente chaque intervention, relie ce que les équipes oublient,
+              et transforme vos passages terrain en preuves irréfutables.
             </p>
             <div className="flex flex-wrap gap-3">
               <a
@@ -94,13 +89,7 @@ export default function LandingPage() {
             ))}
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-brand-100 bg-brand-50 p-3">
               <FileText className="h-4 w-4 shrink-0 text-brand-600" />
-              <p className="text-xs text-brand-700 font-medium">Rapport mensuel généré automatiquement · Prêt à envoyer</p>
-            </div>
-            <div className="mt-2 flex items-start gap-2 rounded-xl border border-violet-100 bg-violet-50 p-3">
-              <Sparkles className="h-4 w-4 shrink-0 text-violet-500 mt-0.5" />
-              <p className="text-xs text-violet-700 font-medium">
-                <span className="font-bold">IA ·</span> Anomalie récurrente détectée sur "Allée A" — humidité signalée 3 fois ce mois. Recommandation générée.
-              </p>
+              <p className="text-xs text-brand-700 font-medium">Rapport mensuel généré · Prêt à envoyer au client</p>
             </div>
           </div>
         </div>
@@ -133,7 +122,7 @@ export default function LandingPage() {
                 {[
                   'Chaque passage documenté : photos horodatées, signature, commentaires',
                   'Dossier de preuves exportable en PDF en 30 secondes',
-                  'Bibliothèque de références classée par site et par client',
+                  'Les signaux faibles reliés entre eux — un problème récurrent détecté avant que le client ne se plaigne',
                   'Tableau de bord temps réel — qui est où, quoi, quand',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
@@ -206,50 +195,57 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* IA */}
+      {/* CE QUE MEMORIA RÉVÈLE */}
       <section className="py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="mb-12 text-center">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
-              <Sparkles className="h-3.5 w-3.5" /> Intelligence artificielle intégrée
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">L'IA travaille pendant que vos équipes interviennent</h2>
-            <p className="mt-3 text-gray-500">Pas un chatbot. Une IA entraînée sur le terrain du nettoyage.</p>
+        <div className="mx-auto max-w-4xl px-6">
+          <div className="mb-10 text-center">
+            <h2 className="text-2xl font-bold text-gray-900">Ce que MemorIA révèle</h2>
+            <p className="mt-3 text-gray-500">Ce que vos équipes vivent mais n'arrivent pas à formuler.</p>
           </div>
-          <div className="grid gap-6 md:grid-cols-2">
-            {[
-              {
-                icon: <Brain className="h-6 w-6 text-violet-600" />,
-                title: 'Mémoire relationnelle',
-                desc: 'L\'IA relie les signaux faibles entre eux : une humidité signalée en janvier et une moisissure en mars sur le même site, c\'est le même problème. Elle vous alerte avant que le client ne le fasse.',
-              },
-              {
-                icon: <BookOpen className="h-6 w-6 text-violet-600" />,
-                title: 'Analyse des appels d\'offres',
-                desc: 'Copiez-collez un AO, l\'IA extrait les critères clés, les compare à votre historique terrain et génère une recommandation de réponse chiffrée en quelques secondes.',
-              },
-              {
-                icon: <FileText className="h-6 w-6 text-violet-600" />,
-                title: 'Rédaction automatique',
-                desc: 'Dossiers de preuves, rapports mensuels, lettres de réponse à litige — l\'IA rédige en français professionnel à partir de vos données terrain. Vous relisez, vous envoyez.',
-              },
-              {
-                icon: <Zap className="h-6 w-6 text-violet-600" />,
-                title: 'Briefing quotidien',
-                desc: 'Chaque matin, l\'IA analyse les interventions de la veille et vous envoie un résumé : retards, anomalies, sites à surveiller — sans que vous ayez à chercher.',
-              },
-            ].map((f) => (
-              <div key={f.title} className="flex gap-4 rounded-2xl border border-violet-100 bg-white p-6 shadow-sm">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50">
-                  {f.icon}
-                </div>
-                <div>
-                  <h3 className="mb-1.5 font-semibold text-gray-900">{f.title}</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
-                </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-gray-950 p-6 shadow-xl font-mono text-sm space-y-5">
+
+            <div className="flex items-start gap-4 border-b border-gray-800 pb-5">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400 mt-0.5" />
+              <div>
+                <p className="text-amber-300 font-semibold mb-1">Bloc B · Tour Pentecost</p>
+                <p className="text-gray-400 leading-relaxed">
+                  Problème de robinet signalé en <span className="text-white">octobre</span>,
+                  fuite d'eau notée en <span className="text-white">janvier</span>,
+                  moisissure photographiée en <span className="text-white">mars</span>.
+                  Trois signalements distincts. <span className="text-amber-300">Un seul problème non traité.</span>
+                </p>
               </div>
-            ))}
+            </div>
+
+            <div className="flex items-start gap-4 border-b border-gray-800 pb-5">
+              <Clock className="h-5 w-5 shrink-0 text-red-400 mt-0.5" />
+              <div>
+                <p className="text-red-300 font-semibold mb-1">Entrée nord · Résidence Baie des Citrons</p>
+                <p className="text-gray-400 leading-relaxed">
+                  Absente du planning depuis <span className="text-white">11 semaines</span>.
+                  Aucune alerte envoyée. Le client n'a pas encore réclamé.{' '}
+                  <span className="text-red-300">Il va le faire.</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-4">
+              <Layers className="h-5 w-5 shrink-0 text-brand-400 mt-0.5" />
+              <div>
+                <p className="text-brand-300 font-semibold mb-1">Appel d'offres · Mairie de Nouméa</p>
+                <p className="text-gray-400 leading-relaxed">
+                  Critère "traçabilité des passages" demandé.{' '}
+                  <span className="text-white">47 interventions documentées</span> sur des sites comparables
+                  dans votre historique. <span className="text-brand-300">Dossier de références prêt en 1 clic.</span>
+                </p>
+              </div>
+            </div>
           </div>
+
+          <p className="mt-5 text-center text-xs text-gray-400">
+            Pas un chatbot. Pas un dashboard de plus. Une mémoire qui relie ce que les équipes oublient.
+          </p>
         </div>
       </section>
 
