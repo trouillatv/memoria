@@ -482,6 +482,17 @@ export async function createAnomaly(input: {
     .select('id')
     .single()
   if (error) throw error
+
+  // Fire-and-forget embedding — silencieux si pas de clé API configurée.
+  if (input.description?.trim()) {
+    const anomalyId = data.id
+    const interventionId = input.intervention_id
+    const text = input.description.trim()
+    import('@/lib/ai/embed-trace').then(({ embedAnomalyTrace }) =>
+      embedAnomalyTrace({ anomalyId, interventionId, text })
+    ).catch(() => {})
+  }
+
   return data.id
 }
 

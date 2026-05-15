@@ -49,6 +49,46 @@ export async function embedAndStoreTrace(params: {
 }
 
 /**
+ * Helper spécifique anomalies : résout intervention → mission → site_id
+ * puis upserte l'embedding. Conçu pour être appelé en fire-and-forget
+ * depuis createAnomaly (lib/db/interventions.ts). Silencieux si pas de clé API.
+ */
+export async function embedAnomalyTrace(params: {
+  anomalyId: string
+  interventionId: string
+  text: string
+}): Promise<void> {
+  if (getActiveProvider() === null) return
+
+  try {
+    const supabase = createAdminClient()
+
+    const { data: intervention } = await supabase
+      .from('interventions')
+      .select('mission_id')
+      .eq('id', params.interventionId)
+      .maybeSingle()
+    if (!intervention?.mission_id) return
+
+    const { data: mission } = await supabase
+      .from('missions')
+      .select('site_id')
+      .eq('id', (intervention as { mission_id: string }).mission_id)
+      .maybeSingle()
+    if (!(mission as { site_id?: string } | null)?.site_id) return
+
+    await embedAndStoreTrace({
+      sourceType: 'anomaly',
+      sourceId: params.anomalyId,
+      siteId: (mission as { site_id: string }).site_id,
+      text: params.text,
+    })
+  } catch (e) {
+    console.warn('[embed-trace] embedAnomalyTrace silently failed:', e)
+  }
+}
+
+/**
  * Recherche les traces sémantiquement proches d'une trace cible, scopée
  * à un site. Retourne les top N matches par similarité cosinus.
  *

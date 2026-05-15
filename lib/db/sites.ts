@@ -387,6 +387,16 @@ export async function createSiteNote(input: {
     .select('*')
     .single()
   if (error) throw error
+
+  // Fire-and-forget embedding — silencieux si pas de clé API configurée.
+  if (trimmed.length >= 8) {
+    const noteId = (data as DbSiteNote).id
+    const siteId = input.siteId
+    import('@/lib/ai/embed-trace').then(({ embedAndStoreTrace }) =>
+      embedAndStoreTrace({ sourceType: 'site_note', sourceId: noteId, siteId, text: trimmed })
+    ).catch(() => {})
+  }
+
   return data as DbSiteNote
 }
 
