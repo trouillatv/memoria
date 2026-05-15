@@ -73,6 +73,34 @@ function absenceFragment({ missionName, weeksSince }: MissionAbsence): string {
   return `${missionName} — absent depuis ${weeksSince} semaines`
 }
 
+// Wording externe (client public) : "non documentée" plutôt que "absent"
+// pour éviter toute connotation juridique défavorable.
+function absenceFragmentExternal({ missionName, weeksSince }: MissionAbsence): string {
+  if (weeksSince >= 16) {
+    const months = Math.round(weeksSince / 4.3)
+    return `${missionName} — non documentée depuis ${months} mois`
+  }
+  return `${missionName} — non documentée depuis ${weeksSince} semaines`
+}
+
+/**
+ * Retourne au plus 1 lecture d'absence pour la page client publique.
+ * Exclut la mission courante (déjà documentée dans le dossier affiché).
+ * Wording externe : "non documentée depuis" (pas "absent depuis").
+ */
+export async function getProofPageReading(
+  siteId: string,
+  excludeMissionName?: string,
+): Promise<string | null> {
+  const absences = await findMissionAbsences(siteId)
+  const filtered = excludeMissionName
+    ? absences.filter((a) => a.missionName !== excludeMissionName)
+    : absences
+  const top = filtered[0]
+  if (!top) return null
+  return absenceFragmentExternal(top)
+}
+
 // ---------------------------------------------------------------------------
 // generateSiteReadings — surface compacte (mobile, rapport)
 // Retourne max 2 fragments : priorise les absences d'exécution, puis les

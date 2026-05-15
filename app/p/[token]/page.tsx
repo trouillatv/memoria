@@ -63,6 +63,7 @@ import { ProofValidations } from '@/app/(dashboard)/preuves/[id]/ProofValidation
 import { ProofAnomalies } from '@/app/(dashboard)/preuves/[id]/ProofAnomalies'
 import { MonthlyReportPublicView } from './MonthlyReportPublicView'
 import { getContractTopReadings } from '@/lib/db/site-cockpit'
+import { getProofPageReading } from '@/lib/ai/site-readings'
 
 // Force dynamic — ne JAMAIS cacher cette page. Chaque visite doit
 // re-valider le token (un revoke doit avoir effet immédiat) et incrémenter
@@ -194,6 +195,8 @@ export default async function PublicProofPage({ params }: PageProps) {
       ? `Exécutée le ${formatDateLong(dateSource)}`
       : `Planifiée le ${formatDateLong(dateSource)}`
     : 'Sans date'
+
+  const proofPageReading = await getProofPageReading(proof.site_id, proof.mission_name)
 
   const resolvedCount = proof.anomalies.filter((a) => a.resolved_at).length
   const anomaliesValue =
@@ -366,6 +369,18 @@ export default async function PublicProofPage({ params }: PageProps) {
             <p className="text-sm whitespace-pre-wrap">{proof.notes}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Lecture du lieu — 1 fragment max, wording externe, sobre */}
+      {proofPageReading && (
+        <div className="px-1">
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+            Lecture du lieu
+          </p>
+          <p className="text-sm text-muted-foreground italic">
+            {proofPageReading}
+          </p>
+        </div>
       )}
 
       {/* Bouton télécharger le PDF — route publique dédiée */}
