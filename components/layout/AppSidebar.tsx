@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // Client component depuis Phase 10 — la sidebar lit `usePathname()` directement
 // au lieu de recevoir `pathname` en prop. Raison : le layout server est mis en
@@ -57,7 +57,7 @@ export function AppSidebar({
           className="flex items-center gap-2 font-semibold rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
         >
           <LayoutDashboard className="h-5 w-5 text-brand-600" />
-          <span>NetoIAge</span>
+          <span>MemorIA</span>
         </Link>
       </div>
       <nav className="flex-1 px-2 py-4 space-y-1">

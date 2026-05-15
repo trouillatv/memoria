@@ -1,4 +1,4 @@
-# Phase 9 — Vue Semaine & Équipes (planning V2)
+﻿# Phase 9 — Vue Semaine & Équipes (planning V2)
 
 > Plan d'implémentation. Doctrine V2 (Organisation vs Surveillance) appliquée intégralement. Cf. `docs/superpowers/doctrines/planning-doctrine.md` (V2).
 
@@ -406,7 +406,7 @@ Vérifications :
 - Cellules droppables (réutilise les server actions de 9.4)
 - Pas de stat "charge équipe" / "missions cette semaine par équipe"
 
-**Toggle storage** : localStorage `netoiage:week-view-mode` = `'site'` ou `'team'`, default `'site'`. URL `?view=team` override pour partage.
+**Toggle storage** : localStorage `memoria:week-view-mode` = `'site'` ou `'team'`, default `'site'`. URL `?view=team` override pour partage.
 
 **Commit** : `feat(planning): Slice 9.5 — Vue Équipe × Jour (secondaire, sans métrique)`
 

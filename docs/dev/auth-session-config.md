@@ -1,4 +1,4 @@
-# Configuration session Supabase — durée JWT
+﻿# Configuration session Supabase — durée JWT
 
 ## Contexte (Slice J3, doctrine V5)
 
@@ -36,7 +36,7 @@ en zone sensible (bionettoyage pédiatrie). Si demande explicite client : descen
 ## Vérification post-config
 
 Après changement :
-1. Login en tant que `chef.noumea@netoiage.local`
+1. Login en tant que `chef.noumea@memoria.local`
 2. Ouvrir DevTools → Application → Local Storage
 3. Chercher la clé `sb-*-auth-token`
 4. Décoder le JWT (jwt.io) → vérifier `exp` à 24h dans le futur (`exp - iat = 86400`)

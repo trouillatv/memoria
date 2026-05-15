@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '@/components/ui/card'
 import type { UserRole } from '@/types/db'
@@ -28,7 +28,7 @@ export default async function AccountPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Profil</CardTitle>
-          <CardDescription>Vos informations affichées dans NetoIAge.</CardDescription>
+          <CardDescription>Vos informations affichées dans MemorIA.</CardDescription>
         </CardHeader>
         <CardContent>
           <AccountProfileForm

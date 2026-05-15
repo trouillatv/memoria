@@ -1,9 +1,9 @@
--- ============================================================================
+﻿-- ============================================================================
 -- Migration 032 — proof_verification_tokens (Slice S3, Doctrine V5 Pilier 6)
 -- ============================================================================
 --
 -- Token PERMANENT (jamais d'expiration) qui permet à un client (Sylvie) de
--- VÉRIFIER L'AUTHENTICITÉ d'un document NetoIAge même après expiration du
+-- VÉRIFIER L'AUTHENTICITÉ d'un document MemorIA même après expiration du
 -- share_token temporaire.
 --
 -- Page publique `/v/[token]` :
@@ -40,7 +40,7 @@ create table public.proof_verification_tokens (
 
 comment on table public.proof_verification_tokens is
   'Slice S3 / Doctrine V5 Pilier 6 — Token PERMANENT pour vérifier l''authenticité '
-  'd''un document NetoIAge même après expiration de son share_token temporaire. '
+  'd''un document MemorIA même après expiration de son share_token temporaire. '
   'Référencé par les QR codes PDF (URL stable /v/[token]).';
 
 comment on column public.proof_verification_tokens.token is

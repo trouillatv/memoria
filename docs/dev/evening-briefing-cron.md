@@ -1,4 +1,4 @@
-# Briefing du soir — Cron auto (Slice M2)
+﻿# Briefing du soir — Cron auto (Slice M2)
 
 ## État actuel
 
@@ -28,7 +28,7 @@ Page `/briefing` accessible aux admin/manager. Affiche le briefing du
 
 ## Format email
 
-Sujet : `[NetoIAge] Briefing — jeudi 14 mai 2026`
+Sujet : `[MemorIA] Briefing — jeudi 14 mai 2026`
 
 Corps (texte simple, sans HTML lourd) :
 ```

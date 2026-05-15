@@ -1,6 +1,6 @@
-# Agent Board — NetoIAge
+﻿# Agent Board — MemorIA
 
-> Système d'agents IA spécialisés pour NetoIAge.
+> Système d'agents IA spécialisés pour MemorIA.
 > Pas une armée autonome. Un système discipliné, hiérarchisé, piloté.
 > Source : doctrine produit Vincent Trouillat, 2026-05-12.
 
@@ -34,7 +34,7 @@ Le **Claude principal** reste :
 
 ## Doctrine — version flexible
 
-Les doctrines NetoIAge sont des **garde-fous stratégiques**, pas des prisons dogmatiques.
+Les doctrines MemorIA sont des **garde-fous stratégiques**, pas des prisons dogmatiques.
 
 Les agents ne doivent pas refuser automatiquement toute idée "hors doctrine". Ils doivent **analyser avant de bloquer**.
 
@@ -392,7 +392,7 @@ Les agents ne doivent **jamais** :
 - introduire des concepts RH ;
 - créer des KPI humains ;
 - ajouter GPS / push / surveillance ;
-- transformer NetoIAge en ERP.
+- transformer MemorIA en ERP.
 
 ---
 

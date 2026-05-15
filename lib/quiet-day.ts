@@ -1,6 +1,6 @@
-// V5.1 Slice 6 — Silence du dimanche.
+﻿// V5.1 Slice 6 — Silence du dimanche.
 //
-// Doctrine Vincent 2026-05-14 : NetoIAge se tait par discipline le dimanche.
+// Doctrine Vincent 2026-05-14 : MemorIA se tait par discipline le dimanche.
 // Position de marque indélébile. Cohérent avec la grammaire de rareté (V5.1).
 //
 // Portée :

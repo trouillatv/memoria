@@ -1,4 +1,4 @@
-# Plan 3 / 5 — Couche IA + Module 1 (Appels d'offres)
+﻿# Plan 3 / 5 — Couche IA + Module 1 (Appels d'offres)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -23,7 +23,7 @@
 - `marked` (markdown → HTML pour clipboard)
 - `react-markdown` + `remark-gfm` (rendu markdown dans la vue mémoire)
 
-**Spec de référence:** `docs/superpowers/specs/2026-05-09-netoiage-mvp-design.md` § 6 (couche IA + multi-agents) + § 7 (Module 1 — Appels d'offres).
+**Spec de référence:** `docs/superpowers/specs/2026-05-09-memoria-mvp-design.md` § 6 (couche IA + multi-agents) + § 7 (Module 1 — Appels d'offres).
 
 ---
 

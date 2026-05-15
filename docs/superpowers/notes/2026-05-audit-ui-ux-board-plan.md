@@ -1,4 +1,4 @@
-# Audit UI/UX traité par l'Agent Board — plan d'exécution
+﻿# Audit UI/UX traité par l'Agent Board — plan d'exécution
 
 > Companion de [`2026-05-audit-ui-ux-pro-max.md`](./2026-05-audit-ui-ux-pro-max.md).
 > Application du board (`docs/superpowers/agents/agent-board.md`) sur les 22 recommandations de l'audit.
@@ -136,7 +136,7 @@ L'audit n'a flaggé aucune violation doctrinale. Mais 4 recos touchent à des zo
 
 L'analyse fait émerger une **règle transverse** que la doctrine peut absorber :
 
-> **Sur tout écran NetoIAge, le rouge vif (`rose-500/600`, `red-*`) est réservé à `destructive` (action destructive confirmée). Tout autre signal d'attention utilise `amber-700` ou `muted-foreground bold`.**
+> **Sur tout écran MemorIA, le rouge vif (`rose-500/600`, `red-*`) est réservé à `destructive` (action destructive confirmée). Tout autre signal d'attention utilise `amber-700` ou `muted-foreground bold`.**
 
 Cette règle découle des tensions #1, #3, #4. À documenter dans `docs/superpowers/doctrines/` ou en commentaire de `components/ui/status-badge.tsx`.
 

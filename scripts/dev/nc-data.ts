@@ -1,4 +1,4 @@
-/**
+﻿/**
  * scripts/dev/nc-data.ts
  *
  * Données de référence Nouvelle-Calédonie pour le seed de démonstration.
@@ -33,29 +33,29 @@ export interface TestAccount {
 
 export const TEST_ACCOUNTS: TestAccount[] = [
   {
-    email: 'admin@netoiage.local',
+    email: 'admin@memoria.local',
     fullName: 'Anaïs Wamytan',
     role: 'admin',
   },
   {
-    email: 'manager@netoiage.local',
+    email: 'manager@memoria.local',
     fullName: 'Jean-Marc Dubois',
     role: 'manager',
   },
   {
-    email: 'chef.noumea@netoiage.local',
+    email: 'chef.noumea@memoria.local',
     fullName: 'Moana Tjibaou',
     role: 'chef_equipe',
     teamSlug: 'noumea-centre',
   },
   {
-    email: 'chef.grandnoumea@netoiage.local',
+    email: 'chef.grandnoumea@memoria.local',
     fullName: 'Sosefo Falelavaki',
     role: 'chef_equipe',
     teamSlug: 'grand-noumea',
   },
   {
-    email: 'agent.demo@netoiage.local',
+    email: 'agent.demo@memoria.local',
     fullName: 'Tiare Liu',
     role: 'chef_equipe',
     teamSlug: 'noumea-centre',

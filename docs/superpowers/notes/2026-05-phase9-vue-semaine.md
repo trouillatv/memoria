@@ -1,4 +1,4 @@
-# Phase 9 — Vue Semaine & Équipes
+﻿# Phase 9 — Vue Semaine & Équipes
 
 **Date** : 2026-05-12 (closed)
 **Branche** : feat/phase-9-vue-semaine
@@ -81,7 +81,7 @@ l'ERP de planning ni la surveillance — on **organise la couverture**, on
 - ISO 8601 strict : Lundi=1 → Dimanche=7 (toutes les semaines).
 - URL semaine : `?week=YYYY-Www` (parse fail-safe → semaine courante).
 - URL vue : `?view=team` override ; default = `site` (URL canonique sans param).
-- LocalStorage : `netoiage:week-view-mode` (persistance pref user, override
+- LocalStorage : `memoria:week-view-mode` (persistance pref user, override
   par URL si présent).
 - Timezone : tout en UTC côté serveur (date pure yyyy-mm-dd, pas de timezone
   applicative).

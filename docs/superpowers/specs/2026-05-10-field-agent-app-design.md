@@ -1,4 +1,4 @@
-# App agent terrain — Philosophie UX et règles immuables
+﻿# App agent terrain — Philosophie UX et règles immuables
 
 **Date :** 2026-05-10
 **Statut :** Design validé — fondations pour l'implémentation Phase 2
@@ -9,7 +9,7 @@
 
 ## 0. Pourquoi ce document est critique
 
-Toute la stratégie NetoIAge repose sur **la qualité des données capturées sur le terrain** :
+Toute la stratégie MemorIA repose sur **la qualité des données capturées sur le terrain** :
 - Sans bonnes photos → rapports clients pauvres → moat affaibli
 - Sans anomalies remontées → pas de capital incidents → IA contradicteur sans matière
 - Sans validations sincères → théâtre administratif → confiance détruite
@@ -26,7 +26,7 @@ Ce document définit la philosophie UX qui doit garantir que l'agent vive l'app 
 
 ### Qui est-il, vraiment ?
 
-Profil typique d'un agent de nettoyage en France (B2B, sociétés type Onet, Atalian, Samsic, mais surtout PME locales — la cible NetoIAge) :
+Profil typique d'un agent de nettoyage en France (B2B, sociétés type Onet, Atalian, Samsic, mais surtout PME locales — la cible MemorIA) :
 
 | Dimension | Réalité de l'agent |
 |---|---|

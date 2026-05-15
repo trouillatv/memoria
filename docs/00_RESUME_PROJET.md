@@ -1,4 +1,4 @@
-# NetoIAge — Résumé projet
+﻿# MemorIA — Résumé projet
 
 ## Qu'est-ce que c'est
 

@@ -1,5 +1,5 @@
-<!--
-  NetoIAge — PR template
+﻿<!--
+  MemorIA — PR template
   Doctrine V3 (cf. docs/superpowers/doctrines/planning-doctrine.md)
   « On organise la couverture des engagements. On ne mesure jamais les humains. »
 -->

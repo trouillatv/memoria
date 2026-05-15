@@ -1,4 +1,4 @@
-# Plan 1 / 5 — Fondations
+﻿# Plan 1 / 5 — Fondations
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** `next@15`, `react@19`, `typescript@5`, `tailwindcss@4`, `@supabase/supabase-js`, `@supabase/ssr`, `zod`, `react-hook-form`, `next-themes`, `sonner`, `vitest`, shadcn/ui (~20 composants).
 
-**Spec de référence:** `docs/superpowers/specs/2026-05-09-netoiage-mvp-design.md` (sections 3, 4, 5, 11, 12).
+**Spec de référence:** `docs/superpowers/specs/2026-05-09-memoria-mvp-design.md` (sections 3, 4, 5, 11, 12).
 
 ---
 
@@ -106,7 +106,7 @@
 
 - [ ] **Step 1.1 : Créer le projet Next.js**
 
-Run depuis le dossier parent (`/Users/Aurelie/Documents/NetoIAge` est déjà le répertoire de travail, mais comme `create-next-app` veut un nom de dossier, on va passer par `--ts` direct dans le dossier courant) :
+Run depuis le dossier parent (`/Users/Aurelie/Documents/MemorIA` est déjà le répertoire de travail, mais comme `create-next-app` veut un nom de dossier, on va passer par `--ts` direct dans le dossier courant) :
 
 ```bash
 npx create-next-app@latest . \
@@ -121,7 +121,7 @@ npx create-next-app@latest . \
 
 Réponses attendues : « Yes » à tout. Confirmer écraser les fichiers existants si demandé (le dossier `docs/` doit être préservé — vérifier après).
 
-Si la CLI insiste pour un dossier vide, utiliser `npx create-next-app@latest netoiage-tmp ...` puis `cp -r netoiage-tmp/* . && cp -r netoiage-tmp/.* . 2>/dev/null ; rm -rf netoiage-tmp`. Vérifier que `docs/` et `.git/` sont intacts.
+Si la CLI insiste pour un dossier vide, utiliser `npx create-next-app@latest memoria-tmp ...` puis `cp -r memoria-tmp/* . && cp -r memoria-tmp/.* . 2>/dev/null ; rm -rf memoria-tmp`. Vérifier que `docs/` et `.git/` sont intacts.
 
 - [ ] **Step 1.2 : Vérifier le résultat**
 
@@ -159,8 +159,8 @@ AI_MODEL_LIGHT=gemini-2.5-flash
 AI_MODEL_HEAVY=gemini-2.5-pro
 
 # Bootstrap admin
-INITIAL_ADMIN_EMAIL=admin@netoiage.nc
-INITIAL_ADMIN_PASSWORD=netoiage2026
+INITIAL_ADMIN_EMAIL=admin@memoria.nc
+INITIAL_ADMIN_PASSWORD=memoria2026
 
 # Quotas
 MAX_AO_ANALYSES_PER_DAY=20
@@ -343,11 +343,11 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
 export const metadata: Metadata = {
-  title: "NetoIAge",
+  title: "MemorIA",
   description: "Gestion terrain & appels d'offres pour entreprises de nettoyage",
   appleWebApp: {
     capable: true,
-    title: "NetoIAge",
+    title: "MemorIA",
     statusBarStyle: "black-translucent",
   },
 }
@@ -493,7 +493,7 @@ git commit -m "chore: init Supabase local + scripts npm"
 - [ ] **Step 4.1 : Créer `001_enums.sql`**
 
 ```sql
--- Tous les enums du domaine NetoIAge
+-- Tous les enums du domaine MemorIA
 
 create type user_role         as enum ('admin', 'manager', 'chef_equipe');
 create type mission_status    as enum ('pending', 'in_progress', 'completed', 'issue');
@@ -1074,7 +1074,7 @@ declare
 begin
   -- En local, on hardcode pour faciliter le démarrage si la variable n'est pas posée
   if admin_email is null or admin_email = '' then
-    admin_email := 'admin@netoiage.nc';
+    admin_email := 'admin@memoria.nc';
   end if;
 
   -- L'insertion réelle de l'utilisateur dans auth.users se fait via un script Node,
@@ -1518,11 +1518,11 @@ Run :
 npm run db:bootstrap-admin
 ```
 
-Attendu : `[bootstrap-admin] Admin created: admin@netoiage.nc (id=...)`. Le mdp temporaire est `netoiage2026`.
+Attendu : `[bootstrap-admin] Admin created: admin@memoria.nc (id=...)`. Le mdp temporaire est `memoria2026`.
 
 - [ ] **Step 6.12 : Vérifier dans Studio**
 
-Studio → Auth → Users : doit lister `admin@netoiage.nc`. Studio → Table Editor → public.users : doit lister la même row avec role='admin', must_change_password=true.
+Studio → Auth → Users : doit lister `admin@memoria.nc`. Studio → Table Editor → public.users : doit lister la même row avec role='admin', must_change_password=true.
 
 - [ ] **Step 6.13 : Commit**
 
@@ -1741,7 +1741,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Se connecter à NetoIAge</CardTitle>
+        <CardTitle>Se connecter à MemorIA</CardTitle>
       </CardHeader>
       <CardContent>
         <LoginForm next={params.next} />
@@ -1832,7 +1832,7 @@ export default function AcceptInvitePage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Bienvenue sur NetoIAge</CardTitle>
+        <CardTitle>Bienvenue sur MemorIA</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground mb-4">
@@ -1946,7 +1946,7 @@ npm run dev
 ```
 
 - Aller sur `http://localhost:3000` → middleware doit rediriger vers `/login`.
-- Se connecter avec `admin@netoiage.nc` / `netoiage2026`.
+- Se connecter avec `admin@memoria.nc` / `memoria2026`.
 - Le `must_change_password` est à `true` → redirect vers `/change-password`.
 - Définir un nouveau mdp → redirect vers `/missions` (404 attendu pour l'instant, normal).
 - Se déconnecter manuellement (DB studio, supprimer cookies) puis re-login avec le nouveau mdp → redirect direct vers `/missions`.
@@ -2054,7 +2054,7 @@ export function AppSidebar({ role, fullName }: { role: UserRole; fullName: strin
       <div className="flex h-16 items-center border-b px-4">
         <Link href="/missions" className="flex items-center gap-2 font-semibold">
           <LayoutDashboard className="h-5 w-5 text-brand-600" />
-          <span>NetoIAge</span>
+          <span>MemorIA</span>
         </Link>
       </div>
       <nav className="flex-1 px-2 py-4 space-y-1">
@@ -2268,8 +2268,8 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'NetoIAge',
-    short_name: 'NetoIAge',
+    name: 'MemorIA',
+    short_name: 'MemorIA',
     description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
     start_url: '/missions',
     display: 'standalone',
@@ -2347,12 +2347,12 @@ Ouvrir `app/layout.tsx`. Le `metadata` export contient déjà `appleWebApp`. Ajo
 
 ```ts
 export const metadata: Metadata = {
-  title: 'NetoIAge',
+  title: 'MemorIA',
   description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'NetoIAge',
+    title: 'MemorIA',
     statusBarStyle: 'black-translucent',
   },
   icons: {
@@ -2410,7 +2410,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center font-bold">N</div>
             <div>
-              <div className="text-base font-semibold">NetoIAge — Admin</div>
+              <div className="text-base font-semibold">MemorIA — Admin</div>
               <div className="text-xs text-slate-400">Gestion utilisateurs & monitoring</div>
             </div>
           </div>
@@ -2485,7 +2485,7 @@ export async function createUserAction(formData: FormData) {
       await logAuditEvent({ userId: adminId, entityType: 'user', entityId: data.user.id, action: 'created', metadata: { mode: 'invite', email: parsed.data.email, role: parsed.data.role } })
     }
   } else {
-    const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'netoiage2026'
+    const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'memoria2026'
     const { data, error } = await supabase.auth.admin.createUser({
       email: parsed.data.email,
       password: tempPassword,
@@ -2543,7 +2543,7 @@ export async function forcePasswordResetAction(formData: FormData) {
   const { data: target } = await supabase.from('users').select('role').eq('id', parsed.data.userId).single()
   if (target?.role === 'admin') return { error: 'Reset admin via Supabase Studio uniquement' }
 
-  const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'netoiage2026'
+  const tempPassword = process.env.INITIAL_ADMIN_PASSWORD || 'memoria2026'
   await supabase.auth.admin.updateUserById(parsed.data.userId, { password: tempPassword })
   await supabase.from('users').update({ must_change_password: true }).eq('id', parsed.data.userId)
   await logAuditEvent({
@@ -2840,7 +2840,7 @@ export default async function AdminUsersPage() {
       <Card className="border-amber-200 bg-amber-50">
         <CardHeader><CardTitle className="text-xs uppercase tracking-wider text-amber-700">Procédure de réinitialisation</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-900 space-y-2">
-          <p>Le bouton <strong>Reset</strong> remet le mot de passe à <code className="bg-white px-1 rounded font-mono">netoiage2026</code> et force l'utilisateur à en choisir un nouveau à sa prochaine connexion.</p>
+          <p>Le bouton <strong>Reset</strong> remet le mot de passe à <code className="bg-white px-1 rounded font-mono">memoria2026</code> et force l'utilisateur à en choisir un nouveau à sa prochaine connexion.</p>
           <p><strong>Comptes admin</strong> : reset désactivé pour des raisons de sécurité ; passer par Supabase Studio.</p>
         </CardContent>
       </Card>
@@ -2853,7 +2853,7 @@ export default async function AdminUsersPage() {
 
 Run `npm run dev`, login admin, aller sur `/admin/users` :
 - Voir l'admin dans la liste.
-- Créer un manager via le form (mode "Mdp temporaire" avec email `manager@netoiage.nc`).
+- Créer un manager via le form (mode "Mdp temporaire" avec email `manager@memoria.nc`).
 - Changer son rôle inline → toast OK + log activity.
 - Tester le reset password sur le manager → toast OK.
 - Tenter de delete soi-même → bouton désactivé.
@@ -3158,8 +3158,8 @@ git commit -m "chore: setup Vitest + 3 tests audit-log + GitHub Actions CI"
 À l'issue de ces 12 tasks, on doit avoir :
 
 - [ ] `npm run dev` démarre sans erreur, `npm run typecheck` et `npm test` passent.
-- [ ] `npm run db:reset && npm run db:bootstrap-admin` produit un admin `admin@netoiage.nc`.
-- [ ] Login avec `admin@netoiage.nc` / `netoiage2026` redirige vers `/change-password`, puis vers `/missions`.
+- [ ] `npm run db:reset && npm run db:bootstrap-admin` produit un admin `admin@memoria.nc`.
+- [ ] Login avec `admin@memoria.nc` / `memoria2026` redirige vers `/change-password`, puis vers `/missions`.
 - [ ] La sidebar affiche les bonnes entrées selon le rôle (admin voit tout, chef_equipe voit Missions seulement).
 - [ ] Dark/light mode fonctionne via le ThemeToggle.
 - [ ] PWA installable (manifest correct dans Chrome DevTools).

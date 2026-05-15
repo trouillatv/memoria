@@ -1,4 +1,4 @@
-import Link from 'next/link'
+﻿import Link from 'next/link'
 import {
   Upload,
   ListChecks,
@@ -81,7 +81,7 @@ export function WelcomeCard({ progress }: { progress: OnboardingProgress }) {
   return (
     <Card data-slot="welcome-card">
       <CardHeader>
-        <CardTitle className="text-lg">Démarrer avec NetoIAge</CardTitle>
+        <CardTitle className="text-lg">Démarrer avec MemorIA</CardTitle>
         <CardDescription>
           {completedCount === 0
             ? 'Quatre étapes pour transformer un AO en preuves accumulées.'

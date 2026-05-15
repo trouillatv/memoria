@@ -1,7 +1,7 @@
-/**
+﻿/**
  * scripts/dev/reset-and-seed-nc-demo.ts
  *
- * RESET + SEED de la base NetoIAge pour démo Nouvelle-Calédonie.
+ * RESET + SEED de la base MemorIA pour démo Nouvelle-Calédonie.
  * Crée 4 contrats, 6 sites, 3 équipes, ~80 interventions sur 4 semaines avec
  * photos/anomalies/validations, et 3 proof_share_tokens prêts pour démo.
  *

@@ -1,11 +1,11 @@
-// Slice B.3 — Générateur PDF "Dossier de preuves" (@react-pdf/renderer).
+﻿// Slice B.3 — Générateur PDF "Dossier de preuves" (@react-pdf/renderer).
 //
 // Doctrine impérative :
 //   - Sobriété B2B. Pas de couleurs flashy, pas d'icônes "marketing".
 //   - Anonymisation par défaut : équipe terrain en compteur ("3 personnes"),
 //     validations en rôle ("Équipe superviseur"). Identités jamais affichées
 //     sauf override admin (includeIdentities=true).
-//   - Watermark sobre en footer : "Preuves NetoIAge — vérifiables via QR code".
+//   - Watermark sobre en footer : "Preuves MemorIA — vérifiables via QR code".
 //     Pas de gros logo.
 //   - QR code en footer fixe sur chaque page : pointe vers /p/<token> (la vérif
 //     publique). Le QR est passé en data URL pour éviter une nouvelle fetch.
@@ -379,12 +379,12 @@ export function ProofDossierPdf({
   return (
     <Document
       title={`Dossier de preuves — ${proof.mission_name}`}
-      author="NetoIAge"
+      author="MemorIA"
       subject="Dossier de preuves d'intervention"
-      creator="NetoIAge — Preuves vérifiables"
+      creator="MemorIA — Preuves vérifiables"
     >
       <Page size="A4" style={styles.page}>
-        {/* Header — Slice S1 Pilier 6 : prestataire en hero, NetoIAge en footer.
+        {/* Header — Slice S1 Pilier 6 : prestataire en hero, MemorIA en footer.
             Si tenantName absent : fallback "Votre entreprise" (jamais "NETOIAGE"). */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -581,7 +581,7 @@ export function ProofDossierPdf({
               <Text style={styles.footerUrl}>Lien public non encore généré</Text>
             )}
             <Text style={styles.footerWatermark}>
-              Infrastructure : NetoIAge · Vérifiable via QR code · Généré le {fmtDateTime(generatedAt)}
+              Infrastructure : MemorIA · Vérifiable via QR code · Généré le {fmtDateTime(generatedAt)}
             </Text>
           </View>
           <Text

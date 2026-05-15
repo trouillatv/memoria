@@ -1,10 +1,10 @@
-// Slice B.4 — Route publique /p/[token] : vérification anonyme de preuve.
+﻿// Slice B.4 — Route publique /p/[token] : vérification anonyme de preuve.
 // Slice E.2 — Étendue pour servir aussi les rapports mensuels client.
 //
 // Pourquoi cette route existe :
 //   Quand le DG cleaning partage un lien à son client mécontent, le client
 //   doit pouvoir cliquer SANS se connecter, voir la preuve immédiatement,
-//   vérifier l'authenticité (header NetoIAge + watermark), et télécharger
+//   vérifier l'authenticité (header MemorIA + watermark), et télécharger
 //   le PDF depuis cette même page. C'est aussi vers cette route que pointe
 //   le QR code du PDF — un auditeur scanne, atterrit ici, voit la preuve.
 //

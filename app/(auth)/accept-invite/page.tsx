@@ -1,11 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+﻿import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AcceptInviteForm } from './AcceptInviteForm'
 
 export default function AcceptInvitePage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Bienvenue sur NetoIAge</CardTitle>
+        <CardTitle>Bienvenue sur MemorIA</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground mb-4">

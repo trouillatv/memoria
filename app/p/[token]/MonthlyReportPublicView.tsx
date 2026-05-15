@@ -1,4 +1,4 @@
-// Slice E.2 — Vue publique du rapport mensuel (server component).
+﻿// Slice E.2 — Vue publique du rapport mensuel (server component).
 //
 // Doctrine impérative anti-rapport bullshit V4 :
 //   - AUCUN texte généré IA. Aucune phrase d'interprétation.
@@ -12,7 +12,7 @@
 //   - Affiche la note du DG si présente.
 //   - Bouton "Télécharger le PDF" → /p/[token]/pdf.
 //
-// Le layout app/p/[token]/layout.tsx wrap déjà avec un header NetoIAge sobre
+// Le layout app/p/[token]/layout.tsx wrap déjà avec un header MemorIA sobre
 // et un container max-w-4xl — on rend juste le contenu intérieur.
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'

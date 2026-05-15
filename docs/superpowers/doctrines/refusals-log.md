@@ -1,4 +1,4 @@
-# Registre des refus produit — NetoIAge
+﻿# Registre des refus produit — MemorIA
 
 > **Mémoire collective des features refusées par construction.**
 > Source : doctrine V3 (cf. `planning-doctrine.md`).
@@ -13,7 +13,7 @@ Une doctrine ne survit que si elle est **opposable**. À 6-12 mois, un nouveau d
 Ce registre sert à :
 1. **Citer un refus précédent** quand la même demande revient.
 2. **Documenter les motifs** doctrinaux (pas juste « non »).
-3. **Convertir le refus en argument de vente** : « Voici ce que NetoIAge ne fera jamais — c'est ce qui rend nos preuves opposables. »
+3. **Convertir le refus en argument de vente** : « Voici ce que MemorIA ne fera jamais — c'est ce qui rend nos preuves opposables. »
 
 **Règle d'usage** : toute demande refusée pour motif doctrinal atterrit ici, avec un lien vers la discussion (issue, slack, mail, conversation Claude). Pas de refus oral non documenté.
 
@@ -40,7 +40,7 @@ Ce registre sert à :
 **Demande** : Ajouter une colonne « Agents » dans l'export Excel avec les noms des membres de chaque équipe affectée.
 **Refus** : Viole l'asymétrie V3 (« Participants de X » oui, « X de Pierre » non). Un Excel nominatif circule par mail, devient un outil de surveillance individuelle hors plateforme. Doctrine V3 § Wording + § Hors-scope structurels.
 **Argument client** : *« L'export contient l'équipe affectée et la cardinalité (4 personnes). Les identités précises sont dans le dossier de preuve de chaque intervention (`/p/[token]`), avec anonymisation par défaut et override admin justifié. C'est ce qui rend les preuves opposables sans devenir un outil RH. »*
-**Lien** : Conversation Claude 2026-05-12 (session NetoIAge AGP).
+**Lien** : Conversation Claude 2026-05-12 (session MemorIA AGP).
 
 ---
 
@@ -49,7 +49,7 @@ Ce registre sert à :
 **Demandeur** : Vincent (interne, test doctrinal)
 **Demande** : Page profil utilisateur listant les interventions auxquelles un agent a participé.
 **Refus** : Reverse lookup interdit V3 (asymétrie événement vs personne). La personne n'apparaît jamais comme sujet d'une vue. Seule exception : `/account` (l'utilisateur consulte SON propre compte). Doctrine V3 § Hors-scope structurels.
-**Argument client** : *« NetoIAge documente les événements (interventions), pas l'activité des personnes. Une fiche agent serait une fiche RH déguisée. Pour les besoins légitimes (contact d'urgence, qualification), un champ profil simple suffit, sans page dédiée. »*
+**Argument client** : *« MemorIA documente les événements (interventions), pas l'activité des personnes. Une fiche agent serait une fiche RH déguisée. Pour les besoins légitimes (contact d'urgence, qualification), un champ profil simple suffit, sans page dédiée. »*
 **Lien** : Conversation Claude 2026-05-12.
 
 ---
@@ -69,7 +69,7 @@ Ce registre sert à :
 **Demandeur** : (potentiel, anticipé)
 **Demande** : Affecter une mission ou intervention directement à un utilisateur nominatif (au lieu de l'équipe).
 **Refus** : Doctrine V2 verrouillée. L'équipe est conteneur logistique ; sa composition peut varier sans impact sur les missions. Affecter à un individu introduit une dépendance personnelle qui glisse vers planning RH. Doctrine V2 § Le principe architectural.
-**Argument client** : *« Une équipe est notre unité de couverture. Si Marie est malade, l'équipe assure la continuité. Affecter à Marie créerait un point de défaillance et une logique RH que NetoIAge ne porte pas (utilisez Skello pour ça). »*
+**Argument client** : *« Une équipe est notre unité de couverture. Si Marie est malade, l'équipe assure la continuité. Affecter à Marie créerait un point de défaillance et une logique RH que MemorIA ne porte pas (utilisez Skello pour ça). »*
 **Lien** : Doctrine V2.
 
 ---
@@ -89,7 +89,7 @@ Ce registre sert à :
 **Demandeur** : (potentiel, anticipé)
 **Demande** : Envoyer une notification push à un agent spécifique (« Pierre, tu as une intervention à valider »).
 **Refus** : Communication directe agent introduit une couche RH. Les notifications passent par l'équipe (cohérent avec l'affectation V2).
-**Argument client** : *« NetoIAge alerte l'équipe terrain, pas l'individu. C'est cohérent avec notre principe : l'équipe est responsable de la couverture. Si Pierre n'est pas disponible, son chef réassigne dans l'app. »*
+**Argument client** : *« MemorIA alerte l'équipe terrain, pas l'individu. C'est cohérent avec notre principe : l'équipe est responsable de la couverture. Si Pierre n'est pas disponible, son chef réassigne dans l'app. »*
 **Lien** : Doctrine V2.
 
 ---

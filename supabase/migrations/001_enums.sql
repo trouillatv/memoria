@@ -1,4 +1,4 @@
--- Tous les enums du domaine NetoIAge
+﻿-- Tous les enums du domaine MemorIA
 
 create type user_role         as enum ('admin', 'manager', 'chef_equipe');
 create type mission_status    as enum ('pending', 'in_progress', 'completed', 'issue');

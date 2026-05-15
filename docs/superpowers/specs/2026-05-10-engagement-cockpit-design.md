@@ -1,4 +1,4 @@
-# Cockpit Engagement — Design philosophy & visualisation signature
+﻿# Cockpit Engagement — Design philosophy & visualisation signature
 
 **Date :** 2026-05-10
 **Statut :** Design validé — complète et corrige le spec principal `2026-05-10-engagement-loop-design.md`
@@ -13,7 +13,7 @@ Le spec principal a posé l'architecture de la boucle Engagement. Mais après re
 
 1. La distinction entre **état contractuel** d'un engagement (lifecycle) et **santé opérationnelle** (compliance)
 2. La visualisation cockpit qui doit devenir **signature produit**, pas tableau ERP
-3. Le risque de **bureaucratisation progressive** — NetoIAge doit rester un *outil de preuve*, pas un *outil de contrôle*
+3. Le risque de **bureaucratisation progressive** — MemorIA doit rester un *outil de preuve*, pas un *outil de contrôle*
 
 Ce document corrige et complète le spec principal sur ces 3 axes.
 
@@ -182,12 +182,12 @@ def compute_health(p, pl, e, pv, v, recent_anomalies, weeks_of_data):
 
 ### L'objectif produit
 
-Créer **un visuel reconnaissable instantanément** qui devient la signature de NetoIAge. Comme :
+Créer **un visuel reconnaissable instantanément** qui devient la signature de MemorIA. Comme :
 - Stripe → la facture pointillée
 - Linear → l'issue ID format
 - Apple Health → les anneaux concentriques
 
-NetoIAge → **la Boucle de preuve à 5 segments**.
+MemorIA → **la Boucle de preuve à 5 segments**.
 
 ### Anatomie visuelle
 
@@ -283,9 +283,9 @@ Médiathèque   ●●○○○  3.8/5  ← clairement en difficulté
 
 ### Comment ça devient signature produit
 
-- Utilisé **partout** dans NetoIAge : dashboard, page contrat, page engagement, rapport mensuel, démo, marketing
+- Utilisé **partout** dans MemorIA : dashboard, page contrat, page engagement, rapport mensuel, démo, marketing
 - Apparaît dans les **emails** de récap hebdo
-- Est le **logo silencieux** : si quelqu'un voit cette boucle quelque part, il pense NetoIAge
+- Est le **logo silencieux** : si quelqu'un voit cette boucle quelque part, il pense MemorIA
 - En 12 mois, c'est aussi reconnaissable que les anneaux Apple Health
 
 ---
@@ -294,7 +294,7 @@ Médiathèque   ●●○○○  3.8/5  ← clairement en difficulté
 
 ### La règle d'or
 
-> Au-delà de 3 niveaux de drilldown, tu construis un ERP. NetoIAge doit s'arrêter à 3.
+> Au-delà de 3 niveaux de drilldown, tu construis un ERP. MemorIA doit s'arrêter à 3.
 
 ### Les 3 niveaux
 
@@ -360,7 +360,7 @@ Si l'utilisateur veut creuser plus loin, il **change de vue** (rapports, gallery
 
 ### Le risque psychologique réel
 
-Le superviseur est l'utilisateur le plus fragile. Si NetoIAge l'angoisse, il sabote la donnée. S'il sabote la donnée, le moat s'écroule. **Toute la stratégie produit dépend de son vécu psychologique.**
+Le superviseur est l'utilisateur le plus fragile. Si MemorIA l'angoisse, il sabote la donnée. S'il sabote la donnée, le moat s'écroule. **Toute la stratégie produit dépend de son vécu psychologique.**
 
 ### Les 12 anti-patterns interdits
 
@@ -456,7 +456,7 @@ Le sentier ouvert vers l'individu = surveillance par défaut.
 
 ## 6. Les 6 sensations produit recherchées
 
-Ce que le superviseur doit ressentir en utilisant NetoIAge :
+Ce que le superviseur doit ressentir en utilisant MemorIA :
 
 ### S1 — Sécurité contractuelle
 *« Je sais où on est sur chaque promesse. Je peux prouver. »*

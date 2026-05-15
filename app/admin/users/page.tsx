@@ -1,4 +1,4 @@
-import { listUsersForAdmin, getCurrentUserWithProfile } from '@/lib/db/users'
+﻿import { listUsersForAdmin, getCurrentUserWithProfile } from '@/lib/db/users'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CreateUserForm } from './CreateUserForm'
@@ -96,7 +96,7 @@ export default async function AdminUsersPage() {
       <Card className="border-amber-200 bg-amber-50">
         <CardHeader><CardTitle className="text-xs uppercase tracking-wider text-amber-700">Procédure de réinitialisation</CardTitle></CardHeader>
         <CardContent className="text-sm text-amber-900 space-y-2">
-          <p>Le bouton <strong>Reset</strong> remet le mot de passe à <code className="bg-white px-1 rounded font-mono">netoiage2026</code>. L&apos;utilisateur est forcé d&apos;en choisir un nouveau à sa prochaine connexion via le middleware <code className="bg-white px-1 rounded font-mono">must_change_password</code>.</p>
+          <p>Le bouton <strong>Reset</strong> remet le mot de passe à <code className="bg-white px-1 rounded font-mono">memoria2026</code>. L&apos;utilisateur est forcé d&apos;en choisir un nouveau à sa prochaine connexion via le middleware <code className="bg-white px-1 rounded font-mono">must_change_password</code>.</p>
           <p><strong>Comptes admin</strong> : reset désactivé pour des raisons de sécurité ; passer par Supabase Studio.</p>
         </CardContent>
       </Card>

@@ -1,4 +1,4 @@
-# Journal des décisions
+﻿# Journal des décisions
 
 Décisions architecturales et produit notables, avec leur contexte et leur raison. À compléter à chaque décision significative.
 
@@ -26,7 +26,7 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 **Décision** : après les 5 audits de rôle (DG, Manager, Chef d'équipe, Cliente, Avocate) + 5 audits techniques sur les Phases 1-4 livrées, formalisation d'un **principe d'attention minimale** (verrou V6) et création d'un **registre des features refusées** pour éviter la dérive ERP.
 
-**Raison** : les 9 audits ont identifié ~20 frictions réelles. Beaucoup de solutions paresseuses (push notifications, ticketing client, score de criticité, auto-distribution planning, portail extranet) ramèneraient NetoIAge vers Progiclean/PROPRET. La discipline produit est désormais la principale source de différenciation.
+**Raison** : les 9 audits ont identifié ~20 frictions réelles. Beaucoup de solutions paresseuses (push notifications, ticketing client, score de criticité, auto-distribution planning, portail extranet) ramèneraient MemorIA vers Progiclean/PROPRET. La discipline produit est désormais la principale source de différenciation.
 
 **Impact code** :
 - `docs/09_REGLES_DE_MODIFICATION.md` : nouveau verrou V6 « Principe d'attention minimale »
@@ -48,19 +48,19 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 - Transmission silencieuse à l'archivage user
 - Voix sur À savoir + anomalies
 
-**Phrase produit consolidée** : *NetoIAge = l'endroit où la mémoire opérationnelle survit aux humains, et tient juridiquement, sans demander leur attention.*
+**Phrase produit consolidée** : *MemorIA = l'endroit où la mémoire opérationnelle survit aux humains, et tient juridiquement, sans demander leur attention.*
 
 ---
 
-## 2026-05-14 — Mot de passe temporaire partagé `netoiage2026` (revert)
+## 2026-05-14 — Mot de passe temporaire partagé `memoria2026` (revert)
 
-**Décision DG (revert)** : mot de passe temporaire en dur, `netoiage2026`, pour toutes les créations en mode temp_password et tous les resets. Pas de variable d'environnement, pas de dialog d'affichage à la création/au reset.
+**Décision DG (revert)** : mot de passe temporaire en dur, `memoria2026`, pour toutes les créations en mode temp_password et tous les resets. Pas de variable d'environnement, pas de dialog d'affichage à la création/au reset.
 
 **Raison** : la version aléatoire à usage unique (livrée le 2026-05-13 suite à l'audit) ajoutait un dialog modal et un copier-coller manuel à chaque création/reset. UX trop friction pour le DG. La doctrine de l'app vise la simplicité opérationnelle.
 
 **Garde-fous compensatoires conservés** :
 - `must_change_password` flag posé en DB ET en `app_metadata.must_change_password` du JWT
-- Middleware racine `middleware.ts` redirige toute requête authentifiée vers `/change-password` tant que le flag est actif — empêche un attaquant qui connaîtrait `netoiage2026` d'utiliser un compte non encore initialisé sans changer le mdp
+- Middleware racine `middleware.ts` redirige toute requête authentifiée vers `/change-password` tant que le flag est actif — empêche un attaquant qui connaîtrait `memoria2026` d'utiliser un compte non encore initialisé sans changer le mdp
 - L'attaque résiduelle reste : si un attaquant connaît l'email d'un user fraîchement créé/reseté et qu'il bat l'user à la première connexion, il peut prendre le contrôle du compte. Mitigation : prévenir l'user de la création par un canal différent (SMS/WhatsApp), et lui demander de se connecter rapidement.
 
 **Impact code** : revert de `app/admin/users/actions.ts`, `CreateUserForm.tsx`, `ForcePasswordResetButton.tsx`, `page.tsx`.

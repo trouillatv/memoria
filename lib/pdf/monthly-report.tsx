@@ -1,4 +1,4 @@
-// Slice E.2 — Générateur PDF "Rapport mensuel client" (@react-pdf/renderer).
+﻿// Slice E.2 — Générateur PDF "Rapport mensuel client" (@react-pdf/renderer).
 //
 // Doctrine impérative anti-rapport bullshit V4 :
 //   - AUCUN texte généré IA. Pas de phrase d'interprétation, pas de "résumé".
@@ -282,7 +282,7 @@ export interface MonthlyReportPdfProps {
   generatedAt: string
   /** Date d'expiration du token (ISO). */
   expiresAt?: string | null
-  /** Nom du tenant si dispo (NetoIAge — header). */
+  /** Nom du tenant si dispo (MemorIA — header). */
   tenantName?: string
 }
 
@@ -315,9 +315,9 @@ export function MonthlyReportPdf({
   return (
     <Document
       title={`Rapport mensuel — ${data.contract.name} — ${monthLabel}`}
-      author="NetoIAge"
+      author="MemorIA"
       subject="Rapport mensuel client"
-      creator="NetoIAge — Rapport mensuel"
+      creator="MemorIA — Rapport mensuel"
     >
       {/* ---------------------------------------------------------------- */}
       {/* Page 1 — Couverture + indicateurs + boucle de preuve              */}
@@ -532,8 +532,8 @@ export function MonthlyReportPdf({
 // ----------------------------------------------------------------------------
 
 // Slice S1 — Doctrine V5 Pilier 6 « Infrastructure invisible ».
-// Le hero visuel = le prestataire (tenantName en gros). NetoIAge passe en
-// footer ("Infrastructure : NetoIAge"). Le client doit reconnaître son
+// Le hero visuel = le prestataire (tenantName en gros). MemorIA passe en
+// footer ("Infrastructure : MemorIA"). Le client doit reconnaître son
 // prestataire en premier, l'outil en second.
 function PdfHeader({
   tenantName,
@@ -629,7 +629,7 @@ function PdfFooter({
           <Text style={styles.footerUrl}>Lien public non encore généré</Text>
         )}
         <Text style={styles.footerWatermark}>
-          Infrastructure : NetoIAge · Généré le {fmtDateTime(generatedAt)}
+          Infrastructure : MemorIA · Généré le {fmtDateTime(generatedAt)}
         </Text>
       </View>
       <Text

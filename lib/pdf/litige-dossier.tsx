@@ -1,4 +1,4 @@
-// Sprint 3 — UX-8 Mode litige express : PDF agrégé "Préparation de défense".
+﻿// Sprint 3 — UX-8 Mode litige express : PDF agrégé "Préparation de défense".
 //
 // Doctrine V5 — Pilier 1 + Verrou V1 + Verrou V4 (strict) :
 //   - Wording « Préparation de défense », jamais « Attaque ».
@@ -263,12 +263,12 @@ export function LitigeDossierPdf({
   return (
     <Document
       title={`Préparation de défense — ${siteName}`}
-      author="NetoIAge"
+      author="MemorIA"
       subject="Préparation de défense — dossier site × période"
-      creator="NetoIAge — Préparation de défense"
+      creator="MemorIA — Préparation de défense"
     >
       <Page size="A4" style={styles.page}>
-        {/* Header — Pilier 6 : prestataire en hero, NetoIAge en footer. */}
+        {/* Header — Pilier 6 : prestataire en hero, MemorIA en footer. */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.brand}>
@@ -374,7 +374,7 @@ export function LitigeDossierPdf({
               <Text style={styles.footerUrl}>Lien public non encore généré</Text>
             )}
             <Text style={styles.footerWatermark}>
-              Document préparé via NetoIAge · Vérifiable via QR · Généré le{' '}
+              Document préparé via MemorIA · Vérifiable via QR · Généré le{' '}
               {fmtDateTime(generatedAt)}
             </Text>
           </View>

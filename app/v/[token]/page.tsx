@@ -1,10 +1,10 @@
-// Slice S3 — Page publique de VÉRIFICATION D'AUTHENTICITÉ.
+﻿// Slice S3 — Page publique de VÉRIFICATION D'AUTHENTICITÉ.
 //
 // Doctrine V5 Pilier 6 « Infrastructure invisible » :
 //   Sylvie (cliente) ouvre cette URL depuis le QR du PDF qu'elle archive
 //   3 ans plus tard. Le share_token original peut être expiré ou révoqué :
 //   peu importe, ce token-ci atteste juste que le document a bien été émis
-//   par {tenantName} via NetoIAge à telle date.
+//   par {tenantName} via MemorIA à telle date.
 //
 // PAS de contenu affiché. PAS de PDF généré. Juste une attestation sobre.
 
@@ -70,7 +70,7 @@ export default async function VerificationPage({ params }: PageProps) {
           Ce document <strong>{docKind}</strong>
           {docDetails && <> </>}
           {docDetails && <span>{docDetails}</span>} a été émis par <strong>{tenant}</strong>{' '}
-          le <strong>{formatDateLong(vt.created_at)}</strong> via l&apos;infrastructure NetoIAge.
+          le <strong>{formatDateLong(vt.created_at)}</strong> via l&apos;infrastructure MemorIA.
         </p>
         <p className="text-xs text-emerald-900/80">
           Cette vérification ne montre pas le contenu du document. Pour le contenu, utilisez
@@ -81,7 +81,7 @@ export default async function VerificationPage({ params }: PageProps) {
       <div className="rounded-md border bg-card p-4 text-xs text-muted-foreground">
         <p className="font-medium text-foreground mb-1">À propos de cette vérification</p>
         <p>
-          NetoIAge garantit que ce code de vérification a été généré automatiquement au
+          MemorIA garantit que ce code de vérification a été généré automatiquement au
           moment où le document a été produit. Ce code est <strong>permanent</strong> :
           vous pouvez le revérifier dans plusieurs années même si le lien de partage
           original a expiré.

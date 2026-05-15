@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+﻿import { notFound } from 'next/navigation'
 import { AlertTriangle, FileX } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -208,7 +208,7 @@ export default async function TenderDetailPage({
             {tender.error_msg === 'scanned_pdf_unsupported' ? (
               <>
                 <p className="text-sm text-rose-800">
-                  Ce PDF semble etre un scan (pas de texte extractible). NetoIAge ne fait pas d&apos;OCR au MVP.
+                  Ce PDF semble etre un scan (pas de texte extractible). MemorIA ne fait pas d&apos;OCR au MVP.
                 </p>
                 <p className="text-sm text-rose-800 mt-2">
                   <strong>Solution :</strong> ouvrez le PDF dans Word ou Pages, copiez le texte, recreez un PDF texte, puis re-uploadez via{' '}

@@ -1,8 +1,8 @@
-// Slice M1 — Texte format pour partage WhatsApp/email.
+﻿// Slice M1 — Texte format pour partage WhatsApp/email.
 //
-// Doctrine V5 Pilier 3 : NetoIAge produit le texte, l'humain colle dans
+// Doctrine V5 Pilier 3 : MemorIA produit le texte, l'humain colle dans
 // l'outil dominant (WhatsApp). Pas d'emoji excessif, pas d'injonction, pas
-// d'auto-promo NetoIAge dans le message (pilier 6 : infrastructure invisible).
+// d'auto-promo MemorIA dans le message (pilier 6 : infrastructure invisible).
 
 const MONTHS_FR_SHORT = [
   'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',

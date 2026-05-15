@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sync events bus (Slice A.1).
  *
  * EventTarget-based event bus pour notifier les succès/échecs de sync
@@ -19,7 +19,7 @@ export type SyncEvent =
   | { type: 'sync_success'; count: number }
   | { type: 'sync_failure'; attempts: number }
 
-const EVENT_NAME = 'netoiage-sync-event'
+const EVENT_NAME = 'memoria-sync-event'
 
 const bus: EventTarget | null =
   typeof window !== 'undefined' ? new EventTarget() : null

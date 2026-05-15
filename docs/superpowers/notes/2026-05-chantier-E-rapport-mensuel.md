@@ -1,4 +1,4 @@
-# Chantier E — Rapport mensuel client
+﻿# Chantier E — Rapport mensuel client
 
 **Date** : 2026-05-12 (closed)
 **Branche** : feat/monthly-report
@@ -9,7 +9,7 @@ Génération automatique du rapport mensuel à envoyer au client final. Avant : 
 
 ## Pourquoi
 
-Le rapport mensuel client est un livrable contractuel obligatoire. C'est probablement la fonctionnalité qui transforme NetoIAge d'outil interne en livrable client attendu. Le client attend le rapport NetoIAge le 5 du mois. C'est ce qui crée la stickiness.
+Le rapport mensuel client est un livrable contractuel obligatoire. C'est probablement la fonctionnalité qui transforme MemorIA d'outil interne en livrable client attendu. Le client attend le rapport MemorIA le 5 du mois. C'est ce qui crée la stickiness.
 
 ## Stack
 

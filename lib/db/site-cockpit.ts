@@ -1,4 +1,4 @@
-// V5.1.3 — Cockpit page Site (cerveau perceptif du produit).
+﻿// V5.1.3 — Cockpit page Site (cerveau perceptif du produit).
 //
 // Doctrine Vincent 2026-05-14 : la page Site est l'élément fondateur de l'app.
 // Pas un dashboard, pas une fiche technique, pas une timeline — une **lecture
@@ -1758,7 +1758,7 @@ function capitalize(s: string): string {
  *    laissées par Anaïs. L'IA devient TRANSMISSION."
  *
  *   "La mémoire des lieux disparaît avec les humains.
- *    NetoIAge la conserve, la relie, la transmet."
+ *    MemorIA la conserve, la relie, la transmet."
  *
  * Détection :
  *   1. Identifier le chef d'équipe actuel (isCurrent === true) si son

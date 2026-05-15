@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+﻿import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/components/providers/ThemeProvider"
@@ -7,12 +7,12 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
 export const metadata: Metadata = {
-  title: 'NetoIAge',
+  title: 'MemorIA',
   description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'NetoIAge',
+    title: 'MemorIA',
     statusBarStyle: 'black-translucent',
   },
   icons: {

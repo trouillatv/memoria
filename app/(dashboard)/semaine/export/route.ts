@@ -1,4 +1,4 @@
-// Export Excel de la Vue Semaine.
+﻿// Export Excel de la Vue Semaine.
 //
 // Route GET /semaine/export?week=YYYY-Www
 //
@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
   const teamById = new Map(allTeams.map((t) => [t.id, t]))
 
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'NetoIAge'
+  wb.creator = 'MemorIA'
   wb.created = new Date()
   const sheet = wb.addWorksheet(`Semaine ${range.weekNumber}`)
 
@@ -153,7 +153,7 @@ export async function GET(req: NextRequest) {
   // Ligne 2 : sous-titre (identifiant semaine + créateur, fond pâle)
   sheet.mergeCells('A2:J2')
   const subCell = sheet.getCell('A2')
-  subCell.value = `Identifiant semaine : ${formatWeekParam(range)} · Export NetoIAge · ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
+  subCell.value = `Identifiant semaine : ${formatWeekParam(range)} · Export MemorIA · ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}`
   subCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF475569' } }
   subCell.fill = {
     type: 'pattern',

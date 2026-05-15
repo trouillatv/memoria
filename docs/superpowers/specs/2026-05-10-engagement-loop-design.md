@@ -1,4 +1,4 @@
-# Boucle Engagements — Architecture cockpit métier
+﻿# Boucle Engagements — Architecture cockpit métier
 
 **Date :** 2026-05-10
 **Statut :** Design validé — prêt pour implémentation par phases
@@ -14,7 +14,7 @@ Si dans 12 mois la séquence suivante peut être démontrée à un prospect en m
 1. **[5s]** *« Voici votre dernier AO gagné — analysé en 2 minutes par nos 7 experts IA »*
 2. **[10s]** *« 18 promesses ont été extraites de votre mémoire technique. Vous les conservez ou rejetez en bulk. »*
 3. **[10s]** *« Voici votre rapport mensuel structuré par promesse — chaque engagement avec son taux de réalisation, ses photos preuves, ses anomalies. »*
-4. **[5s]** *« Et lors du prochain AO, NetoIAge cite automatiquement vos preuves passées : "247 interventions sanitaires écolabel sur 12 sites, score qualité 4.7/5". »*
+4. **[5s]** *« Et lors du prochain AO, MemorIA cite automatiquement vos preuves passées : "247 interventions sanitaires écolabel sur 12 sites, score qualité 4.7/5". »*
 
 Si cette démo passe, le moat existe.
 
@@ -76,7 +76,7 @@ Inspiré directement de la formulation utilisateur, **chaque engagement vit dans
 
 ### La visualisation cockpit
 
-C'est le composant signature de NetoIAge — l'écran où le prospect dit *« je n'ai jamais vu ça ailleurs »* :
+C'est le composant signature de MemorIA — l'écran où le prospect dit *« je n'ai jamais vu ça ailleurs »* :
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -274,7 +274,7 @@ CREATE VIEW engagement_compliance AS
 
 ## 7. Navigation produit complète
 
-### Architecture des modules NetoIAge
+### Architecture des modules MemorIA
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -369,7 +369,7 @@ Déclenché depuis la page tender quand `tender.status === 'won'` et que le bout
 └── [Précédent] [Suivant]
 
 ÉTAPE 4/4 — Création des missions (suggestions)
-├── Pour chaque engagement de catégorie 'frequency', NetoIAge propose 1 mission
+├── Pour chaque engagement de catégorie 'frequency', MemorIA propose 1 mission
 │   ┌────────────────────────────────────────────────┐
 │   │ ☑ Suggestion : Mission "Sanitaires quotidiens" │
 │   │   Cadence : daily                              │
@@ -524,7 +524,7 @@ Mémoire technique → section sur les sanitaires
 
 L'utilisateur tape : « Notre approche pour le nettoyage des sanitaires...»
 
-NetoIAge détecte la similarité avec un engagement passé.
+MemorIA détecte la similarité avec un engagement passé.
 
 ┌────────────────────────────────────────────────────────────────┐
 │ 💡 Évidence disponible — basée sur vos contrats passés          │
@@ -721,7 +721,7 @@ Démo type pour un prospect cleaning company :
  Cliquez sur Mémoire technique → généré, prêt à exporter."
 
 [10s] Engagements extraits
-"NetoIAge a extrait 18 promesses de votre mémoire technique.
+"MemorIA a extrait 18 promesses de votre mémoire technique.
  Vous validez en bulk — 5 minutes max. Une fois fait, votre contrat
  est mobilisable."
 
@@ -737,7 +737,7 @@ Démo type pour un prospect cleaning company :
 
 [Bonus 10s — V1.2] Le moat
 "Et regardez : nouveau AO. Lecteur AO détecte une clause
- 'sanitaires écolabel'. NetoIAge cite automatiquement vos preuves passées :
+ 'sanitaires écolabel'. MemorIA cite automatiquement vos preuves passées :
  412 photos, 18 mois, score 4.7/5. Insertion en 2 clics dans le mémoire technique.
  Aucune autre solution sur le marché ne fait ça."
 ```

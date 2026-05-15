@@ -1,4 +1,4 @@
-# Scénario 4 — Joseph / Premier jour chef d'équipe
+﻿# Scénario 4 — Joseph / Premier jour chef d'équipe
 
 **Date** : 2026-05-13
 **Persona** : Joseph, 47 ans, chef d'équipe cleaning, 22 ans d'expérience
@@ -11,11 +11,11 @@
 
 6h45, parking est du CHT Magenta. Il fait encore nuit, sodium jaune sur l'asphalte mouillé. Joseph coupe le contact de sa Twingo. Trois secondes, mains sur le volant, à regarder les fenêtres éteintes du bloc opératoire qu'il devra livrer propre à 8h30. Téléphone Android dans la poche poitrine de son polo, froid. Tarek arrive à 6h55, Sandrine à 7h pile.
 
-Joseph descend. Reflex : WhatsApp. Message de Maeva, « Bonjour Joseph, le téléphone du bloc B sonne pas, prends le 06… Bonne journée. » Il répond « 👍 », range. Il ne pense pas encore à l'app NetoIAge. Patrick lui a montré ça vendredi soir en dix minutes pendant qu'ils chargeaient les seaux : « Tu cliques là, tu démarres, tu fais ton truc, à la fin tu cliques terminé. Et tu prends des photos. » Joseph a hoché la tête.
+Joseph descend. Reflex : WhatsApp. Message de Maeva, « Bonjour Joseph, le téléphone du bloc B sonne pas, prends le 06… Bonne journée. » Il répond « 👍 », range. Il ne pense pas encore à l'app MemorIA. Patrick lui a montré ça vendredi soir en dix minutes pendant qu'ils chargeaient les seaux : « Tu cliques là, tu démarres, tu fais ton truc, à la fin tu cliques terminé. Et tu prends des photos. » Joseph a hoché la tête.
 
 Vestiaire. Code badge, blouse blanche, surchaussures, lavage de mains. Le téléphone reste dans la poche de la blouse, gros, pesant, tape contre la cuisse à chaque pas. 6h52 en sortant, il se souvient. Il déverrouille, code à 4 chiffres tapé lentement (doigts secs de gel hydro). Il cherche l'icône. Une cinquantaine sur l'écran d'accueil. Le raccourci web ajouté vendredi par Patrick — un N bleu. Tap.
 
-Page de login. Email. Joseph regarde le post-it dans son portefeuille : `joseph.t@netoiage.nc`. Il tape à un doigt, deux fautes, efface, retape. Mot de passe temporaire en majuscules au stylo bille : `NETO2026!`. Il tape. L'app demande de changer. Soupir intérieur. `Tarek2008`. Confirme. Tarek arrive, tape sur l'épaule, « Aweet chef ». Joseph rate la confirmation, retape. Cinquante secondes perdues.
+Page de login. Email. Joseph regarde le post-it dans son portefeuille : `joseph.t@memoria.nc`. Il tape à un doigt, deux fautes, efface, retape. Mot de passe temporaire en majuscules au stylo bille : `NETO2026!`. Il tape. L'app demande de changer. Soupir intérieur. `Tarek2008`. Confirme. Tarek arrive, tape sur l'épaule, « Aweet chef ». Joseph rate la confirmation, retape. Cinquante secondes perdues.
 
 6h54. L'app s'ouvre. « Mes missions — 1 mission aujourd'hui ». Une carte : « Bionettoyage bloc B — CHT Magenta — 07:00 ». Bouton noir « Commencer ». Ouf intérieur. Il garde l'app ouverte en allant chercher les chariots. Il montre l'écran à Tarek et Sandrine, sans en faire toute une histoire : « Là c'est pour moi, je dois faire des photos. Vous, comme d'habitude. » Sandrine demande si elle aura ça aussi un jour. Joseph dit qu'il sait pas.
 
@@ -27,7 +27,7 @@ C'est ce moment précis — gant retiré, doigt sec, écran déjà embué par l'
 
 Anxiété diffuse, pas de tracas franc. 22 ans qu'il fait ça, il sait que le bloc sera prêt à 8h30 quoi qu'il arrive. Mais une voix au fond du crâne : « si tu te plantes avec le téléphone, Patrick va savoir, Patrick va dire que t'es trop vieux pour ça. » Joseph n'a pas envie d'être ce type-là.
 
-Méfiance silencieuse jamais formulée. Il a quitté Sodexo il y a six ans à cause d'un système qui pointait l'arrivée par GPS — impression d'être un colis. NetoIAge n'est pas Sodexo, Patrick n'est pas son ancien manager, il le sait. Mais quand il tape « Commencer », un quart de seconde : *est-ce qu'on enregistre l'heure ?* Patrick ne lui a pas dit. Patrick ne lui a probablement pas menti, il a oublié de préciser. Cette zone grise pèse plus que Patrick imagine.
+Méfiance silencieuse jamais formulée. Il a quitté Sodexo il y a six ans à cause d'un système qui pointait l'arrivée par GPS — impression d'être un colis. MemorIA n'est pas Sodexo, Patrick n'est pas son ancien manager, il le sait. Mais quand il tape « Commencer », un quart de seconde : *est-ce qu'on enregistre l'heure ?* Patrick ne lui a pas dit. Patrick ne lui a probablement pas menti, il a oublié de préciser. Cette zone grise pèse plus que Patrick imagine.
 
 Fierté pro intacte. Sans Joseph le bloc B n'est pas conforme. L'app ne change rien à ça. Il a juste besoin qu'elle ne lui prenne pas plus de cinq minutes cumulées. Au-delà, c'est volé sur la salle 3.
 
@@ -37,13 +37,13 @@ Frustrations concentrées sur deux points : retaper un mot de passe oublié dans
 
 Pas une feature. **La rassurance que cette app ne fera pas pire que sa fiche papier**.
 
-Avant NetoIAge, fiche A5 plastifiée que Maeva glissait dans son casier le dimanche soir : six lignes du protocole bloc, case à cocher au stylo bille, rendue à 9h30 dans la corbeille bleue du local technique. Parfaite. Pas de mdp. Ne s'éteignait pas. Ne glissait pas. Ne vibrait pas. Pas besoin de réseau. Personne ne pouvait la consulter à distance sans qu'il le sache.
+Avant MemorIA, fiche A5 plastifiée que Maeva glissait dans son casier le dimanche soir : six lignes du protocole bloc, case à cocher au stylo bille, rendue à 9h30 dans la corbeille bleue du local technique. Parfaite. Pas de mdp. Ne s'éteignait pas. Ne glissait pas. Ne vibrait pas. Pas besoin de réseau. Personne ne pouvait la consulter à distance sans qu'il le sache.
 
-L'app doit faire **au moins aussi bien** que cette fiche, **avec en plus** la valeur des photos. Si elle fait moins bien sur un seul axe, Joseph va silencieusement réinventer son système — Bloc-Notes Android avec les six items recopiés, ou faire le geste pro sans l'app et taper « terminé » en rafale à 8h25. Et là, NetoIAge a perdu : les photos auront pas été prises au bon moment, les checks en rafale, la preuve diluée.
+L'app doit faire **au moins aussi bien** que cette fiche, **avec en plus** la valeur des photos. Si elle fait moins bien sur un seul axe, Joseph va silencieusement réinventer son système — Bloc-Notes Android avec les six items recopiés, ou faire le geste pro sans l'app et taper « terminé » en rafale à 8h25. Et là, MemorIA a perdu : les photos auront pas été prises au bon moment, les checks en rafale, la preuve diluée.
 
 Le vrai JTBD : **que l'app disparaisse dans son geste pro**. S'il pense à l'app pendant qu'il nettoie, l'app a échoué.
 
-## 4. Où NetoIAge aide
+## 4. Où MemorIA aide
 
 Le bouton « Commencer » est gros, lisible, à un endroit attendu. La carte unique « 1 mission aujourd'hui » évite la dispersion — Joseph n'a pas à choisir, scroller, se demander. La checklist tappable, pas de saisie texte obligatoire à chaque ligne : précieux quand un gant est à moitié retiré. Le FAB « Photo libre » donne accès direct à la capture sans dérouler toute la checklist.
 
@@ -51,7 +51,7 @@ Le « Pas aujourd'hui » avec raison libre est précieux. Joseph sait qu'une foi
 
 Le retour à `/m` après fin de mission affiche « terminé », point. Pas de score, pas de « bravo Joseph », pas de barre bleue. Aligné doctrine et aligné psychologie : Joseph n'a pas besoin qu'on le félicite, il a besoin qu'on lui foute la paix.
 
-## 5. Où NetoIAge échoue
+## 5. Où MemorIA échoue
 
 **Trou 1 — Le login premier jour.** Patrick distribue les mdp temporaires en main propre. Joseph reçoit un papier vendredi soir, doit s'en souvenir lundi 6h45. Papier perdu = bloqué. Sinon il tape `NETO2026!` à un doigt, sur écran froid, en majuscules, le `!` sur clavier secondaire. Puis nouveau mdp avec règles non explicites. Trois essais, jurons, mdp choisi qu'il oubliera mardi. Session Supabase à 1h (kit pilote, risque 3) : il devra retaper dans la matinée. Le login est le moment de friction le plus dangereux et c'est là que l'app est la plus faible.
 
@@ -69,9 +69,9 @@ Le retour à `/m` après fin de mission affiche « terminé », point. Pas de sc
 
 WhatsApp est l'arme principale silencieuse de Joseph. Groupe « Bloc CHT » : Maeva, Patrick, deux chirs, le cadre de bloc. Les messages essentiels passent là : « bloc B inaccessible urgence transplant », « ménage 7h annulé », « le chef vient passer à 9h », « besoin d'un masque taille L », « Joseph t'as oublié les sur-chaussures ». Sans WhatsApp, Joseph est sourd et muet.
 
-NetoIAge ne va pas remplacer WhatsApp et ne doit pas essayer. Ce qui RESTE en dehors de l'app : la communication temps réel avec son manager, les alertes terrain (matos manquant, accès bloqué, demande inattendue d'un chir), le ton humain (« bon courage Joseph » du matin), la négociation des remplacements (« Tarek me dépanne »), la photo de groupe en fin de chantier, les retours après visite de Patrick.
+MemorIA ne va pas remplacer WhatsApp et ne doit pas essayer. Ce qui RESTE en dehors de l'app : la communication temps réel avec son manager, les alertes terrain (matos manquant, accès bloqué, demande inattendue d'un chir), le ton humain (« bon courage Joseph » du matin), la négociation des remplacements (« Tarek me dépanne »), la photo de groupe en fin de chantier, les retours après visite de Patrick.
 
-L'app doit faire trois choses : afficher la mission du jour, capturer les preuves, signaler une anomalie structurelle. Le reste passe par WhatsApp. Si NetoIAge essaie d'absorber la conversation, elle devient un Slack RH déguisé et perd Joseph.
+L'app doit faire trois choses : afficher la mission du jour, capturer les preuves, signaler une anomalie structurelle. Le reste passe par WhatsApp. Si MemorIA essaie d'absorber la conversation, elle devient un Slack RH déguisé et perd Joseph.
 
 ## 7. Risques doctrinaux
 

@@ -1,9 +1,9 @@
-import type { MetadataRoute } from 'next'
+﻿import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'NetoIAge',
-    short_name: 'NetoIAge',
+    name: 'MemorIA',
+    short_name: 'MemorIA',
     description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
     start_url: '/m',
     display: 'standalone',

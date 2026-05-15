@@ -1,4 +1,4 @@
-# Sprint de conception concrète — V5.1 (post-audit schéma, 2026-05-14)
+﻿# Sprint de conception concrète — V5.1 (post-audit schéma, 2026-05-14)
 
 > ⚠️ **CE SPRINT N'EST PAS À LANCER AVANT LE 20 MAI 2026.** Statut **EN ATTENTE** jusqu'à confrontation du pilote terrain (13-17 mai).
 >
@@ -390,7 +390,7 @@ const TEMPLATES = {
 [photo plein-écran 4:5]
 [20px blanc sur fond #0a0a0a]
 "Mai. 23 passages. Dernière anomalie : 8 mars (résolue)."
-[11px --ink-3] "Émis par AGP · Infrastructure : NetoIAge."
+[11px --ink-3] "Émis par AGP · Infrastructure : MemorIA."
 ```
 
 **Infrastructure gratuite (héritée)** :

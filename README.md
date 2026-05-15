@@ -1,4 +1,4 @@
-# NetoIAge
+﻿# MemorIA
 
 > B2B SaaS pour entreprises de nettoyage français — **système de capital de preuves**.
 
@@ -38,8 +38,8 @@ Détail complet : [`docs/superpowers/doctrines/planning-doctrine.md`](docs/super
 
 1. **Cloner et installer**
    ```bash
-   git clone https://github.com/trouillatv/netoiage.git
-   cd netoiage
+   git clone https://github.com/trouillatv/memoria.git
+   cd memoria
    npm install
    ```
 
@@ -51,8 +51,8 @@ Détail complet : [`docs/superpowers/doctrines/planning-doctrine.md`](docs/super
    # AI provider (mock par défaut)
    AI_PROVIDER=mock  # ou 'gemini' / 'anthropic'
    # GOOGLE_GENAI_API_KEY=... ou ANTHROPIC_API_KEY=... selon le provider
-   INITIAL_ADMIN_EMAIL=admin@netoiage.nc
-   INITIAL_ADMIN_PASSWORD=netoiage2026
+   INITIAL_ADMIN_EMAIL=admin@memoria.nc
+   INITIAL_ADMIN_PASSWORD=memoria2026
    ```
 
 3. **Appliquer les migrations** (22 migrations `supabase/migrations/*.sql`) :
@@ -148,4 +148,4 @@ npx tsx scripts/phase6-smoke.ts  # récurrence
 
 ## License
 
-Propriétaire — usage interne NetoIAge / Aurélie Trouillat.
+Propriétaire — usage interne MemorIA / Aurélie Trouillat.

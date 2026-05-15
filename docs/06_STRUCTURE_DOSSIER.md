@@ -1,7 +1,7 @@
-# Structure des dossiers
+﻿# Structure des dossiers
 
 ```
-NetoIAge/
+MemorIA/
 ├── app/
 │   ├── (auth)/                        — Routes publiques non authentifiées
 │   │   ├── login/

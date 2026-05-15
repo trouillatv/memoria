@@ -1,4 +1,4 @@
-import Link from 'next/link'
+﻿import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 
@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center font-bold">N</div>
             <div>
-              <div className="text-base font-semibold">NetoIAge — Admin</div>
+              <div className="text-base font-semibold">MemorIA — Admin</div>
               <div className="text-xs text-slate-400">Gestion utilisateurs &amp; monitoring</div>
             </div>
           </div>

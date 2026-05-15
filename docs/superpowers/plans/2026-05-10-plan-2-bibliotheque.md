@@ -1,4 +1,4 @@
-# Plan 2 / 5 — Bibliothèque AGP
+﻿# Plan 2 / 5 — Bibliothèque AGP
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Existant (Next.js 16, React 19, TypeScript, Tailwind v4, shadcn/ui, Supabase Cloud). **Aucune nouvelle dépendance prod** — uniquement le pattern CRUD déjà éprouvé en Plan 1.
 
-**Spec de référence:** `docs/superpowers/specs/2026-05-09-netoiage-mvp-design.md` § 10 (Module 4 — Bibliothèque AGP).
+**Spec de référence:** `docs/superpowers/specs/2026-05-09-memoria-mvp-design.md` § 10 (Module 4 — Bibliothèque AGP).
 
 ---
 
@@ -1029,7 +1029,7 @@ Expected: 5 tests pass (3 from Plan 1 + 2 new).
 Document dans le commit message les étapes de smoke test :
 
 1. `npm run dev`
-2. Login `admin@netoiage.nc` / nouveau mdp
+2. Login `admin@memoria.nc` / nouveau mdp
 3. Sidebar → cliquer « Bibliothèque » → arriver sur `/library` (vide)
 4. Cliquer « Ajouter » → drawer s'ouvre → remplir titre, catégorie, contenu, 2 tags → Créer
 5. L'item apparaît dans la liste

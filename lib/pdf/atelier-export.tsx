@@ -1,10 +1,10 @@
-// Sprint 8 — Export Atelier IA → Dossier de préparation PDF.
+﻿// Sprint 8 — Export Atelier IA → Dossier de préparation PDF.
 //
 // Doctrine V5 :
 //   - Pilier 4 (DG amplifié) : PDF amplifie Patrick, ne parle pas à sa place.
 //   - Verrou V1 (mémoire ≠ recommandation) : descriptif factuel uniquement.
 //     Pas de "Baissez votre prix", pas de superlatif marketing.
-//   - Pilier 6 (infrastructure invisible) : prestataire en hero, NetoIAge en
+//   - Pilier 6 (infrastructure invisible) : prestataire en hero, MemorIA en
 //     footer.
 //   - Sobriété B2B. Pas de QR code (doc interne, pas vérifiable comme un
 //     dossier de preuves Phase 5).
@@ -458,7 +458,7 @@ function senderLabel(
 }
 
 // ----------------------------------------------------------------------------
-// Footer fixe — sobre, NetoIAge en pied de page
+// Footer fixe — sobre, MemorIA en pied de page
 // ----------------------------------------------------------------------------
 
 function AtelierFooter({
@@ -469,7 +469,7 @@ function AtelierFooter({
   return (
     <View style={styles.footer} fixed>
       <Text style={styles.footerLeft}>
-        Dossier de préparation · {shortTitle} · Préparé avec NetoIAge
+        Dossier de préparation · {shortTitle} · Préparé avec MemorIA
       </Text>
       <Text
         style={styles.pageNumber}
@@ -575,7 +575,7 @@ export function AtelierExportPdf({ data }: AtelierExportPdfProps) {
       title={`Dossier de préparation — ${shortTitle}`}
       author={tenantHero}
       subject="Dossier de préparation AO"
-      creator="NetoIAge — Dossier de préparation"
+      creator="MemorIA — Dossier de préparation"
     >
       {/* ================================================================== */}
       {/* Page 1 — Couverture                                                  */}

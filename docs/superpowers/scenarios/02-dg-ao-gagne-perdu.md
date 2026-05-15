@@ -1,4 +1,4 @@
-# Scénario 2 — Patrick / AO gagné-perdu et mémoire décisionnelle
+﻿# Scénario 2 — Patrick / AO gagné-perdu et mémoire décisionnelle
 
 **Date** : 2026-05-13
 **Persona** : Patrick, 52 ans, DG-fondateur PME cleaning Nouméa
@@ -35,7 +35,7 @@ Ce qu'il dit à voix haute en raccrochant avec son comptable, en redémarrant la
 
 ## 3. Ce qu'il cherche vraiment
 
-La demande rationnelle qu'il formulerait à un produit, à un consultant, à NetoIAge si on lui posait la question : *« je veux comprendre pourquoi je perds. »* C'est ce qu'il dira. C'est faux à 60 %.
+La demande rationnelle qu'il formulerait à un produit, à un consultant, à MemorIA si on lui posait la question : *« je veux comprendre pourquoi je perds. »* C'est ce qu'il dira. C'est faux à 60 %.
 
 Ce qu'il cherche vraiment se décompose en trois besoins distincts qui ne pèsent pas le même poids :
 
@@ -47,65 +47,65 @@ Ce qu'il cherche vraiment se décompose en trois besoins distincts qui ne pèsen
 
 **Le produit doit viser les trois.** Mais l'erreur stratégique serait de viser uniquement (c) — l'analyse rationnelle — en pensant que c'est la « vraie » valeur. Sans (a) et (b), Patrick n'ouvrira jamais l'app au moment de la défaite, et donc (c) ne se déclenchera jamais. **La fermeture émotionnelle est la porte d'entrée du capital de mémoire.** C'est l'insight central de ce scénario.
 
-## 4. Où NetoIAge aide aujourd'hui
+## 4. Où MemorIA aide aujourd'hui
 
 Honnêtement, peu, mais à des endroits précis et précieux. Le **copilote AO** a permis à Patrick de gagner trois heures la nuit du 21 décembre quand il préparait OPT-NC. La **mémoire technique générée** lui a donné un squelette propre qu'il a relu et adapté — sans elle, il aurait dû repartir de l'AO Mairie de Païta de septembre, ouvrir Word, copier-coller, ajuster les noms : 90 minutes économisées et un dossier visuellement plus propre. Le **panel Évidence** lui a permis de glisser deux photos de référence (un chantier OPEC-NC bien rendu) qu'il n'aurait pas pensé à inclure autrement. La **synthèse de l'AO** importé lui a fait gagner 40 minutes de lecture en lui pointant les clauses pénales et le critère de notation pondéré (40 % prix, 30 % qualité, 30 % RSE — un détail qu'il aurait pu rater).
 
-NetoIAge aide donc **en amont** de la soumission. C'est le **flanc gauche** du produit, et il marche.
+MemorIA aide donc **en amont** de la soumission. C'est le **flanc gauche** du produit, et il marche.
 
-## 5. Où NetoIAge échoue
+## 5. Où MemorIA échoue
 
-Le **flanc droit** — *après* la soumission — est un trou. Le 14 mars à 16h07, quand Patrick lit la notification OPT-NC, **NetoIAge n'existe plus dans son monde**. L'AO est resté en `submitted` dans la base depuis le 22 décembre. Il n'a reçu aucune relance, ce qui est bien (anti-CRM). Mais il n'a aucun endroit naturel où poser le verdict.
+Le **flanc droit** — *après* la soumission — est un trou. Le 14 mars à 16h07, quand Patrick lit la notification OPT-NC, **MemorIA n'existe plus dans son monde**. L'AO est resté en `submitted` dans la base depuis le 22 décembre. Il n'a reçu aucune relance, ce qui est bien (anti-CRM). Mais il n'a aucun endroit naturel où poser le verdict.
 
-Le statut DB est l'angle mort le plus visible : l'enum `tender_status` (`draft / extracting / analyzing / ready / failed / submitted / archived`) ne prévoit **aucune** issue commerciale. Patrick va probablement, quand il s'en souviendra dans deux semaines, ouvrir l'AO et cliquer sur **« Archiver »**. Le dossier disparaît de sa vue active. Aucune raison. Aucune étiquette. Aucune annotation. **Trois mois plus tard, quand l'AO École Lapérouse arrive, NetoIAge ne lui dit rien.** Le copilote re-génère une mémoire technique propre, mais en ignorant totalement que sur un profil similaire le mois précédent, Patrick a perdu — et perdu pourquoi.
+Le statut DB est l'angle mort le plus visible : l'enum `tender_status` (`draft / extracting / analyzing / ready / failed / submitted / archived`) ne prévoit **aucune** issue commerciale. Patrick va probablement, quand il s'en souviendra dans deux semaines, ouvrir l'AO et cliquer sur **« Archiver »**. Le dossier disparaît de sa vue active. Aucune raison. Aucune étiquette. Aucune annotation. **Trois mois plus tard, quand l'AO École Lapérouse arrive, MemorIA ne lui dit rien.** Le copilote re-génère une mémoire technique propre, mais en ignorant totalement que sur un profil similaire le mois précédent, Patrick a perdu — et perdu pourquoi.
 
-Plus grave : NetoIAge a accumulé pour Patrick **douze mois de capital de preuves** (interventions documentées, photos taken_at, validations, anomalies résolues sur les sites OPEC et Mairie de Païta). Ce capital est **directement pertinent** pour l'AO École Lapérouse, et NetoIAge ne le ramène pas à la surface au bon moment. Le copilote en utilise une partie pour rédiger la mémoire technique, mais ne dit pas : *« sur l'AO OPT-NC perdu en mars, ton dossier ne contenait que 2 photos de référence ; on a depuis 47 photos exploitables. »* Le produit a la donnée et n'en fait rien.
+Plus grave : MemorIA a accumulé pour Patrick **douze mois de capital de preuves** (interventions documentées, photos taken_at, validations, anomalies résolues sur les sites OPEC et Mairie de Païta). Ce capital est **directement pertinent** pour l'AO École Lapérouse, et MemorIA ne le ramène pas à la surface au bon moment. Le copilote en utilise une partie pour rédiger la mémoire technique, mais ne dit pas : *« sur l'AO OPT-NC perdu en mars, ton dossier ne contenait que 2 photos de référence ; on a depuis 47 photos exploitables. »* Le produit a la donnée et n'en fait rien.
 
-Deuxième échec : la **boîte mail reste le canal de vérité**. La notification OPT-NC est arrivée par mail. Patrick va peut-être la transférer à Jean-Marc. La pièce jointe (le PV de la commission, parfois) reste dans Outlook. Aucun pont avec NetoIAge. L'événement *réel* de la perte n'est documenté nulle part dans le système qui prétend être la mémoire de l'AO.
+Deuxième échec : la **boîte mail reste le canal de vérité**. La notification OPT-NC est arrivée par mail. Patrick va peut-être la transférer à Jean-Marc. La pièce jointe (le PV de la commission, parfois) reste dans Outlook. Aucun pont avec MemorIA. L'événement *réel* de la perte n'est documenté nulle part dans le système qui prétend être la mémoire de l'AO.
 
-Troisième échec, plus subtil : NetoIAge ne **respecte pas le timing émotionnel**. La capture de la raison de perte ne peut pas être un long formulaire ; elle ne peut pas non plus arriver trois jours après par notif. Le moment où Patrick est prêt à poser l'étiquette, c'est entre 17h et 18h le jour même, dans son bureau porte fermée, ou le lundi matin avec Jean-Marc autour du café. Le produit ne capture aucun de ces deux moments.
+Troisième échec, plus subtil : MemorIA ne **respecte pas le timing émotionnel**. La capture de la raison de perte ne peut pas être un long formulaire ; elle ne peut pas non plus arriver trois jours après par notif. Le moment où Patrick est prêt à poser l'étiquette, c'est entre 17h et 18h le jour même, dans son bureau porte fermée, ou le lundi matin avec Jean-Marc autour du café. Le produit ne capture aucun de ces deux moments.
 
 Quatrième échec, qu'on évite par paresse : **aucun lien entre un AO perdu et le ou les AO suivants similaires**. Le système ne « rappelle » jamais.
 
 ## 6. Dépendances externes qui persistent
 
-Le **cahier vert** (perdu en mars, mais Patrick va probablement en racheter un — un Clairefontaine 21×29,7 à carreaux Seyès). Aucun produit numérique ne remplacera ce cahier pour la fonction *« j'écris en attendant le café et ça me calme »*. NetoIAge ne doit pas vouloir l'absorber.
+Le **cahier vert** (perdu en mars, mais Patrick va probablement en racheter un — un Clairefontaine 21×29,7 à carreaux Seyès). Aucun produit numérique ne remplacera ce cahier pour la fonction *« j'écris en attendant le café et ça me calme »*. MemorIA ne doit pas vouloir l'absorber.
 
-Le **téléphone**, support principal des conversations post-perte. Patrick a appelé son comptable, va appeler Jean-Marc, peut-être Wamytan dans deux semaines pour un debrief informel (« *off the record, qu'est-ce qui a manqué ?* »). Cette conversation off-the-record est la **source la plus riche de mémoire commerciale** qui existe dans la vie de Patrick. Aucun produit ne peut la capturer sans la tuer. NetoIAge peut au mieux offrir un endroit où Patrick **résume en deux lignes** ce qu'il a appris, après coup. Pas plus.
+Le **téléphone**, support principal des conversations post-perte. Patrick a appelé son comptable, va appeler Jean-Marc, peut-être Wamytan dans deux semaines pour un debrief informel (« *off the record, qu'est-ce qui a manqué ?* »). Cette conversation off-the-record est la **source la plus riche de mémoire commerciale** qui existe dans la vie de Patrick. Aucun produit ne peut la capturer sans la tuer. MemorIA peut au mieux offrir un endroit où Patrick **résume en deux lignes** ce qu'il a appris, après coup. Pas plus.
 
-Les **conversations entre amis du métier**, au Rotary, au marché de Moselle, aux apéros du vendredi à l'Anse Vata. Le tissu informel de Nouméa est un canal d'information de premier ordre — qui dit que Sodexo arrive, qui dit qui a gagné quoi. Ce canal **ne peut pas être numérisé** et ne le sera jamais. NetoIAge n'est pas un Slack pour DG.
+Les **conversations entre amis du métier**, au Rotary, au marché de Moselle, aux apéros du vendredi à l'Anse Vata. Le tissu informel de Nouméa est un canal d'information de premier ordre — qui dit que Sodexo arrive, qui dit qui a gagné quoi. Ce canal **ne peut pas être numérisé** et ne le sera jamais. MemorIA n'est pas un Slack pour DG.
 
-**WhatsApp avec Jean-Marc** : la conversation pro-perso, vocaux longs, photos de chantier mélangées aux blagues. C'est l'os opérationnel de l'entreprise. NetoIAge a essayé de pousser des notifications WhatsApp dans le passé, et elles ont été ignorées — parce que ce canal est *humain* et l'app est *outil*. À respecter, à ne pas envahir.
+**WhatsApp avec Jean-Marc** : la conversation pro-perso, vocaux longs, photos de chantier mélangées aux blagues. C'est l'os opérationnel de l'entreprise. MemorIA a essayé de pousser des notifications WhatsApp dans le passé, et elles ont été ignorées — parce que ce canal est *humain* et l'app est *outil*. À respecter, à ne pas envahir.
 
-**Excel jamais touché**. Patrick a un Excel « *suivi AO 2024.xlsx* » sur son Drive, qu'il n'a pas ouvert depuis février. NetoIAge ne doit pas se substituer à cet Excel par mimétisme — Patrick ne veut pas plus d'Excel, il veut moins de réflexion à faire.
+**Excel jamais touché**. Patrick a un Excel « *suivi AO 2024.xlsx* » sur son Drive, qu'il n'a pas ouvert depuis février. MemorIA ne doit pas se substituer à cet Excel par mimétisme — Patrick ne veut pas plus d'Excel, il veut moins de réflexion à faire.
 
-Toutes ces dépendances **resteront**. Le produit doit assumer qu'il n'est qu'**un fragment** du système cognitif de Patrick autour de ses AO. Vouloir tout absorber est la dérive CRM par excellence (« centraliser toute la relation commerciale »). NetoIAge doit accepter qu'il vit **à côté** du cahier, du téléphone, de WhatsApp, du marché de Moselle.
+Toutes ces dépendances **resteront**. Le produit doit assumer qu'il n'est qu'**un fragment** du système cognitif de Patrick autour de ses AO. Vouloir tout absorber est la dérive CRM par excellence (« centraliser toute la relation commerciale »). MemorIA doit accepter qu'il vit **à côté** du cahier, du téléphone, de WhatsApp, du marché de Moselle.
 
 ## 7. Risques doctrinaux — LA section la plus critique
 
 Patrick a perdu trois AO consécutifs. Au quatrième échec, il craque, il appelle, il dit : *« il me faut un truc commercial sérieux, donnez-moi un CRM, je perds de l'argent. »* C'est le moment de la pression maximale. Voici les dix demandes qui vont arriver, et leur réponse doctrinale.
 
-**(1) « Mettez-moi un pipeline avec des deal stages — prospection, qualification, devis envoyé, négociation, signé. »** Réponse : refus net. Un pipeline transforme NetoIAge en outil de **prospection**, alors qu'il est un outil de **mémoire**. Le pipeline introduit la notion de « lead » et oblige à *travailler* la relation. Patrick veut comprendre, pas démarcher. Rediriger : Pipedrive, HubSpot Free, ou même Trello s'il y tient.
+**(1) « Mettez-moi un pipeline avec des deal stages — prospection, qualification, devis envoyé, négociation, signé. »** Réponse : refus net. Un pipeline transforme MemorIA en outil de **prospection**, alors qu'il est un outil de **mémoire**. Le pipeline introduit la notion de « lead » et oblige à *travailler* la relation. Patrick veut comprendre, pas démarcher. Rediriger : Pipedrive, HubSpot Free, ou même Trello s'il y tient.
 
 **(2) « Faites-moi un forecast revenue — montrez-moi combien je vais facturer ce trimestre selon les AO en cours. »** Refus net. Le forecast est la signature d'un CRM commercial : il oblige à pondérer la probabilité, à reviewer chaque semaine, à expliquer les écarts. C'est un travail de directeur commercial, pas de DG-fondateur cleaning. Rediriger : Excel maison ou son expert-comptable trimestriel.
 
-**(3) « Relances automatiques sur les AO en attente de décision — un mail au client deux semaines après soumission. »** Refus net et structurel. La relance automatique est l'incarnation parfaite du **CRM creep**. Elle transforme NetoIAge en outil qui *agit* à la place de Patrick dans la relation commerciale. Risque secondaire : agacer un acheteur public. Rediriger : Patrick relance lui-même, par téléphone, off-the-record, comme tous les DG cleaning de Nouméa.
+**(3) « Relances automatiques sur les AO en attente de décision — un mail au client deux semaines après soumission. »** Refus net et structurel. La relance automatique est l'incarnation parfaite du **CRM creep**. Elle transforme MemorIA en outil qui *agit* à la place de Patrick dans la relation commerciale. Risque secondaire : agacer un acheteur public. Rediriger : Patrick relance lui-même, par téléphone, off-the-record, comme tous les DG cleaning de Nouméa.
 
-**(4) « Scoring de lead — dites-moi quels AO ont le plus de chances de réussir avant que je passe du temps dessus. »** Refus net. Le scoring est une **optimisation comportementale** : il pousse Patrick à *ne pas soumettre* certains AO. Ce n'est pas notre rôle. Patrick décide. NetoIAge documente ses décisions, ne les pré-mâche pas. Rediriger : son expérience et Jean-Marc.
+**(4) « Scoring de lead — dites-moi quels AO ont le plus de chances de réussir avant que je passe du temps dessus. »** Refus net. Le scoring est une **optimisation comportementale** : il pousse Patrick à *ne pas soumettre* certains AO. Ce n'est pas notre rôle. Patrick décide. MemorIA documente ses décisions, ne les pré-mâche pas. Rediriger : son expérience et Jean-Marc.
 
 **(5) « Tracker mon activité commerciale — combien d'appels j'ai passés, combien de rendez-vous j'ai fait. »** Refus net. C'est l'équivalent CRM des KPI agent dans le module planning. Mesurer l'activité commerciale de Patrick, c'est le transformer en **commercial salarié de son propre produit**. Il a horreur de ça, et ça l'éloignera de l'app. Rediriger : sa propre mémoire, ou un journal papier.
 
-**(6) « Conversion rate — quel pourcentage d'AO je gagne. »** À nuancer. Un compteur factuel anonyme (« *vous avez soumis 14 AO, 4 gagnés, 10 perdus* ») est OK et même utile pour la fermeture émotionnelle. Un **dashboard** qui calcule un taux, le compare au trimestre précédent, alerte si dégradation, **fait un graphe** : refus net. La différence est entre **un fait posé** et **une métrique trackée**. NetoIAge expose le fait, ne fabrique pas la métrique anxiogène.
+**(6) « Conversion rate — quel pourcentage d'AO je gagne. »** À nuancer. Un compteur factuel anonyme (« *vous avez soumis 14 AO, 4 gagnés, 10 perdus* ») est OK et même utile pour la fermeture émotionnelle. Un **dashboard** qui calcule un taux, le compare au trimestre précédent, alerte si dégradation, **fait un graphe** : refus net. La différence est entre **un fait posé** et **une métrique trackée**. MemorIA expose le fait, ne fabrique pas la métrique anxiogène.
 
 **(7) « Top concurrents — qui me bat le plus souvent. »** Refus net. C'est la matrice **competitive intelligence** classique du CRM. Elle oblige à enrichir une table « *concurrents* », à attribuer chaque défaite à un nom (souvent faux car on ne sait pas), à construire un récit paranoïaque. Si Patrick veut savoir qui le bat, il appelle Wamytan ou il croise son cousin au marché. Rediriger : la conversation humaine.
 
-**(8) « Meeting cards — fiches de rendez-vous avec chaque client, avec notes et actions à faire. »** Refus net. C'est de l'**account management**, pas notre rôle. NetoIAge documente les **interventions de service**, pas les conversations commerciales. Rediriger : carnet, ou app de prise de notes générique (Notion, Apple Notes).
+**(8) « Meeting cards — fiches de rendez-vous avec chaque client, avec notes et actions à faire. »** Refus net. C'est de l'**account management**, pas notre rôle. MemorIA documente les **interventions de service**, pas les conversations commerciales. Rediriger : carnet, ou app de prise de notes générique (Notion, Apple Notes).
 
 **(9) « Attribution multi-touch — quel premier contact a mené à quel AO, quel canal m'a apporté quel revenu. »** Refus net immédiat. C'est du **marketing analytics** de PME tech, totalement étranger à un DG cleaning. Le seul effet réel d'introduire ça serait de faire fuir Patrick. Rediriger : nulle part, ce n'est pas un besoin.
 
-**(10) « Account-based marketing — segmentez-moi mes clients par valeur potentielle. »** Refus net structural. ABM est l'apogée du CRM B2B. Si NetoIAge offre ça, il est devenu **Salesforce-pour-cleaning** et il a perdu son moat. Rediriger : la mémoire humaine de Patrick et de Jean-Marc.
+**(10) « Account-based marketing — segmentez-moi mes clients par valeur potentielle. »** Refus net structural. ABM est l'apogée du CRM B2B. Si MemorIA offre ça, il est devenu **Salesforce-pour-cleaning** et il a perdu son moat. Rediriger : la mémoire humaine de Patrick et de Jean-Marc.
 
-**La règle générale, à formuler comme un mantra interne** : *NetoIAge documente la perte, ne prévient pas la prochaine. NetoIAge garde la mémoire, ne fabrique pas la stratégie.* Toute demande qui implique d'**agir avant** (alerter, scorer, suggérer, relancer) glisse vers le CRM. Toute demande qui implique de **noter après** (raison, tag, lien) reste dans la doctrine.
+**La règle générale, à formuler comme un mantra interne** : *MemorIA documente la perte, ne prévient pas la prochaine. MemorIA garde la mémoire, ne fabrique pas la stratégie.* Toute demande qui implique d'**agir avant** (alerter, scorer, suggérer, relancer) glisse vers le CRM. Toute demande qui implique de **noter après** (raison, tag, lien) reste dans la doctrine.
 
 ## 8. Solutions possibles (sans code)
 
@@ -133,11 +133,11 @@ Pourquoi pas plus ? Parce que chaque champ supplémentaire (« *date de relance*
 
 **(b) Détection automatique de la notification par lecture de la boîte mail.** Séduction : on capte le moment réel de la perte sans rien demander. Refus : surveillance silencieuse du mail = produit invasif. De plus, faux positifs catastrophiques (lettres de relance, accusés de réception). Si on veut un pont mail, ce sera explicite (Patrick forward) et minoritaire.
 
-**(c) Suggestion de prix recommandé sur le prochain AO** (« *vu que tu as perdu OPT-NC sur prix à 14 200, mets 13 500 sur Lapérouse* »). Séduction : valeur immédiate, IA-glamour. Refus net : c'est de l'**optimisation décisionnelle**, ça transforme NetoIAge en prescripteur stratégique. Patrick reste maître de son prix. NetoIAge montre **les faits passés**, pas **les actions futures**.
+**(c) Suggestion de prix recommandé sur le prochain AO** (« *vu que tu as perdu OPT-NC sur prix à 14 200, mets 13 500 sur Lapérouse* »). Séduction : valeur immédiate, IA-glamour. Refus net : c'est de l'**optimisation décisionnelle**, ça transforme MemorIA en prescripteur stratégique. Patrick reste maître de son prix. MemorIA montre **les faits passés**, pas **les actions futures**.
 
 **(d) Graphique d'évolution du taux de gain par trimestre.** Séduction : ça « donne de l'insight ». Refus : un graphe de taux de gain est un **KPI anxiogène**. Si Patrick voit que son taux baisse, il va se braquer, blâmer, fermer l'app. Un compteur factuel (« *3 perdus sur 5 ce trimestre* ») posé sobrement suffit. Pas de courbe.
 
-**(e) Comparaison anonymisée vs « autres clients NetoIAge »** (« *taux de gain moyen sur ta zone : 38 %, tu es à 28 %* »). Séduction : benchmarking, value-add data. Refus : transforme NetoIAge en outil de **comparaison concurrentielle implicite**. Patrick va se sentir évalué par une plateforme. Toxique. Et le moat (capital de preuves) n'a rien à voir avec ce genre de benchmark.
+**(e) Comparaison anonymisée vs « autres clients MemorIA »** (« *taux de gain moyen sur ta zone : 38 %, tu es à 28 %* »). Séduction : benchmarking, value-add data. Refus : transforme MemorIA en outil de **comparaison concurrentielle implicite**. Patrick va se sentir évalué par une plateforme. Toxique. Et le moat (capital de preuves) n'a rien à voir avec ce genre de benchmark.
 
 **(f) Notification au superviseur de chantier quand un AO sur son site est perdu.** Séduction : « *communication interne fluide* ». Refus : aucun lien naturel entre la perte d'un AO et le travail d'un superviseur sur un site existant. C'est de la **diffusion d'information descendante** qui n'a aucune raison d'être. Le superviseur n'a pas à savoir.
 

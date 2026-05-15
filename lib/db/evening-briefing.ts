@@ -1,6 +1,6 @@
-// Slice M2 — Briefing du soir (Doctrine V5 Pilier 3)
+﻿// Slice M2 — Briefing du soir (Doctrine V5 Pilier 3)
 //
-// « Jouer la PRÉPARATION où NetoIAge gagne, pas la RÉSOLUTION où WhatsApp gagne. »
+// « Jouer la PRÉPARATION où MemorIA gagne, pas la RÉSOLUTION où WhatsApp gagne. »
 //
 // Helper qui calcule, pour une date donnée (typiquement demain), les chiffres
 // clés que Maeva veut voir avant de se coucher :

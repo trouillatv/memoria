@@ -1,4 +1,4 @@
-// V5.1 Slice 4 — Page publique capsule WhatsApp /c/[token].
+﻿// V5.1 Slice 4 — Page publique capsule WhatsApp /c/[token].
 //
 // Sylvie reçoit un lien WhatsApp préparé par Patrick. Elle tape, regarde 12s,
 // ferme. Pas d'interaction. Pas de bouton "Voir plus". Pas de "Télécharger"
@@ -8,7 +8,7 @@
 //   - Fond noir (couché dans le layout)
 //   - Photo plein-largeur, ratio préservé
 //   - Texte 20px blanc, 2-3 lignes max
-//   - Mention 11px gris foncé "Émis par X · Infrastructure : NetoIAge"
+//   - Mention 11px gris foncé "Émis par X · Infrastructure : MemorIA"
 //   - Aucun bouton, aucun emoji, aucune navigation
 //
 // Cf. plan V5.1.2 § Slice 4.
@@ -84,7 +84,7 @@ export default async function CapsulePublicPage({ params }: PageProps) {
         {view.text}
       </p>
 
-      {/* Mention discrète "Émis par X · Infrastructure : NetoIAge" */}
+      {/* Mention discrète "Émis par X · Infrastructure : MemorIA" */}
       <div
         style={{
           marginTop: 'auto',
@@ -97,7 +97,7 @@ export default async function CapsulePublicPage({ params }: PageProps) {
       >
         Émis par {view.tenantName}
         <br />
-        Infrastructure : NetoIAge.
+        Infrastructure : MemorIA.
       </div>
     </main>
   )

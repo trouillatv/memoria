@@ -1,4 +1,4 @@
-# Registre des features — sprints, reports, refus
+﻿# Registre des features — sprints, reports, refus
 
 Ce document trace toutes les features envisagées : ce qui est en cours, ce qui est reporté, ce qui est explicitement refusé. Il sert de référence anti-dérive : avant de coder une feature qui ressemble à un refus listé ici, relire la justification.
 
@@ -57,7 +57,7 @@ Ces features ont été identifiées par les audits comme « manques apparents »
 
 ### Notifications & alertes anxiogènes
 - ❌ **Push notifications temps réel sur anomalies critiques**
-  - *Pourquoi le refus* : Verrou V6 (attention minimale). Une anomalie remontée par un chef d'équipe doit apparaître dans le briefing du soir, pas interrompre la journée du manager. Si vraiment urgente, l'agent appelle son manager — c'est le bon canal humain. NetoIAge n'est pas un système d'alerte.
+  - *Pourquoi le refus* : Verrou V6 (attention minimale). Une anomalie remontée par un chef d'équipe doit apparaître dans le briefing du soir, pas interrompre la journée du manager. Si vraiment urgente, l'agent appelle son manager — c'est le bon canal humain. MemorIA n'est pas un système d'alerte.
   - *Demandé par* : Manager (Maëva), DG (NetoNC)
   - *Alternative doctrine-aligned* : briefing du soir + dashboard quand on l'ouvre.
 

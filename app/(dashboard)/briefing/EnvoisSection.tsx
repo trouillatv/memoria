@@ -1,10 +1,10 @@
-'use client'
+﻿'use client'
 
 // Section "Préparation des envois WhatsApp" intégrée dans la page Briefing
 // du soir (fusion /preparation → /briefing décidée 2026-05-14).
 //
 // Doctrine V5 :
-//   - Pilier 3 : NetoIAge prépare, Maeva clique pour envoyer (jamais auto).
+//   - Pilier 3 : MemorIA prépare, Maeva clique pour envoyer (jamais auto).
 //   - Maxim 9 : envois 1-à-1, pas de groupe collectif.
 //   - Verrou V6 : aucun timestamp d'envoi persisté (le "envoyé" est local).
 //   - Verrou V5 : édition contrainte mais possible — texte modifiable.

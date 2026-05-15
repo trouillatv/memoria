@@ -1,4 +1,4 @@
-# Règles de modification
+﻿# Règles de modification
 
 ## Doctrine V5 — Lignes rouges absolues
 
@@ -32,7 +32,7 @@ Ces règles ne sont pas négociables. Elles protègent l'éthique du produit.
 
 ### Verrou V6 — Principe d'attention minimale (2026-05-14)
 
-NetoIAge prend l'angle inverse des outils B2B classiques : **minimiser l'attention demandée à l'utilisateur**, jamais la maximiser. Slack, Salesforce, Notion et tous leurs équivalents maximisent l'attention pour maximiser l'usage. NetoIAge fait le contraire — l'utilisateur ouvre l'app quand il en a besoin, l'app ne le sollicite jamais sans raison vitale.
+MemorIA prend l'angle inverse des outils B2B classiques : **minimiser l'attention demandée à l'utilisateur**, jamais la maximiser. Slack, Salesforce, Notion et tous leurs équivalents maximisent l'attention pour maximiser l'usage. MemorIA fait le contraire — l'utilisateur ouvre l'app quand il en a besoin, l'app ne le sollicite jamais sans raison vitale.
 
 **Test à appliquer à chaque feature nouvelle** : *est-ce qu'elle ajoute une demande d'attention non sollicitée ?*
 - Si oui → **refusée par défaut**.

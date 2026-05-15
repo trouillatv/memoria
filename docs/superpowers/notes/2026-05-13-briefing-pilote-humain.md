@@ -1,4 +1,4 @@
-# Briefing humain pré-pilote — Patrick
+﻿# Briefing humain pré-pilote — Patrick
 
 > **Date** : 2026-05-13
 > **Cible pilote** : 13-17 mai 2026, 3 chefs d'équipe (Joseph CHT Magenta, Tarek Lycée Lapérouse, Sandrine OPT-NC), 1 manager (Maeva), 1 DG (Patrick)
@@ -16,7 +16,7 @@ Concrètement :
 - ❌ *"Sandrine 0 photos cette semaine 😱"*
 - ❌ *"Joseph 6 interventions, c'est en-dessous de Tarek qui en a 11"*
 - ❌ *"Bravo Tarek 👏 il fait beaucoup mieux que Sandrine"*
-- ❌ Screenshot d'une vue NetoIAge contenant des noms posté dans WhatsApp pilote
+- ❌ Screenshot d'une vue MemorIA contenant des noms posté dans WhatsApp pilote
 - ❌ "Tu as vu Sandrine n'a pas fini ?"
 
 Pourquoi : **la doctrine V5 protège l'UI, mais c'est toi (Patrick) qui peux la casser hors UI en 2 phrases.** Le pilote va décrocher exactement à ce moment-là, sans qu'on le voie venir.
@@ -92,7 +92,7 @@ C'est ça les vrais signaux. Pas les chiffres du dashboard.
 ### Mardi 14 mai
 
 - **7h45** : un agent appelle malade (vraisemblable statistiquement). Maeva va réorganiser. WhatsApp + appels. **Elle n'ouvrira PAS l'app à ce moment-là.** C'est OK. Note-le.
-- Tu vas peut-être recevoir un mail d'un client (Sylvie ?) qui te demande un retour. Réponds normalement, ne montre PAS encore l'app NetoIAge.
+- Tu vas peut-être recevoir un mail d'un client (Sylvie ?) qui te demande un retour. Réponds normalement, ne montre PAS encore l'app MemorIA.
 
 ### Mercredi 15 mai — **JOUR CRITIQUE**
 
@@ -114,11 +114,11 @@ C'est le moment de bascule. Soit ton équipe adopte naturellement, soit elle ré
 Même si Sylvie du CHT te demande comment ça se passe :
 - ❌ *"Je teste un nouveau système digital"*
 - ❌ *"On a une app maintenant"*
-- ❌ *"Je vais te générer un rapport avec mon outil NetoIAge"*
+- ❌ *"Je vais te générer un rapport avec mon outil MemorIA"*
 
 Le client final ne doit pas savoir que c'est un pilote. Pour deux raisons :
 1. Tu créerais une pression inutile sur l'équipe
-2. La doctrine V5 dit que NetoIAge est **infrastructure invisible** — le client connaît NetCal, pas NetoIAge
+2. La doctrine V5 dit que MemorIA est **infrastructure invisible** — le client connaît NetCal, pas MemorIA
 
 Si Sylvie demande comment tu as fait pour avoir des photos si vite : *"On a digitalisé, ça nous aide à être plus réactifs."* C'est tout.
 
@@ -138,7 +138,7 @@ Cette posture d'observateur — pas de chef d'orchestre — est la condition pou
 Tu n'as PAS besoin d'analyser ton carnet seul. Lundi 20 mai 9h, on fait une session ensemble :
 - Tu me passes ton carnet papier (photo)
 - On identifie les 3-5 signaux forts
-- On décide ce qu'on corrige dans NetoIAge (PAS tout, juste les frictions vraiment observées)
+- On décide ce qu'on corrige dans MemorIA (PAS tout, juste les frictions vraiment observées)
 - On lance le sprint post-pilote ciblé
 
 Pas avant. Pas plus tôt. Le pilote doit produire de la **réalité brute** avant la prochaine phase structurante.

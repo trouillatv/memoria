@@ -1,4 +1,4 @@
-# Préparation chefs d'équipe — Cron auto (Sprint 4 PC)
+﻿# Préparation chefs d'équipe — Cron auto (Sprint 4 PC)
 
 ## État actuel — MVP (Option C dans le sprint)
 
@@ -13,7 +13,7 @@
 
 ## Doctrine V5 — rappels critiques avant toute activation cron
 
-- **Pilier 3 (frontières humaines)** : NetoIAge prépare, WhatsApp livre. Le
+- **Pilier 3 (frontières humaines)** : MemorIA prépare, WhatsApp livre. Le
   cron prépare un message — l'envoi reste humain.
 - **Pilier 4 (DG amplifié)** : Maeva reste auteur signataire. Un cron qui
   enverrait automatiquement les WhatsApp à sa place casserait la doctrine.
@@ -54,11 +54,11 @@ push à 18h00 par exemple), ce qui suit définit le périmètre tolérable.
 
 - `MAEVA_EMAIL=maeva@agp-nettoyage.nc` (env var server-only)
 - `CRON_SECRET=...` pour signer l'origin du cron
-- `APP_ORIGIN=https://app.netoiage.com`
+- `APP_ORIGIN=https://app.memoria.com`
 
 ## Format de la notification (si activée)
 
-Sujet : `[NetoIAge] Préparation du soir prête — N chefs d'équipe`
+Sujet : `[MemorIA] Préparation du soir prête — N chefs d'équipe`
 
 Corps :
 
@@ -77,7 +77,7 @@ Wording strictement passif descriptif. Pas d'urgence injonctive.
 - ❌ Envoi WhatsApp automatique « au nom de Maeva ».
 - ❌ Persistance d'un timestamp `preparation_sent_at` sur user/intervention.
 - ❌ Compteur « combien de préparations Maeva a envoyé cette semaine ».
-- ❌ Notification push individuelle au chef d'équipe (Pilier 3 : NetoIAge
+- ❌ Notification push individuelle au chef d'équipe (Pilier 3 : MemorIA
   ne se bat pas contre WhatsApp sur sa fonction émotionnelle).
 
 ## Coût

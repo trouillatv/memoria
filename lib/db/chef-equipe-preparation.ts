@@ -1,6 +1,6 @@
-// Sprint 4 PC — Préparation calme pour chefs d'équipe (Doctrine V5).
+﻿// Sprint 4 PC — Préparation calme pour chefs d'équipe (Doctrine V5).
 //
-// « NetoIAge prépare le plateau. L'humain (Maeva) choisit de servir. »
+// « MemorIA prépare le plateau. L'humain (Maeva) choisit de servir. »
 //
 // Pour une date donnée (typiquement demain), construit la PRÉPARATION envoyée
 // individuellement par Maeva à chaque chef d'équipe via WhatsApp 1-à-1. Trois

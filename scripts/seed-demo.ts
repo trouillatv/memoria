@@ -1,4 +1,4 @@
-/**
+﻿/**
  * scripts/seed-demo.ts
  *
  * Seeds 3 fully-populated demo contracts representing different sectors :
@@ -1762,14 +1762,14 @@ const CHEF_EQUIPE_SEEDS: Array<{
   fullName: string
   assignTo: 'Alpha' | 'Beta' | 'Gamma' | null
 }> = [
-  { email: 'mehdi.demo@netoiage.local',   fullName: 'Mehdi Demo',   assignTo: 'Alpha' },
-  { email: 'lea.demo@netoiage.local',     fullName: 'Léa Demo',     assignTo: 'Alpha' },
-  { email: 'yann.demo@netoiage.local',    fullName: 'Yann Demo',    assignTo: 'Beta' },
-  { email: 'aicha.demo@netoiage.local',   fullName: 'Aïcha Demo',   assignTo: 'Beta' },
-  { email: 'tarek.demo@netoiage.local',   fullName: 'Tarek Demo',   assignTo: 'Gamma' },
+  { email: 'mehdi.demo@memoria.local',   fullName: 'Mehdi Demo',   assignTo: 'Alpha' },
+  { email: 'lea.demo@memoria.local',     fullName: 'Léa Demo',     assignTo: 'Alpha' },
+  { email: 'yann.demo@memoria.local',    fullName: 'Yann Demo',    assignTo: 'Beta' },
+  { email: 'aicha.demo@memoria.local',   fullName: 'Aïcha Demo',   assignTo: 'Beta' },
+  { email: 'tarek.demo@memoria.local',   fullName: 'Tarek Demo',   assignTo: 'Gamma' },
   // Orphelins (pas dans une équipe — visible bandeau /equipes)
-  { email: 'sofia.demo@netoiage.local',   fullName: 'Sofia Demo',   assignTo: null },
-  { email: 'mathieu.demo@netoiage.local', fullName: 'Mathieu Demo', assignTo: null },
+  { email: 'sofia.demo@memoria.local',   fullName: 'Sofia Demo',   assignTo: null },
+  { email: 'mathieu.demo@memoria.local', fullName: 'Mathieu Demo', assignTo: null },
 ]
 
 const CHEF_EQUIPE_DEMO_PASSWORD = 'Demo!2026'

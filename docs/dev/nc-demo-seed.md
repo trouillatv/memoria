@@ -1,4 +1,4 @@
-# Seed démo Nouvelle-Calédonie
+﻿# Seed démo Nouvelle-Calédonie
 
 > Script : `scripts/dev/reset-and-seed-nc-demo.ts`
 > Données : `scripts/dev/nc-data.ts` (clients, sites, AO, noms NC, anomalies, libellés photos)
@@ -56,18 +56,18 @@ Mot de passe commun (dev only) : **`Password123!`**
 
 | Email | Rôle | Nom |
 |---|---|---|
-| `admin@netoiage.local` | admin | Anaïs Wamytan |
-| `manager@netoiage.local` | manager | Jean-Marc Dubois |
-| `chef.noumea@netoiage.local` | chef_equipe | Moana Tjibaou (équipe Nouméa Centre) |
-| `chef.grandnoumea@netoiage.local` | chef_equipe | Sosefo Falelavaki (équipe Grand Nouméa) |
-| `agent.demo@netoiage.local` | chef_equipe | Tiare Liu (équipe Nouméa Centre) |
+| `admin@memoria.local` | admin | Anaïs Wamytan |
+| `manager@memoria.local` | manager | Jean-Marc Dubois |
+| `chef.noumea@memoria.local` | chef_equipe | Moana Tjibaou (équipe Nouméa Centre) |
+| `chef.grandnoumea@memoria.local` | chef_equipe | Sosefo Falelavaki (équipe Grand Nouméa) |
+| `agent.demo@memoria.local` | chef_equipe | Tiare Liu (équipe Nouméa Centre) |
 
 ⚠️ Ces comptes ont `must_change_password=false`. Ne JAMAIS les utiliser en production.
 
 ## Scénario de démo recommandé (5 minutes)
 
 ### Acte 1 — Le cockpit superviseur (1 min)
-1. Login `manager@netoiage.local` / `Password123!`
+1. Login `manager@memoria.local` / `Password123!`
 2. `/dashboard` → 4 contrats actifs. La section "Demandent attention" peut être vide ou contenir 1 contrat selon le hasard du seed. Tous calés sur des organismes NC reconnaissables.
 
 ### Acte 2 — Un AO transformé en capital (1 min)
@@ -76,7 +76,7 @@ Mot de passe commun (dev only) : **`Password123!`**
 5. Vue **Atelier IA** : présent mais vierge (aucun message). Pour démo, peut ignorer.
 
 ### Acte 3 — Le terrain (1 min)
-6. Logout, login `chef.noumea@netoiage.local`. L'app redirige sur `/m`.
+6. Logout, login `chef.noumea@memoria.local`. L'app redirige sur `/m`.
 7. Liste de missions du jour. Sélectionner une intervention "in_progress" si présente, sinon "planned" → tap "Commencer".
 8. Cocher 1-2 items checklist. Prendre une "photo libre" via le FAB → simule capture.
 9. Compléter → "Mission terminée".
@@ -138,7 +138,7 @@ Si le script échoue à mi-parcours et laisse la base dans un état incohérent,
 npm run db:reset-and-seed-nc-demo -- --confirm-reset-on=<sub-of-url> --yes
 ```
 
-Si les utilisateurs auth sont à dégager (rare), le faire depuis le dashboard Supabase Studio → Authentication → Users → supprimer les `*@netoiage.local`.
+Si les utilisateurs auth sont à dégager (rare), le faire depuis le dashboard Supabase Studio → Authentication → Users → supprimer les `*@memoria.local`.
 
 ## Doctrine respectée
 

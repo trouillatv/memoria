@@ -1,4 +1,4 @@
-# NetoIAge — Design MVP V1
+﻿# MemorIA — Design MVP V1
 
 **Date** : 2026-05-09
 **Auteur** : Architecte logiciel principal (Claude) + product owner (Aurélie)
@@ -8,7 +8,7 @@
 
 ## 1. Contexte produit & objectifs
 
-NetoIAge est un SaaS B2B destiné aux entreprises de nettoyage professionnel. Le MVP V1 vise trois usages concrets :
+MemorIA est un SaaS B2B destiné aux entreprises de nettoyage professionnel. Le MVP V1 vise trois usages concrets :
 
 1. **Répondre aux appels d'offres** plus vite et mieux, grâce à une analyse IA assistée par une bibliothèque interne de l'entreprise.
 2. **Suivre les missions terrain** des équipes, avec checklist, photos, incidents et clôture tracée.
@@ -53,7 +53,7 @@ Toutes les décisions ci-dessous ont été prises par la product owner pendant l
 ### Arborescence
 
 ```
-netoiage/
+memoria/
 ├─ app/                                 # Next.js App Router
 │  ├─ (auth)/
 │  │  ├─ login/
@@ -169,7 +169,7 @@ Le MVP est mono-entreprise par décision (cf §2), mais on s'interdit toute hypo
 | **Storage paths basés sur l'`entity_id`** | `mission-photos/{mission_id}/...`, jamais `acme-cleaning/missions/...`. |
 | **Pas de `branding` hardcodé entreprise** dans le code | Logo, nom commercial, couleurs : si on en met, c'est dans la base ou dans des variables d'env, pas dans des composants. |
 
-Le jour où NetoIAge devient multi-client (estimation 3-5 jours) :
+Le jour où MemorIA devient multi-client (estimation 3-5 jours) :
 1. `alter table` ajout `company_id uuid not null references companies(id)` sur toutes les tables métier.
 2. Création table `companies`.
 3. Backfill `company_id` (la société existante reçoit un id).
@@ -226,7 +226,7 @@ Trigger `on_user_role_change` synchronise `users.role` dans `auth.users.raw_app_
 - Server Components Supabase pour fetch direct.
 - Tableau users avec rôle inline-éditable (badge coloré + select), force password reset, delete.
 - Bouton `ForcePasswordResetButton` désactivé pour les autres comptes admin (protection).
-- Carte info ambre expliquant la procédure de reset (mot de passe temporaire `netoiage2026` par défaut).
+- Carte info ambre expliquant la procédure de reset (mot de passe temporaire `memoria2026` par défaut).
 - Badge compteur dans la nav (ex : incidents non résolus).
 
 ### Différences avec EquiPass
@@ -1222,7 +1222,7 @@ npm run dev                         # http://localhost:3000
 
 ### Seed & données de démo
 
-**Objectif** : `npm run db:seed` produit une app **immédiatement démontrable**, sans saisie manuelle. C'est essentiel pour montrer NetoIAge à un prospect en 5 minutes au lieu de passer 30 minutes à créer des données.
+**Objectif** : `npm run db:seed` produit une app **immédiatement démontrable**, sans saisie manuelle. C'est essentiel pour montrer MemorIA à un prospect en 5 minutes au lieu de passer 30 minutes à créer des données.
 
 #### Contenu du seed
 

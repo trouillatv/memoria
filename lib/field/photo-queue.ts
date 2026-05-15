@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IndexedDB-backed photo queue for the mobile agent app.
  *
  * Stores photos that haven't been uploaded yet (or failed and need retry).
@@ -33,7 +33,7 @@
  * (ON CONFLICT DO NOTHING sur intervention_photos.client_uuid, migration 051).
  */
 
-const DB_NAME = 'netoiage-field'
+const DB_NAME = 'memoria-field'
 const STORE_NAME = 'photo-queue'
 const DB_VERSION = 1
 

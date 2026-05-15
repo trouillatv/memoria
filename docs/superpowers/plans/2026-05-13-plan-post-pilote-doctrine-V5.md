@@ -1,4 +1,4 @@
-# Plan de codage post-pilote — Doctrine V5 opérationnalisée
+﻿# Plan de codage post-pilote — Doctrine V5 opérationnalisée
 
 > ⚠️ **CE PLAN N'EST PAS UN SPRINT À LANCER.** C'est un **document d'attente** qui capture les recos consolidées des 6 scénarios + de la doctrine V5. À activer **uniquement après** que le pilote terrain (13-17 mai 2026) ait produit ses signaux de réalité brute. Ouvrir ce doc le lundi 20 mai et confronter chaque slice aux **frictions réellement observées**.
 
@@ -92,13 +92,13 @@ Classées par persona, ancrées dans la doctrine V5.
 ### Bloc 3 — Maeva / Manager / Pilier 3 "Frontières humaines"
 
 #### Slice M1 — Bouton "Partager dans WhatsApp" sur intervention (Agent 3, reco 3.A)
-**Doctrine** : Pilier 3 ARCHÉTYPE. Bridge vers outil humain dominant. NetoIAge n'absorbe pas WhatsApp, il le complète.
+**Doctrine** : Pilier 3 ARCHÉTYPE. Bridge vers outil humain dominant. MemorIA n'absorbe pas WhatsApp, il le complète.
 
 **UX** : Sur cellule de `/semaine` et sur page intervention, bouton "Partager les détails" → copie dans presse-papier un texte format :
 ```
 🏥 CHT Magenta — Bionettoyage bloc B
 Mardi 14 mai, créneau matin
-Détails : https://app.netoiage.nc/p/[token]
+Détails : https://app.memoria.nc/p/[token]
 ```
 
 **Charge mentale** : ↓↓ (Maeva colle dans WhatsApp en 2 secondes)
@@ -106,7 +106,7 @@ Détails : https://app.netoiage.nc/p/[token]
 **Anti-dispatch** : pas de notification, pas de presence implicite, pas de tracking d'ouverture.
 
 #### Slice M2 — Briefing du soir (Agent 3, reco 3.B)
-**Doctrine** : Pilier 3 corollaire. Jouer la PRÉPARATION où NetoIAge gagne, pas la RÉSOLUTION où WhatsApp gagne.
+**Doctrine** : Pilier 3 corollaire. Jouer la PRÉPARATION où MemorIA gagne, pas la RÉSOLUTION où WhatsApp gagne.
 
 **UX** : Email/PDF auto envoyé à Maeva chaque soir 18h résumant le lendemain :
 - 23 interventions, 4 équipes, 0 site sans couverture
@@ -151,12 +151,12 @@ Détails : https://app.netoiage.nc/p/[token]
 
 ### Bloc 5 — Sylvie / Client final / Pilier 6 "Infrastructure invisible"
 
-#### Slice S1 — Co-branding NetCal + NetoIAge sur PDF (Agent 5, reco 5.A)
-**Doctrine** : Pilier 6. Le héros visible = prestataire. NetoIAge = infrastructure.
+#### Slice S1 — Co-branding NetCal + MemorIA sur PDF (Agent 5, reco 5.A)
+**Doctrine** : Pilier 6. Le héros visible = prestataire. MemorIA = infrastructure.
 
 **UX** : Header PDF rapport mensuel ET dossier de preuves :
 - Logo prestataire (upload par tenant) à gauche, "PDF émis par {Tenant name}" sous le logo
-- "Infrastructure : NetoIAge" en footer, petit
+- "Infrastructure : MemorIA" en footer, petit
 
 **Charge mentale** : ↓ (Sylvie reconnaît son prestataire, fait confiance)
 **Effort** : S (~3h — upload logo + intégration PDF + page publique)

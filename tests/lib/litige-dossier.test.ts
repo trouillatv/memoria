@@ -1,4 +1,4 @@
-// Sprint 3 — UX-8 Mode litige express : tests prepareLitigeDossierAction.
+﻿// Sprint 3 — UX-8 Mode litige express : tests prepareLitigeDossierAction.
 //
 // Stratégie : mocks pour auth, headers, helpers DB (searchProofs +
 // createShareToken) et audit log. On vérifie la sémantique de validation +
@@ -18,8 +18,8 @@ vi.mock('next/headers', () => ({
   headers: vi.fn(async () => ({
     get: (key: string) => {
       if (key === 'x-forwarded-proto') return 'https'
-      if (key === 'x-forwarded-host') return 'test.netoiage.app'
-      if (key === 'host') return 'test.netoiage.app'
+      if (key === 'x-forwarded-host') return 'test.memoria.app'
+      if (key === 'host') return 'test.memoria.app'
       return null
     },
   })),
@@ -199,7 +199,7 @@ describe('prepareLitigeDossierAction — happy path', () => {
       anomaliesResolved: 1,
       validations: 3,
     })
-    expect(res.shareUrl).toMatch(/https:\/\/test\.netoiage\.app\/p\/abc123token/)
+    expect(res.shareUrl).toMatch(/https:\/\/test\.memoria\.app\/p\/abc123token/)
     expect(res.pdfUrl).toMatch(/^\/litige\/dossier\?/)
     expect(res.pdfUrl).toMatch(/siteId=11111111/)
     expect(res.pdfUrl).toMatch(/dateFrom=2026-05-01/)

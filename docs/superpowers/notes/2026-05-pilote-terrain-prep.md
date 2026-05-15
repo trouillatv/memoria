@@ -1,4 +1,4 @@
-# Pilote terrain Phase 3 mobile — prep handoff
+﻿# Pilote terrain Phase 3 mobile — prep handoff
 
 **Date prep** : 2026-05-11
 **Cible** : 3 chefs d'équipe réels, 3 sites différents, 3-5 jours ouvrés
@@ -93,7 +93,7 @@ Pendant le pilote :
 
 Après le pilote (J5 ou J6) :
 - Entretien 30 min chacun, en présentiel ou visio
-- Demander : "raconte-moi ta semaine avec NetoIAge"
+- Demander : "raconte-moi ta semaine avec MemorIA"
 
 ## Risques connus à surveiller
 

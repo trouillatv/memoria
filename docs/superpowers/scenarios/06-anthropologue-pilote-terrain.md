@@ -1,4 +1,4 @@
-# Scénario 6 — Anthropologue du pilote terrain
+﻿# Scénario 6 — Anthropologue du pilote terrain
 
 **Date** : 2026-05-13
 **Persona observés** : Patrick (DG), Maeva (manager), Joseph + Tarek + Sandrine (chefs d'équipe)
@@ -44,7 +44,7 @@ Ce qui suit n'est pas un cas d'usage. C'est une projection ethnographique : ce q
 
 Il fronce les sourcils sur la ligne Sandrine. Il pense « bon elle a pas réussi à se connecter, ou alors elle a pas voulu ». Il fronce aussi sur la ligne Joseph « 0 photo ». Il pense « comment je sais que c'est bien fait alors ? ». Il pense aussi « est-ce que c'est normal que Tarek ait 47 photos pour 6 interventions ? ». Il ressent une **inquiétude diffuse**. Il décide de ne rien dire ce soir, d'attendre demain.
 
-**18h12.** Maeva fait son check-in du soir dans le groupe WhatsApp dédié au pilote (que Patrick a créé vendredi : « Pilote NetoIAge — feedback »). Elle écrit : « Bonsoir les 3, comment ça s'est passé aujourd'hui ? ». Tarek répond à 18h14 avec 🎉. Joseph répond à 19h47 « rien à signaler ». Sandrine ne répond pas.
+**18h12.** Maeva fait son check-in du soir dans le groupe WhatsApp dédié au pilote (que Patrick a créé vendredi : « Pilote MemorIA — feedback »). Elle écrit : « Bonsoir les 3, comment ça s'est passé aujourd'hui ? ». Tarek répond à 18h14 avec 🎉. Joseph répond à 19h47 « rien à signaler ». Sandrine ne répond pas.
 
 **21h05.** Joseph, à Tina, dîne avec Mireille. Elle lui demande : « alors cette nouvelle app ? ». Joseph mange une bouchée de poisson, mâche lentement, dit : « c'est un truc, faut taper sur le téléphone. Ça change rien pour moi le ménage. Patrick il a payé combien pour ça je sais pas. Tant qu'on me dit pas que je fais mal, ça va. » Mireille dit « mais toi tu trouves ça utile ? ». Joseph « **pour moi non, pour Patrick je sais pas**. » Il finit son poisson. Il pense à demain : il a déjà oublié qu'il devrait prendre des photos.
 
@@ -54,7 +54,7 @@ Il fronce les sourcils sur la ligne Sandrine. Il pense « bon elle a pas réussi
 
 **Sur le terrain à 7h30** : Jérémy arrive, fait l'intervention. Il n'a pas l'app installée (il n'est pas dans le pilote). Joseph fait l'intervention dans l'app **à la place de Jérémy** parce que c'est le seul moyen pour que ça apparaisse comme `completed`. Il prend des photos avec son téléphone à lui, mais c'est Jérémy qui a fait le travail. La preuve est techniquement signée par Joseph (`taken_by = joseph.user_id`). **Fausse trace.** Personne ne le remarquera avant le rapport mensuel du 3 juin. Premier compromis structurel.
 
-**9h47.** Patrick reçoit un mail de Christelle Tehio (CHT) : « Bonjour Patrick, la salle 312 du service de cardio n'a pas été nettoyée correctement lundi. Pouvez-vous vérifier ? Bien à vous, C. Tehio ». Patrick lit le mail dans sa voiture, garé devant la mairie. Il pense « **merde** ». Il ouvre NetoIAge sur son téléphone. Il va sur le contrat CHT. Il cherche : qu'est-ce qui a été fait lundi en salle 312 ? Il trouve l'intervention bloc opératoire B2, oui, mais salle 312 c'est cardio, pas B2. Il scrolle. Il ne trouve pas d'intervention spécifique « salle 312 ». Il pense « est-ce qu'on avait prévu de la nettoyer hier ? ». Il appelle Maeva. Maeva ne sait pas par cœur. Elle ouvre l'app à son tour. Cinq minutes de fouille à deux. Ils découvrent que la salle 312 est dans la mission « Cardiologie — chambres impaires » qui est récurrente le mardi et le vendredi, **pas le lundi**. Le client se trompe. Patrick répond : « Bonjour Christelle, la salle 312 est nettoyée mardi et vendredi selon votre contrat (cf. fiche services point 4.2). Elle a été nettoyée vendredi 9 mai et le sera aujourd'hui mardi 14. Je peux vous envoyer les photos d'aujourd'hui en fin de journée si vous voulez. Bien cordialement, P. ». Christelle répond 22 minutes après « Ah pardon, je me suis trompée de salle. Merci. ». Patrick respire. Il pense « **bon ça a marché, NetoIAge m'a sauvé**. » Il pense aussi « **j'aurais aimé être plus rapide à trouver l'info** ».
+**9h47.** Patrick reçoit un mail de Christelle Tehio (CHT) : « Bonjour Patrick, la salle 312 du service de cardio n'a pas été nettoyée correctement lundi. Pouvez-vous vérifier ? Bien à vous, C. Tehio ». Patrick lit le mail dans sa voiture, garé devant la mairie. Il pense « **merde** ». Il ouvre MemorIA sur son téléphone. Il va sur le contrat CHT. Il cherche : qu'est-ce qui a été fait lundi en salle 312 ? Il trouve l'intervention bloc opératoire B2, oui, mais salle 312 c'est cardio, pas B2. Il scrolle. Il ne trouve pas d'intervention spécifique « salle 312 ». Il pense « est-ce qu'on avait prévu de la nettoyer hier ? ». Il appelle Maeva. Maeva ne sait pas par cœur. Elle ouvre l'app à son tour. Cinq minutes de fouille à deux. Ils découvrent que la salle 312 est dans la mission « Cardiologie — chambres impaires » qui est récurrente le mardi et le vendredi, **pas le lundi**. Le client se trompe. Patrick répond : « Bonjour Christelle, la salle 312 est nettoyée mardi et vendredi selon votre contrat (cf. fiche services point 4.2). Elle a été nettoyée vendredi 9 mai et le sera aujourd'hui mardi 14. Je peux vous envoyer les photos d'aujourd'hui en fin de journée si vous voulez. Bien cordialement, P. ». Christelle répond 22 minutes après « Ah pardon, je me suis trompée de salle. Merci. ». Patrick respire. Il pense « **bon ça a marché, MemorIA m'a sauvé**. » Il pense aussi « **j'aurais aimé être plus rapide à trouver l'info** ».
 
 **12h00.** Sandrine reprend l'app. Elle ouvre une intervention. Elle appuie sur **Démarrer**. L'écran change. Elle fait son ménage à l'OPT pendant 1h40. À 13h45 elle veut **Terminer**. Elle cherche le bouton. Elle ne trouve pas. Elle scrolle. Elle pense « **où est ce truc**. » Elle appelle Maeva. Maeva lui dit « tu dois rouvrir l'intervention en cours, le bouton est en bas ». Sandrine dit « j'ai pas de bouton en bas, j'ai un truc bleu ». Maeva comprend : Sandrine est sur l'écran de liste, pas dans l'intervention. Elle lui explique. Sandrine ne comprend pas. Maeva dit « passe-moi en visio ». Sandrine ne sait pas faire une visio WhatsApp. Maeva soupire intérieurement. Elle dit « bon je passe te voir à 15h ». Maeva fait 35 km pour aller à l'OPT en personne. Elle perd 1h30 de sa journée. Elle ne va pas le mettre dans le feedback parce qu'elle pense « c'est juste le démarrage ».
 
@@ -68,13 +68,13 @@ Il fronce les sourcils sur la ligne Sandrine. Il pense « bon elle a pas réussi
 
 **7h05.** Joseph prend sa première photo de l'app au CHT, dans le bloc B2 avant prise de poste. Il prend une photo du sol propre. Il appuie sur Envoyer. L'icône de sync passe en orange. Il pense « bon c'est bien ». 90 secondes plus tard, orange toujours. **Il pense que ça a planté**. Il prend la même photo une deuxième fois. Orange. **Une troisième**. Orange. Au bout de 4 minutes la première photo passe au vert. Mais il a maintenant 3 photos identiques en queue. Joseph soupire. Il continue.
 
-**8h00.** Premier vrai contournement structurel observable. Tarek ouvre un **autre groupe WhatsApp** qu'il intitule « NetoIAge pratique entre nous ». Il y met Joseph et Sandrine (pas Patrick, pas Maeva). Il écrit : « Hey si vous avez des questions pratiques sur l'app, mettez ici, on se débrouille ensemble, ça évite de déranger Patrick pour rien. » Joseph apprécie le geste. Sandrine ne répond pas (elle ne voit pas tout de suite). À 10h, Sandrine pose sa première question : « Tarek comment on fait pour mettre une photo après ? Quand on a fini ? ». Tarek répond en 30 secondes avec une capture d'écran. Le groupe non-officiel devient le vrai support utilisateur.
+**8h00.** Premier vrai contournement structurel observable. Tarek ouvre un **autre groupe WhatsApp** qu'il intitule « MemorIA pratique entre nous ». Il y met Joseph et Sandrine (pas Patrick, pas Maeva). Il écrit : « Hey si vous avez des questions pratiques sur l'app, mettez ici, on se débrouille ensemble, ça évite de déranger Patrick pour rien. » Joseph apprécie le geste. Sandrine ne répond pas (elle ne voit pas tout de suite). À 10h, Sandrine pose sa première question : « Tarek comment on fait pour mettre une photo après ? Quand on a fini ? ». Tarek répond en 30 secondes avec une capture d'écran. Le groupe non-officiel devient le vrai support utilisateur.
 
 **10h30.** Sylvie Wamejo, responsable services généraux du Lycée Lapérouse, croise Tarek dans le couloir. Elle lui dit « Tarek, j'entends parler de votre nouvelle application. C'est bien ça ? ». Tarek, fier : « Oui Madame Wamejo, on documente tout, c'est traçable, vous aurez tout en fin de mois. » Sylvie dit « ah mais je voudrais voir tout de suite, pourquoi attendre la fin du mois ? Vous pouvez me partager un lien ? ». Tarek hésite. Il ne sait pas s'il peut. Il appelle Patrick. Patrick lui dit « **non non non**, on ne partage rien client tant qu'on est en pilote ». Tarek raccroche, va voir Sylvie, dit « Patrick préfère qu'on attende la fin du mois pour formaliser ». Sylvie est polie mais déçue. **Demande latente client** : voir en temps réel. Doctrine V3 dit non. La tension est née.
 
 **11h45.** Patrick reçoit un appel de Sandrine. « Patrick, est-ce que je peux faire mes interventions sans l'app aujourd'hui ? J'ai mon téléphone qui fait des trucs bizarres, et je préfère faire à l'ancienne ». Patrick est en RDV. Il met Sandrine en attente, sort dans le couloir, dit « Sandrine, on a parlé de ça lundi, c'est important que tu utilises l'app cette semaine, c'est pour ça qu'on a fait le pilote. Si tu as un problème, appelle Maeva, elle viendra t'aider ». Sandrine dit « ok ok ». Elle raccroche. **Elle continue sans l'app de toute façon**. Elle cochera tout d'un coup vendredi soir si Patrick re-demande. **Faux positif rétroactif.**
 
-**13h00.** Maeva, déjeuner sur le pouce à La Tontouta (elle est passée à l'aéroport pour récupérer un client). Elle ouvre son **Excel personnel** « Qui peut faire quoi — mai 2026.xlsx ». Elle a noté ce matin : « Élodie malade lundi », « Jérémy a couvert oncologie », « Sandrine app pas ouverte avant 12h ». Elle pense « **je peux pas mettre ça dans NetoIAge**. C'est pas le bon outil. Mais il faut bien que je le note quelque part ». Elle ferme l'Excel. Elle pense « Patrick va me dire que je fais une **shadow surveillance**. Mais comment je fais autrement pour gérer une absence demain ? ». Tension doctrinale réelle, vécue physiquement par Maeva à 13h sur un parking d'aéroport.
+**13h00.** Maeva, déjeuner sur le pouce à La Tontouta (elle est passée à l'aéroport pour récupérer un client). Elle ouvre son **Excel personnel** « Qui peut faire quoi — mai 2026.xlsx ». Elle a noté ce matin : « Élodie malade lundi », « Jérémy a couvert oncologie », « Sandrine app pas ouverte avant 12h ». Elle pense « **je peux pas mettre ça dans MemorIA**. C'est pas le bon outil. Mais il faut bien que je le note quelque part ». Elle ferme l'Excel. Elle pense « Patrick va me dire que je fais une **shadow surveillance**. Mais comment je fais autrement pour gérer une absence demain ? ». Tension doctrinale réelle, vécue physiquement par Maeva à 13h sur un parking d'aéroport.
 
 **18h00.** Patrick regarde son dashboard. Joseph a 6 photos aujourd'hui. Il est content. Tarek a 73 photos (en baisse). Sandrine a 0 photo et 0 intervention démarrée dans l'app aujourd'hui. Patrick pense « **on a un problème Sandrine**. ». Il appelle Maeva. Maeva dit la vérité : « Sandrine n'utilise pas l'app, elle fait à l'ancienne ». Patrick demande : « Tu peux passer la voir demain ? ». Maeva soupire. Elle a 3 RDV demain. Elle dira oui de toute façon. Elle dit « ok ». Elle ne pourra pas y aller. Elle enverra un message vocal à Sandrine.
 
@@ -100,7 +100,7 @@ Il fronce les sourcils sur la ligne Sandrine. Il pense « bon elle a pas réussi
 
 **7h00.** Tarek arrive avec sa propre liste manuscrite. Il a recopié ses missions dans son carnet hier soir. Pas parce qu'il ne fait pas confiance à l'app, mais parce qu'il **aime le rituel**. Il pense « **le matin, je note, j'avance, je coche. C'est plus pro**. » Carnet + app : pour lui c'est un **enrichissement**, pas une perte.
 
-**9h00.** Maeva arrive au bureau. Elle ouvre son MacBook. Elle ouvre NetoIAge. Elle ouvre Excel. Elle ouvre WhatsApp web. Elle a 3 onglets en parallèle. Elle pense « **c'est trois fois plus de boulot qu'avant**. ». Elle pense « **mais si on garde l'app et qu'on jette Excel et qu'on réduit WhatsApp à urgences seulement, ça pourrait marcher** ». Elle commence à formuler son feedback de fin de pilote. Elle écrit dans un carnet : « il faut une vue Maeva ». Elle ne sait pas exactement ce que c'est, mais elle sait ce que c'est : **un écran qui dit qui en est où aujourd'hui, et qu'elle peut agir dessus**. Ce que la doctrine V3 a justement bordé pour ne pas devenir un dispatch center.
+**9h00.** Maeva arrive au bureau. Elle ouvre son MacBook. Elle ouvre MemorIA. Elle ouvre Excel. Elle ouvre WhatsApp web. Elle a 3 onglets en parallèle. Elle pense « **c'est trois fois plus de boulot qu'avant**. ». Elle pense « **mais si on garde l'app et qu'on jette Excel et qu'on réduit WhatsApp à urgences seulement, ça pourrait marcher** ». Elle commence à formuler son feedback de fin de pilote. Elle écrit dans un carnet : « il faut une vue Maeva ». Elle ne sait pas exactement ce que c'est, mais elle sait ce que c'est : **un écran qui dit qui en est où aujourd'hui, et qu'elle peut agir dessus**. Ce que la doctrine V3 a justement bordé pour ne pas devenir un dispatch center.
 
 **12h00.** Sylvie Wamejo croise Patrick (passé au lycée pour récupérer Tarek pour un déjeuner de fin de semaine offerte). Elle dit « Alors Patrick, votre semaine pilote ? Vous avez pensé à me partager un lien comme on en a parlé ? ». Patrick dit « oui Sylvie, à partir du mois prochain je vous donnerai un accès. ». Sylvie sourit. Elle dit « **un PDF chaque mois ça me va aussi**. ». Patrick comprend qu'elle ne lira pas le lien web. Elle veut un PDF. **Insight** : le lien live n'intéresse pas la cliente, elle veut un livrable matériel.
 
@@ -130,7 +130,7 @@ Il ferme son MacBook. Il pense « je rédigerai le rapport mensuel pour CHT le 3
 
 6. **Maeva garde son Excel « Qui peut faire quoi » en parallèle.** Trois colonnes : nom, équipes, disponibilités cette semaine. Mise à jour manuelle. Elle ne lâchera **jamais** cet Excel tant qu'aucune feature de l'app ne couvre la disponibilité agent. Impact doctrine : la shadow surveillance hors plateforme — précisément ce que V3 voulait supprimer — persiste.
 
-7. **Patrick revérifie sur Excel que les chiffres NetoIAge sont justes.** Au moins une fois par semaine pendant les 3 premiers mois, il va recompter à la main les interventions d'un site et comparer au dashboard. Impact comportemental : si l'app a un bug ne serait-ce qu'une fois, sa confiance baisse pour 6 mois.
+7. **Patrick revérifie sur Excel que les chiffres MemorIA sont justes.** Au moins une fois par semaine pendant les 3 premiers mois, il va recompter à la main les interventions d'un site et comparer au dashboard. Impact comportemental : si l'app a un bug ne serait-ce qu'une fois, sa confiance baisse pour 6 mois.
 
 8. **Les chefs d'équipe se prêtent le téléphone pour des photos quand l'autre n'a pas l'app.** Jérémy n'est pas dans le pilote. Il vient remplacer Élodie au CHT. Joseph prend ses photos avec son téléphone. La photo a `taken_by = joseph` alors que c'est Jérémy qui faisait le travail. Impact DB : **fausse trace nominative**, ce qui contredit V3 (« vérité humaine non confirmée = jamais écrite automatiquement »). Ici elle est écrite à la main avec la mauvaise identité.
 
@@ -140,7 +140,7 @@ Il ferme son MacBook. Il pense « je rédigerai le rapport mensuel pour CHT le 3
 
 11. **Joseph clôture une intervention à la place de Jérémy mardi 14.** Il sait que c'est faux. Il le fait parce qu'il n'y a pas d'autre solution (Jérémy n'est pas pilote). Il ne le mentionnera dans aucun feedback. Impact preuve : si un litige juridique éclate plus tard sur la sortie d'oncologie du 14 mai, la preuve dit que c'est Joseph qui était présent. C'est faux.
 
-12. **Création d'un groupe WhatsApp « NetoIAge pratique entre nous » par Tarek, sans Patrick ni Maeva.** Joseph + Tarek + Sandrine se débrouillent entre eux. Bonne ambiance, mauvaise visibilité côté entreprise. Impact : Patrick et Maeva ne voient pas les vrais points de friction quotidiens, qui sont résolus 1-1 par Tarek dans un canal invisible.
+12. **Création d'un groupe WhatsApp « MemorIA pratique entre nous » par Tarek, sans Patrick ni Maeva.** Joseph + Tarek + Sandrine se débrouillent entre eux. Bonne ambiance, mauvaise visibilité côté entreprise. Impact : Patrick et Maeva ne voient pas les vrais points de friction quotidiens, qui sont résolus 1-1 par Tarek dans un canal invisible.
 
 ---
 
@@ -183,7 +183,7 @@ Il ferme son MacBook. Il pense « je rédigerai le rapport mensuel pour CHT le 3
 
 8. **Le DG Patrick ne regarde pas son téléphone avant 10h** (RDV client, voiture, café). Si Sandrine appelle à 7h30 pour un problème, c'est Maeva qui prend, et Maeva ne sait pas tout.
 
-9. **Les téléphones perso usés** : iPhone SE 2020 de Sandrine (batterie à 78%), Samsung A52 de Joseph (écran fissuré). NetoIAge fonctionne, mais avec un **stress matériel sous-jacent permanent**.
+9. **Les téléphones perso usés** : iPhone SE 2020 de Sandrine (batterie à 78%), Samsung A52 de Joseph (écran fissuré). MemorIA fonctionne, mais avec un **stress matériel sous-jacent permanent**.
 
 10. **Le bus matinal de Sandrine** (Karagheusian Anse Vata → centre Nouméa, 35 min, debout) : elle ne consulte pas WhatsApp pro pendant le trajet (téléphone dans le sac, pas envie de le sortir). Tous les messages avant 7h45 sont lus avec retard.
 
@@ -217,7 +217,7 @@ Il ferme son MacBook. Il pense « je rédigerai le rapport mensuel pour CHT le 3
 
 11. **Maeva tient un journal intime de son pilote** dans Notes (iPhone), 3 lignes par jour. Elle ne le partage à personne. Elle pourrait être la source de feedback la plus riche de l'entreprise, mais elle ne le donnera pas spontanément.
 
-12. **Le gardien du lycée demande à Tarek « moi aussi je peux avoir l'app ? »** parce qu'il a vu Tarek faire et a trouvé ça classe. Il n'est pas dans la cible (il n'est pas employé NetoIAge), il est employé du lycée. Mais sa demande révèle que l'app **rayonne socialement** : elle confère un statut à celui qui l'utilise. C'est un effet de signal qui peut être un atout marketing énorme.
+12. **Le gardien du lycée demande à Tarek « moi aussi je peux avoir l'app ? »** parce qu'il a vu Tarek faire et a trouvé ça classe. Il n'est pas dans la cible (il n'est pas employé MemorIA), il est employé du lycée. Mais sa demande révèle que l'app **rayonne socialement** : elle confère un statut à celui qui l'utilise. C'est un effet de signal qui peut être un atout marketing énorme.
 
 ---
 
@@ -269,7 +269,7 @@ Il ferme son MacBook. Il pense « je rédigerai le rapport mensuel pour CHT le 3
 
 **Doctrine V3.** Aucune position explicite sur le matériel.
 
-**Insight doctrinal nouveau.** L'app ne suffit pas. Le **rituel de prise de poste** doit avoir des composantes physiques (papier optionnel, badge optionnel, briefing oral) pour préserver la dignité de l'agent. C'est un point V5 à formaliser : **« NetoIAge augmente le rituel terrain, ne le remplace pas »**.
+**Insight doctrinal nouveau.** L'app ne suffit pas. Le **rituel de prise de poste** doit avoir des composantes physiques (papier optionnel, badge optionnel, briefing oral) pour préserver la dignité de l'agent. C'est un point V5 à formaliser : **« MemorIA augmente le rituel terrain, ne le remplace pas »**.
 
 ---
 
@@ -317,7 +317,7 @@ Le format **WhatsApp groupe + chiffres nominatifs** est, sans le savoir, un **pa
 - **Le sourire de Maeva** quand elle réalise qu'elle peut envoyer un rapport client en 3 minutes au lieu de 90 (ça n'arrivera pas cette semaine — ça arrivera fin juin si on tient).
 - **L'absence d'appel SOS au support entre 8h et 10h** (pas de bug bloquant)
 - **La continuité naturelle après le pilote** : le lundi 20 mai, est-ce que Joseph ouvre l'app sans qu'on lui demande ?
-- **La fréquence de mention de NetoIAge dans le WhatsApp parallèle** : si Tarek écrit « j'ai mis ça dans l'app » sans qu'on lui demande, c'est gagné.
+- **La fréquence de mention de MemorIA dans le WhatsApp parallèle** : si Tarek écrit « j'ai mis ça dans l'app » sans qu'on lui demande, c'est gagné.
 - **La présence de Sandrine au briefing du lundi 20** : si elle vient, on l'a gardée. Si elle se fait porter pâle, c'est l'inverse.
 - **Le nombre de fois où Maeva ouvre son Excel parallèle** : si elle l'ouvre moins en juin qu'en mai, l'app est en train de gagner.
 - **Le ressenti des clients** : Christelle Tehio mentionnera-t-elle l'app dans son prochain mail (« merci pour le rapport bien fait ») ?
@@ -348,7 +348,7 @@ Le format **WhatsApp groupe + chiffres nominatifs** est, sans le savoir, un **pa
 
 ## 10. Le post-pilote — ce que Patrick découvrira vendredi 17 à 18h
 
-### 3 contournements stables que NetoIAge doit accepter
+### 3 contournements stables que MemorIA doit accepter
 
 1. **WhatsApp restera le canal urgence.** Inutile de lutter. À documenter comme **canal légitime hors plateforme** dans la doctrine. La cohabitation est saine.
 2. **Le papier matinal pour certains chefs** (type Joseph, type Sandrine). À accepter comme **support de continuité physique**. Imprimer reste cheap.
@@ -367,7 +367,7 @@ Le format **WhatsApp groupe + chiffres nominatifs** est, sans le savoir, un **pa
 ### 2 victoires inattendues à célébrer
 
 1. **Tarek est un évangéliste naturel.** Lui donner un titre informel (pas un grade — doctrine V3) : « **agent référent pilote** » sur le site Lapérouse. Il pourra accompagner les nouveaux quand on déploiera.
-2. **Patrick a gagné 90 minutes mardi 14** (incident salle 312). Sans NetoIAge, Christelle aurait laissé un doute, Patrick aurait perdu une heure à téléphoner aux équipes. Premier ROI concret. À garder en tête comme **histoire-preuve interne** pour les futures objections clients.
+2. **Patrick a gagné 90 minutes mardi 14** (incident salle 312). Sans MemorIA, Christelle aurait laissé un doute, Patrick aurait perdu une heure à téléphoner aux équipes. Premier ROI concret. À garder en tête comme **histoire-preuve interne** pour les futures objections clients.
 
 ---
 
@@ -375,6 +375,6 @@ Le format **WhatsApp groupe + chiffres nominatifs** est, sans le savoir, un **pa
 
 > **« Le pilote terrain ne valide pas l'app. Il révèle les humains. »**
 
-NetoIAge fonctionne techniquement. La doctrine V3 tient majoritairement. Ce qui se joue cette semaine, c'est **comment 5 personnes vont apprivoiser l'app** — ou se laisser apprivoiser par elle. Le travail produit n'est pas terminé quand l'app marche : il est terminé quand Sandrine sourit, quand Joseph appelle de lui-même, quand Tarek arrête de prendre 50 photos, quand Maeva ferme son Excel, et quand Patrick laisse tomber son habitude de regarder le dashboard à 21h.
+MemorIA fonctionne techniquement. La doctrine V3 tient majoritairement. Ce qui se joue cette semaine, c'est **comment 5 personnes vont apprivoiser l'app** — ou se laisser apprivoiser par elle. Le travail produit n'est pas terminé quand l'app marche : il est terminé quand Sandrine sourit, quand Joseph appelle de lui-même, quand Tarek arrête de prendre 50 photos, quand Maeva ferme son Excel, et quand Patrick laisse tomber son habitude de regarder le dashboard à 21h.
 
 C'est un travail de **6 mois minimum**, pas d'une semaine. Le pilote est le premier centième.

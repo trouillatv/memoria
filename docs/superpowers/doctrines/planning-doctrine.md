@@ -1,4 +1,4 @@
-# Doctrine NetoIAge — V5 (mémoire opérationnelle par la preuve)
+﻿# Doctrine MemorIA — V5 (mémoire opérationnelle par la preuve)
 
 > ⚠️ **Cette V5 prévaut sur V3/V2/V1.** Elle ne porte plus uniquement sur le planning — elle définit la **nature du produit** entier, à la lumière de 6 scénarios humains analysés le 2026-05-13.
 
@@ -10,7 +10,7 @@
 
 ## La phrase qui résume tout — V5
 
-> **« NetoIAge est un système de mémoire opérationnelle par la preuve. Il réduit la charge mentale en augmentant la confiance. »**
+> **« MemorIA est un système de mémoire opérationnelle par la preuve. Il réduit la charge mentale en augmentant la confiance. »**
 
 Cette phrase remplace toutes les précédentes. Tout le reste découle.
 
@@ -36,7 +36,7 @@ Le terrain va injecter du bruit. Des demandes contradictoires vont arriver. Des 
 
 ### Pilier 1 — La nature du produit
 
-NetoIAge est un **système de mémoire opérationnelle par la preuve**. Pas un ERP. Pas un CRM. Pas un dispatching tool. Pas un SIRH. Pas un outil de ticketing.
+MemorIA est un **système de mémoire opérationnelle par la preuve**. Pas un ERP. Pas un CRM. Pas un dispatching tool. Pas un SIRH. Pas un outil de ticketing.
 
 Catégorie nouvelle. La continuité opérationnelle observée est une **conséquence** de la mémoire accumulée (12 mois de preuves que la concurrence ne peut pas copier). La mémoire est le mécanisme. La continuité est l'effet.
 
@@ -59,12 +59,12 @@ Charge mentale ↓ et confiance ↑ sont **le même mouvement**, pas deux mouvem
 
 Exemple structurel :
 - WhatsApp gagne la coordination chaude (7h45, un agent malade)
-- NetoIAge gagne la preuve froide (rapport mensuel, dossier de preuves)
+- MemorIA gagne la preuve froide (rapport mensuel, dossier de preuves)
 
 C'est une frontière saine, pas un échec.
 
 **Corollaire critique** (révélé par l'Agent 6 — anthropologue pilote) :
-> **« Mais NetoIAge doit empêcher le DG de transformer ces outils dominants en surveillance déléguée. »**
+> **« Mais MemorIA doit empêcher le DG de transformer ces outils dominants en surveillance déléguée. »**
 
 Si l'UI anonymise mais que le DG poste les noms dans WhatsApp groupe, la doctrine est cassée hors plateforme. Voir Maxim 9 ci-dessous.
 
@@ -91,10 +91,10 @@ La **dignité** prime sur la fonctionnalité : "Bonjour Joseph" en H1 a plus de 
 
 ### Pilier 6 — Le rapport au client final (infrastructure invisible)
 
-> **« NetoIAge est l'infrastructure invisible de crédibilité, jamais la star du document. »**
+> **« MemorIA est l'infrastructure invisible de crédibilité, jamais la star du document. »**
 
 Le héros visible du PDF doit rester l'entreprise cleaning (le prestataire du client final). Co-branding sobre :
-- Logo prestataire à gauche, marque NetoIAge à droite (footer)
+- Logo prestataire à gauche, marque MemorIA à droite (footer)
 - Signature DG en bas
 - URL stable de vérification
 
@@ -157,7 +157,7 @@ Une feature passe la doctrine **uniquement si** : réponse 1 = oui, réponse 2 =
 
 La plupart des SaaS B2B essayent d'optimiser, mesurer, accélérer, surveiller, contrôler, remplacer.
 
-NetoIAge fait l'inverse :
+MemorIA fait l'inverse :
 - **Stabilise** (mémoire qui ne s'efface pas)
 - **Mémorise** (chaque preuve compte)
 - **Rassure** (le DG sait, le client voit, l'agent oublie)
@@ -196,7 +196,7 @@ Un produit peut être éthique dans son interface tout en générant des comport
 
 C'est précisément ce que la **Maxim 9** code. La doctrine V5 n'est donc pas seulement technique. Elle est **culturelle**.
 
-**Conséquence stratégique** : NetoIAge a vocation à devenir un **manifeste public** — pas un secret commercial. Rendre les piliers V5 visibles à l'extérieur crée :
+**Conséquence stratégique** : MemorIA a vocation à devenir un **manifeste public** — pas un secret commercial. Rendre les piliers V5 visibles à l'extérieur crée :
 - Une **pression inverse** sur les utilisateurs ("je ne peux pas demander ça, c'est contre la charte")
 - Un **filtre commercial** (les clients alignés se reconnaissent, les non-alignés s'éliminent)
 - Un **positionnement intellectuel** difficile à copier (Salesforce ne peut pas dire "on ne mesure pas")
@@ -216,7 +216,7 @@ Le bouton *"Partager les détails dans WhatsApp"* (reco 3.A) est l'archétype d'
 
 Exemples potentiels post-pilote (à ne PAS coder avant observation terrain) :
 - Bouton "Copier le bilan mensuel dans la messagerie native"
-- Export "Fiche site PDF" pour impression (le cahier de Joseph reste, mais NetoIAge l'alimente)
+- Export "Fiche site PDF" pour impression (le cahier de Joseph reste, mais MemorIA l'alimente)
 - Bouton "Envoyer ce dossier en pièce jointe à mon CRM externe"
 - Lien iCal pour intégration calendrier Outlook (read-only, jamais l'inverse)
 
@@ -296,7 +296,7 @@ Toute nouvelle feature doit répondre OUI / OUI / NON / NON :
 
 ## Architecture conceptuelle V5
 
-> **NetoIAge = couche mémoire / structure / preuve**
+> **MemorIA = couche mémoire / structure / preuve**
 > **WhatsApp = couche émotionnelle / conversationnelle**
 > **Le manager humain = hub entre les deux**
 
@@ -306,7 +306,7 @@ Le système prépare le plateau. L'humain choisit de servir.
 
 # (Suite de la doctrine V3 ci-dessous — préservée comme socle historique)
 
-# Doctrine Planning NetoIAge — V3
+# Doctrine Planning MemorIA — V3
 
 > **Document de référence** — toute personne (humain ou subagent IA) qui touche au planning, aux missions, aux interventions, au calendrier ou à l'app agent terrain DOIT lire et appliquer cette doctrine.
 
@@ -326,7 +326,7 @@ Le système prépare le plateau. L'humain choisit de servir.
 
 Si tu hésites face à une décision, reviens à ces phrases. Tout le reste découle.
 
-**Cette doctrine n'est pas philosophique. C'est une protection stratégique du positionnement produit.** Si on cède sur "on mesure les humains", NetoIAge devient un ERP parmi d'autres et entre en concurrence frontale avec Skello, Combo, Monday, Factorial, FM tools. La doctrine est le moat.
+**Cette doctrine n'est pas philosophique. C'est une protection stratégique du positionnement produit.** Si on cède sur "on mesure les humains", MemorIA devient un ERP parmi d'autres et entre en concurrence frontale avec Skello, Combo, Monday, Factorial, FM tools. La doctrine est le moat.
 
 ---
 
@@ -393,7 +393,7 @@ Pourquoi : une vérité humaine fausse (écrite automatiquement) est pire qu'une
 
 ### Chevaux de Troie clients — Liste rouge V3
 
-À chaque demande client, appliquer le test : *« est-ce que ça transforme NetoIAge en ERP RH ? »*
+À chaque demande client, appliquer le test : *« est-ce que ça transforme MemorIA en ERP RH ? »*
 
 | Demande client | Réflexe doctrinal |
 |---|---|
@@ -408,7 +408,7 @@ Pourquoi : une vérité humaine fausse (écrite automatiquement) est pire qu'une
 | « Application de pointage » | ❌ Refus. |
 | « Heures travaillées pour la paie » | ❌ Pas le produit. |
 | « Notifier un agent spécifique » | ❌ Refus. Communication via équipe. |
-| « Pourquoi je ne peux pas voir l'historique d'un de mes agents ? » | ✅ Réponse cadrée : *« NetoIAge documente le travail réalisé, pas l'activité des personnes. C'est ce qui le distingue d'un ERP. »* |
+| « Pourquoi je ne peux pas voir l'historique d'un de mes agents ? » | ✅ Réponse cadrée : *« MemorIA documente le travail réalisé, pas l'activité des personnes. C'est ce qui le distingue d'un ERP. »* |
 
 ### Hors-scope structurels — Refus net (même si demandé pendant l'implémentation)
 
@@ -443,7 +443,7 @@ Pourquoi : une vérité humaine fausse (écrite automatiquement) est pire qu'une
 ## V2 — Évolution doctrinale (2026-05-12)
 
 ### Le pivot
-La V1 a refusé toute couche organisationnelle (pas de `assigned_to`, pas de vue semaine, pas de drag & drop) par peur de la dérive RH. **Le feedback terrain a montré que c'était trop restrictif** : les superviseurs cleaning pensent naturellement en semaine, sites, équipes, remplacement. Si NetoIAge ne couvre pas cette couche, ils retournent sur Excel — et le mobile terrain décroche, le moat s'effrite.
+La V1 a refusé toute couche organisationnelle (pas de `assigned_to`, pas de vue semaine, pas de drag & drop) par peur de la dérive RH. **Le feedback terrain a montré que c'était trop restrictif** : les superviseurs cleaning pensent naturellement en semaine, sites, équipes, remplacement. Si MemorIA ne couvre pas cette couche, ils retournent sur Excel — et le mobile terrain décroche, le moat s'effrite.
 
 **Le pivot V2** : le problème n'est pas le planning. Le problème est **qui devient l'objet du système**.
 
@@ -548,7 +548,7 @@ Quand un client demandera "combien d'heures Mehdi a fait cette semaine ?" :
 
 ❌ NE PAS : "On peut ajouter ça"
 ❌ NE PAS : "Peut-être dans une V2"
-✅ **DIRE** : "NetoIAge ne gère pas le temps de travail. Pour ça, branchez votre SIRH (Lucca, Skello, etc.). NetoIAge vous donne autre chose : les preuves de service rendu."
+✅ **DIRE** : "MemorIA ne gère pas le temps de travail. Pour ça, branchez votre SIRH (Lucca, Skello, etc.). MemorIA vous donne autre chose : les preuves de service rendu."
 
 **Le scope assumé est le moat.** Élargir = devenir générique = perdre le positionnement.
 
@@ -651,7 +651,7 @@ Ces demandes vont arriver pendant les pilotes. **Réponse préparée = NON**, av
 |---|---|---|
 | « On peut pointer l'arrivée des agents ? » | ❌ | Le `started_at` de l'intervention existe déjà (factuel, jamais affiché comme un pointage). Pas d'extension RH. |
 | « Voir qui est en retard ce matin ? » | ❌ | Vue « missions non démarrées ». Pas d'humain pointé. Si l'utilisateur veut savoir QUI, il ouvre l'intervention et voit `team[]` — c'est tout. |
-| « Calculer les heures hebdo par agent ? » | ❌ | Export CSV des interventions, faites votre paie ailleurs (Skello, PayFit, autre). NetoIAge ne calculera jamais d'heures. |
+| « Calculer les heures hebdo par agent ? » | ❌ | Export CSV des interventions, faites votre paie ailleurs (Skello, PayFit, autre). MemorIA ne calculera jamais d'heures. |
 | « Meilleure tournée pour mes 5 sites ? » | ❌ | Vous restez maître de l'ordre. Pas d'optimisation. |
 | « Le planning de Mehdi cette semaine ? » | ❌ | Vue « missions du site X » filtrable. Vue centrée personne refusée. |
 | « Notification quand un agent est en retard ? » | ❌ | Pas de notification. Vue dashboard async suffit. |

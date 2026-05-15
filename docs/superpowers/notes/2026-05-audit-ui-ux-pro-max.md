@@ -1,4 +1,4 @@
-# Audit UI/UX NetoIAge — pré-pilote terrain (2026-05-12)
+﻿# Audit UI/UX MemorIA — pré-pilote terrain (2026-05-12)
 
 > Audit produit par un agent UI/UX senior, doctrine V2 respectée (sobriété calme, anonymisation, chaîne immuable, planning = preuve).
 > À utiliser comme base pour la phase "design polish" pré-pilote terrain.

@@ -1,4 +1,4 @@
-'use server'
+﻿'use server'
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
@@ -21,7 +21,7 @@ async function requireAdmin() {
 // Le même mot de passe pour tous les comptes créés en mode temp_password et
 // pour tous les resets. Le flag must_change_password + middleware enforce
 // le changement à la première connexion. Voir docs/10_JOURNAL_DECISIONS.md.
-const TEMP_PASSWORD = 'netoiage2026'
+const TEMP_PASSWORD = 'memoria2026'
 
 const createSchema = z.object({
   email: z.string().email(),
