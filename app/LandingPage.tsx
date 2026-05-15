@@ -203,41 +203,49 @@ export default function LandingPage() {
             <p className="mt-3 text-gray-500">Ce que vos équipes vivent mais n'arrivent pas à formuler.</p>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-gray-950 p-6 shadow-xl font-mono text-sm space-y-5">
+          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-100">
 
-            <div className="flex items-start gap-4 border-b border-gray-800 pb-5">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400 mt-0.5" />
+            <div className="flex items-start gap-4 p-6">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
               <div>
-                <p className="text-amber-300 font-semibold mb-1">Bloc B · Tour Pentecost</p>
-                <p className="text-gray-400 leading-relaxed">
-                  Problème de robinet signalé en <span className="text-white">octobre</span>,
-                  fuite d'eau notée en <span className="text-white">janvier</span>,
-                  moisissure photographiée en <span className="text-white">mars</span>.
-                  Trois signalements distincts. <span className="text-amber-300">Un seul problème non traité.</span>
+                <p className="font-semibold text-gray-900 mb-1">Bloc B · Tour Pentecost</p>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  Problème de robinet signalé en <span className="font-medium text-gray-900">octobre</span>,
+                  fuite d'eau notée en <span className="font-medium text-gray-900">janvier</span>,
+                  moisissure photographiée en <span className="font-medium text-gray-900">mars</span>.
+                  Trois signalements distincts.{' '}
+                  <span className="font-semibold text-amber-600">Un seul problème non traité.</span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-4 border-b border-gray-800 pb-5">
-              <Clock className="h-5 w-5 shrink-0 text-red-400 mt-0.5" />
+            <div className="flex items-start gap-4 p-6">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50">
+                <Clock className="h-5 w-5 text-red-500" />
+              </div>
               <div>
-                <p className="text-red-300 font-semibold mb-1">Entrée nord · Résidence Baie des Citrons</p>
-                <p className="text-gray-400 leading-relaxed">
-                  Absente du planning depuis <span className="text-white">11 semaines</span>.
+                <p className="font-semibold text-gray-900 mb-1">Entrée nord · Résidence Baie des Citrons</p>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  Absente du planning depuis <span className="font-medium text-gray-900">11 semaines</span>.
                   Aucune alerte envoyée. Le client n'a pas encore réclamé.{' '}
-                  <span className="text-red-300">Il va le faire.</span>
+                  <span className="font-semibold text-red-600">Il va le faire.</span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-4">
-              <Layers className="h-5 w-5 shrink-0 text-brand-400 mt-0.5" />
+            <div className="flex items-start gap-4 p-6">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50">
+                <Layers className="h-5 w-5 text-brand-600" />
+              </div>
               <div>
-                <p className="text-brand-300 font-semibold mb-1">Appel d'offres · Mairie de Nouméa</p>
-                <p className="text-gray-400 leading-relaxed">
+                <p className="font-semibold text-gray-900 mb-1">Appel d'offres · Mairie de Nouméa</p>
+                <p className="text-sm text-gray-500 leading-relaxed">
                   Critère "traçabilité des passages" demandé.{' '}
-                  <span className="text-white">47 interventions documentées</span> sur des sites comparables
-                  dans votre historique. <span className="text-brand-300">Dossier de références prêt en 1 clic.</span>
+                  <span className="font-medium text-gray-900">47 interventions documentées</span> sur des sites comparables
+                  dans votre historique.{' '}
+                  <span className="font-semibold text-brand-600">Dossier de références prêt en 1 clic.</span>
                 </p>
               </div>
             </div>
