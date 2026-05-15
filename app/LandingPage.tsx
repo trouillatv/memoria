@@ -2,7 +2,7 @@ import Link from 'next/link'
 import {
   Shield, ClipboardList, Camera, FileText, Users, TrendingUp,
   CheckCircle2, ArrowRight, Building2, HardHat, Briefcase,
-  AlertTriangle, Clock, Layers,
+  AlertTriangle, Clock, Layers, Sparkles,
 } from 'lucide-react'
 
 export default function LandingPage() {
