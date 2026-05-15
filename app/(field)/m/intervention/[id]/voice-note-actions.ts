@@ -20,6 +20,61 @@ function mimeToExt(mime: string): string {
   return 'webm'
 }
 
+// Même priorité que les embeddings : Google → OpenAI → vide
+async function transcribeAudio(rawBuffer: ArrayBuffer, mimeType: string, ext: string): Promise<string> {
+  if (process.env.GOOGLE_GENAI_API_KEY) {
+    return transcribeWithGemini(rawBuffer, mimeType)
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return transcribeWithWhisper(rawBuffer, mimeType, ext)
+  }
+  return ''
+}
+
+async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY!
+  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.0-flash'
+  const base64 = Buffer.from(rawBuffer).toString('base64')
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: mimeType, data: base64 } },
+            { text: 'Transcris cet audio en français. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.' },
+          ],
+        }],
+        generationConfig: { temperature: 0 },
+      }),
+    },
+  )
+
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`)
+  const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+}
+
+async function transcribeWithWhisper(rawBuffer: ArrayBuffer, mimeType: string, ext: string): Promise<string> {
+  const whisperForm = new FormData()
+  whisperForm.append('file', new Blob([rawBuffer], { type: mimeType }), `voice.${ext}`)
+  whisperForm.append('model', 'whisper-1')
+  whisperForm.append('language', 'fr')
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: whisperForm,
+  })
+
+  if (!res.ok) throw new Error(`Whisper ${res.status}`)
+  const { text } = (await res.json()) as { text: string }
+  return text
+}
+
 // ---------------------------------------------------------------------------
 // uploadVoiceNoteAction — upload + transcription Whisper en une passe
 // Retourne { noteId, transcription } au client pour review humaine.
@@ -62,10 +117,11 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
   const storagePath = `${site.tenant_id}/${site.id}/${intervention_id}/${noteId}.${ext}`
 
   // Upload artefact brut
-  const audioBuffer = Buffer.from(await audioFile.arrayBuffer())
+  const rawBuffer = await audioFile.arrayBuffer() as ArrayBuffer
+  const audioBytes = new Uint8Array(rawBuffer)
   const { error: uploadErr } = await supabase.storage
     .from(BUCKET)
-    .upload(storagePath, audioBuffer, { contentType: mime_type, upsert: false })
+    .upload(storagePath, audioBytes, { contentType: mime_type, upsert: false })
   if (uploadErr) return { error: 'Échec de l\'enregistrement' }
 
   // Insérer la ligne (couche 1 persistée)
@@ -83,30 +139,9 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
   })
   if (insertErr) return { error: 'Erreur base de données' }
 
-  // Transcription Whisper (couche 2)
-  if (!process.env.OPENAI_API_KEY) {
-    // Pas de clé → retourner transcription vide pour que l'humain saisisse lui-même
-    await supabase
-      .from('intervention_voice_notes')
-      .update({ transcription_status: 'failed', status: 'transcribed' })
-      .eq('id', noteId)
-    return { noteId, transcription: '' }
-  }
-
+  // Transcription — Google Gemini (priorité) ou Whisper (fallback), même logique que embeddings
   try {
-    const whisperForm = new FormData()
-    whisperForm.append('file', new Blob([audioBuffer], { type: mime_type }), `voice.${ext}`)
-    whisperForm.append('model', 'whisper-1')
-    whisperForm.append('language', 'fr')
-
-    const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-      body: whisperForm,
-    })
-
-    if (!whisperRes.ok) throw new Error(`Whisper ${whisperRes.status}`)
-    const { text } = (await whisperRes.json()) as { text: string }
+    const text = await transcribeAudio(rawBuffer, mime_type, ext)
 
     await supabase
       .from('intervention_voice_notes')
