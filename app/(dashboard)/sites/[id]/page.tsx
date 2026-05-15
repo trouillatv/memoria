@@ -125,15 +125,11 @@ export default async function SitePage({ params }: PageProps) {
         <ASavoirManager siteId={id} active={aSavoirActive} />
       )}
 
-      {/* COUCHE 1 — Cockpit opérationnel (lecture 3 sec) */}
-      <Card>
-        <CardHeader>
-          <CardTitle>État actuel</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CurrentState state={currentState} />
-        </CardContent>
-      </Card>
+      {/* COUCHE 1 — Cockpit opérationnel : 4 stats inline, sans carte. */}
+      {/* Suppression du Card wrapper → les lectures remontent à l'écran.  */}
+      <div className="pb-2 border-b border-border/40">
+        <CurrentState state={currentState} />
+      </div>
 
       {/* COUCHE 3 — Lectures du lieu (IA perceptive) — toujours visible */}
       <Card className="bg-[#fafaf7] border-foreground/10">

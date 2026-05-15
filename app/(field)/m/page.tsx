@@ -251,8 +251,15 @@ export default async function FieldHomePage({
   const todaySiteIds = Array.from(new Set(
     selectedInterventions.map((i) => missionById.get(i.mission_id)?.site_id).filter((id): id is string => !!id)
   ))
+  // Missions en cours aujourd'hui → exclues de la liste d'absences pour éviter
+  // de signaler comme "absent" ce que Joseph est justement en train de faire.
+  const todayMissionNames = new Set(
+    selectedInterventions.map((i) => missionById.get(i.mission_id)?.name).filter((n): n is string => !!n)
+  )
   const mobileAbsences = isToday && todaySiteIds.length > 0
-    ? (await Promise.all(todaySiteIds.map((sid) => findMissionAbsences(sid)))).flat().sort((a, b) => b.weeksSince - a.weeksSince).slice(0, 2)
+    ? (await Promise.all(todaySiteIds.map((sid) => findMissionAbsences(sid)))).flat()
+        .filter((abs) => !todayMissionNames.has(abs.missionName))
+        .sort((a, b) => b.weeksSince - a.weeksSince).slice(0, 2)
     : []
 
   if (interventions.length === 0) {

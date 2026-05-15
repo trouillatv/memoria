@@ -371,13 +371,15 @@ export default async function PublicProofPage({ params }: PageProps) {
         </Card>
       )}
 
-      {/* Lecture du lieu — 1 fragment max, wording externe, sobre */}
+      {/* Lecture du lieu — 1 fragment max, wording externe, sobre.
+          Séparateur fin avant : le client doit "tomber dessus" après les preuves,
+          pas le voir annoncé. Effet mémoire vivante. */}
       {proofPageReading && (
-        <div className="px-1">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+        <div className="border-t border-border/40 pt-5 px-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60 mb-2">
             Lecture du lieu
           </p>
-          <p className="text-sm text-muted-foreground italic">
+          <p className="text-sm text-foreground/60 leading-relaxed">
             {proofPageReading}
           </p>
         </div>
