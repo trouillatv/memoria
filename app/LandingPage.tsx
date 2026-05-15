@@ -2,6 +2,7 @@ import Link from 'next/link'
 import {
   Shield, ClipboardList, Camera, FileText, Users, TrendingUp,
   CheckCircle2, ArrowRight, Building2, HardHat, Briefcase,
+  Sparkles, Brain, Zap, BookOpen,
 } from 'lucide-react'
 
 export default function LandingPage() {
@@ -28,8 +29,13 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-6 py-20 md:py-28">
         <div className="grid gap-12 md:grid-cols-2 md:items-center">
           <div className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-              Gestion terrain · Preuves · Appels d'offres
+            <div className="flex flex-wrap gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+                Gestion terrain · Preuves · Appels d'offres
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
+                <Sparkles className="h-3 w-3" /> Propulsé par l'IA
+              </div>
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-gray-900 md:text-5xl">
               Chaque intervention<br />
@@ -89,6 +95,12 @@ export default function LandingPage() {
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-brand-100 bg-brand-50 p-3">
               <FileText className="h-4 w-4 shrink-0 text-brand-600" />
               <p className="text-xs text-brand-700 font-medium">Rapport mensuel généré automatiquement · Prêt à envoyer</p>
+            </div>
+            <div className="mt-2 flex items-start gap-2 rounded-xl border border-violet-100 bg-violet-50 p-3">
+              <Sparkles className="h-4 w-4 shrink-0 text-violet-500 mt-0.5" />
+              <p className="text-xs text-violet-700 font-medium">
+                <span className="font-bold">IA ·</span> Anomalie récurrente détectée sur "Allée A" — humidité signalée 3 fois ce mois. Recommandation générée.
+              </p>
             </div>
           </div>
         </div>
@@ -194,8 +206,55 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* BÉNÉFICES */}
+      {/* IA */}
       <section className="py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="mb-12 text-center">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
+              <Sparkles className="h-3.5 w-3.5" /> Intelligence artificielle intégrée
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">L'IA travaille pendant que vos équipes interviennent</h2>
+            <p className="mt-3 text-gray-500">Pas un chatbot. Une IA entraînée sur le terrain du nettoyage.</p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2">
+            {[
+              {
+                icon: <Brain className="h-6 w-6 text-violet-600" />,
+                title: 'Mémoire relationnelle',
+                desc: 'L\'IA relie les signaux faibles entre eux : une humidité signalée en janvier et une moisissure en mars sur le même site, c\'est le même problème. Elle vous alerte avant que le client ne le fasse.',
+              },
+              {
+                icon: <BookOpen className="h-6 w-6 text-violet-600" />,
+                title: 'Analyse des appels d\'offres',
+                desc: 'Copiez-collez un AO, l\'IA extrait les critères clés, les compare à votre historique terrain et génère une recommandation de réponse chiffrée en quelques secondes.',
+              },
+              {
+                icon: <FileText className="h-6 w-6 text-violet-600" />,
+                title: 'Rédaction automatique',
+                desc: 'Dossiers de preuves, rapports mensuels, lettres de réponse à litige — l\'IA rédige en français professionnel à partir de vos données terrain. Vous relisez, vous envoyez.',
+              },
+              {
+                icon: <Zap className="h-6 w-6 text-violet-600" />,
+                title: 'Briefing quotidien',
+                desc: 'Chaque matin, l\'IA analyse les interventions de la veille et vous envoie un résumé : retards, anomalies, sites à surveiller — sans que vous ayez à chercher.',
+              },
+            ].map((f) => (
+              <div key={f.title} className="flex gap-4 rounded-2xl border border-violet-100 bg-white p-6 shadow-sm">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50">
+                  {f.icon}
+                </div>
+                <div>
+                  <h3 className="mb-1.5 font-semibold text-gray-900">{f.title}</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* BÉNÉFICES */}
+      <section className="bg-gray-50 py-20">
         <div className="mx-auto max-w-6xl px-6">
           <h2 className="mb-12 text-center text-2xl font-bold text-gray-900">Ce que vous y gagnez</h2>
           <div className="grid gap-6 md:grid-cols-3">
