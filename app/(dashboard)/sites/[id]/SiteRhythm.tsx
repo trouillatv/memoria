@@ -10,7 +10,7 @@ export function SiteRhythm({ days }: { days: SiteRhythmDay[] }) {
   if (allEmpty) {
     return (
       <p className="text-sm text-muted-foreground italic">
-        Pas de trace ces 14 derniers jours.
+        Pas de passage ces 14 derniers jours.
       </p>
     )
   }

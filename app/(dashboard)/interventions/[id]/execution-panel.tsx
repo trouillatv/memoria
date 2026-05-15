@@ -2,13 +2,14 @@
 
 import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Check, Play, CheckCircle2 } from 'lucide-react'
+import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   startInterventionAction,
   completeInterventionAction,
   toggleChecklistItemAction,
   uploadInterventionPhotoAction,
+  reopenInterventionAction,
 } from './intervention-actions'
 import type { DbIntervention, DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind } from '@/types/db'
 
@@ -42,9 +43,17 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
   const [uploadKind, setUploadKind] = useState<PhotoKind>('after')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const canExecute = intervention.status === 'in_progress'
+  const [justCompleted, setJustCompleted] = useState(false)
+  const [showJustification, setShowJustification] = useState(false)
+  const [justificationComment, setJustificationComment] = useState('')
+  const [missingCount, setMissingCount] = useState(0)
+  const [reopenOpen, setReopenOpen] = useState(false)
+  const [reopenPassword, setReopenPassword] = useState('')
+
+  const isCompleted = intervention.status === 'completed' || justCompleted
+  const canExecute = intervention.status === 'in_progress' && !justCompleted
   const canStart = intervention.status === 'planned'
-  const canComplete = intervention.status === 'in_progress'
+  const canComplete = intervention.status === 'in_progress' && !justCompleted
 
   const photosByItem = new Map<string, DbInterventionPhoto[]>()
   const freePhotos: DbInterventionPhoto[] = []
@@ -68,19 +77,51 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
     })
   }
 
-  function handleComplete() {
+  function handleComplete(comment?: string) {
     const fd = new FormData()
     fd.set('id', intervention.id)
+    if (comment) fd.set('comment', comment)
     startTransition(async () => {
       const r = await completeInterventionAction(fd)
-      if (r && 'error' in r && r.error) toast.error(r.error)
-      else { toast.success('Intervention terminée'); router.refresh() }
+      if (r && 'error' in r) {
+        if (r.error === 'comment_required') {
+          setMissingCount((r as { missingCount: number }).missingCount ?? 0)
+          setShowJustification(true)
+        } else if (r.error) {
+          toast.error(r.error)
+        }
+      } else {
+        setJustCompleted(true)
+        setShowJustification(false)
+        toast.success('Intervention terminée')
+        router.refresh()
+      }
+    })
+  }
+
+  function handleReopen() {
+    if (!reopenPassword) { toast.error('Mot de passe requis'); return }
+    const fd = new FormData()
+    fd.set('intervention_id', intervention.id)
+    fd.set('password', reopenPassword)
+    startTransition(async () => {
+      const r = await reopenInterventionAction(fd)
+      if (r && 'error' in r && r.error) {
+        toast.error(r.error)
+      } else {
+        toast.success('Intervention réouverte')
+        setReopenOpen(false)
+        setReopenPassword('')
+        setJustCompleted(false)
+        router.refresh()
+      }
     })
   }
 
   function handleToggleItem(itemId: string, currentDone: boolean) {
     const fd = new FormData()
     fd.set('id', itemId)
+    fd.set('intervention_id', intervention.id)
     fd.set('done', (!currentDone).toString())
     startTransition(async () => {
       const r = await toggleChecklistItemAction(fd)
@@ -270,21 +311,130 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
         className="hidden"
       />
 
-      {/* Complete button */}
-      {canComplete && (
+      {/* Complete button / justification form */}
+      {canComplete && !showJustification && (
         <section className="rounded-lg border bg-card p-4">
           <button
             type="button"
-            onClick={handleComplete}
+            onClick={() => handleComplete()}
             disabled={pending}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded border bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border-2 border-emerald-600 bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors"
           >
-            <CheckCircle2 className="h-4 w-4" />
+            <CheckCircle2 className="h-5 w-5" />
             {pending ? '...' : "Terminer l'intervention"}
           </button>
-          <p className="text-[11px] text-muted-foreground mt-2">
-            Toutes les tâches obligatoires (*) doivent être cochées. Vous pourrez ensuite faire valider par un superviseur.
+        </section>
+      )}
+
+      {canComplete && showJustification && (
+        <section className="rounded-lg border bg-card p-4 space-y-3">
+          <h3 className="text-sm font-semibold">
+            {missingCount} tâche{missingCount > 1 ? 's' : ''} obligatoire{missingCount > 1 ? 's' : ''} non cochée{missingCount > 1 ? 's' : ''}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Précisez pourquoi au superviseur avant de terminer.
           </p>
+          <textarea
+            value={justificationComment}
+            onChange={(e) => setJustificationComment(e.target.value)}
+            rows={3}
+            maxLength={500}
+            disabled={pending}
+            autoFocus
+            placeholder="Ex : accès au local technique fermé, matériel manquant…"
+            className="w-full rounded border p-2 text-sm bg-background"
+          />
+          <div className="flex justify-between items-center">
+            <button
+              type="button"
+              onClick={() => { setShowJustification(false); setJustificationComment('') }}
+              disabled={pending}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              ← Retour
+            </button>
+            <button
+              type="button"
+              onClick={() => handleComplete(justificationComment)}
+              disabled={pending || !justificationComment.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-emerald-600 bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {pending ? '...' : 'Terminer avec justification'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Intervention terminée — état verrouillé + bouton Réouvrir */}
+      {isCompleted && (
+        <section className="rounded-lg border-2 border-emerald-300 bg-emerald-50/60 p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-8 w-8 text-emerald-600 shrink-0" />
+            <div>
+              <div className="text-lg font-bold text-emerald-900">Intervention terminée</div>
+              {intervention.executed_at && (
+                <div className="text-sm text-emerald-700/80 mt-0.5">
+                  Terminée le{' '}
+                  {new Date(intervention.executed_at).toLocaleDateString('fr-FR', {
+                    weekday: 'long',
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-emerald-700/70">
+            L&apos;intervention est verrouillée. La checklist ne peut plus être modifiée.
+          </p>
+
+          {!reopenOpen ? (
+            <button
+              type="button"
+              onClick={() => setReopenOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border-2 border-sky-300 bg-sky-50 text-sky-900 text-sm font-medium hover:bg-sky-100"
+            >
+              <UnlockKeyhole className="h-4 w-4" /> Réouvrir l&apos;intervention
+            </button>
+          ) : (
+            <div className="rounded-lg border-2 border-sky-200 bg-sky-50/60 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4 text-sky-700" />
+                <h3 className="text-sm font-semibold text-sky-900">Réouverture — mot de passe requis</h3>
+              </div>
+              <input
+                type="password"
+                value={reopenPassword}
+                onChange={(e) => setReopenPassword(e.target.value)}
+                placeholder="Votre mot de passe"
+                autoComplete="current-password"
+                autoFocus
+                disabled={pending}
+                className="w-full rounded border p-2 text-sm bg-background"
+                onKeyDown={(e) => { if (e.key === 'Enter' && reopenPassword) handleReopen() }}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setReopenOpen(false); setReopenPassword('') }}
+                  disabled={pending}
+                  className="px-3 py-1.5 rounded border text-sm disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReopen}
+                  disabled={pending || !reopenPassword}
+                  className="px-3 py-1.5 rounded border bg-foreground text-background text-sm disabled:opacity-50"
+                >
+                  {pending ? 'Vérification…' : 'Confirmer la réouverture'}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </>

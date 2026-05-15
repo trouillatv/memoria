@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Clock, Check } from 'lucide-react'
+import { MapPin, Clock, Check, AlertTriangle } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -18,6 +18,8 @@ import { StartInterventionButton } from './start-intervention-button'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
 import { SkipInterventionTrigger } from './skip-modal'
+import { RescheduleTriggerMobile } from './RescheduleTriggerMobile'
+import { SmartBackLink } from '@/components/nav/SmartBackLink'
 import { AddSiteNoteButton } from './AddSiteNoteButton'
 import { SiteResumeCard } from './SiteResumeCard'
 import { SiteAccessCard } from './SiteAccessCard'
@@ -150,15 +152,26 @@ export default async function FieldInterventionPage({ params }: { params: Promis
 
   const hasMissingRequired = checklistItems.some((i) => i.required && !i.done)
 
+  // Détecte si l'équipe affectée a un chef d'équipe actif. Avertissement seul
+  // (non-blocant) : la clôture terrain repose normalement sur un chef d'équipe.
+  let teamHasNoChef = false
+  if (intervention.assigned_team_id && (isPlanned || isInProgress)) {
+    const { data: chefRows } = await supabase
+      .from('team_members')
+      .select('user:users(role)')
+      .eq('team_id', intervention.assigned_team_id)
+      .is('left_at', null)
+    type MemberRow = { user: { role: string } | Array<{ role: string }> | null }
+    const hasChef = ((chefRows ?? []) as MemberRow[]).some((m) => {
+      const u = Array.isArray(m.user) ? m.user[0] : m.user
+      return u?.role === 'chef_equipe'
+    })
+    teamHasNoChef = !hasChef
+  }
+
   return (
     <div className="space-y-5 max-w-md">
-      <Link
-        href="/m"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground active:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Mes missions
-      </Link>
+      <SmartBackLink fallbackHref="/m" label="Retour" size="md" />
 
       <header className="space-y-2">
         <h1 className="text-xl font-semibold">{site?.name ?? 'Intervention'}</h1>
@@ -201,6 +214,18 @@ export default async function FieldInterventionPage({ params }: { params: Promis
               Raison&nbsp;: {intervention.skipped_reason}
             </div>
           )}
+        </div>
+      )}
+
+      {teamHasNoChef && !isSkipped && !isCompleted && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-medium">Équipe sans chef d&apos;équipe actif</div>
+            <div className="text-xs text-amber-900/80 mt-0.5">
+              La clôture terrain est prévue par un chef d&apos;équipe. Préviens le gérant si besoin.
+            </div>
+          </div>
         </div>
       )}
 
@@ -287,12 +312,16 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         </div>
       )}
 
-      {/* Slice 6.4 — Bouton « Pas aujourd'hui » sobre, uniquement si planned
-          (pas commencée, pas terminée, pas déjà sautée). Placé en bas, séparé
-          du CTA principal pour signaler l'usage exceptionnel. */}
+      {/* Slice 6.4 — Boutons d'action quand l'intervention est encore planifiée :
+          - Annuler l'opération de ce jour
+          - Décaler l'intervention (si équipe affectée)
+          Côte-à-côte, sobres, séparés du CTA principal. */}
       {!isSkipped && isPlanned && (
-        <div className="mt-8 pt-4 border-t border-border">
+        <div className="mt-8 pt-4 border-t border-border grid grid-cols-2 gap-2">
           <SkipInterventionTrigger interventionId={id} />
+          {intervention.assigned_team_id && (
+            <RescheduleTriggerMobile interventionId={id} />
+          )}
         </div>
       )}
 

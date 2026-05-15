@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, MapPin, Clock, CheckCircle2, CalendarDays } from 'lucide-react'
+import { ArrowRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -7,7 +7,9 @@ import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
+import { todayLocalIso, localDateOf, addDaysLocal } from '@/lib/time/local-date'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
+import { DateNav } from './DateNav'
 
 /** J1 — Prénom de l'agent à partir du `full_name` (1er mot). Fallback : local-part
  * de l'email avant `@` capitalisée. Évite « Bonjour user@email.com » disgracieux. */
@@ -29,8 +31,8 @@ function truncate(s: string, n: number): string {
 function formatScheduledTime(iso: string): { day: string; time: string; isToday: boolean; isPast: boolean } {
   const d = new Date(iso)
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const dayStr = d.toISOString().split('T')[0]
+  const today = localDateOf(now)
+  const dayStr = localDateOf(d)
   const isToday = dayStr === today
   const isPast = d.getTime() < now.getTime()
 
@@ -59,9 +61,22 @@ const SLOT_BADGE_CLASSES: Record<string, string> = {
   evening: 'bg-indigo-100 text-indigo-900 border-indigo-200',
 }
 
-export default async function FieldHomePage() {
+export default async function FieldHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>
+}) {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
+
+  const params = await searchParams
+  const todayIso = todayLocalIso()
+  const selectedDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date)
+    ? params.date
+    : todayIso
+  const isToday = selectedDate === todayIso
+  const isPast = selectedDate < todayIso
+  const isFuture = selectedDate > todayIso
 
   // Slice 6.3 — Génération paresseuse silencieuse AVANT le fetch des
   // interventions du jour. On identifie les sites du chef_equipe via ses
@@ -110,6 +125,99 @@ export default async function FieldHomePage() {
 
   const interventions = await listInterventionsVisibleToUser(user.id)
 
+  // KPI chef d'équipe : interventions terminées sur les 7 derniers jours glissants
+  // avec tâches obligatoires non cochées.
+  type IncompleteKPI = { interventionId: string; missionName: string; siteName: string; missingCount: number; executedAt: string | null }
+  let incompleteKPIs: IncompleteKPI[] = []
+  if (user.role === 'chef_equipe' || user.role === 'admin' || user.role === 'manager') {
+    const sevenDaysAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString()
+    const completedRecentIds = interventions
+      .filter((i) => (i.status === 'completed' || i.status === 'validated') && i.executed_at && i.executed_at >= sevenDaysAgoIso)
+      .map((i) => i.id)
+    if (completedRecentIds.length > 0) {
+      const { data: missingItems } = await supabase
+        .from('intervention_checklist_items')
+        .select('intervention_id')
+        .in('intervention_id', completedRecentIds)
+        .eq('required', true)
+        .eq('done', false)
+      const missingByIntervention = new Map<string, number>()
+      for (const row of (missingItems ?? []) as Array<{ intervention_id: string }>) {
+        missingByIntervention.set(row.intervention_id, (missingByIntervention.get(row.intervention_id) ?? 0) + 1)
+      }
+      if (missingByIntervention.size > 0) {
+        const missionIdsNeeded = Array.from(missingByIntervention.keys()).map((id) => interventions.find((i) => i.id === id)?.mission_id).filter((id): id is string => !!id)
+        const missionsForKPI = missionIdsNeeded.length === 0
+          ? []
+          : (await Promise.all(missionIdsNeeded.map((id) => getMission(id)))).filter((m): m is NonNullable<typeof m> => !!m)
+        const siteIdsForKPI = Array.from(new Set(missionsForKPI.map((m) => m.site_id)))
+        const { data: sitesForKPI } = siteIdsForKPI.length === 0
+          ? { data: [] as Array<{ id: string; name: string }> }
+          : await supabase.from('sites').select('id, name').in('id', siteIdsForKPI)
+        const siteByIdKPI = new Map((sitesForKPI ?? []).map((s) => [s.id, s]))
+        const missionByIdKPI = new Map(missionsForKPI.map((m) => [m.id, m]))
+        for (const [intId, count] of missingByIntervention.entries()) {
+          const intv = interventions.find((i) => i.id === intId)
+          const mission = intv ? missionByIdKPI.get(intv.mission_id) : null
+          const site = mission ? siteByIdKPI.get(mission.site_id) : null
+          incompleteKPIs.push({
+            interventionId: intId,
+            missionName: mission?.name ?? 'Intervention',
+            siteName: site?.name ?? '',
+            missingCount: count,
+            executedAt: intv?.executed_at ?? null,
+          })
+        }
+        // Tri du plus récent au plus ancien
+        incompleteKPIs.sort((a, b) => (b.executedAt ?? '').localeCompare(a.executedAt ?? ''))
+      }
+    }
+  }
+
+  // À régulariser : interventions des 7 derniers jours (hors aujourd'hui)
+  // toujours en 'planned'. Ce sont des passages oubliés — ni terminés, ni
+  // décalés, ni annulés. Le chef d'équipe doit les traiter pour fermer
+  // proprement la dette opérationnelle.
+  type OverdueKPI = { interventionId: string; missionName: string; siteName: string; scheduledFor: string; daysAgo: number }
+  let overdueKPIs: OverdueKPI[] = []
+  if (user.role === 'chef_equipe' || user.role === 'admin' || user.role === 'manager') {
+    const sevenAgoIso = addDaysLocal(todayIso, -7)
+    const overdueRaw = interventions.filter(
+      (i) => i.status === 'planned'
+        && i.scheduled_for
+        && i.scheduled_for >= sevenAgoIso
+        && i.scheduled_for < todayIso,
+    )
+    if (overdueRaw.length > 0) {
+      const missionIdsNeeded = Array.from(new Set(overdueRaw.map((i) => i.mission_id)))
+      const missionsForOv = (await Promise.all(missionIdsNeeded.map((id) => getMission(id))))
+        .filter((m): m is NonNullable<typeof m> => !!m)
+      const siteIdsForOv = Array.from(new Set(missionsForOv.map((m) => m.site_id)))
+      const { data: sitesForOv } = siteIdsForOv.length === 0
+        ? { data: [] as Array<{ id: string; name: string }> }
+        : await supabase.from('sites').select('id, name').in('id', siteIdsForOv)
+      const siteByIdOv = new Map((sitesForOv ?? []).map((s) => [s.id, s]))
+      const missionByIdOv = new Map(missionsForOv.map((m) => [m.id, m]))
+      const [ty, tm, td] = todayIso.split('-').map(Number)
+      const todayUtcMs = Date.UTC(ty, tm - 1, td)
+      for (const i of overdueRaw) {
+        const mission = missionByIdOv.get(i.mission_id)
+        const site = mission ? siteByIdOv.get(mission.site_id) : null
+        const [sy, sm, sd] = (i.scheduled_for ?? '').split('-').map(Number)
+        const daysAgo = Math.round((todayUtcMs - Date.UTC(sy, sm - 1, sd)) / 86_400_000)
+        overdueKPIs.push({
+          interventionId: i.id,
+          missionName: mission?.name ?? 'Intervention',
+          siteName: site?.name ?? '',
+          scheduledFor: i.scheduled_for!,
+          daysAgo,
+        })
+      }
+      // Plus ancien d'abord (priorité de régularisation)
+      overdueKPIs.sort((a, b) => b.daysAgo - a.daysAgo)
+    }
+  }
+
   // Fetch missions + sites for context
   const missionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))
   const missions = missionIds.length === 0
@@ -123,21 +231,20 @@ export default async function FieldHomePage() {
     : await supabase.from('sites').select('id, name').in('id', siteIds)
   const siteById = new Map((sites ?? []).map((s) => [s.id, s]))
 
-  // Group: in-progress + today, then later this week
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-  const tomorrowStart = new Date(todayStart).getTime() + 24 * 60 * 60 * 1000
-
-  const todayInterventions = interventions.filter((i) => {
-    if (i.status === 'in_progress') return true
-    const t = new Date(i.scheduled_at).getTime()
-    return t >= new Date(todayStart).getTime() && t < tomorrowStart
+  // Filtrage par date sélectionnée (par défaut = aujourd'hui Nouméa).
+  // On compare scheduled_for (date civile) directement à selectedDate.
+  // Les in_progress sont toujours visibles dans la sélection "aujourd'hui"
+  // (cohérent UX : si l'agent a démarré, c'est sa mission active).
+  const selectedInterventions = interventions.filter((i) => {
+    if (isToday && i.status === 'in_progress') return true
+    return i.scheduled_for === selectedDate
   })
-  const upcomingInterventions = interventions.filter((i) => {
-    if (i.status === 'in_progress') return false
-    const t = new Date(i.scheduled_at).getTime()
-    return t >= tomorrowStart
-  })
+  const upcomingInterventions = isToday
+    ? interventions.filter((i) => {
+        if (i.status === 'in_progress') return false
+        return (i.scheduled_for ?? '') > todayIso
+      })
+    : []
 
   if (interventions.length === 0) {
     return (
@@ -155,23 +262,97 @@ export default async function FieldHomePage() {
     )
   }
 
+  // Label "missions du jour" selon contexte
+  const dayLabel = isToday
+    ? "aujourd'hui"
+    : isPast
+      ? new Date(selectedDate + 'T00:00:00.000Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+      : new Date(selectedDate + 'T00:00:00.000Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+
   return (
     <div className="space-y-6 max-w-md pb-32">
-      {todayInterventions.length > 0 && (
+      <DateNav todayIso={todayIso} selectedIso={selectedDate} />
+
+      {overdueKPIs.length > 0 && isToday && (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-700 flex items-center gap-1.5">
+            <History className="h-3.5 w-3.5" />
+            À régulariser (7 derniers jours)
+          </h2>
+          <ul className="space-y-1.5">
+            {overdueKPIs.map((kpi) => {
+              const ageLabel = kpi.daysAgo === 1 ? 'hier' : `il y a ${kpi.daysAgo} j`
+              return (
+                <li key={kpi.interventionId}>
+                  <Link
+                    href={`/m/intervention/${kpi.interventionId}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2.5 active:bg-amber-100/80"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-amber-900 truncate">{kpi.missionName}</div>
+                      {kpi.siteName && <div className="text-xs text-amber-700/70 truncate">{kpi.siteName}</div>}
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-full px-2 py-0.5 tabular-nums">
+                      {ageLabel}
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
+      {incompleteKPIs.length > 0 && isToday && (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-700 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Tâches non terminées (7 derniers jours)
+          </h2>
+          <ul className="space-y-1.5">
+            {incompleteKPIs.map((kpi) => (
+              <li key={kpi.interventionId}>
+                <Link
+                  href={`/m/intervention/${kpi.interventionId}`}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2.5 active:bg-amber-100/80"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-amber-900 truncate">{kpi.missionName}</div>
+                    <div className="flex items-center gap-2 text-xs text-amber-700/70">
+                      {kpi.siteName && <span className="truncate">{kpi.siteName}</span>}
+                      {kpi.executedAt && (
+                        <span className="shrink-0 tabular-nums">
+                          {new Date(kpi.executedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-full px-2 py-0.5 tabular-nums">
+                    {kpi.missingCount} manquante{kpi.missingCount > 1 ? 's' : ''}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {selectedInterventions.length > 0 && (
         <section className="space-y-3">
           {/* J1 — Doctrine V5 Pilier 5 : dignité > sophistication.
-              Reconnaître Joseph par son prénom avant de lui afficher une liste.
-              Le vocabulaire ("mission" vs "passage") sera arbitré par A/B pilote. */}
-          <h1 className="text-xl font-semibold">
-            Bonjour {firstNameOf(user.full_name, user.email)}
-          </h1>
+              Reconnaître Joseph par son prénom avant de lui afficher une liste. */}
+          {isToday && (
+            <h1 className="text-xl font-semibold">
+              Bonjour {firstNameOf(user.full_name, user.email)}
+            </h1>
+          )}
           <p className="text-sm text-muted-foreground">
-            {todayInterventions.length === 1
-              ? '1 mission aujourd’hui'
-              : `${todayInterventions.length} missions aujourd’hui`}
+            {selectedInterventions.length === 1
+              ? `1 mission ${dayLabel}`
+              : `${selectedInterventions.length} missions ${dayLabel}`}
           </p>
           <ul className="space-y-3">
-            {todayInterventions.map((i) => {
+            {selectedInterventions.map((i) => {
               const mission = missionById.get(i.mission_id)
               const site = mission ? siteById.get(mission.site_id) : null
               return (

@@ -21,7 +21,8 @@
 //     (immuabilité de la preuve).
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, MapPin, Users } from 'lucide-react'
+import Link from 'next/link'
+import { CalendarDays, MapPin, Users, ArrowRight } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -197,36 +198,45 @@ export function CellDrawer({
                     data-dragging={isDragging ? 'true' : 'false'}
                     className="rounded-md border bg-card p-3 space-y-2 transition-opacity duration-200"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-medium text-foreground truncate">
-                          {c.mission_name}
-                        </h3>
-                        {c.slot ? (
-                          <p className="text-xs text-muted-foreground">
-                            Créneau {SLOT_FR[c.slot]?.toLowerCase() ?? c.slot}
-                          </p>
-                        ) : null}
+                    <Link
+                      href={`/interventions/${c.id}`}
+                      className="block space-y-2 -m-1 p-1 rounded hover:bg-muted/40 transition-colors group"
+                      data-testid={`drawer-intervention-link-${c.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-medium text-foreground truncate group-hover:underline">
+                            {c.mission_name}
+                          </h3>
+                          {c.slot ? (
+                            <p className="text-xs text-muted-foreground">
+                              Créneau {SLOT_FR[c.slot]?.toLowerCase() ?? c.slot}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <StatusBadge status={c.status} />
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-foreground transition-colors" />
+                        </div>
                       </div>
-                      <StatusBadge status={c.status} />
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground">Équipe</span>
-                      {c.assigned_team_id && c.assigned_team_name ? (
-                        <TeamBadge
-                          name={c.assigned_team_name}
-                          color={c.assigned_team_color}
-                          size="sm"
-                        />
-                      ) : (
-                        <span
-                          className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800"
-                          title="Aucune équipe affectée"
-                        >
-                          ◯ Non-affecté
-                        </span>
-                      )}
-                    </div>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">Équipe</span>
+                        {c.assigned_team_id && c.assigned_team_name ? (
+                          <TeamBadge
+                            name={c.assigned_team_name}
+                            color={c.assigned_team_color}
+                            size="sm"
+                          />
+                        ) : (
+                          <span
+                            className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                            title="Aucune équipe affectée"
+                          >
+                            ◯ Non-affecté
+                          </span>
+                        )}
+                      </div>
+                    </Link>
                     <div className="flex justify-end pt-1">
                       <Button
                         size="sm"

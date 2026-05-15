@@ -19,6 +19,7 @@
 //   - Pas de cards colorées, pas de donuts — typographie + blanc + hiérarchie + silence
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import {
   getSignedPhotoUrlsNarrow,
   getSignedPhotoUrlsMedium,
@@ -60,8 +61,10 @@ export interface RecentActivityItem {
   saliencePrimary: boolean
   photoUrl: string | null
   interventionId: string | null
-  /** Tâches cochées lors du passage (kind='intervention' uniquement). */
-  tasks: string[] | null
+  teamName: string | null
+  teamColor: string | null
+  closedByName: string | null  // chef d'équipe qui a clôturé (prénom)
+  tasks: Array<{ label: string; doneAt: string | null; done: boolean }> | null
 }
 
 export interface SiteAnomalyEntry {
@@ -88,8 +91,9 @@ export interface SiteMemoryMeta {
   executedInterventions: number
   tasksCompleted: number
   photoCount: number
-  /** ISO de la dernière tâche cochée (done_at). */
   lastTaskCompletedAt: string | null
+  /** Top tâches récurrentes avec leur dernière date d'exécution. */
+  taskHistory: Array<{ label: string; lastDoneAt: string; count: number }>
   lastHealed: {
     description: string
     resolvedAt: string
@@ -533,31 +537,123 @@ export async function getSiteRecentActivity(
     }
   }
 
-  const items: RecentActivityItem[] = []
+  // Résolution batch des équipes ET des tâches faites pour TOUS les items
+  // liés à une intervention (photos, anomalies, passages). Une seule passe.
+  const execIntervIdsForTasks = ((executedRes.data ?? []) as Array<{ id: string }>).map((r) => r.id)
+  const allLinkedIntervIds = Array.from(new Set([
+    ...Array.from(photoGroups.values()).map((g) => g.first.intervention_id),
+    ...((anomaliesRes.data ?? []) as Array<{ intervention_id: string }>).map((a) => a.intervention_id),
+    ...execIntervIdsForTasks,
+  ]))
+  const interventionTeamMap = new Map<string, { name: string; color: string | null }>()
+  const interventionClosedByMap = new Map<string, string>() // interventionId → prénom du chef d'équipe qui a clôturé
+  const tasksByIntervention = new Map<string, Array<{ label: string; doneAt: string | null; done: boolean; doneBy: string | null }>>()
+  if (allLinkedIntervIds.length > 0) {
+    const [intvsForTeamRes, allTasksRes] = await Promise.all([
+      supabase
+        .from('interventions')
+        .select('id, assigned_team_id')
+        .in('id', allLinkedIntervIds)
+        .not('assigned_team_id', 'is', null),
+      // Toutes les tâches (done + non done) pour montrer le statut de chacune
+      supabase
+        .from('intervention_checklist_items')
+        .select('intervention_id, label, done, done_at, done_by, position')
+        .in('intervention_id', allLinkedIntervIds)
+        .order('position', { ascending: true }),
+    ])
 
-  // V5.1.4 — Wording lieu-centric (Vincent 2026-05-15).
-  // Si on extrait un lieu de la caption → "X a documenté le bloc pédiatrie."
-  // Sinon → "X a déposé N traces." (le sujet reste l'action sur le lieu, pas le système)
-  for (const g of photoGroups.values()) {
-    const actorName = g.takenBy ? firstNameById.get(g.takenBy) ?? 'Quelqu’un' : 'Quelqu’un'
-    const place = extractFirstPlace(...g.captions)
-    const countLabel = `${g.count} trace${g.count > 1 ? 's' : ''}`
-
-    const firstCaption = g.captions[0] ?? null
-    let primary: string
-    let secondary: string | null
-    if (firstCaption) {
-      const cap = firstCaption.length > 90 ? firstCaption.slice(0, 87) + '…' : firstCaption
-      primary = cap
-      secondary = actorName + (g.count > 1 ? ` · ${countLabel}` : '')
-    } else if (place) {
-      primary = `${actorName} — ${place}.`
-      secondary = g.count > 1 ? countLabel : null
-    } else {
-      primary = `${actorName} — ${countLabel}`
-      secondary = null
+    const linkedTeamIds = Array.from(new Set(
+      ((intvsForTeamRes.data ?? []) as Array<{ id: string; assigned_team_id: string }>)
+        .map((r) => r.assigned_team_id)
+    ))
+    if (linkedTeamIds.length > 0) {
+      const { data: linkedTeams } = await supabase
+        .from('teams').select('id, name, color').in('id', linkedTeamIds)
+      const teamByIdLinked = new Map<string, { name: string; color: string | null }>(
+        ((linkedTeams ?? []) as Array<{ id: string; name: string; color: string | null }>)
+          .map((t) => [t.id, { name: t.name, color: t.color }])
+      )
+      for (const r of (intvsForTeamRes.data ?? []) as Array<{ id: string; assigned_team_id: string }>) {
+        const team = teamByIdLinked.get(r.assigned_team_id)
+        if (team) interventionTeamMap.set(r.id, team)
+      }
     }
 
+    type CheckRow = { intervention_id: string; label: string; done: boolean; done_at: string | null; done_by: string | null }
+    const allCheckRows = (allTasksRes.data ?? []) as CheckRow[]
+    for (const c of allCheckRows) {
+      const arr = tasksByIntervention.get(c.intervention_id) ?? []
+      arr.push({ label: c.label, doneAt: c.done_at, done: c.done, doneBy: c.done_by })
+      tasksByIntervention.set(c.intervention_id, arr)
+    }
+
+    // Résoudre le prénom du chef d'équipe qui a clôturé : celui qui a coché
+    // la dernière tâche (par done_at) sur chaque intervention.
+    const closerIds = new Set<string>()
+    const lastDoneByIntervention = new Map<string, { doneAt: string; doneBy: string }>()
+    for (const c of allCheckRows) {
+      if (!c.done || !c.done_at || !c.done_by) continue
+      const existing = lastDoneByIntervention.get(c.intervention_id)
+      if (!existing || c.done_at > existing.doneAt) {
+        lastDoneByIntervention.set(c.intervention_id, { doneAt: c.done_at, doneBy: c.done_by })
+      }
+    }
+    for (const v of lastDoneByIntervention.values()) closerIds.add(v.doneBy)
+    if (closerIds.size > 0) {
+      const { data: closerUsers } = await supabase
+        .from('users')
+        .select('id, full_name, email')
+        .in('id', Array.from(closerIds))
+      const closerNameById = new Map<string, string>()
+      for (const u of (closerUsers ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+        closerNameById.set(u.id, firstNameOf(u.full_name, u.email))
+      }
+      for (const [intvId, v] of lastDoneByIntervention.entries()) {
+        const name = closerNameById.get(v.doneBy)
+        if (name) interventionClosedByMap.set(intvId, name)
+      }
+    }
+  }
+
+  const items: RecentActivityItem[] = []
+
+  for (const g of photoGroups.values()) {
+    const actorName = g.takenBy ? (firstNameById.get(g.takenBy) ?? "Quelqu'un") : "Quelqu'un"
+    const place = extractFirstPlace(...g.captions)
+    const countLabel = `${g.count} passage${g.count > 1 ? 's' : ''}`
+    const team = interventionTeamMap.get(g.first.intervention_id) ?? null
+
+    const firstCaption = g.captions[0] ?? null
+    const actorBit = actorName + (g.count > 1 ? ` · ${countLabel}` : '')
+    let primary: string
+    let secondary: string | null
+    if (team) {
+      // Équipe en premier (doctrine V5.1.4 : l'équipe identifie la ligne)
+      primary = team.name
+      if (firstCaption) {
+        const cap = firstCaption.length > 90 ? firstCaption.slice(0, 87) + '…' : firstCaption
+        secondary = `${actorBit} — ${cap}`
+      } else if (place) {
+        secondary = `${actorBit} — ${place}`
+      } else {
+        secondary = actorBit
+      }
+    } else {
+      // Fallback : pas d'équipe affectée → wording lieu-centric historique
+      if (firstCaption) {
+        primary = firstCaption.length > 90 ? firstCaption.slice(0, 87) + '…' : firstCaption
+        secondary = actorBit
+      } else if (place) {
+        primary = `${actorName} — ${place}.`
+        secondary = g.count > 1 ? countLabel : null
+      } else {
+        primary = `${actorName} — ${countLabel}`
+        secondary = null
+      }
+    }
+
+    const photoTasks = tasksByIntervention.get(g.first.intervention_id) ?? null
     items.push({
       kind: 'photo',
       id: g.first.id,
@@ -567,7 +663,10 @@ export async function getSiteRecentActivity(
       saliencePrimary: true,
       photoUrl: null,
       interventionId: g.first.intervention_id,
-      tasks: null,
+      teamName: team?.name ?? null,
+      teamColor: team?.color ?? null,
+      closedByName: interventionClosedByMap.get(g.first.intervention_id) ?? null,
+      tasks: photoTasks ? photoTasks.map(({ label, doneAt, done }) => ({ label, doneAt, done })) : null,
     })
   }
 
@@ -585,6 +684,8 @@ export async function getSiteRecentActivity(
   for (const a of (anomaliesRes.data ?? []) as AnomRow[]) {
     const title = a.description || a.category_other || a.category
     const isOpen = a.status === 'open'
+    const anomTasks = tasksByIntervention.get(a.intervention_id) ?? null
+    const anomTeam = interventionTeamMap.get(a.intervention_id) ?? null
     items.push({
       kind: 'anomaly',
       id: a.id,
@@ -594,7 +695,10 @@ export async function getSiteRecentActivity(
       saliencePrimary: isOpen,
       photoUrl: null,
       interventionId: a.intervention_id,
-      tasks: null,
+      teamName: anomTeam?.name ?? null,
+      teamColor: anomTeam?.color ?? null,
+      closedByName: interventionClosedByMap.get(a.intervention_id) ?? null,
+      tasks: anomTasks ? anomTasks.map(({ label, doneAt, done }) => ({ label, doneAt, done })) : null,
     })
   }
 
@@ -611,59 +715,38 @@ export async function getSiteRecentActivity(
       saliencePrimary: false,
       photoUrl: null,
       interventionId: null,
+      teamName: null,
+      teamColor: null,
+      closedByName: null,
       tasks: null,
     })
   }
 
-  // Passages exécutés avec tâches cochées
+  // Passages exécutés — équipes et tâches déjà résolues en batch ci-dessus
   type ExecRow = { id: string; executed_at: string; assigned_team_id: string | null }
   const execRows = (executedRes.data ?? []) as ExecRow[]
-  if (execRows.length > 0) {
-    const execInterventionIds = execRows.map((r) => r.id)
-    const teamIds = Array.from(new Set(execRows.map((r) => r.assigned_team_id).filter((id): id is string => !!id)))
-
-    const [checklistRes, teamsRes] = await Promise.all([
-      supabase
-        .from('intervention_checklist_items')
-        .select('intervention_id, label, done_at')
-        .in('intervention_id', execInterventionIds)
-        .eq('done', true)
-        .order('done_at', { ascending: true }),
-      teamIds.length > 0
-        ? supabase.from('teams').select('id, name').in('id', teamIds)
-        : Promise.resolve({ data: [] }),
-    ])
-
-    const teamNameById = new Map(
-      ((teamsRes.data ?? []) as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]),
-    )
-
-    type CheckRow = { intervention_id: string; label: string; done_at: string | null }
-    const tasksByIntervention = new Map<string, string[]>()
-    for (const c of (checklistRes.data ?? []) as CheckRow[]) {
-      const arr = tasksByIntervention.get(c.intervention_id) ?? []
-      arr.push(c.label)
-      tasksByIntervention.set(c.intervention_id, arr)
-    }
-
-    for (const r of execRows) {
-      const tasks = tasksByIntervention.get(r.id) ?? []
-      const teamName = r.assigned_team_id ? (teamNameById.get(r.assigned_team_id) ?? null) : null
-      const taskCount = tasks.length
-      const primary = teamName ?? 'Passage'
-      const secondary = taskCount > 0 ? `${taskCount} tâche${taskCount > 1 ? 's' : ''} réalisée${taskCount > 1 ? 's' : ''}` : 'Passage sans tâche cochée'
-      items.push({
-        kind: 'intervention',
-        id: r.id,
-        occurredAt: r.executed_at,
-        primary,
-        secondary,
-        saliencePrimary: taskCount > 0,
-        photoUrl: null,
-        interventionId: r.id,
-        tasks: tasks.length > 0 ? tasks : null,
-      })
-    }
+  for (const r of execRows) {
+    const tasks = tasksByIntervention.get(r.id) ?? []
+    const team = interventionTeamMap.get(r.id) ?? null
+    const doneCount = tasks.filter((t) => t.done).length
+    const total = tasks.length
+    const secondary = total > 0
+      ? `${doneCount}/${total} tâche${total > 1 ? 's' : ''} réalisée${doneCount > 1 ? 's' : ''}`
+      : 'Passage sans tâche cochée'
+    items.push({
+      kind: 'intervention',
+      id: r.id,
+      occurredAt: r.executed_at,
+      primary: team?.name ?? 'Passage',
+      secondary,
+      saliencePrimary: doneCount > 0,
+      photoUrl: null,
+      interventionId: r.id,
+      teamName: team?.name ?? null,
+      teamColor: team?.color ?? null,
+      closedByName: interventionClosedByMap.get(r.id) ?? null,
+      tasks: tasks.length > 0 ? tasks.map(({ label, doneAt, done }) => ({ label, doneAt, done })) : null,
+    })
   }
 
   // Tri global DESC + cap au limit
@@ -1047,18 +1130,19 @@ export async function getSiteRecentRhythm(
     .is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id)
 
-  // Construire le squelette des N jours (du plus ancien au plus récent)
-  const today = new Date()
-  today.setUTCHours(0, 0, 0, 0)
+  // Construire le squelette des N jours (du plus ancien au plus récent),
+  // calé sur la date locale Nouméa pour que "aujourd'hui" = la bonne case.
+  const todayIso = todayLocalIso()
   const days: SiteRhythmDay[] = []
   for (let i = daysBack - 1; i >= 0; i--) {
-    const d = new Date(today.getTime() - i * 86_400_000)
-    const iso = d.toISOString().slice(0, 10)
+    const iso = addDaysLocal(todayIso, -i)
+    const [y, m, dd] = iso.split('-').map(Number)
+    const d = new Date(Date.UTC(y, m - 1, dd))
     const weekday = d.getUTCDay()
     days.push({
       date: iso,
       weekdayLabel: FR_WEEKDAYS_SHORT[weekday],
-      dayMonthLabel: String(d.getUTCDate()),
+      dayMonthLabel: String(dd),
       isToday: i === 0,
       isWeekend: weekday === 0 || weekday === 6,
       count: 0,
@@ -1834,7 +1918,7 @@ export async function getSiteTransmissionReadings(
 }
 
 function spanMonthsLabel(months: number): string {
-  if (months < 1) return 'moins d’un mois'
+  if (months < 1) return "moins d'un mois"
   if (months === 1) return '1 mois'
   if (months < 12) return `${months} mois`
   const years = Math.floor(months / 12)
@@ -2033,7 +2117,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const missionIds = (missions ?? []).map((m) => m.id)
 
   if (missionIds.length === 0) {
-    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastTaskCompletedAt: null, lastHealed: null }
+    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastTaskCompletedAt: null, taskHistory: [], lastHealed: null }
   }
 
   const { data: interventionsAll } = await supabase
@@ -2043,10 +2127,10 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const interventionIds = (interventionsAll ?? []).map((i) => i.id)
 
   if (interventionIds.length === 0) {
-    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastTaskCompletedAt: null, lastHealed: null }
+    return { firstTraceAt: null, totalTraces: 0, executedInterventions: 0, tasksCompleted: 0, photoCount: 0, lastTaskCompletedAt: null, taskHistory: [], lastHealed: null }
   }
 
-  const [photosRes, anomaliesRes, notesRes, executedRes, tasksRes] = await Promise.all([
+  const [photosRes, anomaliesRes, notesRes, executedRes, tasksCountRes, tasksRes] = await Promise.all([
     supabase
       .from('intervention_photos')
       .select('taken_at', { count: 'exact' })
@@ -2073,13 +2157,22 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
       .in('id', interventionIds)
       .not('executed_at', 'is', null)
       .limit(1),
+    // Comptage EXACT des tâches done — indépendant de la limite de pagination
     supabase
       .from('intervention_checklist_items')
-      .select('id, done_at', { count: 'exact' })
+      .select('id', { count: 'exact', head: true })
       .in('intervention_id', interventionIds)
       .eq('done', true)
+      .not('done_at', 'is', null),
+    // Tâches done pour agrégation par label (limite raisonnable pour le top 15)
+    supabase
+      .from('intervention_checklist_items')
+      .select('label, done_at')
+      .in('intervention_id', interventionIds)
+      .eq('done', true)
+      .not('done_at', 'is', null)
       .order('done_at', { ascending: false })
-      .limit(1),
+      .limit(5000),
   ])
 
   const candidates: Array<{ at: string }> = []
@@ -2093,10 +2186,33 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
   const photoCount = photosRes.count ?? 0
   const totalTraces = photoCount + (notesRes.count ?? 0)
   const executedInterventions = executedRes.count ?? 0
-  const tasksCompleted = tasksRes.count ?? 0
 
-  const lastTaskRow = ((tasksRes.data ?? []) as Array<{ done_at: string | null }>)[0]
-  const lastTaskCompletedAt = lastTaskRow?.done_at ?? null
+  // Agréger les tâches par label
+  type TaskRow = { label: string; done_at: string }
+  const allTaskRows = (tasksRes.data ?? []) as TaskRow[]
+  // tasksCompleted vient du count: 'exact' — fiable même si > 1000 tâches
+  const tasksCompleted = tasksCountRes.count ?? allTaskRows.length
+
+  // Dernière date de chaque tâche + comptage
+  const taskAgg = new Map<string, { lastDoneAt: string; count: number }>()
+  for (const t of allTaskRows) {
+    const existing = taskAgg.get(t.label)
+    if (!existing || t.done_at > existing.lastDoneAt) {
+      taskAgg.set(t.label, { lastDoneAt: t.done_at, count: (existing?.count ?? 0) + 1 })
+    } else {
+      existing.count += 1
+    }
+  }
+
+  const lastTaskCompletedAt = allTaskRows.length > 0
+    ? allTaskRows.reduce((best, r) => r.done_at > best ? r.done_at : best, allTaskRows[0].done_at)
+    : null
+
+  // Top 15 tâches, triées par dernière date desc
+  const taskHistory = Array.from(taskAgg.entries())
+    .map(([label, { lastDoneAt, count }]) => ({ label, lastDoneAt, count }))
+    .sort((a, b) => b.lastDoneAt.localeCompare(a.lastDoneAt))
+    .slice(0, 15)
 
   const lastHealedRow = (anomaliesRes.data ?? [])[0] as
     | {
@@ -2114,7 +2230,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
       }
     : null
 
-  return { firstTraceAt, totalTraces, executedInterventions, tasksCompleted, photoCount, lastTaskCompletedAt, lastHealed }
+  return { firstTraceAt, totalTraces, executedInterventions, tasksCompleted, photoCount, lastTaskCompletedAt, taskHistory, lastHealed }
 }
 
 // =============================================================================

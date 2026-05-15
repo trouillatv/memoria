@@ -1,0 +1,48 @@
+// Helpers fuseau-aware pour calculer la date civile (yyyy-mm-dd) selon le
+// fuseau de l'organisation (Pacific/Noumea, UTC+11). À utiliser PARTOUT où on
+// veut "aujourd'hui local" ou "demain local" pour filtrer une date civile
+// (scheduled_for, due_at, etc.).
+//
+// Pourquoi ? `new Date().toISOString().slice(0, 10)` retourne la date UTC.
+// En Nouméa (UTC+11), entre 00:00 et 11:00 locale, la date UTC est la veille
+// → on filtre les interventions d'hier au lieu d'aujourd'hui. Bug invisible
+// en plein jour, visible le matin.
+
+const NETO_TIMEZONE = 'Pacific/Noumea'
+
+const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: NETO_TIMEZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/** Aujourd'hui en zone Nouméa, yyyy-mm-dd. */
+export function todayLocalIso(): string {
+  return dateFormatter.format(new Date())
+}
+
+/** Date civile (yyyy-mm-dd) d'un instant en zone Nouméa. Utile pour comparer
+ *  un `scheduled_at` (timestamp UTC) avec `aujourd'hui local`. */
+export function localDateOf(date: Date): string {
+  return dateFormatter.format(date)
+}
+
+/** Demain en zone Nouméa, yyyy-mm-dd. */
+export function tomorrowLocalIso(): string {
+  return addDaysLocal(todayLocalIso(), 1)
+}
+
+/** Hier en zone Nouméa, yyyy-mm-dd. */
+export function yesterdayLocalIso(): string {
+  return addDaysLocal(todayLocalIso(), -1)
+}
+
+/** Ajoute N jours à une date yyyy-mm-dd (raisonne en date civile UTC pour
+ *  rester stable indépendamment du fuseau du serveur). */
+export function addDaysLocal(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}

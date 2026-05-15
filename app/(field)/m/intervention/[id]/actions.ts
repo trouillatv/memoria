@@ -10,6 +10,8 @@ import {
   markChecklistItemDone,
   insertPhoto,
   createAnomaly,
+  rescheduleIntervention,
+  getAvailableSlotsForTeam,
 } from '@/lib/db/interventions'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -258,6 +260,89 @@ export async function skipInterventionAction(formData: FormData) {
   revalidatePath('/missions')
 
   return { ok: true as const }
+}
+
+// ----- Reschedule intervention (mobile, chef_equipe-friendly) -----
+//
+// Le chef d'équipe peut décaler une intervention encore `planned` vers un
+// créneau libre de SON équipe sur les 7 prochains jours.
+
+const rescheduleMobileSchema = z.object({
+  intervention_id: z.string().uuid(),
+  new_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  new_slot: z.enum(['morning', 'afternoon', 'evening']),
+})
+
+export async function rescheduleInterventionMobileAction(formData: FormData) {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return auth
+
+  const parsed = rescheduleMobileSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    new_date: formData.get('new_date'),
+    new_slot: formData.get('new_slot'),
+  })
+  if (!parsed.success) return { error: 'Données invalides' }
+
+  const intervention = await getIntervention(parsed.data.intervention_id)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (intervention.status !== 'planned') {
+    return { error: `Décalage impossible : l'intervention est ${intervention.status}.` }
+  }
+  if (!intervention.assigned_team_id) {
+    return { error: "Aucune équipe affectée — préviens le gérant." }
+  }
+
+  // Vérifier conflit anti-race
+  const supabase = createAdminClient()
+  const { data: conflict } = await supabase
+    .from('interventions')
+    .select('id')
+    .eq('assigned_team_id', intervention.assigned_team_id)
+    .eq('scheduled_for', parsed.data.new_date)
+    .eq('slot', parsed.data.new_slot)
+    .in('status', ['planned', 'in_progress'])
+    .neq('id', parsed.data.intervention_id)
+    .limit(1)
+    .maybeSingle()
+  if (conflict) {
+    return { error: 'Ce créneau vient d\'être pris — choisis-en un autre.' }
+  }
+
+  await rescheduleIntervention(parsed.data.intervention_id, parsed.data.new_date, parsed.data.new_slot)
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'mission',
+    entityId: parsed.data.intervention_id,
+    action: 'status_changed',
+    metadata: {
+      to: 'rescheduled',
+      newDate: parsed.data.new_date,
+      newSlot: parsed.data.new_slot,
+      previousDate: intervention.scheduled_for,
+      previousSlot: intervention.slot,
+      source: 'mobile',
+    },
+  })
+
+  revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  revalidatePath('/m')
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  revalidatePath('/missions')
+  return { ok: true as const }
+}
+
+export async function getAvailableSlotsMobileAction(interventionId: string) {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { error: auth.error }
+
+  const intervention = await getIntervention(interventionId)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (!intervention.assigned_team_id) return { error: 'Aucune équipe affectée' }
+
+  const slots = await getAvailableSlotsForTeam(intervention.assigned_team_id, interventionId, 7)
+  return { ok: true as const, slots }
 }
 
 // ----- Complete intervention (mobile, soft-required) -----

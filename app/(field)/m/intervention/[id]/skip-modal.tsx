@@ -41,7 +41,7 @@ export function SkipInterventionTrigger({ interventionId, action }: Props) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card text-sm text-muted-foreground px-4 py-3 active:bg-muted/40"
+        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 text-sm font-medium text-amber-900 px-4 py-3 hover:bg-amber-100 active:bg-amber-200/70"
         style={{ minHeight: 48 }}
         data-testid="skip-trigger"
       >

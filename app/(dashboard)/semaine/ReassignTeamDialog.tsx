@@ -15,7 +15,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users } from 'lucide-react'
+import { Users, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -39,6 +39,8 @@ export interface ReassignTeamOption {
    *  l'intervention cible, on stocke le nom du site occupant ici. Le radio
    *  est alors désactivé côté UI — évite le clic vers une erreur server. */
   conflict?: { siteName: string } | null
+  /** Aucun membre actif avec le rôle chef_equipe — la clôture terrain sera impossible. */
+  noChef?: boolean
 }
 
 interface Props {
@@ -138,12 +140,30 @@ export function ReassignTeamDialog({
                         déjà sur {t.conflict.siteName}
                       </span>
                     )}
+                    {t.noChef && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
+                        title="Aucun chef d'équipe dans cette équipe — clôture terrain impossible"
+                      >
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                        sans chef d&apos;équipe
+                      </span>
+                    )}
                   </span>
                 </OptionRow>
               )
             })
           )}
         </fieldset>
+
+        {teams.find((t) => t.id === selected)?.noChef && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>
+              Cette équipe n&apos;a pas de chef d&apos;équipe actif. La clôture terrain sera impossible — un superviseur devra terminer l&apos;intervention depuis le desktop.
+            </span>
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>

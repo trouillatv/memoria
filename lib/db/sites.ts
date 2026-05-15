@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSite, DbSiteNote } from '@/types/db'
 
 export async function listSites(): Promise<DbSite[]> {
@@ -396,7 +397,7 @@ export async function createSiteNote(input: {
  */
 export async function listSiteASavoirActive(siteId: string): Promise<DbSiteNote[]> {
   const supabase = createAdminClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalIso()
   const { data, error } = await supabase
     .from('site_notes')
     .select('*')

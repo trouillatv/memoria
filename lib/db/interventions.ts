@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteNotes } from '@/lib/db/sites'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import type {
   DbIntervention, InterventionStatus, InterventionSlot,
   DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind,
@@ -80,8 +81,7 @@ export async function listInterventionsSupervisor(
   const dateRange = query.dateRange ?? 'all'
   let scheduledFromIso: string | null = null
   if (dateRange === 'today') {
-    const today = new Date().toISOString().split('T')[0]
-    scheduledFromIso = `${today}T00:00:00`
+    scheduledFromIso = `${todayLocalIso()}T00:00:00`
   } else if (dateRange === '7d') {
     scheduledFromIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   } else if (dateRange === '30d') {
@@ -280,6 +280,71 @@ export async function updateInterventionStatus(
   const updates: Record<string, unknown> = { status }
   if (executed_at !== undefined) updates.executed_at = executed_at
   const { error } = await supabase.from('interventions').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+// ===== Créneaux libres pour une équipe (J → J+7) =====
+//
+// Retourne la liste des (date, slot) sur les 7 prochains jours où l'équipe
+// n'a aucune intervention planifiée/en cours. L'intervention à décaler est
+// exclue (sinon son propre slot apparaîtrait comme "pris").
+
+export type AvailableSlot = {
+  date: string                                       // 'YYYY-MM-DD'
+  slot: 'morning' | 'afternoon' | 'evening'
+}
+
+export async function getAvailableSlotsForTeam(
+  teamId: string,
+  _excludeInterventionId: string,  // legacy : conservé pour compat appel
+  daysAhead = 7,
+): Promise<AvailableSlot[]> {
+  const supabase = createAdminClient()
+  const todayStr = todayLocalIso()
+  const endStr = addDaysLocal(todayStr, daysAhead)
+
+  // NB : on INCLUT l'intervention elle-même dans la requête de conflit. Son
+  // slot actuel doit apparaître comme "pris" pour empêcher un décalage no-op
+  // (sélectionner la même date + slot que l'actuel). Les AUTRES slots de la
+  // même date restent disponibles.
+  const { data: existing } = await supabase
+    .from('interventions')
+    .select('scheduled_for, slot')
+    .eq('assigned_team_id', teamId)
+    .in('status', ['planned', 'in_progress'])
+    .gte('scheduled_for', todayStr)
+    .lt('scheduled_for', endStr)
+
+  const taken = new Set<string>()
+  for (const e of (existing ?? []) as Array<{ scheduled_for: string; slot: string | null }>) {
+    if (e.slot) taken.add(`${e.scheduled_for}|${e.slot}`)
+  }
+
+  const slots: AvailableSlot[] = []
+  for (let i = 0; i < daysAhead; i++) {
+    const dateStr = addDaysLocal(todayStr, i)
+    for (const slot of ['morning', 'afternoon', 'evening'] as const) {
+      if (!taken.has(`${dateStr}|${slot}`)) {
+        slots.push({ date: dateStr, slot })
+      }
+    }
+  }
+  return slots
+}
+
+// ===== Décaler une intervention (changement de date + slot) =====
+export async function rescheduleIntervention(
+  id: string,
+  newDate: string,           // 'YYYY-MM-DD'
+  newSlot: 'morning' | 'afternoon' | 'evening',
+): Promise<void> {
+  const supabase = createAdminClient()
+  // scheduled_at : timestamp UTC à minuit pour cohérence avec la création
+  const scheduledAt = new Date(`${newDate}T00:00:00.000Z`).toISOString()
+  const { error } = await supabase
+    .from('interventions')
+    .update({ scheduled_for: newDate, slot: newSlot, scheduled_at: scheduledAt })
+    .eq('id', id)
   if (error) throw error
 }
 

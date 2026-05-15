@@ -15,6 +15,7 @@
 //     (cf. doctrine planning §1-6 — signaux ROUGE STOP).
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import type {
   DbInterventionTemplate,
   InterventionFrequency,
@@ -489,15 +490,9 @@ export interface TemplateStats {
   interventionsThisWeek: number
 }
 
-function todayUtcIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00.000Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
+// Alias des helpers centralisés (zone Pacific/Noumea).
+const todayUtcIso = todayLocalIso
+const addDaysIso = addDaysLocal
 
 /** Stats pour un template unique. */
 export async function getTemplateStats(templateId: string): Promise<TemplateStats> {

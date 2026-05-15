@@ -123,6 +123,7 @@ export default async function DashboardPage() {
       <DashboardHeader
         firstName={firstName}
         activeContractsCount={active.length}
+        activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
       />
 
       {/* V5.1.4 — "Ce que les lieux disent ce matin" (Vincent 2026-05-15).
@@ -170,8 +171,6 @@ export default async function DashboardPage() {
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
 
       <ContractsUnderTensionWidget contracts={contractsUnderTension} />
-
-      <RecentActivityWidget events={recentActivity} />
 
       <AnomaliesOldWidget oldCount={anomaliesStats.oldCount} />
 
@@ -228,6 +227,11 @@ export default async function DashboardPage() {
           {tenantCumulative.totalAnomaliesResolved.toLocaleString('fr-FR')} incidents traités
         </section>
       )}
+
+      {/* Activité récente — en bas, mémoire du tenant (Vincent 2026-05-15).
+          Doctrine : ce qui s'est passé est consultable, pas en tête. La page
+          d'arrivée se lit "État → engagements → anomalies → contrats → activité". */}
+      <RecentActivityWidget events={recentActivity} />
     </div>
   )
 }

@@ -32,6 +32,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureSystemMission } from '@/lib/db/system-missions'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
+import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbIntervention, InterventionSlot, InterventionStatus } from '@/types/db'
 
 const SPONTANEOUS_WINDOW_MS = 4 * 60 * 60 * 1000 // 4 heures
@@ -103,7 +104,7 @@ export async function findOrCreateSpontaneousIntervention(
   //    - status='completed' direct, executed_at=now()
   //    - scheduled_for=today, slot dérivé de l'heure UTC courante
   const now = new Date()
-  const today = now.toISOString().slice(0, 10)
+  const today = todayLocalIso()
   const slot = currentSlot(now)
   // scheduled_at dérivé du slot (cohérence avec createIntervention legacy)
   const SLOT_HOUR_UTC: Record<InterventionSlot, number> = { morning: 6, afternoon: 12, evening: 18 }

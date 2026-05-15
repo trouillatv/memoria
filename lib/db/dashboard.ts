@@ -16,6 +16,7 @@ import type { EngagementComplianceRatios } from '@/types/db'
 //   4. Mon capital de preuves grandit-il ? (capital depuis démarrage)
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
 // ============================================================================
 // Bandeau — 4 stats du cockpit du matin
@@ -239,10 +240,8 @@ export async function getTenantCumulativeStats(): Promise<TenantCumulativeStats>
  */
 export async function getAOPipeline(): Promise<AOPipeline> {
   const supabase = createAdminClient()
-  const today = new Date().toISOString().slice(0, 10)
-  const horizon = new Date()
-  horizon.setUTCDate(horizon.getUTCDate() + 60)
-  const horizonIso = horizon.toISOString().slice(0, 10)
+  const today = todayLocalIso()
+  const horizonIso = addDaysLocal(today, 60)
 
   const [analyzingRes, readyRes, submittedRes, renewalsRes] = await Promise.all([
     supabase

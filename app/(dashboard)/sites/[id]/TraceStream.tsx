@@ -11,21 +11,29 @@ import {
   shouldRenderSilenceMarker,
 } from '@/lib/perception/gaps'
 
+import { localDateOf, todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+
 function formatMonthYear(iso: string): string {
   const d = new Date(iso)
-  const m = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  const m = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'Pacific/Noumea' })
   return m.charAt(0).toUpperCase() + m.slice(1)
 }
 
 const FR_MONTHS_SHORT = ['jan.', 'fév.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
 
+// Comparaison en dates CIVILES (zone Nouméa), pas en epoch ms. Évite le bug
+// où "il y a 38h" est floor à 1 jour et affiché "hier" alors que c'est 2j.
 function formatShortDate(iso: string): string {
   const d = new Date(iso)
-  const now = new Date()
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000)
-  if (diffDays < 1 && d.getDate() === now.getDate()) return "aujourd'hui"
-  if (diffDays === 1 || (diffDays < 2 && d.getDate() !== now.getDate())) return 'hier'
-  return `${d.getDate()} ${FR_MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : ''}`
+  const taskIso = localDateOf(d)
+  const today = todayLocalIso()
+  const yesterday = addDaysLocal(today, -1)
+  if (taskIso === today) return "aujourd'hui"
+  if (taskIso === yesterday) return 'hier'
+  const [y, m, dd] = taskIso.split('-').map(Number)
+  const todayYear = Number(today.slice(0, 4))
+  const yearSuffix = y !== todayYear ? ` ${y}` : ''
+  return `${dd} ${FR_MONTHS_SHORT[m - 1]}${yearSuffix}`
 }
 
 /**
@@ -95,14 +103,28 @@ export function TraceStream({ events, meta }: Props) {
     if (meta.photoCount > 0)
       summaryParts.push(`${meta.photoCount} photo${meta.photoCount > 1 ? 's' : ''}`)
   }
-  const lastTaskSuffix = meta?.lastTaskCompletedAt
-    ? ` — dernière tâche le ${formatShortDate(meta.lastTaskCompletedAt)}`
-    : ''
 
   return (
     <div className="space-y-3">
       {summaryParts.length > 0 && (
-        <p className="text-xs text-muted-foreground">{summaryParts.join(' · ')}{lastTaskSuffix}</p>
+        <p className="text-xs text-muted-foreground">{summaryParts.join(' · ')}</p>
+      )}
+      {/* Liste des tâches avec leur dernière date */}
+      {meta && meta.taskHistory.length > 0 && (
+        <ul className="space-y-0.5">
+          {meta.taskHistory.map((t) => (
+            <li key={t.label} className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="h-1 w-1 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                <span className="truncate">{t.label}</span>
+              </span>
+              <span className="tabular-nums shrink-0 text-[10px]">
+                {t.count > 1 && <span className="mr-1.5 text-muted-foreground/60">×{t.count}</span>}
+                {formatShortDate(t.lastDoneAt)}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       <ol className="space-y-0">
         {events.map((event, idx) => {

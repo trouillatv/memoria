@@ -16,6 +16,7 @@
 //   - Aucune assignation d'agent ni concept ERP (cf. doctrine planning).
 
 import { generateInterventionsFromTemplates } from '@/lib/db/intervention-templates'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
 export interface EnsureTodayParams {
   siteId?: string // scope un site précis (ex. agent rattaché à un site)
@@ -50,13 +51,10 @@ export async function ensureTodayInterventions(
   const rawDays = params.daysAhead ?? 1
   const daysAhead = Math.min(Math.max(rawDays, 1), MAX_DAYS_AHEAD)
 
-  // Calcul des bornes [today, today + daysAhead - 1] (UTC).
+  // Calcul des bornes [today, today + daysAhead - 1] en zone Nouméa.
   // daysAhead=1 → fromDate === toDate === today.
-  const todayMs = Date.now()
-  const fromDateObj = new Date(todayMs)
-  const fromDate = fromDateObj.toISOString().slice(0, 10)
-  const toDateObj = new Date(todayMs + (daysAhead - 1) * 24 * 60 * 60 * 1000)
-  const toDate = toDateObj.toISOString().slice(0, 10)
+  const fromDate = todayLocalIso()
+  const toDate = addDaysLocal(fromDate, daysAhead - 1)
 
   // Si aucun scope fourni, on rentre dans la branche silencieuse — le helper
   // Slice 6.1 throw sinon, et on ne veut pas casser le rendu.

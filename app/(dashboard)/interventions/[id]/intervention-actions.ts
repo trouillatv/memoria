@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import {
@@ -13,8 +14,8 @@ import {
   getIntervention,
   listChecklistItemsByIntervention,
   createAnomaly,
-  createValidation,
-  getValidationByIntervention,
+  rescheduleIntervention,
+  getAvailableSlotsForTeam,
 } from '@/lib/db/interventions'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -53,10 +54,18 @@ export async function startInterventionAction(formData: FormData) {
   return { ok: true as const }
 }
 
+const completeSchema = z.object({
+  id: z.string().uuid(),
+  comment: z.string().max(500).optional(),
+})
+
 export async function completeInterventionAction(formData: FormData) {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return auth
-  const parsed = idSchema.safeParse({ id: formData.get('id') })
+  const parsed = completeSchema.safeParse({
+    id: formData.get('id'),
+    comment: formData.get('comment') || undefined,
+  })
   if (!parsed.success) return { error: 'Invalid id' }
 
   const intervention = await getIntervention(parsed.data.id)
@@ -65,22 +74,32 @@ export async function completeInterventionAction(formData: FormData) {
     return { error: `Statut courant: ${intervention.status}. Démarrez d'abord l'intervention.` }
   }
 
-  // Verify required items are done
   const items = await listChecklistItemsByIntervention(parsed.data.id)
   const missingRequired = items.filter((it) => it.required && !it.done)
-  if (missingRequired.length > 0) {
-    return {
-      error: `${missingRequired.length} tâche${missingRequired.length > 1 ? 's' : ''} obligatoire${missingRequired.length > 1 ? 's' : ''} non cochée${missingRequired.length > 1 ? 's' : ''}`,
-    }
+
+  // Soft-block : si tâches manquantes sans justification → demander la raison
+  if (missingRequired.length > 0 && !parsed.data.comment) {
+    return { error: 'comment_required' as const, missingCount: missingRequired.length }
   }
 
-  await updateInterventionStatus(parsed.data.id, 'completed', new Date().toISOString())
+  const supabase = createAdminClient()
+  if (parsed.data.comment) {
+    const { data: current } = await supabase.from('interventions').select('notes').eq('id', parsed.data.id).maybeSingle()
+    const existingNotes = (current?.notes as string | null) ?? ''
+    const newNote = `[Superviseur · ${new Date().toLocaleDateString('fr-FR')}] ${parsed.data.comment}`
+    const combinedNotes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote
+    await supabase.from('interventions').update({ status: 'completed', executed_at: new Date().toISOString(), notes: combinedNotes }).eq('id', parsed.data.id)
+  } else {
+    await updateInterventionStatus(parsed.data.id, 'completed', new Date().toISOString())
+  }
+
   revalidatePath(`/interventions/${parsed.data.id}`)
   return { ok: true as const }
 }
 
 const toggleSchema = z.object({
   id: z.string().uuid(),
+  intervention_id: z.string().uuid(),
   done: z.boolean(),
 })
 
@@ -90,15 +109,26 @@ export async function toggleChecklistItemAction(formData: FormData) {
 
   const parsed = toggleSchema.safeParse({
     id: formData.get('id'),
+    intervention_id: formData.get('intervention_id'),
     done: formData.get('done') === 'true',
   })
   if (!parsed.success) return { error: 'Invalid input' }
 
+  const supabase = createAdminClient()
+
+  // Vérifie que l'item appartient bien à l'intervention attendue
+  const { data: item } = await supabase
+    .from('intervention_checklist_items')
+    .select('intervention_id')
+    .eq('id', parsed.data.id)
+    .maybeSingle()
+  if (!item || item.intervention_id !== parsed.data.intervention_id) {
+    return { error: 'Item introuvable pour cette intervention' }
+  }
+
   if (parsed.data.done) {
     await markChecklistItemDone(parsed.data.id, auth.userId)
   } else {
-    // Reset done = false (admin client)
-    const supabase = createAdminClient()
     const { error } = await supabase
       .from('intervention_checklist_items')
       .update({ done: false, done_at: null, done_by: null })
@@ -106,10 +136,7 @@ export async function toggleChecklistItemAction(formData: FormData) {
     if (error) return { error: error.message }
   }
 
-  // We need the intervention_id to revalidate. Fetch it.
-  const supabase = createAdminClient()
-  const { data } = await supabase.from('intervention_checklist_items').select('intervention_id').eq('id', parsed.data.id).maybeSingle()
-  if (data?.intervention_id) revalidatePath(`/interventions/${data.intervention_id}`)
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
   return { ok: true as const }
 }
 
@@ -251,47 +278,6 @@ export async function resolveAnomalyAction(formData: FormData) {
   return { ok: true as const }
 }
 
-// ============================
-// Validations
-// ============================
-
-const validateSchema = z.object({
-  intervention_id: z.string().uuid(),
-  comment: z.string().max(2000).optional(),
-})
-
-export async function validateInterventionAction(formData: FormData) {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return auth
-
-  const parsed = validateSchema.safeParse({
-    intervention_id: formData.get('intervention_id'),
-    comment: formData.get('comment') || undefined,
-  })
-  if (!parsed.success) return { error: 'Invalid input' }
-
-  const intervention = await getIntervention(parsed.data.intervention_id)
-  if (!intervention) return { error: 'Intervention introuvable' }
-  if (intervention.status !== 'completed') {
-    return { error: `Statut courant: ${intervention.status}. Validation impossible.` }
-  }
-
-  // Check no validation already exists
-  const existing = await getValidationByIntervention(parsed.data.intervention_id)
-  if (existing) return { error: 'Cette intervention a déjà été validée' }
-
-  // Create validation row + bump status
-  await createValidation({
-    intervention_id: parsed.data.intervention_id,
-    validated_by: auth.userId,
-    comment: parsed.data.comment ?? null,
-  })
-  await updateInterventionStatus(parsed.data.intervention_id, 'validated')
-
-  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
-  return { ok: true as const }
-}
-
 // ----- Skip intervention ("Pas aujourd'hui", raison obligatoire) — vue superviseur -----
 //
 // Doctrine Slice 6.4 — même comportement que la version mobile (cf.
@@ -350,38 +336,142 @@ export async function skipInterventionSupervisorAction(formData: FormData) {
   return { ok: true as const }
 }
 
-const requestCorrectionSchema = z.object({
+// ============================
+// Décaler intervention (changement de date + slot)
+// ============================
+
+const rescheduleSchema = z.object({
   intervention_id: z.string().uuid(),
-  comment: z.string().min(1, 'Précisez ce qui doit être corrigé').max(2000),
+  new_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  new_slot: z.enum(['morning', 'afternoon', 'evening']),
 })
 
-export async function requestCorrectionAction(formData: FormData) {
+export async function rescheduleInterventionAction(formData: FormData) {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return auth
 
-  const parsed = requestCorrectionSchema.safeParse({
+  const parsed = rescheduleSchema.safeParse({
     intervention_id: formData.get('intervention_id'),
-    comment: formData.get('comment'),
+    new_date: formData.get('new_date'),
+    new_slot: formData.get('new_slot'),
   })
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+  if (!parsed.success) return { error: 'Données invalides' }
 
   const intervention = await getIntervention(parsed.data.intervention_id)
   if (!intervention) return { error: 'Intervention introuvable' }
-  if (intervention.status !== 'completed') {
-    return { error: `Statut courant: ${intervention.status}.` }
+  if (intervention.status !== 'planned') {
+    return { error: `Décalage impossible : l'intervention est ${intervention.status}.` }
+  }
+  if (!intervention.assigned_team_id) {
+    return { error: "Aucune équipe affectée — le décalage nécessite une équipe." }
   }
 
-  // Bump status back to in_progress + append comment to notes
+  // Vérifier que le créneau cible est encore libre pour l'équipe (anti-race)
   const supabase = createAdminClient()
-  const { data: current } = await supabase.from('interventions').select('notes').eq('id', parsed.data.intervention_id).maybeSingle()
-  const existingNotes = current?.notes ?? ''
-  const newNote = `[Demande correction · ${new Date().toLocaleDateString('fr-FR')}] ${parsed.data.comment}`
-  const combinedNotes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote
+  const { data: conflict } = await supabase
+    .from('interventions')
+    .select('id')
+    .eq('assigned_team_id', intervention.assigned_team_id)
+    .eq('scheduled_for', parsed.data.new_date)
+    .eq('slot', parsed.data.new_slot)
+    .in('status', ['planned', 'in_progress'])
+    .neq('id', parsed.data.intervention_id)
+    .limit(1)
+    .maybeSingle()
+  if (conflict) {
+    return { error: 'Ce créneau vient d\'être pris — choisis-en un autre.' }
+  }
 
-  await supabase.from('interventions')
-    .update({ status: 'in_progress', notes: combinedNotes })
-    .eq('id', parsed.data.intervention_id)
+  await rescheduleIntervention(parsed.data.intervention_id, parsed.data.new_date, parsed.data.new_slot)
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'mission',
+    entityId: parsed.data.intervention_id,
+    action: 'status_changed',
+    metadata: {
+      to: 'rescheduled',
+      newDate: parsed.data.new_date,
+      newSlot: parsed.data.new_slot,
+      previousDate: intervention.scheduled_for,
+      previousSlot: intervention.slot,
+    },
+  })
+
+  revalidatePath(`/interventions/${parsed.data.intervention_id}`)
+  revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
+  revalidatePath('/m')
+  revalidatePath('/missions')
+  return { ok: true as const }
+}
+
+// Server action pour récupérer la liste des créneaux libres (appelé depuis le client)
+export async function getAvailableSlotsAction(interventionId: string) {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return { error: auth.error }
+
+  const intervention = await getIntervention(interventionId)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (!intervention.assigned_team_id) return { error: 'Aucune équipe affectée' }
+
+  const slots = await getAvailableSlotsForTeam(intervention.assigned_team_id, interventionId, 7)
+  return { ok: true as const, slots }
+}
+
+// ============================
+// Réouverture intervention (mot de passe superviseur)
+// ============================
+
+const reopenSchema = z.object({
+  intervention_id: z.string().uuid(),
+  password: z.string().min(1),
+})
+
+export async function reopenInterventionAction(formData: FormData) {
+  // Récupérer l'utilisateur courant depuis la session (déjà manager/admin car sur la page desktop)
+  const supabaseServer = await createServerClient()
+  const { data: { user: currentUser } } = await supabaseServer.auth.getUser()
+  if (!currentUser?.email) return { error: 'Non authentifié' }
+
+  const role = await getUserRoleById(currentUser.id)
+  if (role !== 'manager' && role !== 'admin') {
+    return { error: 'Seul un superviseur peut réouvrir une intervention terminée' }
+  }
+
+  const parsed = reopenSchema.safeParse({
+    intervention_id: formData.get('intervention_id'),
+    password: formData.get('password'),
+  })
+  if (!parsed.success) return { error: 'Données invalides' }
+
+  const intervention = await getIntervention(parsed.data.intervention_id)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (intervention.status !== 'completed') return { error: "Cette intervention n'est pas terminée" }
+
+  // Confirmer l'identité : vérifier le mot de passe de l'utilisateur courant
+  // via un client éphémère (pas de remplacement de session).
+  const verifyClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  )
+  const { error: authError } = await verifyClient.auth.signInWithPassword({
+    email: currentUser.email,
+    password: parsed.data.password,
+  })
+  if (authError) return { error: 'Mot de passe incorrect' }
+
+  await updateInterventionStatus(parsed.data.intervention_id, 'in_progress')
+
+  await logAuditEvent({
+    userId: currentUser.id,
+    entityType: 'mission',
+    entityId: parsed.data.intervention_id,
+    action: 'status_changed',
+    metadata: { to: 'in_progress', reopenedBy: currentUser.id, source: 'reopen_flow' },
+  })
 
   revalidatePath(`/interventions/${parsed.data.intervention_id}`)
   return { ok: true as const }
 }
+

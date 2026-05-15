@@ -16,6 +16,7 @@
 //   - Pas de score qualité, pas de classement.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { todayLocalIso, tomorrowLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
 export interface EveningBriefing {
   /** Date du lendemain ciblé (yyyy-mm-dd). */
@@ -217,7 +218,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .select('id, name, contract:contracts(id, name, end_date)')
     .is('deleted_at', null)
   const sitesWithoutCoverage: EveningBriefing['sitesWithoutCoverage'] = []
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayLocalIso()
   for (const s of (allActiveSites ?? []) as Array<{
     id: string
     name: string
@@ -314,10 +315,8 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .sort((a, b) => a.site_name.localeCompare(b.site_name, 'fr', { sensitivity: 'base' }))
 
   // 6) Contrats expirants — fenêtre 60 jours, signal renouvellement.
-  const horizon = new Date()
-  horizon.setUTCDate(horizon.getUTCDate() + 60)
-  const horizonIso = horizon.toISOString().slice(0, 10)
-  const todayShort = new Date().toISOString().slice(0, 10)
+  const todayShort = todayLocalIso()
+  const horizonIso = addDaysLocal(todayShort, 60)
   const { data: expiringRows } = await supabase
     .from('contracts')
     .select('id, name, client_name, end_date, status')
@@ -361,9 +360,9 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
   }
 }
 
-/** Date "demain" en UTC yyyy-mm-dd. */
+/** Date "demain" en zone Nouméa, yyyy-mm-dd. Doctrine : "demain" doit être
+ *  la date civile de demain locale, pas la date UTC. Le nom historique
+ *  `tomorrowUtcIso` est conservé pour compat appel (peu d'appelants). */
 export function tomorrowUtcIso(): string {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() + 1)
-  return d.toISOString().slice(0, 10)
+  return tomorrowLocalIso()
 }

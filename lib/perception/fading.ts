@@ -4,6 +4,8 @@
 // Plancher à 0.2 : un event d'il y a 5 ans reste lisible (mémoire qui se fane,
 // jamais s'efface). Plafond à 1.0 : un event récent + saillant est plein.
 
+import { localDateOf } from '@/lib/time/local-date'
+
 /**
  * Calcule l'opacity de rendu à partir de la saillance et de l'âge.
  *
@@ -30,10 +32,17 @@ export function opacityOf(salience: number, ageDays: number): number {
 }
 
 /**
- * Calcule l'âge en jours d'un timestamp ISO.
- * Référence : `now()` au moment du rendu serveur.
+ * Calcule l'âge en jours civils (zone Nouméa) entre un timestamp ISO et now.
+ * Référence : la date locale courante. On compare des dates civiles, pas du
+ * temps écoulé — sinon "il y a 30h" (1.25 jour) compte pour 1 alors que c'est
+ * 2 dates civiles différentes selon le contexte du soir/matin.
  */
 export function ageDaysSince(iso: string, now: Date = new Date()): number {
-  const ms = now.getTime() - new Date(iso).getTime()
-  return Math.max(0, Math.floor(ms / 86_400_000))
+  const taskIso = localDateOf(new Date(iso))
+  const nowIso = localDateOf(now)
+  const [ty, tm, td] = taskIso.split('-').map(Number)
+  const [ny, nm, nd] = nowIso.split('-').map(Number)
+  const taskDay = Date.UTC(ty, tm - 1, td)
+  const nowDay = Date.UTC(ny, nm - 1, nd)
+  return Math.max(0, Math.round((nowDay - taskDay) / 86_400_000))
 }

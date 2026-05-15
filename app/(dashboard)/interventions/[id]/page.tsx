@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, MapPin, FileSearch } from 'lucide-react'
+import { Calendar, MapPin, FileSearch } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -32,6 +32,8 @@ import { ExecutionPanel } from './execution-panel'
 import { AnomaliesPanel } from './anomalies-panel'
 import { ValidationPanel } from './validation-panel'
 import { SkipInterventionTriggerSupervisor } from './skip-trigger'
+import { RescheduleTrigger } from './RescheduleTrigger'
+import { SmartBackLink } from '@/components/nav/SmartBackLink'
 
 export default async function InterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -111,6 +113,22 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     }
   }
 
+  // Détecter les équipes sans chef_equipe actif parmi leurs membres
+  const allTeamIds = allTeams.map((t) => t.id)
+  const teamsWithChef = new Set<string>()
+  if (allTeamIds.length > 0) {
+    type MemberRow = { team_id: string; user: { role: string } | Array<{ role: string }> | null }
+    const { data: memberships } = await supabase
+      .from('team_members')
+      .select('team_id, user:users(role)')
+      .in('team_id', allTeamIds)
+      .is('left_at', null)
+    for (const m of (memberships ?? []) as MemberRow[]) {
+      const u = Array.isArray(m.user) ? m.user[0] : m.user
+      if (u?.role === 'chef_equipe') teamsWithChef.add(m.team_id)
+    }
+  }
+
   const teamOptions = allTeams.map((t) => ({
     id: t.id,
     name: t.name,
@@ -118,6 +136,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     conflict: teamConflicts.has(t.id)
       ? { siteName: teamConflicts.get(t.id)! }
       : null,
+    noChef: !teamsWithChef.has(t.id),
   }))
 
   // Sign URLs for photos (variante thumb 400×400 — gain bande passante).
@@ -178,24 +197,31 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Injection du chemin d'accès breadcrumb : Contrats > [Contrat].
-          Le segment "Interventions" est déjà généré naturellement par le
-          pathname /interventions/[id], pas besoin de le réinjecter. */}
-      {contract && (
+      {/* Breadcrumb : Sites > [Site] > [Mission] quand le site est connu. */}
+      {site ? (
+        <BreadcrumbPrefix
+          crumbs={[
+            { href: '/sites', label: 'Sites' },
+            { href: `/sites/${site.id}`, label: site.name },
+          ]}
+        />
+      ) : contract ? (
         <BreadcrumbPrefix
           crumbs={[
             { href: '/contracts', label: 'Contrats' },
             { href: `/contracts/${contract.id}`, label: contract.name },
           ]}
         />
-      )}
+      ) : null}
       {/* Renomme l'UUID de l'URL par le nom de la mission dans le breadcrumb. */}
       {mission && <DynamicCrumb segmentId={intervention.id} label={mission.name} />}
 
-      {site?.contract_id && (
-        <Link href={`/contracts/${site.contract_id}/interventions`} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3 w-3" /> Retour au contrat
-        </Link>
+      {site ? (
+        <SmartBackLink fallbackHref={`/sites/${site.id}`} label="Retour" />
+      ) : contract ? (
+        <SmartBackLink fallbackHref={`/contracts/${contract.id}/interventions`} label="Retour" />
+      ) : (
+        <SmartBackLink fallbackHref="/aujourdhui" label="Retour" />
       )}
 
       <header className="space-y-2">
@@ -303,12 +329,16 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         </section>
       )}
 
-      {/* Slice 6.4 — Bouton « Pas aujourd'hui » uniquement si planifiée
-          (pas commencée, pas terminée, pas déjà sautée). Style sobre, fin de
-          page, sous les actions principales. */}
+      {/* Slice 6.4 — Boutons d'action quand l'intervention est encore planifiée :
+          - Annuler l'opération de ce jour (skip)
+          - Décaler l'intervention (reschedule, si équipe affectée)
+          Style sobre, côte-à-côte, fin de page. */}
       {!isSkipped && isPlanned && (
-        <div className="pt-2 max-w-sm">
+        <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
           <SkipInterventionTriggerSupervisor interventionId={intervention.id} />
+          {intervention.assigned_team_id && (
+            <RescheduleTrigger interventionId={intervention.id} />
+          )}
         </div>
       )}
     </div>
