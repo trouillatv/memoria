@@ -10,6 +10,7 @@ import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, localDateOf, addDaysLocal } from '@/lib/time/local-date'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
+import { findMissionAbsences } from '@/lib/ai/site-readings'
 
 /** J1 — Prénom de l'agent à partir du `full_name` (1er mot). Fallback : local-part
  * de l'email avant `@` capitalisée. Évite « Bonjour user@email.com » disgracieux. */
@@ -246,6 +247,14 @@ export default async function FieldHomePage({
       })
     : []
 
+  // Lectures du lieu — absences d'exécution pour les sites du jour (mobile only)
+  const todaySiteIds = Array.from(new Set(
+    selectedInterventions.map((i) => missionById.get(i.mission_id)?.site_id).filter((id): id is string => !!id)
+  ))
+  const mobileAbsences = isToday && todaySiteIds.length > 0
+    ? (await Promise.all(todaySiteIds.map((sid) => findMissionAbsences(sid)))).flat().sort((a, b) => b.weeksSince - a.weeksSince).slice(0, 2)
+    : []
+
   if (interventions.length === 0) {
     return (
       <>
@@ -370,6 +379,18 @@ export default async function FieldHomePage({
               )
             })}
           </ul>
+        </section>
+      )}
+
+      {mobileAbsences.length > 0 && (
+        <section className="space-y-1.5 px-0.5">
+          {mobileAbsences.map((abs, i) => (
+            <p key={i} className="text-xs text-muted-foreground/80 italic pl-2 border-l border-muted leading-relaxed">
+              {abs.weeksSince >= 16
+                ? `${abs.missionName} — absent depuis ${Math.round(abs.weeksSince / 4.3)} mois`
+                : `${abs.missionName} — absent depuis ${abs.weeksSince} semaines`}
+            </p>
+          ))}
         </section>
       )}
 
