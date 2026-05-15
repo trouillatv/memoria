@@ -1,6 +1,6 @@
 ﻿// V5.1 Slice 4 — Page publique capsule WhatsApp /c/[token].
 //
-// Sylvie reçoit un lien WhatsApp préparé par Patrick. Elle tape, regarde 12s,
+// Sylvie reçoit un lien WhatsApp préparé par Guillaume. Elle tape, regarde 12s,
 // ferme. Pas d'interaction. Pas de bouton "Voir plus". Pas de "Télécharger"
 // en gros. Juste : une photo, une phrase descriptive, une mention discrète.
 //

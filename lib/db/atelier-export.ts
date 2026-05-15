@@ -7,7 +7,7 @@
 //   - Pilier 1 (mémoire opérationnelle par la preuve) : on AGRÈGE des
 //     faits accumulés. Aucune génération créative, aucun "résumé IA".
 //   - Pilier 4 (DG amplifié, jamais remplacé) : le PDF ne parle pas à
-//     la place de Patrick. Il assemble.
+//     la place de Guillaume. Il assemble.
 //   - Verrou V1 (mémoire ≠ recommandation) : tout doit être descriptif
 //     factuel. Pas de score, pas de "Baissez votre prix".
 //   - Pilier 6 (infrastructure invisible) : tenantName en hero.

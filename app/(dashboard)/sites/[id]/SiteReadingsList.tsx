@@ -1,3 +1,4 @@
+import { ReadingCard } from '@/components/ui/reading-card'
 import type { SiteReadings, SiteReading } from '@/lib/db/site-cockpit'
 
 /**
@@ -40,7 +41,7 @@ const AXIS_LABEL: Record<SiteReading['axis'], string> = {
 }
 
 const AXIS_ORDER: SiteReading['axis'][] = [
-  'transmission',  // En premier si présent : pertinent pour Patrick quand un chef vient de prendre le site
+  'transmission',  // En premier si présent : pertinent pour Guillaume quand un chef vient de prendre le site
   'resonance',
   'persistence',
   'absence',
@@ -49,8 +50,8 @@ const AXIS_ORDER: SiteReading['axis'][] = [
 export function SiteReadingsList({ data }: { data: SiteReadings }) {
   if (data.readings.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground italic">
-        Pas encore de motif perceptible sur ce lieu.
+      <p className="text-sm text-muted-foreground/60 italic">
+        Aucun signal émergent détecté.
       </p>
     )
   }
@@ -64,7 +65,10 @@ export function SiteReadingsList({ data }: { data: SiteReadings }) {
   }
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-5">
+      <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
+        Lecture du lieu
+      </div>
       {AXIS_ORDER.map((axis) => {
         const items = grouped.get(axis)
         if (!items || items.length === 0) return null
@@ -75,24 +79,8 @@ export function SiteReadingsList({ data }: { data: SiteReadings }) {
             </h3>
             <ul className="space-y-3">
               {items.map((r, idx) => (
-                <li key={`${axis}-${idx}`} className="text-[15px] leading-relaxed">
-                  {r.text}
-                  {r.fragments && r.fragments.length > 0 && (
-                    // V5.1.4 — Liste fragmentaire (Vincent 2026-05-15) :
-                    // "L'IA expose le tissu. Le cerveau humain fait les liens."
-                    // Pas de bullet, pas de séparateur — juste des mots posés
-                    // les uns sous les autres, comme dans un carnet d'archiviste.
-                    <ul className="mt-2 pl-1 space-y-1">
-                      {r.fragments.map((frag) => (
-                        <li
-                          key={frag}
-                          className="text-sm text-muted-foreground"
-                        >
-                          {frag}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                <li key={`${axis}-${idx}`}>
+                  <ReadingCard fragment={r.text} frags={r.fragments ?? undefined} />
                 </li>
               ))}
             </ul>

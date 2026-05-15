@@ -125,7 +125,7 @@ describe('TenderMemoryEntry — journal mémoire AO (MC-3)', () => {
       /taux|conversion|funnel|score|classement|tendance|hausse|baisse(?!.*libellé)|graphique|chart/i,
     )
     // Pas de pourcentage commercial calculé (genre "Gagné 28%")
-    // Le seul "%" toléré ici serait dans la raison libre saisie par Patrick,
+    // Le seul "%" toléré ici serait dans la raison libre saisie par Guillaume,
     // mais notre fixture n'en contient pas dans le wording système.
   })
 })

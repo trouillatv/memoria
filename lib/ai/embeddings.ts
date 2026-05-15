@@ -6,20 +6,23 @@
 //   faibles (humidité ↔ moisissure, robinet ↔ fuite) — jamais à générer
 //   du texte. Ne PAS confondre avec un LLM.
 //
-// Activation :
-//   - Définir OPENAI_API_KEY → utilise OpenAI text-embedding-3-small
-//   - OU définir VOYAGE_API_KEY → utilise Voyage AI voyage-3
-//   - Si AUCUNE des deux n'est définie, getEmbedding retourne null
-//     (le code applicatif fallback automatiquement sur V1 token overlap).
+// Priorité provider (premier clé définie gagne) :
+//   1. GOOGLE_GENAI_API_KEY → text-embedding-004 (768 dim, gratuit tier dev)
+//   2. OPENAI_API_KEY       → text-embedding-3-small (1536 dim)
+//   3. VOYAGE_API_KEY       → voyage-3 (768 dim)
+//   Si aucune clé → getEmbedding retourne null (fallback V1 token overlap).
 //
-// Coût pilote AGP : négligeable (~0.001$/mois). À scale 1000 sites ~0.20$/mois.
+// IMPORTANT : le schéma DB (trace_embeddings.embedding) doit correspondre
+// aux dims du provider actif. Migration 053 règle ça pour Google (768 dim).
 
-const OPENAI_MODEL = 'text-embedding-3-small'  // 1536 dim
-const VOYAGE_MODEL = 'voyage-3'                // dim natif 1024 — output_dimension=1536 pour cohérence
+const GOOGLE_MODEL = 'gemini-embedding-2'   // 768 dim (outputDimensionality=768)
+const OPENAI_MODEL = 'text-embedding-3-small' // 1536 dim
+const VOYAGE_MODEL = 'voyage-3'              // 768 dim
 
-export type EmbeddingProvider = 'openai' | 'voyage' | null
+export type EmbeddingProvider = 'google' | 'openai' | 'voyage' | null
 
 export function getActiveProvider(): EmbeddingProvider {
+  if (process.env.GOOGLE_GENAI_API_KEY) return 'google'
   if (process.env.OPENAI_API_KEY) return 'openai'
   if (process.env.VOYAGE_API_KEY) return 'voyage'
   return null
@@ -39,6 +42,7 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
   if (provider === null) return null
 
   try {
+    if (provider === 'google') return await getEmbeddingGoogle(trimmed)
     if (provider === 'openai') return await getEmbeddingOpenAI(trimmed)
     if (provider === 'voyage') return await getEmbeddingVoyage(trimmed)
   } catch (e) {
@@ -58,8 +62,6 @@ export async function getEmbeddingsBatch(
   const provider = getActiveProvider()
   if (provider === null) return texts.map(() => null)
 
-  // Pour V1.5 simple : appels séquentiels avec throttle minimal. Les deux APIs
-  // supportent un batch endpoint qu'on pourra exploiter en V2.
   const results: (number[] | null)[] = []
   for (const t of texts) {
     results.push(await getEmbedding(t))
@@ -68,7 +70,37 @@ export async function getEmbeddingsBatch(
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI
+// Google Gemini (text-embedding-004 — 768 dim, gratuit tier dev)
+// ---------------------------------------------------------------------------
+
+async function getEmbeddingGoogle(text: string): Promise<number[] | null> {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY
+  if (!apiKey) return null
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GOOGLE_MODEL}:embedContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: `models/${GOOGLE_MODEL}`,
+        content: { parts: [{ text }] },
+        outputDimensionality: 768,
+      }),
+    },
+  )
+
+  if (!res.ok) {
+    console.error('[embeddings/google]', res.status, await res.text())
+    return null
+  }
+
+  const data = (await res.json()) as { embedding: { values: number[] } }
+  return data.embedding?.values ?? null
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI (text-embedding-3-small — 1536 dim, fallback si OPENAI_API_KEY définie)
 // ---------------------------------------------------------------------------
 
 async function getEmbeddingOpenAI(text: string): Promise<number[] | null> {
@@ -100,7 +132,7 @@ async function getEmbeddingOpenAI(text: string): Promise<number[] | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Voyage AI (partenaire embeddings recommandé par Anthropic)
+// Voyage AI (voyage-3 — 768 dim, fallback si VOYAGE_API_KEY définie)
 // ---------------------------------------------------------------------------
 
 async function getEmbeddingVoyage(text: string): Promise<number[] | null> {
@@ -116,8 +148,7 @@ async function getEmbeddingVoyage(text: string): Promise<number[] | null> {
     body: JSON.stringify({
       model: VOYAGE_MODEL,
       input: text,
-      input_type: 'document',  // pour le stockage (vs 'query' pour la recherche)
-      output_dimension: 1536,  // pad à 1536 pour cohérence avec OpenAI
+      input_type: 'document',
     }),
   })
 

@@ -1,11 +1,11 @@
-// V5.1 Slice 4 — Atelier capsule WhatsApp (côté Patrick).
+// V5.1 Slice 4 — Atelier capsule WhatsApp (côté Guillaume).
 //
 // Doctrine Vincent 2026-05-14 :
 //   - Pas de génération IA libre. Phrase produite par template déterministe
 //     (lib/whatsapp/templates.ts).
-//   - Patrick reste expéditeur via wa.me — l'app ne fait pas d'envoi auto.
+//   - Guillaume reste expéditeur via wa.me — l'app ne fait pas d'envoi auto.
 //   - Une seule action principale : "Préparer la capsule de [mois courant]".
-//     Auto-sélection minimale (photo saillante + dernière anomalie). Patrick
+//     Auto-sélection minimale (photo saillante + dernière anomalie). Guillaume
 //     valide via la preview avant de copier-coller dans WhatsApp.
 //
 // Cf. plan V5.1.2 § Slice 4.
@@ -53,7 +53,7 @@ export default async function ContractCapsulePage({
   if (!contract) notFound()
 
   // Mois courant par défaut, sinon mois précédent (cas "1er du mois je
-  // prépare la capsule du mois écoulé"). Patrick peut override via ?month=.
+  // prépare la capsule du mois écoulé"). Guillaume peut override via ?month=.
   const today = new Date()
   const isEarlyInMonth = today.getUTCDate() <= 5
   const defaultMonth = isEarlyInMonth ? previousMonthYYYYMM() : currentMonthYYYYMM()

@@ -109,7 +109,7 @@ Formulation unifiée :
 > **« Le produit est transparent pour ceux qui exécutent, présent pour ceux qui signent. »**
 
 - Joseph exécute → produit oubliable (Pilier 5)
-- Patrick signe → produit amplifie sa voix (Pilier 4)
+- Guillaume signe → produit amplifie sa voix (Pilier 4)
 - Sylvie reçoit → produit s'efface derrière le prestataire (Pilier 6)
 
 C'est la même doctrine vue depuis 3 personas.
@@ -281,7 +281,7 @@ Autorisé : badges UI temporaires (session/localStorage), purge automatique lend
 
 Refusé : `last_briefing_sent_at`, `briefing_send_count`, `last_login_at` exposés en admin, "Maeva a envoyé hier à 19h32".
 
-Sinon : Patrick peut dire à Maeva « pourquoi tu envoies plus tard maintenant ? » → surveillance hiérarchique indirecte.
+Sinon : Guillaume peut dire à Maeva « pourquoi tu envoies plus tard maintenant ? » → surveillance hiérarchique indirecte.
 
 ### Test consolidé V5 (4 questions, dans cet ordre)
 

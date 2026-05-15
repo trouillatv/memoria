@@ -41,7 +41,7 @@ export interface CloseDossierDialogProps {
   closureNote?: string | null
   /** Server action injectée — facilite le test sans 'use server' réseau. */
   closeAction: CloseAction
-  /** Server action de réouverture (cas Patrick a cliqué par erreur). */
+  /** Server action de réouverture (cas Guillaume a cliqué par erreur). */
   reopenAction: ReopenAction
 }
 

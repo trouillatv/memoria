@@ -9,7 +9,7 @@ import { logAuditEvent } from '@/lib/audit/log'
 
 /**
  * Doctrine V5 verrou V1 : la mémoire ≠ recommandation.
- * Patrick déclare un fait. Le système l'enregistre.
+ * Guillaume déclare un fait. Le système l'enregistre.
  * Aucune relance, aucun score, aucune suggestion d'action.
  */
 

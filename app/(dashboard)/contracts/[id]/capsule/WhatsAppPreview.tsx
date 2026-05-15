@@ -3,19 +3,19 @@
 import { useState } from 'react'
 
 /**
- * V5.1 Slice 4 — Preview WhatsApp pour l'atelier capsule (côté Patrick).
+ * V5.1 Slice 4 — Preview WhatsApp pour l'atelier capsule (côté Guillaume).
  *
  * Rend une bulle chat WhatsApp fidèle (couleur #DCF8C6 sur fond #ECE5DD,
- * iOS classique). Affiche la photo + le texte + le lien-signature. Patrick
+ * iOS classique). Affiche la photo + le texte + le lien-signature. Guillaume
  * voit exactement ce que Sylvie recevra dans son WhatsApp.
  *
  * 3 boutons d'action :
  *   - Copier l'image (download blob côté client)
  *   - Copier le texte (clipboard API)
  *   - Ouvrir WhatsApp (wa.me ou URL share native, contact à choisir par
- *     Patrick côté WhatsApp)
+ *     Guillaume côté WhatsApp)
  *
- * Patrick reste expéditeur. L'app ne fait JAMAIS d'envoi automatique.
+ * Guillaume reste expéditeur. L'app ne fait JAMAIS d'envoi automatique.
  */
 
 interface Props {
@@ -41,7 +41,7 @@ export function WhatsAppPreview({ photoUrl, text, publicUrl, tenantName }: Props
   // Texte à coller : phrase + saut de ligne + lien
   const fullText = `${text}\n${publicUrl}`
 
-  // Lien wa.me sans contact (Patrick choisit le destinataire dans WhatsApp)
+  // Lien wa.me sans contact (Guillaume choisit le destinataire dans WhatsApp)
   const waLink = `https://wa.me/?text=${encodeURIComponent(fullText)}`
 
   return (

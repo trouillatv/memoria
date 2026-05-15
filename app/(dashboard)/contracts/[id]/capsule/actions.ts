@@ -15,11 +15,11 @@ import {
 // V5.1 Slice 4 — Server action : préparer une capsule mensuelle WhatsApp.
 //
 // Doctrine Vincent 2026-05-14 :
-//   - Patrick reste expéditeur via wa.me — l'app ne fait JAMAIS d'envoi auto.
+//   - Guillaume reste expéditeur via wa.me — l'app ne fait JAMAIS d'envoi auto.
 //   - Phrase générée par template déterministe (renderMonthlyCapsule).
 //     Aucune génération IA libre.
 //   - Auto-sélection minimale en V5.1 : 1 photo saillante du mois + dernière
-//     anomalie résolue (descriptive). Patrick valide via preview avant copie/envoi.
+//     anomalie résolue (descriptive). Guillaume valide via preview avant copie/envoi.
 
 async function requireManager(): Promise<{ userId: string } | { error: string }> {
   const supabase = await createServerClient()

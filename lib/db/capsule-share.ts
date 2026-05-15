@@ -4,7 +4,7 @@
 //   - Une capsule = un proof_share_token avec presentation_kind ∈
 //     {monthly_capsule, incident_capsule} + payload spécifique.
 //   - Aucune nouvelle table (cf. migration 050 minimale, ~10 lignes).
-//   - Patrick reste expéditeur côté WhatsApp via wa.me — l'app ne fait JAMAIS
+//   - Guillaume reste expéditeur côté WhatsApp via wa.me — l'app ne fait JAMAIS
 //     d'envoi automatique.
 //
 // Cf. plan V5.1.2 § Slice 4 + migrations 022 / 026 / 050.
@@ -40,7 +40,7 @@ export interface CreateMonthlyCapsuleInput {
   contractId: string
   /** Format YYYY-MM. */
   reportMonth: string
-  /** Photo unique sélectionnée par Patrick (1 photo seulement pour la capsule
+  /** Photo unique sélectionnée par Guillaume (1 photo seulement pour la capsule
    *  vs 1..12 pour le rapport mensuel legacy). */
   photoId: string
   /** Phrase descriptive figée — déjà générée par renderMonthlyCapsule. */
@@ -166,7 +166,7 @@ export async function getCapsulePublicView(
       .select('id, storage_path')
       .in('id', photoIds)
     const byId = new Map((photos ?? []).map((p) => [p.id, p.storage_path]))
-    // Préserve l'ordre choisi par Patrick (selected_photo_ids).
+    // Préserve l'ordre choisi par Guillaume (selected_photo_ids).
     const orderedPaths = photoIds.map((id) => byId.get(id)).filter((p): p is string => !!p)
 
     const signed = await Promise.all(

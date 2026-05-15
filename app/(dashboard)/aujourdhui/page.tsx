@@ -23,6 +23,8 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildTodayView, todayUtcIso, type TodayIntervention, type TodaySlot, type OverdueIntervention, type UnassignedRecent } from '@/lib/db/today-view'
+import { getTenantDayReading } from '@/lib/ai/site-readings'
+import { ReadingCard } from '@/components/ui/reading-card'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -72,6 +74,22 @@ export default async function TodayPage({
 
   const view = await buildTodayView(target)
 
+  // Construire le contexte site → missions planifiées pour croiser avec absences IA
+  const siteContextMap = new Map<string, string[]>()
+  for (const group of view.bySlot) {
+    for (const i of group.interventions) {
+      if (!i.site_id) continue
+      const existing = siteContextMap.get(i.site_id) ?? []
+      existing.push(i.mission_name)
+      siteContextMap.set(i.site_id, existing)
+    }
+  }
+  const todaySiteContext = Array.from(siteContextMap.entries()).map(([siteId, plannedMissions]) => ({
+    siteId,
+    plannedMissions,
+  }))
+  const todayReading = await getTenantDayReading(todaySiteContext)
+
   return (
     <div className="space-y-6 max-w-3xl">
       <header className="flex items-start justify-between gap-3 flex-wrap">
@@ -113,6 +131,17 @@ export default async function TodayPage({
           tone={view.unassignedRecent.length + view.overdue.length > 0 ? 'amber' : 'neutral'}
         />
       </div>
+
+      {/* Ce que les lieux disent — 1 signal IA, entre les stats et le planning.
+          Silence si aucun seuil franchi (doctrine : rareté = force). */}
+      {todayReading && (
+        <div className="space-y-2">
+          <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
+            Ce que les lieux disent
+          </div>
+          <ReadingCard fragment={todayReading.fragment} context={todayReading.context} />
+        </div>
+      )}
 
       {/* Sections par créneau — DÉROULÉ NORMAL EN PREMIER (le planning principal
           est l'activité normale ; la dette est l'exception et vient en dessous). */}

@@ -4,7 +4,7 @@
 // pour être réutilisé par les nouvelles actions du dépôt spontané sur site.
 //
 // chef_equipe = production agent (Joseph côté terrain).
-// admin/manager = QA sur /m (Patrick et Maeva peuvent tester le flow mobile).
+// admin/manager = QA sur /m (Guillaume et Maeva peuvent tester le flow mobile).
 // Tout autre rôle = refus.
 
 import { createClient as createServerClient } from '@/lib/supabase/server'

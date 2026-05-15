@@ -43,7 +43,7 @@
 - ✅ `Fuite signalée à trois reprises depuis mars`
 - ❌ `Problème récurrent non résolu` (verdict interdit)
 
-**Surfaces** : Site cockpit uniquement (Patrick). Pas en mobile, pas en rapport client.
+**Surfaces** : Site cockpit uniquement (Guillaume). Pas en mobile, pas en rapport client.
 
 ---
 
@@ -52,7 +52,7 @@
 **Définition** : deux traces distinctes dans le temps qui se font écho — même mot, même lieu nommé, même motif.
 
 **Déclenchement cible** :
-- Similarité forte entre deux traces (token overlap ≥ 70 %, ou pgvector cosine > 0.82)
+- Similarité forte entre deux traces (token overlap ≥ 70 %, ou pgvector cosine > 0.65 note→anomalie / > 0.92 anomalie→anomalie)
 - Minimum 14 jours entre les deux traces (pas une répétition immédiate)
 - Maximum 6 mois d'écart (au-delà : mémoire froide, pas résonance)
 
@@ -108,8 +108,8 @@
 
 Ces seuils sont des hypothèses de départ. La calibration réelle vient du terrain.
 
-**Questions à observer avec Patrick, Joseph, Sylvie** :
-- Patrick regarde-t-il les lectures ? Les ignore-t-il ?
+**Questions à observer avec Guillaume, Joseph, Sylvie** :
+- Guillaume regarde-t-il les lectures ? Les ignore-t-il ?
 - Quel fragment crée un arrêt, une réflexion, une réaction ?
 - Joseph lit-il les fragments mobiles ou les ignore-t-il complètement ?
 - Sylvie (client) réagit-elle à "non documentée depuis 3 semaines" ?

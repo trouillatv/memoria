@@ -7,7 +7,7 @@
 // Traite par batch de 50 : appeler plusieurs fois pour tout backfiller.
 // Idempotent : les traces déjà embeddées sont skippées (UPSERT côté DB).
 //
-// Pré-requis : OPENAI_API_KEY ou VOYAGE_API_KEY définie dans l'env.
+// Pré-requis : GOOGLE_GENAI_API_KEY (ou OPENAI_API_KEY / VOYAGE_API_KEY) dans l'env.
 
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -59,6 +59,8 @@ export async function POST(req: Request) {
     if (alreadyAnomaly.has(a.id)) { skipped++; continue }
     if (!a.description?.trim()) { skipped++; continue }
     try {
+      // embedAnomalyTrace appelle embedAndStoreTrace en interne qui retourne bool
+      // On ne peut pas vérifier le bool ici (void), mais au moins on logue les erreurs
       await embedAnomalyTrace({ anomalyId: a.id, interventionId: a.intervention_id, text: a.description })
       embedded++
     } catch (e) {
@@ -88,8 +90,8 @@ export async function POST(req: Request) {
     if (alreadyNotes.has(n.id)) { skipped++; continue }
     if (!n.body?.trim()) { skipped++; continue }
     try {
-      await embedAndStoreTrace({ sourceType: 'site_note', sourceId: n.id, siteId: n.site_id, text: n.body })
-      embedded++
+      const ok = await embedAndStoreTrace({ sourceType: 'site_note', sourceId: n.id, siteId: n.site_id, text: n.body })
+      if (ok) embedded++; else errors.push(`site_note:${n.id} — embedAndStoreTrace returned false`)
     } catch (e) {
       errors.push(`site_note:${n.id} — ${e}`)
     }
@@ -129,8 +131,8 @@ export async function POST(req: Request) {
     const siteId = siteByMission.get(i.mission_id)
     if (!siteId) { skipped++; continue }
     try {
-      await embedAndStoreTrace({ sourceType: 'intervention_note', sourceId: i.id, siteId, text: i.notes })
-      embedded++
+      const ok = await embedAndStoreTrace({ sourceType: 'intervention_note', sourceId: i.id, siteId, text: i.notes })
+      if (ok) embedded++; else errors.push(`intervention_note:${i.id} — embedAndStoreTrace returned false`)
     } catch (e) {
       errors.push(`intervention_note:${i.id} — ${e}`)
     }

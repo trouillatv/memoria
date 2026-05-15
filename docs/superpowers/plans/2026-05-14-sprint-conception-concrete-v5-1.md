@@ -334,7 +334,7 @@ export function silenceLabel(daysBetween: number): string | null {
 **Dépendances** : Slice 3
 
 **Périmètre V5.1 (Vincent #4)** :
-- ✅ Capsule **mensuelle** (Patrick → Sylvie, 1×/mois)
+- ✅ Capsule **mensuelle** (Guillaume → Sylvie, 1×/mois)
 - ✅ Capsule **incident résolu** (à chaud après résolution anomalie)
 - ❌ Autres types (passation, audit, anniversaire) reportés V5.2+
 
@@ -382,7 +382,7 @@ const TEMPLATES = {
 };
 ```
 
-**UX atelier capsule (côté Patrick)** : preview chat WhatsApp fidèle (bulle #DCF8C6 sur #ECE5DD), 3 boutons "Copier l'image / Copier le texte / Ouvrir WhatsApp avec [contact]".
+**UX atelier capsule (côté Guillaume)** : preview chat WhatsApp fidèle (bulle #DCF8C6 sur #ECE5DD), 3 boutons "Copier l'image / Copier le texte / Ouvrir WhatsApp avec [contact]".
 
 **Page publique `/c/[token]`** (côté Sylvie) :
 
@@ -400,7 +400,7 @@ const TEMPLATES = {
 - Expiration / révocation (022)
 
 **Fichiers code** :
-- `app/(dashboard)/sites/[id]/capsule/page.tsx` — atelier Patrick
+- `app/(dashboard)/sites/[id]/capsule/page.tsx` — atelier Guillaume
 - `app/(dashboard)/sites/[id]/capsule/components/WhatsAppPreview.tsx`
 - `app/c/[token]/page.tsx` — page publique réception
 - `lib/whatsapp/templates.ts`
@@ -408,7 +408,7 @@ const TEMPLATES = {
 - `lib/db/capsules.ts` (helpers spécifiques au filter `presentation_kind`)
 
 **Tests d'acceptation pilote** :
-- [ ] Patrick prépare une capsule mensuelle en <2 min
+- [ ] Guillaume prépare une capsule mensuelle en <2 min
 - [ ] La capsule WhatsApp tient dans un screenshot iPhone vertical sans scroll
 - [ ] Sylvie ouvre, regarde, ferme (<12s, pas d'interaction)
 - [ ] Aucun cookie / GA / tracker sur `/c/[token]` (DevTools)
@@ -544,7 +544,7 @@ export function isQuietDay(date: Date, tenantTimezone: string): boolean {
 | A/B test wording mémoire | ❌ structurel | Mémoire ≠ funnel |
 | Métriques d'engagement exposées | ❌ structurel | Densité, pas fréquence |
 | Notification push entrante | ⚠️ par défaut | Exception : panne système au tenant admin |
-| Auto-envoi rapport | ⚠️ par défaut | Exception : Patrick programme + confirme 24h |
+| Auto-envoi rapport | ⚠️ par défaut | Exception : Guillaume programme + confirme 24h |
 | Table parallèle `traces` / `capsules` / `trace_embeddings` | ❌ doctrine V5.1.2 | Réutilisation de l'existant obligatoire |
 
 ---
@@ -554,7 +554,7 @@ export function isQuietDay(date: Date, tenantTimezone: string): boolean {
 | Question | Mesure observationnelle | Seuil |
 |---|---|---|
 | Joseph capture sans friction ? | Temps moyen ouverture → 1ère trace | <15s sur 80% sessions |
-| Patrick ressent le lieu sans dashboard ? | Test "3 secondes" : décrire l'état d'un site | Cohérence ≥4/5 sites |
+| Guillaume ressent le lieu sans dashboard ? | Test "3 secondes" : décrire l'état d'un site | Cohérence ≥4/5 sites |
 | Sylvie reçoit un fragment élégant et utile ? | Ouverture capsule + screenshot/forward observé | ≥2/3 critères sur 3 capsules |
 
 **3/3 → V5.2 débloqué.**

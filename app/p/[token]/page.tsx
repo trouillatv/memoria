@@ -62,6 +62,7 @@ import { ProofChecklist } from '@/app/(dashboard)/preuves/[id]/ProofChecklist'
 import { ProofValidations } from '@/app/(dashboard)/preuves/[id]/ProofValidations'
 import { ProofAnomalies } from '@/app/(dashboard)/preuves/[id]/ProofAnomalies'
 import { MonthlyReportPublicView } from './MonthlyReportPublicView'
+import { ReadingCard } from '@/components/ui/reading-card'
 import { getContractTopReadings } from '@/lib/db/site-cockpit'
 import { getProofPageReading } from '@/lib/ai/site-readings'
 
@@ -375,13 +376,11 @@ export default async function PublicProofPage({ params }: PageProps) {
           Séparateur fin avant : le client doit "tomber dessus" après les preuves,
           pas le voir annoncé. Effet mémoire vivante. */}
       {proofPageReading && (
-        <div className="border-t border-border/40 pt-5 px-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60 mb-2">
+        <div className="border-t border-border/40 pt-5">
+          <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65 mb-3">
             Lecture du lieu
-          </p>
-          <p className="text-sm text-foreground/60 leading-relaxed">
-            {proofPageReading}
-          </p>
+          </div>
+          <ReadingCard fragment={proofPageReading} />
         </div>
       )}
 

@@ -9,7 +9,7 @@
 
 ## 1. Scénario réel détaillé — 7h45, mardi 14 mai 2026
 
-Il pleut. Pas fort, juste assez pour rendre le rond-point de Magenta glissant et pour que les essuie-glaces de la Captur de Maeva fassent ce bruit de raclette qu'elle déteste. Café posé dans le porte-gobelet de droite, à moitié bu, encore brûlant. Téléphone calé sur le support magnétique au-dessus de la buse de ventilation. 7h44. Elle vient de déposer Léo (11 ans) au collège, Manon (8 ans) chez sa mère qui l'emmènera à l'école à 8h20. Elle est en route vers Patrick Cleaning Services pour la réu d'équipe de 8h15. La playlist France Inter parle de tarification carbone.
+Il pleut. Pas fort, juste assez pour rendre le rond-point de Magenta glissant et pour que les essuie-glaces de la Captur de Maeva fassent ce bruit de raclette qu'elle déteste. Café posé dans le porte-gobelet de droite, à moitié bu, encore brûlant. Téléphone calé sur le support magnétique au-dessus de la buse de ventilation. 7h44. Elle vient de déposer Léo (11 ans) au collège, Manon (8 ans) chez sa mère qui l'emmènera à l'école à 8h20. Elle est en route vers Guillaume Cleaning Services pour la réu d'équipe de 8h15. La playlist France Inter parle de tarification carbone.
 
 **7h45**. Le téléphone vibre puis sonne. "Sébastien CHT" s'affiche. Maeva sait déjà. Elle sait quand un agent appelle à cette heure-là. Elle pousse le bouton du volant pour décrocher.
 
@@ -34,9 +34,9 @@ Elle raccroche. 7h47. Bionettoyage du bloc opératoire 2 et 3 au CHT Magenta, pr
 > — *OK. Tu finis Schwepps 8h30, tu fonces CHT bloc 2 et 3, démarrage 9h. Je préviens le cadre de santé. Tu prends ton kit bloc dans le local cleaning du rez-de-jardin, le code est 4827. EPI dans le vestiaire H1. Tu as tout ?*
 > — *Reçu. J'y vais.*
 
-**7h57** — Maeva raccroche, retient un *"YES"*. Elle écrit dans WhatsApp MemorIA ops : *"OK c'est bon merci les gars, Mehdi prend le bloc, démarrage 9h15 décalé. Karim/Aïcha bonne journée 🙏."* Puis elle appelle Mme Diallo, cadre de santé du CHT. Boîte vocale. Elle laisse un message *"Mme Diallo c'est Maeva de Patrick Cleaning, on aura un démarrage à 9h15 au lieu de 8h45 sur les blocs 2 et 3, agent qualifié, on rattrape sur la fin, je vous rappelle dans 10 minutes pour confirmer."* Elle envoie aussi un SMS *"Décalage bionet bloc 8h45→9h15, agent qualifié, fin avant 11h. Maeva."*
+**7h57** — Maeva raccroche, retient un *"YES"*. Elle écrit dans WhatsApp MemorIA ops : *"OK c'est bon merci les gars, Mehdi prend le bloc, démarrage 9h15 décalé. Karim/Aïcha bonne journée 🙏."* Puis elle appelle Mme Diallo, cadre de santé du CHT. Boîte vocale. Elle laisse un message *"Mme Diallo c'est Maeva de Guillaume Cleaning, on aura un démarrage à 9h15 au lieu de 8h45 sur les blocs 2 et 3, agent qualifié, on rattrape sur la fin, je vous rappelle dans 10 minutes pour confirmer."* Elle envoie aussi un SMS *"Décalage bionet bloc 8h45→9h15, agent qualifié, fin avant 11h. Maeva."*
 
-**8h02** — Elle se gare au parking de Patrick. Café fini. Elle reste 30 secondes assise dans la voiture, respire un coup, regarde le ciel. *"Bon."* Elle descend, monte au bureau, allume ses trois écrans. **Maintenant** elle ouvre MemorIA pour mettre à jour l'intervention. Pas avant.
+**8h02** — Elle se gare au parking de Guillaume. Café fini. Elle reste 30 secondes assise dans la voiture, respire un coup, regarde le ciel. *"Bon."* Elle descend, monte au bureau, allume ses trois écrans. **Maintenant** elle ouvre MemorIA pour mettre à jour l'intervention. Pas avant.
 
 Entre 7h45 et 8h02 — 17 minutes critiques — **MemorIA n'a pas été ouvert une seule fois**.
 
@@ -50,7 +50,7 @@ Deuxième palier à 7h49 après le message WhatsApp — c'est le palier d'incert
 
 Troisième palier à 7h53 — la délibération. *"Mehdi ? Mehdi peut-être ? Mehdi qualifié bloc oui, mais 9h c'est tard, est-ce que je peux négocier avec Diallo ?"* Là, elle aime ce qu'elle fait. Elle est dans son élément. Multi-variables : compétence agent + horaire bloc opératoire + relation client + programme opératoire de la journée + trajet métro. Elle fait ça en 90 secondes dans une voiture sous la pluie. Elle ne le dirait jamais comme ça, mais c'est virtuose.
 
-Quatrième palier à 7h57 — résolution. Elle raccroche d'avec Mehdi. Et là, **c'est la drogue**. Une décharge. Un mini-shoot d'endorphines. *"YES."* Elle a fait ça 200 fois dans sa carrière, ça marche toujours. C'est le moment qui justifie le métier. Avant 9h, elle aura géré un truc que personne d'autre dans la boîte ne saurait gérer aussi vite. Patrick (le patron) la paie pour ça, et il le sait.
+Quatrième palier à 7h57 — résolution. Elle raccroche d'avec Mehdi. Et là, **c'est la drogue**. Une décharge. Un mini-shoot d'endorphines. *"YES."* Elle a fait ça 200 fois dans sa carrière, ça marche toujours. C'est le moment qui justifie le métier. Avant 9h, elle aura géré un truc que personne d'autre dans la boîte ne saurait gérer aussi vite. Guillaume (le patron) la paie pour ça, et il le sait.
 
 Cinquième palier à 8h02, dans le parking — la décompression. 30 secondes assise, café fini, à regarder le ciel gris. C'est presque un rituel. Elle vide. Elle se prépare au reste de la journée, où il y aura sûrement deux ou trois autres "trucs", mais aucun aussi sportif. Elle se dit *"j'ai bien fait"* — pas à voix haute, mais c'est là, en arrière-plan.
 
@@ -68,7 +68,7 @@ L'intention réelle a trois couches.
 
 **Couche 2 — Politique** : maintenir la promesse au client sans avoir à dire "désolé on n'a personne". Le CHT n'est pas un client comme un autre. C'est un hôpital. Une non-couverture du bloc opératoire, ce n'est pas une "non-conformité" abstraite, c'est un bloc qui ne peut pas opérer le patient suivant. Maeva porte cette responsabilité-là. Personne ne le lui dit, mais elle le sait. Cette couche est éthique. Aucun outil ne peut la servir directement.
 
-**Couche 3 — Émotionnelle** : revenir au calme avant 9h. Pouvoir se garer au parking de Patrick, monter les escaliers à un rythme normal, dire bonjour aux collègues sans la voix tendue, ouvrir le mail du jour avec un cerveau frais. **C'est la vraie demande.** Ce qu'elle veut, c'est que la résolution du problème prenne moins de 90 secondes une fois qu'elle a la bonne piste. Tout ce qui rallonge ces 90 secondes (formulaire, écran à charger, validation, deuxième clic) est un ennemi.
+**Couche 3 — Émotionnelle** : revenir au calme avant 9h. Pouvoir se garer au parking de Guillaume, monter les escaliers à un rythme normal, dire bonjour aux collègues sans la voix tendue, ouvrir le mail du jour avec un cerveau frais. **C'est la vraie demande.** Ce qu'elle veut, c'est que la résolution du problème prenne moins de 90 secondes une fois qu'elle a la bonne piste. Tout ce qui rallonge ces 90 secondes (formulaire, écran à charger, validation, deuxième clic) est un ennemi.
 
 Le piège pour le product owner : confondre Couche 1 (qu'on peut digitaliser facilement) avec Couche 3 (qui demande de **disparaître** du chemin de Maeva à 7h45, pas d'apparaître). L'app qui s'ouvre, demande un login, montre un drag & drop, exige de choisir une équipe dans un menu déroulant — cette app **vole** des secondes à Couche 3. C'est anti-produit.
 
@@ -88,9 +88,9 @@ Il y a quand même des cas où MemorIA aide indirectement, en amont ou en aval.
 
 **Cas 3 — Plus tard dans la matinée**, Mehdi prend ses photos avant/après dans `/m`, coche la checklist bloc, valide. La preuve de service rendu remonte automatiquement dans le dossier de preuves du CHT. Mme Diallo, qui n'a peut-être pas eu le SMS de Maeva, voit dans son extranet client que la prestation a bien été faite, décalée mais faite. **Le décalage devient invisible** parce que la preuve est là. C'est puissant.
 
-**Cas 4 — La semaine suivante, Patrick (le patron) regarde le cockpit de boucle de preuve** du contrat CHT. Il voit que la couverture est restée à 100% malgré un absent. Il ne sait pas que c'était sportif. Il ne le saura jamais. **C'est très bien.** MemorIA a invisibilisé la sueur de Maeva, et c'est exactement ce qu'on veut.
+**Cas 4 — La semaine suivante, Guillaume (le patron) regarde le cockpit de boucle de preuve** du contrat CHT. Il voit que la couverture est restée à 100% malgré un absent. Il ne sait pas que c'était sportif. Il ne le saura jamais. **C'est très bien.** MemorIA a invisibilisé la sueur de Maeva, et c'est exactement ce qu'on veut.
 
-En résumé : **MemorIA aide AVANT (préparation), APRÈS (traçabilité, preuves) et AU NIVEAU SUPÉRIEUR (cockpit Patrick). Pas PENDANT.**
+En résumé : **MemorIA aide AVANT (préparation), APRÈS (traçabilité, preuves) et AU NIVEAU SUPÉRIEUR (cockpit Guillaume). Pas PENDANT.**
 
 ---
 
@@ -121,7 +121,7 @@ Il y a un sixième échec plus subtil : la `ReassignTeamDialog.tsx` existe, elle
 - **Push-to-talk** : si Maeva est dans un tunnel ou si elle a les mains prises, elle peut envoyer un vocal. Personne d'autre ne fait ça aussi bien.
 - **Statut "vu"** : les double tics bleus disent à Maeva qui a lu sans avoir répondu. C'est un signal qu'elle interprète : si Karim a vu et n'a pas répondu en 90 secondes, c'est qu'il ne peut pas. Information précieuse, gratuite, instantanée.
 - **Connu et installé** : zéro friction de découverte. Les 18 agents l'ont. Même la mère de Maeva l'a.
-- **Hors juridiction de Patrick Cleaning** : c'est un outil personnel, donc les agents l'utilisent plus volontiers que l'app pro. Bizarre mais vrai.
+- **Hors juridiction de Guillaume Cleaning** : c'est un outil personnel, donc les agents l'utilisent plus volontiers que l'app pro. Bizarre mais vrai.
 
 Le bon angle stratégique : **MemorIA ne bat pas WhatsApp à ce jeu, et n'essaye pas.** Il fournit **le contexte que WhatsApp n'a pas** : qui couvre quel site cette semaine, quelles équipes sont prévues, quelle est l'intervention en cours sur le site, quel est le code du local cleaning, où sont les EPI, quel est le programme opératoire affiché. Tout ce qui est *contexte de l'intervention* doit être trouvable en 2 clics dans MemorIA et *partageable* dans WhatsApp.
 
@@ -152,7 +152,7 @@ Pression future probable du client (pas de Maeva) : *"Notifiez-moi quand un agen
 **Réponse doctrinale** : Refus. Dispatch temps réel interdit par V2 (liste rouge dispatch). La notif nominative est interdite par V3 (liste rouge V3). Et de toute façon Maeva préviendra Mehdi par WhatsApp ou téléphone, ce qui est plus efficace. MemorIA **ne notifie jamais un agent nominativement**.
 
 **Risque 4 — Score de fiabilité de l'agent souvent malade**
-Pression future probable (Patrick le patron, en réu mensuelle) : *"Sébastien est malade 3 fois en 6 semaines, vous pouvez me sortir un récap ?"*
+Pression future probable (Guillaume le patron, en réu mensuelle) : *"Sébastien est malade 3 fois en 6 semaines, vous pouvez me sortir un récap ?"*
 **Réponse doctrinale** : Refus net. KPI individuel = mort doctrinale. **Reformulation possible** : "Le contrat CHT a connu 3 réassignations sur 6 semaines" (agrégat par engagement, pas par personne). Le patron peut faire la corrélation lui-même s'il veut. Mais **MemorIA ne lui mâche pas le travail** sur ce front.
 
 **Risque 5 — "Maeva a fait 47 réassignations ce mois"**
@@ -160,7 +160,7 @@ Pression future probable (un autre manager, jaloux, qui veut "objectiver" le tra
 **Réponse doctrinale** : Refus net. Mesurer Maeva = mesurer un humain = doctrine V3 interdite. **Reformulation possible** : "47 réassignations sur les contrats Q2" (agrégat). Ne jamais lier au nom du manager.
 
 **Risque 6 — Module "Absences"**
-*Demande probable de Patrick* : *"Vous pourriez gérer les arrêts maladie aussi ?"*
+*Demande probable de Guillaume* : *"Vous pourriez gérer les arrêts maladie aussi ?"*
 **Réponse doctrinale** : Refus net. RH = autre marché. Renvoyer vers Lucca, Combo, PayFit. La doctrine a tranché.
 
 **Risque 7 — Heatmap "sites les plus à risque de réassignation"**

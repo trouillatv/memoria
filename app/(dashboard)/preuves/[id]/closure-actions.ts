@@ -65,7 +65,7 @@ const closeSchema = z.object({
  * Clôture mentalement un dossier de preuves partagé.
  *
  * Le dossier reste consultable via son lien public. La clôture est un signal
- * d'apaisement (verrou V3), pas une révocation. Patrick peut rouvrir si
+ * d'apaisement (verrou V3), pas une révocation. Guillaume peut rouvrir si
  * c'est une erreur (cf. reopenDossierAction).
  */
 export async function closeDossierAction(

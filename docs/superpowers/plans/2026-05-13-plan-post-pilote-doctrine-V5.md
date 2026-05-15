@@ -11,7 +11,7 @@
 
 ## Principe d'activation
 
-Au démarrage du sprint, **chaque slice ci-dessous est filtrée par le carnet d'observation Patrick** :
+Au démarrage du sprint, **chaque slice ci-dessous est filtrée par le carnet d'observation Guillaume** :
 
 | Filtre | Action |
 |---|---|
@@ -37,21 +37,21 @@ Avant inclusion finale, chaque slice doit passer le test ultime V5 :
 
 Classées par persona, ancrées dans la doctrine V5.
 
-### Bloc 1 — Patrick / DG / Pilier 4 "Amplifier sa voix"
+### Bloc 1 — Guillaume / DG / Pilier 4 "Amplifier sa voix"
 
 #### Slice P1 — Voice note du DG sur rapport mensuel (Agent 1, reco 1.A)
-**Doctrine** : Pilier 4. Le rapport est un rituel relationnel, pas un livrable informationnel. La vraie voix de Patrick vit dans ses notes vocales WhatsApp, pas dans le français-administratif.
+**Doctrine** : Pilier 4. Le rapport est un rituel relationnel, pas un livrable informationnel. La vraie voix de Guillaume vit dans ses notes vocales WhatsApp, pas dans le français-administratif.
 
 **UX** : Sur `/contracts/[id]/rapport-mensuel`, à côté du champ texte "Note du DG", ajouter un bouton micro qui enregistre 30-60s d'audio. Audio inclus dans le PDF (lien lecteur) et dans la page publique (player intégré).
 
-**Charge mentale** : ↓↓ (Patrick passe de 10 min de rédaction à 30s de voice note)
+**Charge mentale** : ↓↓ (Guillaume passe de 10 min de rédaction à 30s de voice note)
 **Effort** : M (~4h — Web Speech API ou upload audio + storage)
 **Garde-fou** : pas de transcription IA. La voix est la voix.
 
 #### Slice P2 — Preview "Tester l'envoi sur moi-même" (Agent 1, reco 1.B)
 **Doctrine** : Pilier 4. Anxiété de réception = trou noir post-envoi.
 
-**UX** : Bouton "M'envoyer un test" avant "Approuver et partager". Génère le même mail qu'au client mais à Patrick. Il voit exactement ce que Sylvie va voir.
+**UX** : Bouton "M'envoyer un test" avant "Approuver et partager". Génère le même mail qu'au client mais à Guillaume. Il voit exactement ce que Sylvie va voir.
 
 **Charge mentale** : ↓↓
 **Effort** : S (~2h)
@@ -66,7 +66,7 @@ Classées par persona, ancrées dans la doctrine V5.
 
 ---
 
-### Bloc 2 — Patrick / DG / Mémoire commerciale (Agent 2)
+### Bloc 2 — Guillaume / DG / Mémoire commerciale (Agent 2)
 
 #### Slice C1 — Statut won/lost minimaliste (Agent 2, reco 2.A)
 **Doctrine** : Pilier 1 ("mémoire opérationnelle"). Closure émotionnelle AVANT analyse. 3 champs exactement.
@@ -164,9 +164,9 @@ Détails : https://app.memoria.nc/p/[token]
 #### Slice S2 — Signature DG (image scannée) (Agent 5, reco 5.B)
 **Doctrine** : Pilier 4 + 6. Incarne le document.
 
-**UX** : Champ "Ma signature" sur `/account` (upload image PNG transparent). Si présente, ajoutée en bas du PDF avec "Patrick Martin — Dirigeant".
+**UX** : Champ "Ma signature" sur `/account` (upload image PNG transparent). Si présente, ajoutée en bas du PDF avec "Guillaume Martin — Dirigeant".
 
-**Charge mentale** : ↓ (Sylvie voit que c'est Patrick qui assume)
+**Charge mentale** : ↓ (Sylvie voit que c'est Guillaume qui assume)
 **Effort** : S (~2h)
 
 #### Slice S3 — URL stable de vérification + bouton "Sauvegarder ce PDF" (Agent 5, reco 5.C)
@@ -194,7 +194,7 @@ Détails : https://app.memoria.nc/p/[token]
 | S1 — Co-branding | S | P6 | 🔴 si client demande crédibilité |
 | S2 — Signature DG | S | P4+6 | 🟠 |
 | P1 — Voice note DG | M | P4 | 🟠 dépend des retours sur la note actuelle |
-| C1 — Won/lost minimal | M | P1 | 🟢 si Patrick perd un AO en mai |
+| C1 — Won/lost minimal | M | P1 | 🟢 si Guillaume perd un AO en mai |
 | C2 — Encart mémoire AO similaire | M | P2 | 🟢 dépend de C1 |
 | M2 — Briefing du soir | M | P3 | 🟠 |
 | S3 — URL stable | M | P6 | 🟠 |
@@ -219,7 +219,7 @@ Quand le terrain demandera ces features, opposer la doctrine :
 | Module "absences" | ❌ | RH, hors scope |
 | GPS / pointage | ❌ | Maxim 1 (V3) — surveillance |
 | Compte de connexion par agent | ❌ | Maxim 9 (V5) — surveillance hors UI |
-| Auto-envoi rapport mensuel le 1er | ❌ | Pilier 4 — Patrick reste l'auteur |
+| Auto-envoi rapport mensuel le 1er | ❌ | Pilier 4 — Guillaume reste l'auteur |
 | Forecast revenue / pipeline | ❌ | CRM creep |
 
 ---
@@ -230,7 +230,7 @@ Quand le terrain demandera ces features, opposer la doctrine :
 
 - 🔍 Frustration vocabulaire mobile (passage vs mission)
 - 🔍 Déconnexions répétées Joseph/Sandrine
-- 🔍 Tentation de Patrick de poster noms dans WhatsApp pilote
+- 🔍 Tentation de Guillaume de poster noms dans WhatsApp pilote
 - 🔍 Sandrine qui pleure dans sa voiture (Agent 6 prédit jeudi matin)
 - 🔍 Tarek qui crée spontanément un canal d'entraide
 - 🔍 Sylvie qui demande "pourquoi le lien expire"
@@ -244,13 +244,13 @@ Si UNE de ces observations est confirmée → slice ajoutée à la roadmap. Si N
 
 Le 20 mai 2026 à 9h, ouvrir ce doc et :
 
-1. **Confronter chaque slice** au carnet papier de Patrick
+1. **Confronter chaque slice** au carnet papier de Guillaume
 2. **Garder uniquement les slices validées par friction observée**
 3. **Ajouter les slices nées de l'observation imprévue**
 4. **Trier par effort × valeur observée** (pas par valeur supposée)
 5. **Lancer le sprint** avec max 5-8 slices, pas 13
 
-Si le pilote a échoué subjectivement (Sandrine en résistance, Patrick a posté des noms) → la priorité absolue redevient la **doctrine V5 culturelle**, pas le code. Reporter le sprint d'1 semaine et refaire un briefing humain élargi.
+Si le pilote a échoué subjectivement (Sandrine en résistance, Guillaume a posté des noms) → la priorité absolue redevient la **doctrine V5 culturelle**, pas le code. Reporter le sprint d'1 semaine et refaire un briefing humain élargi.
 
 ---
 

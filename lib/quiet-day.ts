@@ -6,7 +6,7 @@
 // Portée :
 //   - ✅ Bloque les envois proactifs (email, SMS, push, crons, rapports auto).
 //   - ❌ N'interfère JAMAIS avec l'accès lecture. L'app reste ouverte 24/7.
-//        Patrick peut consulter, télécharger un dossier de preuves, ouvrir un
+//        Guillaume peut consulter, télécharger un dossier de preuves, ouvrir un
 //        site le dimanche à 22h sans aucune friction.
 //
 // Exception system-critical : alertes de panne système au tenant admin

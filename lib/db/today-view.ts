@@ -17,6 +17,7 @@ export type TodaySlot = 'morning' | 'afternoon' | 'evening' | 'none'
 export interface TodayIntervention {
   id: string
   mission_name: string
+  site_id: string | null
   site_name: string
   slot: TodaySlot
   status: 'planned' | 'in_progress' | 'completed' | 'validated' | 'skipped'
@@ -87,7 +88,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       assigned_team_id,
       executed_at,
       skipped_reason,
-      mission:missions!inner(name, site:sites!inner(name))
+      mission:missions!inner(name, site:sites!inner(id, name))
     `)
     .eq('scheduled_for', date)
     .order('slot', { ascending: true })
@@ -99,7 +100,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
     assigned_team_id: string | null
     executed_at: string | null
     skipped_reason: string | null
-    mission: { name: string; site: { name: string } | Array<{ name: string }> | null } | Array<{ name: string; site: { name: string } | Array<{ name: string }> | null }> | null
+    mission: { name: string; site: { id: string; name: string } | Array<{ id: string; name: string }> | null } | Array<{ name: string; site: { id: string; name: string } | Array<{ id: string; name: string }> | null }> | null
   }
   const pick = <T,>(v: T | T[] | null): T | null =>
     v === null ? null : Array.isArray(v) ? v[0] ?? null : v
@@ -127,6 +128,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
     items.push({
       id: r.id,
       mission_name: mission?.name ?? 'Intervention',
+      site_id: site?.id ?? null,
       site_name: site?.name ?? 'Site inconnu',
       slot: (r.slot ?? 'none') as TodaySlot,
       status: r.status,

@@ -11,9 +11,9 @@
 
 6h45, parking est du CHT Magenta. Il fait encore nuit, sodium jaune sur l'asphalte mouillé. Joseph coupe le contact de sa Twingo. Trois secondes, mains sur le volant, à regarder les fenêtres éteintes du bloc opératoire qu'il devra livrer propre à 8h30. Téléphone Android dans la poche poitrine de son polo, froid. Tarek arrive à 6h55, Sandrine à 7h pile.
 
-Joseph descend. Reflex : WhatsApp. Message de Maeva, « Bonjour Joseph, le téléphone du bloc B sonne pas, prends le 06… Bonne journée. » Il répond « 👍 », range. Il ne pense pas encore à l'app MemorIA. Patrick lui a montré ça vendredi soir en dix minutes pendant qu'ils chargeaient les seaux : « Tu cliques là, tu démarres, tu fais ton truc, à la fin tu cliques terminé. Et tu prends des photos. » Joseph a hoché la tête.
+Joseph descend. Reflex : WhatsApp. Message de Maeva, « Bonjour Joseph, le téléphone du bloc B sonne pas, prends le 06… Bonne journée. » Il répond « 👍 », range. Il ne pense pas encore à l'app MemorIA. Guillaume lui a montré ça vendredi soir en dix minutes pendant qu'ils chargeaient les seaux : « Tu cliques là, tu démarres, tu fais ton truc, à la fin tu cliques terminé. Et tu prends des photos. » Joseph a hoché la tête.
 
-Vestiaire. Code badge, blouse blanche, surchaussures, lavage de mains. Le téléphone reste dans la poche de la blouse, gros, pesant, tape contre la cuisse à chaque pas. 6h52 en sortant, il se souvient. Il déverrouille, code à 4 chiffres tapé lentement (doigts secs de gel hydro). Il cherche l'icône. Une cinquantaine sur l'écran d'accueil. Le raccourci web ajouté vendredi par Patrick — un N bleu. Tap.
+Vestiaire. Code badge, blouse blanche, surchaussures, lavage de mains. Le téléphone reste dans la poche de la blouse, gros, pesant, tape contre la cuisse à chaque pas. 6h52 en sortant, il se souvient. Il déverrouille, code à 4 chiffres tapé lentement (doigts secs de gel hydro). Il cherche l'icône. Une cinquantaine sur l'écran d'accueil. Le raccourci web ajouté vendredi par Guillaume — un N bleu. Tap.
 
 Page de login. Email. Joseph regarde le post-it dans son portefeuille : `joseph.t@memoria.nc`. Il tape à un doigt, deux fautes, efface, retape. Mot de passe temporaire en majuscules au stylo bille : `NETO2026!`. Il tape. L'app demande de changer. Soupir intérieur. `Tarek2008`. Confirme. Tarek arrive, tape sur l'épaule, « Aweet chef ». Joseph rate la confirmation, retape. Cinquante secondes perdues.
 
@@ -25,9 +25,9 @@ C'est ce moment précis — gant retiré, doigt sec, écran déjà embué par l'
 
 ## 2. Ce que Joseph ressent
 
-Anxiété diffuse, pas de tracas franc. 22 ans qu'il fait ça, il sait que le bloc sera prêt à 8h30 quoi qu'il arrive. Mais une voix au fond du crâne : « si tu te plantes avec le téléphone, Patrick va savoir, Patrick va dire que t'es trop vieux pour ça. » Joseph n'a pas envie d'être ce type-là.
+Anxiété diffuse, pas de tracas franc. 22 ans qu'il fait ça, il sait que le bloc sera prêt à 8h30 quoi qu'il arrive. Mais une voix au fond du crâne : « si tu te plantes avec le téléphone, Guillaume va savoir, Guillaume va dire que t'es trop vieux pour ça. » Joseph n'a pas envie d'être ce type-là.
 
-Méfiance silencieuse jamais formulée. Il a quitté Sodexo il y a six ans à cause d'un système qui pointait l'arrivée par GPS — impression d'être un colis. MemorIA n'est pas Sodexo, Patrick n'est pas son ancien manager, il le sait. Mais quand il tape « Commencer », un quart de seconde : *est-ce qu'on enregistre l'heure ?* Patrick ne lui a pas dit. Patrick ne lui a probablement pas menti, il a oublié de préciser. Cette zone grise pèse plus que Patrick imagine.
+Méfiance silencieuse jamais formulée. Il a quitté Sodexo il y a six ans à cause d'un système qui pointait l'arrivée par GPS — impression d'être un colis. MemorIA n'est pas Sodexo, Guillaume n'est pas son ancien manager, il le sait. Mais quand il tape « Commencer », un quart de seconde : *est-ce qu'on enregistre l'heure ?* Guillaume ne lui a pas dit. Guillaume ne lui a probablement pas menti, il a oublié de préciser. Cette zone grise pèse plus que Guillaume imagine.
 
 Fierté pro intacte. Sans Joseph le bloc B n'est pas conforme. L'app ne change rien à ça. Il a juste besoin qu'elle ne lui prenne pas plus de cinq minutes cumulées. Au-delà, c'est volé sur la salle 3.
 
@@ -53,7 +53,7 @@ Le retour à `/m` après fin de mission affiche « terminé », point. Pas de sc
 
 ## 5. Où MemorIA échoue
 
-**Trou 1 — Le login premier jour.** Patrick distribue les mdp temporaires en main propre. Joseph reçoit un papier vendredi soir, doit s'en souvenir lundi 6h45. Papier perdu = bloqué. Sinon il tape `NETO2026!` à un doigt, sur écran froid, en majuscules, le `!` sur clavier secondaire. Puis nouveau mdp avec règles non explicites. Trois essais, jurons, mdp choisi qu'il oubliera mardi. Session Supabase à 1h (kit pilote, risque 3) : il devra retaper dans la matinée. Le login est le moment de friction le plus dangereux et c'est là que l'app est la plus faible.
+**Trou 1 — Le login premier jour.** Guillaume distribue les mdp temporaires en main propre. Joseph reçoit un papier vendredi soir, doit s'en souvenir lundi 6h45. Papier perdu = bloqué. Sinon il tape `NETO2026!` à un doigt, sur écran froid, en majuscules, le `!` sur clavier secondaire. Puis nouveau mdp avec règles non explicites. Trois essais, jurons, mdp choisi qu'il oubliera mardi. Session Supabase à 1h (kit pilote, risque 3) : il devra retaper dans la matinée. Le login est le moment de friction le plus dangereux et c'est là que l'app est la plus faible.
 
 **Trou 2 — Le mot « mission ».** « Mes missions » n'est pas dans la bouche de Joseph. Il dit « le passage », « le bloc », « la chambre », « la journée ». « Mission » c'est militaire-consultant. Joseph comprend, mais le mot maintient une distance. Le pilote doit tester « passage » / « intervention » / « tâche ». Petite friction qui dit subtilement « cette app n'est pas faite pour toi ».
 
@@ -67,15 +67,15 @@ Le retour à `/m` après fin de mission affiche « terminé », point. Pas de sc
 
 ## 6. Dépendances externes
 
-WhatsApp est l'arme principale silencieuse de Joseph. Groupe « Bloc CHT » : Maeva, Patrick, deux chirs, le cadre de bloc. Les messages essentiels passent là : « bloc B inaccessible urgence transplant », « ménage 7h annulé », « le chef vient passer à 9h », « besoin d'un masque taille L », « Joseph t'as oublié les sur-chaussures ». Sans WhatsApp, Joseph est sourd et muet.
+WhatsApp est l'arme principale silencieuse de Joseph. Groupe « Bloc CHT » : Maeva, Guillaume, deux chirs, le cadre de bloc. Les messages essentiels passent là : « bloc B inaccessible urgence transplant », « ménage 7h annulé », « le chef vient passer à 9h », « besoin d'un masque taille L », « Joseph t'as oublié les sur-chaussures ». Sans WhatsApp, Joseph est sourd et muet.
 
-MemorIA ne va pas remplacer WhatsApp et ne doit pas essayer. Ce qui RESTE en dehors de l'app : la communication temps réel avec son manager, les alertes terrain (matos manquant, accès bloqué, demande inattendue d'un chir), le ton humain (« bon courage Joseph » du matin), la négociation des remplacements (« Tarek me dépanne »), la photo de groupe en fin de chantier, les retours après visite de Patrick.
+MemorIA ne va pas remplacer WhatsApp et ne doit pas essayer. Ce qui RESTE en dehors de l'app : la communication temps réel avec son manager, les alertes terrain (matos manquant, accès bloqué, demande inattendue d'un chir), le ton humain (« bon courage Joseph » du matin), la négociation des remplacements (« Tarek me dépanne »), la photo de groupe en fin de chantier, les retours après visite de Guillaume.
 
 L'app doit faire trois choses : afficher la mission du jour, capturer les preuves, signaler une anomalie structurelle. Le reste passe par WhatsApp. Si MemorIA essaie d'absorber la conversation, elle devient un Slack RH déguisé et perd Joseph.
 
 ## 7. Risques doctrinaux
 
-**« Tracer l'heure d'arrivée de Joseph sur site. »** Tentant : `started_at` existe déjà, il suffit de l'exposer à Patrick. Refus. La doctrine V3 dit que `started_at` est factuel non-affiché comme pointage. Reformulation : Patrick verra « bloc B : en cours depuis 7h01 », pas « Joseph est arrivé à 7h01 ».
+**« Tracer l'heure d'arrivée de Joseph sur site. »** Tentant : `started_at` existe déjà, il suffit de l'exposer à Guillaume. Refus. La doctrine V3 dit que `started_at` est factuel non-affiché comme pointage. Reformulation : Guillaume verra « bloc B : en cours depuis 7h01 », pas « Joseph est arrivé à 7h01 ».
 
 **« Notif push superviseur quand Joseph démarre. »** Tentant pour signal temps réel côté Maeva. Refus (dispatch temps réel interdit V2). Digest hebdo OK, statut consultable à la demande OK, notif active jamais.
 
@@ -125,7 +125,7 @@ Géoloc de la photo activée par l'app. Refus. Si EXIF natif déjà présent (le
 
 ## 10. Recommandations priorisées
 
-**Action 1 — Reconcevoir le premier login comme cérémonie d'accueil.** Impact Joseph : décisif. C'est le moment où il décide silencieusement s'il adopte ou résiste. 90 secondes au lieu de 30 = il arrive énervé à sa première mission. Effort : moyen — refactor du flux change-password + 3 phrases d'accueil + « Bonjour Joseph ». Garde-fou doctrinal : zéro mesure, zéro ton paternaliste, zéro quiz. Test : un chef pilote termine le premier login en moins de 60 secondes sans rien demander à Patrick.
+**Action 1 — Reconcevoir le premier login comme cérémonie d'accueil.** Impact Joseph : décisif. C'est le moment où il décide silencieusement s'il adopte ou résiste. 90 secondes au lieu de 30 = il arrive énervé à sa première mission. Effort : moyen — refactor du flux change-password + 3 phrases d'accueil + « Bonjour Joseph ». Garde-fou doctrinal : zéro mesure, zéro ton paternaliste, zéro quiz. Test : un chef pilote termine le premier login en moins de 60 secondes sans rien demander à Guillaume.
 
 **Action 2 — Repenser la photo terrain pour main gantée.** Impact Joseph : c'est l'action #1, répétée 5 à 10 fois, dans des conditions hostiles. Deux essais sur trois = l'app perd. Un essai = l'app gagne. Effort : moyen — FAB → bouton plein-largeur en bas, cible 100×100 dp min, contraste max, label texte visible. Étude : raccourci home screen Android qui ouvre caméra native et lie à l'intervention en cours. Garde-fou : zéro analytics sur la photo, pas de comptage par agent, pas de notification de comptage.
 

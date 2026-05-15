@@ -331,7 +331,7 @@ export async function createMonthlyReportToken(
  * contrat, en excluant le mois en cours (`excludeMonth`). Pour pré-remplir le
  * champ « Note du DG » du mois suivant et réduire la peur de la page blanche.
  *
- * Doctrine V5 Pilier 2 : réduit la charge mentale. La voix de Patrick est
+ * Doctrine V5 Pilier 2 : réduit la charge mentale. La voix de Guillaume est
  * la SIENNE, on le rappelle juste de sa note précédente, jamais d'IA générative.
  *
  * Renvoie null si aucun rapport antérieur n'existe.
@@ -498,7 +498,7 @@ export async function closeProofShareToken(
 /**
  * Rouvre un dossier précédemment clôturé (Sprint 6).
  *
- * Cas d'usage : Patrick clique par erreur sur "Clôturer" depuis un mobile.
+ * Cas d'usage : Guillaume clique par erreur sur "Clôturer" depuis un mobile.
  * Idempotent : appeler sur un dossier déjà ouvert ne lève pas d'erreur (on
  * reset les 3 champs en NULL sans condition).
  */

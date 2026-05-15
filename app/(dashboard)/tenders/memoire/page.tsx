@@ -63,7 +63,7 @@ interface PageProps {
  *
  * Doctrine V5 verrou V1 (mémoire ≠ recommandation) + V4 (formulations
  * descriptives uniquement). C'est un journal chronologique des AO
- * finalisés. Patrick l'ouvre quand il veut se rappeler — pas chaque
+ * finalisés. Guillaume l'ouvre quand il veut se rappeler — pas chaque
  * matin. Aucun KPI, aucun graph, aucun compteur "perdus ce mois",
  * aucune comparaison N vs N-1. Juste une liste.
  */

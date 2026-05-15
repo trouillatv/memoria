@@ -16,6 +16,7 @@
 // et un container max-w-4xl — on rend juste le contenu intérieur.
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ReadingCard } from '@/components/ui/reading-card'
 import { Button } from '@/components/ui/button'
 import { Clock, ShieldCheck, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -101,15 +102,16 @@ export function MonthlyReportPublicView({
         <DgNoteSection note={dgNote} clientName={reportData.contract.client_name} />
       )}
 
-      {/* V5.1.4 — Strophe IA (Vincent 2026-05-15). Phrases factuelles
-          descriptives, sans titre technique. Le client ressent que le
-          système se souvient du lieu — il ne voit pas de "feature IA". */}
+      {/* V5.2 — Mémoire du lieu : lectures IA avec identité visuelle cognition.
+          Wording "Mémoire du lieu" côté client (pas "Lecture" ni mention IA).
+          Max 3 fragments. Frags non disponibles ici (string[] uniquement). */}
       {siteReadingTexts.length > 0 && (
-        <div className="rounded-md border border-border/60 bg-muted/15 px-5 py-5 space-y-2">
+        <div className="space-y-3">
+          <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
+            Mémoire du lieu
+          </div>
           {siteReadingTexts.slice(0, 3).map((text, idx) => (
-            <p key={idx} className="text-sm leading-relaxed text-foreground/85">
-              {text}
-            </p>
+            <ReadingCard key={idx} fragment={text} />
           ))}
         </div>
       )}

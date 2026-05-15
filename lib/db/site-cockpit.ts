@@ -1518,7 +1518,7 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
       : { data: [] as Array<{ id: string; intervention_id: string; description: string | null; category: string; category_other: string | null; status: string; created_at: string; resolved_at: string | null }> },
     supabase
       .from('site_notes')
-      .select('body, created_at')
+      .select('id, body, created_at')
       .eq('site_id', siteId)
       .is('deleted_at', null),
   ])
@@ -1535,6 +1535,7 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
   }>
 
   const siteNoteRows = (siteNotesRes.data ?? []) as Array<{
+    id: string
     body: string
     created_at: string
   }>
@@ -1704,6 +1705,27 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     }
     if (resonances.length >= 2) break
   }
+  // --- 4b. RÉSONANCES SÉMANTIQUES V1.5 — lecture depuis site_reading_candidates
+  // Le calcul pgvector se fait à l'écriture (refresh-site-readings.ts).
+  // Ici : SQL pur, pas de cosine live.
+  if (resonances.length < 2) {
+    try {
+      const { data: candidates } = await supabase
+        .from('site_reading_candidates')
+        .select('fragment')
+        .eq('site_id', siteId)
+        .eq('reading_type', 'resonance')
+        .eq('status', 'active')
+        .order('generated_at', { ascending: false })
+        .limit(2)
+
+      for (const c of (candidates ?? []) as Array<{ fragment: string }>) {
+        if (resonances.length >= 2) break
+        resonances.push({ kind: 'resonance_note_anomaly', axis: 'resonance', text: c.fragment })
+      }
+    } catch { /* Silencieux */ }
+  }
+
   // Résonances insérées EN PREMIER (priorité doctrinale Vincent 2026-05-15)
   readings.unshift(...resonances)
 
@@ -1732,6 +1754,26 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
       })
     }
   }
+  // --- 5b. PERSISTANCES SÉMANTIQUES V1.5 — lecture depuis site_reading_candidates
+  // Même doctrine que 4b : calcul à l'écriture, lecture SQL pur.
+  if (persistences.length < 2) {
+    try {
+      const { data: candidates } = await supabase
+        .from('site_reading_candidates')
+        .select('fragment')
+        .eq('site_id', siteId)
+        .eq('reading_type', 'persistence')
+        .eq('status', 'active')
+        .order('generated_at', { ascending: false })
+        .limit(2)
+
+      for (const c of (candidates ?? []) as Array<{ fragment: string }>) {
+        if (persistences.length >= 2) break
+        persistences.push({ kind: 'persistence_place', axis: 'persistence', text: c.fragment })
+      }
+    } catch { /* Silencieux */ }
+  }
+
   // Persistances après résonances, avant le reste
   if (persistences.length > 0) {
     readings.splice(resonances.length, 0, ...persistences.slice(0, 2))

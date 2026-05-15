@@ -203,7 +203,7 @@ export interface SetTenderOutcomeInput {
  * Pose le statut sortie d'un AO + raison + tag.
  *
  * Doctrine V5 verrou V1 :
- * - Le système enregistre ce que Patrick déclare. Il ne calcule rien.
+ * - Le système enregistre ce que Guillaume déclare. Il ne calcule rien.
  * - Aucun score. Aucune next_action. Aucune relance.
  *
  * Règles de cohérence :

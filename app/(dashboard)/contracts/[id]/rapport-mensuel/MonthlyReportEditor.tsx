@@ -81,7 +81,7 @@ export function MonthlyReportEditor({ data, contractId, month, previousNote }: M
   const [selectedIds, setSelectedIds] = useState<Set<string>>(defaultSelected)
   const [note, setNote] = useState<string>('')
   const [isPending, startTransition] = useTransition()
-  // MC-5 — Preview dialog : Patrick voit le rapport sans créer de share token.
+  // MC-5 — Preview dialog : Guillaume voit le rapport sans créer de share token.
   const [previewOpen, setPreviewOpen] = useState(false)
 
   // Slice E.2 — dialog "Rapport prêt" affichant les URLs après approbation.
@@ -740,7 +740,7 @@ function formatDayLong(iso: string): string {
 // MC-5 — Preview dialog : vue client avant approbation
 // ----------------------------------------------------------------------------
 //
-// Doctrine V5 Pilier 4 — Patrick voit ce que Sylvie verra AVANT d'engager
+// Doctrine V5 Pilier 4 — Guillaume voit ce que Sylvie verra AVANT d'engager
 // (réduit l'anxiété du "trou noir post-envoi"). Pas de share token créé.
 // Pas de PDF généré. Juste un rendu visuel des éléments-clés : photos
 // sélectionnées + note du DG + stats du mois.

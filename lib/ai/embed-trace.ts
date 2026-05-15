@@ -28,6 +28,8 @@ export async function embedAndStoreTrace(params: {
   if (!embedding) return false
 
   const supabase = createAdminClient()
+  // PostgREST attend le vecteur au format "[1.0,2.0,...]" (chaîne), pas un tableau JS.
+  const embeddingStr = `[${embedding.join(',')}]`
   const { error } = await supabase
     .from('trace_embeddings')
     .upsert(
@@ -35,7 +37,7 @@ export async function embedAndStoreTrace(params: {
         source_type: params.sourceType,
         source_id: params.sourceId,
         site_id: params.siteId,
-        embedding,
+        embedding: embeddingStr,
         text_excerpt: params.text.slice(0, 500),
       },
       { onConflict: 'source_type,source_id' },
@@ -45,6 +47,12 @@ export async function embedAndStoreTrace(params: {
     console.error('[embed-trace] upsert failed', error)
     return false
   }
+
+  // Pré-calcul asynchrone des lectures sémantiques — fire-and-forget.
+  import('@/lib/ai/refresh-site-readings').then(({ refreshSiteReadingCandidates }) => {
+    refreshSiteReadingCandidates(params.siteId).catch(() => { /* silencieux */ })
+  }).catch(() => { /* silencieux */ })
+
   return true
 }
 

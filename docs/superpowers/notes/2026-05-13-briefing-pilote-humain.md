@@ -1,8 +1,8 @@
-﻿# Briefing humain pré-pilote — Patrick
+﻿# Briefing humain pré-pilote — Guillaume
 
 > **Date** : 2026-05-13
-> **Cible pilote** : 13-17 mai 2026, 3 chefs d'équipe (Joseph CHT Magenta, Tarek Lycée Lapérouse, Sandrine OPT-NC), 1 manager (Maeva), 1 DG (Patrick)
-> **Statut** : à lire par Patrick AVANT lundi 6h
+> **Cible pilote** : 13-17 mai 2026, 3 chefs d'équipe (Joseph CHT Magenta, Tarek Lycée Lapérouse, Sandrine OPT-NC), 1 manager (Maeva), 1 DG (Guillaume)
+> **Statut** : à lire par Guillaume AVANT lundi 6h
 
 Le pilote est plus important que le code. La doctrine V5 vient d'être gravée — elle doit survivre à la semaine. Ce briefing est le **mécanisme immunitaire culturel** qui protège le produit pendant 5 jours.
 
@@ -19,7 +19,7 @@ Concrètement :
 - ❌ Screenshot d'une vue MemorIA contenant des noms posté dans WhatsApp pilote
 - ❌ "Tu as vu Sandrine n'a pas fini ?"
 
-Pourquoi : **la doctrine V5 protège l'UI, mais c'est toi (Patrick) qui peux la casser hors UI en 2 phrases.** Le pilote va décrocher exactement à ce moment-là, sans qu'on le voie venir.
+Pourquoi : **la doctrine V5 protège l'UI, mais c'est toi (Guillaume) qui peux la casser hors UI en 2 phrases.** Le pilote va décrocher exactement à ce moment-là, sans qu'on le voie venir.
 
 L'Agent 6 prédit que Sandrine bascule en résistance passive irréversible le **mercredi 15 mai 18h** précisément si tu publies des bilans nominatifs. Elle pleurera dans sa voiture jeudi matin. Tu ne le sauras jamais. Le pilote semblera réussir objectivement et échouer subjectivement.
 
@@ -41,7 +41,7 @@ Mais jamais avec des noms. **Bilan d'équipe ou bilan de site, jamais bilan d'ag
 Lundi, mardi, mercredi soir : tu envoies un **message vocal privé** (pas écrit, pas groupe) à chacun des 3 chefs.
 
 Format simple :
-> *"Salut Joseph, c'est Patrick. Juste pour te dire que j'ai vu que tu as fait ta journée à Magenta, le bionettoyage du bloc est bien validé. Si t'as une question sur l'app n'hésite pas. Bonne soirée."*
+> *"Salut Joseph, c'est Guillaume. Juste pour te dire que j'ai vu que tu as fait ta journée à Magenta, le bionettoyage du bloc est bien validé. Si t'as une question sur l'app n'hésite pas. Bonne soirée."*
 
 30 secondes. Vocal pas texte (le texte avec un patron c'est froid). Privé pas groupe (le bilan groupe c'est de la surveillance).
 
@@ -67,7 +67,7 @@ Le pilote n'est pas un sprint produit. C'est une **photographie de la réalité*
 
 ### Règle 5 — Carnet d'observation, pas tableau de bord
 
-Toi (Patrick), tu ouvres `/dashboard` une fois par jour à 17h. Pas plus.
+Toi (Guillaume), tu ouvres `/dashboard` une fois par jour à 17h. Pas plus.
 
 Tu notes sur papier (vraiment papier, pas Notes du téléphone) :
 - Les **silences** : qui n'a rien dit dans WhatsApp pilote ?
@@ -87,7 +87,7 @@ C'est ça les vrais signaux. Pas les chiffres du dashboard.
 - **6h45 — Joseph** : premier login, va probablement galérer 90 secondes avec son mdp temporaire. Ne pas le brusquer.
 - **7h00 — Sandrine** : ne va pas se souvenir de son mdp, va appeler. Reste calme, donne-lui via vocal lent.
 - **7h15 — Tarek** : va explorer toute l'app par curiosité. Tu peux le laisser. Aucun risque.
-- **17h00 — Toi (Patrick)** : tu vas être tenté de poster *"Bilan J1 : 21 interventions, 87 photos"* dans le WhatsApp pilote. **C'est bien.** Tu vas être aussi tenté d'ajouter *"Joseph a fait moins que Tarek"*. **C'est interdit.**
+- **17h00 — Toi (Guillaume)** : tu vas être tenté de poster *"Bilan J1 : 21 interventions, 87 photos"* dans le WhatsApp pilote. **C'est bien.** Tu vas être aussi tenté d'ajouter *"Joseph a fait moins que Tarek"*. **C'est interdit.**
 
 ### Mardi 14 mai
 

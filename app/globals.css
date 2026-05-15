@@ -17,6 +17,16 @@
   --color-brand-900: #0f172a;
 }
 
+@theme {
+  /* Cognition palette — couleur IA unique de MemorIA.
+     Indigo désaturé : ni urgence, ni validation, ni erreur.
+     Une couche de lecture. Jamais alarmante.
+     Modifiable ici en un seul point pour toutes les surfaces. */
+  --color-reading-border: hsl(var(--reading-border));
+  --color-reading-bg:     hsl(var(--reading-bg));
+  --color-reading-label:  hsl(var(--reading-label));
+}
+
 @theme inline {
   /* Les variables CSS dans :root sont des composants HSL bruts ("0 0% 100%").
      On doit les wrapper dans hsl() ici pour que Tailwind genere une valeur
@@ -98,6 +108,10 @@
     --sidebar-accent-foreground: 222.2 47.4% 11.2%;
     --sidebar-border: 214.3 31.8% 91.4%;
     --sidebar-ring: 221.2 83.2% 53.3%;
+    /* Cognition — indigo 400/500/700 en mode clair */
+    --reading-border: 239 68% 66%;
+    --reading-bg:     239 84% 67%;
+    --reading-label:  239 84% 48%;
   }
 
   .dark {
@@ -133,6 +147,10 @@
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 217.2 32.6% 17.5%;
     --sidebar-ring: 224.3 76.3% 48%;
+    /* Cognition — mode sombre : plus lumineux pour rester visible */
+    --reading-border: 239 68% 74%;
+    --reading-bg:     239 84% 67%;
+    --reading-label:  239 68% 78%;
   }
 
   * {

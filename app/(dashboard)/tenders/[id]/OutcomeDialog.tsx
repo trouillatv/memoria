@@ -21,7 +21,7 @@ import type { TenderOutcome, TenderOutcomeTag } from '@/types/db'
  * Doctrine V5 — verrou V1 (mémoire neutre, pas de recommandation) + verrou V4
  * (pas de formulation de contrôle humain) appliqués au wording.
  *
- * Le système enregistre ce que Patrick déclare. Il ne lui suggère aucune action
+ * Le système enregistre ce que Guillaume déclare. Il ne lui suggère aucune action
  * future, aucune injonction, aucun verbe commercial.
  */
 

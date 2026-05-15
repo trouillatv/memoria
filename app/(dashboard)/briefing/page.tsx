@@ -25,6 +25,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
+import { getTenantDayReading } from '@/lib/ai/site-readings'
+import { ReadingCard } from '@/components/ui/reading-card'
 import { generateChefEquipePreparations } from '@/lib/db/chef-equipe-preparation'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
 import { SiteNotesPopover } from './SiteNotesPopover'
@@ -76,6 +78,12 @@ export default async function BriefingPage({
     buildEveningBriefing(target),
     generateChefEquipePreparations(target),
   ])
+
+  const tomorrowSiteContext = briefing.coverageBySite.map((s) => ({
+    siteId: s.site_id,
+    plannedMissions: s.missions,
+  }))
+  const briefingReading = await getTenantDayReading(tomorrowSiteContext, 'demain')
 
   const briefingShareText = formatBriefingShareText(briefing)
   const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
@@ -138,6 +146,16 @@ export default async function BriefingPage({
           tone={briefing.unassignedInterventions.length > 0 ? 'amber' : 'neutral'}
         />
       </div>
+
+      {/* Ce que les lieux disent — 1 signal IA sur les sites du lendemain. */}
+      {briefingReading && (
+        <div className="space-y-2">
+          <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
+            Ce que les lieux disent
+          </div>
+          <ReadingCard fragment={briefingReading.fragment} context={briefingReading.context} />
+        </div>
+      )}
 
       {/* Couverture par site (positif) */}
       <Card>

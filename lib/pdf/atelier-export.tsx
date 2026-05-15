@@ -1,7 +1,7 @@
 ﻿// Sprint 8 — Export Atelier IA → Dossier de préparation PDF.
 //
 // Doctrine V5 :
-//   - Pilier 4 (DG amplifié) : PDF amplifie Patrick, ne parle pas à sa place.
+//   - Pilier 4 (DG amplifié) : PDF amplifie Guillaume, ne parle pas à sa place.
 //   - Verrou V1 (mémoire ≠ recommandation) : descriptif factuel uniquement.
 //     Pas de "Baissez votre prix", pas de superlatif marketing.
 //   - Pilier 6 (infrastructure invisible) : prestataire en hero, MemorIA en
@@ -450,7 +450,7 @@ function senderLabel(
     agent_name: string | null
   },
 ): string {
-  if (m.role === 'user') return 'Patrick'
+  if (m.role === 'user') return 'Guillaume'
   if (m.role === 'system') return 'Système'
   if (m.agent_name && AGENT_NAME_LABELS[m.agent_name])
     return `Agent · ${AGENT_NAME_LABELS[m.agent_name]}`

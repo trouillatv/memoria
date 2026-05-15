@@ -15,6 +15,7 @@ export interface Reading {
 }
 
 const ABSENCE_WEEKS = 4
+const ABSENCE_MIN_EXECUTIONS = 3  // doctrine : évite les faux positifs sur sites récents
 
 // ---------------------------------------------------------------------------
 // Absences basées sur l'exécution réelle (complément aux absences textuelles)
@@ -45,7 +46,9 @@ export async function findMissionAbsences(siteId: string): Promise<MissionAbsenc
     .order('executed_at', { ascending: false })
 
   const lastByMission = new Map<string, string>()
+  const countByMission = new Map<string, number>()
   for (const row of (rows ?? []) as Array<{ mission_id: string; executed_at: string }>) {
+    countByMission.set(row.mission_id, (countByMission.get(row.mission_id) ?? 0) + 1)
     if (!lastByMission.has(row.mission_id)) lastByMission.set(row.mission_id, row.executed_at)
   }
 
@@ -53,6 +56,7 @@ export async function findMissionAbsences(siteId: string): Promise<MissionAbsenc
   const absences: MissionAbsence[] = []
 
   for (const m of missions as Array<{ id: string; name: string }>) {
+    if ((countByMission.get(m.id) ?? 0) < ABSENCE_MIN_EXECUTIONS) continue
     const lastAt = lastByMission.get(m.id)
     const ageMs = lastAt ? nowMs - new Date(lastAt).getTime() : nowMs
     const weeksSince = Math.floor(ageMs / (7 * 86_400_000))
@@ -65,7 +69,7 @@ export async function findMissionAbsences(siteId: string): Promise<MissionAbsenc
   return absences
 }
 
-function absenceFragment({ missionName, weeksSince }: MissionAbsence): string {
+export function absenceFragment({ missionName, weeksSince }: MissionAbsence): string {
   if (weeksSince >= 16) {
     const months = Math.round(weeksSince / 4.3)
     return `${missionName} — absent depuis ${months} mois`
@@ -99,6 +103,55 @@ export async function getProofPageReading(
   const top = filtered[0]
   if (!top) return null
   return absenceFragmentExternal(top)
+}
+
+// ---------------------------------------------------------------------------
+// getTenantDayReading — 1 signal global pour les pages journée (aujourd'hui,
+// briefing). Prend les site_ids du jour, retourne la première absence
+// significative toutes surfaces confondues (signal déterministe, rapide).
+// ---------------------------------------------------------------------------
+
+interface SiteContext {
+  siteId: string
+  plannedMissions?: string[]   // noms des missions au planning ce jour/demain
+}
+
+export interface DayReadingResult {
+  fragment: string
+  context?: string  // pertinence contextuelle — jamais une gravité, jamais un score
+}
+
+// getTenantDayReading — 1 signal pour les surfaces opérationnelles (briefing,
+// aujourd'hui). Retourne fragment + contexte séparés.
+//
+// Doctrine : le fragment observe (passé), le contexte situe (présent).
+// L'humain décide. L'IA ne juge pas. Jamais "critique", "urgent", "important".
+export async function getTenantDayReading(
+  sites: SiteContext[],
+  when: "aujourd'hui" | 'demain' = "aujourd'hui",
+): Promise<DayReadingResult | null> {
+  if (sites.length === 0) return null
+  const capped = sites.slice(0, 6)
+  const results = await Promise.all(capped.map((s) => findMissionAbsences(s.siteId)))
+
+  const enriched = results.flatMap((absences, i) => {
+    const planned = new Set(capped[i]?.plannedMissions ?? [])
+    return absences.map((abs) => ({ ...abs, isPlanned: planned.has(abs.missionName) }))
+  })
+
+  // Absences concernant une mission au planning en tête, puis par ancienneté
+  enriched.sort((a, b) => {
+    if (a.isPlanned !== b.isPlanned) return a.isPlanned ? -1 : 1
+    return b.weeksSince - a.weeksSince
+  })
+
+  const top = enriched[0]
+  if (!top) return null
+
+  return {
+    fragment: absenceFragment(top),
+    context: top.isPlanned ? `au planning ${when}` : undefined,
+  }
 }
 
 // ---------------------------------------------------------------------------

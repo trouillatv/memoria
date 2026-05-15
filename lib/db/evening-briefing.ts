@@ -40,8 +40,13 @@ export interface EveningBriefing {
    *  `recentNotes` = jusqu'à 5 dernières notes mémoire des lieux (site_notes).
    *  `fields` = champs structurés "fiche site" (code entrée, contact, etc.). */
   coverageBySite: Array<{
+    site_id: string
     site_name: string
     count: number
+    /** Noms des missions planifiées pour ce site ce jour — utilisés pour croiser
+     *  avec les absences IA et élever leur priorité si elles concernent une
+     *  mission qui est justement au planning. */
+    missions: string[]
     teams: Array<{
       id: string
       name: string
@@ -128,7 +133,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
   // après une requête batch sur team_members + users.
   const siteCoverage = new Map<
     string,
-    { name: string; count: number; teams: Map<string, TeamLite>; slots: Set<string> }
+    { name: string; count: number; missions: Set<string>; teams: Map<string, TeamLite>; slots: Set<string> }
   >()
   const unassigned: EveningBriefing['unassignedInterventions'] = []
 
@@ -140,8 +145,9 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     const team = pickOne(r.team)
     const entry =
       siteCoverage.get(site.id) ??
-      { name: site.name, count: 0, teams: new Map<string, TeamLite>(), slots: new Set<string>() }
+      { name: site.name, count: 0, missions: new Set<string>(), teams: new Map<string, TeamLite>(), slots: new Set<string>() }
     entry.count += 1
+    entry.missions.add(mission.name)
     if (team?.id && !entry.teams.has(team.id)) {
       entry.teams.set(team.id, { id: team.id, name: team.name, color: team.color ?? null })
     }
@@ -286,8 +292,10 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
   // membres + référent pour le popover et notes récentes pour la mémoire.
   const coverageBySite = Array.from(siteCoverage.entries())
     .map(([siteId, c]) => ({
+      site_id: siteId,
       site_name: c.name,
       count: c.count,
+      missions: Array.from(c.missions),
       teams: Array.from(c.teams.values())
         .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
         .map((t) => {
