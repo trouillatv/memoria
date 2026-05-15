@@ -10,6 +10,9 @@
 
 **Le système observe plus qu'il ne parle.**
 
+> Doctrine mémoire assistée : `docs/superpowers/doctrines/memoire-assistee.md`
+> Règle universelle : l'artefact brut ne disparaît jamais. L'IA propose. L'humain valide. La mémoire enregistre le choix humain.
+
 Quand il parle, le cerveau humain doit comprendre immédiatement :
 "ce n'est pas du remplissage."
 

@@ -21,6 +21,7 @@ import { SkipInterventionTrigger } from './skip-modal'
 import { RescheduleTriggerMobile } from './RescheduleTriggerMobile'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
 import { AddSiteNoteButton } from './AddSiteNoteButton'
+import { VoiceNoteTrigger } from './VoiceNoteTrigger'
 import { SiteResumeCard } from './SiteResumeCard'
 import { SiteAccessCard } from './SiteAccessCard'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
@@ -305,6 +306,7 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       {isInProgress && (
         <div className="space-y-3 mt-6">
           <AnomalyTrigger interventionId={id} />
+          <VoiceNoteTrigger interventionId={id} />
           <CompleteButton
             interventionId={id}
             hasMissingRequired={hasMissingRequired}
