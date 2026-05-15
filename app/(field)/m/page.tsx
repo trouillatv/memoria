@@ -373,7 +373,7 @@ export default async function FieldHomePage({
         </section>
       )}
 
-      {todayInterventions.length === 0 && upcomingInterventions.length > 0 && (
+      {selectedInterventions.length === 0 && upcomingInterventions.length > 0 && (
         <div className="rounded-lg border bg-card">
           <EmptyState
             icon={CalendarDays}
