@@ -12,27 +12,16 @@ import { ENGAGEMENT_EXTRACTOR_V1 } from './prompts/engagement-extractor.v1'
 const extractedSchema = z.object({
   engagements: z.array(
     z.object({
-      source_type: z.enum(['ao_clause', 'memoire_engagement']),
-      source_excerpt: z.string().min(10).max(1500),
-      source_ref: z
-        .object({
-          page: z.number().int().nullable().optional(),
-          section: z.string().nullable().optional(),
-        })
-        .nullable()
-        .optional(),
+      source_type: z.enum(['ao_clause', 'memoire_engagement']).catch('ao_clause'),
+      source_excerpt: z.string().max(1500).catch(''),
+      source_ref: z.record(z.string(), z.unknown()).nullable().optional().catch(null),
       category: z.enum([
-        'frequency',
-        'quality',
-        'compliance',
-        'delivery',
-        'sla',
-        'reporting',
-        'other',
-      ]),
-      short_label: z.string().min(5).max(100),
-      measurable: z.boolean(),
-      confidence: z.number().min(0).max(1),
+        'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
+      ]).catch('other'),
+      short_label: z.string().max(200).catch(''),
+      measurable: z.boolean().catch(false),
+      // Gemini retourne parfois 0-100 au lieu de 0-1
+      confidence: z.number().transform(v => v > 1 ? v / 100 : v).catch(0.5),
     })
   ),
 })
