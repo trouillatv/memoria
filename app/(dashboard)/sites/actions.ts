@@ -9,11 +9,18 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import {
   updateSite,
   softDeleteSite,
   getSiteDependencies,
+  createSite,
+  listSitesForMatching,
+  normalizeSiteName,
+  buildCanonicalSiteKey,
+  trigramSimilarity,
+  type SiteForMatching,
 } from '@/lib/db/sites'
 
 async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
@@ -80,6 +87,153 @@ const deleteSchema = z.object({ site_id: z.string().uuid() })
  * l'utilisateur vers l'archivage (= laisser le site, il bascule en
  * "Inactif" automatiquement après 6 mois sans intervention).
  */
+// ---------------------------------------------------------------------------
+// Création de site depuis la page globale /sites
+// ---------------------------------------------------------------------------
+
+const createSiteGlobalSchema = z.object({
+  name: z.string().min(1, 'Nom requis').max(200),
+  client_id: z.string().uuid().optional(),
+  client_name_new: z.string().min(1).max(200).optional(),
+  contract_id: z.string().uuid().optional(),
+  address: z.string().max(500).optional(),
+  notes: z.string().max(2000).optional(),
+  force: z.enum(['true', 'false']).default('false'),
+  access_code: z.string().max(200).optional(),
+  alarm_code: z.string().max(200).optional(),
+  contact_name: z.string().max(200).optional(),
+  contact_phone: z.string().max(50).optional(),
+  access_hours: z.string().max(200).optional(),
+  access_instructions: z.string().max(1000).optional(),
+})
+
+export interface SimilarSiteResult {
+  id: string
+  name: string
+  client_display_name: string | null
+  score: number
+}
+
+export type CreateSiteGlobalResult =
+  | { ok: true; siteId: string }
+  | { similar: SimilarSiteResult[] }
+  | { error: string }
+
+/**
+ * Crée un site depuis la page globale /sites.
+ * - Trouve ou crée le client (par id existant ou nom saisi).
+ * - Calcule normalized_name et canonical_site_key.
+ * - Si des sites similaires existent et force !== 'true', retourne { similar }.
+ * - L'humain confirme et renvoie avec force='true'.
+ */
+export async function createSiteGlobalAction(
+  formData: FormData,
+): Promise<CreateSiteGlobalResult> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const raw = {
+    name: formData.get('name'),
+    client_id: formData.get('client_id') || undefined,
+    client_name_new: formData.get('client_name_new') || undefined,
+    contract_id: formData.get('contract_id') || undefined,
+    address: formData.get('address') || undefined,
+    notes: formData.get('notes') || undefined,
+    force: formData.get('force') ?? 'false',
+    access_code: formData.get('access_code') || undefined,
+    alarm_code: formData.get('alarm_code') || undefined,
+    contact_name: formData.get('contact_name') || undefined,
+    contact_phone: formData.get('contact_phone') || undefined,
+    access_hours: formData.get('access_hours') || undefined,
+    access_instructions: formData.get('access_instructions') || undefined,
+  }
+
+  const parsed = createSiteGlobalSchema.safeParse(raw)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Données invalides' }
+
+  const { name, client_id, client_name_new, contract_id, force, ...rest } = parsed.data
+
+  // Résolution du client : existant ou création inline
+  if (!client_id && !client_name_new) {
+    return { error: 'Un client est requis — sélectionnez-en un ou créez-en un nouveau.' }
+  }
+
+  const supabase = createAdminClient()
+  let resolvedClientId: string
+  let resolvedClientName: string
+
+  if (client_id) {
+    const { data: cl } = await supabase
+      .from('clients')
+      .select('id, name')
+      .eq('id', client_id)
+      .maybeSingle()
+    if (!cl) return { error: 'Client introuvable' }
+    resolvedClientId = cl.id
+    resolvedClientName = cl.name
+  } else {
+    // Création ou lookup du client par nom
+    const trimmedClientName = client_name_new!.trim()
+    const { data: existing } = await supabase
+      .from('clients')
+      .select('id, name')
+      .ilike('name', trimmedClientName)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (existing) {
+      resolvedClientId = existing.id
+      resolvedClientName = existing.name
+    } else {
+      const { data: created, error: createErr } = await supabase
+        .from('clients')
+        .insert({ name: trimmedClientName })
+        .select('id, name')
+        .single()
+      if (createErr || !created) return { error: 'Impossible de créer le client' }
+      resolvedClientId = created.id
+      resolvedClientName = created.name
+    }
+  }
+
+  const normalizedName = normalizeSiteName(name)
+  const canonicalKey = buildCanonicalSiteKey(resolvedClientName, name)
+
+  // Anti-doublon : vérification par similarité trigram si force !== 'true'
+  if (force !== 'true') {
+    const allSites = await listSitesForMatching()
+    const similar: SimilarSiteResult[] = allSites
+      .map((s: SiteForMatching) => ({
+        id: s.id,
+        name: s.name,
+        client_display_name: s.client_display_name,
+        score: trigramSimilarity(s.normalized_name, normalizedName),
+      }))
+      .filter((s) => s.score >= 0.75)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+
+    if (similar.length > 0) return { similar }
+  }
+
+  const siteId = await createSite({
+    client_id: resolvedClientId,
+    contract_id: contract_id ?? null,
+    name,
+    canonical_site_key: canonicalKey,
+    address: rest.address ?? null,
+    notes: rest.notes ?? null,
+    access_code: rest.access_code ?? null,
+    alarm_code: rest.alarm_code ?? null,
+    contact_name: rest.contact_name ?? null,
+    contact_phone: rest.contact_phone ?? null,
+    access_hours: rest.access_hours ?? null,
+    access_instructions: rest.access_instructions ?? null,
+  })
+
+  revalidatePath('/sites')
+  return { ok: true, siteId }
+}
+
 export async function deleteSiteAction(formData: FormData) {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return auth

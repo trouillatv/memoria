@@ -11,8 +11,10 @@
 import { redirect } from 'next/navigation'
 import { MapPin, ChevronRight, Building2 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listSitesGlobal, isSiteInactive } from '@/lib/db/sites'
+import { listSitesGlobal, isSiteInactive, listClients, listSitesForMatching } from '@/lib/db/sites'
+import { listActiveContractsLite } from '@/lib/db/sites'
 import { SiteGlobalRow } from './SiteGlobalRow'
+import { CreateSiteDialog } from './CreateSiteDialog'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -22,7 +24,12 @@ export default async function SitesGlobalPage() {
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/m')
 
-  const sites = await listSitesGlobal()
+  const [sites, clients, contracts, allSites] = await Promise.all([
+    listSitesGlobal(),
+    listClients(),
+    listActiveContractsLite(),
+    listSitesForMatching(),
+  ])
 
   // Grouper par client
   type Group = { clientName: string | null; clientId: string | null; sites: typeof sites }
@@ -40,22 +47,25 @@ export default async function SitesGlobalPage() {
 
   return (
     <div className="space-y-8 max-w-4xl">
-      <header>
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <MapPin className="h-6 w-6 text-sky-600" />
-          Sites
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Tous les sites, groupés par client. Un site avec des données liées
-          ne peut pas être supprimé — il bascule en « Inactif » après 6 mois
-          sans intervention.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <MapPin className="h-6 w-6 text-sky-600" />
+            Sites
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Tous les sites, groupés par client. Un site avec des données liées
+            ne peut pas être supprimé — il bascule en « Inactif » après 6 mois
+            sans intervention.
+          </p>
+        </div>
+        <CreateSiteDialog clients={clients} contracts={contracts} allSites={allSites} />
       </header>
 
       {sites.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center">
           <p className="text-sm text-muted-foreground italic">
-            Aucun site enregistré. Créez-en un depuis la page d&apos;un contrat.
+            Aucun site enregistré. Cliquez sur « Nouveau site » pour commencer.
           </p>
         </div>
       ) : (

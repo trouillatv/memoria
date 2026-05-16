@@ -3,6 +3,117 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSite, DbSiteNote } from '@/types/db'
 
+// ---------------------------------------------------------------------------
+// Identité canonique — anti-doublon
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalise un nom de site pour la comparaison de similarité.
+ * Doit rester cohérent avec la fonction SQL du trigger sites_normalize_name.
+ */
+export function normalizeSiteName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[-–—_]+/g, ' ')                          // tirets → espace
+    .replace(/\s+/g, ' ')                               // collapse
+    .trim()
+}
+
+/** Clé canonique : "normalized_client::normalized_site" */
+export function buildCanonicalSiteKey(clientName: string, siteName: string): string {
+  return `${normalizeSiteName(clientName)}::${normalizeSiteName(siteName)}`
+}
+
+// Dice coefficient sur trigrammes — équivalent à similarity() de pg_trgm.
+function buildTrigrams(s: string): Set<string> {
+  const padded = ` ${s} `
+  const t = new Set<string>()
+  for (let i = 0; i < padded.length - 2; i++) t.add(padded.slice(i, i + 3))
+  return t
+}
+
+export function trigramSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  if (a === b) return 1
+  const ta = buildTrigrams(a)
+  const tb = buildTrigrams(b)
+  if (ta.size === 0 || tb.size === 0) return 0
+  let intersection = 0
+  for (const g of ta) if (tb.has(g)) intersection++
+  return (2 * intersection) / (ta.size + tb.size)
+}
+
+export interface SiteForMatching {
+  id: string
+  name: string
+  normalized_name: string
+  canonical_site_key: string | null
+  client_id: string | null
+  client_display_name: string | null
+}
+
+/** Charge tous les sites actifs avec normalized_name pour le matching côté client. */
+export async function listSitesForMatching(): Promise<SiteForMatching[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('sites')
+    .select('id, name, normalized_name, canonical_site_key, client_id, client:clients(name)')
+    .is('deleted_at', null)
+    .order('name')
+  if (error) throw error
+  return (data ?? []).map((s) => {
+    const cl = s.client as { name: string } | { name: string }[] | null
+    const clientName = Array.isArray(cl) ? cl[0]?.name ?? null : cl?.name ?? null
+    return {
+      id: s.id,
+      name: s.name,
+      normalized_name: (s.normalized_name as string | null) ?? normalizeSiteName(s.name),
+      canonical_site_key: (s.canonical_site_key as string | null) ?? null,
+      client_id: s.client_id,
+      client_display_name: clientName,
+    }
+  })
+}
+
+export interface ClientLite { id: string; name: string }
+
+export async function listClients(): Promise<ClientLite[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name')
+    .is('deleted_at', null)
+    .order('name')
+  if (error) throw error
+  return (data ?? []) as ClientLite[]
+}
+
+export interface ContractLite {
+  id: string
+  name: string
+  client_name: string | null
+  client_id: string | null
+}
+
+export async function listActiveContractsLite(): Promise<ContractLite[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('contracts')
+    .select('id, name, client_name')
+    .is('deleted_at', null)
+    .neq('status', 'archived')
+    .order('name')
+  if (error) throw error
+  // contracts n'a pas encore de FK client_id directe — on expose null
+  return (data ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    client_name: c.client_name,
+    client_id: null,
+  }))
+}
+
 export async function listSites(): Promise<DbSite[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -288,6 +399,7 @@ export async function createSite(input: {
   contact_phone?: string | null
   access_hours?: string | null
   access_instructions?: string | null
+  canonical_site_key?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -304,6 +416,7 @@ export async function createSite(input: {
       contact_phone: input.contact_phone ?? null,
       access_hours: input.access_hours ?? null,
       access_instructions: input.access_instructions ?? null,
+      ...(input.canonical_site_key != null ? { canonical_site_key: input.canonical_site_key } : {}),
     })
     .select('id')
     .single()
