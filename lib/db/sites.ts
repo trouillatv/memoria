@@ -53,15 +53,45 @@ export interface SiteForMatching {
   client_display_name: string | null
 }
 
-/** Charge tous les sites actifs avec normalized_name pour le matching côté client. */
+/** Charge tous les sites actifs avec normalized_name pour le matching côté client.
+ *  Resilient : si la migration 062 n'est pas encore appliquée (colonnes absentes),
+ *  calcule normalized_name en JS plutôt que de crasher la page.
+ */
 export async function listSitesForMatching(): Promise<SiteForMatching[]> {
   const supabase = createAdminClient()
+
+  // Tente d'abord avec les nouvelles colonnes (post-migration 062)
   const { data, error } = await supabase
     .from('sites')
     .select('id, name, normalized_name, canonical_site_key, client_id, client:clients(name)')
     .is('deleted_at', null)
     .order('name')
-  if (error) throw error
+
+  // Si 42703 (colonne absente) : migration pas encore appliquée → fallback sans ces colonnes
+  if (error) {
+    if ((error as { code?: string }).code === '42703') {
+      const { data: fallback, error: fallbackErr } = await supabase
+        .from('sites')
+        .select('id, name, client_id, client:clients(name)')
+        .is('deleted_at', null)
+        .order('name')
+      if (fallbackErr) throw fallbackErr
+      return (fallback ?? []).map((s) => {
+        const cl = s.client as { name: string } | { name: string }[] | null
+        const clientName = Array.isArray(cl) ? cl[0]?.name ?? null : cl?.name ?? null
+        return {
+          id: s.id,
+          name: s.name,
+          normalized_name: normalizeSiteName(s.name),
+          canonical_site_key: null,
+          client_id: s.client_id,
+          client_display_name: clientName,
+        }
+      })
+    }
+    throw error
+  }
+
   return (data ?? []).map((s) => {
     const cl = s.client as { name: string } | { name: string }[] | null
     const clientName = Array.isArray(cl) ? cl[0]?.name ?? null : cl?.name ?? null
@@ -420,6 +450,30 @@ export async function createSite(input: {
     })
     .select('id')
     .single()
+
+  // Migration 062 pas encore appliquée → retry sans canonical_site_key
+  if (error && (error as { code?: string }).code === '42703' && input.canonical_site_key != null) {
+    const { data: data2, error: err2 } = await supabase
+      .from('sites')
+      .insert({
+        client_id: input.client_id,
+        contract_id: input.contract_id,
+        name: input.name,
+        address: input.address ?? null,
+        notes: input.notes ?? null,
+        access_code: input.access_code ?? null,
+        alarm_code: input.alarm_code ?? null,
+        contact_name: input.contact_name ?? null,
+        contact_phone: input.contact_phone ?? null,
+        access_hours: input.access_hours ?? null,
+        access_instructions: input.access_instructions ?? null,
+      })
+      .select('id')
+      .single()
+    if (err2) throw err2
+    return data2.id
+  }
+
   if (error) throw error
   return data.id
 }
