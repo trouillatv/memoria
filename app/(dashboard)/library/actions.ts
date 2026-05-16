@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -12,6 +13,7 @@ import {
   getKnowledgeItem,
 } from '@/lib/db/knowledge'
 import { getUserRoleById } from '@/lib/db/users'
+import { embedKnowledgeItemChunks } from '@/lib/ai/embed-knowledge-chunks'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -59,6 +61,16 @@ export async function createKnowledgeItemAction(formData: FormData) {
     action: 'created',
     metadata: { title: parsed.data.title, category: parsed.data.category },
   })
+
+  // Fire-and-forget : génère les chunks sémantiques pour l'Atelier IA.
+  after(async () => {
+    try {
+      await embedKnowledgeItemChunks(id)
+    } catch (e) {
+      console.error('[library/actions] embedKnowledgeItemChunks failed', e)
+    }
+  })
+
   revalidatePath('/library')
   return { ok: true, id }
 }

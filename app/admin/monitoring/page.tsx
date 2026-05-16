@@ -7,6 +7,7 @@ import {
   getContractHealthTable,
 } from '@/lib/db/admin-monitoring'
 import { MonitoringShell } from './MonitoringShell'
+import { AIHealthSection } from './AIHealthSection'
 
 function parsePeriod(raw: string | undefined): PeriodDays {
   const n = Number(raw)
@@ -30,14 +31,19 @@ export default async function AdminMonitoringPage({
   ])
 
   return (
-    <Suspense>
-      <MonitoringShell
-        period={period}
-        stats={stats}
-        feed={feed}
-        kpis={kpis}
-        contracts={contracts}
-      />
-    </Suspense>
+    <div className="space-y-8">
+      <Suspense fallback={null}>
+        <AIHealthSection />
+      </Suspense>
+      <Suspense>
+        <MonitoringShell
+          period={period}
+          stats={stats}
+          feed={feed}
+          kpis={kpis}
+          contracts={contracts}
+        />
+      </Suspense>
+    </div>
   )
 }

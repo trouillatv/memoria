@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS site_reading_candidates (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id       uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  tenant_id       uuid NOT NULL,  -- single-tenant pilot : pas de table tenants
   site_id         uuid NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   reading_type    text NOT NULL CHECK (reading_type IN ('resonance', 'persistence')),
   fragment        text NOT NULL,

@@ -15,7 +15,7 @@ import {
   countAnalysesToday,
   insertTenderAnalysis,
 } from '@/lib/db/tenders'
-import { extractPdfText } from '@/services/pdf/extract'
+import { extractPdfText, extractWithGeminiOCR } from '@/services/pdf/extract'
 import { analyzeTender } from '@/services/ai/orchestrator'
 import { validateAnalysisSources } from '@/services/ai/source-validation'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
@@ -96,22 +96,46 @@ export async function createTenderAction(formData: FormData) {
     return { error: `Extraction texte échouée : ${msg}` }
   }
 
+  let extractionSource: 'native' | 'ocr' = 'native'
+
   if (extracted.isLikelyScanned) {
-    await updateTenderStatus(tenderId, 'failed', 'scanned_pdf_unsupported')
-    await createTenderDocument({
-      tender_id: tenderId,
-      storage_path: storagePath,
-      filename: file.name,
-      size_bytes: file.size,
-      page_count: extracted.pageCount,
-      extracted_text: '',
-    })
-    await logAuditEvent({
-      userId, entityType: 'tender', entityId: tenderId,
-      action: 'created',
-      metadata: { title: parsed.data.title, page_count: extracted.pageCount, status: 'failed', reason: 'scanned_pdf_unsupported' },
-    })
-    redirect(`/tenders/${tenderId}`)
+    // Fallback OCR via Gemini Vision si clé disponible
+    let ocrText: string | null = null
+    if (process.env.GOOGLE_GENAI_API_KEY) {
+      try {
+        ocrText = await extractWithGeminiOCR(buffer)
+      } catch (e) {
+        console.error(JSON.stringify({
+          service: 'createTenderAction',
+          source: 'gemini_ocr',
+          tender_id: tenderId,
+          error: e instanceof Error ? e.message : String(e),
+          ts: new Date().toISOString(),
+        }))
+      }
+    }
+
+    if (ocrText) {
+      extracted = { ...extracted, text: ocrText, isLikelyScanned: false }
+      extractionSource = 'ocr'
+      // Continues to step 5 with OCR text
+    } else {
+      await updateTenderStatus(tenderId, 'failed', 'scanned_pdf_unsupported')
+      await createTenderDocument({
+        tender_id: tenderId,
+        storage_path: storagePath,
+        filename: file.name,
+        size_bytes: file.size,
+        page_count: extracted.pageCount,
+        extracted_text: '',
+      })
+      await logAuditEvent({
+        userId, entityType: 'tender', entityId: tenderId,
+        action: 'created',
+        metadata: { title: parsed.data.title, page_count: extracted.pageCount, status: 'failed', reason: 'scanned_pdf_unsupported' },
+      })
+      redirect(`/tenders/${tenderId}`)
+    }
   }
 
   // 5. Create tender_documents row with extracted text
@@ -122,6 +146,7 @@ export async function createTenderAction(formData: FormData) {
     size_bytes: file.size,
     page_count: extracted.pageCount,
     extracted_text: extracted.text,
+    extraction_source: extractionSource,
   })
 
   // 6. Set status to analyzing

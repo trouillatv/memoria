@@ -25,7 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
-import { getTenantDayReading } from '@/lib/ai/site-readings'
+import { getTenantDayReading, generateSiteReadings } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { generateChefEquipePreparations } from '@/lib/db/chef-equipe-preparation'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
@@ -83,7 +83,23 @@ export default async function BriefingPage({
     siteId: s.site_id,
     plannedMissions: s.missions,
   }))
+
+  // Signal principal : absence de mission (déterministe, rapide).
+  // Fallback : première lecture terrain d'un site du lendemain (résonance /
+  // persistance depuis site_reading_candidates — nécessite données embeddings).
   const briefingReading = await getTenantDayReading(tomorrowSiteContext, 'demain')
+
+  const fallbackReadings = !briefingReading && tomorrowSiteContext.length > 0
+    ? await (async () => {
+        for (const { siteId } of tomorrowSiteContext.slice(0, 3)) {
+          const readings = await generateSiteReadings(siteId)
+          if (readings.length > 0) return readings[0]
+        }
+        return null
+      })()
+    : null
+
+  const effectiveBriefingReading = briefingReading ?? fallbackReadings
 
   const briefingShareText = formatBriefingShareText(briefing)
   const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
@@ -147,13 +163,18 @@ export default async function BriefingPage({
         />
       </div>
 
-      {/* Ce que les lieux disent — 1 signal IA sur les sites du lendemain. */}
-      {briefingReading && (
+      {/* Ce que les lieux disent — 1 signal IA sur les sites du lendemain.
+          Source 1 : absence mission (déterministe).
+          Source 2 : résonance/persistance depuis site_reading_candidates (fallback). */}
+      {effectiveBriefingReading && (
         <div className="space-y-2">
           <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
             Ce que les lieux disent
           </div>
-          <ReadingCard fragment={briefingReading.fragment} context={briefingReading.context} />
+          <ReadingCard
+            fragment={effectiveBriefingReading.fragment}
+            context={'context' in effectiveBriefingReading ? effectiveBriefingReading.context : undefined}
+          />
         </div>
       )}
 

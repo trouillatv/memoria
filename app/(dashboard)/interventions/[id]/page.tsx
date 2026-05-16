@@ -14,12 +14,18 @@ import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
+import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
+import { listValidatedVoiceNotesByIntervention } from '@/lib/db/intervention-voice-notes'
+import { VoiceNotesSection } from './VoiceNotesSection'
+import type { VoiceNoteDisplay } from './VoiceNotesSection'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ParticipantsPanel } from './participants-panel'
 import { AssignTeamButton } from './AssignTeamButton'
 import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
 import { formatInterventionShareText } from '@/lib/share/format-intervention'
 import { BreadcrumbPrefix, DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
+import { generateSiteReadings } from '@/lib/ai/site-readings'
+import { ReadingCard } from '@/components/ui/reading-card'
 
 /** Origin absolu calculé depuis les headers (cohérent avec prepareProofDossierAction). */
 async function buildAbsoluteUrl(path: string): Promise<string> {
@@ -40,13 +46,14 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos, anomalies, validation, participants] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
     listAnomaliesByIntervention(id),
     getValidationByIntervention(id),
     listParticipantsForIntervention(id),
+    listValidatedVoiceNotesByIntervention(id),
   ])
 
   const supabase = createAdminClient()
@@ -140,7 +147,24 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   }))
 
   // Sign URLs for photos (variante thumb 400×400 — gain bande passante).
-  const signedUrls = await getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path))
+  // Lecture du lieu en parallèle — signal mnémonique, jamais bloquant.
+  const [signedUrls, siteReadings] = await Promise.all([
+    getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path)),
+    site ? generateSiteReadings((site as { id: string }).id) : Promise.resolve([]),
+  ])
+
+  // URLs signées pour les artefacts audio (1h TTL, bucket privé).
+  const voiceNoteUrlMap = await getSignedVoiceNoteUrls(voiceNotes.map((n) => n.storage_path))
+  const voiceNoteDisplays: VoiceNoteDisplay[] = voiceNotes.map((n) => ({
+    id: n.id,
+    signedUrl: voiceNoteUrlMap.get(n.storage_path) ?? null,
+    duration_seconds: n.duration_seconds,
+    transcription_corrected: n.transcription_corrected,
+    fragment_validated: n.fragment_validated,
+    author_name: n.author_name,
+    recorded_at: n.recorded_at,
+    validated_at: n.validated_at,
+  }))
 
   // On formatte la date depuis scheduled_for (date logique) plutôt que
   // scheduled_at (timestamp UTC) — évite les décalages de fuseau qui
@@ -271,6 +295,19 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
+      {/* Lecture du lieu — signal mnémonique (absence, résonance, persistance).
+          Jamais de verdict, jamais de recommandation. Visible uniquement si signal. */}
+      {siteReadings.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
+            Ce que le lieu dit
+          </div>
+          {siteReadings.map((r, i) => (
+            <ReadingCard key={i} fragment={r.fragment} compact />
+          ))}
+        </div>
+      )}
+
       <ParticipantsPanel
         assignedTeam={assignedTeam ? { name: assignedTeam.name, color: assignedTeam.color } : null}
         participants={participants}
@@ -321,6 +358,8 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         status={intervention.status}
         existingValidation={validation}
       />
+
+      <VoiceNotesSection notes={voiceNoteDisplays} />
 
       {intervention.notes && (
         <section className="rounded-lg border bg-card p-4">

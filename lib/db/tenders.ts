@@ -138,6 +138,7 @@ export async function createTenderDocument(input: {
   size_bytes: number
   page_count?: number | null
   extracted_text?: string | null
+  extraction_source?: 'native' | 'ocr'
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase

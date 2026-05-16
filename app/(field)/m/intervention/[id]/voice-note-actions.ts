@@ -3,7 +3,6 @@
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireFieldAgent } from '@/lib/field/auth'
-import { embedAndStoreTrace } from '@/lib/ai/embed-trace'
 
 const BUCKET = 'intervention-voice-notes'
 
@@ -76,7 +75,75 @@ async function transcribeWithWhisper(rawBuffer: ArrayBuffer, mimeType: string, e
 }
 
 // ---------------------------------------------------------------------------
-// uploadVoiceNoteAction — upload + transcription Whisper en une passe
+// Extraction IA structurée — Gemini uniquement (JSON mode)
+// ---------------------------------------------------------------------------
+
+export interface ExtractionProposed {
+  lieux: string[]
+  problemes: string[]
+  equipements: string[]
+  statut: 'revient' | 'résolu' | 'à vérifier' | 'absent' | 'pas réapparu' | null
+  fragment: string
+}
+
+async function extractElementsWithGemini(correctedText: string): Promise<ExtractionProposed> {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY!
+  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.0-flash'
+
+  const prompt = `Tu analyses une note audio terrain d'un agent de nettoyage ou de maintenance.
+
+Transcription :
+"""
+${correctedText}
+"""
+
+Extrais de cette transcription :
+- lieux : zones, salles, blocs, secteurs nommés (ex : "bloc B", "couloir nord", "pédiatrie")
+- problemes : anomalies, observations négatives, problèmes (ex : "humidité", "fuite", "mauvaise odeur")
+- equipements : équipements ou installations mentionnés (ex : "lavabo", "sol", "ascenseur")
+- statut : UN SEUL parmi ["revient", "résolu", "à vérifier", "absent", "pas réapparu"], null si aucun n'est clair
+- fragment : phrase mémoire télégraphique 5-10 mots (ex : "bloc B revient — humidité", "fuite salle C résolue")
+
+Retourne uniquement du JSON valide :
+{"lieux":[],"problemes":[],"equipements":[],"statut":null,"fragment":""}`
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+      }),
+    },
+  )
+
+  if (!res.ok) throw new Error(`Gemini extract ${res.status}: ${await res.text()}`)
+  const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('Gemini extraction: JSON invalide')
+  }
+
+  const VALID_STATUTS = ['revient', 'résolu', 'à vérifier', 'absent', 'pas réapparu'] as const
+  type ValidStatut = typeof VALID_STATUTS[number]
+
+  return {
+    lieux: Array.isArray(parsed.lieux) ? (parsed.lieux as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+    problemes: Array.isArray(parsed.problemes) ? (parsed.problemes as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+    equipements: Array.isArray(parsed.equipements) ? (parsed.equipements as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+    statut: VALID_STATUTS.includes(parsed.statut as ValidStatut) ? (parsed.statut as ValidStatut) : null,
+    fragment: typeof parsed.fragment === 'string' ? parsed.fragment.trim().slice(0, 200) : '',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// uploadVoiceNoteAction — upload + transcription en une passe
 // Retourne { noteId, transcription } au client pour review humaine.
 // ---------------------------------------------------------------------------
 
@@ -101,7 +168,6 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
   const supabase = createAdminClient()
   const { intervention_id, duration_seconds, mime_type } = parsed.data
 
-  // Résoudre site_id et tenant_id depuis l'intervention
   const { data: ctx } = await supabase
     .from('interventions')
     .select('missions!inner(sites!inner(id, tenant_id))')
@@ -116,7 +182,6 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
   const ext = mimeToExt(mime_type)
   const storagePath = `${site.tenant_id}/${site.id}/${intervention_id}/${noteId}.${ext}`
 
-  // Upload artefact brut
   const rawBuffer = await audioFile.arrayBuffer() as ArrayBuffer
   const audioBytes = new Uint8Array(rawBuffer)
   const { error: uploadErr } = await supabase.storage
@@ -124,7 +189,6 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
     .upload(storagePath, audioBytes, { contentType: mime_type, upsert: false })
   if (uploadErr) return { error: 'Échec de l\'enregistrement' }
 
-  // Insérer la ligne (couche 1 persistée)
   const { error: insertErr } = await supabase.from('intervention_voice_notes').insert({
     id: noteId,
     intervention_id,
@@ -139,20 +203,17 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
   })
   if (insertErr) return { error: 'Erreur base de données' }
 
-  // Transcription — Google Gemini (priorité) ou Whisper (fallback), même logique que embeddings
   try {
     const text = await transcribeAudio(rawBuffer, mime_type, ext)
-
     await supabase
       .from('intervention_voice_notes')
       .update({ transcription_raw: text, transcription_status: 'done', status: 'transcribed' })
       .eq('id', noteId)
-
     return { noteId, transcription: text }
   } catch (e) {
     console.error(JSON.stringify({
       service: 'voice-note-actions',
-      source: 'whisper',
+      source: 'transcription',
       note_id: noteId,
       error: e instanceof Error ? e.message : String(e),
       ts: new Date().toISOString(),
@@ -166,30 +227,111 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// validateVoiceNoteAction — couche 3 : validation humaine + embedding
-// Le fragment mémoire = texte corrigé par l'humain, jamais la sortie Whisper.
+// extractVoiceNoteAction — couche 2 : extraction IA structurée
+// Prend la transcription corrigée par l'humain, lance Gemini, propose des
+// éléments mémoire. L'humain n'a encore rien validé à ce stade.
 // ---------------------------------------------------------------------------
 
-const validateSchema = z.object({
+const extractSchema = z.object({
   note_id: z.string().uuid(),
   corrected_text: z.string().min(3).max(1000).trim(),
 })
 
-export async function validateVoiceNoteAction(formData: FormData): Promise<
+export async function extractVoiceNoteAction(formData: FormData): Promise<
+  | { extraction: ExtractionProposed; fragment: string }
+  | { error: string }
+> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { error: 'Non autorisé' }
+
+  const parsed = extractSchema.safeParse({
+    note_id: formData.get('note_id'),
+    corrected_text: formData.get('corrected_text'),
+  })
+  if (!parsed.success) return { error: 'Paramètres invalides' }
+
+  const supabase = createAdminClient()
+  const { note_id, corrected_text } = parsed.data
+
+  // Sauvegarder la transcription corrigée
+  await supabase
+    .from('intervention_voice_notes')
+    .update({ transcription_corrected: corrected_text })
+    .eq('id', note_id)
+
+  // Extraction IA — Gemini uniquement (pas de Whisper fallback pour du texte)
+  if (!process.env.GOOGLE_GENAI_API_KEY) {
+    // Pas de clé : retourner extraction vide, le fragment sera saisi manuellement
+    return {
+      extraction: { lieux: [], problemes: [], equipements: [], statut: null, fragment: '' },
+      fragment: '',
+    }
+  }
+
+  try {
+    const extraction = await extractElementsWithGemini(corrected_text)
+
+    await supabase
+      .from('intervention_voice_notes')
+      .update({
+        extraction_proposed: extraction,
+        fragment_proposed: extraction.fragment,
+        status: 'extraction_done',
+      })
+      .eq('id', note_id)
+
+    return { extraction, fragment: extraction.fragment }
+  } catch (e) {
+    console.error(JSON.stringify({
+      service: 'voice-note-actions',
+      source: 'extraction',
+      note_id,
+      error: e instanceof Error ? e.message : String(e),
+      ts: new Date().toISOString(),
+    }))
+    // Fallback silencieux : l'humain saisira le fragment manuellement
+    return {
+      extraction: { lieux: [], problemes: [], equipements: [], statut: null, fragment: '' },
+      fragment: '',
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// validateFragmentAction — couche 3 : validation humaine + embedding
+// L'humain a sélectionné les éléments et validé (ou édité) le fragment.
+// C'est fragment_validated — et uniquement lui — qui entre dans les embeddings.
+// ---------------------------------------------------------------------------
+
+const validateFragmentSchema = z.object({
+  note_id: z.string().uuid(),
+  elements: z.string(), // JSON stringifié de l'extraction validée
+  fragment: z.string().min(1).max(200).trim(),
+})
+
+export async function validateFragmentAction(formData: FormData): Promise<
   | { ok: true }
   | { error: string }
 > {
   const auth = await requireFieldAgent()
   if ('error' in auth) return { error: 'Non autorisé' }
 
-  const parsed = validateSchema.safeParse({
+  const parsed = validateFragmentSchema.safeParse({
     note_id: formData.get('note_id'),
-    corrected_text: formData.get('corrected_text'),
+    elements: formData.get('elements'),
+    fragment: formData.get('fragment'),
   })
-  if (!parsed.success) return { error: 'Texte invalide' }
+  if (!parsed.success) return { error: 'Paramètres invalides' }
+
+  let extractionValidated: unknown = null
+  try {
+    extractionValidated = JSON.parse(parsed.data.elements)
+  } catch {
+    extractionValidated = null
+  }
 
   const supabase = createAdminClient()
-  const { note_id, corrected_text } = parsed.data
+  const { note_id, fragment } = parsed.data
 
   const { data: note, error: fetchErr } = await supabase
     .from('intervention_voice_notes')
@@ -201,7 +343,8 @@ export async function validateVoiceNoteAction(formData: FormData): Promise<
   const { error: updateErr } = await supabase
     .from('intervention_voice_notes')
     .update({
-      transcription_corrected: corrected_text,
+      extraction_validated: extractionValidated,
+      fragment_validated: fragment,
       validated_at: new Date().toISOString(),
       validated_by: auth.userId,
       status: 'validated',
@@ -209,13 +352,14 @@ export async function validateVoiceNoteAction(formData: FormData): Promise<
     .eq('id', note_id)
   if (updateErr) return { error: 'Erreur base de données' }
 
-  // Fire-and-forget : embedding du texte validé → Résonances / Persistances
+  // Fire-and-forget : embedding du fragment validé → Résonances / Persistances
+  // On embedde le fragment, pas la transcription brute.
   import('@/lib/ai/embed-trace').then(({ embedAndStoreTrace }) => {
     embedAndStoreTrace({
       sourceType: 'intervention_note',
       sourceId: note_id,
       siteId: (note as { site_id: string }).site_id,
-      text: corrected_text,
+      text: fragment,
     }).catch(() => { /* silencieux */ })
   }).catch(() => { /* silencieux */ })
 
@@ -223,7 +367,7 @@ export async function validateVoiceNoteAction(formData: FormData): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// ignoreVoiceNoteAction — l'humain a refusé tous les éléments
+// ignoreVoiceNoteAction — l'humain a refusé
 // L'audio reste. La mémoire n'est pas alimentée.
 // ---------------------------------------------------------------------------
 

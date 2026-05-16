@@ -1,11 +1,13 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { setTenderOutcome } from '@/lib/db/tenders'
 import { logAuditEvent } from '@/lib/audit/log'
+import { embedTenderHistoryChunks } from '@/lib/ai/embed-knowledge-chunks'
 
 /**
  * Doctrine V5 verrou V1 : la mémoire ≠ recommandation.
@@ -68,6 +70,18 @@ export async function setTenderOutcomeAction(
     })
   } catch {
     // best-effort, on ne casse pas le flow métier
+  }
+
+  // Fire-and-forget : embède le document AO si won ou lost.
+  // Silencieux en cas d'erreur — la clôture est déjà enregistrée.
+  if (parsed.data.outcome === 'won' || parsed.data.outcome === 'lost') {
+    after(async () => {
+      try {
+        await embedTenderHistoryChunks(parsed.data.tenderId)
+      } catch (e) {
+        console.error('[outcome-actions] embedTenderHistoryChunks failed', e)
+      }
+    })
   }
 
   revalidatePath(`/tenders/${parsed.data.tenderId}`)

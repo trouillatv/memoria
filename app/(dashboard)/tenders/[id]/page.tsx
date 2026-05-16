@@ -23,6 +23,8 @@ import { EvidencePanel } from './EvidencePanel'
 import { OutcomeTrigger } from './OutcomeDialog'
 import { TenderMemoryPanel } from './TenderMemoryPanel'
 import { VoiceNoteRecorder } from './VoiceNoteRecorder'
+import { Suspense } from 'react'
+import { TerrainMatchingSection, TerrainMatchingSkeleton } from './TerrainMatchingSection'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -242,8 +244,11 @@ export default async function TenderDetailPage({
             )}
             {view === 'memoire' && analysis && (
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-                <div className="min-w-0">
+                <div className="min-w-0 space-y-4">
                   <TenderMemoireTechnique tender={tender} analysis={analysis} />
+                  <Suspense fallback={<TerrainMatchingSkeleton />}>
+                    <TerrainMatchingSection tenderId={id} analysis={analysis} />
+                  </Suspense>
                 </div>
                 <div className="lg:sticky lg:top-4 lg:self-start">
                   <EvidencePanel

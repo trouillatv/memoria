@@ -53,7 +53,7 @@ export interface SiteCurrentState {
 }
 
 export interface RecentActivityItem {
-  kind: 'photo' | 'anomaly' | 'site_note' | 'intervention'
+  kind: 'photo' | 'anomaly' | 'site_note' | 'intervention' | 'voice_note'
   id: string
   occurredAt: string
   primary: string
@@ -458,7 +458,7 @@ export async function getSiteRecentActivity(
 
   const sinceIso7d = new Date(Date.now() - 7 * 86_400_000).toISOString()
 
-  const [photosRes, anomaliesRes, notesRes, executedRes] = await Promise.all([
+  const [photosRes, anomaliesRes, notesRes, executedRes, voiceNotesRes] = await Promise.all([
     supabase
       .from('intervention_photos')
       .select('id, intervention_id, taken_at, taken_by, kind, storage_path, caption')
@@ -487,6 +487,14 @@ export async function getSiteRecentActivity(
       .gte('executed_at', sinceIso7d)
       .order('executed_at', { ascending: false })
       .limit(20),
+    // Notes terrain validées par l'humain — jamais les transcriptions IA brutes
+    supabase
+      .from('intervention_voice_notes')
+      .select('id, intervention_id, duration_seconds, transcription_corrected, recorded_at, recorded_by')
+      .eq('site_id', siteId)
+      .eq('status', 'validated')
+      .order('recorded_at', { ascending: false })
+      .limit(5),
   ])
 
   // Agréger les photos par (intervention_id, day, taken_by) pour faire des "passages".
@@ -525,7 +533,8 @@ export async function getSiteRecentActivity(
   // Résoudre les prénoms des auteurs photos en batch
   const photoActorIds = Array.from(new Set(Array.from(photoGroups.values()).map((g) => g.takenBy).filter((id): id is string => !!id)))
   const noteActorIds = Array.from(new Set(((notesRes.data ?? []) as Array<{ created_by: string | null }>).map((n) => n.created_by).filter((id): id is string => !!id)))
-  const allActorIds = Array.from(new Set([...photoActorIds, ...noteActorIds]))
+  const vnActorIds = Array.from(new Set(((voiceNotesRes.data ?? []) as Array<{ recorded_by: string | null }>).map((n) => n.recorded_by).filter((id): id is string => !!id)))
+  const allActorIds = Array.from(new Set([...photoActorIds, ...noteActorIds, ...vnActorIds]))
   const firstNameById = new Map<string, string>()
   if (allActorIds.length > 0) {
     const { data: users } = await supabase
@@ -746,6 +755,35 @@ export async function getSiteRecentActivity(
       teamColor: team?.color ?? null,
       closedByName: interventionClosedByMap.get(r.id) ?? null,
       tasks: tasks.length > 0 ? tasks.map(({ label, doneAt, done }) => ({ label, doneAt, done })) : null,
+    })
+  }
+
+  // Notes terrain — uniquement validées par l'humain, jamais la transcription IA brute
+  type VnRow = {
+    id: string
+    intervention_id: string
+    duration_seconds: number
+    transcription_corrected: string | null
+    recorded_at: string
+    recorded_by: string | null
+  }
+  for (const vn of (voiceNotesRes.data ?? []) as VnRow[]) {
+    const firstName = vn.recorded_by ? firstNameById.get(vn.recorded_by) ?? 'Agent' : 'Agent'
+    const text = vn.transcription_corrected ?? ''
+    const excerpt = text.length > 60 ? text.slice(0, 57).trimEnd() + '…' : text
+    items.push({
+      kind: 'voice_note',
+      id: vn.id,
+      occurredAt: vn.recorded_at,
+      primary: `Note terrain — ${firstName}, ${vn.duration_seconds}s`,
+      secondary: excerpt || null,
+      saliencePrimary: false,
+      photoUrl: null,
+      interventionId: vn.intervention_id,
+      teamName: null,
+      teamColor: null,
+      closedByName: null,
+      tasks: null,
     })
   }
 

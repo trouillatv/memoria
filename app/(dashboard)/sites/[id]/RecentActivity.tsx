@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { Camera, AlertTriangle, FileText, CheckSquare, ChevronRight, Check, Circle, UserCheck } from 'lucide-react'
+import { Camera, AlertTriangle, FileText, CheckSquare, ChevronRight, Check, Circle, UserCheck, Mic } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { RecentActivityItem } from '@/lib/db/site-cockpit'
 import { TeamBadge } from '@/components/ui/team-badge'
@@ -36,6 +36,7 @@ const KIND_ICON: Record<RecentActivityItem['kind'], LucideIcon> = {
   anomaly: AlertTriangle,
   intervention: CheckSquare,
   site_note: FileText,
+  voice_note: Mic,
 }
 
 const KIND_ICON_COLOR: Record<RecentActivityItem['kind'], string> = {
@@ -43,6 +44,7 @@ const KIND_ICON_COLOR: Record<RecentActivityItem['kind'], string> = {
   anomaly: 'text-amber-600',
   intervention: 'text-emerald-600',
   site_note: 'text-muted-foreground',
+  voice_note: 'text-muted-foreground',
 }
 
 function TasksCollapse({ tasks }: { tasks: Array<{ label: string; doneAt: string | null; done: boolean }> }) {

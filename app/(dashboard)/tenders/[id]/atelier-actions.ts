@@ -16,7 +16,102 @@ import { chatWithAgent } from '@/services/ai/chat'
 import { runInitialAnalysisAgent } from '@/services/ai/initial-analysis'
 import { validateSources } from '@/services/ai/source-validation'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
+import { matchAoToTerrain, type TerrainMatchBySite } from '@/lib/ai/match-ao-terrain'
+import { matchAoToKnowledge, type KnowledgeMatchBySource } from '@/lib/ai/match-ao-knowledge'
+import { getActiveProvider } from '@/lib/ai/embeddings'
 import type { ChatAgentName, Source } from '@/types/db'
+
+// ---------------------------------------------------------------------------
+// Terrain context helpers
+// ---------------------------------------------------------------------------
+
+const SOURCE_LABEL_FR: Record<string, string> = {
+  anomaly: 'Anomalie',
+  site_note: 'Consigne',
+  intervention_note: 'Note terrain',
+}
+
+function formatTerrainContext(matches: TerrainMatchBySite[]): string {
+  if (matches.length === 0) return ''
+  const lines: string[] = [
+    '\n=== Preuves terrain reliées à cet AO ===',
+    'Ces traces proviennent de la mémoire opérationnelle réelle d\'AGP.',
+    'Utilisez-les comme matériaux de réponse — jamais comme conclusions.',
+  ]
+  // Cap : 5 sites, 4 traces par site — ne pas noyer le contexte
+  for (const site of matches.slice(0, 5)) {
+    lines.push(`\n${site.siteName} (${site.traces.length} trace${site.traces.length > 1 ? 's' : ''})`)
+    for (const trace of site.traces.slice(0, 4)) {
+      const label = SOURCE_LABEL_FR[trace.sourceType] ?? trace.sourceType
+      const excerpt = trace.textExcerpt.length > 100
+        ? trace.textExcerpt.slice(0, 100).trimEnd() + '…'
+        : trace.textExcerpt
+      lines.push(`• ${label} — ${excerpt}`)
+    }
+    if (site.traces.length > 4) {
+      lines.push(`  (+ ${site.traces.length - 4} autre${site.traces.length - 4 > 1 ? 's' : ''})`)
+    }
+  }
+  if (matches.length > 5) {
+    lines.push(`\n(+ ${matches.length - 5} autre${matches.length - 5 > 1 ? 's' : ''} site${matches.length - 5 > 1 ? 's' : ''} avec traces terrain)`)
+  }
+  return lines.join('\n')
+}
+
+async function fetchTerrainContext(tenderId: string): Promise<string> {
+  if (getActiveProvider() === null) return ''
+  try {
+    const matches = await matchAoToTerrain(tenderId)
+    return formatTerrainContext(matches)
+  } catch {
+    return ''
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge context helpers (bibliothèque + historique AO)
+// ---------------------------------------------------------------------------
+
+const DOMAIN_LABEL_FR: Record<string, string> = {
+  library: 'Bibliothèque',
+  tender_history: 'AO passé',
+}
+
+function formatKnowledgeContext(matches: KnowledgeMatchBySource[]): string {
+  if (matches.length === 0) return ''
+  const lines: string[] = [
+    '\n=== Mémoire documentaire AGP reliée à cet AO ===',
+    'Ces fragments proviennent de la bibliothèque AGP et des AO passés (gagnés/perdus).',
+    'Citez la source précise — jamais de généralisation sans preuve documentaire.',
+  ]
+  for (const source of matches.slice(0, 6)) {
+    const domainLabel = DOMAIN_LABEL_FR[source.sourceDomain] ?? source.sourceDomain
+    lines.push(`\n[${domainLabel}] ${source.label}`)
+    for (const chunk of source.chunks.slice(0, 2)) {
+      const excerpt = chunk.chunkText.length > 150
+        ? chunk.chunkText.slice(0, 150).trimEnd() + '…'
+        : chunk.chunkText
+      lines.push(`• ${excerpt}`)
+    }
+    if (source.chunks.length > 2) {
+      lines.push(`  (+ ${source.chunks.length - 2} autre${source.chunks.length - 2 > 1 ? 's' : ''} fragment${source.chunks.length - 2 > 1 ? 's' : ''})`)
+    }
+  }
+  if (matches.length > 6) {
+    lines.push(`\n(+ ${matches.length - 6} autre${matches.length - 6 > 1 ? 's' : ''} source${matches.length - 6 > 1 ? 's' : ''} documentaire${matches.length - 6 > 1 ? 's' : ''})`)
+  }
+  return lines.join('\n')
+}
+
+async function fetchKnowledgeContext(tenderId: string): Promise<string> {
+  if (getActiveProvider() === null) return ''
+  try {
+    const matches = await matchAoToKnowledge(tenderId)
+    return formatKnowledgeContext(matches)
+  } catch {
+    return ''
+  }
+}
 
 const CHAT_AGENTS = [
   'general', 'lecteur_ao', 'memoire_technique',
@@ -80,14 +175,17 @@ export async function sendChatMessageAction(formData: FormData) {
   // Build context for the agent — history fetched BEFORE inserting the current
   // user message, so that history contains only previous turns (le message
   // courant est passé séparément comme userMessage à chatWithAgent).
-  const [doc, analysis, lib, history, knowledgeItems] = await Promise.all([
+  // fetchTerrainContext tourne en parallèle : ~150ms, jamais bloquant.
+  const [doc, analysis, lib, history, knowledgeItems, terrainCtx, knowledgeCtx] = await Promise.all([
     getTenderDocument(parsed.data.tender_id),
     getLatestTenderAnalysis(parsed.data.tender_id),
     buildLibraryContext(),
     listChatMessages(parsed.data.tender_id),
-    listKnowledgeItems({}),  // NEW — for source validation
+    listKnowledgeItems({}),
+    fetchTerrainContext(parsed.data.tender_id),
+    fetchKnowledgeContext(parsed.data.tender_id),
   ])
-  const tenderContext = buildTenderContext(tender, doc, analysis)
+  const tenderContext = buildTenderContext(tender, doc, analysis) + terrainCtx + knowledgeCtx
 
   // Common turn_id — groups the user message and all agent responses
   const turnId = randomUUID()
@@ -334,13 +432,15 @@ export async function runChallengeRoundAction(formData: FormData) {
   const tender = await getTender(parsed.data.tender_id)
   if (!tender) return { error: 'Tender introuvable' }
 
-  const [doc, analysis, lib, history] = await Promise.all([
+  const [doc, analysis, lib, history, terrainCtx, knowledgeCtx] = await Promise.all([
     getTenderDocument(parsed.data.tender_id),
     getLatestTenderAnalysis(parsed.data.tender_id),
     buildLibraryContext(),
     listChatMessages(parsed.data.tender_id),
+    fetchTerrainContext(parsed.data.tender_id),
+    fetchKnowledgeContext(parsed.data.tender_id),
   ])
-  const tenderContext = buildTenderContext(tender, doc, analysis)
+  const tenderContext = buildTenderContext(tender, doc, analysis) + terrainCtx + knowledgeCtx
 
   // Récupérer le user message original du turn (pour passer le contexte de la question initiale)
   const originalUserMessage = allMessages.find((m) =>
