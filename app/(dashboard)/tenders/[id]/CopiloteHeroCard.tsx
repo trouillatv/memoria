@@ -66,18 +66,32 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, onPrompt
 
   return (
     <div className="space-y-4 mb-6">
-      {/* Header avec point vert "agents prêts" */}
-      <div className="flex items-start gap-3 p-4 rounded-xl border bg-gradient-to-br from-emerald-50/50 to-background">
-        <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
-          <Sparkles className="h-4 w-4 text-emerald-700" />
+      {/* Header — état conditionnel selon que l'analyse a tourné ou non */}
+      {analysis ? (
+        <div className="flex items-start gap-3 p-4 rounded-xl border bg-gradient-to-br from-emerald-50/50 to-background">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
+            <Sparkles className="h-4 w-4 text-emerald-700" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <h3 className="text-sm font-semibold">Vos 7 agents IA ont lu cet AO</h3>
+            <p className="text-xs text-muted-foreground">
+              Première lecture terminée. Demandez-leur de creuser un point précis ci-dessous, ou posez votre propre question.
+            </p>
+          </div>
         </div>
-        <div className="flex-1 space-y-1">
-          <h3 className="text-sm font-semibold">Vos 7 agents IA ont lu cet AO</h3>
-          <p className="text-xs text-muted-foreground">
-            Première lecture terminée. Demandez-leur de creuser un point précis ci-dessous, ou posez votre propre question.
-          </p>
+      ) : (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50/50">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center">
+            <Sparkles className="h-4 w-4 text-amber-700" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <h3 className="text-sm font-semibold text-amber-900">Analyse IA en attente</h3>
+            <p className="text-xs text-amber-800/80">
+              Cet AO n&apos;a pas encore été analysé. Lancez l&apos;analyse depuis le menu <span className="font-medium">Actions → Relancer l&apos;analyse</span>, puis revenez ici.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* KPIs au regard rapide */}
       {analysis && (
@@ -100,34 +114,37 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, onPrompt
         </div>
       )}
 
-      {/* Suggested prompts */}
-      <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Allez plus loin</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {SUGGESTED_PROMPTS.map((p) => {
-            const Icon = p.icon
-            return (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => onPromptClick(p.prompt, p.agents)}
-                className="flex items-start gap-2.5 p-3 rounded-lg border bg-card hover:bg-muted/40 hover:border-brand-300 transition-colors text-left group"
-              >
-                <Icon className="h-4 w-4 text-muted-foreground group-hover:text-brand-600 shrink-0 mt-0.5 transition-colors" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{p.label}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-2">{p.prompt}</div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      {/* Suggested prompts — uniquement si l'analyse a été faite */}
+      {analysis && (
+        <>
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Allez plus loin</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {SUGGESTED_PROMPTS.map((p) => {
+                const Icon = p.icon
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => onPromptClick(p.prompt, p.agents)}
+                    className="flex items-start gap-2.5 p-3 rounded-lg border bg-card hover:bg-muted/40 hover:border-brand-300 transition-colors text-left group"
+                  >
+                    <Icon className="h-4 w-4 text-muted-foreground group-hover:text-brand-600 shrink-0 mt-0.5 transition-colors" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{p.label}</div>
+                      <div className="text-xs text-muted-foreground line-clamp-2">{p.prompt}</div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-      {/* Astuce footer */}
-      <p className="text-[11px] text-muted-foreground text-center">
-        Tu peux aussi cocher 2-3 agents en bas et leur poser ta propre question pour les faire réagir en parallèle.
-      </p>
+          <p className="text-[11px] text-muted-foreground text-center">
+            Tu peux aussi cocher 2-3 agents en bas et leur poser ta propre question pour les faire réagir en parallèle.
+          </p>
+        </>
+      )}
     </div>
   )
 }
