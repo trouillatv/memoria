@@ -49,13 +49,16 @@ export const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
   },
 ]
 
+const TOTAL_AGENTS = 7
+
 interface CopiloteHeroCardProps {
   tenderTitle: string
   analysis: DbTenderAnalysis | null
+  agentReadyCount?: number
   onPromptClick: (prompt: string, agents: ChatAgentName[]) => void
 }
 
-export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, onPromptClick }: CopiloteHeroCardProps) {
+export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, agentReadyCount = 0, onPromptClick }: CopiloteHeroCardProps) {
   // Compute KPIs depuis l'analyse principale
   const risks = (analysis?.risks ?? []) as Array<{ severity?: string }>
   const constraints = (analysis?.constraints ?? []) as Array<{ required?: boolean }>
@@ -66,35 +69,47 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, onPrompt
 
   return (
     <div className="space-y-4 mb-6">
-      {/* Header — état conditionnel selon que l'analyse a tourné ou non */}
-      {analysis ? (
-        <div className="flex items-start gap-3 p-4 rounded-xl border bg-gradient-to-br from-emerald-50/50 to-background">
-          <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
-            <Sparkles className="h-4 w-4 text-emerald-700" />
-          </div>
-          <div className="flex-1 space-y-1">
-            <h3 className="text-sm font-semibold">Vos 7 agents IA ont lu cet AO</h3>
-            <p className="text-xs text-muted-foreground">
-              Première lecture terminée. Demandez-leur de creuser un point précis ci-dessous, ou posez votre propre question.
-            </p>
-          </div>
-        </div>
-      ) : (
+      {/* Header — état honnête selon les analyses agents réellement générées */}
+      {agentReadyCount === 0 ? (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50/50">
           <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center">
             <Sparkles className="h-4 w-4 text-amber-700" />
           </div>
           <div className="flex-1 space-y-1">
-            <h3 className="text-sm font-semibold text-amber-900">Analyse IA en attente</h3>
+            <h3 className="text-sm font-semibold text-amber-900">Aucun expert n&apos;a encore analysé cet AO</h3>
             <p className="text-xs text-amber-800/80">
-              Cet AO n&apos;a pas encore été analysé. Lancez l&apos;analyse depuis le menu <span className="font-medium">Actions → Relancer l&apos;analyse</span>, puis revenez ici.
+              Générez les avis depuis le panneau latéral gauche, puis revenez ici pour interroger les experts.
+            </p>
+          </div>
+        </div>
+      ) : agentReadyCount < TOTAL_AGENTS ? (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-blue-200 bg-blue-50/50">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center">
+            <Sparkles className="h-4 w-4 text-blue-700" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <h3 className="text-sm font-semibold text-blue-900">{agentReadyCount}/{TOTAL_AGENTS} experts ont analysé cet AO</h3>
+            <p className="text-xs text-blue-800/80">
+              Analyse partielle disponible. Vous pouvez déjà interroger les experts prêts, ou générer les analyses manquantes depuis le panneau gauche.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 p-4 rounded-xl border bg-gradient-to-br from-emerald-50/50 to-background">
+          <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
+            <Sparkles className="h-4 w-4 text-emerald-700" />
+          </div>
+          <div className="flex-1 space-y-1">
+            <h3 className="text-sm font-semibold">Vos {TOTAL_AGENTS} agents IA ont lu cet AO</h3>
+            <p className="text-xs text-muted-foreground">
+              Première lecture terminée. Demandez-leur de creuser un point précis ci-dessous, ou posez votre propre question.
             </p>
           </div>
         </div>
       )}
 
       {/* KPIs au regard rapide */}
-      {analysis && (
+      {analysis && agentReadyCount > 0 && (
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-lg border bg-card p-3">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Risques</div>
@@ -114,8 +129,8 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, onPrompt
         </div>
       )}
 
-      {/* Suggested prompts — uniquement si l'analyse a été faite */}
-      {analysis && (
+      {/* Suggested prompts — uniquement si au moins un agent a généré son analyse */}
+      {analysis && agentReadyCount > 0 && (
         <>
           <div className="space-y-2">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Allez plus loin</p>

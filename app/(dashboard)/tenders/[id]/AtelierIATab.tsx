@@ -32,9 +32,10 @@ interface AtelierIATabProps {
   initialMessages: DbTenderChatMessage[]
   tenderAnalysis: DbTenderAnalysis | null
   tenderTitle: string
+  agentReadyCount?: number
 }
 
-export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tenderTitle }: AtelierIATabProps) {
+export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tenderTitle, agentReadyCount = 0 }: AtelierIATabProps) {
   const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
   const [selectedAgents, setSelectedAgents] = useState<ChatAgentName[]>([])
 
@@ -195,6 +196,7 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
             <CopiloteHeroCard
               tenderTitle={tenderTitle}
               analysis={tenderAnalysis}
+              agentReadyCount={agentReadyCount}
               onPromptClick={handleHeroPromptClick}
             />
           }

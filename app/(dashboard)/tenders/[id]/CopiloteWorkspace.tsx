@@ -46,6 +46,8 @@ export function CopiloteWorkspace({
     ? initialAgentAnalyses.find((a) => a.agent_name === viewingAgent) ?? null
     : null
 
+  const agentReadyCount = initialAgentAnalyses.filter((a) => a.status === 'ready').length
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-4 h-full">
       <AgentPanel
@@ -60,6 +62,7 @@ export function CopiloteWorkspace({
         initialMessages={initialMessages}
         tenderAnalysis={tenderAnalysis}
         tenderTitle={tenderTitle}
+        agentReadyCount={agentReadyCount}
       />
       <AgentAnalysisDrawer
         open={viewingAgent !== null}
