@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Send, Paperclip, Loader2, X, FileDown } from 'lucide-react'
+import { useState, useRef, useEffect, useTransition } from 'react'
+import { Send, Paperclip, Loader2, X, FileDown, RefreshCw, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { sendChatMessageAction } from './atelier-actions'
+import { useRouter } from 'next/navigation'
+import { sendChatMessageAction, createConversationAction, renameConversationAction } from './atelier-actions'
 import { toast } from 'sonner'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
@@ -16,7 +17,7 @@ import { loadSelectedAgents, saveSelectedAgents } from './agent-selection-storag
 import { cn } from '@/lib/utils'
 import { pickThinkingPhrase } from './agent-thinking-phrases'
 import { SLASH_COMMANDS, type SlashCommand } from './slash-commands'
-import type { ChatAgentName, DbTenderChatMessage, DbTenderAnalysis } from '@/types/db'
+import type { ChatAgentName, DbTenderChatMessage, DbTenderAnalysis, DbTenderConversation } from '@/types/db'
 
 function autoGrow(el: HTMLTextAreaElement) {
   el.style.height = 'auto'
@@ -30,13 +31,30 @@ function autoGrow(el: HTMLTextAreaElement) {
 interface AtelierIATabProps {
   tenderId: string
   initialMessages: DbTenderChatMessage[]
+  initialConversations: DbTenderConversation[]
   tenderAnalysis: DbTenderAnalysis | null
   tenderTitle: string
   agentReadyCount?: number
 }
 
-export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tenderTitle, agentReadyCount = 0 }: AtelierIATabProps) {
-  const [messages, setMessages] = useState<DbTenderChatMessage[]>(initialMessages)
+export function AtelierIATab({ tenderId, initialMessages, initialConversations, tenderAnalysis, tenderTitle, agentReadyCount = 0 }: AtelierIATabProps) {
+  const router = useRouter()
+  const [refreshing, startRefresh] = useTransition()
+
+  // Conversations (onglets nommés)
+  const [conversations, setConversations] = useState<DbTenderConversation[]>(initialConversations)
+  // null = onglet "général" (messages sans conversation_id)
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [creatingConv, startCreatingConv] = useTransition()
+
+  // All messages from server; filter client-side by active conversation
+  const [allMessages, setAllMessages] = useState<DbTenderChatMessage[]>(initialMessages)
+  const messages = activeConversationId === null
+    ? allMessages.filter((m) => m.conversation_id === null)
+    : allMessages.filter((m) => m.conversation_id === activeConversationId)
+
   const [selectedAgents, setSelectedAgents] = useState<ChatAgentName[]>([])
 
   useEffect(() => {
@@ -110,6 +128,7 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
     const optimisticUser: DbTenderChatMessage = {
       id: `temp-${Date.now()}`,
       tender_id: tenderId,
+      conversation_id: activeConversationId,
       user_id: null,
       agent_name: null,
       role: 'user',
@@ -117,7 +136,7 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
       metadata: null,
       created_at: new Date().toISOString(),
     }
-    setMessages((prev) => [...prev, optimisticUser])
+    setAllMessages((prev) => [...prev, optimisticUser])
     const sentDraft = draft
     const sentAttachment = attachment
     setDraft('')
@@ -132,25 +151,58 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
     fd.set('tender_id', tenderId)
     fd.set('agent_names', JSON.stringify(selectedAgents))
     fd.set('message', sentDraft)
+    if (activeConversationId) fd.set('conversation_id', activeConversationId)
     if (sentAttachment) fd.set('attachment', sentAttachment)
 
     const r = await sendChatMessageAction(fd)
     setPending(false)
     if (r && 'error' in r && r.error) {
       toast.error(r.error)
-      setMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id))
+      setAllMessages((prev) => prev.filter((m) => m.id !== optimisticUser.id))
       return
     }
     // Replace the optimistic placeholder by the real user message returned by
     // the action, then append the agent responses. No reload → l'onglet actif
     // est préservé.
     if (r && 'userMessage' in r && r.userMessage && r.agentMessages) {
-      setMessages((prev) =>
+      setAllMessages((prev) =>
         prev
           .filter((m) => m.id !== optimisticUser.id)
           .concat([r.userMessage as DbTenderChatMessage, ...(r.agentMessages as DbTenderChatMessage[])])
       )
     }
+  }
+
+  async function handleCreateConversation() {
+    const name = `Conversation ${conversations.length + 2}`
+    startCreatingConv(async () => {
+      const fd = new FormData()
+      fd.set('tender_id', tenderId)
+      fd.set('name', name)
+      fd.set('position', String(conversations.length + 1))
+      const r = await createConversationAction(fd)
+      if (r && 'error' in r) {
+        toast.error(r.error)
+      } else if (r && 'conversation' in r) {
+        setConversations((prev) => [...prev, r.conversation as DbTenderConversation])
+        setActiveConversationId((r.conversation as DbTenderConversation).id)
+      }
+    })
+  }
+
+  async function handleRenameSubmit(id: string) {
+    const trimmed = renameValue.trim()
+    if (!trimmed) { setRenamingId(null); return }
+    const fd = new FormData()
+    fd.set('id', id)
+    fd.set('name', trimmed)
+    const r = await renameConversationAction(fd)
+    if (r && 'error' in r) {
+      toast.error(r.error)
+    } else {
+      setConversations((prev) => prev.map((c) => c.id === id ? { ...c, name: trimmed } : c))
+    }
+    setRenamingId(null)
   }
 
   const firstAgent = selectedAgents[0]
@@ -166,8 +218,18 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar : Export du dossier de préparation (Sprint 8). */}
-      <div className="flex items-center justify-end mb-2">
+      {/* Toolbar : Export + Rafraîchir */}
+      <div className="flex items-center justify-end gap-2 mb-2">
+        <button
+          type="button"
+          onClick={() => startRefresh(() => { router.refresh() })}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-card hover:bg-muted/40 text-sm transition-colors disabled:opacity-50"
+          title="Rafraîchir l'analyse, la synthèse et le reste"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Rafraîchir
+        </button>
         <a
           href={`/tenders/${tenderId}/atelier-export.pdf`}
           target="_blank"
@@ -180,6 +242,65 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
         </a>
       </div>
 
+      {/* Barre d'onglets de conversations */}
+      <div className="flex items-center gap-0.5 mb-1 overflow-x-auto scrollbar-hide">
+        {/* Onglet général (messages sans conversation_id) */}
+        <button
+          type="button"
+          onClick={() => setActiveConversationId(null)}
+          className={cn(
+            'shrink-0 px-3 py-1.5 rounded-t-md text-sm border-b-2 transition-colors whitespace-nowrap',
+            activeConversationId === null
+              ? 'border-brand-600 text-foreground font-medium bg-card'
+              : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
+          )}
+        >
+          Général
+        </button>
+        {conversations.map((conv) => (
+          <div key={conv.id} className="relative shrink-0 group">
+            {renamingId === conv.id ? (
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => handleRenameSubmit(conv.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleRenameSubmit(conv.id) }
+                  if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
+                }}
+                className="px-2 py-1 text-sm rounded border bg-background focus:outline-none focus:ring-1 focus:ring-ring w-32"
+                maxLength={80}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveConversationId(conv.id)}
+                onDoubleClick={() => { setRenamingId(conv.id); setRenameValue(conv.name) }}
+                title="Double-clic pour renommer"
+                className={cn(
+                  'px-3 py-1.5 rounded-t-md text-sm border-b-2 transition-colors whitespace-nowrap',
+                  activeConversationId === conv.id
+                    ? 'border-brand-600 text-foreground font-medium bg-card'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                )}
+              >
+                {conv.name}
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={handleCreateConversation}
+          disabled={creatingConv}
+          title="Nouvelle conversation"
+          className="shrink-0 p-1.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
       {/* Thread scrollable */}
       <div className="flex-1 overflow-y-auto pb-4 rounded-xl border bg-card p-3">
         {messages.length > 0 && (
@@ -190,7 +311,7 @@ export function AtelierIATab({ tenderId, initialMessages, tenderAnalysis, tender
           tenderId={tenderId}
           pending={pending}
           onChallengeLaunched={(newMessages) => {
-            setMessages((prev) => [...prev, ...newMessages])
+            setAllMessages((prev) => [...prev, ...newMessages])
           }}
           emptyState={
             <CopiloteHeroCard

@@ -8,7 +8,7 @@ import {
   findSimilarTenderMemory,
   getSignedVoiceNoteUrl,
 } from '@/lib/db/tenders'
-import { listChatMessages } from '@/lib/db/atelier-ia'
+import { listChatMessages, listConversations } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TenderAnalysisLoader } from './TenderAnalysisLoader'
@@ -49,14 +49,15 @@ export default async function TenderDetailPage({
     tender.status === 'submitted' ||
     tender.status === 'archived'
 
-  const [analysis, doc, chatMessages, agentAnalyses] = isReady || isFailed
+  const [analysis, doc, chatMessages, agentAnalyses, conversations] = isReady || isFailed
     ? await Promise.all([
         getLatestTenderAnalysis(id),
         getTenderDocument(id),
         listChatMessages(id),
         listAgentAnalyses(id),
+        listConversations(id),
       ])
-    : [null, null, [], []]
+    : [null, null, [], [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
 
@@ -263,6 +264,7 @@ export default async function TenderDetailPage({
                 tenderId={id}
                 initialMessages={chatMessages}
                 initialAgentAnalyses={agentAnalyses}
+                initialConversations={conversations}
                 tenderAnalysis={analysis}
                 tenderTitle={tender.title}
               />

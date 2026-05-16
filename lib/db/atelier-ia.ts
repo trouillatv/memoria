@@ -1,14 +1,51 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { DbTenderChatMessage, DbTenderChatAttachment, ChatAgentName } from '@/types/db'
+import type { DbTenderChatMessage, DbTenderChatAttachment, DbTenderConversation, ChatAgentName } from '@/types/db'
 
-export async function listChatMessages(tenderId: string): Promise<DbTenderChatMessage[]> {
+export async function listConversations(tenderId: string): Promise<DbTenderConversation[]> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
+    .from('tender_conversations')
+    .select('id, tender_id, name, position, created_at, updated_at')
+    .eq('tender_id', tenderId)
+    .order('position', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DbTenderConversation[]
+}
+
+export async function createConversation(tenderId: string, name: string, position: number): Promise<DbTenderConversation> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('tender_conversations')
+    .insert({ tender_id: tenderId, name, position })
+    .select('id, tender_id, name, position, created_at, updated_at')
+    .single()
+  if (error || !data) throw error ?? new Error('No data')
+  return data as DbTenderConversation
+}
+
+export async function renameConversation(id: string, name: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('tender_conversations')
+    .update({ name, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function listChatMessages(tenderId: string, conversationId?: string | null): Promise<DbTenderChatMessage[]> {
+  const supabase = await createServerClient()
+  let query = supabase
     .from('tender_chat_messages')
-    .select('id, tender_id, user_id, agent_name, role, content, metadata, created_at')
+    .select('id, tender_id, conversation_id, user_id, agent_name, role, content, metadata, created_at')
     .eq('tender_id', tenderId)
     .order('created_at', { ascending: true })
+  if (conversationId !== undefined) {
+    query = conversationId === null
+      ? query.is('conversation_id', null)
+      : query.eq('conversation_id', conversationId)
+  }
+  const { data, error } = await query
   if (error) throw error
   return (data ?? []) as DbTenderChatMessage[]
 }
@@ -26,6 +63,7 @@ export async function listChatAttachments(messageIds: string[]): Promise<DbTende
 
 export async function insertChatMessage(input: {
   tender_id: string
+  conversation_id?: string | null
   user_id: string | null
   agent_name: ChatAgentName | null
   role: 'user' | 'agent' | 'system'
@@ -37,6 +75,7 @@ export async function insertChatMessage(input: {
     .from('tender_chat_messages')
     .insert({
       tender_id: input.tender_id,
+      conversation_id: input.conversation_id ?? null,
       user_id: input.user_id,
       agent_name: input.agent_name,
       role: input.role,

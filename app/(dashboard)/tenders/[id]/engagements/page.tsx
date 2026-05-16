@@ -1,6 +1,7 @@
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { EngagementCurationView } from '../engagement-curation-view'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
+import { BackButton } from './BackButton'
 
 export default async function TenderEngagementsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -8,6 +9,7 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
 
   return (
     <div className="space-y-4 max-w-4xl">
+      <BackButton />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Engagements ({engagements.length})</h1>

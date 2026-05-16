@@ -129,9 +129,19 @@ export type ChatAgentName =
   | 'general' | 'lecteur_ao' | 'memoire_technique'
   | 'contradicteur' | 'financier' | 'terrain' | 'conformite'
 
+export interface DbTenderConversation {
+  id: string
+  tender_id: string
+  name: string
+  position: number
+  created_at: string
+  updated_at: string
+}
+
 export interface DbTenderChatMessage {
   id: string
   tender_id: string
+  conversation_id: string | null
   user_id: string | null
   agent_name: ChatAgentName | null
   role: 'user' | 'agent' | 'system'

@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import { AgentPanel } from './AgentPanel'
 import { AtelierIATab } from './AtelierIATab'
 import { AgentAnalysisDrawer } from './AgentAnalysisDrawer'
-import type { ChatAgentName, DbAgentAnalysis, DbTenderAnalysis, DbTenderChatMessage } from '@/types/db'
+import type { ChatAgentName, DbAgentAnalysis, DbTenderAnalysis, DbTenderChatMessage, DbTenderConversation } from '@/types/db'
 
 interface CopiloteWorkspaceProps {
   tenderId: string
   initialMessages: DbTenderChatMessage[]
   initialAgentAnalyses: DbAgentAnalysis[]
+  initialConversations: DbTenderConversation[]
   tenderAnalysis: DbTenderAnalysis | null
   tenderTitle: string
 }
@@ -28,6 +29,7 @@ export function CopiloteWorkspace({
   tenderId,
   initialMessages,
   initialAgentAnalyses,
+  initialConversations,
   tenderAnalysis,
   tenderTitle,
 }: CopiloteWorkspaceProps) {
@@ -60,6 +62,7 @@ export function CopiloteWorkspace({
       <AtelierIATab
         tenderId={tenderId}
         initialMessages={initialMessages}
+        initialConversations={initialConversations}
         tenderAnalysis={tenderAnalysis}
         tenderTitle={tenderTitle}
         agentReadyCount={agentReadyCount}

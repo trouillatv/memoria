@@ -8,7 +8,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
-import { listChatMessages, insertChatMessage, insertChatAttachment } from '@/lib/db/atelier-ia'
+import { listChatMessages, insertChatMessage, insertChatAttachment, listConversations, createConversation, renameConversation } from '@/lib/db/atelier-ia'
 import { upsertAgentAnalysis } from '@/lib/db/agent-analyses'
 import { buildLibraryContext } from '@/services/ai/library-context'
 import { extractPdfText } from '@/services/pdf/extract'
@@ -122,6 +122,7 @@ const multiAgentSchema = z.object({
   tender_id: z.string().uuid(),
   agent_names: z.array(z.enum(CHAT_AGENTS)).min(1).max(3),
   message: z.string().min(1).max(4000),
+  conversation_id: z.string().uuid().nullable().optional(),
 })
 
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024 // 5 MB
@@ -151,6 +152,49 @@ function buildTenderContext(tender: { title: string; client_name: string | null;
   return lines.join('\n')
 }
 
+// ---------------------------------------------------------------------------
+// Conversations (onglets nommés)
+// ---------------------------------------------------------------------------
+
+const conversationCreateSchema = z.object({
+  tender_id: z.string().uuid(),
+  name: z.string().min(1).max(80),
+  position: z.number().int().min(0),
+})
+
+const conversationRenameSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(80),
+})
+
+export async function createConversationAction(formData: FormData) {
+  await requireManagerOrAdmin()
+  const parsed = conversationCreateSchema.safeParse({
+    tender_id: formData.get('tender_id'),
+    name: formData.get('name'),
+    position: parseInt(String(formData.get('position') ?? '0'), 10),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  const conv = await createConversation(parsed.data.tender_id, parsed.data.name, parsed.data.position)
+  revalidatePath(`/tenders/${parsed.data.tender_id}`)
+  return { ok: true as const, conversation: conv }
+}
+
+export async function renameConversationAction(formData: FormData) {
+  await requireManagerOrAdmin()
+  const parsed = conversationRenameSchema.safeParse({
+    id: formData.get('id'),
+    name: formData.get('name'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+  await renameConversation(parsed.data.id, parsed.data.name)
+  return { ok: true as const }
+}
+
+export async function listConversationsAction(tenderId: string) {
+  return listConversations(tenderId)
+}
+
 export async function getAgentAnalysesStatusAction(tenderId: string) {
   const supabase = await createServerClient()
   const { data } = await supabase
@@ -171,10 +215,12 @@ export async function sendChatMessageAction(formData: FormData) {
     return { error: 'agent_names invalide' }
   }
 
+  const conversationIdRaw = formData.get('conversation_id')
   const parsed = multiAgentSchema.safeParse({
     tender_id: formData.get('tender_id'),
     agent_names: agentNamesRaw,
     message: formData.get('message'),
+    conversation_id: conversationIdRaw ? String(conversationIdRaw) : null,
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
@@ -202,6 +248,7 @@ export async function sendChatMessageAction(formData: FormData) {
   // Insert user message (after history fetched), includes turn_id in metadata
   const userMessageId = await insertChatMessage({
     tender_id: parsed.data.tender_id,
+    conversation_id: parsed.data.conversation_id ?? null,
     user_id: userId,
     agent_name: null,
     role: 'user',
@@ -299,6 +346,7 @@ export async function sendChatMessageAction(formData: FormData) {
     agentResults.map((r) =>
       insertChatMessage({
         tender_id: parsed.data.tender_id,
+        conversation_id: parsed.data.conversation_id ?? null,
         user_id: null,
         agent_name: r.agentName,
         role: 'agent',
@@ -318,6 +366,7 @@ export async function sendChatMessageAction(formData: FormData) {
     userMessage: {
       id: userMessageId,
       tender_id: parsed.data.tender_id,
+      conversation_id: parsed.data.conversation_id ?? null,
       user_id: userId,
       agent_name: null,
       role: 'user' as const,
@@ -328,6 +377,7 @@ export async function sendChatMessageAction(formData: FormData) {
     agentMessages: agentResults.map((r, idx) => ({
       id: agentMessageIds[idx],
       tender_id: parsed.data.tender_id,
+      conversation_id: parsed.data.conversation_id ?? null,
       user_id: null,
       agent_name: r.agentName,
       role: 'agent' as const,
@@ -531,6 +581,7 @@ export async function runChallengeRoundAction(formData: FormData) {
     agentMessages: validResults.map((r, idx) => ({
       id: insertedIds[idx],
       tender_id: parsed.data.tender_id,
+      conversation_id: null,
       user_id: null,
       agent_name: r.agentName,
       role: 'agent' as const,
