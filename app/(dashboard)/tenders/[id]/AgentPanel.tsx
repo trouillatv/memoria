@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, AlertCircle, Eye, Sparkles, RotateCw, ChevronRight, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { runAgentInitialAnalysisAction } from './atelier-actions'
+import { runAgentInitialAnalysisAction, getAgentAnalysesStatusAction } from './atelier-actions'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { Tooltip } from './Tooltip'
@@ -65,13 +65,19 @@ export function AgentPanel({ tenderId, analyses, onView, expanded, onToggleExpan
   const [pendingAgents, setPendingAgents] = useState<Set<ChatAgentName>>(new Set())
   const [popover, setPopover] = useState<PopoverState | null>(null)
 
-  // Auto-refresh toutes les 3s quand au moins un agent est en cours
+  // Polling direct en DB quand un agent est en cours — évite le cache Next.js
   const hasRunning = pendingAgents.size > 0 || analyses.some(a => a.status === 'running')
   useEffect(() => {
     if (!hasRunning) return
-    const id = setInterval(() => router.refresh(), 3000)
+    const id = setInterval(async () => {
+      const statuses = await getAgentAnalysesStatusAction(tenderId)
+      const anyStillRunning = statuses.some(s => s.status === 'running')
+      if (!anyStillRunning) {
+        router.refresh()
+      }
+    }, 3000)
     return () => clearInterval(id)
-  }, [hasRunning, router])
+  }, [hasRunning, router, tenderId])
 
   const byAgent = new Map<ChatAgentName, DbAgentAnalysis>()
   for (const a of analyses) byAgent.set(a.agent_name, a)

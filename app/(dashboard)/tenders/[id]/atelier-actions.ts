@@ -151,6 +151,15 @@ function buildTenderContext(tender: { title: string; client_name: string | null;
   return lines.join('\n')
 }
 
+export async function getAgentAnalysesStatusAction(tenderId: string) {
+  const supabase = await createServerClient()
+  const { data } = await supabase
+    .from('tender_agent_analyses')
+    .select('agent_name, status, updated_at')
+    .eq('tender_id', tenderId)
+  return (data ?? []) as { agent_name: string; status: string; updated_at: string }[]
+}
+
 export async function sendChatMessageAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()
 
