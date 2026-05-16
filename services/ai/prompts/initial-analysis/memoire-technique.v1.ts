@@ -17,6 +17,6 @@ Tu réponds STRICTEMENT en JSON valide correspondant au schéma suivant (aucun t
     "blockers": ["<exigences auxquelles nous ne pouvons pas répondre>"],
     "opportunities": ["<axes de différenciation technique par rapport aux concurrents>"]
   },
-  "raw_content": "<analyse longue en markdown, max 1500 mots, plan de mémoire technique suggéré>"
+  "raw_content": "<250 mots max : les 3 exigences décisives de CET AO pour le mémoire, ce qu'on sait faire, ce qui manque. Pas de plan générique.>"
 }`,
 }

@@ -1,17 +1,54 @@
+import { GoogleGenAI } from '@google/genai'
 import type { AIProvider, CompletionInput, CompletionOutput } from '../index'
 
-/**
- * Provider Gemini — stub. Sera implémenté avec @google/genai quand l'utilisateur
- * pose GOOGLE_GENAI_API_KEY et bascule AI_PROVIDER=gemini.
- *
- * Pour le MVP, throws explicitement pour signaler la non-implémentation.
- */
+const MODEL_MAP: Record<'light' | 'heavy', string> = {
+  light: 'gemini-2.0-flash',
+  heavy: 'gemini-2.0-flash',
+}
+
 export class GeminiProvider implements AIProvider {
   name = 'gemini' as const
+  private client: GoogleGenAI
 
-  async complete(_input: CompletionInput): Promise<CompletionOutput> {
-    throw new Error(
-      'GeminiProvider not yet implemented. Install @google/genai, set GOOGLE_GENAI_API_KEY, and replace this stub.'
-    )
+  constructor() {
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY
+    if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY non définie')
+    this.client = new GoogleGenAI({ apiKey })
+  }
+
+  async complete(input: CompletionInput): Promise<CompletionOutput> {
+    const model = MODEL_MAP[input.modelTier]
+    const start = Date.now()
+
+    const response = await this.client.models.generateContent({
+      model,
+      config: {
+        systemInstruction: input.systemPrompt,
+        ...(input.responseSchema ? { responseMimeType: 'application/json' } : {}),
+        temperature: 0.3,
+      },
+      contents: [{ role: 'user', parts: [{ text: input.userMessage }] }],
+    })
+
+    const text = response.text ?? ''
+    let parsed: unknown = null
+    if (input.responseSchema) {
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = null
+      }
+    }
+
+    return {
+      text,
+      parsed,
+      tokens: {
+        input: response.usageMetadata?.promptTokenCount ?? 0,
+        output: response.usageMetadata?.candidatesTokenCount ?? 0,
+      },
+      model,
+      durationMs: Date.now() - start,
+    }
   }
 }
