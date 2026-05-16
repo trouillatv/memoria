@@ -387,6 +387,8 @@ export async function runAgentInitialAnalysisAction(formData: FormData) {
         status: 'failed',
         error_msg: e instanceof Error ? e.message : 'unknown',
       })
+    } finally {
+      revalidatePath(`/tenders/${parsed.data.tender_id}`)
     }
   })
 
