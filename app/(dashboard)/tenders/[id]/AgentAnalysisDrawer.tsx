@@ -117,6 +117,16 @@ export function AgentAnalysisDrawer({ open, analysis, tenderId, onOpenChange }: 
             </section>
           )}
 
+          {/* Analyse complète — raw_content contient le texte intégral de l'agent */}
+          {analysis.raw_content && analysis.raw_content.trim().length > 0 && (
+            <section>
+              <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Analyse complète</h3>
+              <div className="rounded-lg border bg-muted/20 px-3 py-3 text-sm whitespace-pre-wrap leading-relaxed font-mono text-xs">
+                {analysis.raw_content}
+              </div>
+            </section>
+          )}
+
           <section>
             <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Métadonnées</h3>
             <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
