@@ -140,6 +140,18 @@ export function TenderSidebar({
             )}
           </div>
         )}
+        {/* Relancer visible directement quand l'analyse a échoué */}
+        {canRelaunch && (
+          <button
+            type="button"
+            onClick={handleRelaunch}
+            disabled={isInProgress}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full justify-center"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Relancer l&apos;analyse
+          </button>
+        )}
       </div>
 
       {/* MÉTRIQUES — seulement si analyse dispo */}
