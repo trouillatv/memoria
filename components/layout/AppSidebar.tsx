@@ -8,7 +8,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, FileText, ClipboardList, FileBarChart, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch, Users, Calendar, CalendarCheck, MapPin, ListChecks } from 'lucide-react'
+import { LayoutDashboard, FileText, ClipboardList, BookOpen, ShieldAlert, FileCheck, Sparkles, FileSearch, Users, Calendar, CalendarCheck, MapPin, ListChecks } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 import { cn } from '@/lib/utils'
 
@@ -31,7 +31,6 @@ const NAV: NavItem[] = [
   { href: '/contracts', label: 'Contrats',          icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/sites',     label: 'Sites',             icon: MapPin,        roles: ['admin', 'manager'] },
   { href: '/library',   label: 'Bibliothèque',     icon: BookOpen,      roles: ['admin', 'manager'] },
-  { href: '/reports',   label: 'Rapports',         icon: FileBarChart,  roles: ['admin', 'manager'] },
   { href: '/admin',     label: 'Administration',   icon: ShieldAlert,   roles: ['admin'] },
 ]
 
