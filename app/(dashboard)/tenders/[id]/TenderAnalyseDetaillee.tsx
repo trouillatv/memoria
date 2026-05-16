@@ -98,32 +98,32 @@ export function TenderAnalyseDetaillee({ analysis }: TenderAnalyseDetailleeProps
         </CardContent>
       </Card>
 
-      {/* Checklist */}
+      {/* Points de différenciation */}
       <Card>
         <CardHeader>
-          <CardTitle>Checklist de réponse</CardTitle>
+          <CardTitle>Points de différenciation</CardTitle>
         </CardHeader>
         <CardContent>
           {checklist.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">Aucun élément de checklist.</p>
+            <p className="text-sm text-muted-foreground italic">Aucun point de différenciation identifié.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {checklist.map((item, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm">
                   <span
-                    className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border ${
+                    className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
                       item.required
-                        ? 'border-rose-400 bg-rose-50'
-                        : 'border-muted-foreground/30'
+                        ? 'bg-emerald-500'
+                        : 'bg-muted-foreground/40'
                     }`}
                   />
                   <div className="flex-1 min-w-0">
                     <span className={item.required ? 'font-medium' : 'text-muted-foreground'}>
                       {item.item}
-                      {item.required && (
-                        <span className="ml-1 text-xs text-rose-600">*</span>
-                      )}
                     </span>
+                    {item.required && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">Décisif</span>
+                    )}
                     {item.sources && item.sources.length > 0 && <SourceList sources={item.sources} />}
                   </div>
                 </li>
