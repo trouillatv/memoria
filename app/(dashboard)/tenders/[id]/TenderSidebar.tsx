@@ -115,6 +115,19 @@ export function TenderSidebar({
         )}
       </div>
 
+      {/* Relancer en haut, visible immédiatement quand l'analyse a échoué */}
+      {canRelaunch && (
+        <button
+          type="button"
+          onClick={handleRelaunch}
+          disabled={isInProgress}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full justify-center"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Relancer l&apos;analyse
+        </button>
+      )}
+
       <div className="hidden md:block border-t" />
 
       {/* ÉTAT */}
@@ -139,18 +152,6 @@ export function TenderSidebar({
               </span>
             )}
           </div>
-        )}
-        {/* Relancer visible directement quand l'analyse a échoué */}
-        {canRelaunch && (
-          <button
-            type="button"
-            onClick={handleRelaunch}
-            disabled={isInProgress}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full justify-center"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Relancer l&apos;analyse
-          </button>
         )}
       </div>
 

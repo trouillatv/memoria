@@ -7,7 +7,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!tender) return NextResponse.json({ status: 'unknown', error_msg: null }, { status: 404 })
 
   if (tender.status === 'analyzing' || tender.status === 'extracting') {
-    const ageMs = Date.now() - new Date(tender.created_at).getTime()
+    // Utilise updated_at (horodatage du dernier changement de statut) pas created_at
+    const ref = tender.updated_at ?? tender.created_at
+    const ageMs = Date.now() - new Date(ref).getTime()
     if (ageMs > 10 * 60 * 1000) {
       await updateTenderStatus(id, 'failed', 'analyze_timeout')
       return NextResponse.json({ status: 'failed', error_msg: 'analyze_timeout', opportunity_score: null })

@@ -79,7 +79,7 @@ export async function getTender(id: string): Promise<DbTender | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, updated_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
@@ -115,7 +115,7 @@ export async function updateTenderStatus(
   opportunityScore?: number | null
 ): Promise<void> {
   const supabase = createAdminClient()
-  const fields: Record<string, unknown> = { status }
+  const fields: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
   if (errorMsg !== undefined) fields.error_msg = errorMsg
   if (opportunityScore !== undefined) fields.opportunity_score = opportunityScore
   const { error } = await supabase.from('tenders').update(fields).eq('id', id)

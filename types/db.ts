@@ -62,6 +62,7 @@ export interface DbTender {
   error_msg: string | null
   created_by: string
   created_at: string
+  updated_at: string | null
   deleted_at: string | null
   // Mémoire commerciale — doctrine V5 verrou V1 (mémoire ≠ recommandation)
   outcome: TenderOutcome | null
