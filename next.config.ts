@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
   // serveur pour que Node les charge nativement (avec leurs paths internes intacts).
   // @react-pdf/renderer dépend de yoga-layout (WASM) et fontkit qui ne supportent
   // pas le bundling Turbopack côté serveur — on les externalise pareil.
-  serverExternalPackages: ['pdf-parse', 'pdfjs-dist', '@react-pdf/renderer'],
+  serverExternalPackages: ['pdf-parse', 'pdfjs-dist', '@react-pdf/renderer', '@google/genai'],
 };
 
 export default nextConfig;
