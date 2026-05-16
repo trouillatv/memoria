@@ -193,7 +193,7 @@ export default async function TenderDetailPage({
         {/* States — affichées indépendamment de la vue sélectionnée */}
         {isInProgress && <TenderAnalysisLoader id={id} />}
 
-        {isFailed && (
+        {isFailed && view !== 'atelier' && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 flex flex-col gap-3">
             <div className="flex items-center gap-2 text-rose-700 font-medium">
               {tender.error_msg === 'scanned_pdf_unsupported' ? (
