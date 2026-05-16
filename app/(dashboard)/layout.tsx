@@ -31,7 +31,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <BreadcrumbProvider>
         <AppSidebar role={user.role} fullName={fullName} />
         <div className="md:pl-60">
-          <AppTopbar fullName={fullName} />
+          <AppTopbar fullName={fullName} role={user.role} />
           <main id="main-content" className="px-4 md:px-8 py-6 pb-24 md:pb-6">{children}</main>
         </div>
       </BreadcrumbProvider>
