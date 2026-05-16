@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, RotateCw } from 'lucide-react'
+import { X, RotateCw, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { runAgentInitialAnalysisAction } from './atelier-actions'
 import { AGENTS } from './agents-metadata'
@@ -48,6 +48,35 @@ export function AgentAnalysisDrawer({ open, analysis, tenderId, onOpenChange }: 
     }
     return []
   })()
+
+  function handleDownload() {
+    if (!analysis) return
+    const lines: string[] = []
+    lines.push(`# Analyse — ${meta.label}`)
+    lines.push(`_Générée le ${new Date(analysis.updated_at).toLocaleString('fr-FR')}_`)
+    lines.push('')
+    if (analysis.summary) {
+      lines.push('## Synthèse')
+      lines.push(analysis.summary)
+      lines.push('')
+    }
+    if (keyPoints.length > 0) {
+      lines.push('## Points clés')
+      keyPoints.forEach(p => lines.push(`- ${p}`))
+      lines.push('')
+    }
+    if (analysis.raw_content?.trim()) {
+      lines.push('## Analyse complète')
+      lines.push(analysis.raw_content)
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `analyse-${analysis.agent_name}-${new Date(analysis.updated_at).toISOString().slice(0, 10)}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   async function handleRegenerate() {
     if (!analysis) return
@@ -145,7 +174,16 @@ export function AgentAnalysisDrawer({ open, analysis, tenderId, onOpenChange }: 
         </div>
 
         {/* Footer */}
-        <div className="border-t px-4 py-3 flex justify-end">
+        <div className="border-t px-4 py-3 flex items-center justify-between gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleDownload}
+          >
+            <Download className="h-3 w-3 mr-1" />
+            Sauvegarder
+          </Button>
           <Button
             type="button"
             variant="outline"
