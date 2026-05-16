@@ -49,7 +49,9 @@ export default async function TenderDetailPage({
     tender.status === 'submitted' ||
     tender.status === 'archived'
 
-  const [analysis, doc, chatMessages, agentAnalyses, conversations] = isReady || isFailed
+  // L'atelier IA est accessible même pendant une relance (isInProgress) :
+  // on charge toujours les messages, analyses agents et conversations.
+  const [analysis, doc, chatMessages, agentAnalyses, conversations] = isReady || isFailed || isInProgress
     ? await Promise.all([
         getLatestTenderAnalysis(id),
         getTenderDocument(id),
@@ -230,7 +232,19 @@ export default async function TenderDetailPage({
         )}
 
         {/* Section content — selon view */}
-        {(isReady || isFailed) && (
+        {/* L'atelier est toujours accessible, même pendant une relance de la synthèse */}
+        {view === 'atelier' && (isReady || isFailed || isInProgress) && (
+          <CopiloteWorkspace
+            tenderId={id}
+            initialMessages={chatMessages}
+            initialAgentAnalyses={agentAnalyses}
+            initialConversations={conversations}
+            tenderAnalysis={analysis}
+            tenderTitle={tender.title}
+          />
+        )}
+
+        {(isReady || isFailed) && view !== 'atelier' && (
           <>
             {view === 'synthese' && analysis && (
               <TenderSynthese
@@ -258,16 +272,6 @@ export default async function TenderDetailPage({
                   />
                 </div>
               </div>
-            )}
-            {view === 'atelier' && (
-              <CopiloteWorkspace
-                tenderId={id}
-                initialMessages={chatMessages}
-                initialAgentAnalyses={agentAnalyses}
-                initialConversations={conversations}
-                tenderAnalysis={analysis}
-                tenderTitle={tender.title}
-              />
             )}
           </>
         )}

@@ -124,7 +124,7 @@ export function TenderSidebar({
           className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed w-full justify-center"
         >
           <RefreshCw className="h-4 w-4" />
-          Relancer l&apos;analyse
+          Regénérer la synthèse
         </button>
       )}
 
@@ -377,7 +377,7 @@ export function TenderSidebar({
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <RefreshCw className="h-3 w-3 shrink-0" />
-                  Relancer l&apos;analyse
+                  Regénérer la synthèse
                 </button>
               )}
               {!isInProgress && tender.status !== 'archived' && (
