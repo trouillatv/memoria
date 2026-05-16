@@ -16,17 +16,11 @@ import { CONFORMITE_INIT_V1 } from './prompts/initial-analysis/conformite.v1'
 // Output schema
 // ---------------------------------------------------------------------------
 
-const keyPointsSchema = z.object({
-  blockers: z.array(z.string()).optional(),
-  risks: z.array(z.string()).optional(),
-  strengths: z.array(z.string()).optional(),
-  opportunities: z.array(z.string()).optional(),
-  metrics: z.record(z.string(), z.string()).optional(),
-})
+const keyPointsSchema = z.record(z.string(), z.unknown())
 
 const analysisOutputSchema = z.object({
   summary: z.string(),
-  key_points: keyPointsSchema,
+  key_points: keyPointsSchema.optional().default({}),
   raw_content: z.string().optional().default(''),
 })
 
