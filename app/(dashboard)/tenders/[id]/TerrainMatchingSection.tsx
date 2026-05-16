@@ -87,31 +87,43 @@ export async function TerrainMatchingSection({
       0,
     )
 
+    // On limite à 3 critères et 2 sites par critère pour rester pertinent
+    const topCriteria = criteriaMatches.slice(0, 3)
+
     return (
-      <section className="space-y-4">
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Mémoire terrain
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            {totalTraces} trace{totalTraces > 1 ? 's' : ''} —&nbsp;
-            {totalSites} site{totalSites > 1 ? 's' : ''}
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Mémoire terrain
+            </h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Traces de vos missions existantes reliées aux exigences de cet AO — matériaux de réponse, pas des preuves définitives.
+            </p>
+          </div>
+          <span className="text-xs text-muted-foreground shrink-0 ml-2">
+            {totalTraces} trace{totalTraces > 1 ? 's' : ''} — {totalSites} site{totalSites > 1 ? 's' : ''}
           </span>
         </div>
 
         <div className="space-y-4">
-          {criteriaMatches.map((cm, i) => (
+          {topCriteria.map((cm, i) => (
             <div key={i} className="space-y-2">
               <p className="text-xs text-muted-foreground font-medium pl-0.5">
                 {cm.criterion.length > 120
                   ? cm.criterion.slice(0, 120).trimEnd() + '…'
                   : cm.criterion}
               </p>
-              {cm.matchBySite.map((site) => (
+              {cm.matchBySite.slice(0, 2).map((site) => (
                 <SiteGroup key={site.siteId} site={site} />
               ))}
             </div>
           ))}
+          {criteriaMatches.length > 3 && (
+            <p className="text-xs text-muted-foreground pl-0.5">
+              + {criteriaMatches.length - 3} autre{criteriaMatches.length - 3 > 1 ? 's' : ''} critère{criteriaMatches.length - 3 > 1 ? 's' : ''} avec traces (affichage limité)
+            </p>
+          )}
         </div>
       </section>
     )
@@ -125,21 +137,32 @@ export async function TerrainMatchingSection({
 
   const totalTraces = matchBySite.reduce((n, s) => n + s.traces.length, 0)
 
+  const topSites = matchBySite.slice(0, 3)
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Mémoire terrain
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          {totalTraces} trace{totalTraces > 1 ? 's' : ''} —&nbsp;
-          {matchBySite.length} site{matchBySite.length > 1 ? 's' : ''}
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Mémoire terrain
+          </h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Traces de vos missions existantes reliées à cet AO — matériaux de réponse, pas des preuves définitives.
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0 ml-2">
+          {totalTraces} trace{totalTraces > 1 ? 's' : ''} — {matchBySite.length} site{matchBySite.length > 1 ? 's' : ''}
         </span>
       </div>
       <div className="space-y-2">
-        {matchBySite.map((site) => (
+        {topSites.map((site) => (
           <SiteGroup key={site.siteId} site={site} />
         ))}
+        {matchBySite.length > 3 && (
+          <p className="text-xs text-muted-foreground pl-0.5">
+            + {matchBySite.length - 3} autre{matchBySite.length - 3 > 1 ? 's' : ''} site{matchBySite.length - 3 > 1 ? 's' : ''} avec traces (affichage limité)
+          </p>
+        )}
       </div>
     </section>
   )

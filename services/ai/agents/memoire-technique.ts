@@ -22,22 +22,30 @@ export const memoireTechniqueAgent: AIAgent<MemoireTechniqueInput, MemoireTechni
       ? '__MOCK_FIXTURE__:' + JSON.stringify(buildMockFixture(input, ctx.libraryContext))
       : MEMOIRE_TECHNIQUE_V1.userTemplate({ reading: input.reading, libraryContext: ctx.libraryContext })
 
+    // Pas de responseSchema : le prompt demande du markdown pur.
+    // Forcer JSON ici confusait Gemini qui retournait {"technical_memo": "..."} en DB.
     const r = await ctx.provider.complete({
       systemPrompt: MEMOIRE_TECHNIQUE_V1.system,
       userMessage,
-      responseSchema: memoireTechniqueOutputSchema,
       modelTier: 'heavy',
     })
 
-    const parsed = memoireTechniqueOutputSchema.safeParse(r.parsed)
-    if (!parsed.success) {
-      // Fallback : si la sortie est juste du markdown, on l'enrobe
-      if (typeof r.text === 'string' && r.text.length > 100) {
-        return { technical_memo: r.text }
-      }
-      throw new Error(`memoire_technique: invalid output: ${parsed.error.message}`)
+    const text = r.text?.trim() ?? ''
+
+    // Si Gemini a quand même encapsulé en JSON, on extrait technical_memo
+    if (text.startsWith('{')) {
+      try {
+        const obj = JSON.parse(text) as Record<string, unknown>
+        if (typeof obj.technical_memo === 'string' && obj.technical_memo.length > 50) {
+          return { technical_memo: obj.technical_memo }
+        }
+      } catch { /* pas du JSON valide — on utilise le texte brut */ }
     }
-    return parsed.data
+
+    if (text.length < 50) {
+      throw new Error(`memoire_technique: réponse trop courte (${text.length} chars)`)
+    }
+    return { technical_memo: text }
   },
 }
 
