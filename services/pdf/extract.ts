@@ -32,7 +32,7 @@ export async function extractWithGeminiOCR(buffer: Buffer): Promise<string> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY not set')
 
-  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.0-flash'
+  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
   const base64 = buffer.toString('base64')
 
   const res = await fetch(

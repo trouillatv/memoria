@@ -9,8 +9,8 @@ export class GeminiProvider implements AIProvider {
     if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY non définie')
 
     const ai = new GoogleGenAI({ apiKey })
-    const modelLight = process.env.AI_MODEL_LIGHT ?? 'gemini-2.0-flash'
-    const modelHeavy = process.env.AI_MODEL_HEAVY ?? 'gemini-2.0-flash'
+    const modelLight = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
+    const modelHeavy = process.env.AI_MODEL_HEAVY ?? 'gemini-2.5-flash'
     const model = input.modelTier === 'heavy' ? modelHeavy : modelLight
     const start = Date.now()
 

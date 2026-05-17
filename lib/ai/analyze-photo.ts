@@ -6,7 +6,7 @@ import 'server-only'
 // Déclenchement : uniquement sur photos liées à une anomalie (anomaly_id présent).
 // Coût : ~$0.0001/photo — négligeable à cette échelle.
 
-const VISION_MODEL = 'gemini-2.0-flash'
+const VISION_MODEL = 'gemini-2.5-flash'
 
 const PROMPT = `Tu regardes une photo prise par un agent de nettoyage pour documenter un problème rencontré sur site.
 
