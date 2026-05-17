@@ -1,8 +1,10 @@
 'use client'
 
-import { Mic, Play, Pause } from 'lucide-react'
+import { Mic, Play, Pause, Trash2 } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { VoiceNoteRow } from '@/lib/db/intervention-voice-notes'
+import { ignoreVoiceNoteAction } from './voice-note-actions'
 
 interface Props {
   notes: Array<VoiceNoteRow & { signedUrl: string | null }>
@@ -13,8 +15,11 @@ function fmtDuration(s: number) {
 }
 
 function NotePlayer({ note }: { note: Props['notes'][0] }) {
+  const router = useRouter()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   function toggle() {
     const el = audioRef.current
@@ -25,6 +30,13 @@ function NotePlayer({ note }: { note: Props['notes'][0] }) {
     } else {
       el.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
     }
+  }
+
+  async function handleDelete() {
+    if (!confirming) { setConfirming(true); return }
+    setDeleting(true)
+    await ignoreVoiceNoteAction(note.id)
+    router.refresh()
   }
 
   const text = note.fragment_validated || note.transcription_corrected || note.transcription_raw || null
@@ -48,6 +60,20 @@ function NotePlayer({ note }: { note: Props['notes'][0] }) {
         )}
         <p className="text-xs text-muted-foreground mt-1">{fmtDuration(note.duration_seconds)}</p>
       </div>
+
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={deleting}
+        className={`shrink-0 flex items-center justify-center h-8 rounded-lg px-2 text-xs gap-1 transition-colors ${
+          confirming
+            ? 'bg-destructive text-destructive-foreground'
+            : 'text-muted-foreground hover:text-destructive'
+        }`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        {confirming && <span>Confirmer</span>}
+      </button>
 
       {note.signedUrl && (
         <audio
