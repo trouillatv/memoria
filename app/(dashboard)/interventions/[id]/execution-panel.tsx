@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock } from 'lucide-react'
+import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock, ScanSearch } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   startInterventionAction,
@@ -10,6 +10,7 @@ import {
   toggleChecklistItemAction,
   uploadInterventionPhotoAction,
   reopenInterventionAction,
+  analyzeInterventionPhotoAction,
 } from './intervention-actions'
 import type { DbIntervention, DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind } from '@/types/db'
 
@@ -55,16 +56,33 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
   const canStart = intervention.status === 'planned'
   const canComplete = intervention.status === 'in_progress' && !justCompleted
 
+  const [analyzingPhotoId, setAnalyzingPhotoId] = useState<string | null>(null)
+
   const photosByItem = new Map<string, DbInterventionPhoto[]>()
+  const anomalyPhotos: DbInterventionPhoto[] = []
   const freePhotos: DbInterventionPhoto[] = []
   for (const p of photos) {
     if (p.checklist_item_id) {
       const list = photosByItem.get(p.checklist_item_id) ?? []
       list.push(p)
       photosByItem.set(p.checklist_item_id, list)
+    } else if (p.anomaly_id) {
+      anomalyPhotos.push(p)
     } else {
       freePhotos.push(p)
     }
+  }
+
+  function handleAnalyzePhoto(photoId: string) {
+    setAnalyzingPhotoId(photoId)
+    const fd = new FormData()
+    fd.set('photo_id', photoId)
+    startTransition(async () => {
+      const r = await analyzeInterventionPhotoAction(fd)
+      if (r && 'error' in r && r.error) toast.error(r.error)
+      else { toast.success('Analyse terminée'); router.refresh() }
+      setAnalyzingPhotoId(null)
+    })
   }
 
   function handleStart() {
@@ -275,6 +293,48 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
           </ul>
         )}
       </section>
+
+      {/* Anomaly photos with AI analysis */}
+      {anomalyPhotos.length > 0 && (
+        <section className="space-y-3 rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Photos d&apos;anomalie ({anomalyPhotos.length})
+          </h2>
+          <div className="space-y-3">
+            {anomalyPhotos.map((p) => {
+              const url = signedUrls[p.storage_path]
+              const isAnalyzing = analyzingPhotoId === p.id
+              return (
+                <div key={p.id} className="flex gap-3 items-start rounded border bg-background p-2">
+                  {url ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="anomalie" className="w-20 h-20 object-cover rounded" />
+                    </a>
+                  ) : (
+                    <span className="shrink-0 w-20 h-20 rounded bg-muted/50" />
+                  )}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    {p.ai_caption ? (
+                      <p className="text-sm text-muted-foreground italic">{p.ai_caption}</p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleAnalyzePhoto(p.id)}
+                        disabled={pending || isAnalyzing}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs hover:bg-muted/50 disabled:opacity-50"
+                      >
+                        <ScanSearch className="h-3.5 w-3.5" />
+                        {isAnalyzing ? 'Analyse...' : 'Analyser avec l\'IA'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Free photos gallery */}
       {freePhotos.length > 0 && (

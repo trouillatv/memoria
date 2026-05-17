@@ -30,12 +30,19 @@ import { ConfidenceLevel } from './ConfidenceLevel'
 // Types
 // ----------------------------------------------------------------------------
 
+interface ContractOption {
+  id: string
+  name: string
+  client_name: string
+}
+
 interface SiteOption {
   id: string
   name: string
 }
 
 interface LitigeWizardProps {
+  contracts: ContractOption[]
   sites: SiteOption[]
 }
 
@@ -83,8 +90,9 @@ function thisWeekBounds(): { from: string; to: string } {
 // Composant principal
 // ----------------------------------------------------------------------------
 
-export function LitigeWizard({ sites }: LitigeWizardProps) {
+export function LitigeWizard({ contracts, sites }: LitigeWizardProps) {
   const [step, setStep] = useState<Step>(1)
+  const [contractId, setContractId] = useState<string>('')
   const [siteId, setSiteId] = useState<string>('')
   const [periodChoice, setPeriodChoice] = useState<PeriodChoice | null>(null)
   const [customFrom, setCustomFrom] = useState<string>('')
@@ -109,11 +117,12 @@ export function LitigeWizard({ sites }: LitigeWizardProps) {
 
   function handlePrepare() {
     const period = computePeriod()
-    if (!siteId || !period) return
+    if ((!contractId && !siteId) || !period) return
     setError(null)
     startTransition(async () => {
       const res = await prepareLitigeDossierAction({
-        siteId,
+        contractId: contractId || undefined,
+        siteId: siteId || undefined,
         dateFrom: period.from,
         dateTo: period.to,
         includeInterventions,
@@ -151,30 +160,54 @@ export function LitigeWizard({ sites }: LitigeWizardProps) {
       <StepIndicator step={step} />
 
       {step === 1 && (
-        <StepCard title="Quel site est concerné ?">
+        <StepCard title="Quel contrat est concerné ?">
           <div className="space-y-3">
-            <Label htmlFor="litige-site" className="text-sm">
-              Site
-            </Label>
-            <select
-              id="litige-site"
-              data-testid="litige-site-select"
-              value={siteId}
-              onChange={(e) => setSiteId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base"
-            >
-              <option value="">— Sélectionner —</option>
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            {contracts.length > 0 ? (
+              <>
+                <Label htmlFor="litige-contract" className="text-sm">
+                  Contrat
+                </Label>
+                <select
+                  id="litige-contract"
+                  data-testid="litige-contract-select"
+                  value={contractId}
+                  onChange={(e) => { setContractId(e.target.value); setSiteId('') }}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base"
+                >
+                  <option value="">— Sélectionner —</option>
+                  {contracts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} · {c.client_name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <Label htmlFor="litige-site" className="text-sm">
+                  Site
+                </Label>
+                <select
+                  id="litige-site"
+                  data-testid="litige-site-select"
+                  value={siteId}
+                  onChange={(e) => setSiteId(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-base"
+                >
+                  <option value="">— Sélectionner —</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
           <div className="flex justify-end pt-4">
             <Button
               size="lg"
-              disabled={!siteId}
+              disabled={!contractId && !siteId}
               onClick={() => setStep(2)}
               data-testid="litige-step1-continue"
             >

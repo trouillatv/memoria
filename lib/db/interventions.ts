@@ -426,6 +426,7 @@ export async function countPhotosByInterventions(
 export async function insertPhoto(input: {
   intervention_id: string
   checklist_item_id: string | null
+  anomaly_id?: string | null
   storage_path: string
   kind: PhotoKind
   caption: string | null
@@ -445,6 +446,14 @@ export async function insertPhoto(input: {
     .single()
   if (error) throw error
   return data.id
+}
+
+export async function updatePhotoAiCaption(photoId: string, caption: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase
+    .from('intervention_photos')
+    .update({ ai_caption: caption })
+    .eq('id', photoId)
 }
 
 // ----- Anomalies -----

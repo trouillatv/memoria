@@ -19,6 +19,12 @@ const LABELS: Record<Level, string> = {
   low: 'Trous documentés',
 }
 
+const TOOLTIPS: Record<Level, string> = {
+  high: 'Dossier défendable — interventions documentées avec photos et validations suffisantes.',
+  medium: 'Couverture partielle — certaines interventions manquent de photos ou de validations.',
+  low: 'Dossier fragile — plusieurs prestations sans preuve documentée. À compléter avant tout litige.',
+}
+
 const ICONS: Record<Level, React.ComponentType<{ className?: string }>> = {
   high: ShieldCheck,
   medium: ShieldAlert,
@@ -53,7 +59,7 @@ export function DossierConfidenceBadge({
           STYLES[level],
           className,
         )}
-        title={pct != null ? `Couverture preuve : ${pct}%` : undefined}
+        title={pct != null ? `${TOOLTIPS[level]} Couverture : ${pct}%` : TOOLTIPS[level]}
       >
         <Icon className="h-3 w-3" />
         {LABELS[level]}
@@ -68,6 +74,7 @@ export function DossierConfidenceBadge({
         STYLES[level],
         className,
       )}
+      title={TOOLTIPS[level]}
     >
       <Icon className="h-3.5 w-3.5" />
       <span>{LABELS[level]}</span>

@@ -13,6 +13,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSites } from '@/lib/db/sites'
+import { listContracts } from '@/lib/db/contracts'
 import { LitigeWizard } from './LitigeWizard'
 
 export const dynamic = 'force-dynamic'
@@ -23,8 +24,11 @@ export default async function LitigePage() {
   if (user.role === 'chef_equipe') redirect('/m')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/dashboard')
 
-  const sites = await listSites()
+  const [sites, contracts] = await Promise.all([listSites(), listContracts()])
   const siteOptions = sites.map((s) => ({ id: s.id, name: s.name }))
+  const contractOptions = contracts
+    .filter((c) => c.status === 'active' || c.status === 'paused')
+    .map((c) => ({ id: c.id, name: c.name, client_name: c.client_name }))
 
-  return <LitigeWizard sites={siteOptions} />
+  return <LitigeWizard contracts={contractOptions} sites={siteOptions} />
 }

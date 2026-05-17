@@ -409,9 +409,11 @@ export interface DbInterventionPhoto {
   id: string
   intervention_id: string
   checklist_item_id: string | null
+  anomaly_id: string | null
   storage_path: string
   kind: PhotoKind
   caption: string | null
+  ai_caption: string | null
   taken_at: string
   taken_by: string | null
   // Intégrité cryptographique — migration 040 (Phase 1.1).

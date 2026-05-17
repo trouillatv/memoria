@@ -47,6 +47,7 @@ async function uploadOne(photo: QueuedPhoto): Promise<UploadResult> {
   if (mode === 'legacy') {
     fd.set('intervention_id', photo.interventionId!)
     fd.set('checklist_item_id', photo.checklistItemId ?? '')
+    if (photo.anomalyId) fd.set('anomaly_id', photo.anomalyId)
     fd.set('kind', photo.kind)
     const r = await uploadPhotoMobileAction(fd)
     if (r && 'ok' in r && r.ok) return { ok: true }

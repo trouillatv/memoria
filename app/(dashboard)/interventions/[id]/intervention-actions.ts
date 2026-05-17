@@ -11,12 +11,14 @@ import {
   markChecklistItemDone,
   insertPhoto,
   updateInterventionStatus,
+  updatePhotoAiCaption,
   getIntervention,
   listChecklistItemsByIntervention,
   createAnomaly,
   rescheduleIntervention,
   getAvailableSlotsForTeam,
 } from '@/lib/db/interventions'
+import { analyzeAnomalyPhoto } from '@/lib/ai/analyze-photo'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
 
@@ -473,5 +475,41 @@ export async function reopenInterventionAction(formData: FormData) {
 
   revalidatePath(`/interventions/${parsed.data.intervention_id}`)
   return { ok: true as const }
+}
+
+// ----- Analyse photo anomalie (Gemini Vision) -----
+
+export async function analyzeInterventionPhotoAction(
+  formData: FormData,
+): Promise<{ ok: true; caption: string } | { error: string }> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+
+  const photoId = formData.get('photo_id') as string | null
+  if (!photoId) return { error: 'photo_id manquant' }
+
+  const supabase = createAdminClient()
+  const { data: photo } = await supabase
+    .from('intervention_photos')
+    .select('id, storage_path, mime_type, anomaly_id, intervention_id')
+    .eq('id', photoId)
+    .maybeSingle()
+
+  if (!photo) return { error: 'Photo introuvable' }
+  if (!photo.anomaly_id) return { error: 'Photo non liée à une anomalie' }
+
+  const { data: fileData, error: dlErr } = await supabase.storage
+    .from('intervention-photos')
+    .download(photo.storage_path)
+
+  if (dlErr || !fileData) return { error: 'Téléchargement échoué' }
+
+  const buffer = Buffer.from(await fileData.arrayBuffer())
+  const caption = await analyzeAnomalyPhoto(buffer, photo.mime_type ?? 'image/jpeg')
+  if (!caption) return { error: 'Analyse échouée — réessayez' }
+
+  await updatePhotoAiCaption(photo.id, caption)
+  revalidatePath(`/interventions/${photo.intervention_id}`)
+  return { ok: true, caption }
 }
 

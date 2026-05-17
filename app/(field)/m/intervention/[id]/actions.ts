@@ -98,6 +98,7 @@ const photoKindSchema = z.enum(['before', 'after', 'anomaly', 'proof'])
 const uploadPhotoSchema = z.object({
   intervention_id: z.string().uuid(),
   checklist_item_id: z.string().uuid().nullable(),
+  anomaly_id: z.string().uuid().nullable().optional(),
   kind: photoKindSchema,
   client_timestamp: z.string().datetime().nullable().optional(),
 })
@@ -115,12 +116,15 @@ export async function uploadPhotoMobileAction(formData: FormData) {
 
   const checklistItemRaw = formData.get('checklist_item_id') as string | null
   const checklist_item_id = checklistItemRaw && checklistItemRaw !== '' ? checklistItemRaw : null
+  const anomalyIdRaw = formData.get('anomaly_id') as string | null
+  const anomaly_id = anomalyIdRaw && anomalyIdRaw !== '' ? anomalyIdRaw : null
   const clientTimestampRaw = formData.get('client_timestamp') as string | null
   const client_timestamp = clientTimestampRaw && clientTimestampRaw !== '' ? clientTimestampRaw : null
 
   const parsed = uploadPhotoSchema.safeParse({
     intervention_id: formData.get('intervention_id'),
     checklist_item_id,
+    anomaly_id,
     kind: formData.get('kind'),
     client_timestamp,
   })
@@ -148,6 +152,7 @@ export async function uploadPhotoMobileAction(formData: FormData) {
   const photoId = await insertPhoto({
     intervention_id: parsed.data.intervention_id,
     checklist_item_id: parsed.data.checklist_item_id,
+    anomaly_id: parsed.data.anomaly_id ?? null,
     storage_path: storagePath,
     kind: parsed.data.kind,
     caption: null,
@@ -188,7 +193,7 @@ export async function createAnomalyMobileAction(formData: FormData) {
     return { error: 'Précisez ce qu\'il s\'est passé' }
   }
 
-  await createAnomaly({
+  const anomalyId = await createAnomaly({
     intervention_id: parsed.data.intervention_id,
     category: parsed.data.category,
     category_other: parsed.data.category_other ?? null,
@@ -197,7 +202,7 @@ export async function createAnomalyMobileAction(formData: FormData) {
   })
 
   revalidatePath(`/m/intervention/${parsed.data.intervention_id}`)
-  return { ok: true as const }
+  return { ok: true as const, anomalyId }
 }
 
 // ----- Skip intervention ("Pas aujourd'hui", raison obligatoire) -----

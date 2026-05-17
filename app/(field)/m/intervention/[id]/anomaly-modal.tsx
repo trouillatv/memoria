@@ -28,11 +28,13 @@ export function AnomalyModal({ interventionId, open, onClose }: Props) {
   const [category, setCategory] = useState<AnomalyCategory | null>(null)
   const [categoryOther, setCategoryOther] = useState('')
   const [description, setDescription] = useState('')
+  const [createdAnomalyId, setCreatedAnomalyId] = useState<string | null>(null)
 
   function reset() {
     setCategory(null)
     setCategoryOther('')
     setDescription('')
+    setCreatedAnomalyId(null)
   }
 
   function handleClose() {
@@ -63,14 +65,62 @@ export function AnomalyModal({ interventionId, open, onClose }: Props) {
         toast.error(r.error)
       } else {
         toast.success('Signalement envoyé', { duration: 1500 })
-        reset()
-        onClose()
+        const anomalyId = r && 'anomalyId' in r ? r.anomalyId : null
+        if (anomalyId) {
+          setCreatedAnomalyId(anomalyId)
+        } else {
+          reset()
+          onClose()
+        }
         router.refresh()
       }
     })
   }
 
   if (!open) return null
+
+  if (createdAnomalyId) {
+    return (
+      <div className="fixed inset-0 z-50 bg-background overflow-y-auto">
+        <header className="sticky top-0 z-10 bg-background border-b">
+          <div className="flex items-center justify-between px-4 py-3">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="inline-flex items-center gap-1 text-sm active:text-muted-foreground"
+              style={{ minHeight: 44 }}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Terminer
+            </button>
+            <span className="text-sm font-semibold">Signalement envoyé</span>
+            <span className="w-16" aria-hidden />
+          </div>
+        </header>
+        <div className="p-4 space-y-5 max-w-md mx-auto">
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous joindre une photo à ce signalement ?
+          </p>
+          <PhotoCaptureButton
+            interventionId={interventionId}
+            checklistItemId={null}
+            anomalyId={createdAnomalyId}
+            kind="anomaly"
+            label="Prendre une photo"
+            variant="fullwidth"
+            onPhotoQueued={() => { handleClose() }}
+          />
+          <button
+            type="button"
+            onClick={handleClose}
+            className="w-full px-4 py-3 rounded-xl border text-sm text-muted-foreground"
+          >
+            Passer sans photo
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-background overflow-y-auto">
@@ -149,21 +199,6 @@ export function AnomalyModal({ interventionId, open, onClose }: Props) {
                 className="w-full rounded-lg border p-3 text-base resize-none"
                 placeholder="Ce que vous voulez ajouter..."
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium block mb-2">
-                Photo (recommandée)
-              </label>
-              <PhotoCaptureButton
-                interventionId={interventionId}
-                checklistItemId={null}
-                kind="anomaly"
-                label="Prendre une photo"
-              />
-              <p className="text-xs text-muted-foreground mt-1.5 italic">
-                La photo sera enregistrée avec le signalement.
-              </p>
             </div>
 
             <button

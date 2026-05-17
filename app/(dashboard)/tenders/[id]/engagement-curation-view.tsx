@@ -9,7 +9,7 @@ import {
   curateEngagementAction,
   rejectEngagementsAction,
 } from './engagements-actions'
-import type { DbEngagement, EngagementCategory } from '@/types/db'
+import type { DbEngagement, EngagementCategory, EngagementProofRequirement } from '@/types/db'
 
 const CATEGORIES: EngagementCategory[] = [
   'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
@@ -62,12 +62,13 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
 
   async function saveEdit(
     id: string,
-    patch: { short_label?: string; category?: EngagementCategory }
+    patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement }
   ) {
     const fd = new FormData()
     fd.set('id', id)
     if (patch.short_label !== undefined) fd.set('short_label', patch.short_label)
     if (patch.category !== undefined) fd.set('category', patch.category)
+    if (patch.proof_requirement !== undefined) fd.set('proof_requirement', patch.proof_requirement)
     startTransition(async () => {
       const r = await curateEngagementAction(fd)
       if (r && 'error' in r && r.error) {
@@ -188,6 +189,12 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
   )
 }
 
+const PROOF_REQUIREMENT_LABELS: Record<EngagementProofRequirement, string> = {
+  none: 'Aucune preuve requise',
+  photo: 'Photo obligatoire',
+  anomaly_documented: 'Anomalie documentée',
+}
+
 function EditForm({
   engagement,
   pending,
@@ -196,16 +203,18 @@ function EditForm({
 }: {
   engagement: DbEngagement
   pending: boolean
-  onSave: (patch: { short_label?: string; category?: EngagementCategory }) => void
+  onSave: (patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement }) => void
   onCancel: () => void
 }) {
   const [label, setLabel] = useState(engagement.short_label)
   const [category, setCategory] = useState<EngagementCategory>(engagement.category)
+  const [proofReq, setProofReq] = useState<EngagementProofRequirement>(engagement.proof_requirement)
 
   function submit() {
-    const patch: { short_label?: string; category?: EngagementCategory } = {}
+    const patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement } = {}
     if (label !== engagement.short_label) patch.short_label = label
     if (category !== engagement.category) patch.category = category
+    if (proofReq !== engagement.proof_requirement) patch.proof_requirement = proofReq
     if (Object.keys(patch).length === 0) {
       onCancel()
       return
@@ -223,7 +232,7 @@ function EditForm({
         maxLength={100}
         disabled={pending}
       />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <select
           value={category}
           onChange={(ev) => setCategory(ev.target.value as EngagementCategory)}
@@ -231,6 +240,16 @@ function EditForm({
           disabled={pending}
         >
           {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={proofReq}
+          onChange={(ev) => setProofReq(ev.target.value as EngagementProofRequirement)}
+          className="rounded border p-1 text-xs"
+          disabled={pending}
+        >
+          {(Object.keys(PROOF_REQUIREMENT_LABELS) as EngagementProofRequirement[]).map((p) => (
+            <option key={p} value={p}>{PROOF_REQUIREMENT_LABELS[p]}</option>
+          ))}
         </select>
         <div className="flex items-center gap-1 ml-auto">
           <button

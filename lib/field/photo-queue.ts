@@ -47,6 +47,8 @@ export interface QueuedPhoto {
   /** Mode legacy : intervention pré-planifiée. Mutuellement exclusif avec siteId. */
   interventionId?: string
   checklistItemId: string | null
+  /** FK vers une anomalie existante (migration 066). Optionnel — mode legacy uniquement. */
+  anomalyId?: string | null
   /** Mode spontané (V5.1) : trace libre sur un site. Mutuellement exclusif avec interventionId. */
   siteId?: string
   /** Mode spontané (V5.1) : nature de la trace (passage banal / anomalie). */

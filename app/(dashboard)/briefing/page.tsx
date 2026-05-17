@@ -335,6 +335,44 @@ export default async function BriefingPage({
         </Card>
       )}
 
+      {/* Anomalies ouvertes depuis +3 jours — signal logistique calme. */}
+      {briefing.oldOpenAnomalies.length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Anomalies non résolues ({briefing.oldOpenAnomalies.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-2 italic">
+              Signalements ouverts depuis plus de 3 jours. À vérifier si toujours d&apos;actualité.
+            </p>
+            <ul className="space-y-1.5 text-sm">
+              {briefing.oldOpenAnomalies.map((a) => (
+                <li key={a.id} className="flex items-start justify-between gap-3">
+                  <Link
+                    href={`/interventions/${a.intervention_id}`}
+                    className="min-w-0 flex-1 hover:underline"
+                  >
+                    <span className="font-medium">
+                      {a.category_other ?? a.category}
+                    </span>
+                    <span className="text-xs text-muted-foreground"> · {a.site_name}</span>
+                    {a.description && (
+                      <span className="block text-xs text-muted-foreground truncate">{a.description}</span>
+                    )}
+                  </Link>
+                  <Badge className="shrink-0 bg-amber-100 text-amber-800 text-[10px]">
+                    {a.age_days} j
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Préparation des envois WhatsApp — fusion ex /preparation 2026-05-14.
           Section action : liste compacte des chefs d'équipe ayant un passage
           demain + drawer latéral pour relire/éditer le message et l'envoyer. */}

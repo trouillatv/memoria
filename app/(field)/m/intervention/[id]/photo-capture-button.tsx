@@ -8,6 +8,7 @@ import { queuePhoto } from '@/lib/field/photo-queue'
 interface Props {
   interventionId: string
   checklistItemId: string | null
+  anomalyId?: string | null
   kind: 'before' | 'after' | 'anomaly' | 'proof'
   label: string
   disabled?: boolean
@@ -22,6 +23,7 @@ interface Props {
 export function PhotoCaptureButton({
   interventionId,
   checklistItemId,
+  anomalyId,
   kind,
   label,
   disabled,
@@ -48,6 +50,7 @@ export function PhotoCaptureButton({
           mimeType: file.type || 'image/jpeg',
           interventionId,
           checklistItemId,
+          anomalyId: anomalyId ?? null,
           kind,
         })
         onPhotoQueued?.()

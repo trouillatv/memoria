@@ -34,8 +34,11 @@ import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 export interface ProofSearchInput {
   /** Mot-clé matché sur mission.name OU site.name (ILIKE, anchored par %). */
   search?: string
-  /** Filtre site exact (UUID). */
+  /** Filtre site exact (UUID). Mutuellement exclusif avec contractId. */
   siteId?: string
+  /** Filtre contrat (UUID) — inclut toutes les interventions de tous les sites du contrat.
+   *  Mutuellement exclusif avec siteId. */
+  contractId?: string
   /** Borne basse inclusive (yyyy-mm-dd). Comparée à COALESCE(scheduled_for,
    * scheduled_at::date, executed_at::date). */
   dateFrom?: string
@@ -104,7 +107,27 @@ export async function searchProofs(input: ProofSearchInput = {}): Promise<ProofS
 
   let candidateMissionIds: string[] | null = null
 
-  if (input.siteId) {
+  if (input.contractId && !input.siteId) {
+    // Filtre par contrat : résoudre sites → missions.
+    const { data: contractSites, error: csErr } = await supabase
+      .from('sites')
+      .select('id')
+      .eq('contract_id', input.contractId)
+      .is('deleted_at', null)
+    if (csErr) throw csErr
+    const contractSiteIds = (contractSites ?? []).map((s) => s.id)
+    if (contractSiteIds.length === 0) return { items: [], total: 0 }
+    let q = supabase
+      .from('missions')
+      .select('id')
+      .in('site_id', contractSiteIds)
+      .is('deleted_at', null)
+    if (escaped) q = q.ilike('name', `%${escaped}%`)
+    const { data: contractMissions, error: cmErr } = await q
+    if (cmErr) throw cmErr
+    candidateMissionIds = (contractMissions ?? []).map((m) => m.id)
+    if (candidateMissionIds.length === 0) return { items: [], total: 0 }
+  } else if (input.siteId) {
     // Bound to that site, optional name match.
     let q = supabase
       .from('missions')

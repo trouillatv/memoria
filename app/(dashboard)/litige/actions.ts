@@ -31,14 +31,15 @@ import { logAuditEvent } from '@/lib/audit/log'
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 
 export const prepareLitigeDossierSchema = z.object({
-  siteId: z.string().uuid({ message: 'Site invalide' }),
+  siteId: z.string().uuid({ message: 'Site invalide' }).optional(),
+  contractId: z.string().uuid({ message: 'Contrat invalide' }).optional(),
   dateFrom: z.string().regex(DATE_REGEX, { message: 'Date de début invalide' }),
   dateTo: z.string().regex(DATE_REGEX, { message: 'Date de fin invalide' }),
   includeInterventions: z.boolean(),
   includePhotos: z.boolean(),
   includeAnomalies: z.boolean(),
   includeValidations: z.boolean(),
-})
+}).refine((d) => d.siteId || d.contractId, { message: 'Un site ou un contrat est requis' })
 
 export type PrepareLitigeDossierInput = z.infer<typeof prepareLitigeDossierSchema>
 
@@ -131,6 +132,7 @@ export async function prepareLitigeDossierAction(
     // 1. Agrégation des interventions sur la période, borné raisonnablement.
     const result = await searchProofs({
       siteId: parsed.data.siteId,
+      contractId: parsed.data.contractId,
       dateFrom: parsed.data.dateFrom,
       dateTo: parsed.data.dateTo,
       limit: 200,
@@ -160,7 +162,8 @@ export async function prepareLitigeDossierAction(
         metadata: {
           kind: 'litige_dossier_prepared',
           empty: true,
-          site_id: parsed.data.siteId,
+          site_id: parsed.data.siteId ?? null,
+          contract_id: parsed.data.contractId ?? null,
           date_from: parsed.data.dateFrom,
           date_to: parsed.data.dateTo,
           include_interventions: parsed.data.includeInterventions,
@@ -191,12 +194,14 @@ export async function prepareLitigeDossierAction(
 
     // URL du PDF agrégé : route GET dédiée `/litige/dossier` (créée à part).
     // On encode les params dans l'URL — pas de body sur un download GET.
-    const pdfQs = new URLSearchParams({
-      siteId: parsed.data.siteId,
+    const pdfQsParams: Record<string, string> = {
       dateFrom: parsed.data.dateFrom,
       dateTo: parsed.data.dateTo,
       tokenId: token.id,
-    })
+    }
+    if (parsed.data.siteId) pdfQsParams.siteId = parsed.data.siteId
+    if (parsed.data.contractId) pdfQsParams.contractId = parsed.data.contractId
+    const pdfQs = new URLSearchParams(pdfQsParams)
     const pdfUrl = `/litige/dossier?${pdfQs.toString()}`
 
     await logAuditEvent({
@@ -208,7 +213,8 @@ export async function prepareLitigeDossierAction(
         kind: 'litige_dossier_prepared',
         empty: false,
         token_id: token.id,
-        site_id: parsed.data.siteId,
+        site_id: parsed.data.siteId ?? null,
+        contract_id: parsed.data.contractId ?? null,
         date_from: parsed.data.dateFrom,
         date_to: parsed.data.dateTo,
         counts,

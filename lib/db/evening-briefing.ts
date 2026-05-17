@@ -77,6 +77,18 @@ export interface EveningBriefing {
     end_date: string
     daysUntilEnd: number
   }>
+  /** Anomalies ouvertes depuis plus de 3 jours — signal de vigilance logistique.
+   *  Pas une alarme, juste un rappel que certaines situations n'ont pas été résolues. */
+  oldOpenAnomalies: Array<{
+    id: string
+    category: string
+    category_other: string | null
+    description: string | null
+    site_name: string
+    intervention_id: string
+    created_at: string
+    age_days: number
+  }>
 }
 
 export async function buildEveningBriefing(targetDate: string): Promise<EveningBriefing> {
@@ -355,6 +367,40 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     }
   })
 
+  // 7) Anomalies ouvertes depuis plus de 3 jours — signal de vigilance.
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
+  const { data: oldAnomalyRows } = await supabase
+    .from('intervention_anomalies')
+    .select(`
+      id, category, category_other, description, created_at, intervention_id,
+      intervention:interventions(
+        mission:missions(site:sites(name))
+      )
+    `)
+    .eq('status', 'open')
+    .lt('created_at', threeDaysAgo)
+    .order('created_at', { ascending: true })
+    .limit(20)
+
+  const oldOpenAnomalies = ((oldAnomalyRows ?? []) as Array<{
+    id: string
+    category: string
+    category_other: string | null
+    description: string | null
+    created_at: string
+    intervention_id: string
+    intervention: { mission: { site: { name: string } | null } | null } | null
+  }>).map((a) => ({
+    id: a.id,
+    category: a.category,
+    category_other: a.category_other,
+    description: a.description,
+    site_name: a.intervention?.mission?.site?.name ?? '(site inconnu)',
+    intervention_id: a.intervention_id,
+    created_at: a.created_at,
+    age_days: Math.floor((Date.now() - new Date(a.created_at).getTime()) / (24 * 3600 * 1000)),
+  }))
+
   return {
     date: targetDate,
     interventionsCount,
@@ -365,6 +411,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     unassignedInterventions: unassigned,
     coverageBySite,
     contractsExpiringSoon,
+    oldOpenAnomalies,
   }
 }
 
