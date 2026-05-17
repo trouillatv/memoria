@@ -32,7 +32,8 @@ async function transcribeAudio(rawBuffer: ArrayBuffer, mimeType: string, ext: st
 
 async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): Promise<string> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
-  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
+  // Hardcodé : gemini-2.0-flash n'est plus dispo, on ne laisse pas l'env var l'écraser
+  const model = 'gemini-2.5-flash'
   const base64 = Buffer.from(rawBuffer).toString('base64')
   // Gemini n'accepte pas le suffixe codec (ex: "audio/webm;codecs=opus" → "audio/webm")
   const safeMime = mimeType.split(';')[0].trim()
@@ -90,7 +91,7 @@ export interface ExtractionProposed {
 
 async function extractElementsWithGemini(correctedText: string): Promise<ExtractionProposed> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
-  const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
+  const model = 'gemini-2.5-flash'
 
   const prompt = `Tu analyses une note audio terrain d'un agent de nettoyage ou de maintenance.
 
