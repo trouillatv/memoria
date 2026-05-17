@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History } from 'lucide-react'
+import { ArrowRight, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -104,27 +104,23 @@ export default async function FieldHomePage({
         .filter((s): s is string => !!s)
     )
   )
-  if (agentSiteIds.length > 0) {
-    await ensureTodayInterventionsForSites(agentSiteIds, 1)
-  }
+  // Génération paresseuse : seulement pour aujourd'hui, pas pour les autres jours.
+  const ensurePromise = (isToday && agentSiteIds.length > 0)
+    ? ensureTodayInterventionsForSites(agentSiteIds, 1)
+    : Promise.resolve(null)
 
-  // V5.1 Slice 1 — Sites disponibles pour le FAB "Photo libre". Liste plus
-  // large que celle dérivée des interventions visibles (J-1 → J+7) : on
-  // exploite agentSiteIds (200 dernières interventions où l'agent est dans
-  // team) pour permettre le dépôt spontané sur un site déjà visité même hors
-  // de la fenêtre planning courante.
-  let fabSites: FreePhotoFabSite[] = []
-  if (agentSiteIds.length > 0) {
-    const { data: allAgentSites } = await supabase
-      .from('sites')
-      .select('id, name')
-      .in('id', agentSiteIds)
-      .is('deleted_at', null)
-      .order('name')
-    fabSites = allAgentSites ?? []
-  }
+  // Paralléliser : FAB sites + interventions visibles + génération aujourd'hui
+  const fabSitesPromise = agentSiteIds.length > 0
+    ? supabase.from('sites').select('id, name').in('id', agentSiteIds).is('deleted_at', null).order('name')
+    : Promise.resolve({ data: [] as Array<{ id: string; name: string }> })
 
-  const interventions = await listInterventionsVisibleToUser(user.id)
+  const [, fabSitesRes, interventions] = await Promise.all([
+    ensurePromise,
+    fabSitesPromise,
+    listInterventionsVisibleToUser(user.id),
+  ])
+
+  const fabSites: FreePhotoFabSite[] = (fabSitesRes as { data: FreePhotoFabSite[] | null }).data ?? []
 
   // KPI chef d'équipe : interventions terminées sur les 7 derniers jours glissants
   // avec tâches obligatoires non cochées.
@@ -499,7 +495,7 @@ function InterventionCard({
                 )}
               </div>
             )}
-            <div className={`font-semibold text-base mb-1 ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
+            <div className={`font-semibold text-base mb-1 underline decoration-muted-foreground/30 underline-offset-2 ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
               {missionName}
             </div>
             {siteName && (
@@ -533,8 +529,9 @@ function InterventionCard({
             </div>
           )}
           {primary && isCompleted && (
-            <div className="flex items-center justify-center shrink-0 text-emerald-700 text-sm">
+            <div className="flex items-center gap-1.5 shrink-0 text-emerald-700 text-sm">
               ✓
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
           )}
           {(!primary || isSkipped) && (
