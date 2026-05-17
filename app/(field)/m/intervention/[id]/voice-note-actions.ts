@@ -34,6 +34,8 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): P
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
   const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.0-flash'
   const base64 = Buffer.from(rawBuffer).toString('base64')
+  // Gemini n'accepte pas le suffixe codec (ex: "audio/webm;codecs=opus" → "audio/webm")
+  const safeMime = mimeType.split(';')[0].trim()
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -43,7 +45,7 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): P
       body: JSON.stringify({
         contents: [{
           parts: [
-            { inline_data: { mime_type: mimeType, data: base64 } },
+            { inline_data: { mime_type: safeMime, data: base64 } },
             { text: 'Transcris cet audio en français. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.' },
           ],
         }],
