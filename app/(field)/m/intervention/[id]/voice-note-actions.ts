@@ -150,7 +150,7 @@ Retourne uniquement du JSON valide :
 // ---------------------------------------------------------------------------
 
 export async function uploadVoiceNoteAction(formData: FormData): Promise<
-  | { noteId: string; transcription: string }
+  | { noteId: string; transcription: string; transcriptionError?: string }
   | { error: string }
 > {
   const auth = await requireFieldAgent()
