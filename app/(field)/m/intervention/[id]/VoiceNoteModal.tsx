@@ -141,6 +141,9 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
     setNoteId(result.noteId)
     setTranscription(result.transcription)
     setCorrected(result.transcription)
+    if ('transcriptionError' in result && result.transcriptionError) {
+      console.error('[VoiceNote] transcription error:', result.transcriptionError)
+    }
     setStep('review')
   }
 
@@ -306,8 +309,8 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
                 className="w-full rounded-xl border p-4 text-base resize-none bg-muted/20"
               />
               {!transcription && (
-                <p className="text-xs text-muted-foreground italic">
-                  Transcription indisponible — vous pouvez saisir manuellement.
+                <p className="text-xs text-destructive italic">
+                  Transcription indisponible — saisissez manuellement ce que vous avez dit.
                 </p>
               )}
             </div>

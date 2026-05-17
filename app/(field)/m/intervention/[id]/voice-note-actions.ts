@@ -213,18 +213,19 @@ export async function uploadVoiceNoteAction(formData: FormData): Promise<
       .eq('id', noteId)
     return { noteId, transcription: text }
   } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e)
     console.error(JSON.stringify({
       service: 'voice-note-actions',
       source: 'transcription',
       note_id: noteId,
-      error: e instanceof Error ? e.message : String(e),
+      error: errMsg,
       ts: new Date().toISOString(),
     }))
     await supabase
       .from('intervention_voice_notes')
       .update({ transcription_status: 'failed', status: 'transcribed' })
       .eq('id', noteId)
-    return { noteId, transcription: '' }
+    return { noteId, transcription: '', transcriptionError: errMsg }
   }
 }
 
