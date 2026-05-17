@@ -79,7 +79,7 @@ export function VoiceNotesSection({ notes }: { notes: VoiceNoteDisplay[] }) {
                   controls
                   src={note.signedUrl}
                   className="w-full h-9"
-                  preload="none"
+                  preload="metadata"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">
                   Enregistrement original — artefact brut conservé
