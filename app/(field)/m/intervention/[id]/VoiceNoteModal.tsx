@@ -148,7 +148,15 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
   }
 
   async function handleExtract() {
-    if (!noteId || !corrected.trim()) return
+    if (!noteId) return
+    // Sans transcription, passer directement à la saisie manuelle du fragment
+    if (!corrected.trim()) {
+      setExtraction({ lieux: [], problemes: [], equipements: [], statut: null, fragment: '' })
+      setSelectedElements(new Set())
+      setFragment('')
+      setStep('fragment_review')
+      return
+    }
     setStep('extracting')
 
     const fd = new FormData()
@@ -332,8 +340,7 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
               <button
                 type="button"
                 onClick={handleExtract}
-                disabled={!corrected.trim()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90"
                 style={{ minHeight: 64 }}
               >
                 Continuer
