@@ -139,24 +139,27 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
     }
 
     setNoteId(result.noteId)
+
+    // Si la transcription a échoué ou est vide : note sauvegardée, on ferme sans passer par les écrans IA.
+    if (!result.transcription) {
+      if ('transcriptionError' in result && result.transcriptionError) {
+        console.error('[VoiceNote] transcription error:', result.transcriptionError)
+      }
+      toast.success('Note enregistrée', { duration: 1500 })
+      setTimeout(() => {
+        router.refresh()
+        onClose()
+      }, 1000)
+      return
+    }
+
     setTranscription(result.transcription)
     setCorrected(result.transcription)
-    if ('transcriptionError' in result && result.transcriptionError) {
-      console.error('[VoiceNote] transcription error:', result.transcriptionError)
-    }
     setStep('review')
   }
 
   async function handleExtract() {
-    if (!noteId) return
-    // Sans transcription, passer directement à la saisie manuelle du fragment
-    if (!corrected.trim()) {
-      setExtraction({ lieux: [], problemes: [], equipements: [], statut: null, fragment: '' })
-      setSelectedElements(new Set())
-      setFragment('')
-      setStep('fragment_review')
-      return
-    }
+    if (!noteId || !corrected.trim()) return
     setStep('extracting')
 
     const fd = new FormData()
@@ -340,7 +343,8 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
               <button
                 type="button"
                 onClick={handleExtract}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90"
+                disabled={!corrected.trim()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90 disabled:opacity-50"
                 style={{ minHeight: 64 }}
               >
                 Continuer
