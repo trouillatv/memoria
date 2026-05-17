@@ -382,7 +382,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .order('created_at', { ascending: true })
     .limit(20)
 
-  const oldOpenAnomalies = ((oldAnomalyRows ?? []) as Array<{
+  const oldOpenAnomalies = ((oldAnomalyRows ?? []) as unknown as Array<{
     id: string
     category: string
     category_other: string | null
