@@ -38,8 +38,9 @@ export async function analyzeAnomalyPhoto(
         },
       ],
       generationConfig: {
-        maxOutputTokens: 120,
+        maxOutputTokens: 256,
         temperature: 0.1,
+        thinkingConfig: { thinkingBudget: 0 },
       },
     }
 
