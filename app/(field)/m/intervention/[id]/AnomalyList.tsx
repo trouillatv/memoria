@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AlertTriangle, Trash2 } from 'lucide-react'
 import { ignoreAnomalyMobileAction } from './actions'
 import { anomalyLabel } from '@/lib/anomaly-labels'
@@ -54,6 +54,8 @@ function AnomalyItem({
 
 export function AnomalyList({ anomalies: initial }: { anomalies: DbInterventionAnomaly[] }) {
   const [anomalies, setAnomalies] = useState(initial)
+
+  useEffect(() => { setAnomalies(initial) }, [initial])
 
   function handleDeleted(id: string) {
     setAnomalies((prev) => prev.filter((a) => a.id !== id))

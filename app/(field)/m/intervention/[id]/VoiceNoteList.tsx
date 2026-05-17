@@ -1,7 +1,7 @@
 'use client'
 
 import { Mic, Play, Pause, Trash2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import type { VoiceNoteRow } from '@/lib/db/intervention-voice-notes'
 import { ignoreVoiceNoteAction } from './voice-note-actions'
 
@@ -78,6 +78,8 @@ function NotePlayer({ note, onDeleted }: { note: NoteWithUrl; onDeleted: (id: st
 
 export function VoiceNoteList({ notes: initialNotes }: Props) {
   const [notes, setNotes] = useState(initialNotes)
+
+  useEffect(() => { setNotes(initialNotes) }, [initialNotes])
 
   function handleDeleted(id: string) {
     setNotes((prev) => prev.filter((n) => n.id !== id))
