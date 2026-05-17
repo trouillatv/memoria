@@ -111,19 +111,13 @@ export async function ensureTodayInterventionsForSites(
     return { generated: 0, skipped: 0, templatesProcessed: 0, durationMs: 0 }
   }
 
-  let generated = 0
-  let skipped = 0
-  let templatesProcessed = 0
-  for (const siteId of siteIds) {
-    const r = await ensureTodayInterventions({ siteId, daysAhead })
-    generated += r.generated
-    skipped += r.skipped
-    templatesProcessed += r.templatesProcessed
-  }
+  const results = await Promise.all(
+    siteIds.map((siteId) => ensureTodayInterventions({ siteId, daysAhead }))
+  )
   return {
-    generated,
-    skipped,
-    templatesProcessed,
+    generated: results.reduce((s, r) => s + r.generated, 0),
+    skipped: results.reduce((s, r) => s + r.skipped, 0),
+    templatesProcessed: results.reduce((s, r) => s + r.templatesProcessed, 0),
     durationMs: Date.now() - start,
   }
 }
