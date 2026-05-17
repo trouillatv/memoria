@@ -1,6 +1,7 @@
 'use client'
 
-import { Mic } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Mic, Play, Pause } from 'lucide-react'
 
 export interface VoiceNoteDisplay {
   id: string
@@ -26,6 +27,84 @@ function formatDateTime(iso: string): string {
     minute: '2-digit',
     timeZone: 'Pacific/Noumea',
   })
+}
+
+function fmtClock(s: number): string {
+  if (!Number.isFinite(s) || s < 0) s = 0
+  const m = Math.floor(s / 60)
+  const ss = Math.floor(s % 60)
+  return `${m}:${String(ss).padStart(2, '0')}`
+}
+
+/**
+ * Lecteur audio compact. La durée totale vient TOUJOURS de la base
+ * (`durationSeconds`), jamais de l'élément <audio> : les notes vocales sont
+ * enregistrées en WebM via MediaRecorder, conteneur qui n'écrit pas la durée
+ * dans son en-tête → l'élément natif renvoie Infinity tant que le fichier
+ * n'a pas été lu en entier. On garde l'audio brut, on pilote l'UI nous-mêmes.
+ */
+function NoteAudioPlayer({ src, durationSeconds }: { src: string; durationSeconds: number }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const total = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0
+
+  function toggle() {
+    const el = audioRef.current
+    if (!el) return
+    if (playing) el.pause()
+    else el.play().catch(() => setPlaying(false))
+  }
+
+  function onSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const el = audioRef.current
+    if (!el || total <= 0) return
+    const t = Number(e.target.value)
+    el.currentTime = t
+    setCurrentTime(t)
+  }
+
+  const clamped = total > 0 ? Math.min(currentTime, total) : currentTime
+
+  return (
+    <div className="flex items-center gap-3" data-slot="voice-note-player">
+      <button
+        type="button"
+        onClick={toggle}
+        className="shrink-0 flex items-center justify-center w-9 h-9 rounded-full bg-foreground text-background hover:bg-foreground/90 transition-colors"
+        aria-label={playing ? 'Pause' : 'Lecture'}
+      >
+        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 translate-x-px" />}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={total > 0 ? total : 1}
+        step={0.1}
+        value={clamped}
+        onChange={onSeek}
+        disabled={total <= 0}
+        className="flex-1 h-1 accent-foreground cursor-pointer disabled:cursor-default"
+        aria-label="Position de lecture"
+      />
+      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground w-[68px] text-right">
+        {fmtClock(clamped)} / {fmtClock(total)}
+      </span>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="none"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCurrentTime(0) }}
+        onTimeUpdate={() => {
+          const el = audioRef.current
+          if (el) setCurrentTime(el.currentTime)
+        }}
+      />
+    </div>
+  )
 }
 
 export function VoiceNotesSection({ notes }: { notes: VoiceNoteDisplay[] }) {
@@ -74,13 +153,7 @@ export function VoiceNotesSection({ notes }: { notes: VoiceNoteDisplay[] }) {
             {/* Lecteur audio — artefact brut */}
             {note.signedUrl && (
               <div className="pt-1">
-                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <audio
-                  controls
-                  src={note.signedUrl}
-                  className="w-full h-9"
-                  preload="metadata"
-                />
+                <NoteAudioPlayer src={note.signedUrl} durationSeconds={note.duration_seconds} />
                 <p className="text-[10px] text-muted-foreground mt-1">
                   Enregistrement original — artefact brut conservé
                 </p>
