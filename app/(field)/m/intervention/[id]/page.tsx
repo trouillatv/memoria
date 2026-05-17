@@ -8,7 +8,7 @@ import {
   getSiteResumeContext,
 } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
-import { listSiteNotes } from '@/lib/db/sites'
+import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
@@ -22,6 +22,9 @@ import { RescheduleTriggerMobile } from './RescheduleTriggerMobile'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
 import { AddSiteNoteButton } from './AddSiteNoteButton'
 import { VoiceNoteTrigger } from './VoiceNoteTrigger'
+import { VoiceNoteList } from './VoiceNoteList'
+import { listVoiceNotesByIntervention } from '@/lib/db/intervention-voice-notes'
+import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
 import { SiteResumeCard } from './SiteResumeCard'
 import { SiteAccessCard } from './SiteAccessCard'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
@@ -68,15 +71,22 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     )
   }
 
-  const [mission, checklistItems, photos] = await Promise.all([
+  const [mission, checklistItems, photos, voiceNotes] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
+    listVoiceNotesByIntervention(id),
   ])
 
   // Sign storage URLs (1h TTL) — variante thumb 400×400 pour la liste mobile.
   const signedUrlsMap = await getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path))
   const signedUrls = Object.fromEntries(signedUrlsMap)
+
+  const voiceNoteUrlsMap = await getSignedVoiceNoteUrls(voiceNotes.map((n) => n.storage_path))
+  const voiceNotesWithUrls = voiceNotes.map((n) => ({
+    ...n,
+    signedUrl: voiceNoteUrlsMap.get(n.storage_path) ?? null,
+  }))
 
   // Site for context — champs structurés inclus pour l'écran terrain
   // (code d'entrée, contact, accès… utiles à l'arrivée sur site).
@@ -95,7 +105,7 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   // Notes courtes du site (3-5 affichées max) et contexte de reprise si
   // dernier passage > 7 jours ou premier passage.
   const siteId = mission?.site_id ?? null
-  const siteNotes = siteId ? await listSiteNotes(siteId, 5) : []
+  const siteNotes = siteId ? await listSiteASavoirActive(siteId) : []
   const resumeContext = siteId
     ? await getSiteResumeContext(siteId, user.id)
     : null
@@ -302,6 +312,8 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         signedUrls={signedUrls}
         canEdit={isInProgress || isAdmin}
       />
+
+      <VoiceNoteList notes={voiceNotesWithUrls} />
 
       {isInProgress && (
         <div className="space-y-3 mt-6">

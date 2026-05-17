@@ -72,6 +72,37 @@ export async function listValidatedVoiceNotesByIntervention(
   })
 }
 
+export interface VoiceNoteRow {
+  id: string
+  storage_path: string
+  mime_type: string
+  duration_seconds: number
+  status: string
+  transcription_raw: string | null
+  transcription_corrected: string | null
+  fragment_validated: string | null
+  recorded_at: string
+}
+
+// Toutes les notes non-ignorées d'une intervention (mobile : écoute + fragment).
+export async function listVoiceNotesByIntervention(
+  interventionId: string,
+): Promise<VoiceNoteRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_voice_notes')
+    .select('id, storage_path, mime_type, duration_seconds, status, transcription_raw, transcription_corrected, fragment_validated, recorded_at')
+    .eq('intervention_id', interventionId)
+    .neq('status', 'ignored')
+    .order('recorded_at', { ascending: false })
+
+  if (error) {
+    console.error('[listVoiceNotesByIntervention]', error)
+    return []
+  }
+  return (data ?? []) as VoiceNoteRow[]
+}
+
 // Aperçu léger pour la page site — 5 dernières notes validées, extrait court.
 export async function listRecentVoiceNotesBySite(
   siteId: string,
