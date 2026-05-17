@@ -49,7 +49,7 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): P
             { text: 'Transcris cet audio en français. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.' },
           ],
         }],
-        generationConfig: { temperature: 0 },
+        generationConfig: { temperature: 0, maxOutputTokens: 500 },
       }),
     },
   )
@@ -116,7 +116,7 @@ Retourne uniquement du JSON valide :
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+        generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: 400 },
       }),
     },
   )

@@ -145,6 +145,7 @@ export async function runEngagementExtractionAgent(
       userMessage,
       responseSchema: extractedSchema,
       modelTier: ENGAGEMENT_EXTRACTOR_V1.modelTier,
+      maxOutputTokens: 2000,
     })
 
     let parsed: z.infer<typeof extractedSchema> | undefined

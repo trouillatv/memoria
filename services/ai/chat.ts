@@ -102,6 +102,7 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatOutput> {
       userMessage: isMock ? '__MOCK_FIXTURE__:' + JSON.stringify(fixture) : userMsg,
       responseSchema,
       modelTier: prompt.modelTier,
+      maxOutputTokens: 800,
     })
     const parsed = responseSchema.safeParse(r.parsed)
     const content = parsed.success ? parsed.data.content : (typeof r.text === 'string' ? r.text : 'Erreur de parsing')

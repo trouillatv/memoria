@@ -28,6 +28,7 @@ export const memoireTechniqueAgent: AIAgent<MemoireTechniqueInput, MemoireTechni
       systemPrompt: MEMOIRE_TECHNIQUE_V1.system,
       userMessage,
       modelTier: 'heavy',
+      maxOutputTokens: 2000,
     })
 
     const text = r.text?.trim() ?? ''

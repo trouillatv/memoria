@@ -47,7 +47,7 @@ export async function extractWithGeminiOCR(buffer: Buffer): Promise<string> {
             { text: 'Extrais tout le texte de ce document PDF scanné. Retourne uniquement le texte brut, sans mise en forme ni explication.' },
           ],
         }],
-        generationConfig: { temperature: 0 },
+        generationConfig: { temperature: 0, maxOutputTokens: 8000 },
       }),
     },
   )

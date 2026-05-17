@@ -218,6 +218,7 @@ export async function runInitialAnalysisAgent(input: InitialAnalysisInput): Prom
         userMessage,
         responseSchema: analysisOutputSchema,
         modelTier: prompt.modelTier,
+        maxOutputTokens: 1000,
       })
 
       // Parse the result

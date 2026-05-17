@@ -59,6 +59,7 @@ export const lecteurAoAgent: AIAgent<LecteurAoInput, LecteurAoOutput> = {
       userMessage,
       responseSchema: lecteurAoOutputSchema,
       modelTier: 'heavy',
+      maxOutputTokens: 2500,
     })
 
     const parsed = lecteurAoOutputSchema.safeParse(r.parsed)

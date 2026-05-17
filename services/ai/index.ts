@@ -7,6 +7,7 @@ export interface CompletionInput {
   userMessage: string
   responseSchema?: z.ZodTypeAny
   modelTier: 'light' | 'heavy'
+  maxOutputTokens?: number
 }
 
 export interface TokenUsage {

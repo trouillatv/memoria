@@ -28,6 +28,7 @@ export const opportunityScorerAgent: AIAgent<OpportunityScorerInput, Opportunity
       userMessage,
       responseSchema: opportunityScorerOutputSchema,
       modelTier: 'light',
+      maxOutputTokens: 256,
     })
 
     const parsed = opportunityScorerOutputSchema.safeParse(r.parsed)
