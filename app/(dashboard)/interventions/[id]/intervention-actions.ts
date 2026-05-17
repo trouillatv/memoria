@@ -479,6 +479,25 @@ export async function reopenInterventionAction(formData: FormData) {
 
 // ----- Analyse photo anomalie (Gemini Vision) -----
 
+export async function deleteInterventionPhotoAction(
+  photoId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return auth
+  const supabase = createAdminClient()
+  const { data: photo } = await supabase
+    .from('intervention_photos')
+    .select('id, storage_path, intervention_id')
+    .eq('id', photoId)
+    .maybeSingle()
+  if (!photo) return { error: 'Photo introuvable' }
+  await supabase.storage.from('intervention-photos').remove([photo.storage_path])
+  const { error } = await supabase.from('intervention_photos').delete().eq('id', photoId)
+  if (error) return { error: error.message }
+  revalidatePath(`/interventions/${photo.intervention_id}`)
+  return { ok: true as const }
+}
+
 export async function analyzeInterventionPhotoAction(
   formData: FormData,
 ): Promise<{ ok: true; caption: string } | { error: string }> {

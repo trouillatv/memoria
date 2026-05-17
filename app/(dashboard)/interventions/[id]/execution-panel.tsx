@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useTransition, useRef } from 'react'
+import { useState, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock, ScanSearch } from 'lucide-react'
+import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock, ScanSearch, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   startInterventionAction,
@@ -11,6 +11,7 @@ import {
   uploadInterventionPhotoAction,
   reopenInterventionAction,
   analyzeInterventionPhotoAction,
+  deleteInterventionPhotoAction,
 } from './intervention-actions'
 import type { DbIntervention, DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind } from '@/types/db'
 
@@ -57,6 +58,7 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
   const canComplete = intervention.status === 'in_progress' && !justCompleted
 
   const [analyzingPhotoId, setAnalyzingPhotoId] = useState<string | null>(null)
+  const [freePhotosState, setFreePhotosState] = useState<DbInterventionPhoto[]>([])
 
   const photosByItem = new Map<string, DbInterventionPhoto[]>()
   const anomalyPhotos: DbInterventionPhoto[] = []
@@ -71,6 +73,15 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
     } else {
       freePhotos.push(p)
     }
+  }
+
+  // Sync freePhotosState quand les props serveur changent (upload/refresh)
+  useEffect(() => { setFreePhotosState(freePhotos) }, [photos]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleDeleteFreePhoto(photoId: string) {
+    setFreePhotosState((prev) => prev.filter((p) => p.id !== photoId))
+    const r = await deleteInterventionPhotoAction(photoId)
+    if (r && 'error' in r) toast.error(r.error)
   }
 
   function handleAnalyzePhoto(photoId: string) {
@@ -337,22 +348,32 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
       )}
 
       {/* Free photos gallery */}
-      {freePhotos.length > 0 && (
+      {freePhotosState.length > 0 && (
         <section className="space-y-3 rounded-lg border bg-card p-4">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Photos libres ({freePhotos.length})
+            Photos libres ({freePhotosState.length})
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {freePhotos.map((p) => {
+            {freePhotosState.map((p) => {
               const url = signedUrls[p.storage_path]
               return url ? (
-                <a key={p.id} href={url} target="_blank" rel="noopener noreferrer" className="block relative rounded overflow-hidden border bg-muted">
+                <div key={p.id} className="relative rounded overflow-hidden border bg-muted group">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt={p.kind} className="w-full h-32 object-cover" />
+                  <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                    <img src={url} alt={p.kind} className="w-full h-32 object-cover" />
+                  </a>
                   <span className={`absolute bottom-1 left-1 text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded ${KIND_COLORS[p.kind]}`}>
                     {KIND_LABELS[p.kind]}
                   </span>
-                </a>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFreePhoto(p.id)}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive"
+                    aria-label="Supprimer la photo"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ) : (
                 <span key={p.id} className="block w-full h-32 rounded border bg-muted/50" />
               )
