@@ -66,7 +66,7 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
       const list = photosByItem.get(p.checklist_item_id) ?? []
       list.push(p)
       photosByItem.set(p.checklist_item_id, list)
-    } else if (p.anomaly_id) {
+    } else if (p.anomaly_id || p.kind === 'anomaly') {
       anomalyPhotos.push(p)
     } else {
       freePhotos.push(p)

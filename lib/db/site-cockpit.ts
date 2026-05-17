@@ -20,6 +20,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { anomalyLabel } from '@/lib/anomaly-labels'
 import {
   getSignedPhotoUrlsNarrow,
   getSignedPhotoUrlsMedium,
@@ -691,7 +692,7 @@ export async function getSiteRecentActivity(
     resolved_at: string | null
   }
   for (const a of (anomaliesRes.data ?? []) as AnomRow[]) {
-    const title = a.description || a.category_other || a.category
+    const title = anomalyLabel(a.description, a.category_other, a.category)
     const isOpen = a.status === 'open'
     const anomTasks = tasksByIntervention.get(a.intervention_id) ?? null
     const anomTeam = interventionTeamMap.get(a.intervention_id) ?? null
@@ -886,7 +887,7 @@ export async function getSiteAnomalies(siteId: string): Promise<SiteAnomalyEntry
     const path = storagePathByIntervention.get(a.intervention_id)
     return {
       id: a.id,
-      description: a.description || a.category_other || a.category,
+      description: anomalyLabel(a.description, a.category_other, a.category),
       status: (a.status as SiteAnomalyEntry['status']),
       createdAt: a.created_at,
       resolvedAt: a.resolved_at,
@@ -1672,7 +1673,7 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     )
     if (sameCategorySince) continue
 
-    const label = (a.description || a.category_other || a.category).trim()
+    const label = anomalyLabel(a.description, a.category_other, a.category).trim()
     if (!label) continue
     const labelShort = label.length > 50 ? label.slice(0, 50).trimEnd() + '…' : label
 
@@ -1959,7 +1960,7 @@ export async function getSiteTransmissionReadings(
     category: string
     category_other: string | null
   }>) {
-    const text = a.description ?? a.category_other ?? a.category
+    const text = anomalyLabel(a.description, a.category_other, a.category)
     if (!text) continue
     const place = extractFirstPlace(text)
     if (place) {
@@ -2305,7 +2306,7 @@ export async function getSiteMemoryMeta(siteId: string): Promise<SiteMemoryMeta>
 
   const lastHealed = lastHealedRow
     ? {
-        description: lastHealedRow.description || lastHealedRow.category_other || lastHealedRow.category,
+        description: anomalyLabel(lastHealedRow.description, lastHealedRow.category_other, lastHealedRow.category),
         resolvedAt: lastHealedRow.resolved_at,
       }
     : null

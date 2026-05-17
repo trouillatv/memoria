@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { anomalyLabel } from '@/lib/anomaly-labels'
 import type {
   DbIntervention, InterventionStatus, InterventionSlot,
   DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind,
@@ -707,7 +708,7 @@ export async function getSiteResumeContext(
     if (intvIds.length > 0) {
       const { data: anomalies } = await supabase
         .from('intervention_anomalies')
-        .select('id, description, category_other, resolved_at, created_at')
+        .select('id, description, category, category_other, resolved_at, created_at')
         .in('intervention_id', intvIds)
         .gte('created_at', thirtyDaysAgoIso)
         .order('created_at', { ascending: false })
@@ -717,14 +718,14 @@ export async function getSiteResumeContext(
         const raw = a as {
           id: string
           description: string | null
+          category: string
           category_other: string | null
           resolved_at: string | null
           created_at: string
         }
         return {
           id: raw.id,
-          // Fallback : la description peut être null, on tombe sur category_other puis "—".
-          description: raw.description ?? raw.category_other ?? '—',
+          description: anomalyLabel(raw.description, raw.category_other, raw.category),
           resolved_at: raw.resolved_at,
           created_at: raw.created_at,
         }

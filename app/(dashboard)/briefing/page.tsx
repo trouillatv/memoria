@@ -28,6 +28,7 @@ import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
 import { getTenantDayReading, generateSiteReadings } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { generateChefEquipePreparations } from '@/lib/db/chef-equipe-preparation'
+import { ANOMALY_CATEGORY_LABELS } from '@/lib/anomaly-labels'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
 import { SiteNotesPopover } from './SiteNotesPopover'
 import { BriefingShareModal } from './BriefingShareModal'
@@ -356,7 +357,7 @@ export default async function BriefingPage({
                     className="min-w-0 flex-1 hover:underline"
                   >
                     <span className="font-medium">
-                      {a.category_other ?? a.category}
+                      {a.category_other ?? ANOMALY_CATEGORY_LABELS[a.category] ?? a.category}
                     </span>
                     <span className="text-xs text-muted-foreground"> · {a.site_name}</span>
                     {a.description && (

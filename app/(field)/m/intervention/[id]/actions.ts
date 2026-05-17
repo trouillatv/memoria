@@ -415,3 +415,28 @@ export async function completeInterventionMobileAction(formData: FormData) {
   revalidatePath('/m')
   return { ok: true as const }
 }
+
+// ----- Supprimer une photo (mobile) -----
+
+export async function deletePhotoMobileAction(photoId: string): Promise<{ ok: true } | { error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { error: 'Non autorisé' }
+
+  const supabase = createAdminClient()
+
+  const { data: photo } = await supabase
+    .from('intervention_photos')
+    .select('id, storage_path, intervention_id')
+    .eq('id', photoId)
+    .maybeSingle()
+
+  if (!photo) return { error: 'Photo introuvable' }
+
+  await supabase.storage.from('intervention-photos').remove([photo.storage_path])
+
+  const { error } = await supabase.from('intervention_photos').delete().eq('id', photoId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/m/intervention/${photo.intervention_id}`)
+  return { ok: true as const }
+}

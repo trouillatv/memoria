@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Check } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { toggleChecklistItemMobileAction } from './actions'
+import { toggleChecklistItemMobileAction, deletePhotoMobileAction } from './actions'
 import { PhotoCaptureButton } from './photo-capture-button'
 import { usePhotoUploader } from '@/lib/field/use-photo-uploader'
 import {
@@ -26,6 +26,7 @@ interface ThumbForItem {
   signedUrl: string | null
   kind: string
   isLocal: boolean        // pending in queue
+  photoId: string | null  // null for local/queued photos
 }
 
 export function ChecklistMobile({
@@ -38,6 +39,7 @@ export function ChecklistMobile({
   const [optimistic, setOptimistic] = useState<Record<string, boolean>>({})
   // keyed by checklistItemId or 'free'
   const [localPhotos, setLocalPhotos] = useState<Record<string, ThumbForItem[]>>({})
+  const [serverPhotosState, setServerPhotosState] = useState(serverPhotos)
   const { pendingCount } = usePhotoUploader()
 
   const refreshLocalPhotos = useCallback(async () => {
@@ -54,6 +56,7 @@ export function ChecklistMobile({
           signedUrl: null,
           kind: q.kind,
           isLocal: true,
+          photoId: null,
         })
       }
       setLocalPhotos(grouped)
@@ -66,9 +69,13 @@ export function ChecklistMobile({
     void refreshLocalPhotos()
   }, [refreshLocalPhotos, pendingCount])
 
+  function handlePhotoDeleted(photoId: string) {
+    setServerPhotosState((prev) => prev.filter((p) => p.id !== photoId))
+  }
+
   // Group server photos by checklist_item_id (or 'free' for null)
   const serverByItem: Record<string, DbInterventionPhoto[]> = {}
-  for (const p of serverPhotos) {
+  for (const p of serverPhotosState) {
     const key = p.checklist_item_id ?? 'free'
     if (!serverByItem[key]) serverByItem[key] = []
     serverByItem[key].push(p)
@@ -81,6 +88,7 @@ export function ChecklistMobile({
       signedUrl: signedUrls[p.storage_path] ?? null,
       kind: p.kind,
       isLocal: false,
+      photoId: p.id,
     }))
     const fromLocal = localPhotos[itemKey] ?? []
     return [...fromServer, ...fromLocal]
@@ -196,7 +204,7 @@ export function ChecklistMobile({
               {thumbs.length > 0 && (
                 <div className="flex items-center gap-1.5 mt-3 pl-10 flex-wrap">
                   {thumbs.map((t) => (
-                    <PhotoThumb key={t.key} thumb={t} />
+                    <PhotoThumb key={t.key} thumb={t} canEdit={canEdit} onDeleted={handlePhotoDeleted} />
                   ))}
                 </div>
               )}
@@ -218,7 +226,7 @@ export function ChecklistMobile({
           {thumbsForItem('free').length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               {thumbsForItem('free').map((t) => (
-                <PhotoThumb key={t.key} thumb={t} />
+                <PhotoThumb key={t.key} thumb={t} canEdit={canEdit} onDeleted={handlePhotoDeleted} />
               ))}
             </div>
           )}
@@ -239,15 +247,36 @@ const KIND_LABEL: Record<string, string> = {
   proof: 'PREUVE',
 }
 
-function PhotoThumb({ thumb }: { thumb: ThumbForItem }) {
+function PhotoThumb({
+  thumb,
+  canEdit,
+  onDeleted,
+}: {
+  thumb: ThumbForItem
+  canEdit: boolean
+  onDeleted: (photoId: string) => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
   const url = thumb.dataUrl ?? thumb.signedUrl
   if (!url) return null
-  // V5.1 — étiquette neutre par défaut, seule l'anomalie garde une signature
-  // colorée (scar #8a3030) cohérente avec la palette doctrinale.
+
   const labelClass =
     thumb.kind === 'anomaly'
       ? 'bg-[#8a3030]/85'
       : 'bg-foreground/75'
+
+  const canDelete = canEdit && !thumb.isLocal && thumb.photoId
+
+  async function handleDelete() {
+    if (!thumb.photoId) return
+    if (!confirming) { setConfirming(true); return }
+    setDeleting(true)
+    onDeleted(thumb.photoId)
+    await deletePhotoMobileAction(thumb.photoId)
+  }
+
   return (
     <div className="relative">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -263,6 +292,20 @@ function PhotoThumb({ thumb }: { thumb: ThumbForItem }) {
       >
         {KIND_LABEL[thumb.kind] ?? thumb.kind.toUpperCase()}
       </span>
+      {canDelete && !deleting && (
+        <button
+          type="button"
+          onClick={handleDelete}
+          className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center shadow-sm ${
+            confirming
+              ? 'bg-destructive text-destructive-foreground'
+              : 'bg-foreground/70 text-background'
+          }`}
+          aria-label="Supprimer la photo"
+        >
+          <X className="h-3 w-3" strokeWidth={2.5} />
+        </button>
+      )}
     </div>
   )
 }

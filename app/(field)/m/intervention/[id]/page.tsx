@@ -5,6 +5,7 @@ import {
   getIntervention,
   listChecklistItemsByIntervention,
   listPhotosByIntervention,
+  listAnomaliesByIntervention,
   getSiteResumeContext,
 } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
@@ -13,6 +14,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { formatRelativeShort } from '@/lib/format'
+import { anomalyLabel } from '@/lib/anomaly-labels'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
 import { AnomalyTrigger } from './anomaly-trigger'
@@ -71,11 +73,12 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     )
   }
 
-  const [mission, checklistItems, photos, voiceNotes] = await Promise.all([
+  const [mission, checklistItems, photos, voiceNotes, anomalies] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
     listVoiceNotesByIntervention(id),
+    listAnomaliesByIntervention(id),
   ])
 
   // Sign storage URLs (1h TTL) — variante thumb 400×400 pour la liste mobile.
@@ -314,6 +317,28 @@ export default async function FieldInterventionPage({ params }: { params: Promis
       />
 
       <VoiceNoteList notes={voiceNotesWithUrls} />
+
+      {anomalies.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium flex items-center gap-1.5 text-muted-foreground">
+            <AlertTriangle className="h-4 w-4" />
+            Signalements ({anomalies.length})
+          </h2>
+          <ul className="space-y-2">
+            {anomalies.map((a) => (
+              <li key={a.id} className="rounded-xl border border-border bg-card p-3 text-sm">
+                <div className="font-medium">
+                  {anomalyLabel(a.description, a.category_other, a.category)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {formatRelativeShort(a.created_at)}
+                  {a.status === 'resolved' && ' · clôturé'}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {isInProgress && (
         <div className="space-y-3 mt-6">
