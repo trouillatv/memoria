@@ -6,6 +6,7 @@ import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventions } from '@/lib/recurrence/ensure-today'
+import { todayLocalIso, localDateOf } from '@/lib/time/local-date'
 import {
   listInterventionsSupervisor,
   type SupervisorDateRange,
@@ -131,9 +132,16 @@ export default async function MissionsPage({
   )
   const isEmpty = total === 0
 
-  const today = new Date().toISOString().split('T')[0]
-  const upcoming = items.filter((i) => i.scheduled_at.split('T')[0] >= today)
-  const past = items.filter((i) => i.scheduled_at.split('T')[0] < today)
+  // Date civile de l'intervention. On utilise `scheduled_for` (date pure
+  // YYYY-MM-DD, sans fuseau) et JAMAIS `scheduled_at` : ce dernier est un
+  // timestamp UTC dérivé (ex. créneau "soir" → 18:00 UTC). En Nouméa (UTC+11),
+  // 18:00 UTC dimanche = 05:00 lundi → l'intervention de dimanche soir
+  // basculait à tort dans "À venir". `scheduled_for` n'a pas cette ambiguïté.
+  const today = todayLocalIso()
+  const civilDate = (i: ListItem) =>
+    i.scheduled_for ?? localDateOf(new Date(i.scheduled_at))
+  const upcoming = items.filter((i) => civilDate(i) >= today)
+  const past = items.filter((i) => civilDate(i) < today)
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -242,6 +250,7 @@ export default async function MissionsPage({
 type ListItem = {
   id: string
   scheduled_at: string
+  scheduled_for: string | null
   slot: 'morning' | 'afternoon' | 'evening' | null
   status: string
   skipped_reason: string | null
@@ -363,8 +372,12 @@ function SiteGroupedList({ items, accent }: { items: ListItem[]; accent: 'emeral
 }
 
 function InterventionRow({ item }: { item: ListItem }) {
-  const date = new Date(item.scheduled_at)
-  const dateLabel = date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' })
+  // Affichage depuis `scheduled_for` (date civile pure) pour éviter le décalage
+  // de fuseau du timestamp `scheduled_at` dérivé. Parsé en UTC + formaté en UTC
+  // pour rester stable quel que soit le fuseau du serveur.
+  const civil = item.scheduled_for ?? item.scheduled_at.slice(0, 10)
+  const date = new Date(civil + 'T00:00:00.000Z')
+  const dateLabel = date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' })
   const isSkipped = item.status === 'skipped'
   const isPlanned = item.status === 'planned'
   const slotInfo = item.slot ? SLOT_BADGE[item.slot] : null

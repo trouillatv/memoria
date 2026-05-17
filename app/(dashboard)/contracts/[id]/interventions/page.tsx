@@ -6,14 +6,17 @@ import { listInterventionsByContract } from '@/lib/db/interventions'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listSitesByContract } from '@/lib/db/sites'
 import { listTeams } from '@/lib/db/teams'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ContractTabs } from '../contract-tabs'
 import { CreateInterventionInline } from './create-intervention-inline'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
-function formatDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' })
+// Reçoit une date civile pure (YYYY-MM-DD), JAMAIS un `scheduled_at`.
+// Parsé + formaté en UTC pour rester stable quel que soit le fuseau serveur.
+function formatDate(civil: string): string {
+  const d = new Date(civil + 'T00:00:00.000Z')
+  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' })
 }
 
 const SLOT_BADGE: Record<string, { label: string; class: string }> = {
@@ -49,10 +52,16 @@ export default async function ContractInterventionsPage({ params }: { params: Pr
   const siteById = new Map(sites.map((s) => [s.id, s]))
   const teamById = new Map(teams.map((t) => [t.id, t]))
 
-  // Group by date (YYYY-MM-DD) for visual grouping
-  const today = new Date().toISOString().split('T')[0]
-  const upcoming = interventions.filter((i) => i.scheduled_at.split('T')[0] >= today)
-  const past = interventions.filter((i) => i.scheduled_at.split('T')[0] < today)
+  // Split À venir / Historique sur la date civile `scheduled_for`, JAMAIS sur
+  // `scheduled_at` : ce dernier est un timestamp UTC dérivé du créneau (soir →
+  // 18:00 UTC). En Nouméa (UTC+11), dimanche 18:00 UTC = lundi 05:00 → une
+  // intervention du dimanche soir basculait à tort dans "À venir". `today`
+  // doit aussi être local (todayLocalIso), pas UTC.
+  const today = todayLocalIso()
+  const civilDate = (i: { scheduled_for: string | null; scheduled_at: string }) =>
+    i.scheduled_for ?? i.scheduled_at.slice(0, 10)
+  const upcoming = interventions.filter((i) => civilDate(i) >= today)
+  const past = interventions.filter((i) => civilDate(i) < today)
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -167,7 +176,7 @@ function InterventionRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <Calendar className="h-3 w-3 text-muted-foreground" aria-hidden />
-            <span className="text-sm font-medium">{formatDate(i.scheduled_at)}</span>
+            <span className="text-sm font-medium">{formatDate(i.scheduled_for ?? i.scheduled_at.slice(0, 10))}</span>
             {slotInfo && (
               <span
                 className={`inline-flex items-center text-[10px] uppercase tracking-wider rounded-full border px-1.5 py-0.5 ${slotInfo.class}`}

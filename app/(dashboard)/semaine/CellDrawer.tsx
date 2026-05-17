@@ -205,7 +205,7 @@ export function CellDrawer({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="text-sm font-medium text-foreground truncate group-hover:underline">
+                          <h3 className="text-sm font-medium text-foreground truncate underline decoration-foreground/30 underline-offset-2 group-active:decoration-foreground/70">
                             {c.mission_name}
                           </h3>
                           {c.slot ? (

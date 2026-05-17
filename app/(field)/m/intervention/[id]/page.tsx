@@ -133,11 +133,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     readings: [...siteTransmissions, ...siteReadings.readings],
   }
 
-  const scheduledDate = new Date(intervention.scheduled_at)
+  // Date civile pure (scheduled_for), JAMAIS scheduled_at (timestamp UTC dérivé
+  // du créneau → décale d'un jour en Nouméa pour le créneau "soir").
+  const civil = intervention.scheduled_for ?? intervention.scheduled_at.slice(0, 10)
+  const scheduledDate = new Date(civil + 'T00:00:00.000Z')
   const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    timeZone: 'UTC',
   })
   // V5.1 — créneau nommé (Matin/Après-midi/Soir) au lieu de l'heure précise.
   // Cohérent avec la doctrine V2 : créneaux nommés, jamais d'heures.

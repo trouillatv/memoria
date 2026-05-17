@@ -4,10 +4,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
-import { getMission } from '@/lib/db/missions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
-import { todayLocalIso, localDateOf, addDaysLocal } from '@/lib/time/local-date'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
@@ -29,19 +28,19 @@ function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
 }
 
-function formatScheduledTime(iso: string): { day: string; time: string; isToday: boolean; isPast: boolean } {
-  const d = new Date(iso)
-  const now = new Date()
-  const today = localDateOf(now)
-  const dayStr = localDateOf(d)
-  const isToday = dayStr === today
-  const isPast = d.getTime() < now.getTime()
+// Reçoit une date civile pure (YYYY-MM-DD = scheduled_for), JAMAIS un
+// `scheduled_at` (timestamp UTC dérivé du créneau : "soir" → 18:00 UTC, qui
+// en Nouméa UTC+11 bascule au lendemain). Tout est comparé/formaté en civil.
+function formatScheduledTime(civilDate: string): { day: string; isToday: boolean; isPast: boolean } {
+  const today = todayLocalIso()
+  const isToday = civilDate === today
+  const isPast = civilDate < today
+  const d = new Date(civilDate + 'T00:00:00.000Z')
 
   return {
     day: isToday
       ? "Aujourd'hui"
-      : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
-    time: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }),
     isToday,
     isPast,
   }
@@ -79,22 +78,22 @@ export default async function FieldHomePage({
   const isPast = selectedDate < todayIso
   const isFuture = selectedDate > todayIso
 
-  // Slice 6.3 — Génération paresseuse silencieuse AVANT le fetch des
-  // interventions du jour. On identifie les sites du chef_equipe via ses
-  // interventions existantes (où il est dans team[]), puis on déclenche la
-  // génération idempotente sur ces sites. La génération hérite du
-  // default_team de la mission pour rester visible côté agent.
-  // Si la génération échoue, le helper log silencieux + return zeros → le
-  // rendu de la page n'est jamais bloqué.
   const supabase = createAdminClient()
-  const { data: agentInterventions } = await supabase
-    .from('interventions')
-    .select('mission:missions(site_id)')
-    .contains('team', [user.id])
-    .limit(200)
+
+  // Paralléliser : agentInterventions (pour FAB/ensure) + interventions visibles
+  // en même temps. Avant : agentInterventions bloquait en séquentiel.
+  const [agentIntRes, interventions] = await Promise.all([
+    supabase
+      .from('interventions')
+      .select('mission:missions(site_id)')
+      .contains('team', [user.id])
+      .limit(200),
+    listInterventionsVisibleToUser(user.id),
+  ])
+
   const agentSiteIds = Array.from(
     new Set(
-      (agentInterventions ?? [])
+      (agentIntRes.data ?? [])
         .map((r) => {
           const m = r.mission as { site_id?: string } | Array<{ site_id?: string }> | null
           if (!m) return null
@@ -104,26 +103,44 @@ export default async function FieldHomePage({
         .filter((s): s is string => !!s)
     )
   )
-  // Génération paresseuse : seulement pour aujourd'hui, pas pour les autres jours.
+
+  // Génération paresseuse + FAB sites en parallèle
   const ensurePromise = (isToday && agentSiteIds.length > 0)
     ? ensureTodayInterventionsForSites(agentSiteIds, 1)
     : Promise.resolve(null)
-
-  // Paralléliser : FAB sites + interventions visibles + génération aujourd'hui
   const fabSitesPromise = agentSiteIds.length > 0
     ? supabase.from('sites').select('id, name').in('id', agentSiteIds).is('deleted_at', null).order('name')
     : Promise.resolve({ data: [] as Array<{ id: string; name: string }> })
 
-  const [, fabSitesRes, interventions] = await Promise.all([
+  // Batch unique : toutes les missions + tous les sites en 2 requêtes.
+  // Avant : getMission(id) appelé 3 fois en boucle (1 requête par mission).
+  const allMissionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))
+  const [, fabSitesRes, allMissionsRes] = await Promise.all([
     ensurePromise,
     fabSitesPromise,
-    listInterventionsVisibleToUser(user.id),
+    allMissionIds.length === 0
+      ? Promise.resolve({ data: [] as Array<{ id: string; name: string; site_id: string; cadence: string }> })
+      : supabase.from('missions').select('id, name, site_id, cadence').in('id', allMissionIds).is('deleted_at', null),
   ])
+
+  const missionById = new Map(
+    ((allMissionsRes as { data: Array<{ id: string; name: string; site_id: string; cadence: string }> | null }).data ?? [])
+      .map((m) => [m.id, m])
+  )
+
+  const allSiteIds = Array.from(new Set(
+    ((allMissionsRes as { data: Array<{ id: string; name: string; site_id: string; cadence: string }> | null }).data ?? [])
+      .map((m) => m.site_id)
+  ))
+  const { data: allSitesData } = allSiteIds.length === 0
+    ? { data: [] as Array<{ id: string; name: string }> }
+    : await supabase.from('sites').select('id, name').in('id', allSiteIds)
+  const siteById = new Map((allSitesData ?? []).map((s) => [s.id, s]))
 
   const fabSites: FreePhotoFabSite[] = (fabSitesRes as { data: FreePhotoFabSite[] | null }).data ?? []
 
   // KPI chef d'équipe : interventions terminées sur les 7 derniers jours glissants
-  // avec tâches obligatoires non cochées.
+  // avec tâches obligatoires non cochées. Utilise missionById/siteById déjà chargés.
   type IncompleteKPI = { interventionId: string; missionName: string; siteName: string; missingCount: number; executedAt: string | null }
   let incompleteKPIs: IncompleteKPI[] = []
   if (user.role === 'chef_equipe' || user.role === 'admin' || user.role === 'manager') {
@@ -142,39 +159,24 @@ export default async function FieldHomePage({
       for (const row of (missingItems ?? []) as Array<{ intervention_id: string }>) {
         missingByIntervention.set(row.intervention_id, (missingByIntervention.get(row.intervention_id) ?? 0) + 1)
       }
-      if (missingByIntervention.size > 0) {
-        const missionIdsNeeded = Array.from(missingByIntervention.keys()).map((id) => interventions.find((i) => i.id === id)?.mission_id).filter((id): id is string => !!id)
-        const missionsForKPI = missionIdsNeeded.length === 0
-          ? []
-          : (await Promise.all(missionIdsNeeded.map((id) => getMission(id)))).filter((m): m is NonNullable<typeof m> => !!m)
-        const siteIdsForKPI = Array.from(new Set(missionsForKPI.map((m) => m.site_id)))
-        const { data: sitesForKPI } = siteIdsForKPI.length === 0
-          ? { data: [] as Array<{ id: string; name: string }> }
-          : await supabase.from('sites').select('id, name').in('id', siteIdsForKPI)
-        const siteByIdKPI = new Map((sitesForKPI ?? []).map((s) => [s.id, s]))
-        const missionByIdKPI = new Map(missionsForKPI.map((m) => [m.id, m]))
-        for (const [intId, count] of missingByIntervention.entries()) {
-          const intv = interventions.find((i) => i.id === intId)
-          const mission = intv ? missionByIdKPI.get(intv.mission_id) : null
-          const site = mission ? siteByIdKPI.get(mission.site_id) : null
-          incompleteKPIs.push({
-            interventionId: intId,
-            missionName: mission?.name ?? 'Intervention',
-            siteName: site?.name ?? '',
-            missingCount: count,
-            executedAt: intv?.executed_at ?? null,
-          })
-        }
-        // Tri du plus récent au plus ancien
-        incompleteKPIs.sort((a, b) => (b.executedAt ?? '').localeCompare(a.executedAt ?? ''))
+      for (const [intId, count] of missingByIntervention.entries()) {
+        const intv = interventions.find((i) => i.id === intId)
+        const mission = intv ? missionById.get(intv.mission_id) : null
+        const site = mission ? siteById.get(mission.site_id) : null
+        incompleteKPIs.push({
+          interventionId: intId,
+          missionName: mission?.name ?? 'Intervention',
+          siteName: site?.name ?? '',
+          missingCount: count,
+          executedAt: intv?.executed_at ?? null,
+        })
       }
+      incompleteKPIs.sort((a, b) => (b.executedAt ?? '').localeCompare(a.executedAt ?? ''))
     }
   }
 
   // À régulariser : interventions des 7 derniers jours (hors aujourd'hui)
-  // toujours en 'planned'. Ce sont des passages oubliés — ni terminés, ni
-  // décalés, ni annulés. Le chef d'équipe doit les traiter pour fermer
-  // proprement la dette opérationnelle.
+  // toujours en 'planned'. Utilise missionById/siteById déjà chargés.
   type OverdueKPI = { interventionId: string; missionName: string; siteName: string; scheduledFor: string; daysAgo: number }
   let overdueKPIs: OverdueKPI[] = []
   if (user.role === 'chef_equipe' || user.role === 'admin' || user.role === 'manager') {
@@ -185,48 +187,23 @@ export default async function FieldHomePage({
         && i.scheduled_for >= sevenAgoIso
         && i.scheduled_for < todayIso,
     )
-    if (overdueRaw.length > 0) {
-      const missionIdsNeeded = Array.from(new Set(overdueRaw.map((i) => i.mission_id)))
-      const missionsForOv = (await Promise.all(missionIdsNeeded.map((id) => getMission(id))))
-        .filter((m): m is NonNullable<typeof m> => !!m)
-      const siteIdsForOv = Array.from(new Set(missionsForOv.map((m) => m.site_id)))
-      const { data: sitesForOv } = siteIdsForOv.length === 0
-        ? { data: [] as Array<{ id: string; name: string }> }
-        : await supabase.from('sites').select('id, name').in('id', siteIdsForOv)
-      const siteByIdOv = new Map((sitesForOv ?? []).map((s) => [s.id, s]))
-      const missionByIdOv = new Map(missionsForOv.map((m) => [m.id, m]))
-      const [ty, tm, td] = todayIso.split('-').map(Number)
-      const todayUtcMs = Date.UTC(ty, tm - 1, td)
-      for (const i of overdueRaw) {
-        const mission = missionByIdOv.get(i.mission_id)
-        const site = mission ? siteByIdOv.get(mission.site_id) : null
-        const [sy, sm, sd] = (i.scheduled_for ?? '').split('-').map(Number)
-        const daysAgo = Math.round((todayUtcMs - Date.UTC(sy, sm - 1, sd)) / 86_400_000)
-        overdueKPIs.push({
-          interventionId: i.id,
-          missionName: mission?.name ?? 'Intervention',
-          siteName: site?.name ?? '',
-          scheduledFor: i.scheduled_for!,
-          daysAgo,
-        })
-      }
-      // Plus ancien d'abord (priorité de régularisation)
-      overdueKPIs.sort((a, b) => b.daysAgo - a.daysAgo)
+    const [ty, tm, td] = todayIso.split('-').map(Number)
+    const todayUtcMs = Date.UTC(ty, tm - 1, td)
+    for (const i of overdueRaw) {
+      const mission = missionById.get(i.mission_id)
+      const site = mission ? siteById.get(mission.site_id) : null
+      const [sy, sm, sd] = (i.scheduled_for ?? '').split('-').map(Number)
+      const daysAgo = Math.round((todayUtcMs - Date.UTC(sy, sm - 1, sd)) / 86_400_000)
+      overdueKPIs.push({
+        interventionId: i.id,
+        missionName: mission?.name ?? 'Intervention',
+        siteName: site?.name ?? '',
+        scheduledFor: i.scheduled_for!,
+        daysAgo,
+      })
     }
+    overdueKPIs.sort((a, b) => b.daysAgo - a.daysAgo)
   }
-
-  // Fetch missions + sites for context
-  const missionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))
-  const missions = missionIds.length === 0
-    ? []
-    : (await Promise.all(missionIds.map((id) => getMission(id)))).filter((m): m is NonNullable<typeof m> => !!m)
-  const missionById = new Map(missions.map((m) => [m.id, m]))
-
-  const siteIds = Array.from(new Set(missions.map((m) => m.site_id)))
-  const { data: sites } = siteIds.length === 0
-    ? { data: [] as Array<{ id: string; name: string }> }
-    : await supabase.from('sites').select('id, name').in('id', siteIds)
-  const siteById = new Map((sites ?? []).map((s) => [s.id, s]))
 
   // Filtrage par date sélectionnée (par défaut = aujourd'hui Nouméa).
   // On compare scheduled_for (date civile) directement à selectedDate.
@@ -373,7 +350,7 @@ export default async function FieldHomePage({
                   interventionId={i.id}
                   missionName={mission?.name ?? 'Intervention'}
                   siteName={site?.name ?? null}
-                  scheduledAt={i.scheduled_at}
+                  scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
                   slot={i.slot ?? null}
                   status={i.status}
                   skippedReason={i.skipped_reason}
@@ -423,7 +400,7 @@ export default async function FieldHomePage({
                   interventionId={i.id}
                   missionName={mission?.name ?? 'Intervention'}
                   siteName={site?.name ?? null}
-                  scheduledAt={i.scheduled_at}
+                  scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
                   slot={i.slot ?? null}
                   status={i.status}
                   skippedReason={i.skipped_reason}
@@ -443,7 +420,7 @@ function InterventionCard({
   interventionId,
   missionName,
   siteName,
-  scheduledAt,
+  scheduledFor,
   slot,
   status,
   skippedReason,
@@ -452,13 +429,13 @@ function InterventionCard({
   interventionId: string
   missionName: string
   siteName: string | null
-  scheduledAt: string
+  scheduledFor: string
   slot: string | null
   status: string
   skippedReason: string | null
   primary: boolean
 }) {
-  const { day, isToday } = formatScheduledTime(scheduledAt)
+  const { day, isToday } = formatScheduledTime(scheduledFor)
   const slotLabel = slot ? SLOT_LABELS[slot] ?? null : null
   const slotBadgeClass = slot
     ? SLOT_BADGE_CLASSES[slot] ?? 'bg-muted text-foreground border-border'
@@ -495,7 +472,7 @@ function InterventionCard({
                 )}
               </div>
             )}
-            <div className={`font-semibold text-base mb-1 underline decoration-muted-foreground/30 underline-offset-2 ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
+            <div className={`font-semibold text-base mb-1 underline underline-offset-2 ${isSkipped ? 'line-through decoration-amber-700/40' : 'decoration-foreground/40'}`}>
               {missionName}
             </div>
             {siteName && (

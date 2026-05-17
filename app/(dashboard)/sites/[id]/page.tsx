@@ -217,6 +217,17 @@ export default async function SitePage({ params }: PageProps) {
           <RecentActivity items={recentActivity} />
         </CardContent>
       </Card>
+
+      {/* V5.1 Slice 5 — Lien Atelier mémoire / Résonances.
+          Entrée discrète, bas de page, pas en hero. */}
+      <div className="pt-2 border-t border-border/40 text-sm">
+        <Link
+          href={`/memoire/${id}`}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Atelier mémoire →
+        </Link>
+      </div>
     </div>
   )
 }
