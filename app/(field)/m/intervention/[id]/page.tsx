@@ -36,6 +36,8 @@ import {
   getSiteTransmissionReadings,
 } from '@/lib/db/site-cockpit'
 
+export const dynamic = 'force-dynamic'
+
 export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const user = await getCurrentUserWithProfile()

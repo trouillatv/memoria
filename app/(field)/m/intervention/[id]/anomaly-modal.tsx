@@ -40,6 +40,7 @@ export function AnomalyModal({ interventionId, open, onClose }: Props) {
   function handleClose() {
     reset()
     onClose()
+    router.refresh()
   }
 
   function submit() {
