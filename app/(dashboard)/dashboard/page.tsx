@@ -15,6 +15,7 @@ import {
   getRecentActivity,
   getTenantCumulativeStats,
   getContractSummaries,
+  getRecentAnomalies,
 } from '@/lib/db/dashboard'
 import { countClosedThisMonth } from '@/lib/db/proof-share'
 import { EngagementCompliance } from '../contracts/[id]/engagement-compliance'
@@ -26,6 +27,7 @@ import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
 import { ContractsUnderTensionWidget } from './ContractsUnderTensionWidget'
 import { RecentActivityWidget } from './RecentActivityWidget'
 import { AnomaliesOldWidget } from './AnomaliesOldWidget'
+import { RecentAnomaliesWidget } from './RecentAnomaliesWidget'
 import { TenantMorningReadingCard } from './TenantMorningReadingCard'
 import { getTenantTopMorningReading } from '@/lib/db/site-cockpit'
 
@@ -67,6 +69,7 @@ export default async function DashboardPage() {
     dossiersClosedThisMonth,
     tenantCumulative,
     morningReading,
+    recentAnomalies,
   ] = await Promise.all([
     listContracts(),
     getOnboardingProgress(),
@@ -80,6 +83,7 @@ export default async function DashboardPage() {
     getDossiersClosedThisMonth(),
     getTenantCumulativeStats(),
     getTenantTopMorningReading(),
+    getRecentAnomalies(24),
   ])
 
   // Tant qu'aucun contrat actif n'existe, on affiche la welcome card 4-étapes
@@ -167,6 +171,8 @@ export default async function DashboardPage() {
           {dossiersClosedThisMonth > 1 ? 's' : ''} ce mois.
         </p>
       )}
+
+      <RecentAnomaliesWidget anomalies={recentAnomalies} />
 
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
 

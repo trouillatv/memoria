@@ -311,6 +311,70 @@ export async function getOpenAnomaliesStats(): Promise<OpenAnomaliesStats> {
 }
 
 // ============================================================================
+// Signalements récents (dernières 24h) — notification in-app manager
+// ============================================================================
+
+export interface RecentAnomalyItem {
+  id: string
+  interventionId: string
+  category: string
+  categoryOther: string | null
+  description: string | null
+  siteName: string | null
+  createdAt: string
+}
+
+export async function getRecentAnomalies(windowHours = 24): Promise<RecentAnomalyItem[]> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString()
+
+  const { data, error } = await supabase
+    .from('intervention_anomalies')
+    .select(`
+      id,
+      intervention_id,
+      category,
+      category_other,
+      description,
+      created_at,
+      intervention:interventions!intervention_id(
+        mission:missions!mission_id(
+          site:sites!site_id(name)
+        )
+      )
+    `)
+    .neq('status', 'ignored')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (error) {
+    console.error('[getRecentAnomalies]', error)
+    return []
+  }
+
+  type Row = typeof data extends Array<infer R> ? R : never
+  return (data ?? []).map((r: Row) => {
+    const raw = r as Record<string, unknown>
+    const intv = raw.intervention as Record<string, unknown> | null
+    const mission = (Array.isArray(intv) ? intv[0] : intv)?.mission as Record<string, unknown> | null
+    const missionRow = Array.isArray(mission) ? mission[0] : mission
+    const site = missionRow?.site as Record<string, unknown> | null
+    const siteRow = Array.isArray(site) ? site[0] : site
+    return {
+      id: r.id,
+      interventionId: r.intervention_id,
+      category: r.category,
+      categoryOther: r.category_other,
+      description: r.description,
+      siteName: (siteRow?.name as string | null) ?? null,
+      createdAt: r.created_at,
+    }
+  })
+}
+
+// ============================================================================
 // Engagements à surveiller
 // ============================================================================
 
