@@ -469,16 +469,30 @@ export function VoiceNoteModal({ interventionId, open, onClose }: Props) {
                 <X className="h-4 w-4" />
                 Ignorer
               </button>
-              <button
-                type="button"
-                onClick={handleValidateFragment}
-                disabled={!fragment.trim()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90 disabled:opacity-50"
-                style={{ minHeight: 64 }}
-              >
-                <Check className="h-4 w-4" />
-                Valider la mémoire
-              </button>
+              {fragment.trim() ? (
+                <button
+                  type="button"
+                  onClick={handleValidateFragment}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90"
+                  style={{ minHeight: 64 }}
+                >
+                  <Check className="h-4 w-4" />
+                  Valider la mémoire
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.success('Note enregistrée', { duration: 1500 })
+                    setTimeout(() => { router.refresh(); onClose() }, 1000)
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-base py-4 active:bg-foreground/90"
+                  style={{ minHeight: 64 }}
+                >
+                  <Check className="h-4 w-4" />
+                  Enregistrer
+                </button>
+              )}
             </div>
           </div>
         )}
