@@ -464,6 +464,7 @@ export async function listAnomaliesByIntervention(interventionId: string): Promi
     .from('intervention_anomalies')
     .select('*')
     .eq('intervention_id', interventionId)
+    .neq('status', 'ignored')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []

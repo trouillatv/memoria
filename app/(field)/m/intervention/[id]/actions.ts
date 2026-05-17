@@ -205,6 +205,20 @@ export async function createAnomalyMobileAction(formData: FormData) {
   return { ok: true as const, anomalyId }
 }
 
+// ----- Ignore anomaly (soft-delete depuis mobile) -----
+
+export async function ignoreAnomalyMobileAction(anomalyId: string): Promise<{ ok: true } | { error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { error: 'Non autorisé' }
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('intervention_anomalies')
+    .update({ status: 'ignored' })
+    .eq('id', anomalyId)
+  if (error) return { error: error.message }
+  return { ok: true as const }
+}
+
 // ----- Skip intervention ("Pas aujourd'hui", raison obligatoire) -----
 //
 // Doctrine Slice 6.4 :
