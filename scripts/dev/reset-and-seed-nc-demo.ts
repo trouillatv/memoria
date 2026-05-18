@@ -287,6 +287,7 @@ const PHOTO_COLORS: Record<PhotoKind, string> = {
   proof: '#0ea5e9',
   anomaly: '#dc2626',
   passage: '#64748b', // V5.1 — slate-500, sobre
+  access: '#64748b', // 070 — slate-500, sobre
 }
 
 function svgPhoto(text: string, bgColor: string): Buffer {

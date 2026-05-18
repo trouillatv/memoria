@@ -36,6 +36,11 @@ async function buildAbsoluteUrl(path: string): Promise<string> {
 }
 import { ExecutionPanel } from './execution-panel'
 import { AnomaliesPanel } from './anomalies-panel'
+import { AccessPanel } from './access-panel'
+import {
+  listAccessEventsByIntervention,
+  getSiteRequiresAccessHandover,
+} from '@/lib/db/intervention-access-events'
 import { ValidationPanel } from './validation-panel'
 import { SkipInterventionTriggerSupervisor } from './skip-trigger'
 import { RescheduleTrigger } from './RescheduleTrigger'
@@ -46,7 +51,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
@@ -54,12 +59,19 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     getValidationByIntervention(id),
     listParticipantsForIntervention(id),
     listValidatedVoiceNotesByIntervention(id),
+    listAccessEventsByIntervention(id),
   ])
 
   const supabase = createAdminClient()
   const { data: site } = mission
     ? await supabase.from('sites').select('id, name, contract_id').eq('id', mission.site_id).maybeSingle()
     : { data: null }
+
+  // Le bloc accès n'apparaît que sur les sites flaggés (ou s'il a déjà des
+  // mouvements documentés — robustesse si le flag change après coup).
+  const siteRequiresHandover = mission
+    ? await getSiteRequiresAccessHandover(mission.site_id)
+    : false
 
   // Équipe affectée à l'intervention (organisation prévue, doctrine V3) — distincte
   // des participants confirmés (réalité contextuelle).
@@ -352,6 +364,14 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         anomalies={anomalies}
         canCreate={anomaliesCanCreate}
       />
+
+      {(siteRequiresHandover || accessEvents.length > 0) && (
+        <AccessPanel
+          events={accessEvents}
+          photos={photos}
+          signedUrls={Object.fromEntries(signedUrls)}
+        />
+      )}
 
       <ValidationPanel
         interventionId={intervention.id}

@@ -34,6 +34,50 @@ function short(text: string, max: number): string {
   return text.length > max ? text.slice(0, max).trimEnd() + '…' : text
 }
 
+type AdminClient = ReturnType<typeof createAdminClient>
+
+type SiteAnomalyRow = {
+  id: string
+  description: string | null
+  category_other: string | null
+  created_at: string
+  status: string
+}
+
+/**
+ * intervention_anomalies n'a pas de colonne site_id : on remonte la chaîne
+ * site → missions → interventions → intervention_anomalies.
+ * (Même jointure que lib/db/site-memory.ts — table réelle, pas `anomalies`.)
+ */
+async function fetchSiteAnomalies(
+  supabase: AdminClient,
+  siteId: string,
+  limit: number,
+): Promise<{ data: SiteAnomalyRow[] }> {
+  const { data: missions } = await supabase
+    .from('missions')
+    .select('id')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+  const missionIds = (missions ?? []).map((m) => (m as { id: string }).id)
+  if (missionIds.length === 0) return { data: [] }
+
+  const { data: interventions } = await supabase
+    .from('interventions')
+    .select('id')
+    .in('mission_id', missionIds)
+  const interventionIds = (interventions ?? []).map((i) => (i as { id: string }).id)
+  if (interventionIds.length === 0) return { data: [] }
+
+  const { data } = await supabase
+    .from('intervention_anomalies')
+    .select('id, description, category_other, created_at, status')
+    .in('intervention_id', interventionIds)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return { data: (data ?? []) as SiteAnomalyRow[] }
+}
+
 export async function refreshSiteReadingCandidates(siteId: string): Promise<void> {
   const supabase = createAdminClient()
 
@@ -79,13 +123,7 @@ export async function refreshSiteReadingCandidates(siteId: string): Promise<void
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
-      const { data: anomalyRows } = await supabase
-        .from('anomalies')
-        .select('id, description, category_other, created_at, status')
-        .eq('site_id', siteId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(50)
+      const { data: anomalyRows } = await fetchSiteAnomalies(supabase, siteId, 50)
 
       const seenAnomalies = new Set<string>()
       let resonanceCount = 0
@@ -149,12 +187,7 @@ export async function refreshSiteReadingCandidates(siteId: string): Promise<void
     if (embErr) logError('persistence/fetch_embeddings', siteId, embErr.message)
 
     if ((embeddedAnomalies ?? []).length >= 2) {
-      const { data: anomalyRows } = await supabase
-        .from('anomalies')
-        .select('id, description, category_other')
-        .eq('site_id', siteId)
-        .is('deleted_at', null)
-        .limit(50)
+      const { data: anomalyRows } = await fetchSiteAnomalies(supabase, siteId, 50)
 
       const seenPairs = new Set<string>()
       let persistenceCount = 0

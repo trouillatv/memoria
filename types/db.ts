@@ -403,7 +403,7 @@ export interface DbInterventionChecklistItem {
   done_by: string | null
 }
 
-export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage'
+export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage' | 'access'
 
 export interface DbInterventionPhoto {
   id: string

@@ -15,7 +15,7 @@
 // IMPORTANT : le schéma DB (trace_embeddings.embedding) doit correspondre
 // aux dims du provider actif. Migration 053 règle ça pour Google (768 dim).
 
-const GOOGLE_MODEL = 'gemini-embedding-2'   // 768 dim (outputDimensionality=768)
+const GOOGLE_MODEL = 'text-embedding-004'   // 768 dim natif (cf. migration 053)
 const OPENAI_MODEL = 'text-embedding-3-small' // 1536 dim
 const VOYAGE_MODEL = 'voyage-3'              // 768 dim
 

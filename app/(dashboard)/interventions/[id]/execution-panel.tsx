@@ -21,6 +21,7 @@ const KIND_LABELS: Record<PhotoKind, string> = {
   anomaly: 'Anomalie',
   proof: 'Preuve',
   passage: 'Passage', // V5.1 Slice 1 — trace libre hors workflow planifié
+  access: 'Accès', // 070 — photo trousseau/badge attachée à un acte d'accès
 }
 
 const KIND_COLORS: Record<PhotoKind, string> = {
@@ -29,6 +30,7 @@ const KIND_COLORS: Record<PhotoKind, string> = {
   anomaly: 'bg-amber-50 border-amber-200 text-amber-700',
   proof: 'bg-sky-50 border-sky-200 text-sky-700',
   passage: 'bg-slate-50 border-slate-200 text-slate-600', // V5.1 — couleur sobre (grammaire descriptive)
+  access: 'bg-slate-50 border-slate-200 text-slate-600', // 070 — sobre (pas une preuve de propreté)
 }
 
 interface Props {

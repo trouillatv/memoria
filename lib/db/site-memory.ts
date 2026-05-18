@@ -11,6 +11,7 @@ export type SiteMemoryEventType =
   | 'anomaly'
   | 'note'
   | 'a_savoir'
+  | 'access'
 
 export interface SiteMemoryEvent {
   type: SiteMemoryEventType
@@ -67,7 +68,7 @@ export async function getSiteMemoryTimeline(
   const interventionIds = interventions.map((i) => i.id)
 
   // 3. Photos / Anomalies (via interventions)
-  const [photosRes, anomaliesRes, notesRes] = await Promise.all([
+  const [photosRes, anomaliesRes, notesRes, accessRes] = await Promise.all([
     interventionIds.length
       ? sb
           .from('intervention_photos')
@@ -85,7 +86,24 @@ export async function getSiteMemoryTimeline(
       .select('id, body, kind, active_until, created_at')
       .eq('site_id', siteId)
       .is('deleted_at', null),
+    interventionIds.length
+      ? sb
+          .from('intervention_access_events')
+          .select('id, intervention_id, type, occurred_at, anomaly_id')
+          .in('intervention_id', interventionIds)
+      : { data: [] as Array<{ id: string; intervention_id: string; type: string; occurred_at: string; anomaly_id: string | null }> },
   ])
+
+  // Doctrine : prise/restitution ≠ mémoire (routine), incident = mémoire.
+  // On collapse en UNE ligne d'accès par intervention. L'incident est déjà
+  // une anomalie (résonances) : on évite le doublon en masquant la ligne
+  // anomalie liée, et c'est la ligne d'accès qui la représente avec le bon
+  // libellé et le lien vers l'intervention.
+  type AccessRow = { id: string; intervention_id: string; type: string; occurred_at: string; anomaly_id: string | null }
+  const accessRows = (accessRes.data ?? []) as AccessRow[]
+  const accessIncidentAnomalyIds = new Set(
+    accessRows.filter((e) => e.type === 'incident' && e.anomaly_id).map((e) => e.anomaly_id as string),
+  )
 
   const events: SiteMemoryEvent[] = []
 
@@ -151,6 +169,8 @@ export async function getSiteMemoryTimeline(
   }
 
   for (const a of (anomaliesRes.data ?? [])) {
+    // L'incident d'accès est représenté par sa ligne « Accès » (anti-doublon).
+    if (accessIncidentAnomalyIds.has(a.id)) continue
     events.push({
       type: 'anomaly',
       id: a.id,
@@ -171,6 +191,33 @@ export async function getSiteMemoryTimeline(
       title: n.body,
       detail: null,
       meta: { active_until: n.active_until },
+    })
+  }
+
+  // Accès — UNE ligne collapsée par intervention. « Incident d'accès » si au
+  // moins un incident, sinon « Accès documenté ». occurredAt = dernier mouvement.
+  const accessByIntervention = new Map<string, { latest: string; hasIncident: boolean }>()
+  for (const e of accessRows) {
+    const cur = accessByIntervention.get(e.intervention_id)
+    if (!cur) {
+      accessByIntervention.set(e.intervention_id, {
+        latest: e.occurred_at,
+        hasIncident: e.type === 'incident',
+      })
+    } else {
+      if (e.occurred_at > cur.latest) cur.latest = e.occurred_at
+      if (e.type === 'incident') cur.hasIncident = true
+    }
+  }
+  for (const [interventionId, agg] of accessByIntervention) {
+    events.push({
+      type: 'access',
+      id: `${interventionId}-access`,
+      occurredAt: agg.latest,
+      title: agg.hasIncident ? "Incident d'accès" : 'Accès documenté',
+      detail: null,
+      interventionId,
+      meta: { kind: agg.hasIncident ? 'incident' : 'routine' },
     })
   }
 

@@ -38,6 +38,11 @@ export function salienceOf(event: SiteMemoryEvent): number {
       if (event.detail && event.detail.trim().length > 0) return 0.5
       return 0.2                                // intervention sans note = banal
     }
+    case 'access': {
+      // Incident d'accès = saillant (mémoire). Prise/restitution = routine.
+      if (event.meta?.kind === 'incident') return 0.9
+      return 0.2
+    }
     default:
       return 0.2
   }

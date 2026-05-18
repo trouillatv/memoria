@@ -29,6 +29,12 @@ import { listVoiceNotesByIntervention } from '@/lib/db/intervention-voice-notes'
 import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
 import { SiteResumeCard } from './SiteResumeCard'
 import { SiteAccessCard } from './SiteAccessCard'
+import { AccessSection } from './AccessSection'
+import {
+  listAccessEventsByIntervention,
+  getAccessReturnStatus,
+  getSiteRequiresAccessHandover,
+} from '@/lib/db/intervention-access-events'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import {
   getSiteReadings,
@@ -132,6 +138,18 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   const enrichedSiteReadings = {
     readings: [...siteTransmissions, ...siteReadings.readings],
   }
+
+  // Preuve d'accès site — uniquement si le site est flaggé (anti-surcharge :
+  // 80% des sites n'ont pas de remise de clés/badge).
+  const siteRequiresHandover = siteId
+    ? await getSiteRequiresAccessHandover(siteId)
+    : false
+  const accessEvents = siteRequiresHandover
+    ? await listAccessEventsByIntervention(id)
+    : []
+  const accessReturn = siteRequiresHandover
+    ? await getAccessReturnStatus(id)
+    : { pickupNeedsReturn: false }
 
   // Date civile pure (scheduled_for), JAMAIS scheduled_at (timestamp UTC dérivé
   // du créneau → décale d'un jour en Nouméa pour le créneau "soir").
@@ -312,6 +330,15 @@ export default async function FieldInterventionPage({ params }: { params: Promis
           d'ajouter une note (premier ajout). Bouton discret seul. */}
       {siteId && siteNotes.length === 0 && !showResumeMode && (
         <AddSiteNoteButton siteId={siteId} />
+      )}
+
+      {siteRequiresHandover && (
+        <AccessSection
+          interventionId={id}
+          events={accessEvents}
+          canCapture={!isSkipped && (isPlanned || isInProgress || isAdmin)}
+          needsReturnPrompt={accessReturn.pickupNeedsReturn}
+        />
       )}
 
       <ChecklistMobile

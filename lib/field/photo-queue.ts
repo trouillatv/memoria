@@ -37,7 +37,7 @@ const DB_NAME = 'memoria-field'
 const STORE_NAME = 'photo-queue'
 const DB_VERSION = 1
 
-export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage'
+export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage' | 'access'
 
 export interface QueuedPhoto {
   tempId: string

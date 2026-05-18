@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, FileText, Camera, Info } from 'lucide-react'
+import { AlertTriangle, FileText, Camera, Info, KeyRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SiteMemoryEvent } from '@/lib/db/site-memory'
 import type { SiteMemoryMeta } from '@/lib/db/site-cockpit'
@@ -51,6 +51,7 @@ const TYPE_ICON: Record<SiteMemoryEvent['type'], LucideIcon> = {
   anomaly: AlertTriangle,
   note: Info,
   a_savoir: Info,
+  access: KeyRound,
 }
 
 const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
@@ -59,6 +60,8 @@ const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
   anomaly: 'text-amber-600',
   note: 'text-muted-foreground',
   a_savoir: 'text-muted-foreground',
+  // Incident d'accès → amber (saillant) ; routine → neutre. Géré via meta.
+  access: 'text-muted-foreground',
 }
 
 interface Props {
