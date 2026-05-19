@@ -480,3 +480,67 @@ export interface EngagementEvidence {
   contractIds: string[]           // contracts this engagement is linked to
   contractNames: string[]         // for display
 }
+
+// ===========================================================================
+// Architecture documentaire générique — migration 073 (spec 2026-05-19)
+// ===========================================================================
+
+export type DocumentType =
+  | 'contrat' | 'avenant' | 'procedure' | 'protocole' | 'plan_acces'
+  | 'securite' | 'ao' | 'memoire_technique' | 'reference' | 'litige'
+  | 'facture' | 'preuve' | 'autre'
+
+export type DocumentVisibility =
+  | 'admin_only' | 'manager' | 'operations' | 'field' | 'client_portal'
+
+export type DocumentStatus = 'active' | 'superseded' | 'expired' | 'archived'
+
+export type DocumentAnalysisStatus =
+  | 'pending' | 'ocr' | 'extracting' | 'chunking' | 'ready' | 'failed'
+
+export type DocumentTargetType =
+  | 'contract' | 'site' | 'tender' | 'client' | 'intervention' | 'team' | 'tenant'
+
+export interface DbDocumentCollection {
+  id: string
+  tenant_id: string | null
+  name: string
+  scope_type: string | null
+  scope_id: string | null
+  created_at: string
+  deleted_at: string | null
+}
+
+export interface DbDocument {
+  id: string
+  tenant_id: string | null
+  collection_id: string
+  document_type: DocumentType
+  tags: string[]
+  visibility_level: DocumentVisibility
+  status: DocumentStatus
+  supersedes_document_id: string | null
+  effective_date: string | null
+  expires_date: string | null
+  analysis_status: DocumentAnalysisStatus
+  failed_reason: string | null
+  extraction_source: 'native' | 'ocr' | null
+  extracted_text: string | null
+  storage_path: string
+  filename: string
+  size_bytes: number | null
+  page_count: number | null
+  content_hash: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface DbDocumentLink {
+  id: string
+  document_id: string
+  target_type: DocumentTargetType
+  target_id: string
+  created_at: string
+}
