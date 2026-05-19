@@ -167,7 +167,7 @@ export async function getLatestTenderAnalysis(tenderId: string): Promise<DbTende
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('tender_analyses')
-    .select('id, tender_id, provider, model, prompt_versions, summary, constraints, risks, checklist, technical_memo, library_snapshot, raw_response, created_at')
+    .select('id, tender_id, provider, model, prompt_versions, summary, constraints, risks, checklist, technical_memo, library_snapshot, raw_response, document_sources, created_at')
     .eq('tender_id', tenderId)
     .order('created_at', { ascending: false })
     .limit(1)

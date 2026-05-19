@@ -38,6 +38,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       technical_memo: result.memo.technical_memo,
       library_snapshot: result.librarySnapshot,
       raw_response: null,
+      document_sources: result.documentSources, // A6 — réf. recall A3, dédupé
     })
     await updateTenderStatus(id, 'ready', null, result.score.score)
     return NextResponse.json({ ok: true, score: result.score.score })

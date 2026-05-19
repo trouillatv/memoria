@@ -190,6 +190,7 @@ export async function createTenderAction(formData: FormData) {
         technical_memo: result.memo.technical_memo,
         library_snapshot: result.librarySnapshot,
         raw_response: null,
+        document_sources: result.documentSources, // A6 — réf. recall A3, dédupé
       })
       await updateTenderStatus(tenderIdForAnalyze, 'ready', null, result.score.score)
     } catch (e) {

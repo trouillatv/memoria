@@ -110,6 +110,12 @@ export interface DbTenderAnalysisChecklistItem {
   sources?: Source[]
 }
 
+/** A6 — référence documentaire traçable (jamais de texte/extracted_text). */
+export interface DbTenderAnalysisDocumentSource {
+  id: string
+  type?: string
+}
+
 export interface DbTenderAnalysis {
   id: string
   tender_id: string
@@ -123,6 +129,8 @@ export interface DbTenderAnalysis {
   technical_memo: string | null
   library_snapshot: { items_count: number; total_chars: number } | null
   raw_response: unknown | null
+  /** A6 — sources [doc:id] utilisées par le recall A3 (réf. seules, dédupé). */
+  document_sources: DbTenderAnalysisDocumentSource[] | null
   created_at: string
 }
 

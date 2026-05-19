@@ -15,6 +15,8 @@ export interface AnalyzeTenderResult {
   score: OpportunityScorerOutput
   librarySnapshot: LibrarySnapshot
   promptVersions: Record<string, string>
+  /** A6 — sources [doc:id] du recall A3 (réf. seules, dédupé). [] en mock. */
+  documentSources: { id: string; type?: string }[]
   provider: string
   model: string
 }
@@ -37,11 +39,25 @@ export async function analyzeTender(
   // DYNAMIQUE : document-context est `server-only` — le garder hors du
   // graphe statique de l'orchestrator (sinon casse les tests à l'import) ;
   // chargé uniquement au runtime serveur quand on recall réellement.
-  let docCtx: { promptBlock: string } = { promptBlock: '' }
+  let docCtx: {
+    promptBlock: string
+    chunks: { sourceId: string; documentType?: string }[]
+  } = { promptBlock: '', chunks: [] }
   if (provider.name !== 'mock') {
     const role = userId ? await getUserRoleById(userId) : null
     const { buildDocumentContext } = await import('@/lib/ai/document-context')
     docCtx = await buildDocumentContext({ query: rawText, role })
+  }
+
+  // A6 — sources [doc:id] RÉELLEMENT utilisées, dérivées du docCtx A3 DÉJÀ
+  // calculé (aucun nouveau recall/embedding/RPC). Références seules
+  // { id, type }, dédupliquées par id. Mock → docCtx.chunks vide → [].
+  const documentSources: { id: string; type?: string }[] = []
+  const seenDocIds = new Set<string>()
+  for (const c of docCtx.chunks) {
+    if (seenDocIds.has(c.sourceId)) continue
+    seenDocIds.add(c.sourceId)
+    documentSources.push({ id: c.sourceId, type: c.documentType })
   }
 
   const ctx: AgentContext = {
@@ -99,6 +115,7 @@ export async function analyzeTender(
       memoire_technique: memoireTechniqueAgent.promptVersion,
       opportunity_scorer: opportunityScorerAgent.promptVersion,
     },
+    documentSources,
     provider: provider.name,
     model: provider.name === 'mock' ? 'mock-1' : 'unknown',
   }
