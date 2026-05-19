@@ -202,3 +202,29 @@ export async function updateDocumentAnalysisStatus(
   const { error } = await supabase.from('documents').update(patch).eq('id', id)
   if (error) throw error
 }
+
+/**
+ * Pose le texte extrait + la source d'extraction (pipeline analyzeDocument,
+ * phase 2). Déterministe : aucune génération LLM. Appelé une seule fois par
+ * analyse (ou relance « Réanalyser »), jamais à l'affichage.
+ */
+export async function setDocumentExtraction(
+  id: string,
+  input: {
+    extracted_text: string
+    extraction_source: 'native' | 'ocr'
+    page_count?: number | null
+  },
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({
+      extracted_text: input.extracted_text,
+      extraction_source: input.extraction_source,
+      page_count: input.page_count ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}

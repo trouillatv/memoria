@@ -180,3 +180,85 @@ export async function embedTenderHistoryChunks(tenderId: string): Promise<void> 
     if (error) console.error('[embed-knowledge-chunks] tender_history upsert error', error.message)
   }
 }
+
+/**
+ * Découpe et embède un document générique (migration 073) en chunks, branché
+ * sur le RAG EXISTANT (knowledge_chunks, source_domain='document'). Aucune
+ * infra nouvelle. Appelé UNE fois par le pipeline analyzeDocument (async,
+ * fire-and-forget) ou la relance « Réanalyser » — jamais à l'affichage
+ * (discipline coût IA). Idempotent : reconstruction complète des chunks.
+ *
+ * `visibility_level` est propagé dans le metadata pour borner le recall
+ * (décision J : un agent ne restitue pas un extrait au-dessus du niveau de
+ * l'appelant — filtrage côté retrieval, pas seulement UI).
+ */
+export async function embedDocumentChunks(documentId: string): Promise<void> {
+  if (getActiveProvider() === null) return
+
+  const supabase = createAdminClient()
+
+  const { data: doc } = await supabase
+    .from('documents')
+    .select(
+      'id, tenant_id, collection_id, document_type, visibility_level, extracted_text',
+    )
+    .eq('id', documentId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (!doc) return
+
+  const d = doc as {
+    id: string
+    tenant_id: string | null
+    collection_id: string
+    document_type: string
+    visibility_level: string
+    extracted_text: string | null
+  }
+  if (!d.extracted_text || d.extracted_text.length < 100) return
+
+  const tenantId = d.tenant_id ?? (await getOrFetchTenantId())
+  if (!tenantId) return
+
+  const { data: links } = await supabase
+    .from('document_links')
+    .select('target_type, target_id')
+    .eq('document_id', documentId)
+
+  const chunks = splitIntoChunks(d.extracted_text)
+  if (chunks.length === 0) return
+
+  // Reconstruction complète des chunks pour ce document.
+  await supabase
+    .from('knowledge_chunks')
+    .delete()
+    .eq('source_domain', 'document')
+    .eq('source_id', documentId)
+
+  const metadata = {
+    document_type: d.document_type,
+    collection_id: d.collection_id,
+    visibility_level: d.visibility_level,
+    links: (links ?? []) as Array<{ target_type: string; target_id: string }>,
+  }
+
+  for (let i = 0; i < chunks.length; i++) {
+    const embedding = await getEmbedding(chunks[i])
+    if (!embedding) continue
+
+    const { error } = await supabase.from('knowledge_chunks').upsert(
+      {
+        tenant_id: tenantId,
+        source_domain: 'document',
+        source_type: 'document',
+        source_id: documentId,
+        chunk_index: i,
+        chunk_text: chunks[i],
+        embedding: `[${embedding.join(',')}]`,
+        metadata,
+      },
+      { onConflict: 'source_domain,source_id,chunk_index' },
+    )
+    if (error) console.error('[embed-knowledge-chunks] document upsert error', error.message)
+  }
+}

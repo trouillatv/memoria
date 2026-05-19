@@ -17,7 +17,7 @@ import { insertActivityLog } from '@/lib/db/activity-logs'
  */
 export type AuditEntityType =
   | 'tender' | 'mission' | 'user' | 'knowledge_item'
-  | 'report' | 'client' | 'site'
+  | 'report' | 'client' | 'site' | 'document'
 
 export type AuditAction =
   | 'analysis_relaunched'
