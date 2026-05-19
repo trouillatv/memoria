@@ -191,6 +191,10 @@ export interface DbContract {
   start_date: string
   end_date: string | null
   status: ContractStatus
+  /** V6.3 — heures de prestation prévues/mois (cible du contrat, jamais par personne). */
+  volume_horaire_mensuel: number | null
+  /** V6.3 — rythme contractuel (libellé libre, ex. « hebdomadaire »). */
+  frequence: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null

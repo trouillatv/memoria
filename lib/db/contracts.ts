@@ -288,3 +288,24 @@ export async function updateContractStatus(id: string, status: ContractStatus): 
     .eq('id', id)
   if (error) throw error
 }
+
+/**
+ * V6.3 — attributs « entité vivante » du contrat : volume horaire mensuel
+ * prévu + rythme. Propriétés DU CONTRAT (non humaines, test V2 passe).
+ * `volume_horaire_mensuel` est une cible du contrat, jamais agrégée par
+ * personne (pare-feu V6.1). Champs partiels : seuls les fournis sont écrits.
+ */
+export async function updateContractEntity(
+  id: string,
+  patch: { volume_horaire_mensuel?: number | null; frequence?: string | null },
+): Promise<void> {
+  const updates: Record<string, unknown> = {}
+  if (patch.volume_horaire_mensuel !== undefined) {
+    updates.volume_horaire_mensuel = patch.volume_horaire_mensuel
+  }
+  if (patch.frequence !== undefined) updates.frequence = patch.frequence
+  if (Object.keys(updates).length === 0) return
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('contracts').update(updates).eq('id', id)
+  if (error) throw error
+}
