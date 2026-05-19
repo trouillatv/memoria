@@ -124,6 +124,16 @@ Ce registre sert à :
 
 ---
 
+### 2026-05-19 — Réouverture bornée : brief de reprise (V6.7) — ce qui reste refusé
+
+**Demandeur** : Vincent (interne, arbitrage doctrine)
+**Demande** : Pouvoir savoir sur quoi un intervenant a été assigné / ce qu'il connaît, sans devoir chercher site par site.
+**Statut** : **partiellement ouvert** par `exploitation-doctrine-V6.md` Pilier V6.7 — *uniquement* sous forme de brief de reprise **déclenché par un événement** (départ/indispo), éphémère, sujet du résultat = site/contrat, sous six verrous. **Reste refusé, inchangé** : toute route/page/recherche/index dont le sujet d'entrée est une personne. Les refus 2026-05-12 (« Page profil agent `/agents/[id]` », « Filtre intervenant sur /preuves », « Index `user_id` seul ») **restent intégralement valides** — V6.7 n'est pas une fiche agent.
+**Argument client** : *« MemorIA ne vous donne pas l'historique d'une personne. Quand un intervenant part, il vous dit quels sites/contrats perdent de la continuité et quoi transmettre — la réponse au besoin, sans fiche RH. »*
+**Lien** : Conversation Claude 2026-05-19 ; `exploitation-doctrine-V6.md` Pilier V6.7 ; `docs/10_JOURNAL_DECISIONS.md` 2026-05-19.
+
+---
+
 ## Comment ajouter une entrée
 
 1. Refuser la demande dans le canal d'origine (issue, PR, mail, conversation).

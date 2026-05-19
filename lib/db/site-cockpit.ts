@@ -115,6 +115,55 @@ export interface HumanContinuity {
   teamsSucceeded: number
 }
 
+// =============================================================================
+// VERROU DOCTRINAL V6.7 #4 — seuil k d'anti-ré-identification
+// =============================================================================
+//
+// Doctrine : exploitation-doctrine-V6.md, Pilier V6.7, verrou 4.
+//   « Sous 4 participants distincts sur l'ancre, lecture *généralisée*
+//     (« peu de continuité récente »), aucun nom rendu. »
+//
+// C'est le verrou qui *comble le trou laissé par V6 sur la ré-identification*.
+// Sous le seuil, un nom rendu sur une ancre (site/contrat) à faible cardinalité
+// est ré-identifiant : le brief déclenché-par-événement ne doit JAMAIS le faire.
+//
+// Fonction PURE et IMPORTABLE : c'est le contrat que le futur brief de reprise
+// déclenché-par-événement (V6.7, non encore implémenté) DOIT traverser avant
+// de rendre le moindre libellé. Le test de rendu tests/doctrine le verrouille.
+//
+// Portée volontairement bornée : ce helper n'est PAS recâblé dans la surface
+// site-first `HumanContinuityList` déjà livrée (V5.1.4, gouvernée V5.1.3 :
+// « les humains peuvent être nommés, jamais qualifiés »). Étendre k=4 à cette
+// surface est une décision produit/doctrine distincte, pas un verrou V6.7.
+
+export const CONTINUITY_K_THRESHOLD = 4
+
+export interface GeneralizedContinuity {
+  /** true → aucun nom à rendre, basculer sur la lecture généralisée. */
+  generalized: boolean
+  /** vide si `generalized` ; sinon les libellés non navigables autorisés. */
+  predecessors: HumanContinuityEntry[]
+}
+
+/**
+ * Verrou V6.7 #4. Sous `k` participants distincts sur l'ancre, renvoie une
+ * lecture généralisée sans aucun nom. Au seuil ou au-dessus, les libellés
+ * (non navigables) sont restitués tels quels.
+ *
+ * Pure : aucun I/O, déterministe. Chaque `HumanContinuityEntry` correspond à
+ * un participant distinct (regroupé en amont par identité), donc la
+ * cardinalité de l'ancre = `entries.length`.
+ */
+export function applyContinuityKThreshold(
+  entries: HumanContinuityEntry[],
+  k: number = CONTINUITY_K_THRESHOLD,
+): GeneralizedContinuity {
+  if (entries.length < k) {
+    return { generalized: true, predecessors: [] }
+  }
+  return { generalized: false, predecessors: entries }
+}
+
 // V5.1.4 — Rythme du lieu : densité de traces par jour sur N jours glissants.
 // Doctrine Vincent 2026-05-15 : "perception structurée, pas KPI". On compte
 // les "traces" (intervention exécutée + photo + anomalie créée + note) par

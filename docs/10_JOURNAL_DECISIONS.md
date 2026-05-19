@@ -4,6 +4,34 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-19 — Règle de gouvernance : toute ouverture paie son coût structurel
+
+**Décision** : élévation, en tête de `exploitation-doctrine-V6.md`, d'un principe de gouvernance opposable : toute ouverture/exception est recevable, mais une ouverture sans garde-fous exécutables est nulle ; les verrous (tests CI, interdits structurels) sont livrés dans le même changement que l'exception. Ajout d'une 6ᵉ question conditionnelle au Test consolidé V6.
+
+**Raison** : V6.7 a prouvé que la doctrine peut s'ouvrir sans se dissoudre — mais uniquement parce que l'ouverture a payé son coût structurel. Sans règle gravée, la prochaine demande « le terrain le demande » rouvre le débat de zéro (dérive par concessions successives décrite dans `refusals-log.md`). Le principe est lui-même une ouverture de la couche gouvernance : il paie son coût en devenant opposable plutôt que conversationnel.
+
+**Limite assumée** : le texte rend le principe citable, pas auto-appliquant. Son effet réel dépend d'exiger les tests dans la même PR que la feature, à l'usage.
+
+**Lien** : Conversation Claude 2026-05-19 (suite directe de l'arbitrage V6.7 ci-dessous).
+
+---
+
+## 2026-05-19 — Doctrine V6.7 : réouverture bornée « reprise & continuité »
+
+**Décision** : Vincent arbitre l'ouverture, dans `exploitation-doctrine-V6.md` (Pilier V6.7), de deux capacités jusqu'ici refusées : (1) surfaces de continuité site/contrat rendues **obligatoires** (intervenants en continuité, libellés non navigables) ; (2) **brief de reprise déclenché par événement** (départ/indisponibilité d'un intervenant) où la personne est un paramètre éphémère et le sujet du résultat est le site/contrat. Reste **refusé, inchangé** : toute route/page/recherche/index dont le sujet d'entrée est une personne (V6.2).
+
+**Raison** : besoin terrain Guillaume réel et récurrent — anticiper la perte de continuité quand un porteur de mémoire part. Le strict V6.2 ne le servait que passivement (le site lit « continuité en baisse » *après* coup). Le brief déclenché-par-événement répond au besoin sans matérialiser un sujet-personne navigable.
+
+**Garde-fous (six verrous simultanés, cf. Pilier V6.7)** : déclenchement-événement uniquement ; éphémère / zéro persistance ; sujet du résultat = site/contrat ; seuil k=4 anti-ré-identification (comble un trou laissé par V6) ; log d'audit obligatoire ; surfaces exploitation/admin only (jamais mobile/PDF/export/client). Retirer un verrou = retour au refus V6.2.
+
+**Alternative écartée** : Option C (menu « Intervenants » + fiche personne limitée, même sans heures/score). Écartée : aucun bénéfice unique sur la version déclenchée-par-événement, et risque structurel SIRH — le critère « frontière techniquement infranchissable par accident » exigé par Guillaume lui-même l'interdit.
+
+**Impact code** : Enforcement V6 étendu **livré** — `tests/doctrine/v67-brief-reprise.test.ts` grave les verrous 6-9 (déclenchement-événement, zéro persistance, seuil k, audit). Verrous 6/7/9 = tripwires structurels : verts sur le code actuel (feature *brief de reprise* toujours non construite), rouges dès qu'un générateur viole un verrou (vérifié par probes non-conformes). Verrou 8 = fonction pure testée `applyContinuityKThreshold` (`lib/db/site-cockpit.ts`, k=4 gravé) : le contrat importable que le futur brief DEVRA traverser. **Bornage assumé** : le helper k=4 n'est *pas* recâblé dans la surface site-first `HumanContinuityList` déjà livrée (V5.1.4, gouvernée V5.1.3) — étendre k=4 à cette surface est une décision produit/doctrine distincte, hors périmètre des verrous V6.7. Le brief lui-même reste non implémenté (cf. Séquence d'activation : interprétatif « jamais avant » le pilote).
+
+**Lien** : Conversation Claude 2026-05-19 (session MemorIA, branche `feat/access-events`). Registre des refus mis à jour.
+
+---
+
 ## 2026-05-13 — Monitoring admin : exception doctrinale assumée pour métriques per-user
 
 **Décision** : `/admin/monitoring` conserve un tableau utilisateurs avec dernière connexion + nombre d'actions sur la période, ainsi qu'un feed nominatif de l'activité récente. Décision prise par le DG après audit doctrinal qui a identifié la violation de Doctrine V5.
