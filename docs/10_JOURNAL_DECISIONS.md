@@ -4,6 +4,20 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-19 — Pilier V6.8 : vue Agent configurable V6↔V7 (raffinement enforcement)
+
+**Décision** : Vincent raffine l'enforcement V6.7. Principe gravé : *on change la doctrine explicitement, jamais en contournant les tests*. Les verrous doivent protéger la philosophie (anti dérive RH/surveillance), pas empêcher l'évolution produit ni la traçabilité opérationnelle. Introduction du **Pilier V6.8** : la vue Agent n'est plus interdite définitivement mais **différée et configurable** via `DOCTRINE_AGENT_VIEW: 'V6' | 'V7'` (`tests/doctrine/v67-brief-reprise.test.ts`). Deux strates : (A) **cœur RH** — route/table/symbole/générateur/vocabulaire de scoring-ranking-jugement humain — interdit en V6 **et** V7 ; (B) **vue agent autonome** — refusée en V6 (défaut, refus V6.2 maintenu), autorisée en V7 sous contraintes de continuité opérationnelle (sites connus, contrats travaillés, interventions passées, habilitations, heures déclarées, documents, continuité).
+
+**Raison** : besoin Guillaume réel — retrouver les agents par contrat, qui connaît quel site, heures par projet, rappeler les bonnes personnes. Le build-breaker total « aucune personne sujet » produisait des faux positifs et bloquait une évolution légitime. La bonne règle : *un humain peut être cité comme auteur d'un événement, jamais devenir le sujet d'une analyse/score/historique autonome.* Passer en V7 reste une décision doctrinale explicite (cette entrée + Pilier V6.8), pas un contournement.
+
+**Garde-fous** : cœur RH rouge dans les deux modes ; conflit msg-1/msg-2 sur `/…/[id]/history` tranché explicitement en faveur de l'autorisation V7 (route = vue continuité ≠ table `*_history` = magasin RH, qui reste interdit) ; section **ALLOWLIST** testée garantissant que `created_by`/`taken_by`/`assigned_to`/auteur de note/clôturé par/audit/équipe/personne citée dans un événement ne cassent jamais le build ; build-breakers re-vérifiés par sondes (mordent sur le vrai interdit, pas sur la traçabilité).
+
+**Impact code** : `tests/doctrine/v67-brief-reprise.test.ts` réécrit (15 tests, configurable + allowlist). Doctrine `exploitation-doctrine-V6.md` : Pilier V6.8 ajouté, section Enforcement reformulée. `applyContinuityKThreshold` (verrou k=4) inchangé.
+
+**Lien** : Conversation Claude 2026-05-19, branche `feat/access-events` (suite directe de V6.7).
+
+---
+
 ## 2026-05-19 — Règle de gouvernance : toute ouverture paie son coût structurel
 
 **Décision** : élévation, en tête de `exploitation-doctrine-V6.md`, d'un principe de gouvernance opposable : toute ouverture/exception est recevable, mais une ouverture sans garde-fous exécutables est nulle ; les verrous (tests CI, interdits structurels) sont livrés dans le même changement que l'exception. Ajout d'une 6ᵉ question conditionnelle au Test consolidé V6.
