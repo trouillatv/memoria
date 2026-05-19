@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { todayLocalIso, localDateOf } from '@/lib/time/local-date'
 import type { DbContract, ContractStatus } from '@/types/db'
 
 // ============================================================================
@@ -308,4 +309,182 @@ export async function updateContractEntity(
   const supabase = createAdminClient()
   const { error } = await supabase.from('contracts').update(updates).eq('id', id)
   if (error) throw error
+}
+
+// ============================================================================
+// V6.3 tranche 2 — agrégation factuelle DÉTERMINISTE (zéro LLM, zéro score)
+// ============================================================================
+//
+// Doctrine V6.3 : la mémoire du contrat est une agrégation factuelle
+// recomposée, JAMAIS un avis. V6.4 : pas de score/tension/% — uniquement des
+// faits qu'un humain n'aurait pas vus seul, ignorables sans friction.
+//
+// CONCESSION HONNÊTE (registre V6.2) — investigation 2026-05-19 : il n'existe
+// AUCUNE durée par intervention en base (`started_at` est sur `missions`, pas
+// sur `interventions` ; seul `executed_at` existe). On NE FABRIQUE PAS d'heures
+// consommées (ce serait exactement la fausse précision que le Substrat V6.1
+// corrige). On expose l'objectif déclaré du contrat vs le NOMBRE de prestations
+// documentées. Idem : aucune table contestation/renouvellement liée au contrat
+// → on ne template que des faits à source réelle.
+
+/** Jours civils entre deux dates `YYYY-MM-DD` (UTC-stable, indépendant TZ). */
+function civilDayDiff(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split('-').map(Number)
+  const [ty, tm, td] = toIso.split('-').map(Number)
+  return Math.round(
+    (Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000,
+  )
+}
+
+function frDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+export type ContractExpiry =
+  | { kind: 'none'; label: string }
+  | { kind: 'expired'; endDate: string; days: number; label: string }
+  | { kind: 'soon'; endDate: string; days: number; label: string } // ≤ 30 j
+  | { kind: 'watch'; endDate: string; days: number; label: string } // ≤ 90 j
+  | { kind: 'far'; endDate: string; days: number; label: string }
+
+/**
+ * Verdict d'échéance PUR (testable hors DB). Constat, jamais jugement :
+ * aucun mot « risque », aucun score — le `kind` pilote l'emphase UI, le
+ * `label` reste factuel.
+ */
+export function computeContractExpiry(
+  endDate: string | null,
+  today: string,
+): ContractExpiry {
+  if (!endDate) return { kind: 'none', label: 'Pas de date de fin renseignée.' }
+  const days = civilDayDiff(today, endDate) // > 0 = échéance future
+  if (days < 0) {
+    const n = -days
+    return { kind: 'expired', endDate, days: n, label: `Contrat échu depuis le ${frDate(endDate)} (${n} j).` }
+  }
+  const label = `Échéance le ${frDate(endDate)} — dans ${days} j.`
+  if (days <= 30) return { kind: 'soon', endDate, days, label }
+  if (days <= 90) return { kind: 'watch', endDate, days, label }
+  return { kind: 'far', endDate, days, label }
+}
+
+/** Échéance d'un contrat (date civile Nouméa pour « aujourd'hui »). */
+export async function getContractExpiry(contractId: string): Promise<ContractExpiry> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('contracts')
+    .select('end_date')
+    .eq('id', contractId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (error) throw error
+  return computeContractExpiry((data?.end_date as string | null) ?? null, todayLocalIso())
+}
+
+export interface ContractVitals {
+  contractId: string
+  /** Mois civil courant Nouméa, "YYYY-MM". */
+  moisCourant: string
+  /** Objectif déclaré du contrat (cible, jamais par personne). */
+  volumeHoraireMensuelPrevu: number | null
+  /** Prestations documentées (completed|validated) ce mois civil. */
+  prestationsDocumenteesCeMois: number
+  /** Total cumulé de prestations documentées. */
+  prestationsDocumenteesCumul: number
+}
+
+/**
+ * Vitalité du contrat : objectif déclaré vs prestations DOCUMENTÉES (compte,
+ * pas heures fabriquées). Réutilise la chaîne contrat→sites→missions→
+ * interventions déjà éprouvée (getContractContinuity).
+ */
+export async function getContractVitals(contractId: string): Promise<ContractVitals> {
+  const supabase = createAdminClient()
+  const moisCourant = todayLocalIso().slice(0, 7)
+
+  const { data: contract } = await supabase
+    .from('contracts')
+    .select('volume_horaire_mensuel')
+    .eq('id', contractId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  const base: ContractVitals = {
+    contractId,
+    moisCourant,
+    volumeHoraireMensuelPrevu:
+      (contract?.volume_horaire_mensuel as number | null | undefined) ?? null,
+    prestationsDocumenteesCeMois: 0,
+    prestationsDocumenteesCumul: 0,
+  }
+
+  const { data: sites } = await supabase
+    .from('sites')
+    .select('id')
+    .eq('contract_id', contractId)
+    .is('deleted_at', null)
+  const siteIds = (sites ?? []).map((s) => s.id as string)
+  if (siteIds.length === 0) return base
+
+  const { data: missions } = await supabase
+    .from('missions')
+    .select('id')
+    .in('site_id', siteIds)
+    .is('deleted_at', null)
+  const missionIds = (missions ?? []).map((m) => m.id as string)
+  if (missionIds.length === 0) return base
+
+  const { data: interventions } = await supabase
+    .from('interventions')
+    .select('executed_at')
+    .in('mission_id', missionIds)
+    .in('status', EXECUTED_STATUSES as unknown as string[])
+    .not('executed_at', 'is', null)
+    .order('executed_at', { ascending: false })
+    .limit(5000)
+  const rows = (interventions ?? []) as Array<{ executed_at: string }>
+
+  base.prestationsDocumenteesCumul = rows.length
+  base.prestationsDocumenteesCeMois = rows.filter(
+    (r) => localDateOf(new Date(r.executed_at)).slice(0, 7) === moisCourant,
+  ).length
+  return base
+}
+
+/**
+ * Mémoire du contrat : faits TEMPLATÉS déterministes assemblés de sources
+ * réelles uniquement (continuité, prestations documentées, échéance). Aucune
+ * narration générée (verrou ia-interdits), aucun score/%/tension (V6.4).
+ */
+export async function getContractMemory(contractId: string): Promise<string[]> {
+  const [continuity, vitals, expiry] = await Promise.all([
+    getContractContinuity(contractId),
+    getContractVitals(contractId),
+    getContractExpiry(contractId),
+  ])
+
+  const facts: string[] = []
+
+  if (continuity && continuity.consecutiveMonthsWithIntervention > 0) {
+    const m = continuity.consecutiveMonthsWithIntervention
+    facts.push(`Service documenté ${m} mois consécutif${m > 1 ? 's' : ''}.`)
+  }
+  if (continuity && continuity.totalExecutedInterventions > 0) {
+    facts.push(
+      `${continuity.totalExecutedInterventions} prestation${continuity.totalExecutedInterventions > 1 ? 's' : ''} documentée${continuity.totalExecutedInterventions > 1 ? 's' : ''} au total.`,
+    )
+  }
+
+  const objectif =
+    vitals.volumeHoraireMensuelPrevu != null
+      ? ` — objectif déclaré ${vitals.volumeHoraireMensuelPrevu} h/mois`
+      : ''
+  facts.push(
+    `${vitals.prestationsDocumenteesCeMois} prestation${vitals.prestationsDocumenteesCeMois > 1 ? 's' : ''} documentée${vitals.prestationsDocumenteesCeMois > 1 ? 's' : ''} ce mois${objectif}.`,
+  )
+
+  if (expiry.kind !== 'none') facts.push(expiry.label)
+
+  return facts
 }
