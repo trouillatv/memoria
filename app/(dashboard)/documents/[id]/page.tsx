@@ -80,6 +80,13 @@ export default async function DocumentViewerPage({
 
   return (
     <div className="space-y-6 max-w-4xl">
+      <Link
+        href="/documents"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        ← Bibliothèque documentaire
+      </Link>
+
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold break-words">{doc.filename}</h1>
         <p className="text-sm text-muted-foreground">
