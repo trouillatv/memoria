@@ -12,7 +12,9 @@ import {
 } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listDocumentsForTarget } from '@/lib/db/documents'
-import { analysisStatusLabel } from '@/lib/documents/labels'
+import { canViewDocument } from '@/lib/documents/access'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { LinkedDocumentsList } from '@/components/documents/LinkedDocumentsList'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
@@ -29,7 +31,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs] =
+  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs, me] =
     await Promise.all([
       listEngagementsByContract(id),
       listMissionsByContract(id),
@@ -40,7 +42,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       getContractExpiry(id),
       getContractMemory(id),
       listDocumentsForTarget('contract', id),
+      getCurrentUserWithProfile(),
     ])
+
+  // visibility_level respecté (comble le trou de la section 4a) : aucun
+  // document non autorisé pour ce rôle n'apparaît.
+  const visibleContractDocs = contractDocs.filter((d) =>
+    canViewDocument(me?.role ?? null, d.visibility_level),
+  )
   const summary = summaryMap.get(id) ?? null
 
   // Build mission_id → engagement_ids map
@@ -234,7 +243,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       <section className="rounded-lg border bg-card p-4" data-testid="contract-documents">
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Documents ({contractDocs.length})
+            Documents ({visibleContractDocs.length})
           </h2>
           <Link
             href={`/documents?target_type=contract&target_id=${id}`}
@@ -243,34 +252,12 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             Ajouter un document →
           </Link>
         </div>
-        {contractDocs.length === 0 ? (
+        {visibleContractDocs.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Aucun document rattaché à ce contrat.
           </p>
         ) : (
-          <ul className="divide-y">
-            {contractDocs.map((d) => (
-              <li
-                key={d.id}
-                className="flex items-center justify-between gap-3 py-2 text-sm"
-              >
-                <span className="min-w-0">
-                  <Link
-                    href={`/documents/${d.id}`}
-                    className="font-medium underline hover:text-foreground break-words"
-                  >
-                    {d.filename}
-                  </Link>
-                  <span className="text-xs text-muted-foreground">
-                    {' '}· {d.document_type}
-                  </span>
-                </span>
-                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                  {analysisStatusLabel(d.analysis_status)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <LinkedDocumentsList documents={visibleContractDocs} />
         )}
       </section>
 
