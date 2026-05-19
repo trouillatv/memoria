@@ -50,9 +50,15 @@ export const lecteurAoAgent: AIAgent<LecteurAoInput, LecteurAoOutput> = {
   async run(input, ctx) {
     // Mode mock : injecter une fixture réaliste
     const isMock = ctx.provider.name === 'mock'
+    // A3 — extraits documentaires déjà BORNÉS par buildDocumentContext
+    // (1×/analyse, plafonné). Slice défensif : on ne fait jamais confiance
+    // aveugle à un contexte non borné. Citable [doc:id] (A1).
+    const docBlock = ctx.documentContext
+      ? `\n\n${ctx.documentContext.slice(0, 6000)}`
+      : ''
     const userMessage = isMock
       ? '__MOCK_FIXTURE__:' + JSON.stringify(buildMockFixture(input.rawText))
-      : LECTEUR_AO_V1.userTemplate(input.rawText)
+      : LECTEUR_AO_V1.userTemplate(input.rawText) + docBlock
 
     const r = await ctx.provider.complete({
       systemPrompt: LECTEUR_AO_V1.system,

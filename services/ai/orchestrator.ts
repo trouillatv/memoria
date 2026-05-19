@@ -1,5 +1,6 @@
 import { getAIProvider } from './factory'
 import { buildLibraryContext } from './library-context'
+import { getUserRoleById } from '@/lib/db/users'
 import { agents } from './agents/registry'
 import { lecteurAoAgent, type LecteurAoOutput } from './agents/lecteur-ao'
 import { memoireTechniqueAgent, type MemoireTechniqueOutput } from './agents/memoire-technique'
@@ -25,10 +26,29 @@ export async function analyzeTender(
   const provider = getAIProvider()
   const lib = await buildLibraryContext()
 
+  // A3 — recall documentaire BORNÉ calculé UNE SEULE FOIS par analyse AO,
+  // hors de toute boucle agent (jamais un recall par agent). Rôle dérivé
+  // du userId initiateur → visibility_level respecté (canViewDocument dans
+  // buildDocumentContext) ; userId null → role null → aucun document.
+  // Plafonné MAX_RETRIEVED_CHUNKS + MAX_CONTEXT_TOKENS. Silencieux si pas
+  // de provider/match → l'analyse continue sans erreur.
+  // Hors mock uniquement : une analyse mock ne déclenche aucun vrai recall
+  // (zéro appel embedding/RPC réel en test ; discipline coût IA). Import
+  // DYNAMIQUE : document-context est `server-only` — le garder hors du
+  // graphe statique de l'orchestrator (sinon casse les tests à l'import) ;
+  // chargé uniquement au runtime serveur quand on recall réellement.
+  let docCtx: { promptBlock: string } = { promptBlock: '' }
+  if (provider.name !== 'mock') {
+    const role = userId ? await getUserRoleById(userId) : null
+    const { buildDocumentContext } = await import('@/lib/ai/document-context')
+    docCtx = await buildDocumentContext({ query: rawText, role })
+  }
+
   const ctx: AgentContext = {
     provider,
     userId,
     libraryContext: lib.markdown,
+    documentContext: docCtx.promptBlock,
   }
 
   // Phase 1 — lecture séquentielle

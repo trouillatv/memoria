@@ -10,6 +10,9 @@ export interface DocChunk {
   sourceId: string
   text: string
   similarity: number
+  /** A3 — type du document (déjà dans le metadata du chunk, zéro requête).
+   *  Titre/collection « si disponible » : absents du metadata → omis. */
+  documentType?: string
 }
 
 /** Estimation tokens volontairement grossière mais STABLE (~4 char/token). */
@@ -43,7 +46,12 @@ export function toPromptBlock(kept: DocChunk[], truncated: boolean): string {
   if (kept.length === 0) return ''
   const head =
     '=== Documents (extraits ciblés — relire la source : /documents/<id>) ==='
-  const body = kept.map((c) => `- [doc:${c.sourceId}] ${c.text.trim()}`).join('\n')
+  const body = kept
+    .map(
+      (c) =>
+        `- [doc:${c.sourceId}]${c.documentType ? ` · ${c.documentType}` : ''} ${c.text.trim()}`,
+    )
+    .join('\n')
   const tail = truncated ? '\n(budget atteint — extraits tronqués)' : ''
   return `${head}\n${body}${tail}`
 }

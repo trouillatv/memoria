@@ -102,6 +102,8 @@ export async function buildDocumentContext(input: {
       sourceId: r.source_id,
       text: r.chunk_text,
       similarity: r.similarity,
+      // A3 — type déjà présent dans le metadata du chunk (zéro requête).
+      documentType: (r.metadata?.document_type as string | undefined) ?? undefined,
     }))
 
   const { kept, truncated } = clampChunksToBudget(visible)

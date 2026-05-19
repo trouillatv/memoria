@@ -18,9 +18,13 @@ export const memoireTechniqueAgent: AIAgent<MemoireTechniqueInput, MemoireTechni
 
   async run(input, ctx) {
     const isMock = ctx.provider.name === 'mock'
+    // A3 — extraits documentaires déjà BORNÉS (1×/analyse). Slice défensif.
+    const docBlock = ctx.documentContext
+      ? `\n\n${ctx.documentContext.slice(0, 6000)}`
+      : ''
     const userMessage = isMock
       ? '__MOCK_FIXTURE__:' + JSON.stringify(buildMockFixture(input, ctx.libraryContext))
-      : MEMOIRE_TECHNIQUE_V1.userTemplate({ reading: input.reading, libraryContext: ctx.libraryContext })
+      : MEMOIRE_TECHNIQUE_V1.userTemplate({ reading: input.reading, libraryContext: ctx.libraryContext }) + docBlock
 
     // Pas de responseSchema : le prompt demande du markdown pur.
     // Forcer JSON ici confusait Gemini qui retournait {"technical_memo": "..."} en DB.
