@@ -1,9 +1,13 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding, getActiveProvider } from './embeddings'
+import { canViewDocument } from '@/lib/documents/access'
+import type { UserRole, DocumentVisibility } from '@/types/db'
+
+type SourceDomain = 'library' | 'tender_history' | 'document'
 
 export interface KnowledgeChunkMatch {
-  sourceDomain: 'library' | 'tender_history'
+  sourceDomain: SourceDomain
   sourceType: string
   sourceId: string
   chunkText: string
@@ -11,7 +15,7 @@ export interface KnowledgeChunkMatch {
 }
 
 export interface KnowledgeMatchBySource {
-  sourceDomain: 'library' | 'tender_history'
+  sourceDomain: SourceDomain
   sourceId: string
   label: string
   chunks: KnowledgeChunkMatch[]
@@ -35,6 +39,12 @@ async function getTenantId(): Promise<string | null> {
 
 function buildSourceLabel(match: RawKnowledgeMatch): string {
   const meta = match.metadata ?? {}
+  if (match.source_domain === 'document') {
+    // Lien source conservé : [doc:id] → ré-ouvrable /documents/<id>
+    // (cohérent avec A1, prompts agents). Jamais de scoring/fiche personne.
+    const t = meta.document_type as string | undefined
+    return `Document [doc:${match.source_id}]${t ? ` · ${t}` : ''}`
+  }
   if (match.source_domain === 'library') {
     return (meta.title as string | undefined) ?? 'Document bibliothèque'
   }
@@ -57,7 +67,7 @@ function groupBySource(matches: RawKnowledgeMatch[]): KnowledgeMatchBySource[] {
     const key = `${m.source_domain}:${m.source_id}`
     const entry = bySource.get(key) ?? { firstMatch: m, chunks: [] }
     entry.chunks.push({
-      sourceDomain: m.source_domain as 'library' | 'tender_history',
+      sourceDomain: m.source_domain as SourceDomain,
       sourceType: m.source_type,
       sourceId: m.source_id,
       chunkText: m.chunk_text,
@@ -67,7 +77,7 @@ function groupBySource(matches: RawKnowledgeMatch[]): KnowledgeMatchBySource[] {
   }
 
   return [...bySource.values()].map(({ firstMatch, chunks }) => ({
-    sourceDomain: firstMatch.source_domain as 'library' | 'tender_history',
+    sourceDomain: firstMatch.source_domain as SourceDomain,
     sourceId: firstMatch.source_id,
     label: buildSourceLabel(firstMatch),
     chunks,
@@ -75,10 +85,18 @@ function groupBySource(matches: RawKnowledgeMatch[]): KnowledgeMatchBySource[] {
 }
 
 /**
- * Matche un AO contre la mémoire documentaire du tenant (bibliothèque + AO passés).
+ * Matche un AO contre la mémoire documentaire du tenant : bibliothèque + AO
+ * passés + documents (source_domain='document', A2).
+ *
+ * `role` (défaut null) borne la visibilité des chunks DOCUMENT via
+ * canViewDocument : sans rôle fourni, AUCUN chunk document n'est retourné
+ * (pas de fuite). library/tender_history = savoir entreprise, non concernés.
  * Retourne [] si pas de provider embedding ou pas de texte extrait.
  */
-export async function matchAoToKnowledge(tenderId: string): Promise<KnowledgeMatchBySource[]> {
+export async function matchAoToKnowledge(
+  tenderId: string,
+  role: UserRole | null = null,
+): Promise<KnowledgeMatchBySource[]> {
   if (getActiveProvider() === null) return []
 
   const supabase = createAdminClient()
@@ -102,7 +120,7 @@ export async function matchAoToKnowledge(tenderId: string): Promise<KnowledgeMat
   const { data, error } = await supabase.rpc('find_similar_knowledge_chunks', {
     p_tenant_id: tenantId,
     p_embedding: `[${embedding.join(',')}]`,
-    p_source_domains: ['library', 'tender_history'],
+    p_source_domains: ['library', 'tender_history', 'document'],
     p_limit: 15,
     p_threshold: 0.55,
   })
@@ -110,7 +128,17 @@ export async function matchAoToKnowledge(tenderId: string): Promise<KnowledgeMat
     console.error('[match-ao-knowledge] RPC error', JSON.stringify(error))
     return []
   }
-  const matches = (data ?? []) as RawKnowledgeMatch[]
+  const raw = (data ?? []) as RawKnowledgeMatch[]
+  if (raw.length === 0) return []
+
+  // visibility_level respecté AU RECALL : un chunk document n'est conservé
+  // que si le rôle appelant peut le voir (canViewDocument). library /
+  // tender_history = savoir entreprise, non filtrés. Sans rôle → 0 document.
+  const matches = raw.filter((m) => {
+    if (m.source_domain !== 'document') return true
+    const lvl = (m.metadata?.visibility_level as DocumentVisibility) ?? 'manager'
+    return canViewDocument(role, lvl)
+  })
   if (matches.length === 0) return []
 
   return groupBySource(matches)

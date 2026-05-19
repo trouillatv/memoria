@@ -104,10 +104,14 @@ function formatKnowledgeContext(matches: KnowledgeMatchBySource[]): string {
   return lines.join('\n')
 }
 
-async function fetchKnowledgeContext(tenderId: string): Promise<string> {
+async function fetchKnowledgeContext(
+  tenderId: string,
+  role: UserRole | null = null,
+): Promise<string> {
   if (getActiveProvider() === null) return ''
   try {
-    const matches = await matchAoToKnowledge(tenderId)
+    // role borne la visibilité des chunks document (A2). Sans role → 0 doc.
+    const matches = await matchAoToKnowledge(tenderId, role)
     return formatKnowledgeContext(matches)
   } catch {
     return ''
@@ -258,7 +262,7 @@ export async function sendChatMessageAction(formData: FormData) {
       listChatMessages(parsed.data.tender_id),
       listKnowledgeItems({}),
       fetchTerrainContext(parsed.data.tender_id),
-      fetchKnowledgeContext(parsed.data.tender_id),
+      fetchKnowledgeContext(parsed.data.tender_id, role),
       fetchDocumentContext(parsed.data.message, role),
     ])
   const tenderContext = buildTenderContext(tender, doc, analysis) + terrainCtx + knowledgeCtx
