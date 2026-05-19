@@ -240,17 +240,57 @@ render ; `(doc_source_id)` pour back-fill / invalidation.
 - `refresh expirés` → re-calcul borné (event-driven via expires_at, pas
   un balayage périodique).
 
-#### Seuils (à calibrer empiriquement)
+#### Seuils — JAMAIS figés comme valeur doctrinale (raffinement Vincent 2026-05-20)
 
-- Cosine ≥ **0.65** (vs 0.55 pour `find_similar_knowledge_chunks` —
-  plus strict, anti-bruit).
-- Top-K chunks documents par paire : **3**.
-- Top-N traces par paire : **5**.
+> Un seuil cosine n'est **pas** un fait gravé. Il dépend du type de
+> chunk, de la longueur, de la langue, de la qualité OCR et du bruit
+> métier. **Ne PAS coder en dur 0.65 comme constante opposable.**
+
+- Cosine initial **proposé 0.65** (vs 0.55 pour `find_similar_knowledge_chunks`)
+  — **mesurable, interne, ajustable** par algorithm_version. Stocké en
+  config ou en colonne par lecture (`algorithm_version`), jamais figé.
+- Top-K chunks documents par paire : **3** (paramétrable interne).
+- Top-N traces par paire : **5** (paramétrable interne).
 - k-anonymisation : si la combinaison nomme < 4 personnes distinctes,
   généralisation (V6.7 verrou).
 - Plafond UI : ≤ **3** lectures de résonance / surface site, ≤ **2** /
-  surface contrat. Tri par `internal_score` desc, mais le score reste
-  invisible.
+  surface contrat. Tri par `internal_score` desc, mais **le score reste
+  invisible** (interne, verrou CI : aucun import depuis `app/**`).
+
+#### Filtres critiques (anti faux liens sémantiques — non négociables)
+
+Le verrou produit le plus important après « pas de vérité automatique » :
+« accès » matche *sécurité / badge / informatique / portail / parking /
+login*. **Sans filtres amont, β devient un moteur d'absurdités.** Tout
+candidat de résonance DOIT passer les 4 filtres :
+
+1. **`document_links`** — bornage **structurel** par l'attachement
+   explicite à l'entité scopée (jamais docs × traces tenant-wide).
+2. **`document_type`** — la résonance accepte/refuse selon le couple de
+   types (ex. `procedure` ↔ `site_note` OK ; `facture` ↔ `site_note`
+   refusé). Table de couples autorisés, explicite.
+3. **`target_type`** — un doc lié *contrat* ne génère pas de lecture
+   *site* tant qu'il n'est pas aussi lié au site (et inversement).
+4. **`source_domain`** — restreindre la similarité aux paires
+   (`document` ↔ trace site-scopée), jamais library/tender_history vers
+   un site.
+
+Ces 4 filtres sont **AND**, jamais OR. Un seul manquant = pas de candidat.
+
+#### Documents juridiques — prudence ultra-stricte (raffinement Vincent 2026-05-20)
+
+`document_type ∈ {litige, contrat, avenant, facture}` = **zone à
+risque d'interprétation sensible**. Règles renforcées :
+
+- `visibility_level` minimum imposé : `manager` (jamais `field` /
+  `client_portal`) pour les résonances issues de ces types.
+- Audit obligatoire à toute génération + à toute ouverture de la lecture.
+- Wording de la lecture **explicitement prudent** (« pourrait
+  concerner », « à vérifier humainement »), JAMAIS affirmatif.
+- Validation humaine **avant** affichage dans toute surface partagée
+  (preuves/rapports B3 : zéro auto-exposition).
+- Tripwire structurel : aucune lecture issue de `litige` ne traverse
+  client_portal sans dismiss/validation explicite.
 
 #### Refresh / expiration / statut
 
@@ -297,23 +337,35 @@ résumés, cron) → la phase ne ship pas (cf. règle gouvernance V6).
 
 ### B1 — preuve de concept **sûre** (approche α uniquement)
 - Implémenter les **lectures dérivées déterministes lien-fort** pour 1-2
-  scénarios (recommandé : scénarios 2 « plan d'accès ↔ incident » et 1
-  « procédure ↔ note terrain » via keyword extraction déterministe).
+  scénarios (validés Vincent 2026-05-20) : « plan d'accès ↔ incident »
+  et « procédure ↔ note terrain » via extraction de termes-clés
+  déterministe (faible ambiguïté, forte valeur, peu de bruit).
 - Réutiliser `site_reading_candidates` ou table parallèle minime.
 - Job event-driven idempotent.
 - UI : extension `SiteReadingsList` (kind nouveau).
 - **Garde-fous** : ≤ 3 lectures/site, 2 sources obligatoires, expires 30j,
   dismiss admin, audit, visibilité au render, **zéro LLM**.
-- **Mesure de bruit et couverture** (manual review) → décision B2.
+- **Métriques internes OBLIGATOIRES** (gate B2 — raffinement Vincent
+  2026-05-20) : nombre de lectures générées · taux de clic · taux de
+  suppression / ignoré · taux de validé · estimation de bruit / faux
+  positifs (revue humaine d'un échantillon). Stockées en base (table
+  d'événements ou compteurs), consultables par admin. **Sans ces
+  métriques, B2 ne s'ouvre pas.**
 
-### B2 — pré-calcul cross-store (approche β, gated)
-- **Migration** `cross_store_resonances` (additive, additionne pas une
-  charge de re-embed) + jobs event-driven.
-- Seuils empiriques (initialisés à 0.65 cosine ; ajustables).
-- Bornage strict par `document_links`.
-- Tests : pas de cross-product live, pas de score exposé, k=4 anti-ré-id,
-  visibilité défense-en-profondeur, mock = no real recall.
-- **Gated** sur résultats B1 (si α suffit, sauter B2).
+### B2 — pré-calcul cross-store (approche β, gated DEUX FOIS)
+- **Gated** sur (a) résultats B1 *positifs* (couverture insuffisante en α
+  démontrée) **et** (b) métriques B1 collectées (faux positifs mesurés <
+  un seuil acceptable défini par Vincent avant ouverture).
+- **Migration** `cross_store_resonances` (additive) + jobs event-driven.
+- Seuils empiriques **non figés** (cf. §6.5) — `algorithm_version` permet
+  de varier.
+- Filtres critiques (cf. §6.5) AND : `document_links` + `document_type`
+  (couples autorisés) + `target_type` + `source_domain`.
+- Bornage strict par `document_links` (jamais cross-product live).
+- Tests : pas de cross-product live, pas de score exposé (verrou CI),
+  k=4 anti-ré-id, prudence renforcée juridiques, visibilité
+  défense-en-profondeur, mock = no real recall.
+- **Si α suffit en B1, sauter B2.**
 
 ### B3 — preuves / rapports (consommation, jamais production)
 - Documents rattachés à une intervention apparaissent dans le dossier de
@@ -365,19 +417,24 @@ résumés, cron) → la phase ne ship pas (cf. règle gouvernance V6).
 
 ---
 
-## Décisions à ratifier (avant ouverture de B1)
+## État des ratifications (Vincent 2026-05-20)
 
-1. **Approche d'attaque** : α d'abord (B1 seul), avec β conditionnel à
-   B2 selon mesure de bruit/couverture — **OK** ?
-2. **Scénarios B1** : 2 « plan d'accès ↔ incident » + 1 « procédure ↔
-   note » avec extraction de termes-clés déterministe — **OK** ?
-3. **Plafonds UI** : ≤ 3 lectures résonance/site, ≤ 2/contrat — **OK** ?
-4. **Seuil cosine** initial β (si B2) à 0.65 — **OK** ?
-5. **k=4** appliqué aux résonances documentaires nominatives — **OK** ?
-6. **Réutilisation `site_reading_candidates`** vs nouvelle table
-   `cross_store_resonances` pour β — **à trancher si B2 ouvert**.
-7. **B3/B4** restent **gatées** indépendamment, ouvertes par décision
-   Vincent — **confirmé** ?
+| # | Décision | Statut |
+|---|---|---|
+| 1 | **α d'abord, β conditionnel** à mesure de bruit/couverture | ✅ ratifiée |
+| 2 | **Scénarios B1** : « plan d'accès ↔ incident » + « procédure ↔ note terrain » (termes-clés déterministes) | ✅ ratifiée |
+| 3 | **Plafonds UI** ≤ 3 résonances/site, ≤ 2/contrat | ✅ ratifiée |
+| 4 | Seuil cosine | ⚠️ **raffiné — NE PAS figer à 0.65** ; mesurable, interne, `algorithm_version` (cf. §6.5) |
+| 5 | **k=4** sur résonances documentaires nominatives | ✅ ratifiée (déjà verrou doctrinal) |
+| 6 | Réutiliser `site_reading_candidates` étendu vs nouvelle table `cross_store_resonances` | ⏳ ouvert (à trancher SI B2 ouvert) |
+| 7 | **B3/B4** gatées indépendamment | ✅ ratifiée |
+| **NEW** | **Métriques internes B1 obligatoires** avant ouverture B2 (#lectures, clic, dismiss, validé, faux positifs revus) | ✅ ratifié, ajouté §B1 |
+| **NEW** | **Documents juridiques** (`litige/contrat/avenant/facture`) : prudence ultra-stricte — `visibility ≥ manager`, audit, wording « pourrait », validation humaine avant exposition, tripwire client_portal | ✅ ratifié, ajouté §6.5 |
+| **NEW** | **Filtres critiques AND** : `document_links` + `document_type` (couples autorisés) + `target_type` + `source_domain` — non négociables anti faux liens sémantiques | ✅ ratifié, ajouté §6.5 |
 
-Aucun code, aucune migration, aucune phase B1+ ne démarre tant que ces
-ratifications ne sont pas posées.
+**Seul point encore ouvert** : #6 (table dédiée vs extension de
+`site_reading_candidates`) — décision repoussée à l'ouverture de B2, si
+les métriques B1 le justifient. **B1 peut démarrer** sur les autres
+ratifications.
+
+Aucun code, aucune migration tant que B1 n'est pas explicitement lancé.

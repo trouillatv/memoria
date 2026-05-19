@@ -4,6 +4,23 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-20 — Niveau B : raffinements gravés sur B0 (verrou produit anti-hallucination)
+
+**Décision** : Vincent ratifie B0 avec 3 raffinements **non négociables** intégrés au spec :
+1. **Seuils NON figés comme doctrine** — un cosine n'est pas un fait ; mesurable, interne, ajustable par `algorithm_version`. Aucune constante 0.65 codée en dur comme valeur opposable. `internal_score` reste interne (verrou CI à prévoir : aucun import depuis `app/**`).
+2. **Documents juridiques** (`litige/contrat/avenant/facture`) = zone à risque d'interprétation sensible. `visibility ≥ manager`, audit obligatoire, wording prudent (« pourrait », « à vérifier »), validation humaine avant toute exposition partagée (B3), tripwire structurel client_portal.
+3. **Filtres critiques AND anti faux liens sémantiques** (un seul manquant = pas de candidat) : `document_links` + `document_type` (couples autorisés explicites) + `target_type` + `source_domain`. « Accès » matche sécurité/badge/informatique/portail/login → sans ces 4 filtres, β devient un moteur d'absurdités.
+
+Ajouts B1 : **métriques internes obligatoires** (lectures générées, clic, dismiss, validé, faux positifs revus) — **gate B2 deux fois** (couverture α insuffisante démontrée *et* faux positifs B1 sous seuil défini par Vincent).
+
+**Raison** : le verrou conceptuel central de B n'est pas la technique pgvector mais empêcher que « documents → mémoire du site » devienne un moteur d'hallucinations automatiques. MemorIA passe d'un système de stockage/retrieval/chat à un **système de mémoire opérationnelle contextualisée** ; la frontière est dangereuse, et les meilleurs systèmes mémoire **montrent très peu**.
+
+**Impact code** : AUCUN. Spec amendée. Ratifications 1-3-5-7 ✅, 4 raffinée, 2 confirmée (scénarios B1), 6 ouverte (table dédiée vs extension `site_reading_candidates` — à trancher si B2 ouvert). **B1 peut démarrer sur feu vert explicite**.
+
+**Lien** : Conversation Claude 2026-05-20, branche `feat/access-events`.
+
+---
+
 ## 2026-05-20 — Niveau B documents : étude B0 livrée, ratifications avant B1
 
 **Décision** : Niveau A clos et sain (baseline post-Niveau-A : 685/76/17 — 0 régression, `ensure-today` formellement disculpée par diff). Ouverture de **B0 = étude** (spec `2026-05-20-niveau-b-documents-memoire-relationnelle.md`), **zéro code**. Recommandation gravée : **approche α (lectures dérivées déterministes lien-fort) en B1**, **approche β (pont cross-store `cross_store_resonances` pré-calculé event-driven, seuil cosine 0.65, plafonds 3 lectures/site, 2/contrat)** en B2 *conditionnel* à mesure bruit/couverture de B1. **Approche γ (dupliquer chunks doc dans trace_embeddings) rejetée**. B3 preuves/rapports = consommation visibility-gated + validation humaine. B4 mémoire agents IA = Lecture 1 stricte, recall borné par requête (jamais d'historique gonflant le prompt).
