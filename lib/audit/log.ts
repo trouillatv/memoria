@@ -30,6 +30,8 @@ export type AuditAction =
   | 'created'
   | 'updated'
   | 'evidence_inserted'
+  | 'opened'
+  | 'downloaded'
 
 export interface AuditEvent {
   userId: string | null
