@@ -40,6 +40,8 @@ export interface ChatInput {
   attachmentText?: string         // texte extrait d'une PJ optionnelle
   tenderContext: string            // résumé AO + analyses concaténés
   libraryContext: string           // bibliothèque AGP sérialisée (peut être '')
+  documentContext?: string         // extraits documentaires CIBLÉS et BORNÉS
+                                   // (buildDocumentContext) — jamais un dump
   history: Pick<DbTenderChatMessage, 'role' | 'content' | 'agent_name'>[]
   userId: string | null
   // si fourni, l'agent reçoit en plus les réponses des autres agents pour réagir/contester
@@ -70,6 +72,12 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatOutput> {
     '=== Bibliothèque AGP ===',
     input.libraryContext || '(bibliothèque vide)',
     '',
+    // Extraits documentaires : déjà BORNÉS par buildDocumentContext
+    // (MAX_RETRIEVED_CHUNKS + budget tokens). Slice défensif : chat.ts ne
+    // fait jamais confiance aveugle à un contexte non borné.
+    ...(input.documentContext
+      ? [input.documentContext.slice(0, 6000), '']
+      : []),
     '=== Historique récent ===',
     input.history.slice(-10).map(m => `[${m.role}${m.agent_name ? `:${m.agent_name}` : ''}] ${m.content}`).join('\n') || '(aucun message précédent)',
   ]

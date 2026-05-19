@@ -19,7 +19,8 @@ import { listKnowledgeItems } from '@/lib/db/knowledge'
 import { matchAoToTerrain, type TerrainMatchBySite } from '@/lib/ai/match-ao-terrain'
 import { matchAoToKnowledge, type KnowledgeMatchBySource } from '@/lib/ai/match-ao-knowledge'
 import { getActiveProvider } from '@/lib/ai/embeddings'
-import type { ChatAgentName, Source } from '@/types/db'
+import { buildDocumentContext } from '@/lib/ai/document-context'
+import type { ChatAgentName, Source, UserRole } from '@/types/db'
 
 // ---------------------------------------------------------------------------
 // Terrain context helpers
@@ -108,6 +109,21 @@ async function fetchKnowledgeContext(tenderId: string): Promise<string> {
   try {
     const matches = await matchAoToKnowledge(tenderId)
     return formatKnowledgeContext(matches)
+  } catch {
+    return ''
+  }
+}
+
+// Recall documentaire CIBLÉ et BORNÉ pour la question courante (phase 4b).
+// 1 embedding + 1 RPC plafonnée, filtré visibility_level. Jamais un dump.
+async function fetchDocumentContext(
+  query: string,
+  role: UserRole | null,
+): Promise<string> {
+  if (getActiveProvider() === null) return ''
+  try {
+    const r = await buildDocumentContext({ query, role })
+    return r.promptBlock
   } catch {
     return ''
   }
@@ -227,19 +243,24 @@ export async function sendChatMessageAction(formData: FormData) {
   const tender = await getTender(parsed.data.tender_id)
   if (!tender) return { error: 'AO introuvable' }
 
+  // Rôle appelant : filtre le recall documentaire par visibility_level.
+  const role = await getUserRoleById(userId)
+
   // Build context for the agent — history fetched BEFORE inserting the current
   // user message, so that history contains only previous turns (le message
   // courant est passé séparément comme userMessage à chatWithAgent).
   // fetchTerrainContext tourne en parallèle : ~150ms, jamais bloquant.
-  const [doc, analysis, lib, history, knowledgeItems, terrainCtx, knowledgeCtx] = await Promise.all([
-    getTenderDocument(parsed.data.tender_id),
-    getLatestTenderAnalysis(parsed.data.tender_id),
-    buildLibraryContext(),
-    listChatMessages(parsed.data.tender_id),
-    listKnowledgeItems({}),
-    fetchTerrainContext(parsed.data.tender_id),
-    fetchKnowledgeContext(parsed.data.tender_id),
-  ])
+  const [doc, analysis, lib, history, knowledgeItems, terrainCtx, knowledgeCtx, documentCtx] =
+    await Promise.all([
+      getTenderDocument(parsed.data.tender_id),
+      getLatestTenderAnalysis(parsed.data.tender_id),
+      buildLibraryContext(),
+      listChatMessages(parsed.data.tender_id),
+      listKnowledgeItems({}),
+      fetchTerrainContext(parsed.data.tender_id),
+      fetchKnowledgeContext(parsed.data.tender_id),
+      fetchDocumentContext(parsed.data.message, role),
+    ])
   const tenderContext = buildTenderContext(tender, doc, analysis) + terrainCtx + knowledgeCtx
 
   // Common turn_id — groups the user message and all agent responses
@@ -306,6 +327,7 @@ export async function sendChatMessageAction(formData: FormData) {
           attachmentText,
           tenderContext,
           libraryContext: lib.markdown,
+          documentContext: documentCtx,
           history,
           userId,
         })
