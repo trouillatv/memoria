@@ -16,6 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
+import { listDocumentsForTarget } from '@/lib/db/documents'
+import { canViewDocument } from '@/lib/documents/access'
+import { LinkedDocumentsList } from '@/components/documents/LinkedDocumentsList'
 import {
   getSiteIdentity,
   getSiteCurrentState,
@@ -69,6 +72,7 @@ export default async function SitePage({ params }: PageProps) {
     readings,
     memoryMeta,
     sitePhotos,
+    siteDocs,
   ] = await Promise.all([
     getSiteIdentity(id),
     getSiteCurrentState(id),
@@ -83,6 +87,7 @@ export default async function SitePage({ params }: PageProps) {
     getSiteReadings(id),
     getSiteMemoryMeta(id),
     getSiteRecentPhotos(id, 9),
+    listDocumentsForTarget('site', id),
   ])
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
@@ -96,6 +101,12 @@ export default async function SitePage({ params }: PageProps) {
   }
 
   if (!identity) notFound()
+
+  // A4 — documents rattachés au site (consommateur mince). visibility_level
+  // respecté : un document non autorisé pour ce rôle n'apparaît jamais.
+  const visibleSiteDocs = siteDocs.filter((d) =>
+    canViewDocument(user.role, d.visibility_level),
+  )
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -217,6 +228,25 @@ export default async function SitePage({ params }: PageProps) {
           <RecentActivity items={recentActivity} />
         </CardContent>
       </Card>
+
+      {/* A4 — Documents rattachés (consommateur mince, 0 IA). Masquée si
+          aucun document visible pour ce rôle (visibility_level respecté). */}
+      {visibleSiteDocs.length > 0 && (
+        <Card data-testid="site-documents">
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+            <CardTitle>Documents ({visibleSiteDocs.length})</CardTitle>
+            <Link
+              href={`/documents?target_type=site&target_id=${id}`}
+              className="text-xs font-normal text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Ajouter un document →
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <LinkedDocumentsList documents={visibleSiteDocs} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* V5.1 Slice 5 — Lien Atelier mémoire / Résonances.
           Entrée discrète, bas de page, pas en hero. */}
