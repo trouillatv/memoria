@@ -32,7 +32,11 @@ export const NAV: NavItem[] = [
   { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'] },
-  { href: '/library',    label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
+  // Option C (Vincent 2026-05-19) : « Bibliothèque » = bibliothèque
+  // documentaire vivante (/documents). /library (savoir curé knowledge_items)
+  // reste intacte (route directe + lien contextuel AO) ; pas d'entrée
+  // « Documents » séparée. Convergence knowledge_items→documents = tranche future.
+  { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
   { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'] },
 ]
 
