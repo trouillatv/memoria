@@ -11,6 +11,8 @@ import {
   getContractMemory,
 } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
+import { listDocumentsForTarget } from '@/lib/db/documents'
+import { analysisStatusLabel } from '@/lib/documents/labels'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
@@ -27,7 +29,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory] =
+  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs] =
     await Promise.all([
       listEngagementsByContract(id),
       listMissionsByContract(id),
@@ -37,6 +39,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       getContractVitals(id),
       getContractExpiry(id),
       getContractMemory(id),
+      listDocumentsForTarget('contract', id),
     ])
   const summary = summaryMap.get(id) ?? null
 
@@ -222,6 +225,52 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               ))}
             </ul>
           </div>
+        )}
+      </section>
+
+      {/* V6.3+ — Documents du contrat : consommateur MINCE du système
+          documentaire générique. Lecture seule, sobre, zéro IA. Le contrat
+          est un simple `target_type` ; aucune logique documentaire ici. */}
+      <section className="rounded-lg border bg-card p-4" data-testid="contract-documents">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Documents ({contractDocs.length})
+          </h2>
+          <Link
+            href={`/documents?target_type=contract&target_id=${id}`}
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Ajouter un document →
+          </Link>
+        </div>
+        {contractDocs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucun document rattaché à ce contrat.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {contractDocs.map((d) => (
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-3 py-2 text-sm"
+              >
+                <span className="min-w-0">
+                  <Link
+                    href={`/documents/${d.id}`}
+                    className="font-medium underline hover:text-foreground break-words"
+                  >
+                    {d.filename}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    {' '}· {d.document_type}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {analysisStatusLabel(d.analysis_status)}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

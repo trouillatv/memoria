@@ -11,7 +11,11 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { createDocument, addDocumentLink } from '@/lib/db/documents'
+import {
+  createDocument,
+  addDocumentLink,
+  createDocumentCollection,
+} from '@/lib/db/documents'
 import { analyzeDocument } from '@/lib/documents/analyze'
 
 async function requireManagerOrAdmin(): Promise<string> {
@@ -43,6 +47,7 @@ const uploadSchema = z
     // B : document_type OBLIGATOIRE.
     document_type: z.enum(DOCUMENT_TYPES),
     visibility_level: z.enum(VISIBILITY).optional(),
+    tags: z.string().max(300).optional(), // CSV → string[]
     // Liens OPTIONNELS (A) : les deux ou aucun.
     target_type: z.enum(TARGET_TYPES).optional(),
     target_id: z.string().uuid().optional(),
@@ -53,6 +58,42 @@ const uploadSchema = z
     (d) => (d.target_type ? !!d.target_id : !d.target_id),
     { message: 'target_type et target_id vont ensemble' },
   )
+
+const collectionSchema = z.object({
+  name: z.string().trim().min(2, 'Nom trop court').max(120),
+  scope_type: z.string().max(40).optional(),
+  scope_id: z.string().uuid().optional(),
+})
+
+export async function createDocumentCollectionAction(
+  formData: FormData,
+): Promise<{ ok: boolean; collectionId?: string; error?: string }> {
+  let userId: string
+  try {
+    userId = await requireManagerOrAdmin()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
+  }
+  void userId
+  const parsed = collectionSchema.safeParse({
+    name: formData.get('name'),
+    scope_type: formData.get('scope_type') || undefined,
+    scope_id: formData.get('scope_id') || undefined,
+  })
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+  try {
+    const collectionId = await createDocumentCollection({
+      name: parsed.data.name,
+      scope_type: parsed.data.scope_type ?? null,
+      scope_id: parsed.data.scope_id ?? null,
+    })
+    return { ok: true, collectionId }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Création échouée' }
+  }
+}
 
 export interface UploadDocumentResult {
   ok: boolean
@@ -79,6 +120,7 @@ export async function uploadDocumentAction(
     collection_id: formData.get('collection_id'),
     document_type: formData.get('document_type'),
     visibility_level: formData.get('visibility_level') || undefined,
+    tags: formData.get('tags') || undefined,
     target_type: formData.get('target_type') || undefined,
     target_id: formData.get('target_id') || undefined,
     effective_date: formData.get('effective_date') || undefined,
@@ -110,6 +152,9 @@ export async function uploadDocumentAction(
       storage_path: storagePath,
       filename: file.name,
       visibility_level: input.visibility_level,
+      tags: input.tags
+        ? input.tags.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 20)
+        : undefined,
       size_bytes: file.size,
       effective_date: input.effective_date ?? null,
       expires_date: input.expires_date ?? null,
