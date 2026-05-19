@@ -1,6 +1,6 @@
 # Étude — Document Lifecycle (pré-requis tranche 4 V6.3)
 
-> **Statut : ÉTUDE. Aucune migration. Décisions A–H à ratifier AVANT 073.**
+> **Statut : ÉTUDE. Aucune migration. Décisions A–I à ratifier AVANT 073.**
 > Demandée par Vincent 2026-05-19 : « la structure doit être pensée avant
 > migration ». Objectif : un document de contrat n'est pas un PDF stocké —
 > il peut devenir preuve, mémoire, source AO, procédure, contexte IA,
@@ -15,6 +15,34 @@ le substrat sémantique qui existe déjà.** MemorIA n'a pas besoin d'un
 nouveau RAG — il en a un (`knowledge_chunks`, embeddings 768-dim Google,
 RPC multi-domaine, extraction PDF/OCR). Le document s'y **branche**, il ne
 le recrée pas (doctrine V6 : « agrégation d'existant, pas création »).
+
+## Discipline coût IA — contrainte transverse OPPOSABLE (Vincent 2026-05-19)
+
+> Prisme de lecture de toute cette spec. Le risque coût/perf de MemorIA
+> n'est ni l'embedding ni le MVP Guillaume — c'est le « LLM live partout »,
+> les agents permanents, la relecture documentaire massive, les prompts non
+> bornés. L'IA doit rester discrète, ciblée, async, capitalisante, faible
+> coût, forte utilité. **Pas un SaaS « full agent ».**
+
+Architecture cible **toujours** : `écriture/analyse async → stockage →
+pré-calcul → lecture SQL rapide`. **Jamais** : `ouverture page → recalcul
+IA / prompts live / embeddings live / relecture documents`.
+
+Appliqué au document :
+
+- **Analysé UNE fois** à l'upload (extraction → chunks → embeddings
+  stockés). Jamais re-extrait/re-embeddé à l'affichage ni au recall.
+- **Recall borné** : une question agent → retrieval ciblé (k chunks
+  pertinents via `find_similar_knowledge_chunks`) → réponse. **Interdit** :
+  injecter un PDF entier, toute une collection, toute la biblio dans un
+  prompt ; agents copilotes permanents ; « 7 agents × 20 docs × 10k tokens ».
+- **Context budget explicite** : tout prompt agent a un plafond de chunks +
+  tokens borné et mesuré (cf. décision I).
+- La visionneuse « relire » (F) sert le **fichier stocké** (URL signée), pas
+  une relecture/ré-analyse IA.
+
+Cette section est opposable au même titre que les garde-fous doctrine :
+une phase qui réintroduit du LLM-live non borné ne ship pas.
 
 ## Substrat réutilisable (NE PAS recréer)
 
@@ -129,21 +157,53 @@ Documents de la page contrat devient un **consommateur mince** (liste les
 documents dont un `document_links` pointe le contrat). Cela répond
 exactement au refus Vincent du « simple upload / encore un drive ».
 
+### I. Document analysé une fois + context budget borné (discipline coût IA)
+
+Conséquence directe de la *Discipline coût IA*. À cadrer dès la structure,
+pas après :
+
+- **`analysis_status`** sur `documents` : `pending → extracting → embedding
+  → ready | failed` (+ `failed_reason`). Lu en SQL ; jamais de ré-analyse
+  déclenchée par l'affichage.
+- **Relance OCR/analyse = action explicite** (bouton admin), idempotente,
+  tracée (audit). Jamais automatique au render.
+- **`chunk metadata` riche dès l'indexation** (`document_type`,
+  `collection_id`, `links[]`, `page`, `section`, `effective_date`) — c'est
+  ce qui permet le retrieval **filtré donc borné**.
+- **Inspection des chunks** : vue admin lecture seule (texte indexé) pour
+  debug/confiance — SELECT pur, zéro IA.
+- **Preview** = rendu du fichier stocké (URL signée), jamais une
+  re-extraction.
+- **Context budget agent** : constantes opposables (`MAX_RETRIEVED_CHUNKS`,
+  `MAX_CONTEXT_TOKENS`) + test garde-fou qui échoue si un builder de prompt
+  agent peut injecter un document entier ou une collection complète.
+
 ---
 
 ## Phasage proposé (073 minimale et sûre)
 
 | Phase | Contenu | Migration |
 |---|---|---|
-| **0** | Cette étude — ratifier A–H | aucune |
+| **0** | Cette étude — ratifier A–I | aucune |
 | **1** | `documents`, `document_links`, `document_collections`, bucket `documents`, RLS rôle, enum `source_domain += 'document'` | **073** (additive, gatée) |
 | **2** | `lib/db/documents.ts` + upload Server Action + extract + `embedDocumentChunks` (réutilise extract.ts + copie embed-knowledge-chunks) | aucune |
 | **3** | Visionneuse `/documents/[id]` (URL signée, audit) + liens « ouvrir la source » depuis AO/engagement/mémoire/agent/preuve | aucune |
 | **4** | `buildDocumentContext()` (injection agents) + collections UI + section Documents page contrat (consommateur mince) | aucune |
 
-Migration 073 reste **gatée** : non écrite, non appliquée, tant que A–H ne
+Migration 073 reste **gatée** : non écrite, non appliquée, tant que A–I ne
 sont pas ratifiées. Discipline 071/072 : fichier créé + commité avec son
 code + appliqué sur feu vert explicite.
+
+## Roadmap différée — explicite (ne pas implémenter maintenant)
+
+**Observabilité coût IA** : coût par tenant / par feature / OCR / voice /
+Atelier ; tokens ; embeddings générés ; documents analysés. Décision
+Vincent 2026-05-19 : **pas maintenant** si ça ralentit, mais gardé
+explicitement sur la roadmap. Le MVP Guillaume reste peu coûteux
+(embeddings faibles, OCR rare, voice rentable, Atelier ponctuel) ; ce
+chantier devient prioritaire quand le multi-tenant ou l'usage Atelier
+montent. À cadrer comme une feature `ai_usage`-centric (la table existe
+déjà : `008_ai_usage.sql`).
 
 ## Pourquoi cette structure (synthèse)
 

@@ -4,6 +4,18 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-19 — Discipline coût/perf IA : async pré-calcul, jamais « LLM live partout »
+
+**Décision** : contrainte d'architecture transverse **opposable** (au même titre que les garde-fous doctrine). Toute proposition touchant l'IA (embeddings, OCR, voice, Atelier/agents, mémoire, documents) suit `écriture/analyse async → stockage → pré-calcul → lecture SQL pure` ; jamais `ouverture page → recalcul IA / prompts live / embeddings live / relecture documents`. Agents Atelier = retrieval **ciblé et borné** (question → k chunks pertinents → réponse), jamais « 7 agents × 20 docs × 10k tokens », jamais copilote permanent ni contexte non borné. Documents : analysés une fois, jamais relus en continu ; context budget agent plafonné et testé.
+
+**Raison** : MemorIA s'enrichit (mémoire terrain, embeddings, voice, OCR, Atelier, biblio docs, matching AO, résonances, docs contrat). Le risque coût/perf n'est ni l'embedding (rare, peu cher) ni le MVP Guillaume — c'est le LLM live, les agents permanents, la relecture documentaire massive, les prompts non bornés. L'IA doit rester discrète, ciblée, async, capitalisante, faible coût, forte utilité — pas un SaaS « full agent » ni une UX dépendante du LLM.
+
+**Impact** : gravé dans la mémoire projet (`ai-cost-discipline`) et opposable dans `specs/2026-05-19-document-lifecycle-design.md` (section dédiée + décision I : `analysis_status`, relance OCR explicite, chunk metadata riche, inspection chunks, context budget testé). Observabilité coût IA (par tenant/feature/OCR/voice/Atelier, tokens, embeddings, docs) ajoutée à la **roadmap différée explicite** (pas maintenant ; base `ai_usage` 008 existe déjà).
+
+**Lien** : Conversation Claude 2026-05-19, branche `feat/access-events`. Cadre toutes les futures propositions IA.
+
+---
+
 ## 2026-05-19 — Pilier V6.8 : vue Agent configurable V6↔V7 (raffinement enforcement)
 
 **Décision** : Vincent raffine l'enforcement V6.7. Principe gravé : *on change la doctrine explicitement, jamais en contournant les tests*. Les verrous doivent protéger la philosophie (anti dérive RH/surveillance), pas empêcher l'évolution produit ni la traçabilité opérationnelle. Introduction du **Pilier V6.8** : la vue Agent n'est plus interdite définitivement mais **différée et configurable** via `DOCTRINE_AGENT_VIEW: 'V6' | 'V7'` (`tests/doctrine/v67-brief-reprise.test.ts`). Deux strates : (A) **cœur RH** — route/table/symbole/générateur/vocabulaire de scoring-ranking-jugement humain — interdit en V6 **et** V7 ; (B) **vue agent autonome** — refusée en V6 (défaut, refus V6.2 maintenu), autorisée en V7 sous contraintes de continuité opérationnelle (sites connus, contrats travaillés, interventions passées, habilitations, heures déclarées, documents, continuité).
