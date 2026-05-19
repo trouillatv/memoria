@@ -105,6 +105,17 @@ export async function analyzeDocument(documentId: string): Promise<void> {
     await embedDocumentChunks(documentId)
 
     await updateDocumentAnalysisStatus(documentId, 'ready')
+
+    // B1 — résonances documentaires déterministes (fire-and-forget, pattern A3).
+    // Import dynamique pour garder le module server-only hors graphe statique
+    // d'éventuels tests. Erreurs silencieuses : la résonance est un bonus,
+    // jamais bloquante pour l'analyse réussie.
+    try {
+      const { computeDocResonancesForDocument } = await import('./resonances')
+      void computeDocResonancesForDocument(documentId).catch(() => {})
+    } catch {
+      // module absent ou import KO → ignoré
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     logSober('pipeline_error', documentId, { error: msg })
