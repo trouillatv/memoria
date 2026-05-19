@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso, localDateOf } from '@/lib/time/local-date'
-import type { DbContract, ContractStatus } from '@/types/db'
+import { listDocumentsForTarget } from '@/lib/db/documents'
+import { canViewDocument } from '@/lib/documents/access'
+import type { DbContract, ContractStatus, UserRole } from '@/types/db'
 
 // ============================================================================
 // Sprint 5 — UX-9 Preuve de continuité (Doctrine V5)
@@ -457,11 +459,15 @@ export async function getContractVitals(contractId: string): Promise<ContractVit
  * réelles uniquement (continuité, prestations documentées, échéance). Aucune
  * narration générée (verrou ia-interdits), aucun score/%/tension (V6.4).
  */
-export async function getContractMemory(contractId: string): Promise<string[]> {
-  const [continuity, vitals, expiry] = await Promise.all([
+export async function getContractMemory(
+  contractId: string,
+  role: UserRole | null = null,
+): Promise<string[]> {
+  const [continuity, vitals, expiry, linkedDocs] = await Promise.all([
     getContractContinuity(contractId),
     getContractVitals(contractId),
     getContractExpiry(contractId),
+    listDocumentsForTarget('contract', contractId),
   ])
 
   const facts: string[] = []
@@ -485,6 +491,25 @@ export async function getContractMemory(contractId: string): Promise<string[]> {
   )
 
   if (expiry.kind !== 'none') facts.push(expiry.label)
+
+  // A5 — fait documentaire FACTUEL et sobre (zéro IA/recall/score). Source
+  // réelle = document_links. visibility_level respecté : sans rôle résolu
+  // (role=null → canViewDocument false), aucun document visible → AUCUN
+  // détail exposé (pas de fait). Aucun document admin_only ne fuite vers
+  // un rôle non autorisé.
+  const visibleDocs = linkedDocs.filter((d) =>
+    canViewDocument(role, d.visibility_level),
+  )
+  if (visibleDocs.length > 0) {
+    const n = visibleDocs.length
+    // Types distincts, triés (déterministe), plafonnés (sobre).
+    const types = [...new Set(visibleDocs.map((d) => d.document_type))]
+      .sort()
+      .slice(0, 6)
+    facts.push(
+      `${n} document${n > 1 ? 's' : ''} rattaché${n > 1 ? 's' : ''} à ce contrat : ${types.join(' · ')}.`,
+    )
+  }
 
   return facts
 }

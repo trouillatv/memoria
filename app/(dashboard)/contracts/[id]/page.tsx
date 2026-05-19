@@ -31,7 +31,12 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs, me] =
+  // Rôle résolu AVANT le Promise.all : passé à getContractMemory (A5,
+  // visibility_level du fait documentaire) et au filtre de la section 4a.
+  const me = await getCurrentUserWithProfile()
+  const myRole = me?.role ?? null
+
+  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs] =
     await Promise.all([
       listEngagementsByContract(id),
       listMissionsByContract(id),
@@ -40,15 +45,14 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       getContractSummaries([id]),
       getContractVitals(id),
       getContractExpiry(id),
-      getContractMemory(id),
+      getContractMemory(id, myRole),
       listDocumentsForTarget('contract', id),
-      getCurrentUserWithProfile(),
     ])
 
-  // visibility_level respecté (comble le trou de la section 4a) : aucun
-  // document non autorisé pour ce rôle n'apparaît.
+  // visibility_level respecté (section 4a) : aucun document non autorisé
+  // pour ce rôle n'apparaît.
   const visibleContractDocs = contractDocs.filter((d) =>
-    canViewDocument(me?.role ?? null, d.visibility_level),
+    canViewDocument(myRole, d.visibility_level),
   )
   const summary = summaryMap.get(id) ?? null
 
