@@ -4,6 +4,18 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-19 — Ratification A–K : architecture documentaire = pilier central
+
+**Décision** : Vincent ratifie les décisions A–K de `specs/2026-05-19-document-lifecycle-design.md`. Le document devient un **nœud de la couche mémoire centrale** (pas un fichier attaché). Affinements gravés : (C) collection **obligatoire à l'upload** ; (G→**J**) accès non plus `admin/manager` rigide mais `visibility_level` gradué (`admin_only|manager|operations|field|client_portal`) propagé jusqu'au chunk metadata (le filtre vaut au recall RAG, pas seulement UI), audit obligatoire à tout niveau ; (I) états d'analyse explicites `pending→ocr?→extracting→chunking→ready|failed`, bouton « Réanalyser » obligatoire, chunk explorer prévu ; (**K**) bulk import + `content_hash` dédup prévus dès J1 (structure), implémentation roadmap.
+
+**Raison** : éviter le piège « Google Drive + IA collée ». Refus du `*_documents` par entité (enfer architecture à 6 mois) → `documents` + `document_links` polymorphe. Réutilisation totale du RAG existant (`knowledge_chunks`, embeddings 768, OCR, retrieval, injection agents) : `source_domain += 'document'`. La bibliothèque documentaire devient le pilier produit (« gestion intelligente de mémoire opérationnelle documentaire et terrain »).
+
+**Impact** : 073 débloquée. Phase 1 = migration 073 additive (`documents`, `document_links`, `document_collections`, bucket, RLS rôle + `visibility_level`, `analysis_status`, `content_hash`, enum `source_domain`) + `lib/db/documents.ts`. Discipline 071/072 : commitée avec le code, **appliquée sur feu vert explicite**. Discipline coût IA (entrée ci-dessous) opposable à toutes les phases.
+
+**Lien** : Conversation Claude 2026-05-19, branche `feat/access-events`.
+
+---
+
 ## 2026-05-19 — Discipline coût/perf IA : async pré-calcul, jamais « LLM live partout »
 
 **Décision** : contrainte d'architecture transverse **opposable** (au même titre que les garde-fous doctrine). Toute proposition touchant l'IA (embeddings, OCR, voice, Atelier/agents, mémoire, documents) suit `écriture/analyse async → stockage → pré-calcul → lecture SQL pure` ; jamais `ouverture page → recalcul IA / prompts live / embeddings live / relecture documents`. Agents Atelier = retrieval **ciblé et borné** (question → k chunks pertinents → réponse), jamais « 7 agents × 20 docs × 10k tokens », jamais copilote permanent ni contexte non borné. Documents : analysés une fois, jamais relus en continu ; context budget agent plafonné et testé.

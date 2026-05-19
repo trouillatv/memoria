@@ -1,6 +1,9 @@
 # Étude — Document Lifecycle (pré-requis tranche 4 V6.3)
 
-> **Statut : ÉTUDE. Aucune migration. Décisions A–I à ratifier AVANT 073.**
+> **Statut : RATIFIÉ A–K (Vincent 2026-05-19).** 073 débloquée. Phase 1 =
+> migration 073 additive + code, appliquée sur feu vert explicite
+> (discipline 071/072). La bibliothèque documentaire devient un **pilier
+> central** du produit (couche mémoire opérationnelle).
 > Demandée par Vincent 2026-05-19 : « la structure doit être pensée avant
 > migration ». Objectif : un document de contrat n'est pas un PDF stocké —
 > il peut devenir preuve, mémoire, source AO, procédure, contexte IA,
@@ -90,10 +93,11 @@ securite`, pas dans `facture`). Sans typologie : RAG indifférencié, bruit.
 ### C. Collections / dossiers — OBLIGATOIRE
 
 `document_collections(id, tenant_id, name, scope_type, scope_id)` +
-`documents.collection_id` (nullable, 1 collection/doc pour démarrer ; M2M
-si besoin avéré plus tard). Sans collections : bibliothèque morte (constat
-Vincent). Doctrine : une collection est organisationnelle — **aucun score,
-aucun classement**.
+`documents.collection_id` **NOT NULL — collection OBLIGATOIRE à l'upload**
+(arbitrage Vincent : sinon les gens dumpent tout → bibliothèque morte). 1
+collection/doc pour démarrer ; M2M si besoin avéré plus tard. Une collection
+« Non classés » par défaut est acceptable mais le choix reste explicite à
+l'upload. Doctrine : organisationnel — **aucun score, aucun classement**.
 
 ### D. Cycle de vie (le « vivant », pas le « drive »)
 
@@ -138,9 +142,14 @@ c'est *le* trou de confiance que Vincent pointe.
 - **Jamais sujet-personne** : un document n'est pas indexé *par personne*,
   pas de route `/documents?agent=`. Un litige nommant un agent reste un
   artefact de contrat/litige, pas une fiche agent (cohérent V6.2/V6.8).
-- **Accès role-gaté + audité** : ouverture/téléchargement réservé
-  admin/manager (RLS rôle), `logAuditEvent('document', 'opened'|'downloaded')`.
-  L'audit — pas l'absence — est la dissuasion (cohérent verrou V6.7 #audit).
+- **Accès par `visibility_level`, jamais admin-only rigide** (nuance Vincent
+  2026-05-19) : interdire « les documents nommant des personnes » est
+  impossible (litiges, contrats, courriers en contiennent). Le garde-fou
+  n'est PAS l'absence, c'est **accès gradué + audit + non-indexation
+  personne-centric**. Voir décision **J** (`visibility_level`).
+- **Audit OBLIGATOIRE, sans exception** : toute ouverture/téléchargement
+  → `logAuditEvent('document', 'opened'|'downloaded')`. L'audit — pas
+  l'absence — est la dissuasion (cohérent verrou V6.7 #audit).
 - **Embeddings = détection sémantique, jamais génération** (V5.1.4). Pas de
   résumé LLM du document affiché comme vérité.
 - **Aucun score documentaire** : pas de « complétude dossier 78 % », pas de
@@ -162,21 +171,52 @@ exactement au refus Vincent du « simple upload / encore un drive ».
 Conséquence directe de la *Discipline coût IA*. À cadrer dès la structure,
 pas après :
 
-- **`analysis_status`** sur `documents` : `pending → extracting → embedding
-  → ready | failed` (+ `failed_reason`). Lu en SQL ; jamais de ré-analyse
-  déclenchée par l'affichage.
-- **Relance OCR/analyse = action explicite** (bouton admin), idempotente,
-  tracée (audit). Jamais automatique au render.
+- **`analysis_status` — états explicites** (Vincent : sinon debug
+  impossible, UX confuse, pipeline opaque) :
+  `pending → ocr? → extracting → chunking → ready | failed`
+  (+ `failed_reason text`). `ocr` n'est traversé que si PDF scanné. Lu en
+  SQL ; **jamais** de ré-analyse déclenchée par l'affichage.
+- **Relance analyse = bouton « Réanalyser » explicite** (OBLIGATOIRE),
+  admin, idempotent, tracé (audit). Jamais automatique au render.
 - **`chunk metadata` riche dès l'indexation** (`document_type`,
-  `collection_id`, `links[]`, `page`, `section`, `effective_date`) — c'est
-  ce qui permet le retrieval **filtré donc borné**.
-- **Inspection des chunks** : vue admin lecture seule (texte indexé) pour
-  debug/confiance — SELECT pur, zéro IA.
+  `collection_id`, `links[]`, `page`, `section`, `effective_date`,
+  `visibility_level`) — permet le retrieval **filtré donc borné** (et le
+  filtrage d'accès au recall, cf. J).
+- **Chunk explorer** : structure prévue dès J1 (pas d'UI complète
+  maintenant) — un document expose `n chunks / n embeddings / n liens
+  mémoire`. Vue admin lecture seule, SELECT pur, zéro IA.
 - **Preview** = rendu du fichier stocké (URL signée), jamais une
   re-extraction.
 - **Context budget agent** : constantes opposables (`MAX_RETRIEVED_CHUNKS`,
   `MAX_CONTEXT_TOKENS`) + test garde-fou qui échoue si un builder de prompt
   agent peut injecter un document entier ou une collection complète.
+
+### J. Visibility level (nuance G — accès gradué, pas admin-only rigide)
+
+Arbitrage Vincent 2026-05-19 : certaines procédures/documents sont utiles
+**terrain**. Un `admin/manager only` absolu est trop rigide à long terme.
+
+`documents.visibility_level` enum :
+`admin_only | manager | operations | field | client_portal`.
+
+- L'accès (visionneuse F, recall agent, listings) filtre sur
+  `visibility_level` croisé au rôle de l'appelant (RLS + filtre applicatif).
+- `visibility_level` est **propagé dans le chunk metadata** → un agent ne
+  peut pas restituer en recall un extrait au-dessus du niveau de
+  l'appelant (le garde-fou vaut aussi côté RAG, pas seulement UI).
+- **Audit obligatoire à tout niveau** (J ne relâche pas l'audit de G).
+- Doctrine : `visibility_level` est une propriété **du document**, jamais
+  une donnée sur la personne ; ne crée aucune surface sujet-personne.
+
+### K. Bulk import + déduplication (roadmap explicite, non implémenté J1)
+
+- **Bulk import** : prévu explicitement (sinon migration des archives
+  existantes impossible). Structure compatible dès J1 (upload unitaire ET
+  lot ; même pipeline async, même `analysis_status`). UI/commande = phase
+  ultérieure, mais le modèle ne doit pas l'empêcher.
+- **Déduplication** : un `content_hash` (sha256 du binaire) sur `documents`
+  dès J1 (colonne, pas de logique) pour rendre la dédup possible plus tard
+  (« même PDF uploadé 4 fois »). Détection/merge = roadmap.
 
 ---
 
@@ -184,15 +224,15 @@ pas après :
 
 | Phase | Contenu | Migration |
 |---|---|---|
-| **0** | Cette étude — ratifier A–I | aucune |
+| **0** | Cette étude — **ratifiée A–K** (2026-05-19) ✅ | aucune |
 | **1** | `documents`, `document_links`, `document_collections`, bucket `documents`, RLS rôle, enum `source_domain += 'document'` | **073** (additive, gatée) |
 | **2** | `lib/db/documents.ts` + upload Server Action + extract + `embedDocumentChunks` (réutilise extract.ts + copie embed-knowledge-chunks) | aucune |
 | **3** | Visionneuse `/documents/[id]` (URL signée, audit) + liens « ouvrir la source » depuis AO/engagement/mémoire/agent/preuve | aucune |
 | **4** | `buildDocumentContext()` (injection agents) + collections UI + section Documents page contrat (consommateur mince) | aucune |
 
-Migration 073 reste **gatée** : non écrite, non appliquée, tant que A–I ne
-sont pas ratifiées. Discipline 071/072 : fichier créé + commité avec son
-code + appliqué sur feu vert explicite.
+A–K **ratifiées 2026-05-19** → 073 débloquée. Discipline 071/072
+maintenue : migration écrite + commitée **avec** son code, **appliquée en
+base sur feu vert explicite** (jamais par moi unilatéralement).
 
 ## Roadmap différée — explicite (ne pas implémenter maintenant)
 
