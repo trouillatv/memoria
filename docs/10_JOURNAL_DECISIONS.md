@@ -4,6 +4,20 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-19 — Option C + convergence knowledge_items→documents (planifiée, non exécutée)
+
+**Décision** : (court terme, fait — `8b632fd`) une seule entrée menu « Bibliothèque » → `/documents` (expérience documentaire vivante) ; `/library` (savoir curé `knowledge_items`) reste **intacte** (route directe + lien contextuel AO), hors menu principal ; pipeline `knowledge_items` (`buildLibraryContext`, `matchAoToKnowledge`, embed, backfill, agents) **non touché** ; aucune migration. (moyen terme, **planifié non exécuté**) converger `knowledge_items` en `document_type='knowledge'` du système générique — spec `specs/2026-05-19-knowledge-documents-convergence.md`.
+
+**Raison** : les deux systèmes finissent au même endpoint RAG (`knowledge_chunks`) → deux pipelines = dette (double embed/match, prompts dupliqués, double modèle mental). Fenêtre idéale = MVP (les deux quasi vides) ; migration douloureuse plus tard. Mais l'arc documents vient d'être livré stable/testé → pas de gros refactor immédiat (discipline : converger tôt, pas brutalement).
+
+**Invariant gravé** : un seul magasin ≠ une seule politique d'injection. La convergence doit préserver **deux sémantiques de retrieval** — savoir curé (`type=knowledge`) = snapshot permanent Atelier ; document source uploadé = recall borné par question (discipline coût IA). La politique se décide par `document_type`, pas par le store.
+
+**Déclencheur opposable** : converger dès `documents`>~50 OU `knowledge_items`>~30 OU besoin d'un 2ᵉ chemin embed/match, OU feu vert explicite. Sinon coexistence.
+
+**Lien** : Conversation Claude 2026-05-19, branche `feat/access-events`.
+
+---
+
 ## 2026-05-19 — Ratification A–K : architecture documentaire = pilier central
 
 **Décision** : Vincent ratifie les décisions A–K de `specs/2026-05-19-document-lifecycle-design.md`. Le document devient un **nœud de la couche mémoire centrale** (pas un fichier attaché). Affinements gravés : (C) collection **obligatoire à l'upload** ; (G→**J**) accès non plus `admin/manager` rigide mais `visibility_level` gradué (`admin_only|manager|operations|field|client_portal`) propagé jusqu'au chunk metadata (le filtre vaut au recall RAG, pas seulement UI), audit obligatoire à tout niveau ; (I) états d'analyse explicites `pending→ocr?→extracting→chunking→ready|failed`, bouton « Réanalyser » obligatoire, chunk explorer prévu ; (**K**) bulk import + `content_hash` dédup prévus dès J1 (structure), implémentation roadmap.
