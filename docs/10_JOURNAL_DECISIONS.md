@@ -4,6 +4,20 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-20 — Niveau B documents : étude B0 livrée, ratifications avant B1
+
+**Décision** : Niveau A clos et sain (baseline post-Niveau-A : 685/76/17 — 0 régression, `ensure-today` formellement disculpée par diff). Ouverture de **B0 = étude** (spec `2026-05-20-niveau-b-documents-memoire-relationnelle.md`), **zéro code**. Recommandation gravée : **approche α (lectures dérivées déterministes lien-fort) en B1**, **approche β (pont cross-store `cross_store_resonances` pré-calculé event-driven, seuil cosine 0.65, plafonds 3 lectures/site, 2/contrat)** en B2 *conditionnel* à mesure bruit/couverture de B1. **Approche γ (dupliquer chunks doc dans trace_embeddings) rejetée**. B3 preuves/rapports = consommation visibility-gated + validation humaine. B4 mémoire agents IA = Lecture 1 stricte, recall borné par requête (jamais d'historique gonflant le prompt).
+
+**Raison** : `trace_embeddings` (site-scopé) et `knowledge_chunks` (tenant-scopé) sont 768-dim mais sans RPC cross-store ; faire dialoguer terrain/documents/AO/contrats/sites exige du **pré-calcul async** (pattern `site_reading_candidates` existant) borné structurellement par `document_links`, jamais un cross-product live. Le LLM génératif est interdit dans la production de lectures ; embeddings/cosine pgvector OK. `internal_score` reste **interne** (V6.4 : verrou CI).
+
+**Garde-fous Niveau B (binding)** : pas de lecture sans source vérifiable (`[doc:id]` + `[trace:id]`), pas de vérité automatique, pas de scoring exposé, pas de fiche personne (V6.2/V6.8 + k=4 V6.7 sur résonances nominatives), visibility_level appliqué **deux fois** (indexation + render), pas de recalcul render, pas d'IA générative, plafonds anti-bruit, pas d'auto-exposition client (V6.6).
+
+**Impact code** : **AUCUN**. Aucune migration, aucune table, aucun job. 7 décisions à ratifier (cf. spec §Décisions) avant ouverture B1.
+
+**Lien** : Conversation Claude 2026-05-20, branche `feat/access-events`. Niveau A clos (commits `b92cc14`..`3d2d6cc`), Niveau B = études uniquement tant que les ratifications ne sont pas posées.
+
+---
+
 ## 2026-05-19 — Option C + convergence knowledge_items→documents (planifiée, non exécutée)
 
 **Décision** : (court terme, fait — `8b632fd`) une seule entrée menu « Bibliothèque » → `/documents` (expérience documentaire vivante) ; `/library` (savoir curé `knowledge_items`) reste **intacte** (route directe + lien contextuel AO), hors menu principal ; pipeline `knowledge_items` (`buildLibraryContext`, `matchAoToKnowledge`, embed, backfill, agents) **non touché** ; aucune migration. (moyen terme, **planifié non exécuté**) converger `knowledge_items` en `document_type='knowledge'` du système générique — spec `specs/2026-05-19-knowledge-documents-convergence.md`.
