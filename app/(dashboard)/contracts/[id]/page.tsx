@@ -3,7 +3,13 @@ import Link from 'next/link'
 import { FileBarChart, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { getContract, getContractContinuity } from '@/lib/db/contracts'
+import {
+  getContract,
+  getContractContinuity,
+  getContractVitals,
+  getContractExpiry,
+  getContractMemory,
+} from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
@@ -21,13 +27,17 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const contract = await getContract(id)
   if (!contract) notFound()
 
-  const [engagements, missions, interventions, continuity, summaryMap] = await Promise.all([
-    listEngagementsByContract(id),
-    listMissionsByContract(id),
-    listInterventionsByContract(id),
-    getContractContinuity(id),
-    getContractSummaries([id]),
-  ])
+  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory] =
+    await Promise.all([
+      listEngagementsByContract(id),
+      listMissionsByContract(id),
+      listInterventionsByContract(id),
+      getContractContinuity(id),
+      getContractSummaries([id]),
+      getContractVitals(id),
+      getContractExpiry(id),
+      getContractMemory(id),
+    ])
   const summary = summaryMap.get(id) ?? null
 
   // Build mission_id → engagement_ids map
@@ -144,6 +154,76 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       </header>
 
       <ContractTabs contractId={id} active="overview" />
+
+      {/* V6.3 — Vitalité du contrat. Doctrine V6.3 (factuel, jamais narré) +
+          V6.4 (jamais score). Lecture seule, sobre : aucun %, aucun score,
+          aucune notion de sous/surconsommation, aucune alerte rouge. Objectif
+          et documenté = faits SÉPARÉS, jamais un ratio. */}
+      <section className="rounded-lg border bg-card p-4" data-testid="contract-vitalite">
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Vitalité du contrat
+        </h2>
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div>
+            <dt className="text-xs text-muted-foreground">Objectif horaire déclaré</dt>
+            <dd className="font-semibold tabular-nums">
+              {vitals.volumeHoraireMensuelPrevu != null
+                ? `${vitals.volumeHoraireMensuelPrevu} h/mois`
+                : '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Prestations documentées (ce mois)</dt>
+            <dd className="font-semibold tabular-nums">
+              {vitals.prestationsDocumenteesCeMois}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Prestations documentées (cumul)</dt>
+            <dd className="font-semibold tabular-nums">
+              {vitals.prestationsDocumenteesCumul}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Fréquence</dt>
+            <dd className="font-semibold">{contract.frequence ?? '—'}</dd>
+          </div>
+          <div className="md:col-span-2">
+            <dt className="text-xs text-muted-foreground">Échéance</dt>
+            <dd className="font-medium">
+              {expiry.kind === 'none' ? '—' : expiry.label}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">AO lié</dt>
+            <dd className="font-medium">
+              {contract.tender_id ? (
+                <Link
+                  href={`/tenders/${contract.tender_id}`}
+                  className="underline hover:text-foreground"
+                >
+                  Voir →
+                </Link>
+              ) : (
+                '—'
+              )}
+            </dd>
+          </div>
+        </dl>
+        {memory.length > 0 && (
+          <div className="mt-4 border-t pt-3">
+            <p className="text-xs text-muted-foreground mb-1.5">Mémoire contractuelle</p>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {memory.map((f, i) => (
+                <li key={i} className="flex items-baseline gap-2">
+                  <span className="shrink-0 text-muted-foreground/60">•</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
 
       {/* Sprint 5 UX-9 — Continuité du service (Doctrine V5).
           Compteurs factuels passifs. Pas de score, pas de comparaison entre
