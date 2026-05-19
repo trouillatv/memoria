@@ -5,29 +5,43 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { uploadDocumentAction } from './actions'
-import {
-  DOCUMENT_TYPE_OPTIONS,
-  VISIBILITY_OPTIONS,
-  TARGET_TYPE_OPTIONS,
-} from '@/lib/documents/labels'
+import { DOCUMENT_TYPE_OPTIONS, VISIBILITY_OPTIONS } from '@/lib/documents/labels'
 
 type Collection = { id: string; name: string }
+type LinkOption = { id: string; label: string }
+/** Entités rattachables, chargées EN BASE (jamais d'UUID à saisir). */
+export type LinkTargets = Record<string, LinkOption[]>
+
+// Libellés des types rattachables présentés à l'humain. Bornés et chargés
+// depuis la base : contrat/site/AO/client/équipe. `intervention`/`tenant`
+// volontairement hors picker (non bornés/implicite — liaison programmatique
+// uniquement, ex. prefill contrat).
+const TARGET_LABELS: Record<string, string> = {
+  contract: 'Contrat',
+  site: 'Site',
+  tender: 'Appel d’offres',
+  client: 'Client',
+  team: 'Équipe',
+}
 
 const selectCls =
   'mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm'
 
 export function UploadDocumentForm({
   collections,
+  linkTargets,
   prefillTargetType,
   prefillTargetId,
 }: {
   collections: Collection[]
+  linkTargets: LinkTargets
   prefillTargetType?: string
   prefillTargetId?: string
 }) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [targetType, setTargetType] = useState('')
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -41,6 +55,7 @@ export function UploadDocumentForm({
       return
     }
     form.reset()
+    setTargetType('')
     setMsg({ ok: true, text: 'Document envoyé. Analyse en cours…' })
     router.refresh()
   }
@@ -110,18 +125,41 @@ export function UploadDocumentForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Rattacher à (optionnel)</label>
-            <select name="target_type" defaultValue="" className={selectCls}>
+            <select
+              name="target_type"
+              value={targetType}
+              onChange={(e) => setTargetType(e.target.value)}
+              className={selectCls}
+            >
               <option value="">— Aucun —</option>
-              {TARGET_TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+              {Object.keys(linkTargets).map((t) => (
+                <option key={t} value={t}>
+                  {TARGET_LABELS[t] ?? t}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Identifiant (UUID, si rattachement)</label>
-            <Input name="target_id" placeholder="UUID de l’entité" />
+            <label className="text-xs text-muted-foreground">
+              {targetType ? `${TARGET_LABELS[targetType] ?? targetType} concerné` : 'Élément'}
+            </label>
+            <select
+              name="target_id"
+              className={selectCls}
+              required={!!targetType}
+              disabled={!targetType}
+              defaultValue=""
+              key={targetType /* reset la sélection quand le type change */}
+            >
+              <option value="" disabled>
+                {targetType ? 'Choisir…' : 'Sélectionner un type d’abord'}
+              </option>
+              {(linkTargets[targetType] ?? []).map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       )}

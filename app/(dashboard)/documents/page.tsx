@@ -6,6 +6,10 @@ import {
   listDocumentCollections,
   listDocumentsByCollection,
 } from '@/lib/db/documents'
+import { listContracts } from '@/lib/db/contracts'
+import { listSites, listClients } from '@/lib/db/sites'
+import { listTenders } from '@/lib/db/tenders'
+import { listTeams } from '@/lib/db/teams'
 import { analysisStatusLabel } from '@/lib/documents/labels'
 import { NewCollectionForm } from './NewCollectionForm'
 import { UploadDocumentForm } from './UploadDocumentForm'
@@ -26,13 +30,30 @@ export default async function DocumentsPage({
   if (role !== 'admin' && role !== 'manager') notFound()
 
   const sp = await searchParams
-  const collections = await listDocumentCollections()
+  const [collections, contracts, sites, clients, tenders, teams] = await Promise.all([
+    listDocumentCollections(),
+    listContracts(),
+    listSites(),
+    listClients(),
+    listTenders(),
+    listTeams(),
+  ])
   const byCollection = await Promise.all(
     collections.map(async (c) => ({
       collection: c,
       docs: await listDocumentsByCollection(c.id),
     })),
   )
+
+  // Entités rattachables chargées EN BASE (jamais d'UUID à saisir).
+  // Bornées (pilote) ; intervention/tenant hors picker (cf. form).
+  const linkTargets: Record<string, { id: string; label: string }[]> = {
+    contract: contracts.map((c) => ({ id: c.id, label: c.name })),
+    site: sites.map((s) => ({ id: s.id, label: s.name })),
+    client: clients.map((c) => ({ id: c.id, label: c.name })),
+    tender: tenders.map((t) => ({ id: t.id, label: t.title })),
+    team: teams.map((t) => ({ id: t.id, label: t.name })),
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -54,6 +75,7 @@ export default async function DocumentsPage({
         </h2>
         <UploadDocumentForm
           collections={collections.map((c) => ({ id: c.id, name: c.name }))}
+          linkTargets={linkTargets}
           prefillTargetType={sp.target_type}
           prefillTargetId={sp.target_id}
         />
