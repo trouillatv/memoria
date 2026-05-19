@@ -33,20 +33,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureSystemMission } from '@/lib/db/system-missions'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { buildScheduledAt, currentSlot } from '@/lib/time/prestation-slot'
 import type { DbIntervention, InterventionSlot, InterventionStatus } from '@/types/db'
 
 const SPONTANEOUS_WINDOW_MS = 4 * 60 * 60 * 1000 // 4 heures
 
-/**
- * Détermine le slot courant à partir de l'heure UTC courante.
- * Cohérent avec la dérivation SLOT_HOUR_UTC de createIntervention (lib/db/interventions.ts).
- */
-function currentSlot(now: Date = new Date()): InterventionSlot {
-  const h = now.getUTCHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
-}
+// `currentSlot` (slot depuis l'heure UTC) : module canonique
+// `@/lib/time/prestation-slot` — fin du reverse `h<12 / h<17` dupliqué (V6.1).
 
 export class NoActiveTeamError extends Error {
   constructor(userId: string) {
@@ -106,10 +99,8 @@ export async function findOrCreateSpontaneousIntervention(
   const now = new Date()
   const today = todayLocalIso()
   const slot = currentSlot(now)
-  // scheduled_at dérivé du slot (cohérence avec createIntervention legacy)
-  const SLOT_HOUR_UTC: Record<InterventionSlot, number> = { morning: 6, afternoon: 12, evening: 18 }
-  const hh = String(SLOT_HOUR_UTC[slot]).padStart(2, '0')
-  const scheduledAt = `${today}T${hh}:00:00.000Z`
+  // scheduled_at dérivé du slot via le module canonique (V6.1).
+  const scheduledAt = buildScheduledAt(today, slot)
 
   const { data: inserted, error: insertErr } = await supabase
     .from('interventions')
@@ -118,6 +109,8 @@ export async function findOrCreateSpontaneousIntervention(
       scheduled_at: scheduledAt,
       scheduled_for: today,
       slot,
+      // V6.1 — champ honnête de la prestation (= ancrage canonique).
+      planned_start: scheduledAt,
       team: [],
       assigned_team_id: userTeamIds[0],
       status: 'completed' satisfies InterventionStatus,

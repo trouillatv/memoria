@@ -27,6 +27,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { logAuditEvent } from '@/lib/audit/log'
 import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/interventions'
+import { buildScheduledAt } from '@/lib/time/prestation-slot'
 import { getMission } from '@/lib/db/missions'
 import type { ChecklistTemplateItem, InterventionSlot } from '@/types/db'
 
@@ -266,12 +267,17 @@ export async function moveInterventionToDayAction(
   // Synthèse de scheduled_at (timestamp legacy) : date + heure du créneau cible.
   // Si newSlot non fourni, on conserve le slot existant pour l'heure ; sinon 0h.
   const effectiveSlot = (parsed.data.newSlot ?? existing.slot) as InterventionSlot | null
-  const hour = effectiveSlot ? hourForSlot(effectiveSlot) : 0
-  const newScheduledAt = `${parsed.data.newScheduledFor}T${String(hour).padStart(2, '0')}:00:00.000Z`
+  // Slot null → on préserve l'ancrage minuit legacy (non destructif) ; sinon
+  // ancrage canonique V6.1.
+  const newScheduledAt = effectiveSlot
+    ? buildScheduledAt(parsed.data.newScheduledFor, effectiveSlot)
+    : `${parsed.data.newScheduledFor}T00:00:00.000Z`
 
   const updates: Record<string, unknown> = {
     scheduled_for: parsed.data.newScheduledFor,
     scheduled_at: newScheduledAt,
+    // V6.1 — le champ honnête suit la replanification.
+    planned_start: newScheduledAt,
   }
   if (parsed.data.newSlot) {
     updates.slot = parsed.data.newSlot
@@ -325,11 +331,8 @@ const createFromWeekSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
 })
 
-/** Heure UTC associée à un créneau (doctrine V2 : pas d'heure exposée à l'UX,
- * mais il faut une valeur stable pour `scheduled_at` legacy). */
-function hourForSlot(slot: InterventionSlot): number {
-  return slot === 'morning' ? 7 : slot === 'afternoon' ? 13 : 18
-}
+// Heure associée à un créneau : module canonique
+// `@/lib/time/prestation-slot` (Constat fondateur V6.1 — `buildScheduledAt`).
 
 export interface CreateFromWeekResult {
   ok: boolean
@@ -416,8 +419,7 @@ export async function createInterventionFromWeekAction(
     }
   }
 
-  const hour = hourForSlot(parsed.data.slot)
-  const scheduledAt = `${parsed.data.scheduledFor}T${String(hour).padStart(2, '0')}:00:00.000Z`
+  const scheduledAt = buildScheduledAt(parsed.data.scheduledFor, parsed.data.slot)
 
   const interventionId = await createIntervention({
     mission_id: parsed.data.missionId,

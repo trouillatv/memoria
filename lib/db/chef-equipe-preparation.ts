@@ -21,6 +21,7 @@
 // `userId` d'un chef d'équipe n'apparaît jamais dans une comparaison.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { slotReferenceLabelFr } from '@/lib/time/prestation-slot'
 import type { InterventionSlot, DbSiteNote } from '@/types/db'
 
 // ----------------------------------------------------------------------------
@@ -61,20 +62,9 @@ export interface ChefEquipePreparation {
 // Helpers
 // ----------------------------------------------------------------------------
 
-function slotToTimeFr(slot: InterventionSlot | null): string {
-  // Convention métier : créneaux nommés, pas d'horaires précis. On affiche
-  // l'heure de référence du slot (cf. lib/db/intervention-templates.ts).
-  switch (slot) {
-    case 'morning':
-      return '7h'
-    case 'afternoon':
-      return '14h'
-    case 'evening':
-      return '19h'
-    default:
-      return '—'
-  }
-}
+// `slotToTimeFr` → `slotReferenceLabelFr` du module canonique
+// `@/lib/time/prestation-slot` : libellé grossier aligné sur l'ancrage V6.1
+// (le chef d'équipe voit la même heure que celle réellement stockée).
 
 /**
  * Filtre verrou V4 : rejette les notes qui ressemblent à du wording de contrôle.
@@ -253,7 +243,7 @@ export async function generateChefEquipePreparations(
       if (!chefById.has(uid)) continue
       const arr = passagesByChef.get(uid) ?? []
       arr.push({
-        time: slotToTimeFr(r.slot),
+        time: slotReferenceLabelFr(r.slot),
         siteName: site.name,
         missionShortLabel: shortMissionLabel(mission.name),
         teamName,

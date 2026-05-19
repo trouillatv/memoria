@@ -16,6 +16,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { buildScheduledAt } from '@/lib/time/prestation-slot'
 import type {
   DbInterventionTemplate,
   InterventionFrequency,
@@ -201,31 +202,9 @@ export interface GenerationResult {
 
 const MAX_GENERATION_DAYS = 7
 
-/**
- * Mapping slot → heure du jour. UTC.
- * Convention métier : créneaux nommés, pas d'horaires précis dans l'UX. La
- * timestamptz `scheduled_at` doit néanmoins exister (NOT NULL) → on dérive une
- * heure stable pour chaque slot. `scheduled_for` (date) reste l'autorité
- * logique côté requêtes UI.
- */
-function slotToHour(slot: InterventionSlot | null): number {
-  switch (slot) {
-    case 'morning':
-      return 8
-    case 'afternoon':
-      return 14
-    case 'evening':
-      return 19
-    default:
-      return 8
-  }
-}
-
-function buildScheduledAt(dateIso: string, slot: InterventionSlot | null): string {
-  // dateIso = 'YYYY-MM-DD'. On construit un timestamptz UTC stable.
-  const hour = slotToHour(slot)
-  return `${dateIso}T${String(hour).padStart(2, '0')}:00:00.000Z`
-}
+// Mapping slot → heure : déplacé dans le module canonique
+// `@/lib/time/prestation-slot` (Constat fondateur V6.1 — fin des mappings
+// divergents). `buildScheduledAt` est désormais importé.
 
 /** ISO day-of-week : 1=Monday, ..., 7=Sunday. */
 function isoDayOfWeek(date: Date): number {
@@ -386,6 +365,7 @@ export async function generateInterventionsFromTemplates(params: {
     scheduled_at: string
     scheduled_for: string
     slot: InterventionSlot | null
+    planned_start: string
     status: InterventionStatus
     team: string[]
   }
@@ -407,12 +387,15 @@ export async function generateInterventionsFromTemplates(params: {
       if (!matchesFrequency(tpl, date)) continue
       const dateIso = date.toISOString().slice(0, 10)
       for (const slot of slots) {
+        const scheduledAt = buildScheduledAt(dateIso, slot)
         rowsToInsert.push({
           mission_id: tpl.mission_id,
           template_id: tpl.id,
-          scheduled_at: buildScheduledAt(dateIso, slot),
+          scheduled_at: scheduledAt,
           scheduled_for: dateIso,
           slot,
+          // V6.1 — champ honnête de la prestation (= ancrage canonique).
+          planned_start: scheduledAt,
           status: 'planned',
           team: inheritedTeam,
         })

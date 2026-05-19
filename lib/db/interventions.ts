@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { buildScheduledAt, slotFromScheduledAt } from '@/lib/time/prestation-slot'
 import { anomalyLabel } from '@/lib/anomaly-labels'
 import type {
   DbIntervention, InterventionStatus, InterventionSlot,
@@ -216,11 +217,9 @@ export async function getIntervention(id: string): Promise<DbIntervention | null
  *
  * Sans `scheduled_for` ni `scheduled_at`, throws.
  */
-const SLOT_HOUR_UTC: Record<'morning' | 'afternoon' | 'evening', number> = {
-  morning: 6,
-  afternoon: 12,
-  evening: 18,
-}
+// Mapping slot ↔ heure : module canonique `@/lib/time/prestation-slot`
+// (Constat fondateur V6.1 — fin des 3 mappings divergents 6/12/18,
+// 7/13/18, 8/14/19). `buildScheduledAt` / `slotFromScheduledAt` importés.
 
 export async function createIntervention(input: {
   mission_id: string
@@ -240,14 +239,12 @@ export async function createIntervention(input: {
   if (input.scheduled_for && input.slot) {
     scheduled_for = input.scheduled_for
     slot = input.slot
-    const hh = String(SLOT_HOUR_UTC[slot]).padStart(2, '0')
-    scheduled_at = `${scheduled_for}T${hh}:00:00.000Z`
+    scheduled_at = buildScheduledAt(scheduled_for, slot)
   } else if (input.scheduled_at) {
     scheduled_at = input.scheduled_at
     const d = new Date(scheduled_at)
     scheduled_for = d.toISOString().slice(0, 10)
-    const h = d.getUTCHours()
-    slot = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
+    slot = slotFromScheduledAt(scheduled_at)
   } else {
     throw new Error(
       'createIntervention : fournir (scheduled_for + slot) ou scheduled_at',
@@ -262,6 +259,8 @@ export async function createIntervention(input: {
       scheduled_at,
       scheduled_for,
       slot,
+      // V6.1 — champ honnête de la prestation (= ancrage canonique).
+      planned_start: scheduled_at,
       team: input.team ?? [],
       status: 'planned' as InterventionStatus,
       created_by: input.created_by,
