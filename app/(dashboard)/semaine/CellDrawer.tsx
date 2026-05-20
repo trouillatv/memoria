@@ -217,7 +217,7 @@ export function CellDrawer({
                           {c.slot ? (
                             <p className="text-xs text-muted-foreground">
                               Créneau {SLOT_FR[c.slot]?.toLowerCase() ?? c.slot}
-                              {isPlannedStartPrecise(c.planned_start) && (
+                              {(c.planned_end || isPlannedStartPrecise(c.planned_start)) && (
                                 <span className="font-semibold text-foreground/80">
                                   {' · '}
                                   {formatInterventionTimeLabel({

@@ -216,7 +216,12 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const slotShortLabel = intervention.slot
     ? SLOT_FR_SHORT[intervention.slot] ?? intervention.slot
     : 'créneau non précisé'
-  const preciseLabel = isPlannedStartPrecise(intervention.planned_start)
+  // Heure précise = planned_start non canonique OU planned_end présent
+  // (saisie utilisateur dans les deux cas).
+  const hasPreciseHour =
+    !!intervention.planned_end ||
+    isPlannedStartPrecise(intervention.planned_start)
+  const preciseLabel = hasPreciseHour
     ? formatInterventionTimeLabel({
         planned_start: intervention.planned_start,
         planned_end: intervention.planned_end,

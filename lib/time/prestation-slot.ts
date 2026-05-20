@@ -196,6 +196,10 @@ export function isPlannedStartPrecise(plannedStart: string | null): boolean {
  *  automatiquement entre heure précise (« 06h30 – 08h00 (1h30) ») et slot
  *  grossier (« Matin / Après-midi / Soir ») selon ce qui est disponible.
  *
+ *  Critères « heure précise détectée » (l'un des deux suffit) :
+ *   - `planned_start` n'est pas l'ancrage canonique 07/14/19 (saisie début)
+ *   - `planned_end` existe (saisie de range, même si début pile sur ancrage)
+ *
  *  Utilisé par toutes les surfaces : page intervention, mobile chef, partage
  *  texte, briefing, vue semaine. Source unique de vérité d'affichage.
  *
@@ -207,7 +211,9 @@ export function formatInterventionTimeLabel(input: {
   planned_end?: string | null
   slot?: InterventionSlot | null
 }): string {
-  if (isPlannedStartPrecise(input.planned_start ?? null)) {
+  const hasPreciseHour =
+    !!input.planned_end || isPlannedStartPrecise(input.planned_start ?? null)
+  if (hasPreciseHour) {
     return formatPlannedTimeRange(
       input.planned_start ?? null,
       input.planned_end ?? null,

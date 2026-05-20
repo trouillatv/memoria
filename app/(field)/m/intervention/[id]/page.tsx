@@ -177,7 +177,11 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     evening: 'bg-indigo-100 text-indigo-900 border-indigo-200',
   }
   const slotLabel = intervention.slot ? SLOT_LABELS[intervention.slot] : null
-  const preciseLabel = isPlannedStartPrecise(intervention.planned_start)
+  // Heure précise = planned_start non canonique OU planned_end présent.
+  const hasPreciseHour =
+    !!intervention.planned_end ||
+    isPlannedStartPrecise(intervention.planned_start)
+  const preciseLabel = hasPreciseHour
     ? formatInterventionTimeLabel({
         planned_start: intervention.planned_start,
         planned_end: intervention.planned_end,
