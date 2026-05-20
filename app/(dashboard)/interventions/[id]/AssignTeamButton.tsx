@@ -17,6 +17,9 @@ interface Props {
   interventionLabel: string
   currentTeamId: string | null
   teams: ReassignTeamOption[]
+  /** CT-3 (Vincent 2026-05-21) — IDs des équipes qui ont déjà fait ≥1
+   *  intervention DOCUMENTÉE sur le SITE de l'intervention cible. */
+  knownTeamIds?: string[]
 }
 
 export function AssignTeamButton({
@@ -24,6 +27,7 @@ export function AssignTeamButton({
   interventionLabel,
   currentTeamId,
   teams,
+  knownTeamIds,
 }: Props) {
   const [open, setOpen] = useState(false)
   const label = currentTeamId ? 'Réassigner équipe' : 'Affecter une équipe'
@@ -45,6 +49,7 @@ export function AssignTeamButton({
         interventionLabel={interventionLabel}
         currentTeamId={currentTeamId}
         teams={teams}
+        knownTeamIds={knownTeamIds}
       />
     </>
   )

@@ -50,6 +50,11 @@ interface Props {
   interventionLabel: string
   currentTeamId: string | null
   teams: ReassignTeamOption[]
+  /** CT-3 (Vincent 2026-05-21) — IDs des équipes qui ont déjà fait ≥1
+   *  intervention DOCUMENTÉE sur le SITE de l'intervention cible. Affiché
+   *  comme badge binaire « Connue », jamais comme compteur (un chiffre
+   *  comparatif = score implicite). Optionnel : si absent, aucun badge. */
+  knownTeamIds?: string[]
 }
 
 const UNASSIGNED_VALUE = '__unassigned__'
@@ -61,10 +66,13 @@ export function ReassignTeamDialog({
   interventionLabel,
   currentTeamId,
   teams,
+  knownTeamIds,
 }: Props) {
   const router = useRouter()
   const [selected, setSelected] = useState<string>(currentTeamId ?? UNASSIGNED_VALUE)
   const [pending, startTransition] = useTransition()
+  // CT-3 : Set des équipes connues pour lookup O(1).
+  const knownSet = knownTeamIds && knownTeamIds.length > 0 ? new Set(knownTeamIds) : null
 
   function handleConfirm() {
     const newTeamId = selected === UNASSIGNED_VALUE ? null : selected
@@ -122,6 +130,7 @@ export function ReassignTeamDialog({
           ) : (
             teams.map((t) => {
               const blocked = Boolean(t.conflict)
+              const isKnown = knownSet?.has(t.id) ?? false
               return (
                 <OptionRow
                   key={t.id}
@@ -132,6 +141,14 @@ export function ReassignTeamDialog({
                 >
                   <span className="inline-flex items-center gap-2 flex-wrap min-w-0">
                     <TeamBadge name={t.name} color={t.color} size="sm" />
+                    {isKnown && !blocked && (
+                      <span
+                        className="text-[10px] uppercase tracking-wider text-sky-800 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 dark:text-sky-200 dark:bg-sky-950/30 dark:border-sky-900/40"
+                        title="Cette équipe a déjà fait au moins une intervention documentée sur ce site"
+                      >
+                        Connue
+                      </span>
+                    )}
                     {blocked && t.conflict && (
                       <span
                         className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"

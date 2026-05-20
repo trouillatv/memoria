@@ -44,6 +44,8 @@ import { HumanContinuityList } from './HumanContinuity'
 import { WhatReturnsHere } from './WhatReturnsHere'
 import { SiteRhythm } from './SiteRhythm'
 import { TeamPresencesList } from './TeamPresencesList'
+import { SiteTeamsKnowledgeSection } from './SiteTeamsKnowledgeSection'
+import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
 
@@ -89,6 +91,10 @@ export default async function SitePage({ params }: PageProps) {
     getSiteRecentPhotos(id, 9),
     listDocumentsForTarget('site', id),
   ])
+
+  // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
+  // Distinct de getSiteTeamPresences (30j récent). Sujet = site, jamais classement.
+  const teamsKnowledge = await getSiteTeamsKnowledge(id)
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
   // Vincent 2026-05-15 : "Quand Moana reprend un site, on lui montre les
@@ -196,6 +202,11 @@ export default async function SitePage({ params }: PageProps) {
           <AnomaliesList anomalies={anomalies} meta={memoryMeta} />
         </CardContent>
       </Card>
+
+      {/* CT-2 (Vincent 2026-05-21) — équipes qui connaissent ce site, all-time.
+          Vue cumulative complète, distincte de « Équipes — 14 derniers jours »
+          ci-dessus. Sujet = site, pas de classement entre équipes. */}
+      <SiteTeamsKnowledgeSection teams={teamsKnowledge} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>

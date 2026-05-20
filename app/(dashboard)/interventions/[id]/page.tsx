@@ -12,6 +12,7 @@ import {
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
+import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { listTeamConflictsForSlot } from '@/lib/scheduling/team-conflict'
@@ -140,6 +141,11 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
       : null,
     noChef: !teamsWithChef.has(t.id),
   }))
+
+  // CT-3 (Vincent 2026-05-21) — IDs des équipes qui ont déjà fait ≥1
+  // intervention DOCUMENTÉE sur ce site. Sert au badge sobre « Connue »
+  // dans le dialog d'affectation. Pas de chiffre comparatif — badge binaire.
+  const knownTeamIds = site?.id ? await getTeamIdsKnowingSite(site.id) : []
 
   // Sign URLs for photos (variante thumb 400×400 — gain bande passante).
   // Lecture du lieu en parallèle — signal mnémonique, jamais bloquant.
@@ -321,6 +327,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
             interventionLabel={mission?.name ?? 'Intervention'}
             currentTeamId={intervention.assigned_team_id}
             teams={teamOptions}
+            knownTeamIds={knownTeamIds}
           />
         </div>
       )}
