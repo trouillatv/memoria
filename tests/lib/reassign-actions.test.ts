@@ -227,9 +227,17 @@ describe('moveInterventionToDayAction — Slice 9.4', () => {
       scheduled_at: `${start}T08:00:00.000Z`,
       created_by: null,
     })
+    // Migration 048 : CHECK constraint impose assigned_team_id NOT NULL
+    // pour status IN (in_progress, completed, validated). Il faut donc
+    // assigner une équipe AVANT de pouvoir passer en in_progress.
+    const team = await createTeam({ name: `${TEAM_PREFIX}MoveInProg` })
     await supabase
       .from('interventions')
-      .update({ scheduled_for: start, status: 'in_progress' })
+      .update({
+        scheduled_for: start,
+        assigned_team_id: team.id,
+        status: 'in_progress',
+      })
       .eq('id', intvId)
 
     const r = await moveInterventionToDayAction({
@@ -368,7 +376,8 @@ describe('reassignInterventionTeamAction — Slice 9.4', () => {
   it('refuse une intervention non-planned (in_progress)', async () => {
     const { reassignInterventionTeamAction } = await importActions()
     const supabase = createAdminClient()
-    const team = await createTeam({ name: `${TEAM_PREFIX}Gamma` })
+    const teamCurrent = await createTeam({ name: `${TEAM_PREFIX}Gamma` })
+    const teamTarget = await createTeam({ name: `${TEAM_PREFIX}GammaTarget` })
     const start = ymdOffset(1)
 
     const intvId = await createIntervention({
@@ -376,25 +385,31 @@ describe('reassignInterventionTeamAction — Slice 9.4', () => {
       scheduled_at: `${start}T08:00:00.000Z`,
       created_by: null,
     })
+    // Migration 048 : CHECK assigned_team_id NOT NULL pour in_progress.
+    // L'équipe courante est assignée AVANT le passage en in_progress.
     await supabase
       .from('interventions')
-      .update({ scheduled_for: start, status: 'in_progress' })
+      .update({
+        scheduled_for: start,
+        assigned_team_id: teamCurrent.id,
+        status: 'in_progress',
+      })
       .eq('id', intvId)
 
     const r = await reassignInterventionTeamAction({
       interventionId: intvId,
-      newTeamId: team.id,
+      newTeamId: teamTarget.id,
     })
     expect(r.ok).toBe(false)
     expect(r.error).toMatch(/démarrée|refusée|planned/i)
 
-    // DB inchangée
+    // DB inchangée — l'équipe doit être teamCurrent, pas teamTarget
     const { data } = await supabase
       .from('interventions')
       .select('assigned_team_id')
       .eq('id', intvId)
       .maybeSingle()
-    expect(data!.assigned_team_id).toBeNull()
+    expect(data!.assigned_team_id).toBe(teamCurrent.id)
   })
 
   it('refuse une équipe archivée', async () => {
