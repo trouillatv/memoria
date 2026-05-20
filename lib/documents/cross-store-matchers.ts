@@ -39,8 +39,10 @@ export const B2_MAX_PER_SITE = 2
 /** Durée de vie d'une résonance B2 (re-validation à 30 j, cohérent B1). */
 export const B2_EXPIRE_DAYS = 30
 
-/** Algorithme namespacé. Bump _v2 si seuil/règle change. */
-export const B2_ALGO = 'b2_doc_trace_v1'
+/** Algorithme namespacé. Bump _v2 si seuil/règle/wording change.
+ *  v2 (Vincent 2026-05-20) : ajout micro-snippet déterministe extrait du
+ *  chunk doc (4-7 mots autour du mot d'action) + dedup per-trace. */
+export const B2_ALGO = 'b2_doc_trace_v2'
 
 /** Types de documents acceptés (juridiques EXCLUS d'office, cohérent B1
  *  et mémoire `litige-no-automatic-reading`). */
@@ -188,7 +190,8 @@ function traceLabel(kind: string): string {
   }
 }
 
-/** Assemble le fragment B2 — template fixe, deux IDs obligatoires. */
+/** Assemble le fragment B2 — v1 (sans snippet). Conservé pour
+ *  rétrocompat ; v2 utilise buildB2FragmentV2 avec snippet. */
 export function buildB2Fragment(params: {
   docId: string
   docType: string
@@ -200,4 +203,101 @@ export function buildB2Fragment(params: {
   const tl = traceLabel(params.traceKind)
   const date = frDayMonth(params.traceDateIso)
   return `${intro} à ce site [doc:${params.docId}] semble en écho avec ${tl} du ${date} [trace:${params.traceId}].`
+}
+
+// ============================================================================
+// V2 (Vincent 2026-05-20) — micro-snippet déterministe + wording aligné B1
+// ============================================================================
+
+/** Extrait un micro-snippet déterministe (4-7 mots) du chunk doc, centré
+ *  sur le PREMIER mot du lexique action trouvé.
+ *
+ *  Garde-fous stricts (Vincent 2026-05-20) :
+ *  - 4 à 7 mots maximum (jamais une phrase longue)
+ *  - jamais de saut de ligne (\s+ collapsé en espace simple)
+ *  - ponctuation aux bords retirée
+ *  - guillemets retirés (on les re-pose dans le template)
+ *  - longueur dure plafonnée 80 chars (sinon null = pas d'émission)
+ *  - retourne null si aucun mot d'action trouvé (sécurité)
+ *
+ *  PUR. Ne touche jamais au texte de la trace (zéro recopie terrain). */
+export function extractActionSnippet(
+  chunkText: string,
+  maxWords: number = 7,
+): string | null {
+  if (!chunkText || typeof chunkText !== 'string') return null
+
+  // Tokenize en gardant la version brute (case + accents préservés
+  // pour lisibilité humaine — « PC sécurité » plutôt que « pc securite »).
+  const tokenRe = /\S+/g
+  const tokens: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = tokenRe.exec(chunkText)) !== null) {
+    tokens.push(m[0])
+  }
+  if (tokens.length === 0) return null
+
+  // Trouve le premier mot dont la forme normalisée OU l'une de ses
+  // sous-formes (séparées par apostrophe/ponctuation interne) est dans
+  // ACTION_LEXICON. Aligné sur la sémantique de chunkSignalsAction qui
+  // splitte sur non-lettre — sinon « s'ouvrir » échoue ici alors qu'il
+  // passe le filtre amont (et on retourne null injustement).
+  const actionIdx = tokens.findIndex((tok) => {
+    const normalized = normalize(tok)
+    // Sous-mots = séquences contiguës de lettres a-z (apostrophe, chiffres,
+    // ponctuation = séparateurs). « l'utilisation » → ["l", "utilisation"]
+    // → on cherche « utiliser » (verbe lexique) — non trouvé, mais
+    // « s'ouvrir » → ["s", "ouvrir"] → « ouvrir » ✓ trouvé.
+    const subwords = normalized.split(/[^a-z]+/).filter((w) => w.length >= 3)
+    return subwords.some((w) => ACTION_LEXICON.has(w))
+  })
+  if (actionIdx === -1) return null
+
+  // Fenêtre : ≤ 3 mots avant + le mot action + ≤ (maxWords-1) mots après,
+  // capped à maxWords total. Préfère le contexte qui suit (souvent plus
+  // informatif : « nettoyage des sols quotidiennement » vs « des sols
+  // quotidiennement nettoyage »).
+  const wordsBefore = Math.min(2, actionIdx)
+  const from = actionIdx - wordsBefore
+  const to = Math.min(tokens.length, from + maxWords)
+  const slice = tokens.slice(from, to)
+
+  let snippet = slice.join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  // Trim ponctuation aux bords + retire guillemets internes.
+  snippet = snippet
+    .replace(/^[,;:.!?…\-—«»"'(\[]+/, '')
+    .replace(/[,;:.!?…\-—«»"')\]]+$/, '')
+    .replace(/[«»"']/g, '')
+    .trim()
+
+  if (snippet.length === 0) return null
+  if (snippet.length > 80) return null // anti dérive : trop long = on émet rien
+
+  return snippet
+}
+
+/** Assemble le fragment B2 v2 — wording aligné B1 (« mentionne « X » »)
+ *  avec terminaison prudente « en écho » (sémantique, pas vérité).
+ *
+ *  Template fixe :
+ *    «La procédure rattachée [doc:XXX] mentionne « <snippet> » —
+ *     note terrain du <date> en écho [trace:YYY].»
+ *
+ *  Garde-fous Vincent 2026-05-20 :
+ *  - jamais de "prouve / confirme / démontre / certifie"
+ *  - "en écho" conservé (continuité plausible, pas vérité)
+ *  - snippet 4-7 mots, vient du DOC uniquement (jamais de la trace)
+ *  - [doc:id] + [trace:id] obligatoires (2 sources) */
+export function buildB2FragmentV2(params: {
+  docId: string
+  docType: string
+  traceId: string
+  traceDateIso: string
+  snippet: string
+}): string {
+  const intro = doctypeIntro(params.docType)
+  const date = frDayMonth(params.traceDateIso)
+  return `${intro} [doc:${params.docId}] mentionne « ${params.snippet} » — note terrain du ${date} en écho [trace:${params.traceId}].`
 }

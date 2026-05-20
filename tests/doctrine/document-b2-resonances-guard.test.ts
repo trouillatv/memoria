@@ -92,7 +92,7 @@ describe('B2 T2 — server-only orchestrator structurel', () => {
     expect(/reading_type:\s*['"](?!resonance['"]).+['"]/.test(codeOnly)).toBe(false)
   })
 
-  it('algorithm_version=B2_ALGO figé (b2_doc_trace_v1)', () => {
+  it('algorithm_version=B2_ALGO (constante = v2 désormais)', () => {
     expect(/algorithm_version:\s*B2_ALGO/.test(codeOnly)).toBe(true)
   })
 
@@ -106,13 +106,33 @@ describe('B2 T2 — server-only orchestrator structurel', () => {
     expect(/type:\s*['"]trace['"]/.test(codeOnly)).toBe(true)
   })
 
+  it('V2 — fragment construit via buildB2FragmentV2 (avec snippet)', () => {
+    expect(/buildB2FragmentV2\(/.test(codeOnly)).toBe(true)
+    expect(/snippet/.test(codeOnly)).toBe(true)
+  })
+
+  it('V2 — extractActionSnippet appelé sur chunk_text du match', () => {
+    expect(/extractActionSnippet\(/.test(codeOnly)).toBe(true)
+  })
+
+  it('V2 — skip si snippet vide (jamais de fragment sans snippet)', () => {
+    expect(/if\s*\(!snippet\)\s*continue/.test(codeOnly)).toBe(true)
+  })
+
+  it('V2 — dedup per-trace (stale autres B2 actifs sur même trace)', () => {
+    expect(/src\[1\]\?\.type\s*===\s*['"]trace['"]/.test(codeOnly)).toBe(true)
+    expect(/src\[1\]\?\.id\s*===\s*c\.traceId/.test(codeOnly)).toBe(true)
+  })
+
   it('expires_at = B2_EXPIRE_DAYS jours', () => {
     expect(/B2_EXPIRE_DAYS\s*\*\s*86_?400_?000/.test(codeOnly)).toBe(true)
   })
 
   it('idempotence : stale anciens B2 actifs avec même doc en source[0] avant insert', () => {
     expect(/status:\s*['"]stale['"]/.test(codeOnly)).toBe(true)
-    expect(/eq\(['"]algorithm_version['"],\s*B2_ALGO\)/.test(codeOnly)).toBe(true)
+    // V2 : on stale TOUTES les versions B2 (v1+v2) pour migration propre,
+    // donc `.like('b2_doc_trace_%')` au lieu de `.eq(B2_ALGO)`.
+    expect(/like\(['"]algorithm_version['"],\s*['"]b2_doc_trace_%['"]\)/.test(codeOnly)).toBe(true)
     expect(/src\[0\]\?\.id\s*===\s*doc\.id/.test(codeOnly)).toBe(true)
   })
 
@@ -120,8 +140,8 @@ describe('B2 T2 — server-only orchestrator structurel', () => {
     expect(/internal_score|confidence|score:\s*\d/.test(codeOnly)).toBe(false)
   })
 
-  it('fragment construit via buildB2Fragment (pas de concat manuelle)', () => {
-    expect(/buildB2Fragment\(/.test(codeOnly)).toBe(true)
+  it('fragment construit via buildB2FragmentV2 (pas de concat manuelle, v2)', () => {
+    expect(/buildB2FragmentV2\(/.test(codeOnly)).toBe(true)
   })
 
   it('fire-and-forget : try/catch silencieux + .catch(() => {})', () => {

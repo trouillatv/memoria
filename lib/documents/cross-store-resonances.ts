@@ -9,8 +9,9 @@ import {
   B2_MAX_PER_SITE,
   B2_TOP_K_PER_CHUNK,
   B2_VISIBILITY_ALLOWED,
-  buildB2Fragment,
+  buildB2FragmentV2,
   chunkSignalsAction,
+  extractActionSnippet,
   traceSignalsActionable,
 } from './cross-store-matchers'
 
@@ -159,12 +160,14 @@ async function computeForOneSite(
 
   // Pour chaque chunk action, top-K traces ≥ seuil, filtrées actionnables.
   // On garde le MEILLEUR cosine par traceId (un trace peut matcher plusieurs
-  // chunks — on évite les doublons).
+  // chunks — on évite les doublons). On stocke aussi le chunk_text du
+  // meilleur match pour extraire un snippet déterministe (v2).
   type Candidate = {
     traceId: string
     traceKind: string
     traceDateIso: string
     similarity: number
+    chunkText: string
   }
   const bestByTrace = new Map<string, Candidate>()
 
@@ -196,6 +199,7 @@ async function computeForOneSite(
           traceKind,
           traceDateIso: ctx.created_at,
           similarity: m.similarity,
+          chunkText: chunk.chunk_text,
         })
       }
     }
@@ -203,13 +207,15 @@ async function computeForOneSite(
 
   if (bestByTrace.size === 0) return
 
-  // Idempotence : stale toutes les B2 actives pour ce site avec doc.id
-  // en source[0]. Pas de doublons sur ré-analyse.
+  // Idempotence : stale toutes les B2 actives (v1 ET v2) pour ce site
+  // avec doc.id en source[0]. Pas de doublons sur ré-analyse, et la
+  // migration v1→v2 se fait au prochain compute (les vieux v1 sont
+  // staled au passage).
   const { data: existing } = await supabase
     .from('site_reading_candidates')
     .select('id, source_ids')
     .eq('site_id', siteId)
-    .eq('algorithm_version', B2_ALGO)
+    .like('algorithm_version', 'b2_doc_trace_%')
     .eq('status', 'active')
   const toStale = (existing ?? [])
     .filter((r) => {
@@ -221,14 +227,40 @@ async function computeForOneSite(
     await supabase.from('site_reading_candidates').update({ status: 'stale' }).in('id', toStale)
   }
 
-  // Insert nouveaux candidats
+  // Insert nouveaux candidats avec snippet déterministe (v2). Si pas
+  // de snippet extractable d'un chunk donné → skip (Vincent : "jamais
+  // de phrase longue, jamais de contenu sensible étendu").
+  // Dedup per-trace : avant insert, stale toutes les B2 actives existantes
+  // (toute version, tout doc) qui ciblent la même trace sur ce site.
   for (const c of bestByTrace.values()) {
-    const fragment = buildB2Fragment({
+    const snippet = extractActionSnippet(c.chunkText)
+    if (!snippet) continue
+
+    // Per-trace dedup : 1 fragment B2 max par (site, trace), le plus
+    // récent gagne. Empêche le « doublon fonctionnel » signalé par
+    // Vincent (2 docs proches → 2 fragments identiques sur même trace).
+    const { data: dups } = await supabase
+      .from('site_reading_candidates')
+      .select('id, source_ids')
+      .eq('site_id', siteId)
+      .like('algorithm_version', 'b2_doc_trace_%')
+      .eq('status', 'active')
+    const dupIds = (dups ?? [])
+      .filter((r) => {
+        const src = (r as { source_ids: Array<{ type: string; id: string }> }).source_ids ?? []
+        return src.length >= 2 && src[1]?.type === 'trace' && src[1]?.id === c.traceId
+      })
+      .map((r) => (r as { id: string }).id)
+    if (dupIds.length > 0) {
+      await supabase.from('site_reading_candidates').update({ status: 'stale' }).in('id', dupIds)
+    }
+
+    const fragment = buildB2FragmentV2({
       docId: doc.id,
       docType: doc.document_type,
       traceId: c.traceId,
-      traceKind: c.traceKind,
       traceDateIso: c.traceDateIso,
+      snippet,
     })
     await supabase.from('site_reading_candidates').insert({
       tenant_id: tenantId,
