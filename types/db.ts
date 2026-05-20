@@ -373,6 +373,10 @@ export interface DbIntervention {
   skipped_by: string | null
   // Phase 9 — Vue Semaine & Équipes (doctrine V2)
   assigned_team_id: string | null
+  // V6.1 (migration 071) — ancrage honnête de prestation.
+  // JAMAIS pointage de personne. Ne jamais agréger par user_id.
+  planned_start: string | null
+  planned_end: string | null
 }
 
 // =================================
