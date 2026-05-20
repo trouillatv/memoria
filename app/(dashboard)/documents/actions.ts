@@ -7,6 +7,7 @@
 
 import { z } from 'zod'
 import { after } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -15,6 +16,9 @@ import {
   createDocument,
   addDocumentLink,
   createDocumentCollection,
+  updateDocumentAnalysisStatus,
+  softDeleteDocument,
+  getDocument,
 } from '@/lib/db/documents'
 import { analyzeDocument } from '@/lib/documents/analyze'
 
@@ -185,4 +189,115 @@ export async function uploadDocumentAction(
   after(() => analyzeDocument(documentId))
 
   return { ok: true, documentId }
+}
+
+// ===========================================================================
+// Relancer l'analyse — manager+ only
+// ===========================================================================
+//
+// Reset analysis_status à 'pending' + fire-and-forget analyzeDocument.
+// À la fin du pipeline ('ready'), B1 et B2 ré-firent automatiquement
+// via les hooks existants dans analyze.ts.
+//
+// Idempotent : si déjà en cours (pending/extracting/ocr/chunking), refuse
+// avec un message clair plutôt que de relancer en double.
+
+const relaunchSchema = z.object({ document_id: z.string().uuid() })
+
+export async function relaunchDocumentAnalysisAction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  let userId: string
+  try {
+    userId = await requireManagerOrAdmin()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
+  }
+
+  const parsed = relaunchSchema.safeParse({ document_id: formData.get('document_id') })
+  if (!parsed.success) return { ok: false, error: 'document_id invalide' }
+
+  const doc = await getDocument(parsed.data.document_id)
+  if (!doc || doc.deleted_at) return { ok: false, error: 'Document introuvable' }
+
+  // Idempotence : refuse si analyse en cours (sinon double pipeline).
+  const inFlight = ['pending', 'extracting', 'ocr', 'chunking']
+  if (inFlight.includes(doc.analysis_status)) {
+    return { ok: false, error: 'Analyse déjà en cours' }
+  }
+
+  try {
+    await updateDocumentAnalysisStatus(parsed.data.document_id, 'pending')
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Reset status échoué' }
+  }
+
+  await logAuditEvent({
+    userId,
+    entityType: 'document',
+    entityId: parsed.data.document_id,
+    action: 'analysis_relaunched',
+    metadata: {
+      previous_status: doc.analysis_status,
+      filename: doc.filename,
+    },
+  })
+
+  // Fire-and-forget — B1+B2 firent automatiquement via les hooks de
+  // analyzeDocument à la fin du pipeline.
+  after(() => analyzeDocument(parsed.data.document_id))
+
+  revalidatePath(`/documents/${parsed.data.document_id}`)
+  return { ok: true }
+}
+
+// ===========================================================================
+// Soft delete document — manager+ only
+// ===========================================================================
+//
+// Doctrine : on conserve la trace historique (deleted_at), on nettoie les
+// dérivés IA qui pourraient ressurgir (cf. softDeleteDocument dans
+// lib/db/documents.ts) :
+//  - knowledge_chunks → DELETE hard (anti-fuite recall)
+//  - site_reading_candidates → status='stale' (préserve historique)
+//  - storage : fichier CONSERVÉ (restauration possible, audit préservé)
+
+const deleteSchema = z.object({ document_id: z.string().uuid() })
+
+export async function deleteDocumentAction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  let userId: string
+  try {
+    userId = await requireManagerOrAdmin()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
+  }
+
+  const parsed = deleteSchema.safeParse({ document_id: formData.get('document_id') })
+  if (!parsed.success) return { ok: false, error: 'document_id invalide' }
+
+  const doc = await getDocument(parsed.data.document_id)
+  if (!doc || doc.deleted_at) return { ok: false, error: 'Document introuvable' }
+
+  try {
+    await softDeleteDocument(parsed.data.document_id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Suppression échouée' }
+  }
+
+  await logAuditEvent({
+    userId,
+    entityType: 'document',
+    entityId: parsed.data.document_id,
+    action: 'soft_deleted',
+    metadata: {
+      filename: doc.filename,
+      document_type: doc.document_type,
+      previous_status: doc.analysis_status,
+    },
+  })
+
+  revalidatePath('/documents')
+  return { ok: true }
 }

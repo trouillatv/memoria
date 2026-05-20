@@ -6,6 +6,7 @@ import { getUserRoleById } from '@/lib/db/users'
 import { getDocument } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
+import { DocumentActions } from './DocumentActions'
 
 // Visionneuse documentaire — phase 3 (spec 2026-05-19).
 // Doctrine : artefact mémoire relisible + audité, role-gaté par
@@ -87,14 +88,22 @@ export default async function DocumentViewerPage({
         ← Bibliothèque documentaire
       </Link>
 
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold break-words">{doc.filename}</h1>
-        <p className="text-sm text-muted-foreground">
-          {doc.document_type} · {ANALYSIS_LABEL[doc.analysis_status] ?? doc.analysis_status}
-          {doc.analysis_status === 'failed' && doc.failed_reason
-            ? ` — ${doc.failed_reason}`
-            : ''}
-        </p>
+      <header className="space-y-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold break-words">{doc.filename}</h1>
+          <p className="text-sm text-muted-foreground">
+            {doc.document_type} · {ANALYSIS_LABEL[doc.analysis_status] ?? doc.analysis_status}
+            {doc.analysis_status === 'failed' && doc.failed_reason
+              ? ` — ${doc.failed_reason}`
+              : ''}
+          </p>
+        </div>
+        {(role === 'admin' || role === 'manager') && (
+          <DocumentActions
+            documentId={doc.id}
+            analysisStatus={doc.analysis_status}
+          />
+        )}
       </header>
 
       <section className="rounded-lg border bg-card p-4">

@@ -204,6 +204,66 @@ export async function updateDocumentAnalysisStatus(
 }
 
 /**
+ * Soft-delete d'un document + nettoyage des dérivés IA.
+ *
+ * Doctrine : on conserve la trace historique (deleted_at, jamais hard
+ * delete du document ni du fichier storage — restauration possible,
+ * audit préservé). En revanche, on supprime/staled les artefacts IA
+ * qui pourraient ressurgir dans une lecture :
+ *
+ *  - `knowledge_chunks` (source_domain='document') → DELETE hard
+ *    (regenerable depuis le fichier si restauration, et leur présence
+ *    fait fuiter le contenu dans matchAoToKnowledge / recalls).
+ *  - `site_reading_candidates` où source_ids[0].id = doc.id → status='stale'
+ *    (préserve l'historique des résonances émises, ne re-render plus).
+ *
+ * Le fichier dans le bucket `documents` est CONSERVÉ (pattern soft delete).
+ * Une purge définitive est une décision séparée (non couverte ici).
+ *
+ * Idempotent : ré-appel sur un doc déjà supprimé fait juste rien.
+ */
+export async function softDeleteDocument(id: string): Promise<void> {
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+
+  // 1. Marquer le doc supprimé
+  const { error: docErr } = await supabase
+    .from('documents')
+    .update({ deleted_at: now, updated_at: now })
+    .eq('id', id)
+    .is('deleted_at', null)
+  if (docErr) throw docErr
+
+  // 2. Nettoyer knowledge_chunks (re-générables si restauration)
+  await supabase
+    .from('knowledge_chunks')
+    .delete()
+    .eq('source_domain', 'document')
+    .eq('source_id', id)
+
+  // 3. Staler les résonances qui ont ce doc comme source primaire
+  //    (B1 + B2). Filtre côté JS sur source_ids[0].id car PostgREST ne
+  //    permet pas un filtre direct sur l'élément 0 d'un jsonb array.
+  const { data: candidates } = await supabase
+    .from('site_reading_candidates')
+    .select('id, source_ids')
+    .like('algorithm_version', 'b%_doc_%')
+    .eq('status', 'active')
+  const toStale = (candidates ?? [])
+    .filter((r) => {
+      const src = (r as { source_ids: Array<{ type: string; id: string }> }).source_ids ?? []
+      return src.length > 0 && src[0]?.id === id
+    })
+    .map((r) => (r as { id: string }).id)
+  if (toStale.length > 0) {
+    await supabase
+      .from('site_reading_candidates')
+      .update({ status: 'stale' })
+      .in('id', toStale)
+  }
+}
+
+/**
  * Pose le texte extrait + la source d'extraction (pipeline analyzeDocument,
  * phase 2). Déterministe : aucune génération LLM. Appelé une seule fois par
  * analyse (ou relance « Réanalyser »), jamais à l'affichage.
