@@ -76,6 +76,30 @@ export interface AOPipeline {
   renewalsDue: number
 }
 
+/**
+ * Snapshot AO pour le widget "Pipeline AO" du dashboard (AO-1 L2).
+ * 3 chiffres descriptifs cliquables — pas un score, pas un ranking.
+ */
+export interface AOSnapshot {
+  /** AO non archivés et sans outcome final (commercialement actifs). */
+  activeCount: number
+  /** AO actifs dont la deadline tombe dans ≤ 7 jours. Sous-ensemble de active. */
+  dueSoonCount: number
+  /** AO outcome='won' avec outcome_at dans le mois civil courant. */
+  wonThisMonthCount: number
+}
+
+/** Ligne de la liste "AO à rendre" du bandeau vigilance rouge (AO-1 L1). */
+export interface TenderDueSoonRow {
+  id: string
+  title: string
+  client_name: string | null
+  deadline: string
+  /** Jours restants jusqu'à la deadline (peut être 0 = aujourd'hui, négatif = passé). */
+  daysUntilDeadline: number
+  status: string
+}
+
 export interface OpenAnomaliesStats {
   /** Anomalies non résolues actuellement (status='open'). */
   total: number
@@ -277,6 +301,115 @@ export async function getAOPipeline(): Promise<AOPipeline> {
     submitted: submittedRes.count ?? 0,
     renewalsDue: renewalsRes.count ?? 0,
   }
+}
+
+// ----------------------------------------------------------------------------
+// AO-1 (Vincent 2026-05-21) — Snapshot AO pour widget pipeline + bandeau ≤ 7j
+// ----------------------------------------------------------------------------
+
+/**
+ * Statuts considérés comme « commercialement actifs » : l'AO existe et le
+ * travail commercial n'est pas terminé. Outcome final exclut (won/lost/etc).
+ */
+const TENDER_ACTIVE_STATUSES = [
+  'draft',
+  'extracting',
+  'analyzing',
+  'ready',
+  'submitted',
+] as const
+
+/**
+ * getAOSnapshot : 3 compteurs descriptifs pour le widget Pipeline AO du
+ * dashboard. Pas un score, pas un ranking — uniquement des faits actuels.
+ *
+ *   * activeCount       — AO non-archivés et sans outcome final
+ *   * dueSoonCount      — AO actifs avec deadline ≤ 7 jours
+ *   * wonThisMonthCount — AO outcome=won avec outcome_at ce mois civil
+ */
+export async function getAOSnapshot(): Promise<AOSnapshot> {
+  const supabase = createAdminClient()
+  const today = todayLocalIso()
+  const dueSoonHorizon = addDaysLocal(today, 7)
+
+  // Début du mois civil courant (yyyy-mm-01).
+  const now = new Date()
+  const monthStartIso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
+
+  const [activeRes, dueSoonRes, wonRes] = await Promise.all([
+    supabase
+      .from('tenders')
+      .select('id', { count: 'exact', head: true })
+      .in('status', TENDER_ACTIVE_STATUSES as unknown as string[])
+      .is('deleted_at', null)
+      .or('outcome.is.null,outcome.eq.pending'),
+    supabase
+      .from('tenders')
+      .select('id', { count: 'exact', head: true })
+      .in('status', TENDER_ACTIVE_STATUSES as unknown as string[])
+      .is('deleted_at', null)
+      .or('outcome.is.null,outcome.eq.pending')
+      .gte('deadline', today)
+      .lte('deadline', dueSoonHorizon),
+    supabase
+      .from('tenders')
+      .select('id', { count: 'exact', head: true })
+      .eq('outcome', 'won')
+      .gte('outcome_at', monthStartIso)
+      .is('deleted_at', null),
+  ])
+
+  if (activeRes.error) throw activeRes.error
+  if (dueSoonRes.error) throw dueSoonRes.error
+  if (wonRes.error) throw wonRes.error
+
+  return {
+    activeCount: activeRes.count ?? 0,
+    dueSoonCount: dueSoonRes.count ?? 0,
+    wonThisMonthCount: wonRes.count ?? 0,
+  }
+}
+
+/**
+ * listTendersDueSoon : AO commercialement actifs dont la deadline tombe
+ * dans ≤ `days` jours. Source du bandeau vigilance rouge (AO-1 L1).
+ *
+ * Tri : deadline ascendante (le plus proche en haut).
+ * Silence positif côté UI : si retour vide, le bandeau ne s'affiche pas.
+ */
+export async function listTendersDueSoon(
+  days: number = 7,
+): Promise<TenderDueSoonRow[]> {
+  const supabase = createAdminClient()
+  const today = todayLocalIso()
+  const horizon = addDaysLocal(today, days)
+
+  const { data, error } = await supabase
+    .from('tenders')
+    .select('id, title, client_name, deadline, status')
+    .in('status', TENDER_ACTIVE_STATUSES as unknown as string[])
+    .is('deleted_at', null)
+    .or('outcome.is.null,outcome.eq.pending')
+    .gte('deadline', today)
+    .lte('deadline', horizon)
+    .order('deadline', { ascending: true })
+
+  if (error) throw error
+
+  const todayMs = new Date(today + 'T00:00:00Z').getTime()
+  return (data ?? []).map((row) => {
+    const r = row as { id: string; title: string; client_name: string | null; deadline: string; status: string }
+    const deadlineMs = new Date(r.deadline + 'T00:00:00Z').getTime()
+    const daysUntilDeadline = Math.floor((deadlineMs - todayMs) / (24 * 60 * 60 * 1000))
+    return {
+      id: r.id,
+      title: r.title,
+      client_name: r.client_name,
+      deadline: r.deadline,
+      daysUntilDeadline,
+      status: r.status,
+    }
+  })
 }
 
 /**

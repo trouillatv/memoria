@@ -9,6 +9,8 @@ import {
   getWeekPulse,
   getCapitalPreuves,
   getAOPipeline,
+  getAOSnapshot,
+  listTendersDueSoon,
   getOpenAnomaliesStats,
   getAtRiskEngagements,
   getContractsUnderTension,
@@ -29,6 +31,8 @@ import { RecentActivityWidget } from './RecentActivityWidget'
 import { AnomaliesOldWidget } from './AnomaliesOldWidget'
 import { RecentAnomaliesWidget } from './RecentAnomaliesWidget'
 import { TenantMorningReadingCard } from './TenantMorningReadingCard'
+import { TendersDueSoonAlertWidget } from './TendersDueSoonAlertWidget'
+import { AOPipelineWidget } from './AOPipelineWidget'
 import { getTenantTopMorningReading } from '@/lib/db/site-cockpit'
 
 /**
@@ -55,13 +59,16 @@ export default async function DashboardPage() {
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
-  // Queries en parallèle : page-globales + helpers cockpit 11.0.
+  // Queries en parallèle : page-globales + helpers cockpit 11.0 +
+  // AO-1 (Vincent 2026-05-21) : aoSnapshot + tendersDueSoon.
   const [
     contracts,
     onboarding,
     weekPulse,
     capital,
     aoPipeline,
+    aoSnapshot,
+    tendersDueSoon,
     anomaliesStats,
     atRiskEngagements,
     contractsUnderTension,
@@ -76,6 +83,8 @@ export default async function DashboardPage() {
     getWeekPulse(),
     getCapitalPreuves(),
     getAOPipeline(),
+    getAOSnapshot(),
+    listTendersDueSoon(7),
     getOpenAnomaliesStats(),
     getAtRiskEngagements(),
     getContractsUnderTension(),
@@ -147,11 +156,21 @@ export default async function DashboardPage() {
           en tête de la zone vigilance. 1 fragment max. Si rien → ne s'affiche pas. */}
       <TenantMorningReadingCard data={morningReading} />
 
+      {/* AO-1 L1 (Vincent 2026-05-21) — bandeau rouge AO à rendre ≤ 7j.
+          Premier dans la vigilance car deadline = signal le plus actionnable.
+          Silence positif si zéro AO à rendre. */}
+      <TendersDueSoonAlertWidget tenders={tendersDueSoon} />
+
       <RecentAnomaliesWidget anomalies={recentAnomalies} />
 
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
 
       <ContractsUnderTensionWidget contracts={contractsUnderTension} />
+
+      {/* AO-1 L2 (Vincent 2026-05-21) — widget Pipeline AO sobre (info, pas
+          alerte). 3 compteurs cliquables vers /tenders. Silence positif si
+          total = 0. */}
+      <AOPipelineWidget snapshot={aoSnapshot} />
 
       {/* Sprint 3 — UX-8 Mode litige express : bouton sobre, immédiatement
           visible, jamais alarmant. Doctrine V5 verrou V4 : wording strictement
