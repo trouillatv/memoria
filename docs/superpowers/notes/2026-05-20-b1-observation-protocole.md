@@ -306,47 +306,59 @@ Les anciennes basculent en `stale`.
 
 ---
 
-## 3. Indicateurs de décision B2 (non bloquants)
+## 3. Invariant sécurité — DUR (ratification Vincent 2026-05-20)
 
-**Évolution doctrinale Vincent 2026-05-20 :** initialement formulés
-comme « critères d'acceptation gate B2 » (toutes conditions
-obligatoires avant tout code B2), ces indicateurs sont **rétrogradés
-en signaux d'aide à la décision**. B2 peut être étudié et codé sur
-décision Vincent sans obligation de tout cocher au préalable. Le
-fichier garde la formulation des seuils initialement proposés à titre
-de repères mesurables, pas de verrous.
+**Cet invariant n'est pas une métrique produit. C'est de la sécurité de
+données. Il ne se rétrograde pas.**
 
-Indicateurs proposés (consultatifs) :
+- §1.7 doit retourner **0 ligne en permanence**.
+- Toute ligne retournée = **P0 immédiat**, à corriger sans délai.
+- Bloque **toute extension liée aux documents** tant que ce n'est
+  pas corrigé.
 
-1. **Volume.** ≥ 10 résonances B1 actives sur ≥ 3 sites distincts est
-   un seuil confortable pour parler de « PoC qui produit du signal ».
-   *Source : §1.1 + §1.2.*
+**Règles dures (à vérifier au render ET au recall) :**
+
+- `visibility_level='admin_only'` ne doit **jamais** fuiter vers un
+  rôle inférieur (operations / field).
+- Un document sensible ne doit **jamais** ressortir dans un recall
+  non autorisé (matcher AO, lecture site, citation [doc:id]).
+- `document_type='litige'` ne doit **jamais** devenir source
+  automatique d'une lecture, citation, résonance — même si la
+  visibilité passerait.
+- `visibility_level` doit être appliqué **au recall** (RPC, matcher)
+  **ET au render** (composants UI). Une seule des deux ne suffit pas
+  (défense en profondeur).
+
+**Test de non-régression structurel :** tout nouveau chemin de lecture
+documentaire doit ajouter un tripwire qui prouve ces règles dans
+`tests/doctrine/`. Voir `document-resonances-guard.test.ts` pour le
+patron.
+
+## 4. Indicateurs B2 — consultatifs (non bloquants)
+
+**Évolution doctrinale Vincent 2026-05-20 :** ces quatre indicateurs
+étaient initialement formulés comme « critères d'acceptation gate B2 »
+(toutes conditions obligatoires). Ils sont **rétrogradés en signaux
+d'aide à la décision** — B2 peut être étudié et codé sur décision
+Vincent sans obligation de tout cocher.
+
+1. **Volume.** ≥ 10 résonances B1 actives sur ≥ 3 sites distincts =
+   PoC qui produit du signal. *Source : §1.1 + §1.2.*
 
 2. **Bruit.** Taux de `dismissed` < 30 % indique un B1 utile ; > 30 %
-   un B1 trop bruyant — utile à savoir avant d'amplifier en B2.
+   un B1 bruyant — utile à savoir avant d'amplifier en B2.
    *Source : §1.5.*
 
 3. **Pertinence humaine.** ≥ 60 % de fragments jugés "écho juste"
-   (verdict binaire §1.6) est un signal qualitatif fort. C'est le
-   seul critère vraiment irremplaçable — métriques quantitatives ne
-   suffisent jamais.
+   (verdict binaire §1.6) — le seul critère vraiment irremplaçable.
 
-4. **Fuite visibilité — sécurité, pas indicateur.** §1.7 doit rester
-   à 0 ligne **en permanence**. Toute ligne = bug doctrinal P0, à
-   corriger indépendamment de B2. Cette condition reste **dure**
-   (sécurité, pas gate).
-
-5. **Plafond /3.** ≥ 5 sites au plafond signale soit un seuil mordant
-   utilement, soit des notes terrain bavardes — utile à examiner pour
+4. **Plafond /3.** ≥ 5 sites au plafond signale soit un seuil mordant
+   utilement, soit des notes terrain bavardes — à examiner pour
    calibrer B2, pas un blocage.
-
-**Position courante :** B2 (cross-store cosine documents ↔ traces site)
-peut être étudié sans attendre que ces indicateurs soient tous au vert.
-Seule la non-fuite visibilité (§1.7) reste un invariant de sécurité.
 
 ---
 
-## 4. Journal d'observation (à remplir au fil de l'eau)
+## 5. Journal d'observation (à remplir au fil de l'eau)
 
 ```
 Date | Site | Scénario | Résultat attendu | Résultat observé | Commentaire
@@ -356,7 +368,7 @@ Date | Site | Scénario | Résultat attendu | Résultat observé | Commentaire
 
 ---
 
-## 5. Ce que ce protocole NE fait PAS
+## 6. Ce que ce protocole NE fait PAS
 
 - Pas de benchmark IA, pas de mesure de latence (B1 est déterministe,
   pas d'enjeu coût).
