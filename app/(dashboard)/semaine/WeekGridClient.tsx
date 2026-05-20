@@ -4,11 +4,11 @@
 //
 // Orchestrateur DnD + drawer pour la grille semaine.
 //
-// Refonte Slice 9.7 :
+// Refonte Slice 9.7 + V6.1 (Vincent 2026-05-20) :
 //   - Drag DIRECT depuis la cellule (plus de drag handle dans le drawer)
-//   - DragOverlay = preview carte flottante "Mission · Site · m/a/s · Équipe"
-//   - Slot edit : drop sur un chip m/a/s posé sur la cellule cible pendant le
-//     drag → change date + créneau. Drop sur le fond de cellule = date seule.
+//   - DragOverlay = preview carte flottante "Mission · Site · Heure · Équipe"
+//   - Drop ne change QUE la date ; l'heure de prestation est préservée (plus
+//     de chips matin/après-midi/soir — ces lettres ont disparu de l'UI).
 //   - Modifie UNIQUEMENT cette intervention (jamais la mission/template).
 //     Hint vers /missions dans le toast si l'intervention vient d'une récurrence.
 //
@@ -45,12 +45,12 @@ import { moveInterventionToDayAction } from './actions'
 import type { ReassignTeamOption } from './ReassignTeamDialog'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { GripVertical } from 'lucide-react'
+import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 
-const SLOT_LABEL_FR: Record<InterventionSlot, string> = {
-  morning: 'matin',
-  afternoon: 'après-midi',
-  evening: 'soir',
-}
+// V6.1 (Vincent 2026-05-20) : plus de labels matin/après-midi/soir côté UI.
+// On affiche désormais l'horaire de prestation honnête (planned_start) via
+// formatInterventionTimeLabel (qui retombe sur l'ancrage canonique 7h/14h/19h
+// quand pas de précis).
 
 export interface WeekGridClientProps {
   rows: SiteRow[]
@@ -117,6 +117,9 @@ interface DragPreview {
   missionName: string
   siteName: string
   slot: InterventionSlot | null
+  /** V6.1 — heure de prestation (Vincent 2026-05-20). */
+  plannedStart: string | null
+  plannedEnd: string | null
   teamName: string | null
   teamColor: string | null
 }
@@ -195,15 +198,16 @@ export function WeekGridClient({ rows, todayIso, teams, children }: WeekGridClie
           // Doctrine /semaine : un drop ne modifie QUE cette intervention.
           // Jamais la mission ni le template. Pour modifier une mission
           // complète, l'utilisateur va dans /missions.
-          const slotText = parsed.slot ? ` · ${SLOT_LABEL_FR[parsed.slot]}` : ''
+          // V6.1 — le toast ne mentionne plus de créneau (matin/après-midi/soir),
+          // seulement la date. L'heure de prestation est préservée par le drop.
           const dateText = new Date(parsed.date + 'T00:00:00Z').toLocaleDateString('fr-FR', {
             weekday: 'short',
             day: '2-digit',
             month: 'short',
           })
           const title = result.rescheduled
-            ? `Rattrapée → ${dateText}${slotText}`
-            : `Replanifiée → ${dateText}${slotText}`
+            ? `Rattrapée → ${dateText}`
+            : `Replanifiée → ${dateText}`
           toast.success(title, {
             description: result.rescheduled
               ? 'Intervention ratée remise en planifié. Cette intervention uniquement.'
@@ -284,7 +288,12 @@ export function WeekGridClient({ rows, todayIso, teams, children }: WeekGridClie
 }
 
 function DragPreviewCard({ preview }: { preview: DragPreview }) {
-  const slotLabel = preview.slot ? SLOT_LABEL_FR[preview.slot] : '—'
+  // V6.1 — affiche l'heure de prestation, plus jamais "matin/après-midi/soir".
+  const timeLabel = formatInterventionTimeLabel({
+    planned_start: preview.plannedStart,
+    planned_end: preview.plannedEnd,
+    slot: preview.slot,
+  })
   return (
     <div
       className="pointer-events-none rounded-lg border bg-card/90 backdrop-blur-sm shadow-lg px-3 py-2 max-w-[16rem] ring-2 ring-brand-300/80 opacity-90"
@@ -296,8 +305,8 @@ function DragPreviewCard({ preview }: { preview: DragPreview }) {
           <div className="text-sm font-medium truncate">{preview.missionName}</div>
           <div className="text-[11px] text-muted-foreground truncate">{preview.siteName}</div>
           <div className="mt-1 flex items-center gap-1.5">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-              {slotLabel}
+            <span className="font-mono text-[10px] tracking-tight text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+              {timeLabel}
             </span>
             {preview.teamName && (
               <TeamBadge name={preview.teamName} color={preview.teamColor} size="sm" />

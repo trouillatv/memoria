@@ -32,7 +32,7 @@ interface Props {
   /** HH:MM existant, ou '' si pas de saisie précise actuellement. */
   initialStartHHMM: string
   initialEndHHMM: string
-  /** Libellé court (« Bionettoyage sanitaires · Matin ») pour le titre du dialog. */
+  /** Libellé court (« Bionettoyage sanitaires · 06h30 – 08h00 ») pour le titre du dialog. */
   label?: string
   trigger?: React.ReactNode
 }
@@ -67,7 +67,7 @@ export function EditInterventionTimeDialog({
         toast.error(r.error ?? 'Erreur inconnue')
         return
       }
-      toast.success(start === '' ? 'Heure précise retirée' : 'Heure mise à jour')
+      toast.success(start === '' ? 'Heure précise retirée — retour à l’horaire d’ancrage' : 'Horaire mis à jour')
       setOpen(false)
       router.refresh()
     })
@@ -95,10 +95,10 @@ export function EditInterventionTimeDialog({
       />
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Heure précise de prestation</DialogTitle>
+          <DialogTitle>Horaire de prestation</DialogTitle>
           <DialogDescription>
             {label ? `${label} · ` : ''}
-            Heure de début et fin (optionnel). Laisse vide pour revenir au créneau seul.
+            Heure de début et fin (optionnel). Laisse vide pour revenir à l'horaire d'ancrage par défaut.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,12 +140,11 @@ export function EditInterventionTimeDialog({
               disabled={pending}
               className="text-xs text-muted-foreground hover:text-destructive underline-offset-2 hover:underline"
             >
-              Retirer l'heure précise (retour au créneau seul)
+              Retirer l'heure précise (retour à l'horaire d'ancrage)
             </button>
           )}
           <p className="text-[11px] text-muted-foreground/70">
-            La date et le créneau ne changent pas. Pour changer de jour, utilise le
-            drag-and-drop dans la grille.
+            La date ne change pas. Pour changer de jour, utilise le drag-and-drop dans la grille.
           </p>
         </div>
 

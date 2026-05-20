@@ -2,10 +2,11 @@
 //
 // Route GET /semaine/export?week=YYYY-Www
 //
-// Doctrine V2 respectée :
+// Doctrine V2 + V6.1 (Vincent 2026-05-20) :
 //   - Pas de KPI agrégé, pas de "performance" — juste l'organisation brute.
 //   - Pas de noms d'agents : on garde le NIVEAU ÉQUIPE.
-//   - Créneaux nommés (matin/après-midi/soir), jamais d'heures précises.
+//   - Colonne « Horaire » : heure réelle de prestation (planned_start). Plus
+//     de colonne « Créneau » côté utilisateur.
 //
 // Auth : admin OU manager (même garde que /semaine).
 
@@ -19,7 +20,7 @@ import {
   parseWeekParam,
 } from '@/lib/db/week-planning'
 import { listTeamsWithMemberCount } from '@/lib/db/teams'
-import type { InterventionSlot } from '@/types/db'
+import { fmtHourFr } from '@/lib/time/prestation-slot'
 
 const DAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 const STATUS_LABELS_FR: Record<string, string> = {
@@ -29,11 +30,8 @@ const STATUS_LABELS_FR: Record<string, string> = {
   validated: 'Validée',
   skipped: 'Sautée',
 }
-const SLOT_LABELS_FR: Record<InterventionSlot, string> = {
-  morning: 'Matin',
-  afternoon: 'Après-midi',
-  evening: 'Soir',
-}
+// V6.1 (Vincent 2026-05-20) : plus de labels « Matin / Après-midi / Soir »
+// dans l'export. La colonne « Horaire » utilise fmtHourFr(planned_start).
 
 // Couleur de marque (cf. app/globals.css --color-brand-600).
 const BRAND_BLUE = 'FF2563EB'
@@ -129,7 +127,7 @@ export async function GET(req: NextRequest) {
   const sheet = wb.addWorksheet(`Semaine ${range.weekNumber}`)
 
   // Largeurs de colonnes (10 colonnes : A → J)
-  // Date · Jour · Créneau · Contrat · Site · Mission · Équipe · Couleur · Effectif · Statut
+  // Date · Jour · Horaire · Contrat · Site · Mission · Équipe · Couleur · Effectif · Statut
   const widths = [12, 12, 12, 30, 30, 32, 22, 10, 11, 14]
   widths.forEach((w, i) => {
     sheet.getColumn(i + 1).width = w
@@ -169,7 +167,7 @@ export async function GET(req: NextRequest) {
   // ----- Ligne 4 : en-têtes de colonnes -----
 
   const HEADER_ROW = 4
-  const headers = ['Date', 'Jour', 'Créneau', 'Contrat', 'Site', 'Mission', 'Équipe', 'Couleur', 'Effectif', 'Statut']
+  const headers = ['Date', 'Jour', 'Horaire', 'Contrat', 'Site', 'Mission', 'Équipe', 'Couleur', 'Effectif', 'Statut']
   const COL_TEAM = 7
   const COL_COLOR = 8
   const COL_HEADCOUNT = 9
@@ -192,14 +190,14 @@ export async function GET(req: NextRequest) {
 
   // ----- Lignes 5+ : données -----
 
-  // Tri : date, créneau (matin → soir), contrat, site, mission
-  const slotOrder: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 }
+  // Tri : date, planned_start (heure ascendante), contrat, site, mission
   const fr = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' })
   const sorted = [...cells].sort((a, b) => {
     if (a.scheduled_for !== b.scheduled_for) return a.scheduled_for < b.scheduled_for ? -1 : 1
-    const sa = slotOrder[a.slot ?? ''] ?? 99
-    const sb = slotOrder[b.slot ?? ''] ?? 99
-    if (sa !== sb) return sa - sb
+    // V6.1 — tri par planned_start ascendant (nulls last) plutôt que par slot.
+    const ax = a.planned_start ?? '~'
+    const bx = b.planned_start ?? '~'
+    if (ax !== bx) return ax < bx ? -1 : 1
     return fr(a.contract_name, b.contract_name) || fr(a.site_name, b.site_name) || fr(a.mission_name, b.mission_name)
   })
 
@@ -209,7 +207,8 @@ export async function GET(req: NextRequest) {
     const row = sheet.addRow([
       c.scheduled_for,
       dayLabelForIso(c.scheduled_for),
-      c.slot ? (SLOT_LABELS_FR[c.slot as InterventionSlot] ?? c.slot) : '—',
+      // V6.1 — colonne « Horaire » : heure de prestation réelle.
+      fmtHourFr(c.planned_start),
       c.contract_name,
       c.site_name,
       c.mission_name,

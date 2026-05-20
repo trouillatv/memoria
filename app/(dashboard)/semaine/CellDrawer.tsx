@@ -15,7 +15,10 @@
 //
 // Doctrine V2 :
 //   - Wording neutre. Pas de "en retard", pas de "performance".
-//   - Créneaux nommés (matin / après-midi / soir), JAMAIS d'heure.
+//   - V6.1 (Vincent 2026-05-20) : ZÉRO évocation de créneau côté utilisateur.
+//     Affichage de l'horaire de prestation uniquement (heure précise saisie OU
+//     ancrage canonique 7h / 14h / 19h). Le slot reste en DB pour le dégradé
+//     visuel et les vues legacy, mais n'est plus nommé.
 //   - StatusBadge unifié pour le statut intervention.
 //   - Bouton "Réassigner équipe" désactivé si status !== 'planned'
 //     (immuabilité de la preuve).
@@ -24,7 +27,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CalendarDays, MapPin, Users, ArrowRight } from 'lucide-react'
 import {
-  isPlannedStartPrecise,
   formatInterventionTimeLabel,
   extractHHMM,
 } from '@/lib/time/prestation-slot'
@@ -42,12 +44,6 @@ import { TeamBadge } from '@/components/ui/team-badge'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
-
-const SLOT_FR: Record<string, string> = {
-  morning: 'Matin',
-  afternoon: 'Après-midi',
-  evening: 'Soir',
-}
 
 const MONTHS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -222,21 +218,13 @@ export function CellDrawer({
                           <h3 className="text-sm font-medium text-foreground truncate underline decoration-foreground/30 underline-offset-2 group-active:decoration-foreground/70">
                             {c.mission_name}
                           </h3>
-                          {c.slot ? (
-                            <p className="text-xs text-muted-foreground">
-                              Créneau {SLOT_FR[c.slot]?.toLowerCase() ?? c.slot}
-                              {(c.planned_end || isPlannedStartPrecise(c.planned_start)) && (
-                                <span className="font-semibold text-foreground/80">
-                                  {' · '}
-                                  {formatInterventionTimeLabel({
-                                    planned_start: c.planned_start,
-                                    planned_end: c.planned_end,
-                                    slot: c.slot as 'morning' | 'afternoon' | 'evening' | null,
-                                  })}
-                                </span>
-                              )}
-                            </p>
-                          ) : null}
+                          <p className="text-xs font-semibold text-foreground/80">
+                            {formatInterventionTimeLabel({
+                              planned_start: c.planned_start,
+                              planned_end: c.planned_end,
+                              slot: c.slot as 'morning' | 'afternoon' | 'evening' | null,
+                            })}
+                          </p>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <StatusBadge status={c.status} />
@@ -267,7 +255,11 @@ export function CellDrawer({
                           interventionId={c.id}
                           initialStartHHMM={extractHHMM(c.planned_start) ?? ''}
                           initialEndHHMM={extractHHMM(c.planned_end) ?? ''}
-                          label={`${c.mission_name} · ${c.slot ? SLOT_FR[c.slot]?.toLowerCase() ?? c.slot : 'créneau ?'}`}
+                          label={`${c.mission_name} · ${formatInterventionTimeLabel({
+                            planned_start: c.planned_start,
+                            planned_end: c.planned_end,
+                            slot: c.slot as 'morning' | 'afternoon' | 'evening' | null,
+                          })}`}
                         />
                       )}
                       <Button

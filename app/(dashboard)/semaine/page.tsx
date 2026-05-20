@@ -5,9 +5,11 @@
 // Slice 9.4 : drag & drop replanification + réassignation équipe.
 // La Vue Équipe × Jour arrive en Slice 9.5.
 //
-// Doctrine V2 (cf. docs/superpowers/doctrines/planning-doctrine.md V2) :
-//   - Vue Site × Jour PRIMAIRE (Équipe × Jour sera secondaire)
-//   - Créneaux nommés (m / a / s), JAMAIS d'heures précises
+// Doctrine V2 + V6.1 (Vincent 2026-05-20) :
+//   - Vue Site × Jour PRIMAIRE (Équipe × Jour secondaire)
+//   - ZÉRO évocation de créneau côté utilisateur. On travaille uniquement en
+//     HEURES réelles de prestation (planned_start/planned_end). Le slot DB
+//     reste pour le tri interne et le dégradé visuel mais n'est jamais nommé.
 //   - "Non-affecté" = signal ambre discret, JAMAIS rouge
 //   - Aucune métrique de performance / charge / saturation / retard
 //   - Wording neutre : on organise, on ne surveille pas
@@ -256,7 +258,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
         <p>
           Les modifications sur cette page ne concernent qu&apos;une intervention ponctuelle.
-          Pour modifier une mission complète (récurrence, fréquence, créneaux par défaut),
+          Pour modifier une mission complète (récurrence, fréquence, horaires par défaut),
           va dans <Link href="/missions" className="font-medium underline-offset-2 hover:underline">Missions</Link>.
         </p>
       </div>
@@ -287,19 +289,21 @@ export default async function SemainePage({ searchParams }: PageProps) {
             <TeamWeekGrid range={range} rows={teamRows} todayIso={todayIso} />
           </TeamWeekGridClient>
         )}
-        {/* Légende — créneaux nommés, jamais d'heures précises (doctrine V2) */}
+        {/* Légende V6.1 (Vincent 2026-05-20) : l'heure affichée dans la
+            cellule est celle de la 1ʳᵉ intervention. Le nombre de points
+            (● / ●●) indique combien il y en a en tout. */}
         <p className="text-xs text-muted-foreground pt-1">
-          <span className="font-mono">m</span> = matin
+          <span className="font-mono">6h30</span> = heure de la 1ʳᵉ intervention du jour
           {' · '}
-          <span className="font-mono">a</span> = après-midi
+          <span>● = 1 intervention</span>
           {' · '}
-          <span className="font-mono">s</span> = soir
+          <span>●● = plusieurs (clique pour voir le détail)</span>
           {' · '}
           <span className="italic text-amber-700/80">Non-affecté</span> = à attribuer à une équipe
         </p>
 
-        {/* Vigilance — interventions sans équipe + conflits d'équipe sur le
-            même créneau. Silence positif si aucun signal. */}
+        {/* Vigilance — interventions sans équipe + conflits d'équipe sur des
+            horaires qui se chevauchent. Silence positif si aucun signal. */}
         <WeekVigilanceSection data={vigilance} />
       </div>
     </div>

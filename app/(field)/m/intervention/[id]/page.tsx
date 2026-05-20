@@ -14,7 +14,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { formatRelativeShort } from '@/lib/format'
-import { formatInterventionTimeLabel, isPlannedStartPrecise } from '@/lib/time/prestation-slot'
+import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { AnomalyList } from './AnomalyList'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
@@ -162,32 +162,21 @@ export default async function FieldInterventionPage({ params }: { params: Promis
     month: 'long',
     timeZone: 'UTC',
   })
-  // V6.1 (Vincent 2026-05-20 — demande Guillaume) : afficher TOUJOURS le
-  // créneau (Matin/Après-midi/Soir) PLUS l'heure précise quand saisie.
-  // Ex : « Matin · 6h30 – 8h (1h30) ». Le badge couleur reste basé sur le slot.
+  // V6.1 (Vincent 2026-05-20) : afficher UNIQUEMENT l'heure — jamais le mot
+  // « créneau / matin / après-midi / soir ». Le slot reste la base du dégradé
+  // couleur du badge pour conserver un repère visuel cohérent dans la journée
+  // (matinée chaude, après-midi froide, soir indigo), mais il n'est plus nommé.
   // JAMAIS pointage personne — ancrage prestation uniquement.
-  const SLOT_LABELS: Record<string, string> = {
-    morning: 'Matin',
-    afternoon: 'Après-midi',
-    evening: 'Soir',
-  }
   const SLOT_BADGE_CLASSES: Record<string, string> = {
     morning: 'bg-amber-100 text-amber-900 border-amber-200',
     afternoon: 'bg-sky-100 text-sky-900 border-sky-200',
     evening: 'bg-indigo-100 text-indigo-900 border-indigo-200',
   }
-  const slotLabel = intervention.slot ? SLOT_LABELS[intervention.slot] : null
-  // Heure précise = planned_start non canonique OU planned_end présent.
-  const hasPreciseHour =
-    !!intervention.planned_end ||
-    isPlannedStartPrecise(intervention.planned_start)
-  const preciseLabel = hasPreciseHour
-    ? formatInterventionTimeLabel({
-        planned_start: intervention.planned_start,
-        planned_end: intervention.planned_end,
-        slot: intervention.slot,
-      })
-    : null
+  const timeLabel = formatInterventionTimeLabel({
+    planned_start: intervention.planned_start,
+    planned_end: intervention.planned_end,
+    slot: intervention.slot,
+  })
   const slotBadgeClass = intervention.slot
     ? SLOT_BADGE_CLASSES[intervention.slot] ?? 'bg-muted text-foreground border-border'
     : 'bg-muted text-foreground border-border'
@@ -243,14 +232,12 @@ export default async function FieldInterventionPage({ params }: { params: Promis
             <Clock className="h-4 w-4 shrink-0" />
             <span>{dateLabel}</span>
           </div>
-          {slotLabel && (
-            <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-full border text-sm font-medium ${slotBadgeClass}`}
-            >
-              {slotLabel}
-              {preciseLabel && <span className="ml-1 font-semibold"> · {preciseLabel}</span>}
-            </span>
-          )}
+          <span
+            className={`inline-flex items-center px-2.5 py-1 rounded-full border text-sm font-medium ${slotBadgeClass}`}
+            title="Horaire de prestation (V6.1). Ancrage site/contrat, jamais pointage personne."
+          >
+            {timeLabel}
+          </span>
         </div>
       </header>
 

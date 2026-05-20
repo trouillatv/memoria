@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
-import type { InterventionSlot } from '@/types/db'
 
 export interface MissionOption {
   id: string
@@ -48,24 +47,17 @@ interface Props {
 const INHERIT = '__inherit__'
 const UNASSIGNED = '__unassigned__'
 
-const SLOT_OPTIONS: Array<{ value: InterventionSlot; label: string }> = [
-  { value: 'morning', label: 'Matin' },
-  { value: 'afternoon', label: 'Après-midi' },
-  { value: 'evening', label: 'Soir' },
-]
-
 export function CreateInterventionDialog({ missions, teams, defaultDate }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [missionId, setMissionId] = useState<string>('')
   const [scheduledFor, setScheduledFor] = useState<string>(defaultDate)
-  const [slot, setSlot] = useState<InterventionSlot>('afternoon')
   const [teamChoice, setTeamChoice] = useState<string>(INHERIT)
-  // V6.1 (demande Guillaume 2026-05-20) : heures précises optionnelles.
-  // Le chef d'équipe travaille de 06h30 à 08h00, pas « matin ». Si toggle off,
-  // fallback slot grossier (comportement legacy).
-  const [precisHour, setPrecisHour] = useState<boolean>(false)
+  // V6.1 (Vincent 2026-05-20) : l'heure de début est OBLIGATOIRE. Plus de
+  // notion de « créneau matin/AM/soir » côté UI. Le slot est dérivé côté
+  // serveur depuis plannedStartHHMM (ancrage canonique 07/14/19 = slot
+  // morning/afternoon/evening).
   const [plannedStartHHMM, setPlannedStartHHMM] = useState<string>('')
   const [plannedEndHHMM, setPlannedEndHHMM] = useState<string>('')
 
@@ -92,14 +84,14 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
     ? (teams.find((t) => t.id === selectedMission.defaultTeamId)?.name ?? 'Équipe par défaut')
     : null
 
-  const canSubmit = missionId !== '' && scheduledFor !== '' && !pending
+  // V6.1 — l'heure de début est obligatoire. Plus de fallback créneau.
+  const canSubmit =
+    missionId !== '' && scheduledFor !== '' && plannedStartHHMM !== '' && !pending
 
   function reset() {
     setMissionId('')
     setScheduledFor(defaultDate)
-    setSlot('afternoon')
     setTeamChoice(INHERIT)
-    setPrecisHour(false)
     setPlannedStartHHMM('')
     setPlannedEndHHMM('')
   }
@@ -113,21 +105,13 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
   function submit() {
     if (!canSubmit) return
     const teamId = resolveTeamId()
-    // Heures précises : envoyées seulement si toggle activé ET non vides.
-    const precis =
-      precisHour && plannedStartHHMM
-        ? {
-            plannedStartHHMM,
-            ...(plannedEndHHMM ? { plannedEndHHMM } : {}),
-          }
-        : {}
     startTransition(async () => {
       const r = await createInterventionFromWeekAction({
         missionId,
         scheduledFor,
-        slot,
+        plannedStartHHMM,
+        ...(plannedEndHHMM ? { plannedEndHHMM } : {}),
         ...(teamId === undefined ? {} : { teamId }),
-        ...precis,
       })
       if (!r.ok) {
         toast.error(r.error ?? 'Erreur inconnue')
@@ -160,7 +144,7 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
         <DialogHeader>
           <DialogTitle>Planifier une intervention</DialogTitle>
           <DialogDescription>
-            Choisir la mission, la date et le créneau. La checklist de la mission est copiée automatiquement.
+            Choisir la mission, la date et l'horaire de début. La checklist de la mission est copiée automatiquement.
           </DialogDescription>
         </DialogHeader>
 
@@ -208,79 +192,47 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
             />
           </div>
 
+          {/* V6.1 (Vincent 2026-05-20) : plus de boutons matin/après-midi/soir.
+              L'utilisateur saisit DIRECTEMENT l'heure de début (obligatoire)
+              et l'heure de fin (optionnelle). Le slot est dérivé en interne
+              côté serveur via slotFromUtcHour pour rester compatible avec
+              les vues existantes, mais n'est plus visible côté UI. */}
           <fieldset className="space-y-1.5">
-            <legend className="text-xs font-medium text-muted-foreground">Créneau</legend>
-            <div className="flex gap-2" role="radiogroup" aria-label="Créneau">
-              {SLOT_OPTIONS.map((opt) => {
-                const checked = slot === opt.value
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => setSlot(opt.value)}
-                    disabled={pending || precisHour}
-                    className={
-                      'flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ' +
-                      (checked
-                        ? 'border-brand-600 bg-brand-50 text-brand-700 font-medium dark:bg-brand-600/10'
-                        : 'bg-background hover:bg-muted')
-                    }
-                  >
-                    {opt.label}
-                  </button>
-                )
-              })}
-            </div>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground mt-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={precisHour}
-                onChange={(e) => {
-                  setPrecisHour(e.target.checked)
-                  if (!e.target.checked) {
-                    setPlannedStartHHMM('')
-                    setPlannedEndHHMM('')
-                  }
-                }}
-                disabled={pending}
-                className="h-3.5 w-3.5"
-              />
-              Préciser l'heure (06h30 – 08h00 plutôt que « Matin »)
-            </label>
-            {precisHour && (
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <div className="space-y-1">
-                  <label htmlFor="planned-start" className="text-[11px] text-muted-foreground">
-                    Début *
-                  </label>
-                  <input
-                    id="planned-start"
-                    type="time"
-                    step={300 /* 5 min */}
-                    value={plannedStartHHMM}
-                    onChange={(e) => setPlannedStartHHMM(e.target.value)}
-                    disabled={pending}
-                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="planned-end" className="text-[11px] text-muted-foreground">
-                    Fin
-                  </label>
-                  <input
-                    id="planned-end"
-                    type="time"
-                    step={300}
-                    value={plannedEndHHMM}
-                    onChange={(e) => setPlannedEndHHMM(e.target.value)}
-                    disabled={pending || !plannedStartHHMM}
-                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                  />
-                </div>
+            <legend className="text-xs font-medium text-muted-foreground">Horaire *</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label htmlFor="planned-start" className="text-[11px] text-muted-foreground">
+                  Début *
+                </label>
+                <input
+                  id="planned-start"
+                  type="time"
+                  step={300 /* 5 min */}
+                  value={plannedStartHHMM}
+                  onChange={(e) => setPlannedStartHHMM(e.target.value)}
+                  disabled={pending}
+                  required
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
               </div>
-            )}
+              <div className="space-y-1">
+                <label htmlFor="planned-end" className="text-[11px] text-muted-foreground">
+                  Fin
+                </label>
+                <input
+                  id="planned-end"
+                  type="time"
+                  step={300}
+                  value={plannedEndHHMM}
+                  onChange={(e) => setPlannedEndHHMM(e.target.value)}
+                  disabled={pending || !plannedStartHHMM}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground/70">
+              Saisis l'heure réelle de la prestation (ex. 06h30 – 08h00).
+            </p>
           </fieldset>
 
           <div className="space-y-1.5">

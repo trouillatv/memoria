@@ -35,7 +35,7 @@ export interface ReassignTeamOption {
   id: string
   name: string
   color: string | null
-  /** Si l'équipe est déjà sur un AUTRE site au même créneau (date+slot) que
+  /** Si l'équipe est déjà sur un AUTRE site sur des horaires qui chevauchent
    *  l'intervention cible, on stocke le nom du site occupant ici. Le radio
    *  est alors désactivé côté UI — évite le clic vers une erreur server. */
   conflict?: { siteName: string } | null
@@ -135,7 +135,7 @@ export function ReassignTeamDialog({
                     {blocked && t.conflict && (
                       <span
                         className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
-                        title="Cette équipe est déjà affectée à un autre site sur ce créneau"
+                        title="Cette équipe est déjà sur un autre site sur des horaires qui chevauchent"
                       >
                         déjà sur {t.conflict.siteName}
                       </span>

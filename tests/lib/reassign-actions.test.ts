@@ -20,6 +20,10 @@ import { createTeam, archiveTeam } from '@/lib/db/teams'
 // Mocks d'auth + revalidatePath (idem stratégie skip-intervention.test.ts)
 // ---------------------------------------------------------------------------
 
+// V6.1 : actions.ts importe findTeamSiteConflict qui est en `server-only`.
+// Vitest n'utilise pas le path alias de tsconfig ; on le neutralise ici.
+vi.mock('server-only', () => ({}))
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
     auth: {

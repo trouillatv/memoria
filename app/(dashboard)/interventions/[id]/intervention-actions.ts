@@ -398,7 +398,7 @@ export async function rescheduleInterventionAction(formData: FormData) {
   })
   if (conflict) {
     return {
-      error: `Ce créneau vient d'être pris : ${conflict.teamName} est déjà sur ${conflict.siteName}. Choisis-en un autre.`,
+      error: `Cet horaire vient d'être pris : ${conflict.teamName} est déjà sur ${conflict.siteName}. Choisis un autre horaire.`,
     }
   }
 

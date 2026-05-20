@@ -15,6 +15,9 @@ export interface UnassignedInterventionLite {
   id: string
   scheduled_for: string
   slot: InterventionSlot | null
+  /** V6.1 — heure de prestation honnête (Vincent 2026-05-20). */
+  planned_start: string | null
+  planned_end: string | null
   mission_name: string
   site_name: string
 }
@@ -24,6 +27,9 @@ export interface TeamSlotConflict {
   team_name: string
   scheduled_for: string
   slot: InterventionSlot
+  /** V6.1 — heure de prestation du conflit (première intervention concernée). */
+  planned_start: string | null
+  planned_end: string | null
   /** Sites distincts couverts par cette équipe sur ce créneau (≥ 2). */
   site_names: string[]
   /** Identifiants des interventions concernées. */
@@ -49,7 +55,7 @@ export async function getWeekVigilance(
   const { data, error } = await supabase
     .from('interventions')
     .select(
-      `id, scheduled_for, slot, assigned_team_id,
+      `id, scheduled_for, slot, planned_start, planned_end, assigned_team_id,
        team:teams(id, name),
        mission:missions!inner(name, site:sites!inner(name))`,
     )
@@ -65,6 +71,8 @@ export async function getWeekVigilance(
     id: string
     scheduled_for: string
     slot: InterventionSlot | null
+    planned_start: string | null
+    planned_end: string | null
     assigned_team_id: string | null
     team: TeamLite | TeamLite[] | null
     mission: MissionLite | MissionLite[] | null
@@ -87,6 +95,8 @@ export async function getWeekVigilance(
       id: r.id,
       scheduled_for: r.scheduled_for,
       slot: r.slot,
+      planned_start: r.planned_start,
+      planned_end: r.planned_end,
       mission_name: mission.name,
       site_name: site?.name ?? '—',
     })
@@ -106,6 +116,9 @@ export async function getWeekVigilance(
     team_name: string
     scheduled_for: string
     slot: InterventionSlot
+    /** planned_start de la 1re intervention détectée — affiché en UI. */
+    planned_start: string | null
+    planned_end: string | null
     sites: Map<string, string[]> // site_name → intervention_ids
   }
   const buckets = new Map<string, Bucket>()
@@ -124,6 +137,8 @@ export async function getWeekVigilance(
       team_name: team.name,
       scheduled_for: r.scheduled_for,
       slot: r.slot,
+      planned_start: r.planned_start,
+      planned_end: r.planned_end,
       sites: new Map<string, string[]>(),
     }
     const arr = b.sites.get(site.name) ?? []
@@ -141,6 +156,8 @@ export async function getWeekVigilance(
       team_name: b.team_name,
       scheduled_for: b.scheduled_for,
       slot: b.slot,
+      planned_start: b.planned_start,
+      planned_end: b.planned_end,
       site_names: Array.from(b.sites.keys()).sort((a, b) =>
         a.localeCompare(b, 'fr', { sensitivity: 'base' }),
       ),

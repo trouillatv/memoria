@@ -192,13 +192,16 @@ export function isPlannedStartPrecise(plannedStart: string | null): boolean {
   return hhmm !== '07:00' && hhmm !== '14:00' && hhmm !== '19:00'
 }
 
-/** Label intervention prêt à afficher dans le wording terrain. Choisit
- *  automatiquement entre heure précise (« 06h30 – 08h00 (1h30) ») et slot
- *  grossier (« Matin / Après-midi / Soir ») selon ce qui est disponible.
+/** Label intervention prêt à afficher dans le wording terrain. Renvoie
+ *  TOUJOURS une heure (V6.1, Vincent 2026-05-20) :
+ *   - Heure précise saisie  → « 06h30 – 08h00 (1h30) » ou « 06h30 »
+ *   - Pas de précis, slot connu → ancrage canonique « 7h », « 14h », « 19h »
+ *   - Rien                  → « — »
  *
- *  Critères « heure précise détectée » (l'un des deux suffit) :
- *   - `planned_start` n'est pas l'ancrage canonique 07/14/19 (saisie début)
- *   - `planned_end` existe (saisie de range, même si début pile sur ancrage)
+ *  Ne dit JAMAIS « Matin / Après-midi / Soir » à l'utilisateur — Vincent a
+ *  retiré toute évocation de créneau côté UI le 2026-05-20. Le slot DB reste
+ *  pour les vues techniques (audit, briefing back-office, tripwires) mais
+ *  jamais surface utilisateur.
  *
  *  Utilisé par toutes les surfaces : page intervention, mobile chef, partage
  *  texte, briefing, vue semaine. Source unique de vérité d'affichage.
@@ -211,16 +214,11 @@ export function formatInterventionTimeLabel(input: {
   planned_end?: string | null
   slot?: InterventionSlot | null
 }): string {
-  const hasPreciseHour =
-    !!input.planned_end || isPlannedStartPrecise(input.planned_start ?? null)
-  if (hasPreciseHour) {
-    return formatPlannedTimeRange(
-      input.planned_start ?? null,
-      input.planned_end ?? null,
-      input.slot ?? null,
-    )
-  }
-  return slotLabelFr(input.slot ?? null)
+  return formatPlannedTimeRange(
+    input.planned_start ?? null,
+    input.planned_end ?? null,
+    input.slot ?? null,
+  )
 }
 
 /** Libellé classique du créneau (Matin / Après-midi / Soir / —). */

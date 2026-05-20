@@ -1,14 +1,15 @@
 'use client'
 
-// Phase 9 — Vue Semaine & Équipes (Slice 9.5)
+// Phase 9 — Vue Semaine & Équipes (Slice 9.5), refondu V6.1 (Vincent 2026-05-20).
 //
 // Cellule (Équipe × Jour) de la grille secondaire. Affiche une liste compacte
-// des missions du jour pour l'équipe (abrev_site + créneau lettre).
+// des missions du jour pour l'équipe : `Abrev site` + `Heure 1re mission`.
 //
-// Doctrine V2 impérative :
+// Doctrine V2 + V6.1 :
 //   - JAMAIS de noms d'agents dans cette grille (l'équipe = conteneur, pas
 //     les noms). La page /equipes est le seul endroit où l'on voit des noms.
-//   - JAMAIS d'heures précises : `m`, `a`, `s` uniquement.
+//   - ZÉRO évocation de créneau côté utilisateur. On affiche l'heure honnête
+//     de prestation (planned_start) — ex. « 6h30 », « 7h », « 14h ».
 //   - "Non-affecté" : badge ambre, jamais rouge, jamais alarme.
 //   - Aucune métrique (pas de "charge", pas de "saturation", pas de %).
 //
@@ -17,9 +18,11 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
+import { fmtHourFr } from '@/lib/time/prestation-slot'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
 
-// Lettres compactes — JAMAIS d'heure (8h, 14h, etc.).
+// Conservé pour rétro-compatibilité tests doctrine ; plus utilisé dans le
+// rendu visible — voir `firstHourLabelForCells`.
 const SLOT_LETTER: Record<string, string> = {
   morning: 'm',
   afternoon: 'a',
@@ -83,6 +86,28 @@ export function compactSlotsForSite(cells: WeekInterventionCell[]): string {
     .sort()
   for (const s of nonStandard) parts.push(s)
   return parts.join('+')
+}
+
+/**
+ * V6.1 (Vincent 2026-05-20) : libellé compact d'horaire pour un groupe de
+ * missions du même site dans la même cellule. Retourne « 6h30 » (1 seule)
+ * ou « 6h30+2 » (1ère heure + nombre de suivantes). Si aucun planned_start
+ * connu, retourne chaîne vide (le caller masque le badge).
+ */
+export function firstHourLabelForCells(cells: WeekInterventionCell[]): string {
+  if (cells.length === 0) return ''
+  // Tri par planned_start ascendant (nulls last) pour avoir la 1re heure.
+  const sorted = [...cells].sort((a, b) => {
+    const ax = a.planned_start ?? '~'
+    const bx = b.planned_start ?? '~'
+    return ax.localeCompare(bx)
+  })
+  const first = sorted[0]
+  if (!first) return ''
+  const hh = fmtHourFr(first.planned_start)
+  if (hh === '—') return ''
+  const more = cells.length - 1
+  return more > 0 ? `${hh}+${more}` : hh
 }
 
 export interface TeamWeekGridCellProps {
@@ -167,7 +192,7 @@ export function TeamWeekGridCell({
   } else {
     ariaParts.push(`${cells.length} intervention${cells.length > 1 ? 's' : ''}`)
     for (const g of groups) {
-      ariaParts.push(`${g.siteName} ${compactSlotsForSite(g.cells)}`.trim())
+      ariaParts.push(`${g.siteName} ${firstHourLabelForCells(g.cells)}`.trim())
     }
   }
   const ariaLabel = ariaParts.join(' — ')
@@ -223,18 +248,18 @@ export function TeamWeekGridCell({
           className="flex w-full flex-col items-start gap-1 rounded-sm text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
         >
           {groups.map((g) => {
-            const slots = compactSlotsForSite(g.cells)
+            const hourLabel = firstHourLabelForCells(g.cells)
             const abbrev = abbreviateSiteName(g.siteName)
             return (
               <span
                 key={g.siteId}
                 className="flex items-baseline gap-1.5 text-[12px] leading-tight"
-                title={`${g.siteName}${slots ? ` (${slots})` : ''}`}
+                title={`${g.siteName}${hourLabel ? ` (${hourLabel})` : ''}`}
               >
                 <span className="font-medium text-foreground">{abbrev}</span>
-                {slots && (
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {slots}
+                {hourLabel && (
+                  <span className="font-mono text-[10px] tracking-tight text-muted-foreground">
+                    {hourLabel}
                   </span>
                 )}
               </span>
@@ -255,7 +280,7 @@ export function buildAriaLabel(teamName: string, date: string, cells: WeekInterv
   } else {
     parts.push(`${cells.length} intervention${cells.length > 1 ? 's' : ''}`)
     for (const g of groupBySite(cells)) {
-      parts.push(`${g.siteName} ${compactSlotsForSite(g.cells)}`.trim())
+      parts.push(`${g.siteName} ${firstHourLabelForCells(g.cells)}`.trim())
     }
   }
   return parts.join(' — ')

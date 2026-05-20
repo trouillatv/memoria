@@ -28,7 +28,7 @@ import { getUserRoleById } from '@/lib/db/users'
 import { logAuditEvent } from '@/lib/audit/log'
 import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/interventions'
 import { findTeamSiteConflict } from '@/lib/scheduling/team-conflict'
-import { buildScheduledAt, isPlannedStartPrecise, extractHHMM } from '@/lib/time/prestation-slot'
+import { buildScheduledAt, isPlannedStartPrecise, extractHHMM, slotFromUtcHour } from '@/lib/time/prestation-slot'
 import { getMission } from '@/lib/db/missions'
 import type { ChecklistTemplateItem, InterventionSlot } from '@/types/db'
 
@@ -104,8 +104,37 @@ function formatDateFr(iso: string): string {
   return `${d} ${MONTHS_FR_FULL[(m ?? 1) - 1]} ${y}`
 }
 
-function slotLabelFr(slot: InterventionSlot): string {
-  return slot === 'morning' ? 'matin' : slot === 'afternoon' ? 'après-midi' : 'soir'
+/**
+ * Format heure FR pour un timestamp UTC (ex. "06h30", "14h00").
+ * Pour conflits horaire : on n'utilise PLUS « créneau matin » côté utilisateur
+ * (Vincent 2026-05-20). On affiche l'heure réelle de la plage source si
+ * disponible, sinon l'ancrage canonique du slot.
+ */
+function fmtHourFromIso(iso: string): string {
+  const d = new Date(iso)
+  const hh = String(d.getUTCHours()).padStart(2, '0')
+  const mm = String(d.getUTCMinutes()).padStart(2, '0')
+  return `${hh}h${mm}`
+}
+
+/**
+ * Format plage horaire pour message conflit. Si on a start+end → "06h30 – 08h00",
+ * sinon juste l'heure ancrage du slot ("07h00") quand connue, "—" en dernier recours.
+ */
+function fmtConflictTimeRange(
+  plannedStart: string | null,
+  plannedEnd: string | null,
+  fallbackSlot: InterventionSlot | null,
+): string {
+  if (plannedStart) {
+    const startStr = fmtHourFromIso(plannedStart)
+    if (plannedEnd) return `${startStr} – ${fmtHourFromIso(plannedEnd)}`
+    return startStr
+  }
+  if (fallbackSlot === 'morning') return '07h00'
+  if (fallbackSlot === 'afternoon') return '14h00'
+  if (fallbackSlot === 'evening') return '19h00'
+  return '—'
 }
 
 // findTeamSiteConflict est désormais extrait dans @/lib/scheduling/team-conflict
@@ -216,13 +245,14 @@ export async function moveInterventionToDayAction(
       excludeInterventionId: parsed.data.interventionId,
     })
     if (conflict) {
+      const moveRange = fmtConflictTimeRange(_conflictStart, _conflictEnd, effectiveSlotForCheck)
       return {
         ok: false,
         conflict: true,
         error:
-          `Conflit : l'équipe ${conflict.teamName} est déjà affectée à ${conflict.siteName}` +
-          ` le ${formatDateFr(parsed.data.newScheduledFor)} créneau ${slotLabelFr(effectiveSlotForCheck)}.` +
-          ` Une équipe ne peut pas couvrir deux sites au même créneau.`,
+          `Conflit horaire : l'équipe ${conflict.teamName} est déjà sur ${conflict.siteName}` +
+          ` le ${formatDateFr(parsed.data.newScheduledFor)} sur une plage qui chevauche ${moveRange}.` +
+          ` Choisis une autre date/heure ou réassigne l'équipe.`,
       }
     }
   }
@@ -313,23 +343,19 @@ export async function moveInterventionToDayAction(
 // createInterventionFromWeekAction
 // ----------------------------------------------------------------------------
 
-const slotEnum = z.enum(['morning', 'afternoon', 'evening'])
-
 const hhmmRe = /^([01]\d|2[0-3]):[0-5]\d$/
 const createFromWeekSchema = z.object({
   missionId: z.string().uuid(),
   scheduledFor: z.string().regex(ymdRe, 'Format YYYY-MM-DD requis'),
-  slot: slotEnum,
+  // V6.1 (Vincent 2026-05-20) : `slot` n'est plus saisi côté UI. Il est dérivé
+  // serveur depuis `plannedStartHHMM` via `slotFromUtcHour` (07h→morning,
+  // 14h→afternoon, 19h→evening). Conservé en DB pour les vues legacy et les
+  // tripwires de récurrence, mais n'apparaît plus dans le contrat client.
+  plannedStartHHMM: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)'),
+  plannedEndHHMM:   z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
   // null = "Non-affecté" explicite ; undefined = hériter de la mission.
   teamId: z.string().uuid().nullable().optional(),
-  // V6.1 (Vincent 2026-05-20 — demande Guillaume) : heures précises
-  // optionnelles. Format HH:MM. Si fournies, écrasent le mapping slot grossier.
-  plannedStartHHMM: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
-  plannedEndHHMM:   z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
-}).refine(
-  (d) => !d.plannedEndHHMM || !!d.plannedStartHHMM,
-  { message: 'Heure de fin nécessite heure de début', path: ['plannedEndHHMM'] },
-)
+})
 
 // Heure associée à un créneau : module canonique
 // `@/lib/time/prestation-slot` (Constat fondateur V6.1 — `buildScheduledAt`).
@@ -352,7 +378,10 @@ export async function createInterventionFromWeekAction(
   input: {
     missionId: string
     scheduledFor: string
-    slot: InterventionSlot
+    /** HH:MM — heure de début obligatoire (V6.1, Vincent 2026-05-20). */
+    plannedStartHHMM: string
+    /** HH:MM — heure de fin optionnelle. */
+    plannedEndHHMM?: string
     /** `null` = "Non-affecté" explicite. `undefined` = hériter de `mission.assigned_team_id`. */
     teamId?: string | null
   }
@@ -367,6 +396,19 @@ export async function createInterventionFromWeekAction(
 
   if (parsed.data.scheduledFor < todayUtcIso()) {
     return { ok: false, error: 'Planification vers une date passée refusée' }
+  }
+
+  // V6.1 — slot dérivé serveur depuis l'heure de début. Conservé en DB pour
+  // les vues legacy et les indexes mais invisible côté UI.
+  const startHour = Number(parsed.data.plannedStartHHMM.slice(0, 2))
+  const derivedSlot: InterventionSlot = slotFromUtcHour(startHour)
+  // Vérif optionnelle : si end fourni, doit être > start.
+  if (parsed.data.plannedEndHHMM) {
+    const startTs = new Date(`${parsed.data.scheduledFor}T${parsed.data.plannedStartHHMM}:00.000Z`).getTime()
+    const endTs   = new Date(`${parsed.data.scheduledFor}T${parsed.data.plannedEndHHMM}:00.000Z`).getTime()
+    if (endTs <= startTs) {
+      return { ok: false, error: "Heure de fin doit être après l'heure de début" }
+    }
   }
 
   const mission = await getMission(parsed.data.missionId)
@@ -398,13 +440,10 @@ export async function createInterventionFromWeekAction(
   }
 
   // Vérif conflit d'équipe AVANT insertion : si l'équipe finale est non-null,
-  // on s'assure qu'elle n'est pas déjà sur un autre site au même créneau.
+  // on s'assure qu'elle n'est pas déjà sur un autre site sur des horaires qui
+  // chevauchent. V6.1 — message d'erreur en heures, plus en créneau.
   if (finalTeamId) {
-    // V6.1 — si l'utilisateur a saisi une heure précise dans le form de
-    // création, on l'utilise pour vérifier le chevauchement temporel.
-    const _newStart = parsed.data.plannedStartHHMM
-      ? `${parsed.data.scheduledFor}T${parsed.data.plannedStartHHMM}:00.000Z`
-      : null
+    const _newStart = `${parsed.data.scheduledFor}T${parsed.data.plannedStartHHMM}:00.000Z`
     const _newEnd = parsed.data.plannedEndHHMM
       ? `${parsed.data.scheduledFor}T${parsed.data.plannedEndHHMM}:00.000Z`
       : null
@@ -413,30 +452,30 @@ export async function createInterventionFromWeekAction(
       teamId: finalTeamId,
       missionId: parsed.data.missionId,
       scheduledFor: parsed.data.scheduledFor,
-      slot: parsed.data.slot,
+      slot: derivedSlot,
       sourcePlannedStart: _newStart,
       sourcePlannedEnd: _newEnd,
       excludeInterventionId: '00000000-0000-0000-0000-000000000000', // pas encore créée
     })
     if (conflict) {
+      const newRange = fmtConflictTimeRange(_newStart, _newEnd, derivedSlot)
       return {
         ok: false,
         error:
-          `Conflit : l'équipe ${conflict.teamName} est déjà affectée à ${conflict.siteName}` +
-          ` le ${formatDateFr(parsed.data.scheduledFor)} créneau ${slotLabelFr(parsed.data.slot)}.` +
-          ` Une équipe ne peut pas couvrir deux sites au même créneau.`,
+          `Conflit horaire : l'équipe ${conflict.teamName} est déjà sur ${conflict.siteName}` +
+          ` le ${formatDateFr(parsed.data.scheduledFor)} sur une plage qui chevauche ${newRange}.` +
+          ` Choisis d'autres heures ou réassigne l'équipe.`,
       }
     }
   }
 
-  // Si heures précises fournies → createIntervention les utilise (mode V6.1).
-  // Sinon → fallback ancrage canonique slot→heure (07/14/19).
+  // Heures précises obligatoires (V6.1) → createIntervention les utilise.
   // L'équipe assignée (`assigned_team_id`) est posée séparément ci-dessous,
   // conformément au flow existant.
   const interventionId = await createIntervention({
     mission_id: parsed.data.missionId,
     scheduled_for: parsed.data.scheduledFor,
-    slot: parsed.data.slot,
+    slot: derivedSlot,
     planned_start_hhmm: parsed.data.plannedStartHHMM,
     planned_end_hhmm:   parsed.data.plannedEndHHMM,
     created_by: auth.userId,
@@ -472,7 +511,9 @@ export async function createInterventionFromWeekAction(
       kind: 'intervention_created_from_week',
       intervention_id: interventionId,
       scheduled_for: parsed.data.scheduledFor,
-      slot: parsed.data.slot,
+      slot: derivedSlot,
+      planned_start_hhmm: parsed.data.plannedStartHHMM,
+      planned_end_hhmm: parsed.data.plannedEndHHMM ?? null,
       team_id: finalTeamId,
     },
   })
@@ -556,13 +597,14 @@ export async function reassignInterventionTeamAction(
       excludeInterventionId: parsed.data.interventionId,
     })
     if (conflict) {
+      const reasRange = fmtConflictTimeRange(_existingStart, _existingEnd, existing.slot as InterventionSlot)
       return {
         ok: false,
         conflict: true,
         error:
-          `Conflit : l'équipe ${conflict.teamName} est déjà affectée à ${conflict.siteName}` +
-          ` le ${formatDateFr(existing.scheduled_for)} créneau ${slotLabelFr(existing.slot as InterventionSlot)}.` +
-          ` Une équipe ne peut pas couvrir deux sites au même créneau.`,
+          `Conflit horaire : l'équipe ${conflict.teamName} est déjà sur ${conflict.siteName}` +
+          ` le ${formatDateFr(existing.scheduled_for)} sur une plage qui chevauche ${reasRange}.` +
+          ` Choisis une autre équipe.`,
       }
     }
   }

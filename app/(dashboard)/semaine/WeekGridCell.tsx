@@ -6,24 +6,23 @@
 //
 // Slice 9.7 — Drag direct depuis la cellule (plus de drag via drawer) :
 //   - La cellule entière est draggable si elle contient ≥1 intervention `planned`.
-//     L'intervention "top" (créneau le plus matinal, puis mission alpha) est
-//     l'élément déplacé.
-//   - Quand un drag est actif, 3 chips `m / a / s` apparaissent en haut de la
-//     cellule cible (au survol). Drop sur un chip = date + créneau changés.
-//     Drop sur le fond = date changée, créneau préservé.
-//   - Le drawer (click cellule) reste pour consulter le détail / réassigner.
+//     L'intervention "top" (la plus matinale puis mission alpha) est l'élément
+//     déplacé. Le drop change uniquement la date ; l'horaire est préservé.
 //
-// Doctrine V2/V3 imperative :
-//   - Créneaux nommés via lettres compactes (m / s / a / e), JAMAIS d'heures
+// Doctrine V2/V3 + V6.1 (Vincent 2026-05-20) :
+//   - ZÉRO évocation de créneau côté utilisateur. On affiche l'horaire de la
+//     première intervention (ex. « 6h30 »), pas « m / a / s ». Le slot DB reste
+//     pour le tri interne et le dégradé visuel mais n'est jamais nommé.
 //   - "Non-affecté" en cellule = ◯ ambre + texte muted, JAMAIS rouge
 //   - Aucune métrique exposée (pas de "x missions exécutées", pas de %)
-//   - La modification du créneau ne touche QUE l'intervention. Pour la mission
+//   - La modification de la date ne touche QUE l'intervention. Pour la mission
 //     elle-même → renvoyer vers /missions (toast hint, doctrine V3 référent).
 
 import { useDraggable, useDroppable, useDndContext } from '@dnd-kit/core'
 import { Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
+import { fmtHourFr } from '@/lib/time/prestation-slot'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
 import type { InterventionSlot } from '@/types/db'
 
@@ -157,6 +156,8 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
             missionName: topPlanned.mission_name,
             siteName,
             slot: topPlanned.slot,
+            plannedStart: topPlanned.planned_start,
+            plannedEnd: topPlanned.planned_end,
             teamName: topPlanned.assigned_team_name,
             teamColor: topPlanned.assigned_team_color,
           }
@@ -191,16 +192,23 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
 
   const isEmpty = cells.length === 0
   const team = isEmpty ? null : dominantTeam(cells)
-  const slotsLabel = isEmpty ? '' : compactSlots(cells)
   const allUnassigned = cells.length > 0 && cells.every((c) => !c.assigned_team_id)
   const dot = cells.length >= 2 ? '●●' : cells.length === 1 ? '●' : ''
+
+  // V6.1 (Vincent 2026-05-20) : afficher l'horaire de la première intervention
+  // de la journée (ex. « 6h30 ») plutôt que la lettre de créneau « m ». Tri
+  // déjà fait par listInterventionsForWeek (planned_start asc, nulls last).
+  // La pluralité (« il y en a plusieurs ») est portée par le dot ● / ●●,
+  // donc on n'ajoute pas de « +N » redondant à côté de l'heure.
+  const firstCell = isEmpty ? null : cells[0]
+  const firstHourLabel = firstCell ? fmtHourFr(firstCell.planned_start) : ''
 
   const ariaParts: string[] = [siteName, date]
   if (isEmpty) {
     ariaParts.push('aucune intervention')
   } else {
     ariaParts.push(`${cells.length} intervention${cells.length > 1 ? 's' : ''}`)
-    if (slotsLabel) ariaParts.push(slotsLabel)
+    if (firstHourLabel) ariaParts.push(firstHourLabel)
     if (allUnassigned) ariaParts.push('non affecté')
     else if (team) ariaParts.push(`équipe ${team.name}`)
   }
@@ -281,12 +289,12 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
             >
               {allUnassigned ? '◯' : dot}
             </span>
-            {slotsLabel && (
+            {firstHourLabel && (
               <span
-                className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground"
-                title="Créneaux"
+                className="font-mono text-[11px] tracking-tight text-muted-foreground"
+                title="Horaire de la première intervention de la journée"
               >
-                {slotsLabel}
+                {firstHourLabel}
               </span>
             )}
           </span>

@@ -5,12 +5,7 @@
 import Link from 'next/link'
 import { AlertTriangle, Users, MapPin } from 'lucide-react'
 import type { WeekVigilance } from '@/lib/db/week-vigilance'
-
-const SLOT_FR: Record<string, string> = {
-  morning: 'matin',
-  afternoon: 'après-midi',
-  evening: 'soir',
-}
+import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 
 function formatDateShortFr(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
@@ -56,9 +51,11 @@ export function WeekVigilanceSection({ data }: { data: WeekVigilance }) {
                   <span className="text-muted-foreground tabular-nums">
                     {formatDateShortFr(i.scheduled_for)}
                   </span>
-                  {i.slot && (
-                    <span className="text-muted-foreground"> · {SLOT_FR[i.slot] ?? i.slot}</span>
-                  )}
+                  <span className="text-muted-foreground"> · {formatInterventionTimeLabel({
+                    planned_start: i.planned_start,
+                    planned_end: i.planned_end,
+                    slot: i.slot,
+                  })}</span>
                   <span> — </span>
                   <span className="font-medium">{i.site_name}</span>
                   <span className="text-muted-foreground"> ({i.mission_name})</span>
@@ -73,13 +70,17 @@ export function WeekVigilanceSection({ data }: { data: WeekVigilance }) {
         <div className="space-y-2">
           <h3 className="text-xs uppercase tracking-wider text-amber-900/80 inline-flex items-center gap-1.5">
             <Users className="h-3 w-3" aria-hidden />
-            Équipes sur plusieurs sites au même créneau ({data.conflicts.length})
+            Équipes sur plusieurs sites sur des horaires qui chevauchent ({data.conflicts.length})
           </h3>
           <ul className="space-y-1 text-sm">
             {data.conflicts.map((c, idx) => (
               <li key={`${c.team_id}-${c.scheduled_for}-${c.slot}-${idx}`}>
                 <span className="text-muted-foreground tabular-nums">
-                  {formatDateShortFr(c.scheduled_for)} · {SLOT_FR[c.slot] ?? c.slot}
+                  {formatDateShortFr(c.scheduled_for)} · {formatInterventionTimeLabel({
+                    planned_start: c.planned_start,
+                    planned_end: c.planned_end,
+                    slot: c.slot,
+                  })}
                 </span>
                 <span> — </span>
                 <span className="font-medium">{c.team_name}</span>
