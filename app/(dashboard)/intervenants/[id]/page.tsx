@@ -60,6 +60,15 @@ function roleLabelFr(role: string): string {
   }
 }
 
+function employmentLabelFr(type: 'cdi' | 'cdd' | 'cdi_chantier' | null): string {
+  switch (type) {
+    case 'cdi': return 'CDI'
+    case 'cdd': return 'CDD'
+    case 'cdi_chantier': return 'CDI Chantier'
+    default: return '—'
+  }
+}
+
 interface Props {
   params: Promise<{ id: string }>
 }
@@ -134,6 +143,26 @@ export default async function IntervenantDetailPage({ params }: Props) {
             <Calendar className="h-3.5 w-3.5" />
             Inscrit le {formatDateFr(overview.created_at)}
           </span>
+          {overview.commune && (
+            <span className="inline-flex items-center gap-1" title="Commune de résidence">
+              <MapPin className="h-3.5 w-3.5" />
+              {overview.commune}
+            </span>
+          )}
+          {overview.employment_type && (
+            <Badge variant="outline" className="text-xs" title="Type de contrat">
+              {employmentLabelFr(overview.employment_type)}
+            </Badge>
+          )}
+          {overview.phone && (
+            <a
+              href={`tel:${overview.phone}`}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+              title="Téléphone"
+            >
+              {overview.phone}
+            </a>
+          )}
         </div>
         {overview.teams.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">

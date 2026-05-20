@@ -17,7 +17,7 @@ export async function getCurrentUserWithProfile(): Promise<DbUser | null> {
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone')
+    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type')
     .eq('id', user.id)
     .is('deleted_at', null)
     .single()
@@ -34,7 +34,7 @@ export async function listUsersForAdmin(): Promise<DbUser[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone')
+    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
@@ -144,7 +144,15 @@ export async function getCurrentUserMiniProfile(): Promise<{ role: UserRole; mus
  */
 export async function updateUserProfileAsAdmin(
   userId: string,
-  fields: { full_name?: string; role?: UserRole; must_change_password?: boolean; phone?: string | null }
+  fields: {
+    full_name?: string
+    role?: UserRole
+    must_change_password?: boolean
+    phone?: string | null
+    // Migration 076 (Vincent 2026-05-21) — création intervenant
+    commune?: string | null
+    employment_type?: 'cdi' | 'cdd' | 'cdi_chantier' | null
+  }
 ): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase.from('users').update(fields).eq('id', userId)

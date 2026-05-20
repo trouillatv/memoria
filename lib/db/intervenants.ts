@@ -31,6 +31,10 @@ export interface IntervenantOverview {
   email: string
   role: string
   created_at: string
+  /** Champs profil étendus (migration 076, Vincent 2026-05-21). */
+  phone: string | null
+  commune: string | null
+  employment_type: 'cdi' | 'cdd' | 'cdi_chantier' | null
   /** Compteurs descriptifs uniquement. */
   counters: {
     interventionsParticipated: number
@@ -197,11 +201,12 @@ export async function getIntervenantOverview(
   const admin = createAdminClient()
   const { data: user } = await admin
     .from('users')
-    .select('id, email, full_name, role, created_at')
+    .select('id, email, full_name, role, created_at, phone, commune, employment_type')
     .eq('id', intervenantId)
     .is('deleted_at', null)
     .maybeSingle()
   if (!user) return null
+  const userExt = user as { id: string; email: string; full_name: string | null; role: string; created_at: string; phone: string | null; commune: string | null; employment_type: 'cdi' | 'cdd' | 'cdi_chantier' | null }
 
   const [participations, notes, anomalies, photos, voiceNotes, teamRows] = await Promise.all([
     admin
@@ -260,11 +265,14 @@ export async function getIntervenantOverview(
   }
 
   return {
-    id: user.id,
-    full_name: user.full_name,
-    email: user.email,
-    role: user.role,
-    created_at: user.created_at,
+    id: userExt.id,
+    full_name: userExt.full_name,
+    email: userExt.email,
+    role: userExt.role,
+    created_at: userExt.created_at,
+    phone: userExt.phone,
+    commune: userExt.commune,
+    employment_type: userExt.employment_type,
     counters: {
       interventionsParticipated: (participations.data ?? []).length,
       sitesKnown: siteIds.size,

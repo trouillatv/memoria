@@ -17,6 +17,10 @@ export type KnowledgeCategory =
   | 'references_clients' | 'moyens_humains' | 'materiel'
   | 'procedures' | 'qualite' | 'anciens_memoires'
 
+/** Type de contrat d'un intervenant (migration 076, Vincent 2026-05-21).
+ *  Information structurelle non comparative. Jamais affichée en classement. */
+export type EmploymentType = 'cdi' | 'cdd' | 'cdi_chantier'
+
 export interface DbUser {
   id: string
   email: string
@@ -28,6 +32,9 @@ export interface DbUser {
   // Sprint 4 PC — coordonnée WhatsApp 1-à-1 (Maxim 9 : jamais groupe collectif).
   // Format E.164 imposé par CHECK constraint en DB (migration 035).
   phone: string | null
+  // Migration 076 (Vincent 2026-05-21) — création intervenant.
+  commune: string | null
+  employment_type: EmploymentType | null
 }
 
 export interface DbActivityLog {

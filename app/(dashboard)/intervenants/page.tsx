@@ -22,6 +22,7 @@ import { listIntervenantsForList } from '@/lib/db/intervenants'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { TeamBadge } from '@/components/ui/team-badge'
+import { CreateIntervenantDialog } from './CreateIntervenantDialog'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,15 +74,20 @@ export default async function IntervenantsListPage() {
         </p>
       </div>
 
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <Users className="h-6 w-6 text-brand-600" />
-          Intervenants ({intervenants.length})
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Personnes actives ayant accès à MemorIA. Cliquez sur un nom pour voir son
-          historique opérationnel.
-        </p>
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <Users className="h-6 w-6 text-brand-600" />
+            Intervenants ({intervenants.length})
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Personnes actives ayant accès à MemorIA. Cliquez sur un nom pour voir son
+            historique opérationnel.
+          </p>
+        </div>
+        {/* Vincent 2026-05-21 — bouton accessible manager+admin (ouverture
+            doctrinale vs /admin/users qui est admin-only). */}
+        <CreateIntervenantDialog />
       </header>
 
       {intervenants.length === 0 ? (
