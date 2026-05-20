@@ -323,13 +323,21 @@ export async function moveInterventionToDayAction(
 
 const slotEnum = z.enum(['morning', 'afternoon', 'evening'])
 
+const hhmmRe = /^([01]\d|2[0-3]):[0-5]\d$/
 const createFromWeekSchema = z.object({
   missionId: z.string().uuid(),
   scheduledFor: z.string().regex(ymdRe, 'Format YYYY-MM-DD requis'),
   slot: slotEnum,
   // null = "Non-affecté" explicite ; undefined = hériter de la mission.
   teamId: z.string().uuid().nullable().optional(),
-})
+  // V6.1 (Vincent 2026-05-20 — demande Guillaume) : heures précises
+  // optionnelles. Format HH:MM. Si fournies, écrasent le mapping slot grossier.
+  plannedStartHHMM: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
+  plannedEndHHMM:   z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
+}).refine(
+  (d) => !d.plannedEndHHMM || !!d.plannedStartHHMM,
+  { message: 'Heure de fin nécessite heure de début', path: ['plannedEndHHMM'] },
+)
 
 // Heure associée à un créneau : module canonique
 // `@/lib/time/prestation-slot` (Constat fondateur V6.1 — `buildScheduledAt`).
@@ -419,11 +427,16 @@ export async function createInterventionFromWeekAction(
     }
   }
 
-  const scheduledAt = buildScheduledAt(parsed.data.scheduledFor, parsed.data.slot)
-
+  // Si heures précises fournies → createIntervention les utilise (mode V6.1).
+  // Sinon → fallback ancrage canonique slot→heure (07/14/19).
+  // L'équipe assignée (`assigned_team_id`) est posée séparément ci-dessous,
+  // conformément au flow existant.
   const interventionId = await createIntervention({
     mission_id: parsed.data.missionId,
-    scheduled_at: scheduledAt,
+    scheduled_for: parsed.data.scheduledFor,
+    slot: parsed.data.slot,
+    planned_start_hhmm: parsed.data.plannedStartHHMM,
+    planned_end_hhmm:   parsed.data.plannedEndHHMM,
     created_by: auth.userId,
   })
 

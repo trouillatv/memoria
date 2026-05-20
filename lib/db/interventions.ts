@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
-import { buildScheduledAt, slotFromScheduledAt } from '@/lib/time/prestation-slot'
+import { buildScheduledAt, slotFromScheduledAt, buildPlannedTimestamp } from '@/lib/time/prestation-slot'
 import { anomalyLabel } from '@/lib/anomaly-labels'
 import type {
   DbIntervention, InterventionStatus, InterventionSlot,
@@ -229,6 +229,12 @@ export async function createIntervention(input: {
   scheduled_for?: string
   /** Mode recommandé — créneau explicite. */
   slot?: 'morning' | 'afternoon' | 'evening'
+  /** V6.1 (Vincent 2026-05-20 — demande Guillaume) : heure précise de début
+   *  au format "HH:MM" (heure locale Nouméa). Optionnel : si absent, le
+   *  `planned_start` reste l'ancrage canonique slot→heure (07/14/19). */
+  planned_start_hhmm?: string
+  /** V6.1 : heure précise de fin "HH:MM". Optionnel ; demande une `planned_start_hhmm`. */
+  planned_end_hhmm?: string
   team?: string[]
   created_by: string | null
 }): Promise<string> {
@@ -251,6 +257,30 @@ export async function createIntervention(input: {
     )
   }
 
+  // V6.1 — heures précises optionnelles. Si fournies, écrasent l'ancrage
+  // grossier slot→heure. Sinon planned_start = scheduled_at (= 07/14/19).
+  // Le `slot` reste calculé à partir de l'heure réelle (reverse non
+  // destructif via `slotFromUtcHour`), pour cohérence avec les vues
+  // groupées par slot existantes.
+  let planned_start: string = scheduled_at
+  let planned_end: string | null = null
+  if (input.planned_start_hhmm) {
+    const ts = buildPlannedTimestamp(scheduled_for, input.planned_start_hhmm)
+    if (!ts) throw new Error('planned_start_hhmm invalide (attendu HH:MM)')
+    planned_start = ts
+    // Si l'heure précise est fournie, on relit le slot depuis cette heure.
+    slot = slotFromScheduledAt(planned_start)
+    scheduled_at = planned_start
+    if (input.planned_end_hhmm) {
+      const tsEnd = buildPlannedTimestamp(scheduled_for, input.planned_end_hhmm)
+      if (!tsEnd) throw new Error('planned_end_hhmm invalide (attendu HH:MM)')
+      if (new Date(tsEnd).getTime() <= new Date(planned_start).getTime()) {
+        throw new Error('planned_end_hhmm doit être après planned_start_hhmm')
+      }
+      planned_end = tsEnd
+    }
+  }
+
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('interventions')
@@ -259,8 +289,10 @@ export async function createIntervention(input: {
       scheduled_at,
       scheduled_for,
       slot,
-      // V6.1 — champ honnête de la prestation (= ancrage canonique).
-      planned_start: scheduled_at,
+      // V6.1 — ancrage honnête de la prestation. JAMAIS pointage personne
+      // (pare-feu : ne jamais agréger par user_id, verrou test doctrine).
+      planned_start,
+      planned_end,
       team: input.team ?? [],
       status: 'planned' as InterventionStatus,
       created_by: input.created_by,

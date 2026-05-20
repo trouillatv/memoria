@@ -82,3 +82,147 @@ export function currentSlot(now: Date = new Date()): InterventionSlot {
 export function slotReferenceLabelFr(slot: InterventionSlot | null): string {
   return slot ? `${SLOT_UTC_HOUR[slot]}h` : '—'
 }
+
+// =============================================================================
+// Heure PRÉCISE de prestation (V6.1 — `planned_start` / `planned_end`)
+// =============================================================================
+//
+// Demande Vincent 2026-05-20 (Guillaume terrain nettoyage) : la granularité
+// matin/après-midi/soir ne reflète pas le métier. Le chef d'équipe travaille
+// de 06h30 à 08h00, ou de 13h à 17h. Il faut pouvoir saisir ces heures
+// réelles.
+//
+// Le backend était déjà prêt (migration 071 V6.1 : `planned_start`,
+// `planned_end`). Le travail manquant est uniquement la saisie + affichage.
+//
+// Convention timestamps (alignée sur l'existant) :
+//   - Saisie utilisateur : « HH:MM » en heure LOCALE (Nouméa UTC+11 en pratique).
+//   - Stockage : `YYYY-MM-DDTHH:MM:00.000Z` (Z suffixe historique — la valeur
+//     numérique des heures EST l'heure locale ; la nomination « UTC » est un
+//     héritage à ne pas réparer ici, cohérent avec `buildScheduledAt`).
+//
+// Verrou V6.1 (gravé migration 071) :
+//   `planned_*` est un ancrage de PRESTATION (site/contrat), JAMAIS un
+//   pointage de personne. Ne jamais agréger par user_id.
+
+const HHMM_RE = /^(\d{2}):(\d{2})$/
+
+/** Valide un input "HH:MM" (00:00 → 23:59). */
+export function isValidHHMM(value: string): boolean {
+  const m = HHMM_RE.exec(value)
+  if (!m) return false
+  const h = Number(m[1])
+  const min = Number(m[2])
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59
+}
+
+/** Construit un timestamptz pour `planned_start` / `planned_end` à partir
+ *  d'une date `YYYY-MM-DD` et d'une heure locale `HH:MM`. Retourne null
+ *  si HH:MM invalide. */
+export function buildPlannedTimestamp(
+  dateIso: string,
+  hhmm: string,
+): string | null {
+  if (!isValidHHMM(hhmm)) return null
+  return `${dateIso}T${hhmm}:00.000Z`
+}
+
+/** Extrait l'heure "HH:MM" depuis un timestamptz (lecture brute, pas de
+ *  conversion fuseau — cohérent avec la convention de stockage). */
+export function extractHHMM(iso: string | null): string | null {
+  if (!iso) return null
+  // ISO: 2026-05-20T06:30:00.000Z → "06:30"
+  const m = /T(\d{2}):(\d{2})/.exec(iso)
+  if (!m) return null
+  return `${m[1]}:${m[2]}`
+}
+
+/** Format humain : « 06h30 ». Retourne '—' si null. */
+export function fmtHourFr(iso: string | null): string {
+  const hhmm = extractHHMM(iso)
+  if (!hhmm) return '—'
+  const [h, m] = hhmm.split(':')
+  return m === '00' ? `${Number(h)}h` : `${Number(h)}h${m}`
+}
+
+/** Format durée humaine : `1h30`, `45 min`, `2h`. Retourne null si calcul
+ *  impossible. */
+export function fmtDurationFr(startIso: string, endIso: string): string | null {
+  const startMs = new Date(startIso).getTime()
+  const endMs = new Date(endIso).getTime()
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null
+  const diffMin = Math.round((endMs - startMs) / 60_000)
+  if (diffMin <= 0) return null
+  if (diffMin < 60) return `${diffMin} min`
+  const h = Math.floor(diffMin / 60)
+  const m = diffMin % 60
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
+}
+
+/** Format range humain : « 06h30 – 08h00 (1h30) » si `planned_start` et
+ *  `planned_end` ; « 06h30 » si seul start ; fallback slot label sinon.
+ *
+ *  Doctrine V6.1 : c'est l'ancrage de prestation. Pas un pointage de personne.
+ *  Le code consommateur NE DOIT JAMAIS agréger ces heures par user_id. */
+export function formatPlannedTimeRange(
+  plannedStart: string | null,
+  plannedEnd: string | null,
+  fallbackSlot: InterventionSlot | null,
+): string {
+  if (!plannedStart) return slotReferenceLabelFr(fallbackSlot)
+  const startStr = fmtHourFr(plannedStart)
+  if (!plannedEnd) return startStr
+  const endStr = fmtHourFr(plannedEnd)
+  const duration = fmtDurationFr(plannedStart, plannedEnd)
+  return duration ? `${startStr} – ${endStr} (${duration})` : `${startStr} – ${endStr}`
+}
+
+/** Détecte si `planned_start` est l'ancrage CANONIQUE par défaut (07/14/19)
+ *  ou une heure PRÉCISE saisie par l'utilisateur. Heuristique : les valeurs
+ *  exactes 07:00 / 14:00 / 19:00 sont considérées comme ancrages canoniques.
+ *  Toute autre heure (06:30, 07:15, 08:00, etc.) = saisie utilisateur précise.
+ *
+ *  Trade-off connu : si un utilisateur saisit pile « 07:00 », le système la
+ *  traitera comme ancrage. Acceptable en pratique (95% des saisies terrain
+ *  ne sont pas pile sur ces 3 heures). */
+export function isPlannedStartPrecise(plannedStart: string | null): boolean {
+  if (!plannedStart) return false
+  const hhmm = extractHHMM(plannedStart)
+  if (!hhmm) return false
+  return hhmm !== '07:00' && hhmm !== '14:00' && hhmm !== '19:00'
+}
+
+/** Label intervention prêt à afficher dans le wording terrain. Choisit
+ *  automatiquement entre heure précise (« 06h30 – 08h00 (1h30) ») et slot
+ *  grossier (« Matin / Après-midi / Soir ») selon ce qui est disponible.
+ *
+ *  Utilisé par toutes les surfaces : page intervention, mobile chef, partage
+ *  texte, briefing, vue semaine. Source unique de vérité d'affichage.
+ *
+ *  Doctrine V6.1 : ne JAMAIS appeler cette fonction dans un contexte qui
+ *  agrège par user_id. C'est de l'affichage par intervention/site, pas par
+ *  personne. */
+export function formatInterventionTimeLabel(input: {
+  planned_start?: string | null
+  planned_end?: string | null
+  slot?: InterventionSlot | null
+}): string {
+  if (isPlannedStartPrecise(input.planned_start ?? null)) {
+    return formatPlannedTimeRange(
+      input.planned_start ?? null,
+      input.planned_end ?? null,
+      input.slot ?? null,
+    )
+  }
+  return slotLabelFr(input.slot ?? null)
+}
+
+/** Libellé classique du créneau (Matin / Après-midi / Soir / —). */
+export function slotLabelFr(slot: InterventionSlot | null): string {
+  switch (slot) {
+    case 'morning':   return 'Matin'
+    case 'afternoon': return 'Après-midi'
+    case 'evening':   return 'Soir'
+    default:          return '—'
+  }
+}

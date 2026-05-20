@@ -62,6 +62,12 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
   const [scheduledFor, setScheduledFor] = useState<string>(defaultDate)
   const [slot, setSlot] = useState<InterventionSlot>('afternoon')
   const [teamChoice, setTeamChoice] = useState<string>(INHERIT)
+  // V6.1 (demande Guillaume 2026-05-20) : heures précises optionnelles.
+  // Le chef d'équipe travaille de 06h30 à 08h00, pas « matin ». Si toggle off,
+  // fallback slot grossier (comportement legacy).
+  const [precisHour, setPrecisHour] = useState<boolean>(false)
+  const [plannedStartHHMM, setPlannedStartHHMM] = useState<string>('')
+  const [plannedEndHHMM, setPlannedEndHHMM] = useState<string>('')
 
   // Tri pour le picker : contrat → site → mission (alphabétique, fr).
   const sortedMissions = useMemo(() => {
@@ -93,6 +99,9 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
     setScheduledFor(defaultDate)
     setSlot('afternoon')
     setTeamChoice(INHERIT)
+    setPrecisHour(false)
+    setPlannedStartHHMM('')
+    setPlannedEndHHMM('')
   }
 
   function resolveTeamId(): string | null | undefined {
@@ -104,12 +113,21 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
   function submit() {
     if (!canSubmit) return
     const teamId = resolveTeamId()
+    // Heures précises : envoyées seulement si toggle activé ET non vides.
+    const precis =
+      precisHour && plannedStartHHMM
+        ? {
+            plannedStartHHMM,
+            ...(plannedEndHHMM ? { plannedEndHHMM } : {}),
+          }
+        : {}
     startTransition(async () => {
       const r = await createInterventionFromWeekAction({
         missionId,
         scheduledFor,
         slot,
         ...(teamId === undefined ? {} : { teamId }),
+        ...precis,
       })
       if (!r.ok) {
         toast.error(r.error ?? 'Erreur inconnue')
@@ -202,9 +220,9 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
                     role="radio"
                     aria-checked={checked}
                     onClick={() => setSlot(opt.value)}
-                    disabled={pending}
+                    disabled={pending || precisHour}
                     className={
-                      'flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ' +
+                      'flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ' +
                       (checked
                         ? 'border-brand-600 bg-brand-50 text-brand-700 font-medium dark:bg-brand-600/10'
                         : 'bg-background hover:bg-muted')
@@ -215,6 +233,54 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
                 )
               })}
             </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground mt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={precisHour}
+                onChange={(e) => {
+                  setPrecisHour(e.target.checked)
+                  if (!e.target.checked) {
+                    setPlannedStartHHMM('')
+                    setPlannedEndHHMM('')
+                  }
+                }}
+                disabled={pending}
+                className="h-3.5 w-3.5"
+              />
+              Préciser l'heure (06h30 – 08h00 plutôt que « Matin »)
+            </label>
+            {precisHour && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="space-y-1">
+                  <label htmlFor="planned-start" className="text-[11px] text-muted-foreground">
+                    Début *
+                  </label>
+                  <input
+                    id="planned-start"
+                    type="time"
+                    step={300 /* 5 min */}
+                    value={plannedStartHHMM}
+                    onChange={(e) => setPlannedStartHHMM(e.target.value)}
+                    disabled={pending}
+                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="planned-end" className="text-[11px] text-muted-foreground">
+                    Fin
+                  </label>
+                  <input
+                    id="planned-end"
+                    type="time"
+                    step={300}
+                    value={plannedEndHHMM}
+                    onChange={(e) => setPlannedEndHHMM(e.target.value)}
+                    disabled={pending || !plannedStartHHMM}
+                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            )}
           </fieldset>
 
           <div className="space-y-1.5">
