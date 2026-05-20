@@ -26,6 +26,7 @@ import { formatInterventionShareText } from '@/lib/share/format-intervention'
 import { BreadcrumbPrefix, DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import { generateSiteReadings } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
+import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 
 /** Origin absolu calculé depuis les headers (cohérent avec prepareProofDossierAction). */
 async function buildAbsoluteUrl(path: string): Promise<string> {
@@ -164,6 +165,10 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path)),
     site ? generateSiteReadings((site as { id: string }).id) : Promise.resolve([]),
   ])
+  // Résolution centralisée des [doc:UUID] cités dans les fragments.
+  const siteReadingsDocNames = siteReadings.length > 0
+    ? await resolveDocNamesFromFragments(siteReadings.map((r) => r.fragment))
+    : {}
 
   // URLs signées pour les artefacts audio (1h TTL, bucket privé).
   const voiceNoteUrlMap = await getSignedVoiceNoteUrls(voiceNotes.map((n) => n.storage_path))
@@ -315,7 +320,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
             Ce que le lieu dit
           </div>
           {siteReadings.map((r, i) => (
-            <ReadingCard key={i} fragment={r.fragment} compact />
+            <ReadingCard key={i} fragment={r.fragment} compact docNames={siteReadingsDocNames} />
           ))}
         </div>
       )}

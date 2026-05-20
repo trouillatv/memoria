@@ -21,6 +21,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { anomalyLabel } from '@/lib/anomaly-labels'
+import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 import {
   getSignedPhotoUrlsNarrow,
   getSignedPhotoUrlsMedium,
@@ -1819,29 +1820,9 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     } catch { /* Silencieux */ }
   }
 
-  // --- 4c. Résolution des [doc:UUID] cités dans les fragments → filenames.
-  // Permet à l'UI d'afficher le nom du PDF au lieu de l'UUID brut. SQL pur,
-  // une seule requête batched IN par appel.
-  const docNames: Record<string, string> = {}
-  try {
-    const docIds = new Set<string>()
-    const DOC_RE = /\[doc:([0-9a-f-]{8,})\]/g
-    for (const r of [...resonances, ...readings]) {
-      let m: RegExpExecArray | null
-      const re = new RegExp(DOC_RE.source, 'g')
-      while ((m = re.exec(r.text)) !== null) docIds.add(m[1])
-    }
-    if (docIds.size > 0) {
-      const { data: docs } = await supabase
-        .from('documents')
-        .select('id, filename')
-        .in('id', Array.from(docIds))
-        .is('deleted_at', null)
-      for (const d of (docs ?? []) as Array<{ id: string; filename: string }>) {
-        docNames[d.id] = d.filename
-      }
-    }
-  } catch { /* Silencieux — UI rendra ↗ en fallback */ }
+  // Pas de résolution doc-names ici : on collecte les fragments et on
+  // appelle resolveDocNamesFromFragments une seule fois en fin de fonction
+  // (cf. helper lib/documents/resolve-doc-names.ts).
 
   // Résonances insérées EN PREMIER (priorité doctrinale Vincent 2026-05-15)
   readings.unshift(...resonances)
@@ -1896,32 +1877,12 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     readings.splice(resonances.length, 0, ...persistences.slice(0, 2))
   }
 
-  // Complète docNames depuis les persistances aussi (B2 trace peut en citer).
-  try {
-    const DOC_RE = /\[doc:([0-9a-f-]{8,})\]/g
-    const missing = new Set<string>()
-    for (const p of persistences) {
-      let m: RegExpExecArray | null
-      const re = new RegExp(DOC_RE.source, 'g')
-      while ((m = re.exec(p.text)) !== null) {
-        if (!docNames[m[1]]) missing.add(m[1])
-      }
-    }
-    if (missing.size > 0) {
-      const { data: docs } = await supabase
-        .from('documents')
-        .select('id, filename')
-        .in('id', Array.from(missing))
-        .is('deleted_at', null)
-      for (const d of (docs ?? []) as Array<{ id: string; filename: string }>) {
-        docNames[d.id] = d.filename
-      }
-    }
-  } catch { /* Silencieux */ }
-
-  // Cap final
+  // Cap final + résolution centralisée des [doc:UUID] sur l'ensemble
+  // des fragments retenus (helper resolveDocNamesFromFragments).
+  const finalReadings = readings.slice(0, 6)
+  const docNames = await resolveDocNamesFromFragments(finalReadings.map((r) => r.text))
   return {
-    readings: readings.slice(0, 6),
+    readings: finalReadings,
     docNames: Object.keys(docNames).length > 0 ? docNames : undefined,
   }
 }

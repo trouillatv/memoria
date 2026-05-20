@@ -27,6 +27,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildEveningBriefing, tomorrowUtcIso } from '@/lib/db/evening-briefing'
 import { getTenantDayReading, generateSiteReadings } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
+import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 import { generateChefEquipePreparations } from '@/lib/db/chef-equipe-preparation'
 import { ANOMALY_CATEGORY_LABELS } from '@/lib/anomaly-labels'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
@@ -102,6 +103,12 @@ export default async function BriefingPage({
 
   const effectiveBriefingReading = briefingReading ?? fallbackReadings
 
+  // Résout les noms PDF cités via [doc:UUID] dans le fragment IA, pour
+  // que ReadingCard affiche le filename au lieu du « ↗ » fallback.
+  const briefingDocNames = effectiveBriefingReading
+    ? await resolveDocNamesFromFragments([effectiveBriefingReading.fragment])
+    : {}
+
   const briefingShareText = formatBriefingShareText(briefing)
   const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
 
@@ -175,6 +182,7 @@ export default async function BriefingPage({
           <ReadingCard
             fragment={effectiveBriefingReading.fragment}
             context={'context' in effectiveBriefingReading ? effectiveBriefingReading.context : undefined}
+            docNames={briefingDocNames}
           />
         </div>
       )}

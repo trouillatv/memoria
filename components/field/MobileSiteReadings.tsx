@@ -34,6 +34,7 @@ export function MobileSiteReadings({
           key={idx}
           fragment={r.text}
           frags={r.fragments ?? undefined}
+          docNames={readings.docNames}
           compact
         />
       ))}

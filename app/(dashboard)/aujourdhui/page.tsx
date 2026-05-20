@@ -25,6 +25,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildTodayView, todayUtcIso, type TodayIntervention, type TodaySlot, type OverdueIntervention, type UnassignedRecent } from '@/lib/db/today-view'
 import { getTenantDayReading } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
+import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -89,6 +90,9 @@ export default async function TodayPage({
     plannedMissions,
   }))
   const todayReading = await getTenantDayReading(todaySiteContext)
+  const todayDocNames = todayReading
+    ? await resolveDocNamesFromFragments([todayReading.fragment])
+    : {}
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -139,7 +143,7 @@ export default async function TodayPage({
           <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
             Ce que les lieux disent
           </div>
-          <ReadingCard fragment={todayReading.fragment} context={todayReading.context} />
+          <ReadingCard fragment={todayReading.fragment} context={todayReading.context} docNames={todayDocNames} />
         </div>
       )}
 
