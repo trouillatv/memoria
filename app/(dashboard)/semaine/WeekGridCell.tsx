@@ -179,11 +179,15 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
   const sourceCellFromActive = dndCtx.active?.data.current?.sourceCellKey as string | undefined
   const isSourceCell = sourceCellFromActive === cellKey
 
-  // On affiche les chips dès qu'un drag est actif et que la cellule n'est pas
-  // passée. Y compris sur la cellule SOURCE → permet de changer juste le
-  // créneau sans changer de date (cas : "passer le matin en après-midi sur le
-  // même site, même jour").
-  const showChips = draggingSomething && !isPast && activeId !== null
+  // V6.1 (Vincent 2026-05-20) : les chips matin/après-midi/soir sont
+  // désactivées en drag-drop. Raison : changer le slot lors d'un drop
+  // RÉINITIALISE l'heure précise (planned_start passe à l'ancrage canonique
+  // du nouveau slot), ce qui faisait perdre les heures saisies à chaque
+  // déplacement. Désormais le drag ne change QUE la date ; le slot et
+  // l'heure précise sont préservés. Pour changer le slot/l'heure d'une
+  // intervention, utiliser le bouton « Modifier heure » du drawer ou
+  // ouvrir le détail intervention.
+  const showChips = false
 
   const isEmpty = cells.length === 0
   const team = isEmpty ? null : dominantTeam(cells)
