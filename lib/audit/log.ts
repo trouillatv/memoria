@@ -18,6 +18,8 @@ import { insertActivityLog } from '@/lib/db/activity-logs'
 export type AuditEntityType =
   | 'tender' | 'mission' | 'user' | 'knowledge_item'
   | 'report' | 'client' | 'site' | 'document'
+  // Vincent 2026-05-21 : feedback in-app (cf. /admin/feedback).
+  | 'feedback'
 
 export type AuditAction =
   | 'analysis_relaunched'
