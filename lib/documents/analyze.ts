@@ -116,6 +116,17 @@ export async function analyzeDocument(documentId: string): Promise<void> {
     } catch {
       // module absent ou import KO → ignoré
     }
+
+    // B2 — résonances cross-store doc ↔ traces site (fire-and-forget,
+    // ratifiée Vincent 2026-05-20). Strictement additif vis-à-vis B1.
+    // Coût borné : N_chunks × 1 RPC pgvector × M_sites, aucun LLM,
+    // aucun nouvel embedding. Échec silencieux comme B1.
+    try {
+      const { computeDocCrossStoreResonancesForDocument } = await import('./cross-store-resonances')
+      void computeDocCrossStoreResonancesForDocument(documentId).catch(() => {})
+    } catch {
+      // module absent ou import KO → ignoré
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     logSober('pipeline_error', documentId, { error: msg })
