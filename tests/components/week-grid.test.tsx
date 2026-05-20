@@ -22,6 +22,10 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }))
+
+// La chaîne d'imports tire transitivement @/lib/scheduling/team-conflict
+// qui a un guard `server-only`. Neutralisé en env test.
+vi.mock('server-only', () => ({}))
 import { WeekGridCell, compactSlots, dominantTeam } from '@/app/(dashboard)/semaine/WeekGridCell'
 import { WeekGrid } from '@/app/(dashboard)/semaine/WeekGrid'
 import { CellDrawer } from '@/app/(dashboard)/semaine/CellDrawer'

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { findTeamSiteConflict } from '@/lib/scheduling/team-conflict'
 import {
   getIntervention,
   updateInterventionStatus,
@@ -312,20 +313,35 @@ export async function rescheduleInterventionMobileAction(formData: FormData) {
     return { error: "Aucune équipe affectée — préviens le gérant." }
   }
 
-  // Vérifier conflit anti-race
+  // V6.1 — conflit horaire (chevauchement) au lieu de "même slot".
+  // Réplique l'heure précise sur la nouvelle date si le slot n'a pas changé.
   const supabase = createAdminClient()
-  const { data: conflict } = await supabase
-    .from('interventions')
-    .select('id')
-    .eq('assigned_team_id', intervention.assigned_team_id)
-    .eq('scheduled_for', parsed.data.new_date)
-    .eq('slot', parsed.data.new_slot)
-    .in('status', ['planned', 'in_progress'])
-    .neq('id', parsed.data.intervention_id)
-    .limit(1)
-    .maybeSingle()
+  const interventionTyped = intervention as unknown as { planned_start: string | null; planned_end: string | null }
+  const slotChanged = parsed.data.new_slot !== intervention.slot
+  let srcPlannedStart: string | null = null
+  let srcPlannedEnd: string | null = null
+  if (!slotChanged && interventionTyped.planned_end && interventionTyped.planned_start) {
+    const startHHMM = /T(\d{2}:\d{2})/.exec(interventionTyped.planned_start)?.[1]
+    const endHHMM = /T(\d{2}:\d{2})/.exec(interventionTyped.planned_end)?.[1]
+    if (startHHMM && endHHMM) {
+      srcPlannedStart = `${parsed.data.new_date}T${startHHMM}:00.000Z`
+      srcPlannedEnd = `${parsed.data.new_date}T${endHHMM}:00.000Z`
+    }
+  }
+  const conflict = await findTeamSiteConflict({
+    admin: supabase,
+    teamId: intervention.assigned_team_id,
+    missionId: intervention.mission_id,
+    scheduledFor: parsed.data.new_date,
+    slot: parsed.data.new_slot,
+    sourcePlannedStart: srcPlannedStart,
+    sourcePlannedEnd: srcPlannedEnd,
+    excludeInterventionId: parsed.data.intervention_id,
+  })
   if (conflict) {
-    return { error: 'Ce créneau vient d\'être pris — choisis-en un autre.' }
+    return {
+      error: `Ce créneau vient d'être pris : ${conflict.teamName} est déjà sur ${conflict.siteName}. Choisis-en un autre.`,
+    }
   }
 
   await rescheduleIntervention(parsed.data.intervention_id, parsed.data.new_date, parsed.data.new_slot)

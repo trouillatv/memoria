@@ -14,6 +14,7 @@ import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInterventionTimeLabel, isPlannedStartPrecise } from '@/lib/time/prestation-slot'
+import { listTeamConflictsForSlot } from '@/lib/scheduling/team-conflict'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
 import { listValidatedVoiceNotesByIntervention } from '@/lib/db/intervention-voice-notes'
@@ -99,40 +100,20 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const allTeams = await listTeams()
 
   // Pré-calcul des conflits par équipe : pour chaque équipe, est-elle déjà
-  // affectée à un AUTRE site sur le même créneau (date+slot) ?
-  // Permet d'afficher "déjà sur [site]" dans le dialog et de désactiver
-  // l'option — éviter le clic qui mène à une erreur server.
-  type SiteLite = { name: string }
-  type MissionLite = { site: SiteLite | SiteLite[] | null }
-  type ConflictRow = {
-    assigned_team_id: string
-    mission: MissionLite | MissionLite[] | null
-  }
-  const teamConflicts = new Map<string, string>()
-  if (intervention.slot) {
-    const { data: sameSlotRows } = await supabase
-      .from('interventions')
-      .select(
-        `assigned_team_id, mission:missions!inner(site:sites!inner(name))`,
-      )
-      .eq('scheduled_for', intervention.scheduled_for)
-      .eq('slot', intervention.slot)
-      .in('status', ['planned', 'in_progress'])
-      .neq('id', intervention.id)
-      .not('assigned_team_id', 'is', null)
-    const pick = <T,>(v: T | T[] | null): T | null =>
-      v === null ? null : Array.isArray(v) ? v[0] ?? null : v
-    for (const r of (sameSlotRows ?? []) as ConflictRow[]) {
-      const mission = pick(r.mission)
-      const site = mission ? pick(mission.site) : null
-      if (!site) continue
-      // Si une équipe est déjà sur plusieurs sites (data corrompue), on
-      // garde le premier — c'est suffisant pour signaler le conflit.
-      if (!teamConflicts.has(r.assigned_team_id)) {
-        teamConflicts.set(r.assigned_team_id, site.name)
-      }
-    }
-  }
+  // affectée à un AUTRE site sur des horaires qui CHEVAUCHENT ceux de cette
+  // intervention ? Permet d'afficher "déjà sur [site]" dans le dialog et de
+  // désactiver l'option — éviter le clic qui mène à une erreur server.
+  // V6.1 : on compare par chevauchement horaire si planned_start/end dispo,
+  // sinon fallback au critère slot grossier (cf. lib/scheduling/team-conflict).
+  const teamConflicts = await listTeamConflictsForSlot({
+    admin: supabase,
+    scheduledFor: intervention.scheduled_for ?? '',
+    slot: intervention.slot,
+    sourcePlannedStart: intervention.planned_start,
+    sourcePlannedEnd: intervention.planned_end,
+    excludeInterventionId: intervention.id,
+    sourceSiteId: site?.id ?? null,
+  })
 
   // Détecter les équipes sans chef_equipe actif parmi leurs membres
   const allTeamIds = allTeams.map((t) => t.id)

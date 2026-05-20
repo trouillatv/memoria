@@ -27,6 +27,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { logAuditEvent } from '@/lib/audit/log'
 import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/interventions'
+import { findTeamSiteConflict } from '@/lib/scheduling/team-conflict'
 import { buildScheduledAt, isPlannedStartPrecise, extractHHMM } from '@/lib/time/prestation-slot'
 import { getMission } from '@/lib/db/missions'
 import type { ChecklistTemplateItem, InterventionSlot } from '@/types/db'
@@ -107,104 +108,8 @@ function slotLabelFr(slot: InterventionSlot): string {
   return slot === 'morning' ? 'matin' : slot === 'afternoon' ? 'après-midi' : 'soir'
 }
 
-// ----------------------------------------------------------------------------
-// findTeamSiteConflict — Phase 10 (étendu V6.1 Vincent 2026-05-20)
-// ----------------------------------------------------------------------------
-//
-// Vérifie qu'une équipe n'est pas déjà affectée à un AUTRE site sur un
-// horaire qui chevauche le sien. Renvoie le premier conflit ou null si OK.
-//
-// Évolution V6.1 (heures précises) :
-//   Avant : conflit = même équipe + même date + même slot.
-//   Cas problématique : équipe X fait 06h30 – 08h00 sur site A et
-//   13h00 – 15h00 sur site B le même jour → tout les deux "matin" et
-//   "après-midi" mais en réalité aucun chevauchement temporel → faux conflit.
-//
-//   Après : si planned_end est défini de chaque côté, on compare les plages
-//   horaires (chevauchement [start, end]). Sinon, fallback au critère slot.
-//
-// Règle :
-//   - Même équipe sur AUTRE site avec chevauchement temporel = CONFLIT
-//   - Même équipe sur MÊME site = OK (multi-missions/site)
-//   - Pas d'équipe affectée (null) = jamais conflit (skip côté caller)
-//   - Interventions terminées (completed/validated) ne comptent PAS
-
-async function findTeamSiteConflict(args: {
-  admin: ReturnType<typeof createAdminClient>
-  teamId: string
-  /** Mission de l'intervention source — pour résoudre son site_id et l'exclure. */
-  missionId: string
-  scheduledFor: string
-  slot: InterventionSlot
-  /** V6.1 — heures précises de l'intervention SOURCE. Si fournies, on les
-   *  utilise pour détecter le chevauchement avec les interventions de
-   *  l'équipe. Sinon fallback au slot. */
-  sourcePlannedStart?: string | null
-  sourcePlannedEnd?: string | null
-  /** Pour exclure l'intervention en cours de modification de la recherche. */
-  excludeInterventionId: string
-}): Promise<{ siteName: string; teamName: string } | null> {
-  // 1) Résoudre le site de la mission source (à exclure)
-  const { data: sourceMission } = await args.admin
-    .from('missions')
-    .select('site_id')
-    .eq('id', args.missionId)
-    .maybeSingle()
-  const sourceSiteId = sourceMission?.site_id
-
-  // 2) Récupérer toutes les interventions actives de cette équipe ce JOUR
-  //    (on ne filtre plus par slot — on compare les horaires en JS).
-  const { data: candidates, error } = await args.admin
-    .from('interventions')
-    .select(
-      `id, mission_id, assigned_team_id, slot, planned_start, planned_end,
-       team:teams(name),
-       mission:missions!inner(site_id, site:sites!inner(id, name))`,
-    )
-    .neq('id', args.excludeInterventionId)
-    .eq('assigned_team_id', args.teamId)
-    .eq('scheduled_for', args.scheduledFor)
-    .in('status', ['planned', 'in_progress'])
-  if (error) throw error
-
-  for (const row of (candidates ?? []) as Array<{
-    slot: string | null
-    planned_start: string | null
-    planned_end: string | null
-    mission: { site: { id: string; name: string } | { id: string; name: string }[] | null } | Array<{ site: { id: string; name: string } | { id: string; name: string }[] | null }> | null
-    team: { name: string } | { name: string }[] | null
-  }>) {
-    const mission = Array.isArray(row.mission) ? row.mission[0] : row.mission
-    if (!mission) continue
-    const site = Array.isArray(mission.site) ? mission.site[0] : mission.site
-    if (!site) continue
-    // Conflit uniquement si site DIFFÉRENT du site source
-    if (site.id === sourceSiteId) continue
-
-    // Détection chevauchement temporel (V6.1) :
-    //  - Si les DEUX ont planned_end → check intersection des plages [start, end]
-    //  - Si l'un OU l'autre n'a pas planned_end → fallback critère slot identique
-    const candHasRange = !!row.planned_start && !!row.planned_end
-    const srcHasRange = !!args.sourcePlannedStart && !!args.sourcePlannedEnd
-    let overlaps: boolean
-    if (candHasRange && srcHasRange) {
-      const a1 = new Date(row.planned_start as string).getTime()
-      const a2 = new Date(row.planned_end as string).getTime()
-      const b1 = new Date(args.sourcePlannedStart as string).getTime()
-      const b2 = new Date(args.sourcePlannedEnd as string).getTime()
-      // Intersection : a1 < b2 ET b1 < a2 (strict — fin = début de l'autre OK)
-      overlaps = a1 < b2 && b1 < a2
-    } else {
-      // Fallback grossier : même slot ⇒ conflit potentiel
-      overlaps = row.slot === args.slot
-    }
-    if (!overlaps) continue
-
-    const team = Array.isArray(row.team) ? row.team[0] : row.team
-    return { siteName: site.name, teamName: team?.name ?? 'l\'équipe' }
-  }
-  return null
-}
+// findTeamSiteConflict est désormais extrait dans @/lib/scheduling/team-conflict
+// (partagé avec page détail intervention + mobile chef). Cf. import ci-dessous.
 
 // ----------------------------------------------------------------------------
 // moveInterventionToDayAction
@@ -876,11 +781,18 @@ export async function updateInterventionTimeAction(
   const admin = createAdminClient()
   const { data: existing } = await admin
     .from('interventions')
-    .select('id, status, scheduled_for, slot')
+    .select('id, status, scheduled_for, slot, assigned_team_id, mission_id')
     .eq('id', parsed.data.interventionId)
     .maybeSingle()
   if (!existing) return { ok: false, error: 'Intervention introuvable' }
-  const ex = existing as { id: string; status: string; scheduled_for: string | null; slot: InterventionSlot | null }
+  const ex = existing as {
+    id: string
+    status: string
+    scheduled_for: string | null
+    slot: InterventionSlot | null
+    assigned_team_id: string | null
+    mission_id: string
+  }
   if (ex.status !== 'planned' && ex.status !== 'skipped') {
     return { ok: false, error: 'Intervention déjà démarrée — édition heure refusée' }
   }
@@ -904,6 +816,32 @@ export async function updateInterventionTimeAction(
     newPlannedStart = ex.slot
       ? buildScheduledAt(ex.scheduled_for, ex.slot)
       : `${ex.scheduled_for}T00:00:00.000Z`
+  }
+
+  // V6.1 (Vincent 2026-05-20) : vérifier le conflit d'équipe AVANT l'update.
+  // Règle : une équipe ne peut pas faire deux interventions sur des sites
+  // DIFFÉRENTS sur des horaires qui se chevauchent. L'édition d'heure peut
+  // amener une intervention dans une plage déjà occupée par cette équipe
+  // ailleurs → refus avec message explicite.
+  if (ex.assigned_team_id && ex.slot) {
+    const conflict = await findTeamSiteConflict({
+      admin,
+      teamId: ex.assigned_team_id,
+      missionId: ex.mission_id,
+      scheduledFor: ex.scheduled_for,
+      slot: ex.slot,
+      sourcePlannedStart: newPlannedStart,
+      sourcePlannedEnd: newPlannedEnd,
+      excludeInterventionId: parsed.data.interventionId,
+    })
+    if (conflict) {
+      return {
+        ok: false,
+        error:
+          `Conflit horaire : ${conflict.teamName} est déjà sur ${conflict.siteName} ` +
+          `sur une plage qui chevauche celle-ci. Choisis d'autres heures ou réassigne l'équipe.`,
+      }
+    }
   }
 
   const { error: upErr } = await admin
