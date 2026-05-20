@@ -9,6 +9,12 @@
 //
 // Pas de DB, pas de Supabase, pas de side effect. Juste le provider IA.
 
+// Charge explicitement .env.local (tsx ne le fait pas auto, contrairement
+// à `next dev`). Doit être en TOUT premier, avant l'import des modules
+// qui lisent process.env au top-level.
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
+
 import { getActiveProvider, getEmbedding } from '@/lib/ai/embeddings'
 
 async function main() {

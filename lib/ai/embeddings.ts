@@ -15,7 +15,11 @@
 // IMPORTANT : le schéma DB (trace_embeddings.embedding) doit correspondre
 // aux dims du provider actif. Migration 053 règle ça pour Google (768 dim).
 
-const GOOGLE_MODEL = 'text-embedding-004'   // 768 dim natif (cf. migration 053)
+// Google a déprécié text-embedding-004 (404 sur :embedContent v1beta,
+// confirmé via diag-embeddings 2026-05-20). Le modèle GA actuel est
+// gemini-embedding-001 (MRL, supporte outputDimensionality 768/1536/3072
+// — on garde 768 pour rester compatible avec migration 053).
+const GOOGLE_MODEL = 'gemini-embedding-001'  // 768 dim via outputDimensionality
 const OPENAI_MODEL = 'text-embedding-3-small' // 1536 dim
 const VOYAGE_MODEL = 'voyage-3'              // 768 dim
 
