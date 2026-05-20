@@ -147,6 +147,14 @@ export function CellDrawer({
     if (selectedKey && !cellsIndex.has(selectedKey)) setSelectedKey(null)
   }, [cellsIndex, selectedKey])
 
+  // V6.1 (Vincent 2026-05-20) : fermer le drawer quand un drag démarre
+  // pour laisser voir la grille semaine derrière. Le drag se fait
+  // forcément depuis une card existante (donc le user n'a plus besoin
+  // du drawer pour voir le détail pendant le déplacement).
+  useEffect(() => {
+    if (activeDragId && selectedKey) setSelectedKey(null)
+  }, [activeDragId, selectedKey])
+
   // Idem : si l'intervention ciblée par la modal a disparu, on referme.
   useEffect(() => {
     if (!reassignTarget) return

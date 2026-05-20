@@ -274,13 +274,14 @@ export async function moveInterventionToDayAction(
     : `${parsed.data.newScheduledFor}T00:00:00.000Z`
 
   // V6.1 (Vincent 2026-05-20) : si l'intervention avait une heure PRÉCISE
-  // (planned_start ≠ ancrage canonique) ET que le slot ne change pas,
-  // PRÉSERVER l'heure précise (juste changer la date). Sinon (slot
-  // change OU pas d'heure précise) → réinitialiser à l'ancrage canonique.
+  // (planned_start ≠ ancrage canonique OU planned_end présent) ET que le
+  // slot ne change pas, PRÉSERVER l'heure (juste changer la date). Sinon
+  // (slot change OU pas d'heure précise) → réinitialiser à l'ancrage.
   const slotChanged = parsed.data.newSlot && parsed.data.newSlot !== existing.slot
   const oldPlannedStart: string | null = (existing as { planned_start: string | null }).planned_start
   const oldPlannedEnd: string | null = (existing as { planned_end: string | null }).planned_end
-  const hadPreciseHour = !slotChanged && isPlannedStartPrecise(oldPlannedStart)
+  const hadPreciseHour =
+    !slotChanged && (!!oldPlannedEnd || isPlannedStartPrecise(oldPlannedStart))
 
   let newPlannedStart: string = fallbackScheduledAt
   let newPlannedEnd: string | null = null
