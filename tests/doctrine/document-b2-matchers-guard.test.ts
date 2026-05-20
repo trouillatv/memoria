@@ -204,8 +204,8 @@ describe('B2 — buildB2Fragment', () => {
     expect(buildB2Fragment({ ...params, traceKind: 'site_note' })).toContain('note terrain')
   })
 
-  it('date au format français court', () => {
-    expect(frDayMonth('2026-05-19T00:00:00Z')).toMatch(/19 mai|18 mai/) // tolérance fuseau
+  it('date au format français court en fuseau Nouméa (déterministe)', () => {
+    expect(frDayMonth('2026-05-19T00:00:00Z')).toBe('19 mai')
   })
 
   it('déterministe : mêmes inputs → même output', () => {

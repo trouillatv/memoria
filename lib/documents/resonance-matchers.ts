@@ -60,15 +60,11 @@ export function findCommonBigrams(a: string, b: string): string[] {
   return common
 }
 
-/** Format français court d'une date : « 12 mai ». Déterministe via
- *  Intl, locale fr-FR. Jamais un horaire précis (cf. V6.1). */
-export function frDayMonth(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
-  } catch {
-    return iso.slice(0, 10)
-  }
-}
+// Format français court « 20 mai » en zone Nouméa. Délégué au helper
+// centralisé `lib/time/local-date.ts` (NETO_TIMEZONE='Pacific/Noumea').
+// Évite la fuite UTC silencieuse : une trace créée à 09h Nouméa = 22h UTC
+// la veille → afficher la date UTC serait un jour trop tôt.
+export { frDayMonthLocal as frDayMonth } from '@/lib/time/local-date'
 
 // ---------------------------------------------------------------------------
 // Constantes B1 (paramètres internes, jamais doctrine)

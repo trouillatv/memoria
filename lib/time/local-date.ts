@@ -46,3 +46,24 @@ export function addDaysLocal(iso: string, days: number): string {
   date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
 }
+
+// Format français court « 20 mai » EN ZONE NOUMÉA. Pour tout affichage
+// utilisateur d'une date civile (fragments lecture site, audit log UI,
+// etc.). Évite l'écueil silencieux : un événement créé à 09h Nouméa =
+// 22h UTC la veille → la locale serveur en UTC affiche un jour trop tôt.
+const dayMonthFormatter = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: NETO_TIMEZONE,
+  day: 'numeric',
+  month: 'long',
+})
+
+/** Date au format français court « 20 mai » en zone Nouméa.
+ *  Accepte un ISO string ou un Date. Stable indépendamment du fuseau serveur. */
+export function frDayMonthLocal(iso: string | Date): string {
+  try {
+    const d = typeof iso === 'string' ? new Date(iso) : iso
+    return dayMonthFormatter.format(d)
+  } catch {
+    return typeof iso === 'string' ? iso.slice(0, 10) : ''
+  }
+}
