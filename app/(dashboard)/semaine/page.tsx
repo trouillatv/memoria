@@ -249,6 +249,12 @@ export default async function SemainePage({ searchParams }: PageProps) {
         </div>
       </header>
 
+      {/* V6.2 (Vincent 2026-05-20) — Vigilance EN HAUT, plus en bas. Bandeau
+          rouge qui saute aux yeux dès qu'un signal apparaît (sans équipe,
+          chevauchement horaire). Silence positif respecté : si aucun signal,
+          le widget ne rend rien et la zone disparaît. */}
+      <WeekVigilanceSection data={vigilance} />
+
       {/* Doctrine /semaine — modifications ponctuelles uniquement.
           Discret mais permanent : c'est la règle produit, pas un toast éphémère. */}
       <div
@@ -302,9 +308,6 @@ export default async function SemainePage({ searchParams }: PageProps) {
           <span className="italic text-amber-700/80">Non-affecté</span> = à attribuer à une équipe
         </p>
 
-        {/* Vigilance — interventions sans équipe + conflits d'équipe sur des
-            horaires qui se chevauchent. Silence positif si aucun signal. */}
-        <WeekVigilanceSection data={vigilance} />
       </div>
     </div>
   )

@@ -147,6 +147,47 @@ export default async function TodayPage({
         </div>
       )}
 
+      {/* V6.2 (Vincent 2026-05-20) — Dette opérationnelle EN HAUT, plus en bas.
+          Rouge bordeaux sobre qui saute aux yeux. Silence positif respecté :
+          si zéro signal (sans équipe + en retard = 0), le bloc ne rend rien.
+          Groupé pour éviter l'effet « N alarmes » — l'œil voit UN problème. */}
+      {(view.unassignedRecent.length > 0 || view.overdue.length > 0) && (
+        <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900/40">
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2 text-red-900 dark:text-red-100">
+              <AlertTriangle className="h-4 w-4 text-red-700 dark:text-red-300" strokeWidth={2} />
+              Dette opérationnelle ({view.unassignedRecent.length + view.overdue.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {view.unassignedRecent.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-900/80 dark:text-red-200/80 mb-2">
+                  Sans équipe aujourd&apos;hui ({view.unassignedRecent.length})
+                </h3>
+                <ul className="space-y-1.5">
+                  {view.unassignedRecent.map((i) => (
+                    <UnassignedLine key={i.id} item={i} />
+                  ))}
+                </ul>
+              </div>
+            )}
+            {view.overdue.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-900/80 dark:text-red-200/80 mb-2">
+                  Passages en retard à régulariser ({view.overdue.length})
+                </h3>
+                <ul className="space-y-1.5">
+                  {view.overdue.map((i) => (
+                    <OverdueLine key={i.id} item={i} />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Sections par créneau — DÉROULÉ NORMAL EN PREMIER (le planning principal
           est l'activité normale ; la dette est l'exception et vient en dessous). */}
       {view.bySlot.length === 0 ? (
@@ -179,46 +220,6 @@ export default async function TodayPage({
         ))
       )}
 
-      {/* Dette opérationnelle — bloc unique sous le déroulé journée. Groupe
-          "sans équipe" + "passages en retard" pour éviter l'effet "amber
-          partout = bruit". L'œil voit UN problème à traiter, pas N alarmes. */}
-      {(view.unassignedRecent.length > 0 || view.overdue.length > 0) && (
-        <Card className="border-amber-200 bg-amber-50/30">
-          <CardHeader>
-            <CardTitle className="text-base inline-flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-700" />
-              Dette opérationnelle ({view.unassignedRecent.length + view.overdue.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {view.unassignedRecent.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
-                  Sans équipe aujourd&apos;hui ({view.unassignedRecent.length})
-                </h3>
-                <ul className="space-y-1.5">
-                  {view.unassignedRecent.map((i) => (
-                    <UnassignedLine key={i.id} item={i} />
-                  ))}
-                </ul>
-              </div>
-            )}
-            {view.overdue.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
-                  Passages en retard à régulariser ({view.overdue.length})
-                </h3>
-                <ul className="space-y-1.5">
-                  {view.overdue.map((i) => (
-                    <OverdueLine key={i.id} item={i} />
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {/* Liens connexes */}
       <div className="pt-4 flex items-center gap-4 text-sm text-muted-foreground">
         <Link href="/briefing" className="hover:text-foreground inline-flex items-center gap-1">
@@ -244,24 +245,24 @@ function UnassignedLine({ item }: { item: UnassignedRecent }) {
     <li>
       <Link
         href={`/interventions/${item.id}`}
-        className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-white/60 px-3 py-2 hover:bg-amber-50/80 transition-colors"
+        className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-white/70 px-3 py-2 hover:bg-red-50/80 transition-colors dark:border-red-900/40 dark:bg-red-950/10 dark:hover:bg-red-950/40"
       >
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-amber-900 truncate">
+          <div className="text-sm font-medium text-red-950 dark:text-red-50 truncate">
             {item.site_name}
           </div>
-          <div className="text-xs text-amber-700/80 truncate">
+          <div className="text-xs text-red-900/70 dark:text-red-200/70 truncate">
             {item.mission_name}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span
-            className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900"
+            className="inline-flex items-center rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-900 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100"
             title="Aucune équipe affectée"
           >
             ◯ Non-affecté
           </span>
-          <span className="text-[10px] font-medium text-amber-800 tabular-nums">
+          <span className="text-[10px] font-medium text-red-900/80 dark:text-red-200/80 tabular-nums">
             {ageLabel}
           </span>
         </div>
@@ -279,13 +280,13 @@ function OverdueLine({ item }: { item: OverdueIntervention }) {
     <li>
       <Link
         href={`/interventions/${item.id}`}
-        className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50/40 px-3 py-2 hover:bg-amber-50/70 transition-colors"
+        className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50/40 px-3 py-2 hover:bg-red-100/60 transition-colors dark:border-red-900/40 dark:bg-red-950/20 dark:hover:bg-red-950/40"
       >
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-amber-900 truncate">
+          <div className="text-sm font-medium text-red-950 dark:text-red-50 truncate">
             {item.site_name}
           </div>
-          <div className="text-xs text-amber-700/80 truncate">
+          <div className="text-xs text-red-900/70 dark:text-red-200/70 truncate">
             {item.mission_name}
           </div>
         </div>
@@ -293,7 +294,7 @@ function OverdueLine({ item }: { item: OverdueIntervention }) {
           {item.team_name && (
             <TeamBadge name={item.team_name} color={item.team_color} size="sm" />
           )}
-          <span className="text-[10px] font-medium text-amber-800 bg-amber-100 border border-amber-300 rounded-full px-2 py-0.5 tabular-nums">
+          <span className="text-[10px] font-medium text-red-900 bg-red-100 border border-red-300 rounded-full px-2 py-0.5 tabular-nums dark:border-red-800 dark:bg-red-900/40 dark:text-red-100">
             {ageLabel}
           </span>
         </div>
