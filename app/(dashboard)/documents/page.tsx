@@ -13,6 +13,7 @@ import { listTeams } from '@/lib/db/teams'
 import { analysisStatusLabel } from '@/lib/documents/labels'
 import { NewCollectionForm } from './NewCollectionForm'
 import { UploadDocumentForm } from './UploadDocumentForm'
+import { DocumentRowActions } from './DocumentRowActions'
 
 // Bibliothèque documentaire — UI phase 4a. Lecture/organisation/upload par
 // un humain. ZÉRO IA (pas de recall, pas de résumé, pas d'injection agents).
@@ -105,7 +106,7 @@ export default async function DocumentsPage({
                   {docs.map((d) => (
                     <li
                       key={d.id}
-                      className="flex items-center justify-between gap-3 py-2 text-sm"
+                      className="flex items-center justify-between gap-3 py-2 text-sm flex-wrap"
                     >
                       <span className="min-w-0">
                         <Link
@@ -116,11 +117,14 @@ export default async function DocumentsPage({
                         </Link>
                         <span className="text-xs text-muted-foreground">
                           {' '}· {d.document_type}
+                          {' '}· {analysisStatusLabel(d.analysis_status)}
                         </span>
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {analysisStatusLabel(d.analysis_status)}
-                      </span>
+                      <DocumentRowActions
+                        documentId={d.id}
+                        filename={d.filename}
+                        analysisStatus={d.analysis_status}
+                      />
                     </li>
                   ))}
                 </ul>
