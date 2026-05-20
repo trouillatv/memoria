@@ -130,10 +130,28 @@ export default async function DashboardPage() {
         activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
       />
 
-      {/* V5.1.4 — "Ce que les lieux disent ce matin" (Vincent 2026-05-15).
-          1 fragment max. Si rien d'émergent → la Card ne s'affiche pas.
-          Phénomène rare, pas un feed. */}
+      {/*
+        V6.2 (Vincent 2026-05-20) — ZONE VIGILANCE EN HAUT DU DASHBOARD.
+
+        Les bandeaux résonances / alertes IA / alertes terrain doivent sauter
+        aux yeux. Empilés ici juste après le header, en couleurs rouge bordeaux
+        sobres mais voyantes. Chaque widget reste silencieux si rien à signaler
+        (silence positif) — donc cette zone disparaît complètement les jours
+        où l'exploitation va bien.
+
+        Cf. [[alertes-doctrine-legere]] (mémoire projet) pour les garde-fous.
+      */}
+
+      {/* V5.1.4 — Résonance matinale (« Ce que les lieux disent ce matin »).
+          Reste sobre crème (c'est une LECTURE, pas une alerte) mais positionnée
+          en tête de la zone vigilance. 1 fragment max. Si rien → ne s'affiche pas. */}
       <TenantMorningReadingCard data={morningReading} />
+
+      <RecentAnomaliesWidget anomalies={recentAnomalies} />
+
+      <AtRiskEngagementsWidget engagements={atRiskEngagements} />
+
+      <ContractsUnderTensionWidget contracts={contractsUnderTension} />
 
       {/* Sprint 3 — UX-8 Mode litige express : bouton sobre, immédiatement
           visible, jamais alarmant. Doctrine V5 verrou V4 : wording strictement
@@ -171,12 +189,6 @@ export default async function DashboardPage() {
           {dossiersClosedThisMonth > 1 ? 's' : ''} ce mois.
         </p>
       )}
-
-      <RecentAnomaliesWidget anomalies={recentAnomalies} />
-
-      <AtRiskEngagementsWidget engagements={atRiskEngagements} />
-
-      <ContractsUnderTensionWidget contracts={contractsUnderTension} />
 
       <AnomaliesOldWidget oldCount={anomaliesStats.oldCount} />
 

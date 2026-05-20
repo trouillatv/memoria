@@ -22,33 +22,45 @@ interface Props {
 export function ContractsUnderTensionWidget({ contracts }: Props) {
   if (contracts.length === 0) return null
 
+  // V6.2 (Vincent 2026-05-20) : bandeau ROUGE bordeaux, en haut du dashboard.
+  // Silence positif si zéro contrat sous tension.
   return (
-    <Card data-slot="contracts-under-tension">
+    <Card
+      data-slot="contracts-under-tension"
+      className="border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900/40"
+    >
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <TrendingDown className="h-4 w-4 text-amber-600" strokeWidth={1.75} />
+        <CardTitle className="text-base flex items-center gap-2 text-red-900 dark:text-red-100">
+          <TrendingDown
+            className="h-4 w-4 text-red-700 dark:text-red-300"
+            strokeWidth={2}
+          />
           <span>Contrats sous tension</span>
-          <span className="text-muted-foreground font-normal text-xs">({contracts.length})</span>
+          <span className="text-red-900/60 dark:text-red-200/60 font-normal text-xs">
+            ({contracts.length})
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <ul className="divide-y">
+        <ul className="divide-y divide-red-200/60 dark:divide-red-900/40">
           {contracts.map((c) => (
             <li key={c.contract_id} className="px-6 py-3">
               <Link
                 href={`/contracts/${c.contract_id}`}
-                className="block hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                className="block hover:bg-red-100/50 dark:hover:bg-red-950/40 -mx-6 px-6 py-1 -my-1 transition-colors group"
               >
                 <div className="flex items-start justify-between gap-3 mb-1.5">
-                  <div className="text-sm font-medium truncate">{c.contract_name}</div>
-                  <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                  <div className="text-sm font-medium truncate text-red-950 dark:text-red-50">
+                    {c.contract_name}
+                  </div>
+                  <span className="text-xs text-red-900/70 dark:text-red-200/70 tabular-nums shrink-0">
                     Boucle {Math.round(c.globalScore * 100)}%
                   </span>
                 </div>
                 <SegmentBar segments={c.segmentScores} />
-                <div className="text-xs text-muted-foreground mt-2 flex items-center justify-between">
+                <div className="text-xs text-red-900/70 dark:text-red-200/70 mt-2 flex items-center justify-between">
                   <span>{c.reasonDetail}</span>
-                  <span className="inline-flex items-center gap-1 group-hover:text-foreground">
+                  <span className="inline-flex items-center gap-1 group-hover:text-red-950 dark:group-hover:text-red-50">
                     Voir
                     <ArrowRight className="h-3 w-3" />
                   </span>
