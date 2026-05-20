@@ -1,7 +1,35 @@
 # B2 — Étude du pont cross-store documents ↔ traces site
 
 **Date :** 2026-05-20
-**Statut :** ÉTUDE — zéro code. Ratification section par section requise avant tranche d'exécution.
+**Statut :** RATIFIÉE 2026-05-20 (Q1→Q7 toutes acceptées). Q1 renforcée — voir addendum §0.
+**Tranche en cours :** T1 (helpers purs matchers + tests).
+
+---
+
+## 0. Addendum de ratification — 2026-05-20
+
+Toutes les questions §6 sont ratifiées. Renforcement notable sur Q1 :
+
+> **« Un lien utile doit aider un humain terrain à agir. Pas juste
+> 'c'est intéressant'. »**
+
+Cette formulation est **plus stricte** que le critère initial (« chunk
+doc cite une action/procédure »). Elle s'applique en miroir aux deux
+côtés du lien :
+
+- **Côté doc :** le chunk doit citer une action / procédure /
+  obligation explicite (verbe d'action, substantif d'action, marqueur
+  d'obligation).
+- **Côté trace :** la trace doit signaler une situation appelant une
+  action — soit par son `kind` (anomalie, incident d'accès, savoir
+  terrain), soit par un keyword d'issue détecté dans le texte (cassé,
+  manquant, glissant, en panne…).
+
+Si l'une des deux conditions échoue, **pas de résonance émise** —
+même si le cosine dépasse 0.80. Le cosine est nécessaire mais jamais
+suffisant. Précision >> rappel en β. Cf. mémoire [[lien-utile-aide-a-agir]].
+
+---
 **Position doctrinale :** B1 livré (commit `913a854`). Indicateurs B1 rétrogradés en consultatifs ; seul §1.7 (fuite visibilité) reste dur. Vincent autorise l'ouverture de B2 sans attendre les métriques.
 **Cadrage Vincent (verbatim 2026-05-20) :**
 - résonances **métier fortes**, pas liens « impressionnants techniquement »
