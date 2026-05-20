@@ -89,6 +89,9 @@ export const B1_MAX_PER_SITE = 3
 /** Durée de vie d'une résonance B1 (re-validation à 30 j). */
 export const B1_EXPIRE_DAYS = 30
 
-/** Algorithme namespacé pour mesure / dismiss / future migration. */
-export const B1_ALGO_ACCESS = 'b1_doc_access_v1'
-export const B1_ALGO_PROCEDURE = 'b1_doc_procedure_v1'
+/** Algorithme namespacé pour mesure / dismiss / future migration.
+ *  v2 (Vincent 2026-05-20) : ajout dedup per-trace pour éviter le
+ *  doublon fonctionnel (2 docs proches → 1 seul fragment par (site,
+ *  trace), last-write-wins). */
+export const B1_ALGO_ACCESS = 'b1_doc_access_v2'
+export const B1_ALGO_PROCEDURE = 'b1_doc_procedure_v2'

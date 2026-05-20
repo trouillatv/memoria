@@ -186,19 +186,31 @@ async function computeForOne(
 
   if (candidates.length === 0) return
 
-  // Idempotence : pour (site, algo, doc), on remplace l'existant actif.
-  // (Le lien doc est porté par source_ids[0]; on filtre côté JS.)
+  // Idempotence (V2) : double dedup.
+  //  1. par doc (.like('b1_doc_%') couvre v1+v2 → migration propre) :
+  //     stale les actifs où source[0].id === doc.id (même doc qu'on
+  //     recalcule).
+  //  2. per-trace (Vincent 2026-05-20) : stale les actifs où source[1].id
+  //     est identique (autre doc partageant la même trace cible) →
+  //     évite le doublon fonctionnel quand 2 docs proches matchent le
+  //     même bigramme sur la même note. Last-write-wins.
   for (const c of candidates) {
+    const sourceTraceId = c.source_ids[1]?.id
     const { data: existing } = await supabase
       .from('site_reading_candidates')
       .select('id, source_ids')
       .eq('site_id', siteId)
-      .eq('algorithm_version', c.algorithm_version)
+      .like('algorithm_version', 'b1_doc_%')
       .eq('status', 'active')
     const toStale = (existing ?? [])
       .filter((r) => {
         const src = (r as { source_ids: Array<{ type: string; id: string }> }).source_ids ?? []
-        return src.length > 0 && src[0]?.id === doc.id
+        if (src.length === 0) return false
+        // 1. même doc en source[0]
+        if (src[0]?.id === doc.id) return true
+        // 2. même trace en source[1] (peu importe le doc d'origine)
+        if (sourceTraceId && src.length >= 2 && src[1]?.id === sourceTraceId) return true
+        return false
       })
       .map((r) => (r as { id: string }).id)
     if (toStale.length > 0) {

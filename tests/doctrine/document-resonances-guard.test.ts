@@ -137,6 +137,11 @@ describe('B1 matchers — constantes doctrinales', () => {
     expect(B1_ALGO_ACCESS.startsWith('b1_doc_')).toBe(true)
     expect(B1_ALGO_PROCEDURE.startsWith('b1_doc_')).toBe(true)
   })
+
+  it('B1 algos bumpés v2 (Vincent 2026-05-20 : dedup per-trace)', () => {
+    expect(B1_ALGO_ACCESS).toBe('b1_doc_access_v2')
+    expect(B1_ALGO_PROCEDURE).toBe('b1_doc_procedure_v2')
+  })
 })
 
 // =============================================================================
@@ -194,6 +199,22 @@ describe('B1 — garde-fous structurels (resonances.ts)', () => {
   it('plafond ≤ B1_MAX_PER_SITE appliqué', () => {
     expect(/all\.length\s*>\s*B1_MAX_PER_SITE/.test(src)).toBe(true)
     expect(/like\('algorithm_version',\s*'b1_doc_%'\)/.test(src)).toBe(true)
+  })
+
+  it('V2 dedup per-doc OU per-trace : stale couvre les deux cas', () => {
+    // Avant insert, on stale les actifs où source[0].id === doc.id
+    // (idempotence sur ré-analyse du même doc).
+    expect(/src\[0\]\?\.id\s*===\s*doc\.id/.test(src)).toBe(true)
+    // OU où source[1].id === sourceTraceId (Vincent 2026-05-20 : 2 docs
+    // différents matchant la même trace → 1 seul fragment).
+    expect(/src\[1\]\?\.id\s*===\s*sourceTraceId/.test(src)).toBe(true)
+  })
+
+  it('V2 : stale-by-doc utilise .like(b1_doc_%) (migration v1→v2 propre)', () => {
+    // L'ancien .eq(c.algorithm_version) ne couvrait pas la migration ; v2
+    // doit pouvoir staler des entrées v1 et v2 indifféremment.
+    const insertBlock = src.slice(src.indexOf('for (const c of candidates)'))
+    expect(/\.like\(['"]algorithm_version['"],\s*['"]b1_doc_%['"]\)/.test(insertBlock)).toBe(true)
   })
 
   it('expires_at calculé à B1_EXPIRE_DAYS jours', () => {
