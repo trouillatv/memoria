@@ -88,10 +88,14 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       assigned_team_id,
       executed_at,
       skipped_reason,
+      planned_start,
       mission:missions!inner(name, site:sites!inner(id, name))
     `)
     .eq('scheduled_for', date)
-    .order('slot', { ascending: true })
+    // V6.1 (Vincent 2026-05-20) : ordre par planned_start (heure
+    // précise) plutôt que slot grossier. Vue aujourd'hui plus fidèle
+    // à la réalité métier : une 06h30 vient avant 07h00 ancrage matin.
+    .order('planned_start', { ascending: true, nullsFirst: false })
 
   type Row = {
     id: string

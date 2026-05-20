@@ -218,7 +218,13 @@ export async function listInterventionsForWeek(
     .gte('scheduled_for', range.weekStart)
     .lte('scheduled_for', range.weekEnd)
     .order('scheduled_for', { ascending: true })
-    .order('slot', { ascending: true, nullsFirst: true })
+    // V6.1 (Vincent 2026-05-20) : ordre par planned_start (heure de
+    // prestation honnête) plutôt que slot grossier. Une intervention 06h30
+    // se place AVANT une 07h00 ancrage matin (auparavant : même slot →
+    // ordre indéterminé). planned_start est non-null pour toutes les rows
+    // depuis le backfill migration 071. Fallback NULLS LAST pour les
+    // éventuelles legacy qui auraient échappé.
+    .order('planned_start', { ascending: true, nullsFirst: false })
 
   if (error) throw error
 
