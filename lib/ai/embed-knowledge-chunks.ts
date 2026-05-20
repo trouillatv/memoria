@@ -4,6 +4,25 @@ import { getEmbedding, getActiveProvider } from './embeddings'
 
 const MAX_CHUNK_CHARS = 900
 const MIN_CHUNK_CHARS = 50
+/** Batch parallèle conservateur côté Gemini text-embedding-004.
+ *  5 simultanées = gain ~5× sur Indexation, zéro risque rate-limit. */
+const EMBED_BATCH_SIZE = 5
+
+/** Embèd N chunks en parallèle par batches. Préserve l'ordre des
+ *  inputs (zip strict). null pour un chunk dont l'embedding échoue. */
+async function embedChunksInBatches(chunks: string[]): Promise<Array<number[] | null>> {
+  const results: Array<number[] | null> = new Array(chunks.length).fill(null)
+  for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
+    const batch = chunks.slice(i, i + EMBED_BATCH_SIZE)
+    const batchResults = await Promise.all(
+      batch.map((text) => getEmbedding(text).catch(() => null)),
+    )
+    for (let j = 0; j < batchResults.length; j++) {
+      results[i + j] = batchResults[j]
+    }
+  }
+  return results
+}
 
 function splitIntoChunks(text: string): string[] {
   const chunks: string[] = []
@@ -242,8 +261,12 @@ export async function embedDocumentChunks(documentId: string): Promise<void> {
     links: (links ?? []) as Array<{ target_type: string; target_id: string }>,
   }
 
+  // Embedding parallèle par batch (gain ~5× sur Indexation).
+  const embeddings = await embedChunksInBatches(chunks)
+
+  // Upsert séquentiel (rapide, évite hammering Supabase concurrent writes).
   for (let i = 0; i < chunks.length; i++) {
-    const embedding = await getEmbedding(chunks[i])
+    const embedding = embeddings[i]
     if (!embedding) continue
 
     const { error } = await supabase.from('knowledge_chunks').upsert(
