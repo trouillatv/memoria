@@ -1,10 +1,11 @@
 // Page « Interventions du jour » — pendant Briefing du soir prépare DEMAIN,
 // cette page suit AUJOURD'HUI en temps réel.
 //
-// Doctrine V5 :
-//   - Groupement par créneau (rythme naturel de la journée).
+// Doctrine V5 + V6.1 (Vincent 2026-05-21 — purge créneau cohérence avec /semaine) :
+//   - Flux chronologique par planned_start (plus de groupes par créneau).
+//   - Plage horaire affichée PAR intervention (formatInterventionTimeLabel).
 //   - Tout est visible (terminées incluses, opacité réduite — pas masquées).
-//   - Stats : Prévues / En cours / Terminées / À risque.
+//   - Stats : Prévues / En cours / Terminées / À traiter.
 //   - Wording calme, jamais alarmiste.
 
 import { redirect } from 'next/navigation'
@@ -22,10 +23,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { buildTodayView, todayUtcIso, type TodayIntervention, type TodaySlot, type OverdueIntervention, type UnassignedRecent } from '@/lib/db/today-view'
+import { buildTodayView, todayUtcIso, type TodayIntervention, type OverdueIntervention, type UnassignedRecent } from '@/lib/db/today-view'
 import { getTenantDayReading } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
+import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
+import type { InterventionSlot } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -37,18 +40,9 @@ const MONTHS_FR_FULL = [
 const WEEKDAYS_FR = [
   'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
 ]
-const SLOT_FR: Record<TodaySlot, string> = {
-  morning: 'Matin',
-  afternoon: 'Après-midi',
-  evening: 'Soir',
-  none: 'Sans créneau',
-}
-const SLOT_TONE: Record<TodaySlot, string> = {
-  morning: 'bg-amber-50 border-amber-200',
-  afternoon: 'bg-sky-50 border-sky-200',
-  evening: 'bg-indigo-50 border-indigo-200',
-  none: 'bg-muted/30 border-border',
-}
+// V6.1 (Vincent 2026-05-21) — purge créneau : on n'affiche plus de label
+// « Matin / Après-midi / Soir ». La plage horaire de chaque intervention
+// suffit. Les anciennes maps SLOT_FR / SLOT_TONE sont retirées.
 
 function formatDateLong(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
@@ -188,37 +182,48 @@ export default async function TodayPage({
         </Card>
       )}
 
-      {/* Sections par créneau — DÉROULÉ NORMAL EN PREMIER (le planning principal
-          est l'activité normale ; la dette est l'exception et vient en dessous). */}
-      {view.bySlot.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground italic">
-              Aucune intervention prévue ce jour.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        view.bySlot.map((group) => (
-          <Card key={group.slot} className={SLOT_TONE[group.slot]}>
+      {/* Flux chronologique du jour — déroulé naturel par heure de prestation
+          (V6.1, Vincent 2026-05-21). La dette opérationnelle est en haut, le
+          planning du jour ici. */}
+      {(() => {
+        const allInterventions = view.bySlot.flatMap((g) => g.interventions)
+        // Tri par planned_start asc, nulls last
+        allInterventions.sort((a, b) => {
+          const ax = a.planned_start ?? '~'
+          const bx = b.planned_start ?? '~'
+          return ax.localeCompare(bx)
+        })
+        if (allInterventions.length === 0) {
+          return (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-sm text-muted-foreground italic">
+                  Aucune intervention prévue ce jour.
+                </p>
+              </CardContent>
+            </Card>
+          )
+        }
+        return (
+          <Card>
             <CardHeader>
               <CardTitle className="text-base inline-flex items-center gap-2">
-                {SLOT_FR[group.slot]}
+                Planning du jour
                 <span className="text-xs font-normal text-muted-foreground">
-                  ({group.interventions.length})
+                  ({allInterventions.length})
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="space-y-1.5">
-                {group.interventions.map((i) => (
+                {allInterventions.map((i) => (
                   <InterventionLine key={i.id} item={i} />
                 ))}
               </ul>
             </CardContent>
           </Card>
-        ))
-      )}
+        )
+      })()}
 
       {/* Liens connexes */}
       <div className="pt-4 flex items-center gap-4 text-sm text-muted-foreground">
@@ -305,6 +310,12 @@ function OverdueLine({ item }: { item: OverdueIntervention }) {
 
 function InterventionLine({ item }: { item: TodayIntervention }) {
   const isClosed = item.status === 'completed' || item.status === 'validated' || item.status === 'skipped'
+  // V6.1 — plage horaire par intervention (jamais cumul agent).
+  const timeLabel = formatInterventionTimeLabel({
+    planned_start: item.planned_start,
+    planned_end: item.planned_end,
+    slot: item.slot === 'none' ? null : (item.slot as InterventionSlot),
+  })
   return (
     <li>
       <Link
@@ -313,13 +324,23 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
           isClosed ? 'opacity-60' : ''
         }`}
       >
-        <div className="min-w-0 flex-1">
-          <div className={`text-sm font-medium truncate ${item.status === 'skipped' ? 'line-through decoration-amber-700/50' : ''}`}>
-            {item.site_name}
-          </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {item.mission_name}
-            {item.skipped_reason && ` — ${item.skipped_reason}`}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Heure de prestation — repère temporel à gauche, tabular-nums pour
+              alignement visuel vertical des lignes successives. */}
+          <span
+            className="text-xs font-mono tabular-nums text-muted-foreground shrink-0 w-14 text-right"
+            title="Horaire de prestation"
+          >
+            {timeLabel}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className={`text-sm font-medium truncate ${item.status === 'skipped' ? 'line-through decoration-amber-700/50' : ''}`}>
+              {item.site_name}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {item.mission_name}
+              {item.skipped_reason && ` — ${item.skipped_reason}`}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">

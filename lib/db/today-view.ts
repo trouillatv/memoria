@@ -26,6 +26,10 @@ export interface TodayIntervention {
   team_color: string | null
   executed_at: string | null
   skipped_reason: string | null
+  /** V6.1 — plage horaire de prestation. Affichée par intervention,
+   *  jamais cumulée par agent. */
+  planned_start: string | null
+  planned_end: string | null
 }
 
 export interface OverdueIntervention {
@@ -89,6 +93,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       executed_at,
       skipped_reason,
       planned_start,
+      planned_end,
       mission:missions!inner(name, site:sites!inner(id, name))
     `)
     .eq('scheduled_for', date)
@@ -104,6 +109,8 @@ export async function buildTodayView(date: string): Promise<TodayView> {
     assigned_team_id: string | null
     executed_at: string | null
     skipped_reason: string | null
+    planned_start: string | null
+    planned_end: string | null
     mission: { name: string; site: { id: string; name: string } | Array<{ id: string; name: string }> | null } | Array<{ name: string; site: { id: string; name: string } | Array<{ id: string; name: string }> | null }> | null
   }
   const pick = <T,>(v: T | T[] | null): T | null =>
@@ -141,6 +148,8 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       team_color: team?.color ?? null,
       executed_at: r.executed_at,
       skipped_reason: r.skipped_reason,
+      planned_start: r.planned_start,
+      planned_end: r.planned_end,
     })
   }
 
