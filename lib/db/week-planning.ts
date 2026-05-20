@@ -53,6 +53,9 @@ export interface WeekInterventionCell {
   assigned_team_id: string | null
   assigned_team_name: string | null
   assigned_team_color: string | null
+  // V6.1 — heure précise (ancrage prestation, jamais pointage personne).
+  planned_start: string | null
+  planned_end: string | null
 }
 
 export interface SiteRow {
@@ -198,6 +201,8 @@ export async function listInterventionsForWeek(
       status,
       skipped_at,
       assigned_team_id,
+      planned_start,
+      planned_end,
       mission:missions!inner(
         id,
         name,
@@ -262,6 +267,8 @@ export async function listInterventionsForWeek(
       assigned_team_id: r.assigned_team_id,
       assigned_team_name: team?.name ?? null,
       assigned_team_color: team?.color ?? null,
+      planned_start: (r as { planned_start?: string | null }).planned_start ?? null,
+      planned_end: (r as { planned_end?: string | null }).planned_end ?? null,
     })
   }
   return out

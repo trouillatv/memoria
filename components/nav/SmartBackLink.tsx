@@ -26,18 +26,16 @@ export function SmartBackLink({ fallbackHref, label, size = 'sm' }: Props) {
 
   function handleClick(e: React.MouseEvent) {
     e.preventDefault()
-    // Si on a un référent same-origin, browser back permet de revenir à la
-    // page précédente (et seul le browser history sait laquelle).
-    const ref = typeof document !== 'undefined' ? document.referrer : ''
-    let sameOrigin = false
-    if (ref) {
-      try {
-        sameOrigin = new URL(ref).origin === window.location.origin
-      } catch {
-        sameOrigin = false
-      }
-    }
-    if (sameOrigin) {
+    // Stratégie de détection (Vincent 2026-05-20) :
+    //  1. window.history.length > 1 ⇒ il y a au moins une page précédente
+    //     dans l'historique côté browser → router.back() ramène à la vraie
+    //     page d'origine (ex. /semaine quand on clique sur une intervention).
+    //  2. Sinon (accès direct, lien externe), fallback explicite.
+    //
+    // document.referrer n'est PAS fiable en Next.js App Router : les
+    // navigations côté client via <Link> ne le mettent pas à jour, donc
+    // l'heuristique précédente faisait toujours tomber sur le fallback.
+    if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back()
     } else {
       router.push(fallbackHref)

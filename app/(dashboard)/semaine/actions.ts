@@ -27,7 +27,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { logAuditEvent } from '@/lib/audit/log'
 import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/interventions'
-import { buildScheduledAt } from '@/lib/time/prestation-slot'
+import { buildScheduledAt, isPlannedStartPrecise, extractHHMM } from '@/lib/time/prestation-slot'
 import { getMission } from '@/lib/db/missions'
 import type { ChecklistTemplateItem, InterventionSlot } from '@/types/db'
 
@@ -216,7 +216,7 @@ export async function moveInterventionToDayAction(
   const admin = createAdminClient()
   const { data: existing, error: fetchErr } = await admin
     .from('interventions')
-    .select('id, status, scheduled_for, slot, mission_id, assigned_team_id')
+    .select('id, status, scheduled_for, slot, mission_id, assigned_team_id, planned_start, planned_end')
     .eq('id', parsed.data.interventionId)
     .maybeSingle()
   if (fetchErr) return { ok: false, error: fetchErr.message }
@@ -269,15 +269,43 @@ export async function moveInterventionToDayAction(
   const effectiveSlot = (parsed.data.newSlot ?? existing.slot) as InterventionSlot | null
   // Slot null → on préserve l'ancrage minuit legacy (non destructif) ; sinon
   // ancrage canonique V6.1.
-  const newScheduledAt = effectiveSlot
+  const fallbackScheduledAt = effectiveSlot
     ? buildScheduledAt(parsed.data.newScheduledFor, effectiveSlot)
     : `${parsed.data.newScheduledFor}T00:00:00.000Z`
+
+  // V6.1 (Vincent 2026-05-20) : si l'intervention avait une heure PRÉCISE
+  // (planned_start ≠ ancrage canonique) ET que le slot ne change pas,
+  // PRÉSERVER l'heure précise (juste changer la date). Sinon (slot
+  // change OU pas d'heure précise) → réinitialiser à l'ancrage canonique.
+  const slotChanged = parsed.data.newSlot && parsed.data.newSlot !== existing.slot
+  const oldPlannedStart: string | null = (existing as { planned_start: string | null }).planned_start
+  const oldPlannedEnd: string | null = (existing as { planned_end: string | null }).planned_end
+  const hadPreciseHour = !slotChanged && isPlannedStartPrecise(oldPlannedStart)
+
+  let newPlannedStart: string = fallbackScheduledAt
+  let newPlannedEnd: string | null = null
+  if (hadPreciseHour && oldPlannedStart) {
+    // Préserve HH:MM, remplace seulement la date.
+    const startHHMM = extractHHMM(oldPlannedStart)
+    if (startHHMM) {
+      newPlannedStart = `${parsed.data.newScheduledFor}T${startHHMM}:00.000Z`
+    }
+    if (oldPlannedEnd) {
+      const endHHMM = extractHHMM(oldPlannedEnd)
+      if (endHHMM) {
+        newPlannedEnd = `${parsed.data.newScheduledFor}T${endHHMM}:00.000Z`
+      }
+    }
+  }
+  // scheduled_at suit planned_start pour cohérence des vues legacy.
+  const newScheduledAt = newPlannedStart
 
   const updates: Record<string, unknown> = {
     scheduled_for: parsed.data.newScheduledFor,
     scheduled_at: newScheduledAt,
-    // V6.1 — le champ honnête suit la replanification.
-    planned_start: newScheduledAt,
+    // V6.1 — heure honnête de prestation. Préservée si slot inchangé.
+    planned_start: newPlannedStart,
+    planned_end: newPlannedEnd,
   }
   if (parsed.data.newSlot) {
     updates.slot = parsed.data.newSlot
@@ -732,4 +760,88 @@ async function _extendMoveToTemplateAction_DISABLED(input: {
 
   revalidatePath('/semaine')
   return { ok: true, summary }
+}
+
+// ----------------------------------------------------------------------------
+// updateInterventionTimeAction — V6.1 (Vincent 2026-05-20)
+// ----------------------------------------------------------------------------
+//
+// Édite l'heure précise (planned_start / planned_end) d'une intervention
+// existante. Accessible depuis la vue semaine (drawer) ou la fiche détail.
+// La date et le slot ne bougent PAS — pour les changer, drag-and-drop.
+//
+// Verrou V6.1 : ancrage de prestation, JAMAIS pointage personne.
+// L'intervention doit être `planned` (immuabilité preuve dès in_progress).
+
+const updateTimeSchema = z.object({
+  interventionId: z.string().uuid(),
+  plannedStartHHMM: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').nullable(),
+  plannedEndHHMM:   z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').nullable(),
+}).refine(
+  (d) => !d.plannedEndHHMM || !!d.plannedStartHHMM,
+  { message: 'Heure de fin nécessite heure de début', path: ['plannedEndHHMM'] },
+)
+
+export async function updateInterventionTimeAction(
+  input: {
+    interventionId: string
+    /** null = retirer l'heure précise (retour à l'ancrage canonique). */
+    plannedStartHHMM: string | null
+    plannedEndHHMM: string | null
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return { ok: false, error: auth.error }
+
+  const parsed = updateTimeSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+
+  const admin = createAdminClient()
+  const { data: existing } = await admin
+    .from('interventions')
+    .select('id, status, scheduled_for, slot')
+    .eq('id', parsed.data.interventionId)
+    .maybeSingle()
+  if (!existing) return { ok: false, error: 'Intervention introuvable' }
+  const ex = existing as { id: string; status: string; scheduled_for: string | null; slot: InterventionSlot | null }
+  if (ex.status !== 'planned' && ex.status !== 'skipped') {
+    return { ok: false, error: 'Intervention déjà démarrée — édition heure refusée' }
+  }
+  if (!ex.scheduled_for) {
+    return { ok: false, error: 'Intervention sans date' }
+  }
+
+  let newPlannedStart: string
+  let newPlannedEnd: string | null = null
+  if (parsed.data.plannedStartHHMM) {
+    newPlannedStart = `${ex.scheduled_for}T${parsed.data.plannedStartHHMM}:00.000Z`
+    if (parsed.data.plannedEndHHMM) {
+      const tsEnd = `${ex.scheduled_for}T${parsed.data.plannedEndHHMM}:00.000Z`
+      if (new Date(tsEnd).getTime() <= new Date(newPlannedStart).getTime()) {
+        return { ok: false, error: 'Heure de fin doit être après heure de début' }
+      }
+      newPlannedEnd = tsEnd
+    }
+  } else {
+    // Retour à l'ancrage canonique du slot existant.
+    newPlannedStart = ex.slot
+      ? buildScheduledAt(ex.scheduled_for, ex.slot)
+      : `${ex.scheduled_for}T00:00:00.000Z`
+  }
+
+  const { error: upErr } = await admin
+    .from('interventions')
+    .update({
+      planned_start: newPlannedStart,
+      planned_end: newPlannedEnd,
+      scheduled_at: newPlannedStart, // cohérence vues legacy
+    })
+    .eq('id', parsed.data.interventionId)
+  if (upErr) return { ok: false, error: upErr.message }
+
+  revalidatePath('/semaine')
+  revalidatePath(`/interventions/${parsed.data.interventionId}`)
+  return { ok: true }
 }

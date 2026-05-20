@@ -52,6 +52,8 @@ function makeCell(overrides: Partial<WeekInterventionCell> = {}): WeekInterventi
     assigned_team_id: 't-alpha',
     assigned_team_name: 'Alpha',
     assigned_team_color: 'sky',
+    planned_start: null,
+    planned_end: null,
   }
   return { ...base, ...overrides }
 }

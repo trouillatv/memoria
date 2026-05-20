@@ -24,6 +24,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CalendarDays, MapPin, Users, ArrowRight } from 'lucide-react'
 import {
+  isPlannedStartPrecise,
+  formatInterventionTimeLabel,
+  extractHHMM,
+} from '@/lib/time/prestation-slot'
+import { EditInterventionTimeDialog } from './EditInterventionTimeDialog'
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -211,6 +217,16 @@ export function CellDrawer({
                           {c.slot ? (
                             <p className="text-xs text-muted-foreground">
                               Créneau {SLOT_FR[c.slot]?.toLowerCase() ?? c.slot}
+                              {isPlannedStartPrecise(c.planned_start) && (
+                                <span className="font-semibold text-foreground/80">
+                                  {' · '}
+                                  {formatInterventionTimeLabel({
+                                    planned_start: c.planned_start,
+                                    planned_end: c.planned_end,
+                                    slot: c.slot as 'morning' | 'afternoon' | 'evening' | null,
+                                  })}
+                                </span>
+                              )}
                             </p>
                           ) : null}
                         </div>
@@ -237,7 +253,15 @@ export function CellDrawer({
                         )}
                       </div>
                     </Link>
-                    <div className="flex justify-end pt-1">
+                    <div className="flex justify-end items-center gap-2 pt-1">
+                      {isPlanned && (
+                        <EditInterventionTimeDialog
+                          interventionId={c.id}
+                          initialStartHHMM={extractHHMM(c.planned_start) ?? ''}
+                          initialEndHHMM={extractHHMM(c.planned_end) ?? ''}
+                          label={`${c.mission_name} · ${c.slot ? SLOT_FR[c.slot]?.toLowerCase() ?? c.slot : 'créneau ?'}`}
+                        />
+                      )}
                       <Button
                         size="sm"
                         variant="outline"

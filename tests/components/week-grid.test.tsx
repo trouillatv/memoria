@@ -14,8 +14,14 @@
 //   - "Non-affecté" en cellule = ambre (jamais rouge)
 //   - Aucun affichage de métrique
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
+
+// V6.1 — CellDrawer importe EditInterventionTimeDialog qui utilise
+// useRouter(). Mock pour environnement test (pas de RouterContext).
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}))
 import { WeekGridCell, compactSlots, dominantTeam } from '@/app/(dashboard)/semaine/WeekGridCell'
 import { WeekGrid } from '@/app/(dashboard)/semaine/WeekGrid'
 import { CellDrawer } from '@/app/(dashboard)/semaine/CellDrawer'
@@ -47,6 +53,8 @@ function makeCell(overrides: Partial<WeekInterventionCell> = {}): WeekInterventi
     assigned_team_id: 't-alpha',
     assigned_team_name: 'Alpha',
     assigned_team_color: 'sky',
+    planned_start: null,
+    planned_end: null,
   }
   return { ...base, ...overrides }
 }
@@ -133,7 +141,7 @@ describe('dominantTeam', () => {
   it('renvoie null si aucune intervention n’est affectée', () => {
     expect(
       dominantTeam([
-        makeCell({ assigned_team_id: null, assigned_team_name: null, assigned_team_color: null }),
+        makeCell({ assigned_team_id: null, assigned_team_name: null, assigned_team_color: null, planned_start: null, planned_end: null }),
       ]),
     ).toBeNull()
   })
@@ -203,6 +211,8 @@ describe('WeekGridCell', () => {
             assigned_team_id: 't-alpha',
             assigned_team_name: 'Alpha',
             assigned_team_color: 'sky',
+    planned_start: null,
+    planned_end: null,
           }),
         ]}
       />,
@@ -241,6 +251,8 @@ describe('WeekGridCell', () => {
             assigned_team_id: null,
             assigned_team_name: null,
             assigned_team_color: null,
+    planned_start: null,
+    planned_end: null,
           }),
         ]}
       />,
@@ -262,6 +274,8 @@ describe('WeekGridCell', () => {
             assigned_team_id: null,
             assigned_team_name: null,
             assigned_team_color: null,
+    planned_start: null,
+    planned_end: null,
           }),
         ]}
       />,
@@ -414,6 +428,8 @@ describe('CellDrawer', () => {
         assigned_team_id: 't-alpha',
         assigned_team_name: 'Alpha',
         assigned_team_color: 'sky',
+    planned_start: null,
+    planned_end: null,
       }),
     ]
     const row = makeSiteRow({ days })
@@ -440,6 +456,8 @@ describe('CellDrawer', () => {
         assigned_team_id: null,
         assigned_team_name: null,
         assigned_team_color: null,
+    planned_start: null,
+    planned_end: null,
       }),
     ]
     const row = makeSiteRow({ days })
