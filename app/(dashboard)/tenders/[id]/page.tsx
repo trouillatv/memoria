@@ -10,6 +10,9 @@ import {
 } from '@/lib/db/tenders'
 import { listChatMessages, listConversations } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
+import { listTenderDocumentSources } from '@/lib/db/tender-document-sources'
+import { getTenderClientCapital } from '@/lib/db/tender-client-capital'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TenderAnalysisLoader } from './TenderAnalysisLoader'
 import { TenderSynthese } from './TenderSynthese'
@@ -25,6 +28,8 @@ import { TenderMemoryPanel } from './TenderMemoryPanel'
 import { VoiceNoteRecorder } from './VoiceNoteRecorder'
 import { Suspense } from 'react'
 import { TerrainMatchingSection, TerrainMatchingSkeleton } from './TerrainMatchingSection'
+import { TenderDocumentSourcesSection } from './TenderDocumentSourcesSection'
+import { TenderClientCapitalCard } from './TenderClientCapitalCard'
 
 const VALID_VIEWS: TenderView[] = ['synthese', 'analyse', 'memoire', 'atelier']
 
@@ -49,17 +54,25 @@ export default async function TenderDetailPage({
     tender.status === 'submitted' ||
     tender.status === 'archived'
 
+  // Utilisateur courant — utilisé pour resolver les sources documentaires
+  // dans le respect de la visibility (canViewDocument).
+  const currentUser = await getCurrentUserWithProfile()
+
+  // AO-1 L4 (Vincent 2026-05-21) — capital client (factuel, sans score).
+  const clientCapital = await getTenderClientCapital(tender.client_name)
+
   // L'atelier IA est accessible même pendant une relance (isInProgress) :
   // on charge toujours les messages, analyses agents et conversations.
-  const [analysis, doc, chatMessages, agentAnalyses, conversations] = isReady || isFailed || isInProgress
+  const [analysis, doc, chatMessages, agentAnalyses, conversations, documentSources] = isReady || isFailed || isInProgress
     ? await Promise.all([
         getLatestTenderAnalysis(id),
         getTenderDocument(id),
         listChatMessages(id),
         listAgentAnalyses(id),
         listConversations(id),
+        listTenderDocumentSources(id, currentUser?.role ?? null),
       ])
-    : [null, null, [], [], []]
+    : [null, null, [], [], [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
 
@@ -247,15 +260,29 @@ export default async function TenderDetailPage({
         {(isReady || isFailed) && view !== 'atelier' && (
           <>
             {view === 'synthese' && analysis && (
-              <TenderSynthese
-                tender={tender}
-                analysis={analysis}
-                document={doc}
-                pdfSignedUrl={pdfSignedUrl}
-              />
+              <>
+                <TenderSynthese
+                  tender={tender}
+                  analysis={analysis}
+                  document={doc}
+                  pdfSignedUrl={pdfSignedUrl}
+                />
+                {/* AO-1 L4 (Vincent 2026-05-21) — capital client sous la
+                    synthèse : ce qu'on sait déjà du client. Factuel, pas de
+                    score, pas de prédiction. */}
+                <TenderClientCapitalCard capital={clientCapital} />
+                {/* AO-1 L3 (Vincent 2026-05-21) — sources [doc:id] cliquables
+                    sous la synthèse, vers /documents/[id]. */}
+                <TenderDocumentSourcesSection sources={documentSources ?? []} />
+              </>
             )}
             {view === 'analyse' && analysis && (
-              <TenderAnalyseDetaillee analysis={analysis} />
+              <>
+                <TenderAnalyseDetaillee analysis={analysis} />
+                {/* AO-1 L3 (Vincent 2026-05-21) — sources [doc:id] cliquables
+                    aussi visibles dans la vue analyse détaillée. */}
+                <TenderDocumentSourcesSection sources={documentSources ?? []} />
+              </>
             )}
             {view === 'memoire' && analysis && (
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
