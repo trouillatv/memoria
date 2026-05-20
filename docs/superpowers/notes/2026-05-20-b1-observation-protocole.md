@@ -143,10 +143,20 @@ ORDER BY src.generated_at DESC
 LIMIT 20;
 ```
 
-**Lecture :** Vincent juge 5–10 fragments. **Critère unique :** "Si on
-me montre cette phrase sur la page site, est-ce que je trouve l'écho
-juste, ou est-ce que ça parasite ?". Pas de score, pas de note — un
-verdict binaire par fragment + commentaire libre.
+**Lecture :** Vincent juge 5–10 fragments. **Grille 4 classes**
+(ratification 2026-05-20, voir mémoire `jury-resonances-4-classes`) :
+
+| Verdict | Sens | Correctif |
+|---|---|---|
+| **écho juste** | aide à agir, lien fort, pertinent métier | conserver |
+| **parasite** | lien faible mais sans risque, juste bruit | seuil ↑ ou plafond ↓ |
+| **trop vague** | sémantique proche mais pas actionnable | resserrer lexique action/issue |
+| **dangereux / à exclure** | n'aurait JAMAIS dû sortir (litige, admin_only, attribution responsabilité…) | **P0 doctrinal**, bump algorithm_version + patch |
+
+Vaut pour B1 (`b1_doc_*`) ET B2 (`b2_doc_trace_*`) ET futurs niveaux.
+Ne pas mélanger les correctifs : un « trop vague » n'est PAS un
+« parasite ». Un « dangereux » bloque toute exécution de l'algo
+concerné jusqu'à patch + bump version.
 
 ### 1.7 Vérification défensive : visibility des documents-source
 
