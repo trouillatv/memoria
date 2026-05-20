@@ -3,10 +3,8 @@
 // Refire B1 + B2 résonances sur des documents existants, sans passer par
 // `analyzeDocument` (qui re-OCR + re-embed à chaque exécution — coûteux).
 //
-// Utile pour :
-//  - observer B2 après UPDATE manuel de visibility_level ;
-//  - itérer rapidement sur les lexiques action/issue (re-fire sans re-OCR) ;
-//  - re-jouer la compute après bump d'algorithm_version.
+// Usage :
+//   npx tsx scripts/dev/refire-resonances.ts <docId1> [docId2 ...]
 //
 // Préconditions implicites (sinon B1/B2 retournent sans rien faire) :
 //  - doc.analysis_status = 'ready'
@@ -15,12 +13,11 @@
 //  - document_links target_type='site' existe
 //  - knowledge_chunks pour source_domain='document' avec embeddings
 //  - trace_embeddings présents sur le(s) site(s) lié(s)
-//
-// Usage :
-//   npx tsx scripts/dev/refire-resonances.ts <docId1> [docId2 ...]
-//
-// Sortie : log par doc, indique si B1 et B2 ont produit ou non (le compte
-// final est à lire via SQL sur site_reading_candidates).
+
+// Charge .env.local explicitement (tsx ne le fait pas auto). Doit être
+// AVANT toute import qui lit process.env / qui touche Supabase.
+import { config as loadEnv } from 'dotenv'
+loadEnv({ path: '.env.local' })
 
 import { computeDocResonancesForDocument } from '@/lib/documents/resonances'
 import { computeDocCrossStoreResonancesForDocument } from '@/lib/documents/cross-store-resonances'
