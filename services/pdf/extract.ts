@@ -28,6 +28,8 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractResult> {
 
 // OCR de secours pour PDF scannés — Gemini Vision (inline_data base64).
 // Même priorité que les embeddings : Google uniquement, pas de fallback OpenAI.
+// Tracking ai_usage : 1 entrée par appel OCR (volume très faible, coût élevé
+// par appel — visibilité critique pour budget).
 export async function extractWithGeminiOCR(buffer: Buffer): Promise<string> {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_GENAI_API_KEY not set')
@@ -35,26 +37,57 @@ export async function extractWithGeminiOCR(buffer: Buffer): Promise<string> {
   const model = process.env.AI_MODEL_LIGHT ?? 'gemini-2.5-flash'
   const base64 = buffer.toString('base64')
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { inline_data: { mime_type: 'application/pdf', data: base64 } },
-            { text: 'Extrais tout le texte de ce document PDF scanné. Retourne uniquement le texte brut, sans mise en forme ni explication.' },
-          ],
-        }],
-        generationConfig: { temperature: 0, maxOutputTokens: 8000 },
-      }),
-    },
-  )
+  const start = Date.now()
+  let lastError: string | null = null
+  let extractedText = ''
 
-  if (!res.ok) throw new Error(`Gemini OCR ${res.status}: ${await res.text()}`)
-  const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
-  if (text.length < 50) throw new Error('Gemini OCR returned insufficient text')
-  return text
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: 'application/pdf', data: base64 } },
+              { text: 'Extrais tout le texte de ce document PDF scanné. Retourne uniquement le texte brut, sans mise en forme ni explication.' },
+            ],
+          }],
+          generationConfig: { temperature: 0, maxOutputTokens: 8000 },
+        }),
+      },
+    )
+
+    if (!res.ok) {
+      lastError = `Gemini OCR ${res.status}: ${await res.text()}`
+      throw new Error(lastError)
+    }
+    const data = (await res.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> }
+    extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+    if (extractedText.length < 50) {
+      lastError = 'Gemini OCR returned insufficient text'
+      throw new Error(lastError)
+    }
+    return extractedText
+  } finally {
+    // Tracking ai_usage — import dynamique pour éviter le coupling
+    // côté services/pdf (qui ne dépend pas d'IA en général).
+    try {
+      const { logAIUsageDirect } = await import('@/services/ai/tracking')
+      void logAIUsageDirect({
+        feature: 'ocr_pdf',
+        userId: null,
+        provider: 'gemini',
+        model,
+        inputTokens: Math.ceil(buffer.byteLength / 1024), // approx tokens via taille fichier (kB)
+        outputTokens: Math.ceil(extractedText.length / 4),
+        durationMs: Date.now() - start,
+        status: lastError ? 'error' : 'success',
+        errorMsg: lastError,
+      }).catch(() => {})
+    } catch {
+      /* silencieux : OCR doit marcher même si tracking échoue */
+    }
+  }
 }

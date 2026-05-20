@@ -8,6 +8,7 @@ import {
 } from '@/lib/db/admin-monitoring'
 import { MonitoringShell } from './MonitoringShell'
 import { AIHealthSection } from './AIHealthSection'
+import { AIMemorySection } from './AIMemorySection'
 
 function parsePeriod(raw: string | undefined): PeriodDays {
   const n = Number(raw)
@@ -34,6 +35,9 @@ export default async function AdminMonitoringPage({
     <div className="space-y-8">
       <Suspense fallback={null}>
         <AIHealthSection />
+      </Suspense>
+      <Suspense fallback={null}>
+        <AIMemorySection />
       </Suspense>
       <Suspense>
         <MonitoringShell

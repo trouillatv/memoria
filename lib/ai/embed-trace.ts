@@ -8,8 +8,21 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding, getActiveProvider } from './embeddings'
+import { logAIUsageDirect } from '@/services/ai/tracking'
+import type { AIProviderName } from '@/services/ai'
 
 type SourceType = 'photo_caption' | 'anomaly' | 'site_note' | 'intervention_note'
+
+const PROVIDER_MAP: Record<string, AIProviderName | null> = {
+  google:  'gemini',
+  openai:  'openai',
+  voyage:  null,
+}
+const EMBEDDING_MODEL_BY_PROVIDER: Record<string, string> = {
+  google:  'gemini-embedding-001',
+  openai:  'text-embedding-3-small',
+  voyage:  'voyage-3',
+}
 
 /**
  * Calcule et upserte un embedding pour une trace donnée.
@@ -22,9 +35,30 @@ export async function embedAndStoreTrace(params: {
   siteId: string
   text: string
 }): Promise<boolean> {
-  if (getActiveProvider() === null) return false
+  const provider = getActiveProvider()
+  if (provider === null) return false
 
+  const embedStart = Date.now()
   const embedding = await getEmbedding(params.text)
+  const embedDuration = Date.now() - embedStart
+
+  // Track ai_usage : 1 entrée par trace embeddée (volume modéré, ~1 call
+  // par note/anomalie créée). Skip si provider sans mapping DB.
+  const mappedProvider = PROVIDER_MAP[provider]
+  if (mappedProvider) {
+    void logAIUsageDirect({
+      feature: `embed_trace_${params.sourceType}`,
+      userId: null,
+      provider: mappedProvider,
+      model: EMBEDDING_MODEL_BY_PROVIDER[provider] ?? null,
+      inputTokens: Math.ceil((params.text?.length ?? 0) / 4),
+      outputTokens: null,
+      durationMs: embedDuration,
+      status: embedding ? 'success' : 'error',
+      errorMsg: embedding ? null : 'embedding returned null',
+    }).catch(() => {})
+  }
+
   if (!embedding) return false
 
   const supabase = createAdminClient()

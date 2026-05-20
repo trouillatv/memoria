@@ -1,6 +1,22 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding, getActiveProvider } from './embeddings'
+import { logAIUsageDirect } from '@/services/ai/tracking'
+import type { AIProviderName } from '@/services/ai'
+
+// Mapping du provider embedding (lib/ai) vers l'enum DB ai_provider
+// (services/ai). 'google' embedding → 'gemini' enum. 'voyage' n'a pas
+// de mapping (pas utilisé en pratique) → null ⇒ skip tracking.
+const PROVIDER_MAP: Record<string, AIProviderName | null> = {
+  google:  'gemini',
+  openai:  'openai',
+  voyage:  null,
+}
+const EMBEDDING_MODEL_BY_PROVIDER: Record<string, string> = {
+  google:  'gemini-embedding-001',
+  openai:  'text-embedding-3-small',
+  voyage:  'voyage-3',
+}
 
 const MAX_CHUNK_CHARS = 900
 const MIN_CHUNK_CHARS = 50
@@ -9,16 +25,50 @@ const MIN_CHUNK_CHARS = 50
 const EMBED_BATCH_SIZE = 5
 
 /** Embèd N chunks en parallèle par batches. Préserve l'ordre des
- *  inputs (zip strict). null pour un chunk dont l'embedding échoue. */
-async function embedChunksInBatches(chunks: string[]): Promise<Array<number[] | null>> {
+ *  inputs (zip strict). null pour un chunk dont l'embedding échoue.
+ *  Tracking : 1 entrée ai_usage par batch (pas par chunk individuel)
+ *  → audit-friendly sans spammer la table. `feature` distingue le
+ *  contexte d'appel (embed_chunks_document / _library / _tender_history). */
+async function embedChunksInBatches(
+  chunks: string[],
+  feature: string,
+): Promise<Array<number[] | null>> {
+  const provider = getActiveProvider()
+  const mappedProvider = provider ? PROVIDER_MAP[provider] : null
+  const model = provider ? EMBEDDING_MODEL_BY_PROVIDER[provider] : null
+
   const results: Array<number[] | null> = new Array(chunks.length).fill(null)
   for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
     const batch = chunks.slice(i, i + EMBED_BATCH_SIZE)
+    const batchStart = Date.now()
     const batchResults = await Promise.all(
       batch.map((text) => getEmbedding(text).catch(() => null)),
     )
+    const batchDuration = Date.now() - batchStart
     for (let j = 0; j < batchResults.length; j++) {
       results[i + j] = batchResults[j]
+    }
+
+    // Tracking par batch : input_tokens = approximation chars / 4 (cf.
+    // tokenizer Gemini ~ ratio standard). output_tokens null (embedding
+    // n'a pas de notion d'output tokens). Skip si pas de provider DB-compatible.
+    if (mappedProvider) {
+      const succeeded = batchResults.filter((r) => r !== null).length
+      const totalChars = batch.reduce((sum, t) => sum + (t?.length ?? 0), 0)
+      const inputTokens = Math.ceil(totalChars / 4)
+      void logAIUsageDirect({
+        feature,
+        userId: null,
+        provider: mappedProvider,
+        model,
+        inputTokens,
+        outputTokens: null,
+        durationMs: batchDuration,
+        status: succeeded === batch.length ? 'success' : 'error',
+        errorMsg: succeeded < batch.length
+          ? `${batch.length - succeeded}/${batch.length} embeddings failed`
+          : null,
+      }).catch(() => {})
     }
   }
   return results
@@ -97,8 +147,11 @@ export async function embedKnowledgeItemChunks(itemId: string): Promise<void> {
     .eq('source_domain', 'library')
     .eq('source_id', itemId)
 
+  // Embedding parallèle par batch (gain ~5× + tracking ai_usage par batch).
+  const embeddings = await embedChunksInBatches(chunks, 'embed_chunks_library')
+
   for (let i = 0; i < chunks.length; i++) {
-    const embedding = await getEmbedding(chunks[i])
+    const embedding = embeddings[i]
     if (!embedding) continue
 
     const { error } = await supabase.from('knowledge_chunks').upsert(
@@ -179,8 +232,11 @@ export async function embedTenderHistoryChunks(tenderId: string): Promise<void> 
     year,
   }
 
+  // Embedding parallèle par batch (gain perf + tracking ai_usage).
+  const embeddings = await embedChunksInBatches(chunks, 'embed_chunks_tender_history')
+
   for (let i = 0; i < chunks.length; i++) {
-    const embedding = await getEmbedding(chunks[i])
+    const embedding = embeddings[i]
     if (!embedding) continue
 
     const { error } = await supabase.from('knowledge_chunks').upsert(
@@ -261,8 +317,8 @@ export async function embedDocumentChunks(documentId: string): Promise<void> {
     links: (links ?? []) as Array<{ target_type: string; target_id: string }>,
   }
 
-  // Embedding parallèle par batch (gain ~5× sur Indexation).
-  const embeddings = await embedChunksInBatches(chunks)
+  // Embedding parallèle par batch (gain ~5× + tracking ai_usage).
+  const embeddings = await embedChunksInBatches(chunks, 'embed_chunks_document')
 
   // Upsert séquentiel (rapide, évite hammering Supabase concurrent writes).
   for (let i = 0; i < chunks.length; i++) {
