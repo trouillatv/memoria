@@ -199,21 +199,30 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
       timeZone: 'UTC',
     })
   })()
-  // V6.1 (Vincent 2026-05-20 — demande Guillaume) : si heure précise saisie
-  // (planned_start ≠ ancrage canonique 07/14/19), on l'affiche au lieu du
-  // libellé créneau. Sinon fallback slot legacy.
-  // Le badge couleur reste basé sur le slot (identité visuelle stable).
+  // V6.1 (Vincent 2026-05-20 — demande Guillaume) : afficher TOUJOURS le
+  // créneau (repère visuel + couleur badge) PLUS l'heure précise quand elle
+  // est saisie. Ex : « Créneau : matin · 6h30 – 8h (1h30) ».
+  // Le badge couleur reste basé sur le slot pour identité visuelle stable.
+  const SLOT_FR_SHORT: Record<string, string> = {
+    morning: 'matin',
+    afternoon: 'après-midi',
+    evening: 'soir',
+  }
   const SLOT_BADGE_CLASS: Record<string, string> = {
     morning: 'bg-amber-50 border-amber-200 text-amber-900',
     afternoon: 'bg-sky-50 border-sky-200 text-sky-900',
     evening: 'bg-indigo-50 border-indigo-200 text-indigo-900',
   }
-  const timeLabel = formatInterventionTimeLabel({
-    planned_start: intervention.planned_start,
-    planned_end: intervention.planned_end,
-    slot: intervention.slot,
-  })
-  const isPrecise = isPlannedStartPrecise(intervention.planned_start)
+  const slotShortLabel = intervention.slot
+    ? SLOT_FR_SHORT[intervention.slot] ?? intervention.slot
+    : 'créneau non précisé'
+  const preciseLabel = isPlannedStartPrecise(intervention.planned_start)
+    ? formatInterventionTimeLabel({
+        planned_start: intervention.planned_start,
+        planned_end: intervention.planned_end,
+        slot: intervention.slot,
+      })
+    : null
   const slotBadgeClass = intervention.slot
     ? SLOT_BADGE_CLASS[intervention.slot] ?? 'bg-muted/30 border-border text-foreground'
     : 'bg-muted/30 border-border text-foreground'
@@ -300,11 +309,12 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${slotBadgeClass}`}
-            title={isPrecise
-              ? "Heure de prestation saisie (V6.1). Ancrage site/contrat, jamais pointage personne."
+            title={preciseLabel
+              ? "Créneau + heure de prestation saisie (V6.1). Ancrage site/contrat, jamais pointage personne."
               : "Créneau de l'intervention (matin/après-midi/soir)."}
           >
-            {isPrecise ? timeLabel : `Créneau : ${timeLabel}`}
+            Créneau : {slotShortLabel}
+            {preciseLabel && <span className="font-semibold"> · {preciseLabel}</span>}
           </span>
           {mission && (
             <span className="inline-flex items-center gap-1">
