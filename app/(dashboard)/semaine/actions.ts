@@ -108,19 +108,26 @@ function slotLabelFr(slot: InterventionSlot): string {
 }
 
 // ----------------------------------------------------------------------------
-// findTeamSiteConflict — Phase 10
+// findTeamSiteConflict — Phase 10 (étendu V6.1 Vincent 2026-05-20)
 // ----------------------------------------------------------------------------
 //
-// Vérifie qu'une équipe n'est pas déjà affectée à un AUTRE site au même
-// créneau (date+slot). Renvoie le premier conflit trouvé (info nom équipe +
-// nom site) ou null si OK.
+// Vérifie qu'une équipe n'est pas déjà affectée à un AUTRE site sur un
+// horaire qui chevauche le sien. Renvoie le premier conflit ou null si OK.
+//
+// Évolution V6.1 (heures précises) :
+//   Avant : conflit = même équipe + même date + même slot.
+//   Cas problématique : équipe X fait 06h30 – 08h00 sur site A et
+//   13h00 – 15h00 sur site B le même jour → tout les deux "matin" et
+//   "après-midi" mais en réalité aucun chevauchement temporel → faux conflit.
+//
+//   Après : si planned_end est défini de chaque côté, on compare les plages
+//   horaires (chevauchement [start, end]). Sinon, fallback au critère slot.
 //
 // Règle :
-//   - Même équipe sur AUTRE site même créneau = CONFLIT (refus)
-//   - Même équipe sur MÊME site même créneau = OK (multi-missions/site)
+//   - Même équipe sur AUTRE site avec chevauchement temporel = CONFLIT
+//   - Même équipe sur MÊME site = OK (multi-missions/site)
 //   - Pas d'équipe affectée (null) = jamais conflit (skip côté caller)
-//   - Interventions terminées (completed/validated) ne comptent PAS — preuve
-//     verrouillée, l'équipe historique n'est pas "occupée maintenant"
+//   - Interventions terminées (completed/validated) ne comptent PAS
 
 async function findTeamSiteConflict(args: {
   admin: ReturnType<typeof createAdminClient>
@@ -129,6 +136,11 @@ async function findTeamSiteConflict(args: {
   missionId: string
   scheduledFor: string
   slot: InterventionSlot
+  /** V6.1 — heures précises de l'intervention SOURCE. Si fournies, on les
+   *  utilise pour détecter le chevauchement avec les interventions de
+   *  l'équipe. Sinon fallback au slot. */
+  sourcePlannedStart?: string | null
+  sourcePlannedEnd?: string | null
   /** Pour exclure l'intervention en cours de modification de la recherche. */
   excludeInterventionId: string
 }): Promise<{ siteName: string; teamName: string } | null> {
@@ -140,22 +152,25 @@ async function findTeamSiteConflict(args: {
     .maybeSingle()
   const sourceSiteId = sourceMission?.site_id
 
-  // 2) Récupérer toutes les interventions actives de cette équipe au même créneau
+  // 2) Récupérer toutes les interventions actives de cette équipe ce JOUR
+  //    (on ne filtre plus par slot — on compare les horaires en JS).
   const { data: candidates, error } = await args.admin
     .from('interventions')
     .select(
-      `id, mission_id, assigned_team_id,
+      `id, mission_id, assigned_team_id, slot, planned_start, planned_end,
        team:teams(name),
        mission:missions!inner(site_id, site:sites!inner(id, name))`,
     )
     .neq('id', args.excludeInterventionId)
     .eq('assigned_team_id', args.teamId)
     .eq('scheduled_for', args.scheduledFor)
-    .eq('slot', args.slot)
     .in('status', ['planned', 'in_progress'])
   if (error) throw error
 
   for (const row of (candidates ?? []) as Array<{
+    slot: string | null
+    planned_start: string | null
+    planned_end: string | null
     mission: { site: { id: string; name: string } | { id: string; name: string }[] | null } | Array<{ site: { id: string; name: string } | { id: string; name: string }[] | null }> | null
     team: { name: string } | { name: string }[] | null
   }>) {
@@ -165,6 +180,26 @@ async function findTeamSiteConflict(args: {
     if (!site) continue
     // Conflit uniquement si site DIFFÉRENT du site source
     if (site.id === sourceSiteId) continue
+
+    // Détection chevauchement temporel (V6.1) :
+    //  - Si les DEUX ont planned_end → check intersection des plages [start, end]
+    //  - Si l'un OU l'autre n'a pas planned_end → fallback critère slot identique
+    const candHasRange = !!row.planned_start && !!row.planned_end
+    const srcHasRange = !!args.sourcePlannedStart && !!args.sourcePlannedEnd
+    let overlaps: boolean
+    if (candHasRange && srcHasRange) {
+      const a1 = new Date(row.planned_start as string).getTime()
+      const a2 = new Date(row.planned_end as string).getTime()
+      const b1 = new Date(args.sourcePlannedStart as string).getTime()
+      const b2 = new Date(args.sourcePlannedEnd as string).getTime()
+      // Intersection : a1 < b2 ET b1 < a2 (strict — fin = début de l'autre OK)
+      overlaps = a1 < b2 && b1 < a2
+    } else {
+      // Fallback grossier : même slot ⇒ conflit potentiel
+      overlaps = row.slot === args.slot
+    }
+    if (!overlaps) continue
+
     const team = Array.isArray(row.team) ? row.team[0] : row.team
     return { siteName: site.name, teamName: team?.name ?? 'l\'équipe' }
   }
@@ -244,12 +279,35 @@ export async function moveInterventionToDayAction(
   // n'a pas d'équipe (Non-affecté) → aucun conflit possible, skip.
   const effectiveSlotForCheck = (parsed.data.newSlot ?? existing.slot) as InterventionSlot | null
   if (existing.assigned_team_id && effectiveSlotForCheck) {
+    // V6.1 — on calcule les heures précises POST-déplacement pour qu'elles
+    // soient comparées au planning existant (et non l'ancien planned_start
+    // sur l'ancienne date). Ces variables sont calculées plus bas mais on
+    // anticipe ici en pré-calculant pour le conflit. Simple :
+    //  - si l'ancienne intervention avait planned_end et slot inchangé → on
+    //    réplique l'heure sur la nouvelle date
+    //  - sinon, on tombe sur le fallback slot dans findTeamSiteConflict
+    const _slotChangedForConflict =
+      parsed.data.newSlot && parsed.data.newSlot !== existing.slot
+    const _oldPlannedStartForConflict = (existing as { planned_start: string | null }).planned_start
+    const _oldPlannedEndForConflict = (existing as { planned_end: string | null }).planned_end
+    let _conflictStart: string | null = null
+    let _conflictEnd: string | null = null
+    if (!_slotChangedForConflict && _oldPlannedEndForConflict && _oldPlannedStartForConflict) {
+      const startHHMM = extractHHMM(_oldPlannedStartForConflict)
+      const endHHMM = extractHHMM(_oldPlannedEndForConflict)
+      if (startHHMM && endHHMM) {
+        _conflictStart = `${parsed.data.newScheduledFor}T${startHHMM}:00.000Z`
+        _conflictEnd = `${parsed.data.newScheduledFor}T${endHHMM}:00.000Z`
+      }
+    }
     const conflict = await findTeamSiteConflict({
       admin,
       teamId: existing.assigned_team_id,
       missionId: existing.mission_id,
       scheduledFor: parsed.data.newScheduledFor,
       slot: effectiveSlotForCheck,
+      sourcePlannedStart: _conflictStart,
+      sourcePlannedEnd: _conflictEnd,
       excludeInterventionId: parsed.data.interventionId,
     })
     if (conflict) {
@@ -437,12 +495,22 @@ export async function createInterventionFromWeekAction(
   // Vérif conflit d'équipe AVANT insertion : si l'équipe finale est non-null,
   // on s'assure qu'elle n'est pas déjà sur un autre site au même créneau.
   if (finalTeamId) {
+    // V6.1 — si l'utilisateur a saisi une heure précise dans le form de
+    // création, on l'utilise pour vérifier le chevauchement temporel.
+    const _newStart = parsed.data.plannedStartHHMM
+      ? `${parsed.data.scheduledFor}T${parsed.data.plannedStartHHMM}:00.000Z`
+      : null
+    const _newEnd = parsed.data.plannedEndHHMM
+      ? `${parsed.data.scheduledFor}T${parsed.data.plannedEndHHMM}:00.000Z`
+      : null
     const conflict = await findTeamSiteConflict({
       admin,
       teamId: finalTeamId,
       missionId: parsed.data.missionId,
       scheduledFor: parsed.data.scheduledFor,
       slot: parsed.data.slot,
+      sourcePlannedStart: _newStart,
+      sourcePlannedEnd: _newEnd,
       excludeInterventionId: '00000000-0000-0000-0000-000000000000', // pas encore créée
     })
     if (conflict) {
@@ -538,7 +606,7 @@ export async function reassignInterventionTeamAction(
   const admin = createAdminClient()
   const { data: existing, error: fetchErr } = await admin
     .from('interventions')
-    .select('id, status, scheduled_for, slot, assigned_team_id, mission_id')
+    .select('id, status, scheduled_for, slot, assigned_team_id, mission_id, planned_start, planned_end')
     .eq('id', parsed.data.interventionId)
     .maybeSingle()
   if (fetchErr) return { ok: false, error: fetchErr.message }
@@ -568,12 +636,18 @@ export async function reassignInterventionTeamAction(
   // Détection de conflit d'équipe : la nouvelle équipe ne doit pas déjà être
   // sur un autre site au même créneau (si elle a un slot connu).
   if (parsed.data.newTeamId && existing.slot && existing.scheduled_for) {
+    // V6.1 — utilise les heures précises de l'intervention existante (si
+    // saisies) pour le check chevauchement.
+    const _existingStart = (existing as { planned_start?: string | null }).planned_start ?? null
+    const _existingEnd = (existing as { planned_end?: string | null }).planned_end ?? null
     const conflict = await findTeamSiteConflict({
       admin,
       teamId: parsed.data.newTeamId,
       missionId: existing.mission_id,
       scheduledFor: existing.scheduled_for,
       slot: existing.slot as InterventionSlot,
+      sourcePlannedStart: _existingStart,
+      sourcePlannedEnd: _existingEnd,
       excludeInterventionId: parsed.data.interventionId,
     })
     if (conflict) {
