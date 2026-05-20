@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { renderFragmentWithLinks } from '@/lib/ui/render-fragment'
 
 /**
  * Identité visuelle unique des lectures IA — "cognition card".
@@ -30,6 +31,10 @@ interface ReadingCardProps {
   label?: string
   compact?: boolean
   className?: string
+  /** Map docId → filename pour rendre les `[doc:UUID]` cliquables avec
+   *  le nom du PDF (sinon fallback « ↗ »). Optionnel — chaque surface
+   *  qui veut le nom doit le fournir explicitement. */
+  docNames?: Record<string, string>
 }
 
 export function ReadingCard({
@@ -39,13 +44,16 @@ export function ReadingCard({
   label,
   compact = false,
   className,
+  docNames,
 }: ReadingCardProps) {
   return (
     <div
       className={cn(
-        'border-l-2 border-reading-border/40 bg-reading-bg/[0.05]',
-        'pl-3 rounded-r-sm',
-        compact ? 'py-1.5' : 'py-2.5',
+        // Encadré marqué (Vincent 2026-05-20) : bande gauche épaisse +
+        // fond plus contrasté + coins arrondis + ombre douce.
+        'border-l-4 border-reading-border/70 bg-reading-bg/[0.10]',
+        'pl-3.5 pr-3 rounded-md shadow-sm',
+        compact ? 'py-2' : 'py-3',
         'animate-in fade-in-0 duration-500',
         className,
       )}
@@ -58,7 +66,7 @@ export function ReadingCard({
 
       {compact ? (
         <p className="text-[13px] leading-snug text-muted-foreground/90">
-          {fragment}
+          {renderFragmentWithLinks(fragment, { docNames })}
           {frags && frags.length > 0 && (
             <span className="text-muted-foreground/70">
               {' '}
@@ -68,7 +76,7 @@ export function ReadingCard({
         </p>
       ) : (
         <>
-          <p className="text-[15px] leading-relaxed">{fragment}</p>
+          <p className="text-[15px] leading-relaxed">{renderFragmentWithLinks(fragment, { docNames })}</p>
           {context && (
             <p className="text-[13px] leading-relaxed text-muted-foreground/70 mt-1">
               {context}

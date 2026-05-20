@@ -243,6 +243,11 @@ export interface SiteReading {
 export interface SiteReadings {
   /** 0 à 6 lectures, ordre de saillance puis chronologique. */
   readings: SiteReading[]
+  /** Map des `[doc:UUID]` cités dans les fragments → filename du PDF.
+   *  Permet d'afficher le nom du document au lieu de l'UUID brut côté UI.
+   *  Vide si aucun fragment ne cite de doc, ou si les docs ont été
+   *  supprimés depuis la génération du fragment. */
+  docNames?: Record<string, string>
 }
 
 // =============================================================================
@@ -1814,6 +1819,30 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     } catch { /* Silencieux */ }
   }
 
+  // --- 4c. Résolution des [doc:UUID] cités dans les fragments → filenames.
+  // Permet à l'UI d'afficher le nom du PDF au lieu de l'UUID brut. SQL pur,
+  // une seule requête batched IN par appel.
+  const docNames: Record<string, string> = {}
+  try {
+    const docIds = new Set<string>()
+    const DOC_RE = /\[doc:([0-9a-f-]{8,})\]/g
+    for (const r of [...resonances, ...readings]) {
+      let m: RegExpExecArray | null
+      const re = new RegExp(DOC_RE.source, 'g')
+      while ((m = re.exec(r.text)) !== null) docIds.add(m[1])
+    }
+    if (docIds.size > 0) {
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('id, filename')
+        .in('id', Array.from(docIds))
+        .is('deleted_at', null)
+      for (const d of (docs ?? []) as Array<{ id: string; filename: string }>) {
+        docNames[d.id] = d.filename
+      }
+    }
+  } catch { /* Silencieux — UI rendra ↗ en fallback */ }
+
   // Résonances insérées EN PREMIER (priorité doctrinale Vincent 2026-05-15)
   readings.unshift(...resonances)
 
@@ -1867,8 +1896,34 @@ export async function getSiteReadings(siteId: string): Promise<SiteReadings> {
     readings.splice(resonances.length, 0, ...persistences.slice(0, 2))
   }
 
+  // Complète docNames depuis les persistances aussi (B2 trace peut en citer).
+  try {
+    const DOC_RE = /\[doc:([0-9a-f-]{8,})\]/g
+    const missing = new Set<string>()
+    for (const p of persistences) {
+      let m: RegExpExecArray | null
+      const re = new RegExp(DOC_RE.source, 'g')
+      while ((m = re.exec(p.text)) !== null) {
+        if (!docNames[m[1]]) missing.add(m[1])
+      }
+    }
+    if (missing.size > 0) {
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('id, filename')
+        .in('id', Array.from(missing))
+        .is('deleted_at', null)
+      for (const d of (docs ?? []) as Array<{ id: string; filename: string }>) {
+        docNames[d.id] = d.filename
+      }
+    }
+  } catch { /* Silencieux */ }
+
   // Cap final
-  return { readings: readings.slice(0, 6) }
+  return {
+    readings: readings.slice(0, 6),
+    docNames: Object.keys(docNames).length > 0 ? docNames : undefined,
+  }
 }
 
 function capitalize(s: string): string {

@@ -80,7 +80,11 @@ export function SiteReadingsList({ data }: { data: SiteReadings }) {
             <ul className="space-y-3">
               {items.map((r, idx) => (
                 <li key={`${axis}-${idx}`}>
-                  <ReadingCard fragment={r.text} frags={r.fragments ?? undefined} />
+                  <ReadingCard
+                    fragment={r.text}
+                    frags={r.fragments ?? undefined}
+                    docNames={data.docNames}
+                  />
                 </li>
               ))}
             </ul>
