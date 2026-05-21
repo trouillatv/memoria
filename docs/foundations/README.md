@@ -42,6 +42,9 @@ Chaque fichier ici est **autonome** et **lisible séquentiellement**. Pas de ré
 ### 💭 Subjectif
 - [**analyse-emotive.md**](analyse-emotive.md) — Le récit subjectif. Les peurs persistantes. Les fiertés silencieuses.
 
+### 🛠️ Hygiène
+- [**erreurs-a-ne-pas-recommencer.md**](erreurs-a-ne-pas-recommencer.md) — Journal des erreurs faites en session avec Claude. À relire en début de session.
+
 ---
 
 ## Lecture recommandée
