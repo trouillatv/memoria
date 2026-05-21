@@ -111,9 +111,11 @@ export async function AIMemorySection() {
       </header>
 
       {/* ============================================================ */}
-      {/* 1. RÉSUMÉ — 4 chiffres en grand, lecture en 5 secondes */}
+      {/* 1. RÉSUMÉ — chiffres en grand, lecture en 5 secondes.
+           Vincent 2026-05-21 : tokens ajoutés en headline (ils étaient cachés
+           dans le `<details>` collapsé en bas). */}
       {/* ============================================================ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <HeadlineCard
           label="Appels IA"
           value={headline.totalCalls.toString()}
@@ -131,10 +133,24 @@ export async function AIMemorySection() {
           sub={fmtUsd(headline.totalCostUsd)}
         />
         <HeadlineCard
-          label="Production"
-          value={productionTotal.toString()}
-          sub={`docs + résonances`}
+          label="Projection mois"
+          value={fmtXpf(projectedMonthlyXpf)}
+          sub={fmtUsd(projectedMonthlyUsd)}
         />
+        <HeadlineCard
+          label="Tokens entrée"
+          value={fmtTokens(headline.totalInputTokens)}
+          sub={`${DAYS} derniers jours`}
+        />
+        <HeadlineCard
+          label="Tokens sortie"
+          value={fmtTokens(headline.totalOutputTokens)}
+          sub={`${DAYS} derniers jours`}
+        />
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        Total <span className="font-semibold tabular-nums">{fmtTokens(headline.totalInputTokens + headline.totalOutputTokens)}</span> tokens consommés sur les {DAYS} derniers jours · production : {productionTotal} docs + résonances.
       </div>
 
       {/* ============================================================ */}
@@ -295,7 +311,7 @@ export async function AIMemorySection() {
       {/* ============================================================ */}
       {/* 7. ACTIVITÉ RÉCENTE — repliée par défaut */}
       {/* ============================================================ */}
-      <details className="rounded-lg border">
+      <details className="rounded-lg border" open>
         <summary className="cursor-pointer px-4 py-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground hover:bg-muted/30">
           Voir les {recent.length} derniers appels IA
         </summary>

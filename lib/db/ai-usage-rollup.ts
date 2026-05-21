@@ -109,27 +109,49 @@ export interface AIUsageHeadline {
   totalErrors: number
   /** Coût USD agrégé sur la période (somme cost_usd). */
   totalCostUsd: number
+  /** Tokens d'entrée cumulés sur la période (somme input_tokens). */
+  totalInputTokens: number
+  /** Tokens de sortie cumulés sur la période (somme output_tokens). */
+  totalOutputTokens: number
   /** Période en jours sur laquelle l'agrégat porte. */
   days: number
 }
 
-/** Résumé chiffré global : 4 nombres pour la lecture en 10 secondes
- *  (appels / erreurs / coût / production — la production étant calculée
- *  séparément via getAIProductionSummary). */
+/** Résumé chiffré global : nombres pour la lecture rapide
+ *  (appels / erreurs / coût / tokens / production — la production étant
+ *  calculée séparément via getAIProductionSummary).
+ *  Vincent 2026-05-21 : tokens ajoutés en headline (avant cachés dans
+ *  le `<details>` collapsé des 50 derniers appels). */
 export async function getAIUsageHeadline(days: number = 7): Promise<AIUsageHeadline> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('ai_usage')
-    .select('status, cost_usd')
+    .select('status, cost_usd, input_tokens, output_tokens')
     .gte('created_at', since)
   let totalCalls = 0, totalErrors = 0, totalCostUsd = 0
-  for (const r of (data ?? []) as Array<{ status: string; cost_usd: number | null }>) {
+  let totalInputTokens = 0, totalOutputTokens = 0
+  type Row = {
+    status: string
+    cost_usd: number | null
+    input_tokens: number | null
+    output_tokens: number | null
+  }
+  for (const r of (data ?? []) as Row[]) {
     totalCalls += 1
     if (r.status === 'error') totalErrors += 1
     totalCostUsd += r.cost_usd ?? 0
+    totalInputTokens += r.input_tokens ?? 0
+    totalOutputTokens += r.output_tokens ?? 0
   }
-  return { totalCalls, totalErrors, totalCostUsd, days }
+  return {
+    totalCalls,
+    totalErrors,
+    totalCostUsd,
+    totalInputTokens,
+    totalOutputTokens,
+    days,
+  }
 }
 
 export interface AIModelInfo {
