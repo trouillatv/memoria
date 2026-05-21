@@ -9,8 +9,23 @@
 import { describe, it, expect } from 'vitest'
 import {
   processAnomaliesForMemory,
+  dedupTransverse,
   type AnomalyInputRow,
+  type SiteMemoryEvent,
 } from '@/lib/db/site-memory'
+
+function makeEvent(overrides: Partial<SiteMemoryEvent>): SiteMemoryEvent {
+  return {
+    type: overrides.type ?? 'intervention',
+    id: overrides.id ?? 'e-1',
+    occurredAt: overrides.occurredAt ?? '2026-05-20T10:00:00.000Z',
+    title: overrides.title ?? 'Default title',
+    detail: overrides.detail ?? null,
+    status: overrides.status ?? null,
+    interventionId: overrides.interventionId ?? null,
+    meta: overrides.meta ?? undefined,
+  }
+}
 
 function anomaly(overrides: Partial<AnomalyInputRow>): AnomalyInputRow {
   return {
@@ -285,6 +300,86 @@ describe('processAnomaliesForMemory — dedup A + collapse B', () => {
     // 2 restants : a-1 et a-3 → collapse car même cat même jour
     expect(out).toHaveLength(1)
     expect(out[0]?.meta?.groupedCount).toBe(2)
+  })
+
+  // ─────────────── CAS 6 : dedup transverse (note ↔ intervention) ──────────
+
+  it('dedup transverse : intervention + note avec MÊME titre MÊME jour → garde intervention', () => {
+    const events: SiteMemoryEvent[] = [
+      makeEvent({
+        type: 'intervention',
+        id: 'intv-1',
+        title: 'Nettoyage couloir interrompu hier soir',
+        occurredAt: '2026-05-20T08:00:00.000Z',
+      }),
+      makeEvent({
+        type: 'note',
+        id: 'note-1',
+        title: 'Nettoyage couloir interrompu hier soir',
+        occurredAt: '2026-05-20T09:00:00.000Z',
+      }),
+    ]
+    const out = dedupTransverse(events)
+    expect(out).toHaveLength(1)
+    expect(out[0]?.type).toBe('intervention')
+    expect(out[0]?.id).toBe('intv-1')
+  })
+
+  it('dedup transverse : 2 interventions différentes même titre même jour → 1 garde', () => {
+    const events: SiteMemoryEvent[] = [
+      makeEvent({
+        type: 'intervention',
+        id: 'intv-1',
+        title: 'pas eu le temps',
+        occurredAt: '2026-05-20T08:00:00.000Z',
+      }),
+      makeEvent({
+        type: 'intervention',
+        id: 'intv-2',
+        title: 'pas eu le temps',
+        occurredAt: '2026-05-20T14:00:00.000Z',
+      }),
+    ]
+    const out = dedupTransverse(events)
+    expect(out).toHaveLength(1)
+  })
+
+  it('dedup transverse : NE TOUCHE PAS les events passifs (photo, access)', () => {
+    const events: SiteMemoryEvent[] = [
+      makeEvent({ type: 'photo', id: 'p-1', title: 'Photo passage' }),
+      makeEvent({ type: 'photo', id: 'p-2', title: 'Photo passage' }),
+      makeEvent({ type: 'access', id: 'acc-1', title: 'Accès documenté' }),
+    ]
+    const out = dedupTransverse(events)
+    expect(out).toHaveLength(3) // tous gardés
+  })
+
+  it('dedup transverse : NE TOUCHE PAS les anomalies déjà groupées', () => {
+    const events: SiteMemoryEvent[] = [
+      makeEvent({
+        type: 'anomaly',
+        id: 'group::2026-05-20::materiel_casse',
+        title: 'materiel casse — 4 signalements',
+        meta: { grouped: true, groupedCount: 4 },
+      }),
+      makeEvent({
+        type: 'anomaly',
+        id: 'group::2026-05-20::eau_coupee',
+        title: 'materiel casse — 4 signalements', // forcé identique
+        meta: { grouped: true, groupedCount: 4 },
+      }),
+    ]
+    const out = dedupTransverse(events)
+    expect(out).toHaveLength(2)
+  })
+
+  it('dedup transverse : préserve les events à jours différents', () => {
+    const events: SiteMemoryEvent[] = [
+      makeEvent({ type: 'note', id: 'n-1', title: 'Fuite donc arrêt', occurredAt: '2026-05-20T08:00:00.000Z' }),
+      makeEvent({ type: 'note', id: 'n-2', title: 'Fuite donc arrêt', occurredAt: '2026-05-22T08:00:00.000Z' }),
+    ]
+    const out = dedupTransverse(events)
+    expect(out).toHaveLength(2)
   })
 
   it('status collapsed : resolved si TOUS resolved, open sinon', () => {

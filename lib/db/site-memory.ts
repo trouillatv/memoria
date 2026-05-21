@@ -391,7 +391,71 @@ export async function getSiteMemoryTimeline(
     })
   }
 
+  // Vincent 2026-05-21 — DEDUP TRANSVERSE GLOBAL.
+  // Couvre les cas où le même texte humain apparaît à travers 2 sources
+  // différentes (typiquement intervention.notes recopiée dans site_notes, ou
+  // anomaly.description recopiée dans une autre intervention.notes du même jour).
+  // Ne touche PAS les events "passifs" (photo, access, groupes anomalies)
+  // qui ont leur propre sémantique de comptage.
+  const dedupedEvents = dedupTransverse(events)
+
   // Tri chronologique inversé, cap au limit.
-  events.sort((a, b) => (b.occurredAt > a.occurredAt ? 1 : b.occurredAt < a.occurredAt ? -1 : 0))
-  return events.slice(0, limit)
+  dedupedEvents.sort((a, b) => (b.occurredAt > a.occurredAt ? 1 : b.occurredAt < a.occurredAt ? -1 : 0))
+  return dedupedEvents.slice(0, limit)
+}
+
+/**
+ * Dedup transverse final : 2 events de types HUMAINS (intervention, anomaly,
+ * note, a_savoir) ayant le MÊME titre normalisé et la MÊME date civile sont
+ * réduits à 1 seul (priorité : intervention > anomaly > note > a_savoir).
+ *
+ * Doctrine : on garde la trace la plus ATTACHÉE à un événement opérationnel
+ * (intervention) plutôt que la trace flottante (note). Pas de perte
+ * d'information utile — c'est le même texte humain.
+ *
+ * Exporté pour test unitaire pur.
+ */
+export function dedupTransverse(events: SiteMemoryEvent[]): SiteMemoryEvent[] {
+  const HUMAN_TYPES: SiteMemoryEventType[] = ['intervention', 'anomaly', 'note', 'a_savoir']
+  const PRIORITY: Record<string, number> = {
+    intervention: 0,
+    anomaly: 1,
+    note: 2,
+    a_savoir: 3,
+  }
+  // Map clé (date_civile::title_normalisé) → meilleur event courant
+  const bestByKey = new Map<string, SiteMemoryEvent>()
+  const passiveEvents: SiteMemoryEvent[] = []
+
+  for (const e of events) {
+    if (!HUMAN_TYPES.includes(e.type)) {
+      passiveEvents.push(e)
+      continue
+    }
+    // Groupes d'anomalies (déjà collapsés en amont) : ne pas re-toucher
+    if (e.meta?.grouped === true) {
+      passiveEvents.push(e)
+      continue
+    }
+    const title = normalizeText(e.title)
+    if (title.length === 0) {
+      passiveEvents.push(e)
+      continue
+    }
+    const dateCivile = e.occurredAt.slice(0, 10)
+    const key = `${dateCivile}::${title}`
+    const existing = bestByKey.get(key)
+    if (!existing) {
+      bestByKey.set(key, e)
+      continue
+    }
+    // Garder celui à la plus haute priorité (priorité numérique plus basse)
+    const existingPri = PRIORITY[existing.type] ?? 99
+    const candidatePri = PRIORITY[e.type] ?? 99
+    if (candidatePri < existingPri) {
+      bestByKey.set(key, e)
+    }
+    // Sinon on jette le candidat
+  }
+  return [...passiveEvents, ...bestByKey.values()]
 }
