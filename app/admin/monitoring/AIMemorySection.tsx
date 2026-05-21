@@ -84,7 +84,18 @@ function modelDisplay(model: string | null | undefined): string {
   return model
 }
 
-export async function AIMemorySection() {
+/**
+ * Vincent 2026-05-21 — `subtab` permet d'afficher uniquement certaines
+ * sections de la console IA dans des sous-onglets séparés :
+ *   'console'    → headline + IA utilisées + coût par feature + erreurs + 50 derniers
+ *   'production' → santé 24h + production IA
+ *   undefined    → tout (rétro-compat)
+ */
+export async function AIMemorySection({
+  subtab,
+}: {
+  subtab?: 'console' | 'production'
+} = {}) {
   const DAYS = 7
   const [headline, models, health, byFeature, production, recent, recentErrors] = await Promise.all([
     getAIUsageHeadline(DAYS),
@@ -102,14 +113,22 @@ export async function AIMemorySection() {
   const productionTotal =
     production.documentsReadyRecent + production.resonancesActiveB1 + production.resonancesActiveB2
 
+  // Helpers : rendre une section seulement si le subtab le demande (ou
+  // si pas de subtab = tout afficher en rétro-compat).
+  const showConsole = !subtab || subtab === 'console'
+  const showProduction = !subtab || subtab === 'production'
+
   return (
     <section className="space-y-6">
       <header>
         <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          Console IA — 7 derniers jours
+          {subtab === 'production' ? 'Production IA — 7 derniers jours' : 'Console IA — 7 derniers jours'}
         </h2>
       </header>
 
+
+      {showConsole && (
+      <>
       {/* ============================================================ */}
       {/* 1. RÉSUMÉ — chiffres en grand, lecture en 5 secondes.
            Vincent 2026-05-21 : tokens ajoutés en headline (ils étaient cachés
@@ -181,6 +200,11 @@ export async function AIMemorySection() {
         )}
       </div>
 
+      </>
+      )}
+
+      {showProduction && (
+      <>
       {/* ============================================================ */}
       {/* 3. SANTÉ — 3 lignes (24h) */}
       {/* ============================================================ */}
@@ -208,7 +232,33 @@ export async function AIMemorySection() {
       </div>
 
       {/* ============================================================ */}
-      {/* 4. COÛT — XPF principal, USD secondaire */}
+      {/* 4. PRODUCTION IA (déplacée ici pour grouper avec Santé) */}
+      {/* ============================================================ */}
+      <div className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          Production IA — 7 derniers jours
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+          <ProductionCard label="Documents analysés" value={production.documentsReadyRecent} />
+          <ProductionCard
+            label="Échecs analyse"
+            value={production.documentsFailedRecent}
+            alert={production.documentsFailedRecent > 0}
+          />
+          <ProductionCard label="Résonances B1 actives" value={production.resonancesActiveB1} />
+          <ProductionCard label="Résonances B2 actives" value={production.resonancesActiveB2} />
+          <ProductionCard label="Staled" value={production.resonancesStaledRecent} muted />
+          <ProductionCard label="Dismissed" value={production.resonancesDismissedRecent} muted />
+        </div>
+      </div>
+
+      </>
+      )}
+
+      {showConsole && (
+      <>
+      {/* ============================================================ */}
+      {/* 5. COÛT — XPF principal, USD secondaire */}
       {/* ============================================================ */}
       <div className="space-y-3">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -256,27 +306,6 @@ export async function AIMemorySection() {
             </table>
           </div>
         )}
-      </div>
-
-      {/* ============================================================ */}
-      {/* 5. PRODUCTION IA */}
-      {/* ============================================================ */}
-      <div className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Production IA — 7 derniers jours
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-          <ProductionCard label="Documents analysés" value={production.documentsReadyRecent} />
-          <ProductionCard
-            label="Échecs analyse"
-            value={production.documentsFailedRecent}
-            alert={production.documentsFailedRecent > 0}
-          />
-          <ProductionCard label="Résonances B1 actives" value={production.resonancesActiveB1} />
-          <ProductionCard label="Résonances B2 actives" value={production.resonancesActiveB2} />
-          <ProductionCard label="Staled" value={production.resonancesStaledRecent} muted />
-          <ProductionCard label="Dismissed" value={production.resonancesDismissedRecent} muted />
-        </div>
       </div>
 
       {/* ============================================================ */}
@@ -366,6 +395,8 @@ export async function AIMemorySection() {
           </div>
         )}
       </details>
+      </>
+      )}
     </section>
   )
 }

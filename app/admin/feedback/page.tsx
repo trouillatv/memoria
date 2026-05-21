@@ -36,10 +36,8 @@ export default async function AdminFeedbackPage({
   searchParams: Promise<{ status?: string }>
 }) {
   const { status: rawStatus } = await searchParams
-  const filter: FeedbackStatus | 'all' =
-    rawStatus === 'open' || rawStatus === 'done' || rawStatus === 'spam'
-      ? rawStatus
-      : 'open'
+  const filter: FeedbackStatus =
+    rawStatus === 'done' || rawStatus === 'spam' ? rawStatus : 'open'
 
   const admin = createAdminClient()
 
@@ -57,15 +55,10 @@ export default async function AdminFeedbackPage({
       .from('feedback')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'spam'),
-    (filter === 'all'
-      ? admin
-          .from('feedback')
-          .select('id, user_id, message, page, user_agent, status, created_at, author:users(full_name, email, role)')
-      : admin
-          .from('feedback')
-          .select('id, user_id, message, page, user_agent, status, created_at, author:users(full_name, email, role)')
-          .eq('status', filter)
-    )
+    admin
+      .from('feedback')
+      .select('id, user_id, message, page, user_agent, status, created_at, author:users(full_name, email, role)')
+      .eq('status', filter)
       .order('created_at', { ascending: false })
       .limit(500),
   ])
@@ -112,7 +105,7 @@ export default async function AdminFeedbackPage({
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <MessageSquare className="h-6 w-6 text-brand-600" />
-          Feedback ({counts.all})
+          Feedback ({counts.open + counts.done + counts.spam})
         </h1>
         <p className="text-sm text-muted-foreground">
           Retours envoyés via le bouton flottant. Traite, marque comme spam ou rouvre.
