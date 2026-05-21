@@ -26,6 +26,150 @@ export interface SiteMemoryEvent {
   meta?: Record<string, string | number | boolean | null>
 }
 
+// ----------------------------------------------------------------------------
+// processAnomaliesForMemory — helper PUR (testable sans Supabase)
+// ----------------------------------------------------------------------------
+//
+// Vincent 2026-05-21 — réduit le bruit dans la Mémoire du lieu :
+//
+//   A. Dedup intervention.notes ↔ anomaly.description : si une anomaly a la
+//      MÊME description (case-insensitive, trim) que la note de SA propre
+//      intervention, on masque l'anomaly. La note l'incarne déjà.
+//
+//   B. Collapse anomalies génériques : N anomalies SANS description libre
+//      ni category_other, MÊME jour, MÊME category, MÊME site (implicite)
+//      → 1 seule ligne « <catégorie> — N signalements ».
+//      Singletons traités normalement.
+//
+// Aucune mutation DB. Pure transformation de rendu.
+
+export interface AnomalyInputRow {
+  id: string
+  intervention_id: string
+  description: string | null
+  category: string
+  category_other: string | null
+  status: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export function normalizeText(s: string | null | undefined): string {
+  return (s ?? '').trim().toLowerCase()
+}
+
+/** Date civile yyyy-mm-dd extraite d'un ISO timestamp. */
+function dateCivilOf(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+interface ProcessArgs {
+  anomalies: AnomalyInputRow[]
+  /** Notes d'intervention normalisées, indexées par intervention_id. */
+  interventionNotesById: Map<string, string>
+  /** Anomaly ids à exclure (ex. incidents d'accès représentés par la ligne « Accès »). */
+  excludeAnomalyIds: Set<string>
+}
+
+export function processAnomaliesForMemory(
+  args: ProcessArgs,
+): SiteMemoryEvent[] {
+  const { anomalies, interventionNotesById, excludeAnomalyIds } = args
+
+  // Étape 1 : filtrer exclusions + dedup A (description = note intervention).
+  const filtered = anomalies.filter((a) => {
+    if (excludeAnomalyIds.has(a.id)) return false
+    const desc = normalizeText(a.description)
+    if (desc.length > 0) {
+      const intvNote = interventionNotesById.get(a.intervention_id)
+      if (intvNote && intvNote === desc) return false // doublon A
+    }
+    return true
+  })
+
+  // Étape 2 : séparer celles avec contenu libre (à push individuellement) des
+  // celles génériques (candidates au collapse B).
+  const richAnomalies: AnomalyInputRow[] = []
+  type GroupKey = string // `${date_civile}::${category}`
+  const genericGroups = new Map<GroupKey, AnomalyInputRow[]>()
+
+  for (const a of filtered) {
+    const hasDesc = normalizeText(a.description).length > 0
+    const hasOther = normalizeText(a.category_other).length > 0
+    if (hasDesc || hasOther) {
+      richAnomalies.push(a)
+      continue
+    }
+    const key = `${dateCivilOf(a.created_at)}::${a.category}`
+    const arr = genericGroups.get(key) ?? []
+    arr.push(a)
+    genericGroups.set(key, arr)
+  }
+
+  // Étape 3 : push events.
+  const out: SiteMemoryEvent[] = []
+
+  for (const a of richAnomalies) {
+    out.push({
+      type: 'anomaly',
+      id: a.id,
+      occurredAt: a.created_at,
+      title: a.description ?? a.category_other ?? a.category,
+      detail: null,
+      status: a.status,
+      interventionId: a.intervention_id,
+      meta: { category: a.category, resolved_at: a.resolved_at },
+    })
+  }
+
+  for (const [key, group] of genericGroups) {
+    if (group.length === 1) {
+      const a = group[0]!
+      out.push({
+        type: 'anomaly',
+        id: a.id,
+        occurredAt: a.created_at,
+        title: a.category,
+        detail: null,
+        status: a.status,
+        interventionId: a.intervention_id,
+        meta: { category: a.category, resolved_at: a.resolved_at },
+      })
+    } else {
+      // Collapse : 1 ligne synthétique. Wording sobre, factuel.
+      const latestAt = group.reduce(
+        (acc, a) => (a.created_at > acc ? a.created_at : acc),
+        group[0]!.created_at,
+      )
+      const categoryLabel = group[0]!.category.replace(/_/g, ' ')
+      // status : si toutes resolved → resolved, sinon open (factuel mixte)
+      const allResolved = group.every((a) => a.status === 'resolved')
+      out.push({
+        type: 'anomaly',
+        id: `group::${key}`,
+        occurredAt: latestAt,
+        title: `${categoryLabel} — ${group.length} signalements`,
+        detail: null,
+        status: allResolved ? 'resolved' : 'open',
+        // Lien vers la première intervention concernée (au moins une porte
+        // d'entrée vers le détail, cf. demande Vincent « garder un lien »).
+        interventionId: group[0]!.intervention_id,
+        meta: {
+          category: group[0]!.category,
+          grouped: true,
+          groupedCount: group.length,
+        },
+      })
+    }
+  }
+
+  return out
+}
+
+// ----------------------------------------------------------------------------
+// getSiteMemoryTimeline — assembleur de timeline
+// ----------------------------------------------------------------------------
+
 export async function getSiteMemoryTimeline(
   siteId: string,
   options: { limit?: number; periodDays?: number } = {},
@@ -168,20 +312,19 @@ export async function getSiteMemoryTimeline(
     })
   }
 
-  for (const a of (anomaliesRes.data ?? [])) {
-    // L'incident d'accès est représenté par sa ligne « Accès » (anti-doublon).
-    if (accessIncidentAnomalyIds.has(a.id)) continue
-    events.push({
-      type: 'anomaly',
-      id: a.id,
-      occurredAt: a.created_at,
-      title: a.description ?? a.category_other ?? a.category,
-      detail: null,
-      status: a.status,
-      interventionId: a.intervention_id,
-      meta: { category: a.category, resolved_at: a.resolved_at },
-    })
+  // Vincent 2026-05-21 — dedup A + collapse B (cf. processAnomaliesForMemory).
+  // Logique extraite en helper PUR pour test unitaire.
+  const interventionNotesById = new Map<string, string>()
+  for (const i of interventions) {
+    const norm = normalizeText(i.notes)
+    if (norm.length > 0) interventionNotesById.set(i.id, norm)
   }
+  const anomalyEvents = processAnomaliesForMemory({
+    anomalies: (anomaliesRes.data ?? []) as AnomalyInputRow[],
+    interventionNotesById,
+    excludeAnomalyIds: accessIncidentAnomalyIds,
+  })
+  for (const e of anomalyEvents) events.push(e)
 
   for (const n of (notesRes.data ?? [])) {
     events.push({
