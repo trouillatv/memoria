@@ -76,13 +76,21 @@ const TYPE_BADGE_LABEL: Record<SiteMemoryEvent['type'], string> = {
   access: 'Accès',
 }
 
+// Palette distincte par type — chaque famille de couleur est franchement
+// différente pour éviter la confusion à l'œil rapide.
 const TYPE_BADGE_CLASS: Record<SiteMemoryEvent['type'], string> = {
-  intervention: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700',
-  photo: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/30 dark:text-sky-200 dark:border-sky-800',
-  anomaly: 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800',
-  note: 'bg-stone-50 text-stone-700 border-stone-200 dark:bg-stone-900 dark:text-stone-200 dark:border-stone-700',
-  a_savoir: 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-200 dark:border-indigo-800',
-  access: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800',
+  // Bleu : note d'intervention = saisie quotidienne sur prestation
+  intervention: 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-800',
+  // Cyan : photo = trace visuelle, lié au site
+  photo: 'bg-cyan-100 text-cyan-900 border-cyan-300 dark:bg-cyan-950/40 dark:text-cyan-200 dark:border-cyan-800',
+  // Orange : signalement = anomalie déclarée, saillant
+  anomaly: 'bg-orange-100 text-orange-900 border-orange-300 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-800',
+  // Violet : note de site = écrit hors intervention, plus contextuel
+  note: 'bg-violet-100 text-violet-900 border-violet-300 dark:bg-violet-950/40 dark:text-violet-200 dark:border-violet-800',
+  // Rose : À savoir = consigne persistante, statique
+  a_savoir: 'bg-pink-100 text-pink-900 border-pink-300 dark:bg-pink-950/40 dark:text-pink-200 dark:border-pink-800',
+  // Vert : accès = preuve d'accès site (passage)
+  access: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800',
 }
 
 function badgeLabelFor(event: SiteMemoryEvent): string {
@@ -197,7 +205,10 @@ export function TraceStream({ events, meta }: Props) {
               ),
             )
           : 0
-        const gapPx = idx === 0 ? 0 : Math.min(gapHeightPx(daysBetween), 80)
+        // Vincent 2026-05-21 — gaps condensés (cap à 40px au lieu de 80px,
+        // suppression des micro-gaps < 8px pour densifier).
+        const rawGap = idx === 0 ? 0 : Math.min(gapHeightPx(daysBetween), 40)
+        const gapPx = rawGap < 8 ? 0 : rawGap
         const showSilence = idx > 0 && shouldRenderSilenceMarker(daysBetween)
         const silenceText = showSilence ? silenceLabel(daysBetween) : null
 
@@ -252,27 +263,27 @@ function TraceLine({ event, opacity, ageDays }: TraceLineProps) {
 
   const inner = (
     <div
-      className={`flex items-start gap-2.5 py-2 px-2 ${borderClass}`}
-      style={{ opacity, paddingLeft: borderClass ? 12 : 8 }}
+      className={`flex items-start gap-2 py-1 px-1.5 ${borderClass}`}
+      style={{ opacity, paddingLeft: borderClass ? 10 : 6 }}
     >
-      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
+      <Icon className={`h-3 w-3 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-3 flex-wrap">
-          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
             <span
-              className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${TYPE_BADGE_CLASS[event.type]}`}
+              className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide leading-tight ${TYPE_BADGE_CLASS[event.type]}`}
               title={`Source : ${badgeLabelFor(event).toLowerCase()}`}
             >
               {badgeLabelFor(event)}
             </span>
-            <span className="text-sm leading-snug">{event.title}</span>
+            <span className="text-[13px] leading-snug">{event.title}</span>
           </div>
-          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+          <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
             {dateLabel}
           </span>
         </div>
         {event.detail && (
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
             {event.detail}
           </p>
         )}
