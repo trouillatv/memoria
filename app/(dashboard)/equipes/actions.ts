@@ -27,6 +27,8 @@ import {
 } from '@/lib/db/teams'
 import { logAuditEvent } from '@/lib/audit/log'
 import { TEAM_BADGE_COLORS } from '@/components/ui/team-badge'
+import { TEAM_ICON_KEYS } from '@/components/ui/team-icon-picker'
+import { TEAM_SPECIALTY_KEYS, TEAM_SPECIALTY_MAX } from '@/components/ui/team-specialties'
 
 // ----------------------------------------------------------------------------
 // Auth helper
@@ -48,20 +50,47 @@ async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
 // Schemas
 // ----------------------------------------------------------------------------
 
+// Vincent 2026-05-21 (migration 077) — color accepte :
+//   - null (« Aucune »)
+//   - un des noms historiques (sky/emerald/amber/violet/rose/slate)
+//   - un hex #rrggbb (insensible casse)
+// Le CHECK DB `chk_teams_color_format` redouble la validation côté Postgres.
+const NAMED_COLOR_VALUES = TEAM_BADGE_COLORS as unknown as readonly string[]
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
 const colorSchema = z
-  .enum(TEAM_BADGE_COLORS as unknown as [string, ...string[]])
-  .nullable()
+  .union([
+    z.null(),
+    z.string().refine(
+      (v) => NAMED_COLOR_VALUES.includes(v) || HEX_RE.test(v),
+      'Couleur invalide : nom whitelisté ou #rrggbb attendu',
+    ),
+  ])
+  .optional()
+
+// Vincent 2026-05-21 (migration 077) — icône lucide (kebab-case),
+// whitelist applicative côté UI (TEAM_ICON_KEYS).
+const ICON_VALUES = TEAM_ICON_KEYS as unknown as readonly string[]
+const iconSchema = z
+  .union([
+    z.null(),
+    z.string().refine(
+      (v) => ICON_VALUES.includes(v),
+      'Icône non reconnue',
+    ),
+  ])
   .optional()
 
 const createSchema = z.object({
   name: z.string().trim().min(1, 'Le nom est requis').max(50, '50 caractères max'),
   color: colorSchema,
+  icon: iconSchema,
 })
 
 const updateSchema = z.object({
   teamId: z.string().uuid(),
   name: z.string().trim().min(1).max(50).optional(),
   color: colorSchema,
+  icon: iconSchema,
   active: z.boolean().optional(),
 })
 
@@ -95,6 +124,7 @@ export interface MutateTeamResult {
 export async function createTeamAction(input: {
   name: string
   color?: string | null
+  icon?: string | null
 }): Promise<CreateTeamResult> {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return { ok: false, error: auth.error }
@@ -107,7 +137,8 @@ export async function createTeamAction(input: {
   try {
     const team = await createTeam({
       name: parsed.data.name,
-      color: parsed.data.color ?? undefined,
+      color: parsed.data.color ?? null,
+      icon: parsed.data.icon ?? null,
       created_by: auth.userId,
     })
     await logAuditEvent({
@@ -115,7 +146,7 @@ export async function createTeamAction(input: {
       entityType: 'site',
       entityId: team.id,
       action: 'created',
-      metadata: { kind: 'team', name: team.name, color: team.color },
+      metadata: { kind: 'team', name: team.name, color: team.color, icon: team.icon },
     })
     revalidatePath('/equipes')
     return { ok: true, teamId: team.id }
@@ -133,6 +164,7 @@ export async function updateTeamAction(input: {
   teamId: string
   name?: string
   color?: string | null
+  icon?: string | null
   active?: boolean
 }): Promise<MutateTeamResult> {
   const auth = await requireManagerOrAdmin()
@@ -150,6 +182,7 @@ export async function updateTeamAction(input: {
     const team = await updateTeam(parsed.data.teamId, {
       name: parsed.data.name,
       color: parsed.data.color,
+      icon: parsed.data.icon,
       active: parsed.data.active,
     })
     await logAuditEvent({
@@ -161,6 +194,7 @@ export async function updateTeamAction(input: {
         kind: 'team',
         name: team.name,
         color: team.color,
+        icon: team.icon,
         active: team.active,
       },
     })
@@ -277,6 +311,64 @@ export async function removeMemberFromTeamAction(input: {
     return { ok: true }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur retrait du membre'
+    return { ok: false, error: msg }
+  }
+}
+
+// ----------------------------------------------------------------------------
+// setTeamSpecialtiesAction — Sprint Équipes B (Vincent 2026-05-21)
+//
+// Spécialités déclarées (whitelist applicative). Doctrine V2 :
+//   - Tags DÉCLARATIFS par le manager
+//   - Jamais inférés, jamais comparatifs
+//   - Max 12 (cf. TEAM_SPECIALTY_MAX + chk_teams_specialties_format)
+// ----------------------------------------------------------------------------
+
+const SPECIALTY_VALUES = TEAM_SPECIALTY_KEYS as unknown as readonly string[]
+const setSpecialtiesSchema = z.object({
+  teamId: z.string().uuid(),
+  specialties: z
+    .array(
+      z.string().refine((v) => SPECIALTY_VALUES.includes(v), 'Spécialité inconnue'),
+    )
+    .max(TEAM_SPECIALTY_MAX, `Max ${TEAM_SPECIALTY_MAX} spécialités`),
+})
+
+export async function setTeamSpecialtiesAction(input: {
+  teamId: string
+  specialties: string[]
+}): Promise<MutateTeamResult> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return { ok: false, error: auth.error }
+
+  const parsed = setSpecialtiesSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+
+  const existing = await getTeam(parsed.data.teamId)
+  if (!existing) return { ok: false, error: 'Équipe introuvable' }
+
+  try {
+    // Dédup + tri pour stabilité (impact UI minimal entre 2 saisies équivalentes)
+    const dedup = Array.from(new Set(parsed.data.specialties)).sort()
+    await updateTeam(parsed.data.teamId, { specialties: dedup })
+    await logAuditEvent({
+      userId: auth.userId,
+      entityType: 'site',
+      entityId: parsed.data.teamId,
+      action: 'updated',
+      metadata: {
+        kind: 'team_specialties_changed',
+        team_id: parsed.data.teamId,
+        specialties: dedup,
+      },
+    })
+    revalidatePath('/equipes')
+    revalidatePath(`/equipes/${parsed.data.teamId}`)
+    return { ok: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Erreur mise à jour des spécialités'
     return { ok: false, error: msg }
   }
 }

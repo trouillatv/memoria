@@ -396,12 +396,77 @@ export interface DbTeam {
   id: string
   name: string
   color: string | null
+  /** Migration 077 (Vincent 2026-05-21) — Pictogramme lucide-react (kebab-case).
+   *  Identité visuelle, jamais sémantique. */
+  icon: string | null
+  /** Migration 078 (Vincent 2026-05-21) — Spécialités déclarées (tags kebab-case).
+   *  Whitelist applicative côté UI. JAMAIS calculées, JAMAIS comparatives. */
+  specialties: string[]
   active: boolean
   created_at: string
   created_by: string | null
   deleted_at: string | null
   // Phase 10 — Référent d'équipe (point de contact opérationnel stable).
   referent_user_id: string | null
+}
+
+/** Sprint Équipes C (Vincent 2026-05-22, migration 079) — Passage de témoin. */
+export type HandoverKind = 'member_change' | 'team_takes_site' | 'manual'
+export type HandoverStatus = 'draft' | 'shared' | 'acknowledged' | 'archived'
+
+export interface DbHandoverBrief {
+  id: string
+  kind: HandoverKind
+  source_team_id: string | null
+  target_team_id: string | null
+  subject_user_id: string | null
+  site_id: string | null
+  payload: HandoverPayload
+  title: string
+  status: HandoverStatus
+  shared_token: string | null
+  shared_at: string | null
+  expires_at: string | null
+  last_accessed_at: string | null
+  access_count: number
+  acknowledged_by: string | null
+  acknowledged_at: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+}
+
+/** Contenu compilé au moment T (snapshot JSONB). Immuable post-création. */
+export interface HandoverPayload {
+  generatedAt: string
+  /** Description courte du contexte ("Joseph bascule de Alpha vers Beta"). */
+  context: string
+  /** Sites concernés par le passage de témoin. */
+  sites: Array<{
+    site_id: string
+    site_name: string
+    contract_id: string | null
+    contract_name: string | null
+    client_name: string | null
+    /** Consignes "À savoir" du site au moment de la génération. */
+    aSavoir: Array<{ id: string; title: string; description: string | null }>
+    /** Dernières anomalies (capped). */
+    recentAnomalies: Array<{
+      id: string
+      category: string
+      description: string
+      occurredAt: string
+    }>
+    /** Documents rattachés (capped, IDs cliquables). */
+    documents: Array<{ id: string; title: string; documentType: string | null }>
+    /** Équipes voisines qui connaissent ce site (back-up). */
+    neighborTeams: Array<{ team_id: string; team_name: string; team_color: string | null }>
+    /** Nombre d'interventions documentées sur ce site (descriptif). */
+    interventionsCount: number
+    lastInterventionDate: string | null
+  }>
+  /** Notes ajoutées manuellement par le manager qui crée le brief. */
+  manualNotes: string | null
 }
 
 // Composition d'équipe variable dans le temps.

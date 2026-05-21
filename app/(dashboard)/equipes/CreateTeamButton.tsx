@@ -1,9 +1,13 @@
 'use client'
 
 // Phase 9 — Vue Semaine & Équipes (Slice 9.2)
+// Sprint Équipes (Vincent 2026-05-21, migration 077) — identité visuelle étendue :
+//   - Color picker libre (12 swatches + hex)
+//   - Icon picker (18 pictogrammes lucide)
+//   - Aperçu live via TeamBadge
 //
-// Bouton "+ Nouvelle équipe" + dialog avec form de création.
-// Champs : nom (text, requis, max 50) + couleur (radio chips, optionnelle).
+// Doctrine V2 : conteneur logistique. La couleur et l'icône restent un repère
+// visuel utilisateur, jamais sémantique.
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -21,14 +25,17 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { TeamBadge, TEAM_BADGE_COLORS, type TeamBadgeColor } from '@/components/ui/team-badge'
+import { TeamBadge } from '@/components/ui/team-badge'
+import { TeamColorPicker } from '@/components/ui/team-color-picker'
+import { TeamIconPicker, type TeamIconName } from '@/components/ui/team-icon-picker'
 import { createTeamAction } from './actions'
 
 export function CreateTeamButton() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
-  const [color, setColor] = useState<TeamBadgeColor | null>(null)
+  const [color, setColor] = useState<string | null>(null)
+  const [icon, setIcon] = useState<TeamIconName | null>(null)
   const [pending, startTransition] = useTransition()
 
   const trimmed = name.trim()
@@ -37,6 +44,7 @@ export function CreateTeamButton() {
   function reset() {
     setName('')
     setColor(null)
+    setIcon(null)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -45,7 +53,8 @@ export function CreateTeamButton() {
     startTransition(async () => {
       const result = await createTeamAction({
         name: trimmed,
-        color: color ?? null,
+        color,
+        icon,
       })
       if (result.ok) {
         toast.success('Équipe créée')
@@ -82,7 +91,7 @@ export function CreateTeamButton() {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="team-name">Nom de l’équipe</Label>
             <Input
@@ -96,44 +105,51 @@ export function CreateTeamButton() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              Court et reconnaissable. Ex&nbsp;: « Alpha », « Beta », « Centre-ville ».
+              Court et reconnaissable. Ex&nbsp;: « Alpha », « Centre-ville », « Magenta ».
+            </p>
+          </div>
+
+          {/* Aperçu live */}
+          <div className="space-y-1.5">
+            <Label>Aperçu</Label>
+            <div className="rounded-md border bg-muted/30 px-3 py-3 flex items-center gap-3">
+              <TeamBadge
+                name={trimmed || 'Aperçu'}
+                color={color}
+                icon={icon}
+                size="md"
+                variant="colored"
+              />
+              <span className="text-muted-foreground text-xs">·</span>
+              <TeamBadge
+                name={trimmed || 'Aperçu'}
+                color={color}
+                icon={icon}
+                size="md"
+                variant="dot"
+              />
+              <span className="text-muted-foreground text-xs">·</span>
+              <TeamBadge
+                name={trimmed || 'Aperçu'}
+                color={color}
+                icon={icon}
+                size="md"
+                variant="mono"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Trois rendus selon le contexte&nbsp;: chip colorée · point compact · monochrome (N&B / contraste).
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label>Couleur (facultatif)</Label>
-            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Couleur de l’équipe">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={color === null}
-                data-testid="team-color-none"
-                onClick={() => setColor(null)}
-                className={
-                  'rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors ' +
-                  (color === null ? 'border-foreground bg-muted' : 'border-border hover:bg-muted/50')
-                }
-              >
-                Aucune
-              </button>
-              {TEAM_BADGE_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  role="radio"
-                  aria-checked={color === c}
-                  data-testid={`team-color-${c}`}
-                  onClick={() => setColor(c as TeamBadgeColor)}
-                  className={
-                    'rounded-full border p-0.5 transition-all ' +
-                    (color === c ? 'border-foreground ring-2 ring-foreground/20' : 'border-transparent hover:border-border')
-                  }
-                  aria-label={`Couleur ${c}`}
-                >
-                  <TeamBadge name={c.charAt(0).toUpperCase() + c.slice(1)} color={c} size="sm" />
-                </button>
-              ))}
-            </div>
+            <Label>Couleur</Label>
+            <TeamColorPicker value={color} onChange={setColor} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Icône</Label>
+            <TeamIconPicker value={icon} onChange={setIcon} />
           </div>
 
           <DialogFooter>

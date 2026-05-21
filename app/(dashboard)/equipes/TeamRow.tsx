@@ -6,11 +6,14 @@
 // Doctrine V2 : composition affichée comme suite de noms simples, JAMAIS
 // avec des métriques individuelles ou collectives.
 
+import Link from 'next/link'
+import { ExternalLink } from 'lucide-react'
 import { listMembersOfTeam, type TeamWithMemberCount } from '@/lib/db/teams'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
 import { ArchiveTeamButton } from './ArchiveTeamButton'
 import { TeamReferentEditor } from './TeamReferentEditor'
+import { EditTeamAppearanceButton } from './EditTeamAppearanceButton'
 
 interface Props {
   team: TeamWithMemberCount
@@ -48,7 +51,13 @@ export async function TeamRow({ team, availableUsers }: Props) {
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <TeamBadge name={team.name} color={team.color} size="md" />
+          <Link
+            href={`/equipes/${team.id}`}
+            className="hover:opacity-80 transition-opacity"
+            title="Ouvrir la fiche équipe"
+          >
+            <TeamBadge name={team.name} color={team.color} icon={team.icon} size="md" />
+          </Link>
           <span className="text-sm text-muted-foreground">
             · {team.memberCount} personne{team.memberCount > 1 ? 's' : ''}
           </span>
@@ -92,6 +101,21 @@ export async function TeamRow({ team, availableUsers }: Props) {
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
+        <Link
+          href={`/equipes/${team.id}`}
+          data-testid={`open-team-profile-${team.id}`}
+          title="Ouvrir la fiche équipe"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <ExternalLink className="h-4 w-4" />
+          <span className="sr-only">Ouvrir la fiche</span>
+        </Link>
+        <EditTeamAppearanceButton
+          teamId={team.id}
+          initialName={team.name}
+          initialColor={team.color}
+          initialIcon={team.icon}
+        />
         <EditTeamMembersDialog
           teamId={team.id}
           teamName={team.name}

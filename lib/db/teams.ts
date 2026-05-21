@@ -34,13 +34,19 @@ import type { DbTeam, DbTeamMember } from '@/types/db'
 
 export interface CreateTeamInput {
   name: string
-  color?: string
+  color?: string | null
+  /** Migration 077 — icône lucide (kebab-case). */
+  icon?: string | null
   created_by?: string | null
 }
 
 export interface UpdateTeamInput {
   name?: string
   color?: string | null
+  /** Migration 077 — icône lucide (kebab-case). */
+  icon?: string | null
+  /** Migration 078 — spécialités déclarées (tags whitelisted). */
+  specialties?: string[]
   active?: boolean
 }
 
@@ -81,6 +87,7 @@ export async function createTeam(input: CreateTeamInput): Promise<DbTeam> {
     .insert({
       name: input.name,
       color: input.color ?? null,
+      icon: input.icon ?? null,
       created_by: input.created_by ?? null,
     })
     .select('*')
@@ -89,12 +96,14 @@ export async function createTeam(input: CreateTeamInput): Promise<DbTeam> {
   return data as DbTeam
 }
 
-/** Met à jour une team (rename, recolor, activate/deactivate). */
+/** Met à jour une team (rename, recolor, change icon, activate/deactivate). */
 export async function updateTeam(id: string, input: UpdateTeamInput): Promise<DbTeam> {
   const supabase = createAdminClient()
   const patch: Record<string, unknown> = {}
   if (input.name !== undefined) patch.name = input.name
   if (input.color !== undefined) patch.color = input.color
+  if (input.icon !== undefined) patch.icon = input.icon
+  if (input.specialties !== undefined) patch.specialties = input.specialties
   if (input.active !== undefined) patch.active = input.active
 
   const { data, error } = await supabase
