@@ -150,6 +150,10 @@ export function TraceStream({ events, meta }: Props) {
   // Vincent 2026-05-21 — types présents dans le flux, pour la légende compacte.
   const typesPresent = new Set<SiteMemoryEvent['type']>(events.map((e) => e.type))
   const LEGEND_ORDER: SiteMemoryEvent['type'][] = ['intervention', 'anomaly', 'note', 'a_savoir', 'photo', 'access']
+  // Vincent 2026-05-21 (Option A) : badge synthétique pour les prestations
+  // récurrentes du bloc taskHistory. Couleur émeraude (cohérence : déjà
+  // utilisée comme dot d'item exécuté). Distincte des 6 types d'events.
+  const TASK_BADGE_CLASS = 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800'
 
   return (
     <div className="space-y-3">
@@ -162,6 +166,13 @@ export function TraceStream({ events, meta }: Props) {
           passage / résonance. La légende lève toute ambiguïté. */}
       <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-muted-foreground">
         <span className="uppercase tracking-wide">Légende :</span>
+        {meta && meta.taskHistory.length > 0 && (
+          <span
+            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 font-medium uppercase tracking-wide ${TASK_BADGE_CLASS}`}
+          >
+            Prestation
+          </span>
+        )}
         {LEGEND_ORDER.filter((t) => typesPresent.has(t)).map((t) => (
           <span
             key={t}
@@ -171,24 +182,39 @@ export function TraceStream({ events, meta }: Props) {
           </span>
         ))}
       </div>
-      {/* Liste des tâches avec leur dernière date */}
+
+      {/* ── Prestations récurrentes (taskHistory) ──────────────────────── */}
       {meta && meta.taskHistory.length > 0 && (
-        <ul className="space-y-0.5">
-          {meta.taskHistory.map((t) => (
-            <li key={t.label} className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5 min-w-0">
-                <span className="h-1 w-1 rounded-full bg-emerald-500 shrink-0" aria-hidden />
-                <span className="truncate">{t.label}</span>
-              </span>
-              <span className="tabular-nums shrink-0 text-[10px]">
-                {t.count > 1 && <span className="mr-1.5 text-muted-foreground/60">×{t.count}</span>}
-                {formatShortDate(t.lastDoneAt)}
-              </span>
+        <div className="space-y-1">
+          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Prestations récurrentes
+          </h3>
+          <ul className="space-y-0.5">
+            {meta.taskHistory.map((t) => (
+              <li key={t.label} className="flex items-baseline gap-1.5 py-px">
+                <span
+                  className={`shrink-0 inline-flex items-center rounded border px-1 py-0 text-[9px] font-semibold uppercase tracking-tight leading-snug ${TASK_BADGE_CLASS}`}
+                  title="Prestation récurrente (item de checklist exécuté)"
+                >
+                  Prestation
+                </span>
+                <span className="text-xs leading-snug min-w-0 flex-1 truncate">{t.label}</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                  {t.count > 1 && <span className="mr-1.5 text-muted-foreground/60">×{t.count}</span>}
+                  {formatShortDate(t.lastDoneAt)}
+                </span>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
-      <ol className="space-y-0">
+
+      {/* ── Événements (flux narratif) ─────────────────────────────────── */}
+      <div className="space-y-1">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Événements
+        </h3>
+        <ol className="space-y-0">
         {events.map((event, idx) => {
         const ageDays = ageDaysSince(event.occurredAt, now)
         const salience = salienceOf(event)
@@ -230,7 +256,8 @@ export function TraceStream({ events, meta }: Props) {
           </li>
         )
       })}
-    </ol>
+        </ol>
+      </div>
     </div>
   )
 }
