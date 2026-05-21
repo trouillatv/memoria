@@ -11,6 +11,7 @@ import {
   FileCheck,
   MapPin,
   BookOpen,
+  BookMarked,
   ShieldAlert,
   ArrowRightLeft,
 } from 'lucide-react'
@@ -46,6 +47,8 @@ export const NAV: NavItem[] = [
   // reste intacte (route directe + lien contextuel AO) ; pas d'entrée
   // « Documents » séparée. Convergence knowledge_items→documents = tranche future.
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
+  // Vincent 2026-05-22 — manuel téléchargeable pour Guillaume.
+  { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'] },
   { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'] },
 ]
 

@@ -185,3 +185,13 @@ def md_to_docx(md_path: Path, out_path: Path):
 
 if __name__ == '__main__':
     md_to_docx(SRC, DST)
+    # Vincent 2026-05-22 — copie aussi dans public/ pour servir au manager
+    # via /manuel sans devoir bricoler côté Next.js.
+    PUBLIC_DST = ROOT / "public" / "manuel.docx"
+    try:
+        import shutil
+        if DST.exists():
+            shutil.copy2(DST, PUBLIC_DST)
+            print(f"OK : copie servable {PUBLIC_DST}")
+    except Exception as e:
+        print(f"[WARN] copie public/manuel.docx echouee : {e}")
