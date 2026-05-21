@@ -30,6 +30,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getHandoverBrief } from '@/lib/db/handover'
 import { getTeam } from '@/lib/db/teams'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { buildShareUrl, generateShareQrDataUrl } from '@/lib/handover/share-url'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { HandoverPayloadView } from '../HandoverPayloadView'
 import { HandoverActions } from './HandoverActions'
@@ -100,13 +101,17 @@ export default async function HandoverDetailPage({
     ? (subjectUser.full_name ?? '').trim() || subjectUser.email
     : null
 
-  // URL absolue pour le partage
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? ''
-  const shareUrl = brief.shared_token ? `${baseUrl}/h/${brief.shared_token}` : null
-
+  // URL absolue pour le partage (helper centralisé)
+  const shareUrl = brief.shared_token ? buildShareUrl(brief.shared_token) : null
   const expired =
     brief.expires_at != null && new Date(brief.expires_at) < new Date()
+
+  // QR code (sprint D' — brief comme moment magique). Généré uniquement si
+  // partage actif (pas expiré) — c'est l'aide à la transmission WhatsApp.
+  const qrDataUrl =
+    brief.shared_token && !expired
+      ? await generateShareQrDataUrl(brief.shared_token).catch(() => null)
+      : null
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -195,10 +200,10 @@ export default async function HandoverDetailPage({
           )}
         </div>
 
-        {/* Bloc partage si déjà partagé */}
+        {/* Bloc partage si déjà partagé — avec QR code (Sprint D') */}
         {brief.shared_token && (
           <div
-            className={`rounded-md border px-3 py-2 text-xs space-y-1 ${
+            className={`rounded-md border px-3 py-3 text-xs space-y-2 ${
               expired
                 ? 'border-rose-300 bg-rose-50/50 dark:bg-rose-950/20'
                 : 'border-violet-300 bg-violet-50/50 dark:bg-violet-950/20'
@@ -208,30 +213,52 @@ export default async function HandoverDetailPage({
               <Share2 className="h-3 w-3" />
               {expired ? 'Lien expiré' : 'Lien de partage actif'}
             </p>
-            {!expired && shareUrl && (
-              <p className="font-mono text-[11px] break-all text-violet-900 dark:text-violet-200">
-                {shareUrl || `/h/${brief.shared_token}`}
-              </p>
-            )}
-            <p className="text-muted-foreground">
-              {brief.expires_at && (
-                <>
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  {expired ? 'Expiré le ' : 'Expire le '}
-                  {fmtDateTime(brief.expires_at)}
-                </>
-              )}
-              {brief.access_count > 0 && (
-                <>
-                  {' · '}
-                  <Eye className="h-3 w-3 inline mr-1" />
-                  {brief.access_count} consultation{brief.access_count > 1 ? 's' : ''}
-                  {brief.last_accessed_at && (
-                    <> (dern. {fmtDateTime(brief.last_accessed_at)})</>
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+              <div className="flex-1 min-w-0 space-y-1">
+                {!expired && shareUrl && (
+                  <p className="font-mono text-[11px] break-all text-violet-900 dark:text-violet-200">
+                    {shareUrl}
+                  </p>
+                )}
+                <p className="text-muted-foreground">
+                  {brief.expires_at && (
+                    <>
+                      <Clock className="h-3 w-3 inline mr-1" />
+                      {expired ? 'Expiré le ' : 'Expire le '}
+                      {fmtDateTime(brief.expires_at)}
+                    </>
                   )}
-                </>
+                  {brief.access_count > 0 && (
+                    <>
+                      {' · '}
+                      <Eye className="h-3 w-3 inline mr-1" />
+                      {brief.access_count} consultation{brief.access_count > 1 ? 's' : ''}
+                      {brief.last_accessed_at && (
+                        <> (dern. {fmtDateTime(brief.last_accessed_at)})</>
+                      )}
+                    </>
+                  )}
+                </p>
+                {!expired && (
+                  <p className="text-[11px] text-muted-foreground italic pt-1">
+                    Scanne le QR ou copie le lien → envoie sur WhatsApp.
+                    Joseph ouvre, lit, confirme « C'est lu » sans login.
+                  </p>
+                )}
+              </div>
+              {qrDataUrl && !expired && (
+                <div className="shrink-0 self-start">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={qrDataUrl}
+                    alt="QR code du lien de partage"
+                    className="h-32 w-32 sm:h-28 sm:w-28 rounded border border-violet-200 bg-white p-1"
+                    width={128}
+                    height={128}
+                  />
+                </div>
               )}
-            </p>
+            </div>
           </div>
         )}
 
