@@ -99,6 +99,44 @@ export interface IntervenantHeatmapCell {
   count: number
 }
 
+/** Équipe fréquentée (active ou passée) sur la fenêtre demandée. */
+export interface IntervenantTeamHistoryEntry {
+  team_id: string
+  team_name: string
+  team_color: string | null
+  /** Date `joined_at` du `team_members`. */
+  joinedAt: string | null
+  /** Date `left_at` (NULL = actuellement dans l'équipe). */
+  leftAt: string | null
+  /** True si actuellement dans l'équipe (left_at IS NULL). */
+  isCurrent: boolean
+  /** Nombre d'interventions documentées de cette équipe pendant la fenêtre. */
+  interventionsCount: number
+}
+
+/** Collègue ayant partagé une équipe avec l'intervenant. */
+export interface IntervenantCollaborator {
+  user_id: string
+  full_name: string | null
+  email: string
+  /** Équipes partagées (noms). */
+  sharedTeams: string[]
+  /** Présence partagée actuelle (left_at IS NULL pour les deux). */
+  currentlySharedTeam: boolean
+}
+
+/** Anomalie signalée sur une intervention où cet intervenant a participé. */
+export interface IntervenantIncidentPresence {
+  anomaly_id: string
+  intervention_id: string
+  site_id: string
+  site_name: string
+  scheduled_for: string | null
+  description: string
+  /** True si signalée PAR cet intervenant lui-même. */
+  signaledBySelf: boolean
+}
+
 /** Photo récente déposée par l'intervenant — pour la galerie thumbnails. */
 export interface IntervenantPhotoEntry {
   id: string
@@ -131,6 +169,107 @@ export interface IntervenantListRow {
 function pickOne<T>(v: T | T[] | null | undefined): T | null {
   if (v === null || v === undefined) return null
   return Array.isArray(v) ? (v[0] as T) ?? null : v
+}
+
+// ----------------------------------------------------------------------------
+// fetchUserParticipations — source unique des participations d'un intervenant
+// ----------------------------------------------------------------------------
+//
+// Vincent 2026-05-21 (fix « tout à 0 ») : `intervention_participants` est une
+// table V3 prévue pour la « vraie composition jour-J » mais peu peuplée en
+// pratique. Le pattern qui fonctionne dans le reste du projet (cf.
+// `getSiteTeamPresences`, `getSiteHumanContinuity`) = passer par
+// `team_members` → `interventions.assigned_team_id`.
+//
+// On adopte ce pattern ici pour que les compteurs reflètent l'usage réel.
+
+/** Liste les team_ids actuellement actifs pour cet intervenant. */
+async function fetchActiveTeamIds(intervenantId: string): Promise<string[]> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', intervenantId)
+    .is('left_at', null)
+  return ((data ?? []) as Array<{ team_id: string }>).map((r) => r.team_id)
+}
+
+/**
+ * Récupère TOUTES les interventions auxquelles cet intervenant a participé,
+ * via la jointure team_members → teams → interventions.assigned_team_id.
+ *
+ * Filtre les missions système. Retourne au format `ResolvedParticipation[]`
+ * compatible avec les helpers existants.
+ */
+async function fetchUserParticipations(
+  intervenantId: string,
+): Promise<ResolvedParticipation[]> {
+  const teamIds = await fetchActiveTeamIds(intervenantId)
+  if (teamIds.length === 0) return []
+
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('interventions')
+    .select(`
+      id,
+      scheduled_for,
+      status,
+      planned_start,
+      planned_end,
+      slot,
+      mission:missions!inner(
+        name,
+        site:sites!inner(
+          id,
+          name,
+          contract:contracts(id, name),
+          client:clients(name)
+        )
+      )
+    `)
+    .in('assigned_team_id', teamIds)
+
+  type Row = {
+    id: string
+    scheduled_for: string | null
+    status: string
+    planned_start: string | null
+    planned_end: string | null
+    slot: string | null
+    mission: unknown
+  }
+
+  const out: ResolvedParticipation[] = []
+  for (const r of (data ?? []) as Row[]) {
+    const mission = pickOne(r.mission) as { name?: string; site?: unknown } | null
+    if (!mission?.name) continue
+    if (isSystemMissionName(mission.name)) continue
+    const site = pickOne(mission.site) as {
+      id?: string
+      name?: string
+      contract?: unknown
+      client?: unknown
+    } | null
+    if (!site?.id || !site.name) continue
+    const contract = pickOne(site.contract) as { id?: string; name?: string } | null
+    const client = pickOne(site.client) as { name?: string } | null
+
+    out.push({
+      intervention_id: r.id,
+      scheduled_for: r.scheduled_for,
+      status: r.status,
+      planned_start: r.planned_start,
+      planned_end: r.planned_end,
+      slot: r.slot,
+      mission_name: mission.name,
+      site_id: site.id,
+      site_name: site.name,
+      contract_id: contract?.id ?? null,
+      contract_name: contract?.name ?? null,
+      client_name: client?.name ?? null,
+    })
+  }
+  return out
 }
 
 // Type Supabase nested — on déclare une forme permissive et on parcourt.
@@ -222,17 +361,9 @@ export async function getIntervenantOverview(
   if (!user) return null
   const userExt = user as { id: string; email: string; full_name: string | null; role: string; created_at: string; phone: string | null; commune: string | null; employment_type: 'cdi' | 'cdd' | 'cdi_chantier' | null }
 
+  // Source : team_members → interventions.assigned_team_id (cf. fix « tout à 0 »).
   const [participations, notes, anomalies, photos, voiceNotes, teamRows] = await Promise.all([
-    admin
-      .from('intervention_participants')
-      .select(`
-        intervention:interventions!inner(
-          mission:missions!inner(
-            site:sites!inner(id, contract_id)
-          )
-        )
-      `)
-      .eq('user_id', intervenantId),
+    fetchUserParticipations(intervenantId),
     admin
       .from('intervention_notes')
       .select('id', { count: 'exact', head: true })
@@ -256,17 +387,12 @@ export async function getIntervenantOverview(
       .is('left_at', null),
   ])
 
-  // Sites & contrats distincts
+  // Sites & contrats distincts dérivés des participations
   const siteIds = new Set<string>()
   const contractIds = new Set<string>()
-  for (const r of (participations.data ?? []) as Array<{ intervention: unknown }>) {
-    const intv = pickOne(r.intervention) as { mission?: unknown } | null
-    if (!intv) continue
-    const mission = pickOne(intv.mission) as { site?: unknown } | null
-    if (!mission) continue
-    const site = pickOne(mission.site) as { id?: string; contract_id?: string | null } | null
-    if (site?.id) siteIds.add(site.id)
-    if (site?.contract_id) contractIds.add(site.contract_id)
+  for (const p of participations) {
+    if (p.site_id) siteIds.add(p.site_id)
+    if (p.contract_id) contractIds.add(p.contract_id)
   }
 
   // Équipes actives
@@ -288,7 +414,7 @@ export async function getIntervenantOverview(
     commune: userExt.commune,
     employment_type: userExt.employment_type,
     counters: {
-      interventionsParticipated: (participations.data ?? []).length,
+      interventionsParticipated: participations.length,
       sitesKnown: siteIds.size,
       contractsKnown: contractIds.size,
       notesLeft: notes.count ?? 0,
@@ -308,27 +434,7 @@ export async function listIntervenantSitesAccumulated(
   intervenantId: string,
 ): Promise<IntervenantSiteAccumulated[]> {
   const admin = createAdminClient()
-  const { data } = await admin
-    .from('intervention_participants')
-    .select(`
-      intervention:interventions!inner(
-        id,
-        scheduled_for,
-        status,
-        mission:missions!inner(
-          name,
-          site:sites!inner(
-            id,
-            name,
-            contract:contracts(id, name),
-            client:clients(name)
-          )
-        )
-      )
-    `)
-    .eq('user_id', intervenantId)
-
-  const flat = flattenParticipations((data ?? []) as ParticipationRow[])
+  const flat = await fetchUserParticipations(intervenantId)
 
   const bySite = new Map<string, IntervenantSiteAccumulated>()
   for (const p of flat) {
@@ -403,24 +509,7 @@ export async function listIntervenantSitesAccumulated(
 export async function listIntervenantContractsKnown(
   intervenantId: string,
 ): Promise<IntervenantContractKnown[]> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('intervention_participants')
-    .select(`
-      intervention:interventions!inner(
-        scheduled_for,
-        mission:missions!inner(
-          name,
-          site:sites!inner(
-            contract:contracts(id, name),
-            client:clients(name)
-          )
-        )
-      )
-    `)
-    .eq('user_id', intervenantId)
-
-  const flat = flattenParticipations((data ?? []) as ParticipationRow[])
+  const flat = await fetchUserParticipations(intervenantId)
 
   const byContract = new Map<string, IntervenantContractKnown>()
   for (const p of flat) {
@@ -464,26 +553,7 @@ export async function listIntervenantRecentInterventions(
   intervenantId: string,
   limit: number = 20,
 ): Promise<IntervenantInterventionEntry[]> {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('intervention_participants')
-    .select(`
-      intervention:interventions!inner(
-        id,
-        scheduled_for,
-        status,
-        planned_start,
-        planned_end,
-        slot,
-        mission:missions!inner(
-          name,
-          site:sites!inner(id, name)
-        )
-      )
-    `)
-    .eq('user_id', intervenantId)
-
-  const flat = flattenParticipations((data ?? []) as ParticipationRow[])
+  const flat = await fetchUserParticipations(intervenantId)
 
   flat.sort((a, b) => {
     const ax = a.scheduled_for ?? '0000-00-00'
@@ -552,25 +622,18 @@ export async function getIntervenantHeatmap(
   intervenantId: string,
   days: number = 90,
 ): Promise<IntervenantHeatmapCell[]> {
-  const admin = createAdminClient()
   const since = new Date()
   since.setUTCHours(0, 0, 0, 0)
   since.setUTCDate(since.getUTCDate() - days + 1)
   const sinceIso = since.toISOString().slice(0, 10)
 
-  const { data } = await admin
-    .from('intervention_participants')
-    .select(`
-      intervention:interventions!inner(scheduled_for, status)
-    `)
-    .eq('user_id', intervenantId)
+  const participations = await fetchUserParticipations(intervenantId)
 
   const counts = new Map<string, number>()
-  for (const r of (data ?? []) as Array<{ intervention: unknown }>) {
-    const intv = pickOne(r.intervention) as { scheduled_for?: string | null; status?: string } | null
-    if (!intv?.scheduled_for) continue
-    if (intv.scheduled_for < sinceIso) continue
-    counts.set(intv.scheduled_for, (counts.get(intv.scheduled_for) ?? 0) + 1)
+  for (const p of participations) {
+    if (!p.scheduled_for) continue
+    if (p.scheduled_for < sinceIso) continue
+    counts.set(p.scheduled_for, (counts.get(p.scheduled_for) ?? 0) + 1)
   }
 
   return Array.from(counts.entries())
@@ -619,42 +682,58 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
     teamsByUser.set(row.user_id, arr)
   }
 
-  // 3) Participations agrégées par user_id (allowlist — uniquement dans ce module)
-  const { data: participations } = await admin
-    .from('intervention_participants')
-    .select(`
-      user_id,
-      intervention:interventions!inner(
+  // 3) Participations agrégées via team_members → assigned_team_id
+  // (fix « tout à 0 » Vincent 2026-05-21 : intervention_participants peu peuplée).
+  type Stats = { sites: Set<string>; count: number; lastAt: string | null }
+  const statsByUser = new Map<string, Stats>()
+
+  // Reverse map team_id → user_ids (pour distribuer les counts des interventions)
+  const teamMembersByTeam = new Map<string, string[]>()
+  for (const row of (memberRows ?? []) as Array<{ user_id: string; team: unknown }>) {
+    const team = pickOne(row.team) as { id?: string } | null
+    if (!team?.id) continue
+    const arr = teamMembersByTeam.get(team.id) ?? []
+    arr.push(row.user_id)
+    teamMembersByTeam.set(team.id, arr)
+  }
+
+  const teamIdsAll = Array.from(teamMembersByTeam.keys())
+  if (teamIdsAll.length > 0) {
+    const { data: interventions } = await admin
+      .from('interventions')
+      .select(`
+        assigned_team_id,
         scheduled_for,
         mission:missions!inner(
           name,
           site:sites!inner(id)
         )
-      )
-    `)
-    .in('user_id', userIds)
+      `)
+      .in('assigned_team_id', teamIdsAll)
 
-  type Stats = { sites: Set<string>; count: number; lastAt: string | null }
-  const statsByUser = new Map<string, Stats>()
-  for (const row of (participations ?? []) as Array<{ user_id: string; intervention: unknown }>) {
-    const intv = pickOne(row.intervention) as {
-      scheduled_for?: string | null
-      mission?: unknown
-    } | null
-    if (!intv) continue
-    const mission = pickOne(intv.mission) as { name?: string; site?: unknown } | null
-    if (!mission?.name) continue
-    if (isSystemMissionName(mission.name)) continue
-    const site = pickOne(mission.site) as { id?: string } | null
-    if (!site?.id) continue
+    for (const row of (interventions ?? []) as Array<{
+      assigned_team_id: string | null
+      scheduled_for: string | null
+      mission: unknown
+    }>) {
+      if (!row.assigned_team_id) continue
+      const mission = pickOne(row.mission) as { name?: string; site?: unknown } | null
+      if (!mission?.name) continue
+      if (isSystemMissionName(mission.name)) continue
+      const site = pickOne(mission.site) as { id?: string } | null
+      if (!site?.id) continue
 
-    const stats = statsByUser.get(row.user_id) ?? { sites: new Set<string>(), count: 0, lastAt: null }
-    stats.sites.add(site.id)
-    stats.count += 1
-    if (intv.scheduled_for && (!stats.lastAt || intv.scheduled_for > stats.lastAt)) {
-      stats.lastAt = intv.scheduled_for
+      const userIdsOfTeam = teamMembersByTeam.get(row.assigned_team_id) ?? []
+      for (const uid of userIdsOfTeam) {
+        const stats = statsByUser.get(uid) ?? { sites: new Set<string>(), count: 0, lastAt: null }
+        stats.sites.add(site.id)
+        stats.count += 1
+        if (row.scheduled_for && (!stats.lastAt || row.scheduled_for > stats.lastAt)) {
+          stats.lastAt = row.scheduled_for
+        }
+        statsByUser.set(uid, stats)
+      }
     }
-    statsByUser.set(row.user_id, stats)
   }
 
   return users.map<IntervenantListRow>((u) => {
@@ -755,4 +834,239 @@ export async function listIntervenantRecentPhotos(
       return entry
     })
     .filter((p): p is IntervenantPhotoEntry => p !== null)
+}
+
+// ============================================================================
+// EXTENSIONS Vincent 2026-05-21 (post-fix « tout à 0 »)
+// Historique équipes 2 ans · collaborateurs · présence lors d'incidents.
+// ============================================================================
+
+/**
+ * Historique des équipes fréquentées sur N derniers mois (default 24 mois = 2 ans).
+ * Inclut les équipes QUITTÉES si elles ont été partagées dans la fenêtre.
+ *
+ * Doctrine : sujet = personne, factuel uniquement (joinedAt/leftAt). Pas de
+ * « ancienneté moyenne », pas de classement entre équipes.
+ */
+export async function getIntervenantTeamsHistory(
+  intervenantId: string,
+  monthsBack: number = 24,
+): Promise<IntervenantTeamHistoryEntry[]> {
+  const admin = createAdminClient()
+  const since = new Date()
+  since.setUTCMonth(since.getUTCMonth() - monthsBack)
+  const sinceIso = since.toISOString()
+
+  const { data: memberships } = await admin
+    .from('team_members')
+    .select('team_id, joined_at, left_at, team:teams(id, name, color, deleted_at)')
+    .eq('user_id', intervenantId)
+    .or('left_at.is.null,left_at.gte.' + sinceIso)
+
+  type Row = {
+    team_id: string
+    joined_at: string | null
+    left_at: string | null
+    team: unknown
+  }
+  const rows = (memberships ?? []) as Row[]
+  if (rows.length === 0) return []
+
+  const teamIds = rows.map((r) => r.team_id)
+  const { data: interventions } = await admin
+    .from('interventions')
+    .select('assigned_team_id, scheduled_for')
+    .in('assigned_team_id', teamIds)
+    .gte('scheduled_for', sinceIso.slice(0, 10))
+    .in('status', ['completed', 'validated'])
+
+  const countByTeam = new Map<string, number>()
+  for (const i of (interventions ?? []) as Array<{ assigned_team_id: string | null }>) {
+    if (!i.assigned_team_id) continue
+    countByTeam.set(i.assigned_team_id, (countByTeam.get(i.assigned_team_id) ?? 0) + 1)
+  }
+
+  const out: IntervenantTeamHistoryEntry[] = []
+  for (const r of rows) {
+    const team = pickOne(r.team) as {
+      id?: string
+      name?: string
+      color?: string | null
+      deleted_at?: string | null
+    } | null
+    if (!team?.id || !team.name) continue
+    out.push({
+      team_id: team.id,
+      team_name: team.name,
+      team_color: team.color ?? null,
+      joinedAt: r.joined_at,
+      leftAt: r.left_at,
+      isCurrent: r.left_at === null && team.deleted_at === null,
+      interventionsCount: countByTeam.get(team.id) ?? 0,
+    })
+  }
+
+  return out.sort((a, b) => {
+    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
+    const ax = a.leftAt ?? a.joinedAt ?? ''
+    const bx = b.leftAt ?? b.joinedAt ?? ''
+    return bx.localeCompare(ax)
+  })
+}
+
+/**
+ * Liste des collègues ayant partagé une équipe avec l'intervenant sur N mois.
+ *
+ * Doctrine : data sensible (« qui travaille avec qui »). Reste factuel — pas
+ * de score de proximité. Tri : présents-d'abord puis alpha.
+ */
+export async function listIntervenantCollaborators(
+  intervenantId: string,
+  monthsBack: number = 24,
+): Promise<IntervenantCollaborator[]> {
+  const admin = createAdminClient()
+  const since = new Date()
+  since.setUTCMonth(since.getUTCMonth() - monthsBack)
+  const sinceIso = since.toISOString()
+
+  const { data: myMemberships } = await admin
+    .from('team_members')
+    .select('team_id, left_at, team:teams(name)')
+    .eq('user_id', intervenantId)
+    .or('left_at.is.null,left_at.gte.' + sinceIso)
+
+  type MyRow = { team_id: string; left_at: string | null; team: unknown }
+  const myRows = (myMemberships ?? []) as MyRow[]
+  if (myRows.length === 0) return []
+
+  const myCurrentTeamIds = new Set<string>(
+    myRows.filter((r) => r.left_at === null).map((r) => r.team_id),
+  )
+  const teamNameById = new Map<string, string>()
+  for (const r of myRows) {
+    const t = pickOne(r.team) as { name?: string } | null
+    if (t?.name) teamNameById.set(r.team_id, t.name)
+  }
+  const teamIds = Array.from(teamNameById.keys())
+
+  const { data: others } = await admin
+    .from('team_members')
+    .select('user_id, team_id, left_at, user:users(id, full_name, email, deleted_at)')
+    .in('team_id', teamIds)
+    .neq('user_id', intervenantId)
+    .or('left_at.is.null,left_at.gte.' + sinceIso)
+
+  type OtherRow = {
+    user_id: string
+    team_id: string
+    left_at: string | null
+    user: unknown
+  }
+  const rows = (others ?? []) as OtherRow[]
+
+  type Agg = {
+    user_id: string
+    full_name: string | null
+    email: string
+    teams: Set<string>
+    currentSharedTeam: boolean
+  }
+  const byUser = new Map<string, Agg>()
+  for (const r of rows) {
+    const u = pickOne(r.user) as {
+      id?: string
+      full_name?: string | null
+      email?: string
+      deleted_at?: string | null
+    } | null
+    if (!u?.id || !u.email) continue
+    if (u.deleted_at) continue
+    const teamName = teamNameById.get(r.team_id)
+    if (!teamName) continue
+
+    const existing = byUser.get(u.id) ?? {
+      user_id: u.id,
+      full_name: u.full_name ?? null,
+      email: u.email,
+      teams: new Set<string>(),
+      currentSharedTeam: false,
+    }
+    existing.teams.add(teamName)
+    if (r.left_at === null && myCurrentTeamIds.has(r.team_id)) {
+      existing.currentSharedTeam = true
+    }
+    byUser.set(u.id, existing)
+  }
+
+  return Array.from(byUser.values())
+    .map<IntervenantCollaborator>((a) => ({
+      user_id: a.user_id,
+      full_name: a.full_name,
+      email: a.email,
+      sharedTeams: Array.from(a.teams).sort((x, y) =>
+        x.localeCompare(y, 'fr', { sensitivity: 'base' }),
+      ),
+      currentlySharedTeam: a.currentSharedTeam,
+    }))
+    .sort((a, b) => {
+      if (a.currentlySharedTeam !== b.currentlySharedTeam) {
+        return a.currentlySharedTeam ? -1 : 1
+      }
+      const an = a.full_name ?? a.email
+      const bn = b.full_name ?? b.email
+      return an.localeCompare(bn, 'fr', { sensitivity: 'base' })
+    })
+}
+
+/**
+ * Anomalies signalées sur des interventions où cet intervenant a participé.
+ *
+ * Doctrine : factuel — on liste les incidents auxquels la personne était
+ * exposée. Distingue signalée PAR la personne vs juste présence.
+ */
+export async function listIntervenantIncidentsPresence(
+  intervenantId: string,
+  limit: number = 20,
+): Promise<IntervenantIncidentPresence[]> {
+  const participations = await fetchUserParticipations(intervenantId)
+  if (participations.length === 0) return []
+  const interventionIds = participations.map((p) => p.intervention_id)
+  const interventionMeta = new Map(
+    participations.map((p) => [
+      p.intervention_id,
+      { site_id: p.site_id, site_name: p.site_name, scheduled_for: p.scheduled_for },
+    ]),
+  )
+
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('intervention_anomalies')
+    .select('id, intervention_id, description, reported_by, created_at')
+    .in('intervention_id', interventionIds)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  type Row = {
+    id: string
+    intervention_id: string
+    description: string | null
+    reported_by: string | null
+    created_at: string
+  }
+
+  const out: IntervenantIncidentPresence[] = []
+  for (const r of (data ?? []) as Row[]) {
+    const meta = interventionMeta.get(r.intervention_id)
+    if (!meta?.site_id || !meta.site_name) continue
+    out.push({
+      anomaly_id: r.id,
+      intervention_id: r.intervention_id,
+      site_id: meta.site_id,
+      site_name: meta.site_name,
+      scheduled_for: meta.scheduled_for,
+      description: r.description ?? '—',
+      signaledBySelf: r.reported_by === intervenantId,
+    })
+  }
+  return out
 }

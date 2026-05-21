@@ -25,6 +25,8 @@ import {
   Phone,
   Mail,
   BriefcaseBusiness,
+  Users as UsersIcon,
+  History,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +41,9 @@ import {
   getIntervenantTracesSummary,
   getIntervenantHeatmap,
   listIntervenantRecentPhotos,
+  getIntervenantTeamsHistory,
+  listIntervenantCollaborators,
+  listIntervenantIncidentsPresence,
 } from '@/lib/db/intervenants'
 import { logAuditEvent } from '@/lib/audit/log'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
@@ -102,7 +107,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [overview, sites, contracts, recent, traces, heatmap, photos] = await Promise.all([
+  const [overview, sites, contracts, recent, traces, heatmap, photos, teamsHistory, collaborators, incidents] = await Promise.all([
     getIntervenantOverview(targetId),
     listIntervenantSitesAccumulated(targetId),
     listIntervenantContractsKnown(targetId),
@@ -110,6 +115,9 @@ export default async function IntervenantDetailPage({ params }: Props) {
     getIntervenantTracesSummary(targetId),
     getIntervenantHeatmap(targetId, 90),
     listIntervenantRecentPhotos(targetId, 12),
+    getIntervenantTeamsHistory(targetId, 24), // 2 ans
+    listIntervenantCollaborators(targetId, 24), // 2 ans
+    listIntervenantIncidentsPresence(targetId, 20),
   ])
 
   if (!overview) notFound()
@@ -384,6 +392,148 @@ export default async function IntervenantDetailPage({ params }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Historique équipes (2 ans, incl. quittées) ───────────────────── */}
+      {teamsHistory.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Équipes fréquentées (2 ans) — {teamsHistory.length}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {teamsHistory.map((t) => (
+                <li key={t.team_id + '-' + (t.joinedAt ?? '')} className="px-6 py-2.5">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                      <TeamBadge name={t.team_name} color={t.team_color} size="sm" />
+                      {t.isCurrent ? (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/30 dark:border-emerald-800 dark:text-emerald-200">
+                          actuelle
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground italic">
+                          quittée
+                        </Badge>
+                      )}
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                        {t.joinedAt && <>depuis {formatDateFr(t.joinedAt.slice(0, 10))}</>}
+                        {t.leftAt && <> → {formatDateFr(t.leftAt.slice(0, 10))}</>}
+                      </span>
+                    </div>
+                    {t.interventionsCount > 0 && (
+                      <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                        <span className="font-medium text-foreground/70">{t.interventionsCount}</span>{' '}
+                        intervention{t.interventionsCount > 1 ? 's' : ''} sur 2 ans
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Collaborateurs (équipes partagées 2 ans) ─────────────────────── */}
+      {collaborators.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <UsersIcon className="h-4 w-4" />
+              A travaillé avec ({collaborators.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {collaborators.slice(0, 20).map((c) => {
+                const name = c.full_name ?? c.email
+                return (
+                  <li key={c.user_id} className="px-6 py-2.5">
+                    <Link
+                      href={`/intervenants/${c.user_id}`}
+                      className="flex items-center gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                    >
+                      <div className="shrink-0 h-8 w-8 rounded-full bg-muted border flex items-center justify-center text-[10px] font-semibold text-muted-foreground">
+                        {initialsOf(name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate inline-flex items-center gap-2">
+                          {name}
+                          {c.currentlySharedTeam && (
+                            <Badge variant="outline" className="text-[10px] bg-sky-50 border-sky-200 text-sky-900 dark:bg-sky-950/30 dark:border-sky-800 dark:text-sky-200">
+                              équipe actuelle
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground truncate">
+                          via {c.sharedTeams.slice(0, 3).join(' · ')}
+                          {c.sharedTeams.length > 3 && ` · +${c.sharedTeams.length - 3}`}
+                        </div>
+                      </div>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
+                    </Link>
+                  </li>
+                )
+              })}
+              {collaborators.length > 20 && (
+                <li className="px-6 py-2 text-[11px] text-muted-foreground italic">
+                  + {collaborators.length - 20} autres
+                </li>
+              )}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Présence lors d'incidents (anomalies sur ses interventions) ──── */}
+      {incidents.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+              Présence lors d&apos;incidents ({incidents.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {incidents.map((i) => (
+                <li key={i.anomaly_id} className="px-6 py-2.5">
+                  <Link
+                    href={`/interventions/${i.intervention_id}`}
+                    className="flex items-start gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                  >
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm truncate">
+                        {i.description}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <span className="font-medium">{i.site_name}</span>
+                        {i.scheduled_for && (
+                          <>
+                            {' · '}
+                            <span className="tabular-nums">{formatDateFr(i.scheduled_for)}</span>
+                          </>
+                        )}
+                        {i.signaledBySelf && (
+                          <>
+                            {' · '}
+                            <span className="italic text-foreground/70">signalée par cette personne</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <ArrowRight className="h-3 w-3 mt-1 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Activité récente (20 dernières) avec plage horaire ───────────── */}
       {recent.length > 0 && (
