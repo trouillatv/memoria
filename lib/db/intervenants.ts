@@ -36,6 +36,8 @@ export interface IntervenantOverview {
   phone: string | null
   commune: string | null
   employment_type: 'cdi' | 'cdd' | 'cdi_chantier' | null
+  /** Migration 081 (Sprint E) — sert à anticiper la passation. Pas RH. */
+  contract_end_date: string | null
   /** Compteurs descriptifs uniquement. */
   counters: {
     interventionsParticipated: number
@@ -366,12 +368,12 @@ export async function getIntervenantOverview(
   const admin = createAdminClient()
   const { data: user } = await admin
     .from('users')
-    .select('id, email, full_name, role, created_at, phone, commune, employment_type')
+    .select('id, email, full_name, role, created_at, phone, commune, employment_type, contract_end_date')
     .eq('id', intervenantId)
     .is('deleted_at', null)
     .maybeSingle()
   if (!user) return null
-  const userExt = user as { id: string; email: string; full_name: string | null; role: string; created_at: string; phone: string | null; commune: string | null; employment_type: 'cdi' | 'cdd' | 'cdi_chantier' | null }
+  const userExt = user as { id: string; email: string; full_name: string | null; role: string; created_at: string; phone: string | null; commune: string | null; employment_type: 'cdi' | 'cdd' | 'cdi_chantier' | null; contract_end_date: string | null }
 
   // Source : team_members → interventions.assigned_team_id (cf. fix « tout à 0 »).
   const [participations, notes, anomalies, photos, voiceNotes, teamRows] = await Promise.all([
@@ -425,6 +427,7 @@ export async function getIntervenantOverview(
     phone: userExt.phone,
     commune: userExt.commune,
     employment_type: userExt.employment_type,
+    contract_end_date: userExt.contract_end_date,
     counters: {
       interventionsParticipated: participations.length,
       sitesKnown: siteIds.size,

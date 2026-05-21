@@ -34,6 +34,8 @@ export type AuditAction =
   | 'evidence_inserted'
   | 'opened'
   | 'downloaded'
+  // Vincent 2026-05-22 — consultation de pages sensibles (Intervenants, Continuité).
+  | 'consulted'
 
 export interface AuditEvent {
   userId: string | null

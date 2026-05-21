@@ -33,6 +33,7 @@ import { RecentAnomaliesWidget } from './RecentAnomaliesWidget'
 import { TenantMorningReadingCard } from './TenantMorningReadingCard'
 import { TendersDueSoonAlertWidget } from './TendersDueSoonAlertWidget'
 import { AOPipelineWidget } from './AOPipelineWidget'
+import { ContinuityWidget } from '@/components/dashboard/ContinuityWidget'
 import { getTenantTopMorningReading } from '@/lib/db/site-cockpit'
 
 /**
@@ -166,6 +167,11 @@ export default async function DashboardPage() {
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
 
       <ContractsUnderTensionWidget contracts={contractsUnderTension} />
+
+      {/* Sprint E (Vincent 2026-05-22) — Widget continuité. Silence positif :
+          ne s'affiche pas si zéro passation à préparer dans les 30 jours.
+          Gated par CONTINUITY_PAGE_ENABLED. */}
+      <ContinuityWidget />
 
       {/* AO-1 L2 (Vincent 2026-05-21) — widget Pipeline AO sobre (info, pas
           alerte). 3 compteurs cliquables vers /tenders. Silence positif si

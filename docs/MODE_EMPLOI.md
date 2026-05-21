@@ -28,6 +28,7 @@
 19. [Administration (admin only)](#19-administration-admin-only)
 20. [Doctrines à respecter pendant le pilote](#20-doctrines-à-respecter-pendant-le-pilote)
 21. [Que faire si…](#21-que-faire-si)
+22. [**Continuité opérationnelle anticipée**](#22-continuité-opérationnelle-anticipée)
 
 ---
 
@@ -724,6 +725,69 @@ L'équipe affectée est déjà sur un AUTRE site sur des horaires qui chevauchen
 ### …je perds mon mot de passe ?
 - « Mot de passe oublié » sur la page login
 - Si bloqué : admin peut forcer un reset depuis `/admin/users`
+
+---
+
+## 22. Continuité opérationnelle anticipée
+
+URL : `/continuite` (admin + manager, gated par variable ENV)
+
+### Pourquoi cette page
+Quand un CDD se termine et que personne n'a préparé la passation, la mémoire opérationnelle portée par cette personne disparaît avec elle. Joseph arrive sur le site CHT Magenta sans rien savoir des consignes, des anomalies récentes, des contacts client. C'est exactement le scénario que MemorIA cherche à éviter.
+
+La page `/continuite` te montre, **en amont**, qui a un contrat se terminant dans les 30 prochains jours, et quelle mémoire opérationnelle est portée par cette personne. Tu peux préparer le passage de témoin **avant** qu'il soit trop tard.
+
+### La saisie de la date de fin de contrat
+Sur la fiche d'un intervenant (`/intervenants/[id]`), tu vois un encadré « Contrat se termine le… » avec un bouton « Modifier ». Tu saisis la date — c'est tout. Cette date sert **uniquement** à déclencher l'apparition de cette personne dans `/continuite`.
+
+### Trois sections temporelles
+La page `/continuite` est organisée en 3 sections **par ordre de proximité** :
+
+1. **Cette semaine (≤ 7 jours)** — bordure rose, urgent
+2. **Dans 2 semaines (8-14 jours)** — bordure ambre, vigilance
+3. **Dans 1 mois (15-30 jours)** — bordure neutre, à anticiper
+
+Pour chaque entrée, tu vois :
+- Le **nom** de la personne (cliquable vers sa fiche)
+- Le **type de contrat** (CDD / CDI Chantier)
+- La **date exacte** de fin
+- Le **nombre de sites** que cette personne couvre actuellement (via ses équipes)
+- Les **équipes actives** dont elle fait partie
+- Un badge ✅ « Brief préparé » si un brief de passage de témoin a déjà été créé pour elle
+- Un bouton « Préparer la passation » qui te ramène sur sa fiche pour générer le brief
+
+### Le sujet est toujours la mémoire, jamais la personne
+
+| ✅ Ce que la page dit | ❌ Ce qu'elle ne dit JAMAIS |
+|---|---|
+| « 3 sites portent une mémoire opérationnelle » | « Joseph est critique » |
+| « Contrat se termine le 14 juin » | « Risque de départ » |
+| « Préparer la passation avant le 14 juin ? » | « Préparer le remplacement de Joseph » |
+| « 5 équipes voisines connaissent ces sites » | « Cette personne est-elle remplaçable ? » |
+
+C'est pour ça qu'on parle de **continuité de mémoire opérationnelle**, pas de **gestion RH**.
+
+### Garde-fous techniques
+- **Kill switch** : variable ENV `CONTINUITY_PAGE_ENABLED=false` → la page renvoie 404. Si tu signales un malaise lors du pilote, on coupe en 1 minute.
+- **Self-exclu** : une personne **ne voit jamais sa propre fin de contrat** dans `/continuite`. C'est un objet manager, pas un dossier personnel.
+- **Audit log** : chaque consultation est tracée (qui a regardé, quand).
+- **Tripwires CI** : le code refuse au build toute fonction qui ressemble à de la prédiction de départ (`departureRisk`, `criticalAgent`, `replacementScore`…).
+- **Pas de score, pas de classement, aucune comparaison entre personnes.**
+
+### Le widget dashboard
+Sur ton tableau de bord, si au moins une passation est à préparer dans les 30 jours, tu vois un encart compact :
+- **N passations à préparer** + détail par section (J-7, J-14, J-30)
+- Couleur **rose** si urgent (≤ 7j), **ambre** sinon, **neutre** si rien d'urgent.
+- Cliquable vers `/continuite`.
+
+**Silence positif** : si rien à préparer, le widget ne s'affiche pas du tout.
+
+### Comment l'utiliser au quotidien
+1. **Tu renseignes les dates de fin de contrat** sur les fiches Intervenants (pour les CDD et CDI Chantier de ton équipe).
+2. **MemorIA fait apparaître l'entrée** dans `/continuite` quand on entre dans les 30 jours.
+3. **Tu cliques « Préparer la passation »** → tu génères un brief de passage de témoin classique (section 15).
+4. **Tu envoies le QR code au chef d'équipe successeur** sur WhatsApp.
+5. **Le chef successeur consulte** sans login, marque « C'est lu », et tu sais côté MemorIA que la transmission a abouti.
 
 ---
 

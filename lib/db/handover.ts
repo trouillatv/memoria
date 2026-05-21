@@ -128,7 +128,7 @@ async function listSitesCoveredByTeam(teamId: string): Promise<SiteContextRow[]>
 }
 
 /** Liste les sites couverts via les équipes actives d'un user. */
-async function listSitesCoveredByUser(userId: string): Promise<SiteContextRow[]> {
+async function listSitesCoveredViaUserTeams(userId: string): Promise<SiteContextRow[]> {
   const admin = createAdminClient()
   const { data: memberships } = await admin
     .from('team_members')
@@ -383,7 +383,7 @@ export async function buildMemberChangePayload(
   if (input.sourceTeamId) {
     sourceSites = await listSitesCoveredByTeam(input.sourceTeamId)
   } else {
-    sourceSites = await listSitesCoveredByUser(input.subjectUserId)
+    sourceSites = await listSitesCoveredViaUserTeams(input.subjectUserId)
   }
   const cappedSites = sourceSites.slice(0, SITE_CAP)
 

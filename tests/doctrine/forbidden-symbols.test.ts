@@ -68,6 +68,40 @@ const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
     pattern: /\bassigned_?to_?user_?id\b/i,
     reason: 'Assignation nominative directe interdite. Affectation = équipe (V2).',
   },
+  // ──────────────────────────────────────────────────────────────────────
+  // Vincent 2026-05-22 — Sprint E (continuité anticipée).
+  // Le sujet grammatical doit toujours être la MÉMOIRE / le SITE, jamais
+  // la personne. Ces symboles ressemblent à de la prédiction de départ
+  // ou de la notation d'agent et sont interdits par construction.
+  // ──────────────────────────────────────────────────────────────────────
+  {
+    pattern: /\bdeparture(Risk|Score|Prediction)\b/i,
+    reason: 'Prédiction de départ = surveillance prédictive. Refus Sprint E.',
+  },
+  {
+    pattern: /\b(critical|risky)Agent\b/i,
+    reason: '"Agent critique" = notation de personne. Refus Sprint E.',
+  },
+  {
+    pattern: /\bagent(Risk|Value|Criticality)\b/i,
+    reason: 'Notation/évaluation d\'agent interdite (V6.2, Sprint E).',
+  },
+  {
+    pattern: /\b(replacement|substitution)Score\b/i,
+    reason: '"Score de remplacement" = comparaison RH masquée. Refus.',
+  },
+  {
+    pattern: /\b(staff|user|agent)Ranking\b/i,
+    reason: 'Classement humain = ranking = KPI individuel. Refus V3 + Sprint E.',
+  },
+  {
+    pattern: /\bcontractEndRisk\b/i,
+    reason: 'Le sujet doit être la mémoire opérationnelle, pas le contrat de la personne.',
+  },
+  {
+    pattern: /\bexpirationRisk\b/i,
+    reason: 'Expiration = fait administratif. "Risque" appliqué à une personne = glissement RH.',
+  },
 ]
 
 // Dossiers à scanner — code applicatif uniquement.

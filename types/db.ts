@@ -35,6 +35,9 @@ export interface DbUser {
   // Migration 076 (Vincent 2026-05-21) — création intervenant.
   commune: string | null
   employment_type: EmploymentType | null
+  // Migration 081 (Vincent 2026-05-22) — Sprint E continuité anticipée.
+  // Sujet : la mémoire opérationnelle, jamais la valeur de la personne.
+  contract_end_date: string | null
 }
 
 export interface DbActivityLog {

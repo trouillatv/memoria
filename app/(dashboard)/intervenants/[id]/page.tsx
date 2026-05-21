@@ -51,7 +51,9 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { IntervenantPhotoGallery } from './IntervenantPhotoGallery'
 import { IntervenantRhythm } from './IntervenantRhythm'
 import { CreateMemberChangeButton } from '@/app/(dashboard)/handovers/CreateMemberChangeButton'
+import { ContractEndDateEditor } from './ContractEndDateEditor'
 import { listTeams } from '@/lib/db/teams'
+import { isContinuityFeatureEnabled } from '@/lib/continuity/access'
 import type { InterventionSlot } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -250,6 +252,17 @@ export default async function IntervenantDetailPage({ params }: Props) {
                 allTeams={allTeams.map((t) => ({ id: t.id, name: t.name }))}
               />
             </div>
+          )}
+
+          {/* Sprint E — date de fin de contrat (gated par ENV + self-exclu).
+              Saisie d'un fait administratif pour anticiper la passation. */}
+          {isContinuityFeatureEnabled() && (
+            <ContractEndDateEditor
+              targetUserId={overview.id}
+              initialDate={overview.contract_end_date ?? null}
+              employmentType={overview.employment_type}
+              isSelf={access.access.isSelf}
+            />
           )}
         </div>
       </header>

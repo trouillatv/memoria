@@ -14,6 +14,7 @@ import {
   BookMarked,
   ShieldAlert,
   ArrowRightLeft,
+  Clock,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -33,6 +34,9 @@ export const NAV: NavItem[] = [
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
   // Vincent 2026-05-22 — Sprint Équipes C (passages de témoin).
   { href: '/handovers',  label: 'Passages de témoin',     icon: ArrowRightLeft, roles: ['admin', 'manager'] },
+  // Sprint E — Continuité anticipée (gated par ENV CONTINUITY_PAGE_ENABLED).
+  // Le lien reste visible (la page renvoie 404 si OFF) — cohérent avec Intervenants.
+  { href: '/continuite', label: 'Continuité',              icon: Clock,          roles: ['admin', 'manager'] },
   // Vincent 2026-05-21 — module Intervenants gated par ENV INTERVENANTS_PAGE_ENABLED.
   // Si la feature est désactivée côté serveur, la page renvoie 404 ; le lien reste
   // affiché mais inopérant (volontaire pour ne pas faire dépendre la nav d'une
