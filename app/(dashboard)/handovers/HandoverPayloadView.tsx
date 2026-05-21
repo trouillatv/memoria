@@ -20,7 +20,9 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { TeamBadge } from '@/components/ui/team-badge'
+import { formatRelativeLong } from '@/lib/format'
 import type { HandoverPayload } from '@/types/db'
+import { ResolveAnomalyButton } from './ResolveAnomalyButton'
 
 function fmtDateShort(iso: string | null): string {
   if (!iso) return '—'
@@ -180,29 +182,38 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
                 </div>
               )}
 
-              {/* Anomalies récentes */}
+              {/* Anomalies récentes — Sprint D : âge relatif + bouton résoudre */}
               {s.recentAnomalies.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-xs font-medium flex items-center gap-1.5">
                     <AlertTriangle className="h-3 w-3 text-orange-600" />
-                    Anomalies récentes
+                    Anomalies actives (90 derniers jours)
                   </p>
                   <ul className="space-y-1">
                     {s.recentAnomalies.map((a) => (
                       <li
                         key={a.id}
-                        className="text-xs rounded-md border border-orange-200 bg-orange-50/40 dark:bg-orange-950/20 px-3 py-1.5"
+                        className="text-xs rounded-md border border-orange-200 bg-orange-50/40 dark:bg-orange-950/20 px-3 py-1.5 flex items-start justify-between gap-2"
                       >
-                        <span className="font-medium">
-                          {CATEGORY_LABEL[a.category] ?? a.category}
-                        </span>
-                        {a.description && ` — ${a.description}`}
-                        <span className="ml-1 text-muted-foreground">
-                          ({fmtDateShort(a.occurredAt)})
-                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium">
+                            {CATEGORY_LABEL[a.category] ?? a.category}
+                          </span>
+                          {a.description && ` — ${a.description}`}
+                          <span className="ml-1 text-muted-foreground italic">
+                            · {formatRelativeLong(a.occurredAt)}
+                          </span>
+                        </div>
+                        {!publicView && (
+                          <ResolveAnomalyButton anomalyId={a.id} />
+                        )}
                       </li>
                     ))}
                   </ul>
+                  <p className="text-[10px] text-muted-foreground italic">
+                    Les anomalies résolues n&apos;apparaissent plus dans les briefs.
+                    Tu peux marquer résolu directement ici.
+                  </p>
                 </div>
               )}
 

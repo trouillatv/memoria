@@ -183,23 +183,31 @@ async function buildSiteContextEntry(
     .order('created_at', { ascending: false })
     .limit(8)
 
-  // Anomalies récentes sur ce site (via interventions du site)
+  // Anomalies récentes sur ce site — Sprint D : filtre par défaut sur
+  // status='open' + cutoff 90 jours (philosophie-de-loubli). Les anomalies
+  // résolues ou ignorées ne polluent plus les briefs ; les anomalies très
+  // anciennes non plus. Le manager peut quand même les consulter via la
+  // fiche site `/sites/[id]`.
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
   const { data: anomalies } = await admin
     .from('intervention_anomalies')
     .select(`
-      id, category, description, occurred_at, severity,
+      id, category, description, created_at, status,
       intervention:interventions!inner(
         mission:missions!inner(site_id)
       )
     `)
-    .order('occurred_at', { ascending: false })
+    .eq('status', 'open')
+    .gte('created_at', ninetyDaysAgo)
+    .order('created_at', { ascending: false })
     .limit(40)
 
   type AnomalyRow = {
     id: string
     category: string
     description: string | null
-    occurred_at: string
+    created_at: string
+    status: string
     intervention:
       | { mission: { site_id: string } | { site_id: string }[] }
       | { mission: { site_id: string } | { site_id: string }[] }[]
@@ -216,7 +224,7 @@ async function buildSiteContextEntry(
       id: a.id,
       category: a.category,
       description: a.description ?? '',
-      occurredAt: a.occurred_at,
+      occurredAt: a.created_at,
     })
   }
 
