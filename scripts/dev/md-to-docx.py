@@ -13,6 +13,18 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "docs" / "MODE_EMPLOI.md"
 DST = ROOT / "docs" / "MODE_EMPLOI.docx"
 
+# Fallback si DST verrouillé (Word ouvert) — on écrit à côté.
+if DST.exists():
+    try:
+        # test ouverture en écriture
+        with open(DST, 'ab') as _f:
+            pass
+    except (PermissionError, OSError):
+        import datetime
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+        DST = ROOT / "docs" / f"MODE_EMPLOI.regen-{ts}.docx"
+        print(f"[INFO] MODE_EMPLOI.docx verrouillé → écriture dans {DST.name}")
+
 BRAND = RGBColor(0xC0, 0x39, 0x2B)   # rouge bordeaux MemorIA
 MUTED = RGBColor(0x6B, 0x6B, 0x6B)
 CODE_BG = RGBColor(0xF4, 0xF4, 0xF4)

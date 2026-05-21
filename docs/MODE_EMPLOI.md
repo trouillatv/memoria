@@ -15,18 +15,19 @@
 6. [La Vue Semaine](#6-la-vue-semaine)
 7. [Le Briefing du soir](#7-le-briefing-du-soir)
 8. [Les Missions](#8-les-missions)
-9. [Les Équipes](#9-les-équipes)
+9. [Les Équipes — l'identité visuelle et la fiche enrichie](#9-les-équipes--lidentité-visuelle-et-la-fiche-enrichie)
 10. [Les Sites — la mémoire vivante du lieu](#10-les-sites--la-mémoire-vivante-du-lieu)
 11. [Les Contrats](#11-les-contrats)
 12. [Les Appels d'Offres (AO) — votre wedge premium](#12-les-appels-doffres-ao--votre-wedge-premium)
 13. [La Bibliothèque](#13-la-bibliothèque)
 14. [Les Intervenants (manager + admin)](#14-les-intervenants-manager--admin)
-15. [Le Dossier de preuves](#15-le-dossier-de-preuves)
-16. [Le mode mobile chef d'équipe](#16-le-mode-mobile-chef-déquipe)
-17. [Le bouton Feedback](#17-le-bouton-feedback)
-18. [Administration (admin only)](#18-administration-admin-only)
-19. [Doctrines à respecter pendant le pilote](#19-doctrines-à-respecter-pendant-le-pilote)
-20. [Que faire si…](#20-que-faire-si)
+15. [**Les Passages de témoin — le killer feature**](#15-les-passages-de-témoin--le-killer-feature)
+16. [Le Dossier de preuves](#16-le-dossier-de-preuves)
+17. [Le mode mobile chef d'équipe](#17-le-mode-mobile-chef-déquipe)
+18. [Le bouton Feedback](#18-le-bouton-feedback)
+19. [Administration (admin only)](#19-administration-admin-only)
+20. [Doctrines à respecter pendant le pilote](#20-doctrines-à-respecter-pendant-le-pilote)
+21. [Que faire si…](#21-que-faire-si)
 
 ---
 
@@ -209,22 +210,58 @@ Une fois la mission créée, **il faut créer au moins un template de récurrenc
 
 ---
 
-## 9. Les Équipes
+## 9. Les Équipes — l'identité visuelle et la fiche enrichie
 
-URL : `/equipes`
+URL : `/equipes` (liste) → click sur le badge ou l'icône lien → `/equipes/[id]` (fiche)
 
 ### Ce que c'est
-Une **équipe** = un conteneur logistique. Plusieurs chefs d'équipe + agents y sont rattachés. Une équipe a un nom, une couleur (pour identification visuelle), un référent.
+Une **équipe** = un conteneur logistique. Plusieurs chefs d'équipe + agents y sont rattachés. Une équipe a un nom, une **couleur + icône**, un référent, des spécialités déclarées.
 
 ### Doctrine importante
-- Une équipe a une **couleur visible** dans toute l'app (sur les cellules de la semaine, dans les badges).
+- L'identité visuelle (couleur + icône) est un **repère**, jamais une sémantique.
 - L'effectif (nombre d'agents) est **descriptif**, jamais une métrique de performance.
-- **« Non-affecté »** est un statut ambre normal — pas une alarme.
+- Aucune comparaison inter-équipes nulle part dans l'app.
 
-### Ce que vous pouvez faire
-- Créer / archiver une équipe
-- Ajouter / retirer des membres
-- Définir un référent (membre qui a un rôle de coordination informel)
+### Sur la liste `/equipes` (admin + manager)
+- **Bouton « Nouvelle équipe »** : nom + aperçu live 3 variantes + couleur (12 swatches sobres ou hex libre) + icône (18 pictogrammes : `spray-can`, `flower-2`, `shield-check`, `hospital`…)
+- Pour chaque équipe en ligne :
+  - 🎨 **Bouton palette** : modifier nom / couleur / icône à posteriori
+  - 🔗 **Bouton lien** : ouvrir la fiche enrichie `/equipes/[id]`
+  - 👥 **Bouton Éditer** : composition (ajouter / retirer des membres)
+  - **Archive** : soft-delete (l'historique reste)
+
+### La fiche équipe `/equipes/[id]` (admin + manager)
+**Inspirée des fiches Site et Intervenant**. Centrée sur l'équipe comme entité opérationnelle.
+
+1. **Header** : badge équipe (couleur + icône + nom), référent, ancienneté (« créée il y a 8 mois »), effectif descriptif.
+2. **Spécialités déclarées** (édition inline) : 12 tags whitelistés (bio-nettoyage, vitrerie, vitres-hauteur, espaces-verts, hospitalier, bureaux, écoles, industriel, résidentiel, conciergerie, désinfection, monobrosse). Max 12 sélectionnés. **Servent au matcher AO.**
+3. **5 compteurs descriptifs** :
+   - Sites couverts
+   - Contrats touchés
+   - Interventions documentées
+   - Photos déposées
+   - Anomalies traitées
+4. **Rythme — 14 derniers jours** : densité quotidienne avec tooltips
+5. **Densité — 90 derniers jours** : heatmap calendrier (façon GitHub), 4 niveaux d'intensité descriptifs
+6. **Sites favoris** (top 8 par fréquence) — cliquables
+7. **Contrats touchés** (top 8) — cliquables
+8. **Photos récentes** (8 dernières, thumbnails)
+9. **Équipes voisines** : équipes qui partagent au moins un membre OU un site avec celle-ci (utiles pour back-up et passage de témoin)
+10. **Composition actuelle** : membres + tag « Réf. »
+11. **Activité récente** : 15 dernières interventions
+
+**Rappel doctrine en pied** : *« Toutes les données affichées ici sont descriptives. Aucune comparaison inter-équipes, aucun classement, aucun score. »*
+
+### Le mode contrasté pour impression papier
+Le badge équipe a 3 variantes automatiques selon le contexte :
+- **Coloré** (défaut) : sur dashboard et Semaine
+- **Point compact** : dans les cellules denses
+- **Monochrome** : pour impression N&B et daltoniens. Si tu imprimes ton planning et le distribues à un référent, **l'icône reste lisible sans la couleur**.
+
+### Spécialité → matcher AO
+Quand un AO arrive et qu'il parle de bio-nettoyage hospitalier, MemorIA peut proposer (dans le wizard de conversion AO → contrat) : *« 2 équipes connaissent cette spécialité : Équipe Magenta, Équipe Médipôle. »* Tu réutilises le capital de connaissance.
+
+---
 
 ---
 
@@ -405,7 +442,94 @@ Cette page **donne accès aux fiches individuelles** des agents (nom, sites conn
 
 ---
 
-## 15. Le Dossier de preuves
+## 15. Les Passages de témoin — le killer feature
+
+URL : `/handovers` (liste) + `/handovers/[id]` (détail) + `/h/[token]` (URL publique partagée)
+
+### Pourquoi c'est central
+Quand Sandrine quitte ton équipe, **toute la mémoire qu'elle avait des sites qu'elle couvrait part avec elle dans sa tête**. Joseph qui la remplace lundi à 5h30 sur le CHT Magenta n'a aucune idée :
+- Que le SAS B est en travaux et qu'il faut passer par le C après 19h
+- Que le client Pascal préfère qu'on le prévienne par WhatsApp
+- Qu'il y a eu 3 anomalies « produit manquant » en mars
+- Qu'il existe un plan d'accès stocké avec le code badge
+- Qu'une autre équipe (Beta) peut faire du back-up
+
+**MemorIA compile tout ça en 2 secondes** dans un brief immuable et partageable.
+
+### Deux types de briefs
+
+#### Type 1 — Changement d'équipe
+**Déclenché depuis** `/intervenants/[id]` → bouton **« Préparer un passage de témoin »**
+**Manager + admin uniquement** (self exclu — une personne ne génère pas son propre brief)
+
+Tu choisis :
+- L'équipe d'origine de la personne (optionnel — sinon prend toutes ses équipes actives)
+- L'équipe de destination (optionnel)
+
+MemorIA compile un brief multi-sites focalisé sur ce que cette personne couvrait.
+
+#### Type 2 — Prise de nouveau site
+**Déclenché depuis** `/equipes/[id]` → bouton **« Brief pour une prise de site »**
+
+Tu choisis :
+- Le site que l'équipe va prendre
+
+MemorIA compile un brief mono-site avec toute la mémoire accumulée par les équipes précédentes.
+
+### Le contenu du brief
+Pour chaque site concerné, MemorIA inclut :
+- 📌 **À savoir** : consignes persistantes actives du site (8 max)
+- 🚨 **Anomalies actives** : `status='open'` + 90 derniers jours uniquement (5 max). **Pas de bruit historique.**
+- 📄 **Documents rattachés** : plans d'accès, codes badge, protocoles — sauf litiges (exclus automatiquement)
+- 👥 **Équipes voisines** : qui d'autre connaît ce site, pour back-up (4 max)
+- 🔢 **Compteurs** : nombre d'interventions documentées + dernière date
+
+Plus une **zone de notes manager** que tu peux ajouter (« Pascal préfère WhatsApp »).
+
+### Le partage public `/h/[token]`
+1. Sur la page du brief, tu cliques **« Partager (URL publique) »**
+2. Tu choisis la durée (1 à 60 jours)
+3. MemorIA génère un **QR code** + une URL `https://memoria.exemple.fr/h/abc123xyz...`
+4. Tu screenshotes le QR → tu l'envoies sur WhatsApp à Joseph
+5. Joseph ouvre sur son téléphone **sans login**, lit le brief, clique **« C'est lu, j'ai compris »**
+6. Côté admin, le brief bascule en « Reconnu » avec horodatage
+
+Le QR et l'URL sont **mobile-first** — pensés pour être lus à 5h30 sous la lumière d'un parking.
+
+### Le snapshot immuable
+Une fois généré, le brief **fige son contenu**. Si tu le rouvres 6 mois plus tard, il montre **6 mois en arrière**, pas la version actuelle. C'est important pour :
+- **Audit** : on peut prouver ce qui a été transmis à qui
+- **Responsabilité** : qui savait quoi à quel moment
+- **Continuité** : la mémoire transmise ne se réécrit pas
+
+Seules les **notes manager** restent éditables. Le reste est figé.
+
+### La mémoire qui vieillit
+Si Joseph reçoit un brief avec 38 anomalies dont 80% sont anciennes, MemorIA devient anxiogène. Donc :
+
+- ✅ Les anomalies **résolues** n'apparaissent plus dans les briefs (un manager peut résoudre une anomalie **directement depuis le brief** via le bouton « Résoudre »)
+- ✅ Les anomalies **plus de 90 jours** sont automatiquement exclues
+- ✅ Chaque anomalie affiche son âge en clair (« il y a 3 jours », « il y a 2 mois »)
+
+### Cycle de vie d'un brief
+```
+À transmettre → Partagé → Reconnu → Archivé
+```
+4 onglets sur `/handovers` avec compteurs.
+
+### Doctrine stricte
+Le brief documente **LES SITES** et la mémoire utile à transmettre. **JAMAIS** la personne qui s'en va.
+
+| ✅ Autorisé | ❌ Interdit |
+|---|---|
+| « 3 sites concernés » | « Évaluation de la personne » |
+| « Voici les À savoir » | « Pourquoi elle part » |
+| « Anomalies actives » | « Sa performance passée » |
+| « Équipes voisines pour back-up » | « Sa note de fin de contrat » |
+
+---
+
+## 16. Le Dossier de preuves
 
 URL : `/preuves`
 
@@ -423,7 +547,7 @@ Pour chaque preuve, vous pouvez générer un **token de partage** (URL signée, 
 
 ---
 
-## 16. Le mode mobile chef d'équipe
+## 17. Le mode mobile chef d'équipe
 
 URL : `/m` (sur smartphone — accès direct depuis le navigateur)
 
@@ -459,7 +583,7 @@ Click sur une intervention → page détaillée :
 
 ---
 
-## 17. Le bouton Feedback
+## 18. Le bouton Feedback
 
 ### Où le trouver
 Bouton **rond noir flottant** en bas à droite, sur **toutes les pages du dashboard desktop** (manager + admin). Pas sur mobile chef.
@@ -482,7 +606,7 @@ Vos retours arrivent dans `/admin/feedback` avec un statut (À traiter / Traité
 
 ---
 
-## 18. Administration (admin only)
+## 19. Administration (admin only)
 
 URL : `/admin`
 
@@ -516,7 +640,7 @@ URL : `/admin`
 
 ---
 
-## 19. Doctrines à respecter pendant le pilote
+## 20. Doctrines à respecter pendant le pilote
 
 Ces règles sont **gravées dans le code** par des tests automatiques. Elles ne sont pas négociables — elles protègent l'identité du produit.
 
@@ -549,7 +673,7 @@ L'UI protège la doctrine. **Vous pouvez la casser hors-UI en 2 phrases.**
 
 ---
 
-## 20. Que faire si…
+## 21. Que faire si…
 
 ### …j'ai un bug ?
 1. Bouton **Feedback** flottant, en bas à droite
