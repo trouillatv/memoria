@@ -205,10 +205,9 @@ export function TraceStream({ events, meta }: Props) {
               ),
             )
           : 0
-        // Vincent 2026-05-21 — gaps condensés (cap à 40px au lieu de 80px,
-        // suppression des micro-gaps < 8px pour densifier).
-        const rawGap = idx === 0 ? 0 : Math.min(gapHeightPx(daysBetween), 40)
-        const gapPx = rawGap < 8 ? 0 : rawGap
+        // Vincent 2026-05-21 — gaps quasi-supprimés : seuls les silences
+        // > 14 jours dessinent un mini-marqueur. Le reste = densité max.
+        const gapPx = idx === 0 ? 0 : daysBetween > 14 ? 16 : 0
         const showSilence = idx > 0 && shouldRenderSilenceMarker(daysBetween)
         const silenceText = showSilence ? silenceLabel(daysBetween) : null
 
@@ -261,33 +260,29 @@ function TraceLine({ event, opacity, ageDays }: TraceLineProps) {
   const Icon = TYPE_ICON[event.type]
   const iconColor = TYPE_ICON_COLOR[event.type]
 
+  // Vincent 2026-05-21 — densité quasi maximale (style taskHistory, cf. plus haut).
+  // Une seule ligne par event : badge + icône inline + titre + date à droite.
   const inner = (
     <div
-      className={`flex items-start gap-2 py-1 px-1.5 ${borderClass}`}
-      style={{ opacity, paddingLeft: borderClass ? 10 : 6 }}
+      className={`flex items-baseline gap-1.5 py-px px-1 ${borderClass}`}
+      style={{ opacity, paddingLeft: borderClass ? 8 : 4 }}
     >
-      <Icon className={`h-3 w-3 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
-            <span
-              className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide leading-tight ${TYPE_BADGE_CLASS[event.type]}`}
-              title={`Source : ${badgeLabelFor(event).toLowerCase()}`}
-            >
-              {badgeLabelFor(event)}
-            </span>
-            <span className="text-[13px] leading-snug">{event.title}</span>
-          </div>
-          <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
-            {dateLabel}
-          </span>
-        </div>
+      <Icon className={`h-2.5 w-2.5 shrink-0 ${iconColor}`} aria-hidden />
+      <span
+        className={`shrink-0 inline-flex items-center rounded border px-1 py-0 text-[9px] font-semibold uppercase tracking-tight leading-snug ${TYPE_BADGE_CLASS[event.type]}`}
+        title={`Source : ${badgeLabelFor(event).toLowerCase()}`}
+      >
+        {badgeLabelFor(event)}
+      </span>
+      <span className="text-xs leading-snug min-w-0 flex-1 truncate">
+        {event.title}
         {event.detail && (
-          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
-            {event.detail}
-          </p>
+          <span className="text-muted-foreground/70 ml-1.5">· {event.detail}</span>
         )}
-      </div>
+      </span>
+      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+        {dateLabel}
+      </span>
     </div>
   )
 
