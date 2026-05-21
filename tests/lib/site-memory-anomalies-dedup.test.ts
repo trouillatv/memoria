@@ -197,6 +197,79 @@ describe('processAnomaliesForMemory — dedup A + collapse B', () => {
     expect(out.every((e) => e.meta?.grouped !== true)).toBe(true)
   })
 
+  // ────────────────── CAS 5 : doublons anomaly ↔ anomaly ──────────────────
+
+  it('dédoublonne 2 anomalies à description identique sur la MÊME intervention', () => {
+    const out = processAnomaliesForMemory({
+      anomalies: [
+        anomaly({
+          id: 'a-1',
+          intervention_id: 'i-1',
+          description: 'Nettoyage couloir interrompu hier soir, à signaler au PC sécurité.',
+          created_at: '2026-05-20T08:00:00.000Z',
+        }),
+        anomaly({
+          id: 'a-2',
+          intervention_id: 'i-1',
+          description: 'Nettoyage couloir interrompu hier soir, à signaler au PC sécurité.',
+          created_at: '2026-05-20T08:01:30.000Z',
+        }),
+      ],
+      interventionNotesById: new Map(),
+      excludeAnomalyIds: new Set(),
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.id).toBe('a-1') // la première chronologiquement
+  })
+
+  it('dédoublonne 2 anomalies à description identique le MÊME JOUR (interventions différentes)', () => {
+    // Cas réel : agent saisit la même chose sur 2 interventions du même jour.
+    const out = processAnomaliesForMemory({
+      anomalies: [
+        anomaly({
+          id: 'a-1',
+          intervention_id: 'i-1',
+          description: 'Fuite donc arrêt',
+          created_at: '2026-05-20T08:00:00.000Z',
+        }),
+        anomaly({
+          id: 'a-2',
+          intervention_id: 'i-2',
+          description: 'Fuite donc arrêt',
+          created_at: '2026-05-20T14:00:00.000Z',
+        }),
+      ],
+      interventionNotesById: new Map(),
+      excludeAnomalyIds: new Set(),
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.id).toBe('a-1')
+  })
+
+  it('ne dédoublonne PAS 2 anomalies à description identique sur des JOURS différents', () => {
+    // Si la même phrase revient à 2 jours d'écart → signal récurrent, pas
+    // un doublon humain. Garder.
+    const out = processAnomaliesForMemory({
+      anomalies: [
+        anomaly({
+          id: 'a-1',
+          intervention_id: 'i-1',
+          description: 'Fuite donc arrêt',
+          created_at: '2026-05-20T08:00:00.000Z',
+        }),
+        anomaly({
+          id: 'a-2',
+          intervention_id: 'i-2',
+          description: 'Fuite donc arrêt',
+          created_at: '2026-05-22T08:00:00.000Z',
+        }),
+      ],
+      interventionNotesById: new Map(),
+      excludeAnomalyIds: new Set(),
+    })
+    expect(out).toHaveLength(2)
+  })
+
   // ────────────────────────── Bonus : exclusions ──────────────────────────
 
   it('respecte excludeAnomalyIds (ex. incidents d\'accès)', () => {

@@ -87,13 +87,40 @@ export function processAnomaliesForMemory(
     return true
   })
 
+  // Étape 1bis (Vincent 2026-05-21 — fix #2) : dédup anomalies/anomalies à
+  // description normalisée IDENTIQUE sur la même intervention OU le même jour.
+  // Cas typique : un agent qui re-clique « Signaler » et resoumet la même
+  // anomalie. On garde la 1ʳᵉ chronologiquement, on jette les suivantes.
+  const seenDescKeys = new Set<string>()
+  const dedupedFiltered: AnomalyInputRow[] = []
+  // Tri ascendant par created_at pour garder la première occurrence
+  const sortedByDate = [...filtered].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at),
+  )
+  for (const a of sortedByDate) {
+    const desc = normalizeText(a.description)
+    if (desc.length === 0) {
+      dedupedFiltered.push(a) // anomalies génériques → étape B
+      continue
+    }
+    // Clé : description + (intervention OU jour). On dédup si MÊME desc sur
+    // MÊME intervention OU MÊME desc sur MÊME jour civil (≥ 2 signalements
+    // identiques le même jour = très probablement un doublon humain).
+    const keyIntv = `intv::${a.intervention_id}::${desc}`
+    const keyDay = `day::${dateCivilOf(a.created_at)}::${desc}`
+    if (seenDescKeys.has(keyIntv) || seenDescKeys.has(keyDay)) continue
+    seenDescKeys.add(keyIntv)
+    seenDescKeys.add(keyDay)
+    dedupedFiltered.push(a)
+  }
+
   // Étape 2 : séparer celles avec contenu libre (à push individuellement) des
   // celles génériques (candidates au collapse B).
   const richAnomalies: AnomalyInputRow[] = []
   type GroupKey = string // `${date_civile}::${category}`
   const genericGroups = new Map<GroupKey, AnomalyInputRow[]>()
 
-  for (const a of filtered) {
+  for (const a of dedupedFiltered) {
     const hasDesc = normalizeText(a.description).length > 0
     const hasOther = normalizeText(a.category_other).length > 0
     if (hasDesc || hasOther) {
