@@ -57,3 +57,9 @@ dev.log
 # Backups
 *.bak
 .env*.local
+
+# Vincent 2026-05-22 — notes personnelles ChatGPT (PDF lourd + OCR extrait)
+docs/ChatGPT/
+
+# Word lock files
+docs/~$*.docx
