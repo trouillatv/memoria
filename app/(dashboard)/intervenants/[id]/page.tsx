@@ -301,9 +301,9 @@ export default async function IntervenantDetailPage({ params }: Props) {
           <CardContent className="space-y-3">
             <HeatmapCalendar cells={heatmap} days={90} />
             <p className="text-[10px] text-muted-foreground leading-relaxed">
-              Chaque carré = un jour. Plus la couleur est foncée, plus il y a eu
-              d&apos;interventions ce jour-là. Lecture verticale = semaine (lundi en haut,
-              dimanche en bas) ; lecture horizontale = semaines successives.
+              Chaque carré = un jour. Une ligne = une semaine (lundi à dimanche).
+              Les semaines les plus récentes sont en bas. Plus la couleur est foncée,
+              plus il y a eu d&apos;interventions ce jour-là. Aujourd&apos;hui : carré entouré.
             </p>
             {traces.lastTraceAt && (
               <p className="text-[11px] text-muted-foreground">
@@ -707,11 +707,40 @@ function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
   const countByDate = new Map(cells.map((c) => [c.date, c.count]))
   const today = new Date()
   today.setUTCHours(0, 0, 0, 0)
-  const dates: string[] = []
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today)
-    d.setUTCDate(today.getUTCDate() - i)
-    dates.push(d.toISOString().slice(0, 10))
+  const todayIso = today.toISOString().slice(0, 10)
+
+  // V6.2 (Vincent 2026-05-21) — layout calendrier standard :
+  //   1 ligne = 1 semaine (lundi → dimanche horizontalement)
+  //   N lignes empilées de la plus ancienne (haut) à la plus récente (bas)
+  //   La semaine en cours est la dernière ligne.
+
+  // Trouver le lundi de la semaine qui contient aujourd'hui (ancrage bas)
+  const todayDow = today.getUTCDay() // 0 = dim, 1 = lun, ..., 6 = sam
+  const offsetToMonday = todayDow === 0 ? 6 : todayDow - 1
+  const lastMonday = new Date(today)
+  lastMonday.setUTCDate(today.getUTCDate() - offsetToMonday)
+
+  // Nombre de semaines à afficher (ceiling)
+  const totalWeeks = Math.ceil(days / 7)
+
+  // Construire toutes les semaines, de la plus ancienne à la plus récente
+  const weeks: Array<Array<{ date: string; inWindow: boolean }>> = []
+  const windowStart = new Date(today)
+  windowStart.setUTCDate(today.getUTCDate() - days + 1)
+  const windowStartIso = windowStart.toISOString().slice(0, 10)
+
+  for (let w = totalWeeks - 1; w >= 0; w--) {
+    const monday = new Date(lastMonday)
+    monday.setUTCDate(lastMonday.getUTCDate() - w * 7)
+    const week: Array<{ date: string; inWindow: boolean }> = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday)
+      d.setUTCDate(monday.getUTCDate() + i)
+      const iso = d.toISOString().slice(0, 10)
+      const inWindow = iso >= windowStartIso && iso <= todayIso
+      week.push({ date: iso, inWindow })
+    }
+    weeks.push(week)
   }
 
   function intensityClass(count: number): string {
@@ -721,36 +750,41 @@ function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
     return 'bg-brand-600'
   }
 
-  const weeks: string[][] = []
-  let currentWeek: string[] = []
-  for (const date of dates) {
-    const dow = new Date(date + 'T00:00:00Z').getUTCDay()
-    if (currentWeek.length === 0 && dow !== 1) {
-      for (let i = 1; i <= (dow === 0 ? 6 : dow - 1); i++) currentWeek.push('')
-    }
-    currentWeek.push(date)
-    if (currentWeek.length === 7) {
-      weeks.push(currentWeek)
-      currentWeek = []
-    }
-  }
-  if (currentWeek.length > 0) {
-    while (currentWeek.length < 7) currentWeek.push('')
-    weeks.push(currentWeek)
-  }
+  const weekdayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex gap-1 overflow-x-auto" aria-label={`Activité sur ${days} jours`}>
+    <div className="space-y-1.5">
+      {/* En-tête : jours de la semaine */}
+      <div className="grid grid-cols-7 gap-1 max-w-[200px]">
+        {weekdayLabels.map((d, i) => (
+          <div key={i} className="text-[9px] text-muted-foreground text-center font-medium">
+            {d}
+          </div>
+        ))}
+      </div>
+      {/* Grille : chaque ligne = 1 semaine, lun → dim */}
+      <div className="flex flex-col gap-1" aria-label={`Activité sur ${days} jours`}>
         {weeks.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-1">
-            {week.map((date, di) => {
-              if (!date) return <div key={di} className="w-3 h-3" />
+          <div key={wi} className="grid grid-cols-7 gap-1 max-w-[200px]">
+            {week.map(({ date, inWindow }) => {
               const count = countByDate.get(date) ?? 0
+              const isFuture = date > todayIso
+              const isToday = date === todayIso
+              if (!inWindow) {
+                return (
+                  <div
+                    key={date}
+                    className={`w-6 h-6 rounded-[3px] ${isFuture ? 'bg-transparent' : 'bg-muted/15'}`}
+                    aria-hidden
+                  />
+                )
+              }
               return (
                 <div
                   key={date}
-                  className={`w-3 h-3 rounded-[2px] ${intensityClass(count)}`}
+                  className={`w-6 h-6 rounded-[3px] ${intensityClass(count)} ${
+                    isToday ? 'ring-1 ring-foreground/40' : ''
+                  }`}
                   title={`${formatDateFr(date)} : ${count} intervention${count > 1 ? 's' : ''}`}
                 />
               )
@@ -758,7 +792,7 @@ function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
+      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-2">
         <span>Moins</span>
         <div className="w-2.5 h-2.5 rounded-[2px] bg-muted/40" />
         <div className="w-2.5 h-2.5 rounded-[2px] bg-brand-200" />
