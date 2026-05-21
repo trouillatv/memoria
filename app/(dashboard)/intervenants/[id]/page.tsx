@@ -50,6 +50,8 @@ import { logAuditEvent } from '@/lib/audit/log'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { IntervenantPhotoGallery } from './IntervenantPhotoGallery'
 import { IntervenantRhythm } from './IntervenantRhythm'
+import { CreateMemberChangeButton } from '@/app/(dashboard)/handovers/CreateMemberChangeButton'
+import { listTeams } from '@/lib/db/teams'
 import type { InterventionSlot } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -109,7 +111,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [overview, sites, contracts, recent, traces, heatmap, photos, teamsHistory, collaborators, incidents, rhythm] = await Promise.all([
+  const [overview, sites, contracts, recent, traces, heatmap, photos, teamsHistory, collaborators, incidents, rhythm, allTeams] = await Promise.all([
     getIntervenantOverview(targetId),
     listIntervenantSitesAccumulated(targetId),
     listIntervenantContractsKnown(targetId),
@@ -121,6 +123,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
     listIntervenantCollaborators(targetId, 24), // 2 ans
     listIntervenantIncidentsPresence(targetId, 20),
     getIntervenantRecentRhythm(targetId, 14), // 14 derniers jours
+    listTeams(), // Sprint Équipes C : pour le sélecteur "vers" du brief
   ])
 
   if (!overview) notFound()
@@ -230,6 +233,22 @@ export default async function IntervenantDetailPage({ params }: Props) {
                   size="sm"
                 />
               ))}
+            </div>
+          )}
+
+          {/* Vincent 2026-05-22 — Sprint Équipes C : amorçage passage de témoin.
+              Manager+admin uniquement (self exclu pour garde-fou doctrinal :
+              une personne ne génère pas son propre brief). */}
+          {!access.access.isSelf && (
+            <div className="pt-2">
+              <CreateMemberChangeButton
+                subjectUserId={overview.id}
+                subjectLabel={
+                  (overview.full_name?.trim() || overview.email.split('@')[0] || 'cette personne')
+                }
+                currentTeams={overview.teams.map((t) => ({ id: t.team_id, name: t.team_name }))}
+                allTeams={allTeams.map((t) => ({ id: t.id, name: t.name }))}
+              />
             </div>
           )}
         </div>

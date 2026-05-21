@@ -12,6 +12,7 @@ import {
   MapPin,
   BookOpen,
   ShieldAlert,
+  ArrowRightLeft,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -29,6 +30,8 @@ export const NAV: NavItem[] = [
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   { href: '/missions',   label: 'Missions',               icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
+  // Vincent 2026-05-22 — Sprint Équipes C (passages de témoin).
+  { href: '/handovers',  label: 'Passages de témoin',     icon: ArrowRightLeft, roles: ['admin', 'manager'] },
   // Vincent 2026-05-21 — module Intervenants gated par ENV INTERVENANTS_PAGE_ENABLED.
   // Si la feature est désactivée côté serveur, la page renvoie 404 ; le lien reste
   // affiché mais inopérant (volontaire pour ne pas faire dépendre la nav d'une
