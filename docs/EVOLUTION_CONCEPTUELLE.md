@@ -230,6 +230,53 @@ Sprint E **passe le test des 4 questions** de la discipline d'apparition. Mais *
 
 ---
 
+## 22 mai 2026 — Le cadrage des primitives (post-Sprint E)
+
+Après livraison Sprint E (continuité anticipée), **un nouveau niveau d'abstraction** émerge dans une analyse stratégique partagée :
+
+### MemorIA n'a pas 5 piliers — MemorIA a 7 primitives produit
+
+Le cadrage *« 5 piliers + 3 axes »* (mai 2026) tenait mais ne disait pas **ce qui se réutilise**. Le vrai pattern, à l'observation du code livré :
+
+> MemorIA est une bibliothèque de **7 mécaniques** qui savent quoi faire avec de la mémoire opérationnelle — recomposables sur n'importe quel substrat métier.
+
+**Les 7 primitives** : Mémoire · Oubli · Transmission · Récence · Passation · Limites humaines · Garde-fous.
+
+Cf. [foundations/primitives-produit.md](foundations/primitives-produit.md).
+
+**Implication** : on quitte le récit *« SaaS sectoriel nettoyage »* pour *« bibliothèque de primitives de continuité cognitive opérationnelle, validée d'abord sur le nettoyage »*. Plus ambitieux, plus défendable.
+
+### La qualité d'apparition — extension à 6 dimensions
+
+La doctrine [discipline-d'apparition](foundations/doctrine-memoire.md#6-la-discipline-dapparition-post-sprint-c) tient à 4 questions binaires (inclure / exclure une feature). Insuffisant pour **calibrer** ce qu'on a décidé d'inclure.
+
+Nouvelle grille à **6 dimensions** : *quand* / *comment* / *intensité* / *urgence* / *confiance* / *fatigue cognitive*.
+
+Cf. [foundations/qualite-dapparition.md](foundations/qualite-dapparition.md).
+
+**Implication** : la doctrine devient **calibratoire**, pas juste filtrante. Chaque surface visible doit avoir un score cohérent sur les 6 axes — sinon resserrement.
+
+### Le risque des deux morts opposées
+
+Risque existentiel **bilatéral** identifié :
+
+- **Cas 1 — Sous-intelligence** → MemorIA ressemble à un ERP banal, remplacé.
+- **Cas 2 — Surconstruction** → MemorIA devient anxiogène, étiquette flicage, rejet.
+
+Le travail produit n'est plus *« construire plus »*. C'est **rester exactement au milieu**.
+
+Cf. [foundations/risque-deux-morts-opposees.md](foundations/risque-deux-morts-opposees.md).
+
+**Implication** : ouverture de la **phase de gel** — observation pilote 14-30 jours, instrumentation des métriques de centrage, lecture quotidienne du dashboard d'observation par Vincent. **Aucune nouvelle feature** pendant ce temps.
+
+### La phrase qui résume ce moment
+
+> **MemorIA ne stocke plus seulement des informations. MemorIA gère le cycle de vie de la mémoire humaine.**
+
+C'est l'observation qui change tout : on est passé d'un système qui *accumule* à un système qui *organise dans le temps*. Avant Sprint D, la mémoire était cumulative. Après, elle est **organique**.
+
+---
+
 ## Postérité — Ce qu'on retient
 
 À cette date, MemorIA est en train de devenir :

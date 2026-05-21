@@ -25,6 +25,9 @@ Chaque fichier ici est **autonome** et **lisible séquentiellement**. Pas de ré
 - [**vision-produit.md**](vision-produit.md) — La phrase, le marché, le moat. Le cadre global.
 - [**continuite-operationnelle.md**](continuite-operationnelle.md) — Le repositionnement majeur du 22 mai 2026.
 - [**moat-stack-effect.md**](moat-stack-effect.md) — Pourquoi le produit est défendable.
+- [**primitives-produit.md**](primitives-produit.md) — Les 7 primitives recomposables (mémoire / oubli / transmission / récence / passation / limites humaines / garde-fous). Le vrai actif réutilisable.
+- [**qualite-dapparition.md**](qualite-dapparition.md) — La grille à 6 dimensions pour calibrer chaque surface (quand / comment / intensité / urgence / confiance / fatigue cognitive).
+- [**risque-deux-morts-opposees.md**](risque-deux-morts-opposees.md) — Le risque existentiel bilatéral. La discipline du centre.
 
 ### 🧠 Architecture mémoire
 - [**doctrine-memoire.md**](doctrine-memoire.md) — Les 3 couches, écho juste, jury 4 classes, silence positif, philosophie de l'oubli, temps mémoriel.
