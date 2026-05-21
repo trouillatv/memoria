@@ -64,6 +64,38 @@ const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
   access: 'text-muted-foreground',
 }
 
+// Vincent 2026-05-21 — badge texte explicite pour que l'utilisateur sache
+// IMMÉDIATEMENT de quoi est faite chaque ligne (anomalie ? note ? passage ?
+// résonance ?). C'est SAISI PAR DES HUMAINS, pas généré par l'IA.
+const TYPE_BADGE_LABEL: Record<SiteMemoryEvent['type'], string> = {
+  intervention: 'Note d’intervention',
+  photo: 'Photo',
+  anomaly: 'Signalement',
+  note: 'Note de site',
+  a_savoir: 'À savoir',
+  access: 'Accès',
+}
+
+const TYPE_BADGE_CLASS: Record<SiteMemoryEvent['type'], string> = {
+  intervention: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700',
+  photo: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/30 dark:text-sky-200 dark:border-sky-800',
+  anomaly: 'bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800',
+  note: 'bg-stone-50 text-stone-700 border-stone-200 dark:bg-stone-900 dark:text-stone-200 dark:border-stone-700',
+  a_savoir: 'bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-200 dark:border-indigo-800',
+  access: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800',
+}
+
+function badgeLabelFor(event: SiteMemoryEvent): string {
+  // Cas spéciaux selon meta
+  if (event.type === 'anomaly' && event.meta?.grouped === true) {
+    return 'Signalements groupés'
+  }
+  if (event.type === 'access' && event.meta?.kind === 'incident') {
+    return 'Incident d’accès'
+  }
+  return TYPE_BADGE_LABEL[event.type]
+}
+
 interface Props {
   events: SiteMemoryEvent[]
   meta?: SiteMemoryMeta
@@ -107,11 +139,30 @@ export function TraceStream({ events, meta }: Props) {
       summaryParts.push(`${meta.photoCount} photo${meta.photoCount > 1 ? 's' : ''}`)
   }
 
+  // Vincent 2026-05-21 — types présents dans le flux, pour la légende compacte.
+  const typesPresent = new Set<SiteMemoryEvent['type']>(events.map((e) => e.type))
+  const LEGEND_ORDER: SiteMemoryEvent['type'][] = ['intervention', 'anomaly', 'note', 'a_savoir', 'photo', 'access']
+
   return (
     <div className="space-y-3">
       {summaryParts.length > 0 && (
         <p className="text-xs text-muted-foreground">{summaryParts.join(' · ')}</p>
       )}
+
+      {/* Légende des badges — explique l'origine de chaque ligne.
+          Vincent 2026-05-21 : on ne sait pas si c'est une anomalie / note /
+          passage / résonance. La légende lève toute ambiguïté. */}
+      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-muted-foreground">
+        <span className="uppercase tracking-wide">Légende :</span>
+        {LEGEND_ORDER.filter((t) => typesPresent.has(t)).map((t) => (
+          <span
+            key={t}
+            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 font-medium uppercase tracking-wide ${TYPE_BADGE_CLASS[t]}`}
+          >
+            {TYPE_BADGE_LABEL[t]}
+          </span>
+        ))}
+      </div>
       {/* Liste des tâches avec leur dernière date */}
       {meta && meta.taskHistory.length > 0 && (
         <ul className="space-y-0.5">
@@ -207,7 +258,15 @@ function TraceLine({ event, opacity, ageDays }: TraceLineProps) {
       <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${iconColor}`} aria-hidden />
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-3 flex-wrap">
-          <span className="text-sm leading-snug">{event.title}</span>
+          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+            <span
+              className={`shrink-0 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${TYPE_BADGE_CLASS[event.type]}`}
+              title={`Source : ${badgeLabelFor(event).toLowerCase()}`}
+            >
+              {badgeLabelFor(event)}
+            </span>
+            <span className="text-sm leading-snug">{event.title}</span>
+          </div>
           <span className="text-xs text-muted-foreground tabular-nums shrink-0">
             {dateLabel}
           </span>
