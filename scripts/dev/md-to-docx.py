@@ -1,29 +1,41 @@
-# Convertit docs/MODE_EMPLOI.md → docs/MODE_EMPLOI.docx
+# Convertit un .md de docs/ en .docx.
+#   Usage : python scripts/dev/md-to-docx.py [BASENAME]
+#   - sans argument → MODE_EMPLOI (+ copie public/manuel.docx)
+#   - avec argument → docs/{BASENAME}.md → docs/{BASENAME}.docx
+#     ex : python scripts/dev/md-to-docx.py COMPRENDRE_ARCHITECTURE
 # Parser markdown minimaliste : headers # à ####, listes -, tables |...|,
 # bold **, italic *, inline code `...`, lignes ---.
 # python-docx 1.2.0 — pas de dépendance externe à markdown.
 
 import re
+import sys
 from pathlib import Path
 from docx import Document
 from docx.shared import Pt, RGBColor, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "docs" / "MODE_EMPLOI.md"
-DST = ROOT / "docs" / "MODE_EMPLOI.docx"
+
+# Basename cible : argument CLI ou MODE_EMPLOI par défaut.
+BASENAME = sys.argv[1] if len(sys.argv) > 1 else "MODE_EMPLOI"
+SRC = ROOT / "docs" / f"{BASENAME}.md"
+DST = ROOT / "docs" / f"{BASENAME}.docx"
+
+if not SRC.exists():
+    print(f"[ERREUR] Source introuvable : {SRC}")
+    sys.exit(1)
 
 # Fallback si DST verrouillé (Word ouvert) — on écrit à côté.
 if DST.exists():
     try:
-        # test ouverture en écriture
-        with open(DST, 'ab') as _f:
-            pass
+        import os
+        fd = os.open(str(DST), os.O_RDWR)
+        os.close(fd)
     except (PermissionError, OSError):
         import datetime
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M")
-        DST = ROOT / "docs" / f"MODE_EMPLOI.regen-{ts}.docx"
-        print(f"[INFO] MODE_EMPLOI.docx verrouillé → écriture dans {DST.name}")
+        DST = ROOT / "docs" / f"{BASENAME}.regen-{ts}.docx"
+        print(f"[INFO] {BASENAME}.docx verrouille - ecriture dans {DST.name}")
 
 BRAND = RGBColor(0xC0, 0x39, 0x2B)   # rouge bordeaux MemorIA
 MUTED = RGBColor(0x6B, 0x6B, 0x6B)
@@ -185,13 +197,14 @@ def md_to_docx(md_path: Path, out_path: Path):
 
 if __name__ == '__main__':
     md_to_docx(SRC, DST)
-    # Vincent 2026-05-22 — copie aussi dans public/ pour servir au manager
-    # via /manuel sans devoir bricoler côté Next.js.
-    PUBLIC_DST = ROOT / "public" / "manuel.docx"
-    try:
-        import shutil
-        if DST.exists():
-            shutil.copy2(DST, PUBLIC_DST)
-            print(f"OK : copie servable {PUBLIC_DST}")
-    except Exception as e:
-        print(f"[WARN] copie public/manuel.docx echouee : {e}")
+    # Vincent 2026-05-22 — le mode d'emploi est aussi copié dans public/
+    # pour servir au manager via /manuel. Les autres docs non.
+    if BASENAME == "MODE_EMPLOI":
+        PUBLIC_DST = ROOT / "public" / "manuel.docx"
+        try:
+            import shutil
+            if DST.exists():
+                shutil.copy2(DST, PUBLIC_DST)
+                print(f"OK : copie servable {PUBLIC_DST}")
+        except Exception as e:
+            print(f"[WARN] copie public/manuel.docx echouee : {e}")
