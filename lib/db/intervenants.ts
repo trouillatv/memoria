@@ -19,6 +19,7 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSystemMissionName } from '@/lib/db/system-missions'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import type { DbUser } from '@/types/db'
 
 // ----------------------------------------------------------------------------
@@ -96,6 +97,19 @@ export interface IntervenantHeatmapCell {
   /** yyyy-mm-dd */
   date: string
   count: number
+}
+
+/** Photo récente déposée par l'intervenant — pour la galerie thumbnails. */
+export interface IntervenantPhotoEntry {
+  id: string
+  signedUrl: string
+  caption: string | null
+  kind: string
+  takenAt: string
+  interventionId: string
+  /** Site sur lequel la photo a été prise (pour grouper par site dans l'UI). */
+  siteId: string | null
+  siteName: string | null
 }
 
 /** Ligne de la liste `/intervenants`. */
@@ -656,4 +670,89 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
       lastParticipationDate: stats.lastAt,
     }
   })
+}
+
+// ----------------------------------------------------------------------------
+// listIntervenantRecentPhotos — galerie thumbnails
+// ----------------------------------------------------------------------------
+
+/**
+ * Photos récentes déposées par l'intervenant — pour la galerie thumbnails sur
+ * la page détail. Inspiré de `getSiteRecentPhotos` mais filtré par `taken_by`.
+ *
+ * Tri : priorité anomaly_evidence > captioned > recent.
+ * Cap par défaut : 12 (grille 4×3 confortable).
+ *
+ * Doctrine : c'est un agrégat user_id descriptif (l'allowlist de ce module
+ * l'autorise). Pas de score, pas de moyenne — juste les artefacts déposés.
+ */
+export async function listIntervenantRecentPhotos(
+  intervenantId: string,
+  limit: number = 12,
+): Promise<IntervenantPhotoEntry[]> {
+  const admin = createAdminClient()
+
+  const { data: photosRaw } = await admin
+    .from('intervention_photos')
+    .select(`
+      id,
+      storage_path,
+      caption,
+      kind,
+      taken_at,
+      intervention_id,
+      intervention:interventions!inner(
+        mission:missions!inner(
+          site:sites!inner(id, name)
+        )
+      )
+    `)
+    .eq('taken_by', intervenantId)
+    .not('storage_path', 'is', null)
+    .order('taken_at', { ascending: false })
+    .limit(limit * 4)
+
+  type PhotoRow = {
+    id: string
+    storage_path: string
+    caption: string | null
+    kind: string
+    taken_at: string
+    intervention_id: string
+    intervention: unknown
+  }
+  const rows = (photosRaw ?? []) as PhotoRow[]
+  if (rows.length === 0) return []
+
+  // Score de pertinence (cf. pattern getSiteRecentPhotos).
+  const score = (r: PhotoRow): number => {
+    if (r.kind === 'anomaly_evidence' || r.kind === 'anomaly') return 0
+    if (r.caption) return 1
+    return 2
+  }
+  rows.sort((a, b) => score(a) - score(b) || b.taken_at.localeCompare(a.taken_at))
+  const top = rows.slice(0, limit)
+
+  const urlMap = await getSignedPhotoUrlsThumb(top.map((p) => p.storage_path))
+
+  return top
+    .map((p) => {
+      const url = urlMap.get(p.storage_path)
+      if (!url) return null
+      const intv = pickOne(p.intervention) as { mission?: unknown } | null
+      const mission = intv ? (pickOne(intv.mission) as { site?: unknown } | null) : null
+      const site = mission ? (pickOne(mission.site) as { id?: string; name?: string } | null) : null
+      const entry: IntervenantPhotoEntry = {
+        id: p.id,
+        signedUrl: url,
+        caption: p.caption,
+        kind: p.kind,
+        takenAt: p.taken_at,
+        interventionId: p.intervention_id,
+        siteId: site?.id ?? null,
+        siteName: site?.name ?? null,
+      }
+      return entry
+    })
+    .filter((p): p is IntervenantPhotoEntry => p !== null)
 }

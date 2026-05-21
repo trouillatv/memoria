@@ -1,20 +1,30 @@
-// Page Intervenant détail — vue descriptive opérationnelle.
+// Page Intervenant détail — vue descriptive opérationnelle, refonte visuelle
+// inspirée de /sites/[id] (Vincent 2026-05-21).
 //
-// Vincent 2026-05-21 — TRANSGRESSION DOCTRINALE ASSUMÉE.
-// Doctrine source : mémoire projet `page-personne-pivot-transgression`.
-//
-// Garde-fous techniques appliqués (les 6 du pivot) :
-//   #1 Audit log obligatoire à chaque consultation (logAuditEvent)
-//   #2 Pas de score numérique calculé — uniquement compteurs descriptifs
-//   #3 Pas de comparaison côte à côte — une seule personne par page
-//   #4 Wording descriptif uniquement
-//   #5 Kill switch ENV `INTERVENANTS_PAGE_ENABLED` — 404 si désactivé
-//   #6 Allowlist user_id : agrégats dans lib/db/intervenants.ts uniquement
+// TRANSGRESSION DOCTRINALE ASSUMÉE — cf. mémoire `page-personne-pivot-transgression`.
+// Garde-fous techniques en place :
+//   #1 Audit log obligatoire à chaque consultation
+//   #2 Pas de score numérique calculé
+//   #3 Pas de comparaison côte à côte
+//   #4 Wording strictement descriptif
+//   #5 Kill switch ENV INTERVENANTS_PAGE_ENABLED
+//   #6 Allowlist user_id confinée dans lib/db/intervenants.ts
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Calendar, MapPin, FileText, AlertTriangle, Camera, Mic, ArrowRight, FileSignature,
+  Calendar,
+  MapPin,
+  FileText,
+  AlertTriangle,
+  Camera,
+  Mic,
+  ArrowRight,
+  FileSignature,
+  UserCircle,
+  Phone,
+  Mail,
+  BriefcaseBusiness,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -28,9 +38,11 @@ import {
   listIntervenantRecentInterventions,
   getIntervenantTracesSummary,
   getIntervenantHeatmap,
+  listIntervenantRecentPhotos,
 } from '@/lib/db/intervenants'
 import { logAuditEvent } from '@/lib/audit/log'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
+import { IntervenantPhotoGallery } from './IntervenantPhotoGallery'
 import type { InterventionSlot } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -69,6 +81,14 @@ function employmentLabelFr(type: 'cdi' | 'cdd' | 'cdi_chantier' | null): string 
   }
 }
 
+function initialsOf(label: string | null): string {
+  if (!label) return '?'
+  const parts = label.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return (parts[0]!.charAt(0) + parts[parts.length - 1]!.charAt(0)).toUpperCase()
+}
+
 interface Props {
   params: Promise<{ id: string }>
 }
@@ -82,18 +102,18 @@ export default async function IntervenantDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [overview, sites, contracts, recent, traces, heatmap] = await Promise.all([
+  const [overview, sites, contracts, recent, traces, heatmap, photos] = await Promise.all([
     getIntervenantOverview(targetId),
     listIntervenantSitesAccumulated(targetId),
     listIntervenantContractsKnown(targetId),
     listIntervenantRecentInterventions(targetId, 20),
     getIntervenantTracesSummary(targetId),
     getIntervenantHeatmap(targetId, 90),
+    listIntervenantRecentPhotos(targetId, 12),
   ])
 
   if (!overview) notFound()
 
-  // Audit log obligatoire — sauf self-consultation.
   if (!access.access.isSelf) {
     await logAuditEvent({
       userId: access.access.viewer.id,
@@ -109,131 +129,162 @@ export default async function IntervenantDetailPage({ params }: Props) {
   }
 
   const displayName = overview.full_name ?? overview.email
+  const initials = initialsOf(overview.full_name ?? overview.email.split('@')[0] ?? null)
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Bandeau pivot doctrinal */}
+    <div className="space-y-6 max-w-5xl">
+      <Link
+        href="/intervenants"
+        className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+      >
+        ← Intervenants
+      </Link>
+
+      {/* ── Bandeau pivot doctrinal — discret, en haut ─────────────────── */}
       <div
         role="note"
-        className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900/90 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200/90"
+        className="flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50/40 px-3 py-1.5 text-[11px] text-amber-900/80 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200/70"
       >
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden />
+        <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" aria-hidden />
         <p>
-          Vue opérationnelle descriptive — <strong>jamais évaluative</strong>. Les chiffres
-          sont des faits accumulés, pas des scores ni des classements. Cette consultation
-          est tracée dans le journal d&apos;activité.
+          Vue descriptive opérationnelle — chiffres = faits cumulés, jamais scores ni
+          classements. Consultation tracée.
         </p>
       </div>
 
-      {/* ── Section 1 : Identité opérationnelle ─────────────────────────── */}
-      <header className="space-y-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-2xl font-semibold">{displayName}</h1>
-          <Badge variant="outline" className="text-xs">
-            {roleLabelFr(overview.role)}
-          </Badge>
-          {access.access.isSelf && (
-            <Badge variant="outline" className="text-xs bg-sky-50 border-sky-200 text-sky-900">
-              Votre propre page
-            </Badge>
-          )}
+      {/* ── Header hero — avatar initiales + nom + identité opérationnelle */}
+      <header className="flex items-start gap-4 flex-wrap">
+        <div className="shrink-0 h-16 w-16 rounded-full bg-brand-50 dark:bg-brand-600/10 border border-brand-200 dark:border-brand-700/40 flex items-center justify-center text-lg font-semibold text-brand-700 dark:text-brand-300">
+          {initials}
         </div>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-          <span className="inline-flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
-            Inscrit le {formatDateFr(overview.created_at)}
-          </span>
-          {overview.commune && (
-            <span className="inline-flex items-center gap-1" title="Commune de résidence">
-              <MapPin className="h-3.5 w-3.5" />
-              {overview.commune}
-            </span>
-          )}
-          {overview.employment_type && (
-            <Badge variant="outline" className="text-xs" title="Type de contrat">
-              {employmentLabelFr(overview.employment_type)}
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-semibold">{displayName}</h1>
+            <Badge variant="outline" className="text-xs inline-flex items-center gap-1">
+              <UserCircle className="h-3 w-3" />
+              {roleLabelFr(overview.role)}
             </Badge>
-          )}
-          {overview.phone && (
-            <a
-              href={`tel:${overview.phone}`}
-              className="inline-flex items-center gap-1 hover:text-foreground"
-              title="Téléphone"
-            >
-              {overview.phone}
-            </a>
-          )}
-        </div>
-        {overview.teams.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs text-muted-foreground">Équipes actives :</span>
-            {overview.teams.map((t) => (
-              <TeamBadge
-                key={t.team_id}
-                name={t.team_name}
-                color={t.team_color}
-                size="sm"
-              />
-            ))}
-          </div>
-        )}
-      </header>
-
-      {/* ── Section 2 : Compteurs descriptifs ─────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Présence cumulée</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <dt className="text-xs text-muted-foreground">Interventions</dt>
-              <dd className="text-2xl font-semibold tabular-nums">
-                {overview.counters.interventionsParticipated.toLocaleString('fr-FR')}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Sites connus</dt>
-              <dd className="text-2xl font-semibold tabular-nums">
-                {overview.counters.sitesKnown.toLocaleString('fr-FR')}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Contrats</dt>
-              <dd className="text-2xl font-semibold tabular-nums">
-                {overview.counters.contractsKnown.toLocaleString('fr-FR')}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Traces déposées</dt>
-              <dd className="text-2xl font-semibold tabular-nums">
-                {(
-                  overview.counters.notesLeft +
-                  overview.counters.anomaliesSignaled +
-                  overview.counters.photosTaken +
-                  overview.counters.voiceNotesRecorded
-                ).toLocaleString('fr-FR')}
-              </dd>
-            </div>
-          </dl>
-
-          {/* Heatmap calendrier 90 jours — points colorés par densité d'interventions */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">
-              Activité des 90 derniers jours
-            </h3>
-            <HeatmapCalendar cells={heatmap} days={90} />
-            {traces.lastTraceAt && (
-              <p className="text-[11px] text-muted-foreground">
-                Dernière trace déposée : {formatDateFr(traces.lastTraceAt.slice(0, 10))}.
-              </p>
+            {overview.employment_type && (
+              <Badge
+                variant="outline"
+                className="text-xs inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-950/20"
+                title="Type de contrat"
+              >
+                <BriefcaseBusiness className="h-3 w-3" />
+                {employmentLabelFr(overview.employment_type)}
+              </Badge>
+            )}
+            {access.access.isSelf && (
+              <Badge
+                variant="outline"
+                className="text-xs bg-sky-50 border-sky-200 text-sky-900 dark:bg-sky-950/30 dark:border-sky-800 dark:text-sky-200"
+              >
+                Votre propre page
+              </Badge>
             )}
           </div>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+            <span className="inline-flex items-center gap-1">
+              <Mail className="h-3 w-3" />
+              {overview.email}
+            </span>
+            {overview.phone && (
+              <a
+                href={`tel:${overview.phone}`}
+                className="inline-flex items-center gap-1 hover:text-foreground"
+              >
+                <Phone className="h-3 w-3" />
+                {overview.phone}
+              </a>
+            )}
+            {overview.commune && (
+              <span className="inline-flex items-center gap-1" title="Commune de résidence">
+                <MapPin className="h-3 w-3" />
+                {overview.commune}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              Inscrit le {formatDateFr(overview.created_at)}
+            </span>
+          </div>
+          {overview.teams.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-muted-foreground">Équipes :</span>
+              {overview.teams.map((t) => (
+                <TeamBadge
+                  key={t.team_id}
+                  name={t.team_name}
+                  color={t.team_color}
+                  size="sm"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* ── Stats inline (style /sites/[id] CurrentState — sans card wrapper) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-3 border-b border-border/40">
+        <Stat
+          icon={Calendar}
+          value={overview.counters.interventionsParticipated}
+          label="interventions"
+        />
+        <Stat
+          icon={MapPin}
+          value={overview.counters.sitesKnown}
+          label={overview.counters.sitesKnown > 1 ? 'sites connus' : 'site connu'}
+        />
+        <Stat
+          icon={FileSignature}
+          value={overview.counters.contractsKnown}
+          label={overview.counters.contractsKnown > 1 ? 'contrats' : 'contrat'}
+        />
+        <Stat
+          icon={Camera}
+          value={
+            overview.counters.notesLeft +
+            overview.counters.anomaliesSignaled +
+            overview.counters.photosTaken +
+            overview.counters.voiceNotesRecorded
+          }
+          label="traces"
+        />
+      </div>
+
+      {/* ── Galerie photos (NOUVEAU — manquait dans la première version) ── */}
+      {photos.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <Camera className="h-4 w-4" />
+              Photos déposées ({photos.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <IntervenantPhotoGallery photos={photos} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Heatmap calendrier — pleine largeur, lisible ─────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Activité sur 90 jours</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <HeatmapCalendar cells={heatmap} days={90} />
+          {traces.lastTraceAt && (
+            <p className="text-[11px] text-muted-foreground">
+              Dernière trace déposée : {formatDateFr(traces.lastTraceAt.slice(0, 10))}.
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {/* ── Section 3 : Sites connus (avec thumbnails photos) ────────────── */}
-      {sites.length > 0 && (
+      {/* ── Grid 2 cols : Sites connus | Contrats travaillés ─────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
@@ -242,89 +293,99 @@ export default async function IntervenantDetailPage({ params }: Props) {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ul className="divide-y">
-              {sites.map((s) => (
-                <li key={s.site_id} className="px-6 py-3">
-                  <Link
-                    href={`/sites/${s.site_id}`}
-                    className="flex items-start gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{s.site_name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {s.contract_name ?? '—'} ·{' '}
-                        <span className="tabular-nums">
-                          {s.interventionCount} intervention{s.interventionCount > 1 ? 's' : ''}
-                        </span>
-                        {s.firstParticipationDate && s.lastParticipationDate && (
-                          <>
-                            {' · '}
-                            <span className="tabular-nums">
-                              {formatDateFr(s.firstParticipationDate)} → {formatDateFr(s.lastParticipationDate)}
-                            </span>
-                          </>
-                        )}
+            {sites.length === 0 ? (
+              <p className="px-6 pb-6 text-sm text-muted-foreground italic">Aucun site.</p>
+            ) : (
+              <ul className="divide-y">
+                {sites.slice(0, 8).map((s) => (
+                  <li key={s.site_id} className="px-6 py-2.5">
+                    <Link
+                      href={`/sites/${s.site_id}`}
+                      className="flex items-start gap-2 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{s.site_name}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                          <span className="tabular-nums font-medium text-foreground/70">
+                            {s.interventionCount}
+                          </span>{' '}
+                          {s.interventionCount > 1 ? 'passages' : 'passage'}
+                          {s.lastParticipationDate && (
+                            <>
+                              {' · '}dernier {formatDateFr(s.lastParticipationDate)}
+                            </>
+                          )}
+                          {s.contract_name && (
+                            <>
+                              {' · '}
+                              <span className="text-muted-foreground/80">{s.contract_name}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      {s.recentPhotoIds.length > 0 && (
-                        <p className="text-[11px] text-muted-foreground/70 mt-1">
-                          {s.recentPhotoIds.length} photo{s.recentPhotoIds.length > 1 ? 's' : ''} récente
-                          {s.recentPhotoIds.length > 1 ? 's' : ''}
-                        </p>
-                      )}
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 mt-1 text-muted-foreground/60 group-hover:text-foreground transition-colors" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <ArrowRight className="h-3 w-3 mt-1 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
+                    </Link>
+                  </li>
+                ))}
+                {sites.length > 8 && (
+                  <li className="px-6 py-2 text-[11px] text-muted-foreground italic">
+                    + {sites.length - 8} autres sites
+                  </li>
+                )}
+              </ul>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* ── Section 4 : Contrats déjà travaillés ─────────────────────────── */}
-      {contracts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
               <FileSignature className="h-4 w-4" />
-              Contrats déjà travaillés ({contracts.length})
+              Contrats ({contracts.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ul className="divide-y">
-              {contracts.map((c) => (
-                <li key={c.contract_id} className="px-6 py-3">
-                  <Link
-                    href={`/contracts/${c.contract_id}`}
-                    className="flex items-start gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{c.contract_name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {c.client_name ?? '—'} ·{' '}
-                        <span className="tabular-nums">
-                          {c.interventionCount} intervention{c.interventionCount > 1 ? 's' : ''}
-                        </span>
-                        {c.firstParticipationDate && c.lastParticipationDate && (
-                          <>
-                            {' · '}
-                            <span className="tabular-nums">
-                              {formatDateFr(c.firstParticipationDate)} → {formatDateFr(c.lastParticipationDate)}
-                            </span>
-                          </>
-                        )}
+            {contracts.length === 0 ? (
+              <p className="px-6 pb-6 text-sm text-muted-foreground italic">Aucun contrat.</p>
+            ) : (
+              <ul className="divide-y">
+                {contracts.slice(0, 8).map((c) => (
+                  <li key={c.contract_id} className="px-6 py-2.5">
+                    <Link
+                      href={`/contracts/${c.contract_id}`}
+                      className="flex items-start gap-2 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{c.contract_name}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                          {c.client_name && <span>{c.client_name} · </span>}
+                          <span className="tabular-nums font-medium text-foreground/70">
+                            {c.interventionCount}
+                          </span>{' '}
+                          {c.interventionCount > 1 ? 'interventions' : 'intervention'}
+                          {c.lastParticipationDate && (
+                            <>
+                              {' · '}dernière {formatDateFr(c.lastParticipationDate)}
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 mt-1 text-muted-foreground/60 group-hover:text-foreground transition-colors" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                      <ArrowRight className="h-3 w-3 mt-1 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
+                    </Link>
+                  </li>
+                ))}
+                {contracts.length > 8 && (
+                  <li className="px-6 py-2 text-[11px] text-muted-foreground italic">
+                    + {contracts.length - 8} autres contrats
+                  </li>
+                )}
+              </ul>
+            )}
           </CardContent>
         </Card>
-      )}
+      </div>
 
-      {/* ── Section 5 : 20 dernières interventions (avec plage horaire) ──── */}
+      {/* ── Activité récente (20 dernières) avec plage horaire ───────────── */}
       {recent.length > 0 && (
         <Card>
           <CardHeader>
@@ -342,35 +403,32 @@ export default async function IntervenantDetailPage({ params }: Props) {
                   slot: i.slot as InterventionSlot | null,
                 })
                 return (
-                  <li key={i.intervention_id} className="px-6 py-3">
+                  <li key={i.intervention_id} className="px-6 py-2.5">
                     <Link
                       href={`/interventions/${i.intervention_id}`}
-                      className="flex items-start gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                      className="flex items-center gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
                     >
+                      {/* Heure à gauche, largeur fixe pour alignement */}
+                      <span
+                        className="text-xs font-mono tabular-nums text-muted-foreground shrink-0 w-14 text-right"
+                        title="Horaire de prestation"
+                      >
+                        {timeLabel}
+                      </span>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{i.mission_name}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          <span className="font-medium">{i.site_name}</span>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {i.site_name}
                           {i.scheduled_for && (
                             <>
                               {' · '}
                               <span className="tabular-nums">{formatDateFr(i.scheduled_for)}</span>
                             </>
                           )}
-                          {timeLabel && timeLabel !== '—' && (
-                            <>
-                              {' · '}
-                              <span className="tabular-nums font-semibold text-foreground/80">
-                                {timeLabel}
-                              </span>
-                            </>
-                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <StatusBadge status={i.status} size="md" />
-                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/60 group-hover:text-foreground transition-colors" />
-                      </div>
+                      <StatusBadge status={i.status} size="sm" />
+                      <ArrowRight className="h-3 w-3 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
                     </Link>
                   </li>
                 )
@@ -380,41 +438,37 @@ export default async function IntervenantDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* ── Section 6 : Traces laissées ──────────────────────────────────── */}
+      {/* ── Traces laissées (résumé compact en fin) ──────────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Traces laissées</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <li className="inline-flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="tabular-nums font-semibold">{traces.notesLeft}</span>
-              <span className="text-muted-foreground">note{traces.notesLeft > 1 ? 's' : ''}</span>
-            </li>
-            <li className="inline-flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-              <span className="tabular-nums font-semibold">{traces.anomaliesSignaled}</span>
-              <span className="text-muted-foreground">anomalie{traces.anomaliesSignaled > 1 ? 's' : ''}</span>
-            </li>
-            <li className="inline-flex items-center gap-2">
-              <Camera className="h-4 w-4 text-muted-foreground" />
-              <span className="tabular-nums font-semibold">{traces.photosTaken}</span>
-              <span className="text-muted-foreground">photo{traces.photosTaken > 1 ? 's' : ''}</span>
-            </li>
-            <li className="inline-flex items-center gap-2">
-              <Mic className="h-4 w-4 text-muted-foreground" />
-              <span className="tabular-nums font-semibold">{traces.voiceNotesRecorded}</span>
-              <span className="text-muted-foreground">
-                note{traces.voiceNotesRecorded > 1 ? 's' : ''} audio
-              </span>
-            </li>
+            <TraceCell icon={FileText} value={traces.notesLeft} singular="note" plural="notes" />
+            <TraceCell
+              icon={AlertTriangle}
+              value={traces.anomaliesSignaled}
+              singular="anomalie"
+              plural="anomalies"
+            />
+            <TraceCell
+              icon={Camera}
+              value={traces.photosTaken}
+              singular="photo"
+              plural="photos"
+            />
+            <TraceCell
+              icon={Mic}
+              value={traces.voiceNotesRecorded}
+              singular="note audio"
+              plural="notes audio"
+            />
           </ul>
         </CardContent>
       </Card>
 
-      {/* État vide */}
-      {recent.length === 0 && sites.length === 0 && contracts.length === 0 && (
+      {recent.length === 0 && sites.length === 0 && contracts.length === 0 && photos.length === 0 && (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground italic">
             Aucune trace opérationnelle pour le moment.
@@ -426,21 +480,56 @@ export default async function IntervenantDetailPage({ params }: Props) {
 }
 
 // ----------------------------------------------------------------------------
-// HeatmapCalendar — 90 derniers jours, points colorés par densité.
+// Sous-composants
 // ----------------------------------------------------------------------------
+
+function Stat({
+  icon: Icon,
+  value,
+  label,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  value: number
+  label: string
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
+        <Icon className="h-3 w-3" />
+        {label}
+      </div>
+      <div className="text-3xl font-semibold tabular-nums mt-1">
+        {value.toLocaleString('fr-FR')}
+      </div>
+    </div>
+  )
+}
+
+function TraceCell({
+  icon: Icon,
+  value,
+  singular,
+  plural,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  value: number
+  singular: string
+  plural: string
+}) {
+  return (
+    <li className="inline-flex items-center gap-2">
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      <span className="tabular-nums font-semibold">{value}</span>
+      <span className="text-muted-foreground">{value > 1 ? plural : singular}</span>
+    </li>
+  )
+}
 
 interface HeatmapCalendarProps {
   cells: Array<{ date: string; count: number }>
   days: number
 }
 
-/**
- * Mini-calendrier façon GitHub : 1 point par jour sur N jours glissants,
- * intensité du gris/brand selon le nombre d'interventions ce jour.
- *
- * Pas un score, pas un classement — juste une visualisation factuelle de
- * la densité temporelle.
- */
 function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
   const countByDate = new Map(cells.map((c) => [c.date, c.count]))
   const today = new Date()
@@ -459,16 +548,12 @@ function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
     return 'bg-brand-600'
   }
 
-  // 7 lignes (jours de la semaine), colonnes par semaine
   const weeks: string[][] = []
   let currentWeek: string[] = []
   for (const date of dates) {
-    const dow = new Date(date + 'T00:00:00Z').getUTCDay() // 0=Sun
+    const dow = new Date(date + 'T00:00:00Z').getUTCDay()
     if (currentWeek.length === 0 && dow !== 1) {
-      // padding début pour aligner sur lundi
-      for (let i = 1; i <= (dow === 0 ? 6 : dow - 1); i++) {
-        currentWeek.push('')
-      }
+      for (let i = 1; i <= (dow === 0 ? 6 : dow - 1); i++) currentWeek.push('')
     }
     currentWeek.push(date)
     if (currentWeek.length === 7) {
@@ -483,10 +568,7 @@ function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
 
   return (
     <div className="flex flex-col gap-1">
-      <div
-        className="flex gap-1 overflow-x-auto"
-        aria-label={`Activité sur ${days} jours`}
-      >
+      <div className="flex gap-1 overflow-x-auto" aria-label={`Activité sur ${days} jours`}>
         {weeks.map((week, wi) => (
           <div key={wi} className="flex flex-col gap-1">
             {week.map((date, di) => {
@@ -503,7 +585,7 @@ function HeatmapCalendar({ cells, days }: HeatmapCalendarProps) {
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1">
         <span>Moins</span>
         <div className="w-2.5 h-2.5 rounded-[2px] bg-muted/40" />
         <div className="w-2.5 h-2.5 rounded-[2px] bg-brand-200" />
