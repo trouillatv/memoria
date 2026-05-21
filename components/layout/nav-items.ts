@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   ArrowRightLeft,
   Clock,
+  Eye,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -54,6 +55,8 @@ export const NAV: NavItem[] = [
   // Vincent 2026-05-22 — manuel téléchargeable pour Guillaume.
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'] },
   { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'] },
+  // Vincent 2026-05-22 — Observation pilote (admin only, post-Sprint E).
+  { href: '/admin/observation', label: 'Observation pilote', icon: Eye,         roles: ['admin'] },
 ]
 
 export function isActive(pathname: string, href: string): boolean {
