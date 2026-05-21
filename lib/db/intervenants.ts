@@ -99,6 +99,18 @@ export interface IntervenantHeatmapCell {
   count: number
 }
 
+/** Jour du rythme récent — équivalent SiteRhythmDay pour un intervenant. */
+export interface IntervenantRhythmDay {
+  date: string
+  weekdayLabel: string
+  dayMonthLabel: string
+  isToday: boolean
+  isWeekend: boolean
+  count: number
+  /** Tooltip : 1 ligne par intervention ce jour-là (mission · site). */
+  tooltipLines: string[]
+}
+
 /** Équipe fréquentée (active ou passée) sur la fenêtre demandée. */
 export interface IntervenantTeamHistoryEntry {
   team_id: string
@@ -1016,6 +1028,54 @@ export async function listIntervenantCollaborators(
       const bn = b.full_name ?? b.email
       return an.localeCompare(bn, 'fr', { sensitivity: 'base' })
     })
+}
+
+/**
+ * Rythme récent de l'intervenant — 14 jours par défaut.
+ * Calé sur le modèle SiteRhythm (équivalent côté personne pour cohérence
+ * visuelle avec /sites/[id]).
+ */
+export async function getIntervenantRecentRhythm(
+  intervenantId: string,
+  days: number = 14,
+): Promise<IntervenantRhythmDay[]> {
+  const today = new Date()
+  today.setUTCHours(0, 0, 0, 0)
+  const since = new Date(today)
+  since.setUTCDate(today.getUTCDate() - days + 1)
+  const sinceIso = since.toISOString().slice(0, 10)
+  const todayIso = today.toISOString().slice(0, 10)
+
+  const participations = await fetchUserParticipations(intervenantId)
+  // Regrouper par date
+  const byDate = new Map<string, Array<{ mission: string; site: string }>>()
+  for (const p of participations) {
+    if (!p.scheduled_for) continue
+    if (p.scheduled_for < sinceIso) continue
+    const arr = byDate.get(p.scheduled_for) ?? []
+    arr.push({ mission: p.mission_name, site: p.site_name })
+    byDate.set(p.scheduled_for, arr)
+  }
+
+  const WEEKDAYS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.']
+  const out: IntervenantRhythmDay[] = []
+  for (let i = 0; i < days; i++) {
+    const d = new Date(since)
+    d.setUTCDate(since.getUTCDate() + i)
+    const iso = d.toISOString().slice(0, 10)
+    const dow = d.getUTCDay()
+    const items = byDate.get(iso) ?? []
+    out.push({
+      date: iso,
+      weekdayLabel: WEEKDAYS[dow] ?? '',
+      dayMonthLabel: String(d.getUTCDate()),
+      isToday: iso === todayIso,
+      isWeekend: dow === 0 || dow === 6,
+      count: items.length,
+      tooltipLines: items.slice(0, 4).map((it) => `${it.mission} — ${it.site}`),
+    })
+  }
+  return out
 }
 
 /**

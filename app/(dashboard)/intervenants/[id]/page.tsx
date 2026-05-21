@@ -44,10 +44,12 @@ import {
   getIntervenantTeamsHistory,
   listIntervenantCollaborators,
   listIntervenantIncidentsPresence,
+  getIntervenantRecentRhythm,
 } from '@/lib/db/intervenants'
 import { logAuditEvent } from '@/lib/audit/log'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { IntervenantPhotoGallery } from './IntervenantPhotoGallery'
+import { IntervenantRhythm } from './IntervenantRhythm'
 import type { InterventionSlot } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -107,7 +109,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
     notFound()
   }
 
-  const [overview, sites, contracts, recent, traces, heatmap, photos, teamsHistory, collaborators, incidents] = await Promise.all([
+  const [overview, sites, contracts, recent, traces, heatmap, photos, teamsHistory, collaborators, incidents, rhythm] = await Promise.all([
     getIntervenantOverview(targetId),
     listIntervenantSitesAccumulated(targetId),
     listIntervenantContractsKnown(targetId),
@@ -118,6 +120,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
     getIntervenantTeamsHistory(targetId, 24), // 2 ans
     listIntervenantCollaborators(targetId, 24), // 2 ans
     listIntervenantIncidentsPresence(targetId, 20),
+    getIntervenantRecentRhythm(targetId, 14), // 14 derniers jours
   ])
 
   if (!overview) notFound()
@@ -276,20 +279,40 @@ export default async function IntervenantDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* ── Heatmap calendrier — pleine largeur, lisible ─────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Activité sur 90 jours</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <HeatmapCalendar cells={heatmap} days={90} />
-          {traces.lastTraceAt && (
-            <p className="text-[11px] text-muted-foreground">
-              Dernière trace déposée : {formatDateFr(traces.lastTraceAt.slice(0, 10))}.
+      {/* ── Rythme 14 jours | Densité 90 jours (grille 2 cols inspirée /sites/) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Rythme — 14 derniers jours</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <IntervenantRhythm days={rhythm} />
+            <p className="text-[10px] text-muted-foreground mt-3">
+              Chaque point = un jour. Plein = au moins une intervention.
+              Survole un point pour voir le détail.
             </p>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Densité — 90 derniers jours</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <HeatmapCalendar cells={heatmap} days={90} />
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              Chaque carré = un jour. Plus la couleur est foncée, plus il y a eu
+              d&apos;interventions ce jour-là. Lecture verticale = semaine (lundi en haut,
+              dimanche en bas) ; lecture horizontale = semaines successives.
+            </p>
+            {traces.lastTraceAt && (
+              <p className="text-[11px] text-muted-foreground">
+                Dernière trace déposée : {formatDateFr(traces.lastTraceAt.slice(0, 10))}.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── Grid 2 cols : Sites connus | Contrats travaillés ─────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
