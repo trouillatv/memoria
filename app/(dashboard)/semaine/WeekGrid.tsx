@@ -13,7 +13,7 @@
 import type { SiteRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { WeekGridCell } from './WeekGridCell'
-import { MemorySignalBadge } from './MemorySignalBadge'
+import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
 
 const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 

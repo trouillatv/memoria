@@ -45,7 +45,7 @@ import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
-import { MemorySignalLine } from './MemorySignalBadge'
+import { MemorySignalLine } from '@/components/memory/MemorySignalBadge'
 
 const MONTHS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',

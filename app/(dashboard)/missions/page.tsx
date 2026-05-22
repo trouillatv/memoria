@@ -16,6 +16,11 @@ import { listSites } from '@/lib/db/sites'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import type { InterventionStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
+import { collectMemorySignals } from '@/lib/memory/signals/collect'
+import { planningSignalsBySite } from '@/lib/memory/signals/surface'
+import type { MemorySignal } from '@/lib/memory/signals/types'
+import { SIGNAL_REGISTRY, type SignalFamily } from '@/lib/memory/signals/registry'
+import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
 
 // Plus de pagination — le regroupement collapsé par site rend la liste lisible
 // même longue. Cap dur à 500 par sécurité (un superviseur n'a jamais besoin de
@@ -143,6 +148,10 @@ export default async function MissionsPage({
   const upcoming = items.filter((i) => civilDate(i) >= today)
   const past = items.filter((i) => civilDate(i) < today)
 
+  // Signal faible : le signal mémoire prioritaire de chaque lieu (moteur),
+  // injecté sous le titre de groupe. Sujet = le lieu, jamais une personne.
+  const signalsBySite = planningSignalsBySite(await collectMemorySignals())
+
   return (
     <div className="space-y-6 max-w-4xl">
       <header>
@@ -220,7 +229,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
             À venir ({upcoming.length})
           </h2>
-          <SiteGroupedList items={upcoming} accent="emerald" />
+          <SiteGroupedList items={upcoming} accent="emerald" signalsBySite={signalsBySite} />
         </section>
       )}
 
@@ -229,7 +238,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Récentes ({past.length})
           </h2>
-          <SiteGroupedList items={past} accent="muted" />
+          <SiteGroupedList items={past} accent="muted" signalsBySite={signalsBySite} />
         </section>
       )}
 
@@ -297,6 +306,7 @@ interface Group {
   siteKey: string
   siteName: string
   contractName: string | null
+  siteId: string | null
   items: ListItem[]
 }
 
@@ -305,13 +315,15 @@ function groupBySiteName(items: ListItem[]): Group[] {
   for (const item of items) {
     const siteName = item.mission?.site?.name ?? 'Sans site'
     const contractName = item.mission?.site?.contract?.name ?? null
+    const siteId = item.mission?.site?.id ?? null
     // Clé = site + contrat (pour distinguer si un nom de site existe sur 2 contrats)
     const key = `${siteName}|${contractName ?? ''}`
     const g = map.get(key)
     if (g) {
       g.items.push(item)
+      if (!g.siteId && siteId) g.siteId = siteId
     } else {
-      map.set(key, { siteKey: key, siteName, contractName, items: [item] })
+      map.set(key, { siteKey: key, siteName, contractName, siteId, items: [item] })
     }
   }
   // Tri alphabétique fr par site, sub-tri par contrat
@@ -322,31 +334,58 @@ function groupBySiteName(items: ListItem[]): Group[] {
   })
 }
 
-function SiteGroupedList({ items, accent }: { items: ListItem[]; accent: 'emerald' | 'muted' }) {
+// Liseré gauche subtil par famille de signal — différencie d'un coup d'œil les
+// lieux « actifs » (qqch à savoir) des lieux « calmes » (pas de liseré).
+const FAMILY_ACCENT: Record<SignalFamily, string> = {
+  attention: 'border-l-2 border-l-red-300',
+  continuite: 'border-l-2 border-l-amber-300',
+  ao: 'border-l-2 border-l-violet-300',
+  memoire: 'border-l-2 border-l-sky-300',
+}
+
+function SiteGroupedList({
+  items,
+  accent,
+  signalsBySite,
+}: {
+  items: ListItem[]
+  accent: 'emerald' | 'muted'
+  signalsBySite: Record<string, MemorySignal[]>
+}) {
   const groups = groupBySiteName(items)
   return (
     <div className="space-y-1.5">
-      {groups.map((g) => (
+      {groups.map((g) => {
+        const topSignal = g.siteId ? signalsBySite[g.siteId]?.[0] : undefined
+        const accentCls = topSignal ? FAMILY_ACCENT[SIGNAL_REGISTRY[topSignal.kind].family] : ''
+        return (
         <details
           key={g.siteKey}
-          className="group rounded-lg border bg-card overflow-hidden"
+          className={cn('group rounded-lg border bg-card overflow-hidden', accentCls)}
         >
           <summary
             className={
-              'flex items-center justify-between gap-3 px-3 py-2.5 cursor-pointer select-none ' +
+              'flex items-start justify-between gap-3 px-3 py-2.5 cursor-pointer select-none ' +
               'hover:bg-muted/30 transition-colors list-none [&::-webkit-details-marker]:hidden ' +
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             }
           >
-            <div className="min-w-0 flex-1 flex items-center gap-2">
-              <ChevronRight
-                className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
-                aria-hidden
-              />
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="text-sm font-medium truncate">{g.siteName}</span>
-              {g.contractName && (
-                <span className="text-xs text-muted-foreground truncate">· {g.contractName}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <ChevronRight
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+                  aria-hidden
+                />
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="text-sm font-medium truncate">{g.siteName}</span>
+                {g.contractName && (
+                  <span className="text-xs text-muted-foreground truncate">· {g.contractName}</span>
+                )}
+              </div>
+              {topSignal && (
+                <div className="mt-1 ml-[1.4rem]">
+                  <MemorySignalBadge signal={topSignal} />
+                </div>
               )}
             </div>
             <span
@@ -366,7 +405,7 @@ function SiteGroupedList({ items, accent }: { items: ListItem[]; accent: 'emeral
             ))}
           </ul>
         </details>
-      ))}
+      )})}
     </div>
   )
 }
