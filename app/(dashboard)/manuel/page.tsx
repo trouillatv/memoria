@@ -1,37 +1,53 @@
-// /manuel — Manuel d'utilisation MemorIA, en LIGNE (livre web) + téléchargeable.
+// /manuel — Manuel d'utilisation MemorIA en expérience de documentation premium.
 //
-// Vincent 2026-05-22. Rend l'INTÉGRALITÉ de docs/MODE_EMPLOI.md comme un livre
-// en ligne : toutes les sections avec leur texte, et un sommaire qui navigue
-// vers chaque point (ancres). Le .docx reste téléchargeable (hors-ligne).
-//
-// Rendu serveur (contenu de confiance = notre propre doc) via `marked`, avec
-// injection d'ids d'ancrage style GitHub pour que les liens du Sommaire sautent.
+// Vincent 2026-05-23. Découpe docs/MODE_EMPLOI.md en CHAPITRES (par titre H2,
+// le « Sommaire » étant remplacé par la sidebar de navigation), rend chaque
+// chapitre en HTML (marked) et délègue l'expérience de lecture à ManuelBook
+// (sidebar / hero / précédent-suivant / mobile).
 
 import { redirect } from 'next/navigation'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { marked } from 'marked'
-import { Download, BookOpen } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { ManuelBook, type ManuelChapter } from './ManuelBook'
 
 export const dynamic = 'force-dynamic'
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&#39;|&#x27;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&hellip;/g, '…')
-}
-
-/** Slug style GitHub (minuscules, accents conservés, ponctuation retirée). */
 function slugify(text: string): string {
-  return decodeEntities(text)
+  return text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, '')
     .replace(/\s/g, '-')
+}
+
+/** Découpe le markdown en chapitres sur les titres H2 (## …). Ignore le
+ * « Sommaire » (la sidebar le remplace) et tout ce qui le suit jusqu'au
+ * chapitre suivant. */
+function splitChapters(md: string): Array<{ num: string | null; title: string; body: string }> {
+  const out: Array<{ num: string | null; title: string; bodyLines: string[] }> = []
+  let current: { num: string | null; title: string; bodyLines: string[] } | null = null
+  let skipping = false
+
+  for (const line of md.split('\n')) {
+    const m = /^##\s+(.*\S)\s*$/.exec(line)
+    if (m) {
+      const titleRaw = m[1].trim()
+      if (/^sommaire$/i.test(titleRaw)) {
+        current = null
+        skipping = true
+        continue
+      }
+      const nm = /^(\d+)\.\s+(.*)$/.exec(titleRaw)
+      current = { num: nm ? nm[1]! : null, title: nm ? nm[2]! : titleRaw, bodyLines: [] }
+      out.push(current)
+      skipping = false
+    } else if (current && !skipping) {
+      current.bodyLines.push(line)
+    }
+  }
+
+  return out.map((c) => ({ num: c.num, title: c.title, body: c.bodyLines.join('\n').trim() }))
 }
 
 export default async function ManuelPage() {
@@ -54,73 +70,19 @@ export default async function ManuelPage() {
     mdContent = ''
   }
 
-  const rawHtml = mdContent ? await marked.parse(mdContent, { gfm: true, breaks: true }) : ''
-  // Injecte un id d'ancrage sur chaque titre (pour la navigation du Sommaire).
-  const html = rawHtml.replace(/<h([1-6])>([\s\S]*?)<\/h\1>/g, (_m, lvl, inner: string) => {
-    const text = inner.replace(/<[^>]+>/g, '')
-    return `<h${lvl} id="${slugify(text)}">${inner}</h${lvl}>`
-  })
+  const parsed = splitChapters(mdContent)
+  const chapters: ManuelChapter[] = await Promise.all(
+    parsed.map(async (c) => ({
+      id: slugify(c.title) || c.title,
+      num: c.num,
+      title: c.title,
+      html: await marked.parse(c.body, { gfm: true, breaks: true }),
+    })),
+  )
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <BookOpen className="h-6 w-6 text-brand-600" />
-          Manuel d&apos;utilisation MemorIA
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Le mode d&apos;emploi complet, en ligne. Clique une entrée du sommaire pour sauter à la section.
-          {lastGenerated && (
-            <> Dernière mise à jour : <span className="font-medium">{lastGenerated}</span>.</>
-          )}
-        </p>
-      </header>
-
-      {/* Téléchargement Word (hors-ligne / partage) */}
-      <div className="rounded-lg border border-brand-200 bg-brand-50/30 dark:bg-brand-950/20 p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            Version <strong>.docx</strong> (~55 Ko) — lisible hors-ligne, partageable par email, imprimable.
-          </p>
-          <a
-            href="/manuel.docx"
-            download="MemorIA-MODE-EMPLOI.docx"
-            className="shrink-0 inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors"
-          >
-            <Download className="h-4 w-4" />
-            Télécharger (.docx)
-          </a>
-        </div>
-      </div>
-
-      {/* Livre en ligne — contenu intégral du manuel */}
-      {html ? (
-        <article
-          className={[
-            'rounded-lg border bg-card p-5 sm:p-8 overflow-x-auto',
-            'prose prose-sm sm:prose-base max-w-none dark:prose-invert',
-            // Titres — hiérarchie claire, h2 = bandeau de section souligné
-            'prose-headings:scroll-mt-24 prose-headings:font-semibold',
-            'prose-h1:text-2xl prose-h1:mb-3',
-            'prose-h2:text-lg prose-h2:mt-10 prose-h2:pb-1.5 prose-h2:border-b prose-h2:border-border prose-h2:text-brand-800 dark:prose-h2:text-brand-200',
-            'prose-h3:text-base prose-h3:mt-6 prose-h3:mb-1',
-            'prose-p:leading-relaxed prose-li:my-0.5 prose-hr:my-8',
-            // Liens
-            'prose-a:text-brand-700 dark:prose-a:text-brand-300 prose-a:no-underline hover:prose-a:underline',
-            // Code inline (sans guillemets parasites)
-            'prose-code:text-xs prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:before:content-none prose-code:after:content-none',
-            // Tableaux — bordures visibles + en-tête teinté
-            'prose-table:w-full prose-table:text-sm prose-table:border prose-table:border-border',
-            'prose-thead:bg-muted/50 prose-th:border prose-th:border-border prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-medium',
-            'prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-td:align-top',
-          ].join(' ')}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      ) : (
-        <p className="text-sm text-muted-foreground italic">
-          Manuel indisponible (docs/MODE_EMPLOI.md introuvable).
-        </p>
-      )}
+    <div className="max-w-6xl mx-auto py-2">
+      <ManuelBook chapters={chapters} lastGenerated={lastGenerated} />
     </div>
   )
 }
