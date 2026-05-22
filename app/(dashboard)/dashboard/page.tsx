@@ -53,6 +53,11 @@ import {
 } from '@/lib/db/handover'
 import { listContinuityRisks } from '@/lib/db/continuity'
 import { isContinuityFeatureEnabled } from '@/lib/continuity/access'
+import { collectMemorySignals } from '@/lib/memory/signals/collect'
+import { forSurface } from '@/lib/memory/signals/surface'
+import { renderSignal } from '@/lib/memory/signals/render'
+import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
+import type { MemorySignal } from '@/lib/memory/signals/types'
 import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/site-cockpit'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
@@ -123,6 +128,7 @@ export default async function DashboardPage() {
     aSavoir,
     handoverCounts,
     continuity,
+    memorySignalsRaw,
   ] = await Promise.all([
     listContracts(),
     getCapitalPreuves(),
@@ -138,7 +144,14 @@ export default async function DashboardPage() {
     continuityEnabled
       ? listContinuityRisks({ horizonDays: 7, viewerUserId: user.id })
       : Promise.resolve({ entries: [], counts: { j7: 0, j14: 0, j30: 0 } }),
+    collectMemorySignals(),
   ])
+
+  // Moteur d'états de mémoire (Temps 2) : contextualisé pour le dashboard.
+  const memorySignals = forSurface(memorySignalsRaw, {
+    surface: 'dashboard',
+    perFamilyCap: 3,
+  })
 
   const summaryMap = await getContractSummaries(contracts.map((c) => c.id))
   const attentionCount = contracts.filter(
@@ -166,6 +179,7 @@ export default async function DashboardPage() {
       />
 
       <VieDuSysteme
+        memorySignals={memorySignals}
         recentAnomalies={recentAnomalies}
         openAnomaliesCount={anomaliesOpen.total}
         oldOpenAnomaliesCount={anomaliesOpen.oldCount}
@@ -444,6 +458,7 @@ const FAMILY_META: Record<
 }
 
 function VieDuSysteme({
+  memorySignals,
   recentAnomalies,
   openAnomaliesCount,
   oldOpenAnomaliesCount,
@@ -453,6 +468,7 @@ function VieDuSysteme({
   recentPassations,
   aSavoir,
 }: {
+  memorySignals: MemorySignal[]
   recentAnomalies: RecentAnomalyItem[]
   openAnomaliesCount: number
   oldOpenAnomaliesCount: number
@@ -462,13 +478,32 @@ function VieDuSysteme({
   recentPassations: RecentPassationEntry[]
   aSavoir: LivingASavoirCard[]
 }) {
-  // Regroupement par FAMILLE connue (pas par importance calculée — ça, c'est le
-  // moteur Temps 2). Densité variable : signal individuel = ligne normale,
-  // résumé = ligne compacte. Couleur forte (rouge) réservée à l'attention.
+  // Regroupement par FAMILLE connue (pas par importance calculée). Densité
+  // variable : signal individuel = ligne normale, résumé = ligne compacte.
   const families: Array<{ family: Family; items: FilItem[] }> = []
 
+  // Signaux du moteur d'états de mémoire (Temps 2), déjà contextualisés par
+  // forSurface, injectés EN TÊTE de leur famille. La « vie des lieux » devient
+  // progressivement pilotée par le moteur.
+  const familyArrays: Record<Family, FilItem[]> = {
+    attention: [],
+    continuite: [],
+    ao: [],
+    memoire: [],
+  }
+  for (const sig of memorySignals) {
+    const r = renderSignal(sig)
+    familyArrays[SIGNAL_REGISTRY[sig.kind].family].push({
+      key: `sig-${sig.kind}-${sig.subjectId}`,
+      text: r.text,
+      sub: r.detail,
+      href: r.href,
+      weight: 'normal',
+    })
+  }
+
   // — Attention opérationnelle (rouge) —
-  const attention: FilItem[] = []
+  const attention: FilItem[] = familyArrays.attention
   for (const a of recentAnomalies.slice(0, 3)) {
     attention.push({
       key: `anomaly-${a.id}`,
@@ -507,7 +542,7 @@ function VieDuSysteme({
   if (attention.length > 0) families.push({ family: 'attention', items: attention })
 
   // — Continuité (ambre) —
-  const continuite: FilItem[] = []
+  const continuite: FilItem[] = familyArrays.continuite
   for (const p of recentPassations.filter((p) => !p.isArchived).slice(0, 3)) {
     const sub =
       p.status === 'acknowledged'
@@ -528,7 +563,7 @@ function VieDuSysteme({
   if (continuite.length > 0) families.push({ family: 'continuite', items: continuite })
 
   // — Appels d'offres (violet) —
-  const ao: FilItem[] = []
+  const ao: FilItem[] = familyArrays.ao
   for (const t of tendersDueSoon.slice(0, 3)) {
     ao.push({
       key: `ao-${t.id}`,
@@ -541,7 +576,7 @@ function VieDuSysteme({
   if (ao.length > 0) families.push({ family: 'ao', items: ao })
 
   // — Mémoire terrain (bleu doux) —
-  const memoire: FilItem[] = []
+  const memoire: FilItem[] = familyArrays.memoire
   for (const c of aSavoir.slice(0, 3)) {
     memoire.push({
       key: `asavoir-${c.id}`,
