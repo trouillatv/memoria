@@ -153,6 +153,17 @@ export default async function DashboardPage() {
     perFamilyCap: 3,
   })
 
+  // Widgets « ligne mémoire » — condensations du moteur, pas des KPI.
+  // État du parc : comptes BRUTS (non plafonnés) par kind.
+  const continuityState = {
+    stable: memorySignalsRaw.filter((s) => s.kind === 'continuity_stable').length,
+    awaiting: memorySignalsRaw.filter((s) => s.kind === 'memory_awaiting').length,
+    silence: memorySignalsRaw.filter((s) => s.kind === 'unusual_silence').length,
+    instability: memorySignalsRaw.filter((s) => s.kind === 'relay_instability').length,
+  }
+  // « Dernière mémoire utile » : composée d'artefacts DÉJÀ chargés (0 requête).
+  const memoryEvents = buildRecentMemoryEvents({ aSavoir, recentPassations, recentAnomalies })
+
   const summaryMap = await getContractSummaries(contracts.map((c) => c.id))
   const attentionCount = contracts.filter(
     (c) => c.status === 'active' && summaryMap.get(c.id)?.needsAttention,
@@ -179,6 +190,12 @@ export default async function DashboardPage() {
         continuityEnabled={continuityEnabled}
       />
 
+      {/* Ligne mémoire — condensations du moteur (Heatmap arrive ensuite, 3e col). */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <ContinuityStateWidget state={continuityState} />
+        <DerniereMemoireUtile events={memoryEvents} />
+      </div>
+
       <VieDuSysteme
         memorySignals={memorySignals}
         recentAnomalies={recentAnomalies}
@@ -196,6 +213,142 @@ export default async function DashboardPage() {
         preuves={capital.totalPhotos}
       />
     </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Ligne mémoire — Widget « État de la continuité »
+// ----------------------------------------------------------------------------
+
+function ContinuityStateWidget({
+  state,
+}: {
+  state: { stable: number; awaiting: number; silence: number; instability: number }
+}) {
+  const lines: Array<{ tone: 'green' | 'amber' | 'red'; text: string }> = []
+  if (state.stable > 0) {
+    lines.push({ tone: 'green', text: `Continuité stable sur ${state.stable} lieu${state.stable > 1 ? 'x' : ''}` })
+  }
+  if (state.awaiting > 0) {
+    lines.push({
+      tone: 'amber',
+      text: `${state.awaiting} passation${state.awaiting > 1 ? 's' : ''} attend${state.awaiting > 1 ? 'ent' : ''} une reconnaissance`,
+    })
+  }
+  if (state.silence > 0) {
+    lines.push({ tone: 'red', text: `${state.silence} lieu${state.silence > 1 ? 'x' : ''} en silence inhabituel` })
+  }
+  if (state.instability > 0) {
+    lines.push({ tone: 'red', text: `${state.instability} lieu${state.instability > 1 ? 'x' : ''} en rotation d'équipes` })
+  }
+  if (lines.length === 0) {
+    lines.push({ tone: 'green', text: 'Continuité stable — rien à signaler' })
+  }
+
+  const DOT: Record<'green' | 'amber' | 'red', string> = {
+    green: 'text-emerald-500',
+    amber: 'text-amber-500',
+    red: 'text-red-500',
+  }
+
+  return (
+    <section className="rounded-lg border bg-card p-4">
+      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
+        État de la continuité
+      </h2>
+      <ul className="space-y-1.5">
+        {lines.map((l, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm leading-snug">
+            <span aria-hidden className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current ${DOT[l.tone]}`} />
+            <span>{l.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Ligne mémoire — Widget « Dernière mémoire utile »
+// ----------------------------------------------------------------------------
+
+interface MemoryEventItem {
+  key: string
+  text: string
+  at: string
+  href?: string
+  tone: 'memoire' | 'continuite' | 'attention'
+}
+
+function buildRecentMemoryEvents(input: {
+  aSavoir: LivingASavoirCard[]
+  recentPassations: RecentPassationEntry[]
+  recentAnomalies: RecentAnomalyItem[]
+}): MemoryEventItem[] {
+  const out: MemoryEventItem[] = []
+  for (const c of input.aSavoir.slice(0, 3)) {
+    out.push({ key: `as-${c.id}`, text: `« à savoir » sur ${c.site_name}`, at: c.notedAt, href: `/sites/${c.site_id}`, tone: 'memoire' })
+  }
+  for (const p of input.recentPassations.filter((p) => p.status === 'acknowledged').slice(0, 2)) {
+    out.push({
+      key: `pa-${p.id}`,
+      text: `Passation reconnue — ${p.title}`,
+      at: p.acknowledgedAt ?? p.createdAt,
+      href: `/handovers/${p.id}`,
+      tone: 'continuite',
+    })
+  }
+  for (const a of input.recentAnomalies.slice(0, 2)) {
+    out.push({
+      key: `an-${a.id}`,
+      text: `Signalement terrain${a.siteName ? ` — ${a.siteName}` : ''}`,
+      at: a.createdAt,
+      tone: 'attention',
+    })
+  }
+  return out.sort((x, y) => (y.at ?? '').localeCompare(x.at ?? '')).slice(0, 4)
+}
+
+function DerniereMemoireUtile({ events }: { events: MemoryEventItem[] }) {
+  const DOT: Record<MemoryEventItem['tone'], string> = {
+    memoire: 'text-sky-500',
+    continuite: 'text-amber-500',
+    attention: 'text-red-500',
+  }
+  return (
+    <section className="rounded-lg border bg-card p-4">
+      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
+        Dernière mémoire utile
+      </h2>
+      {events.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">Rien de récent à signaler.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {events.map((e) => {
+            const inner = (
+              <span className="flex items-start gap-2 text-sm leading-snug">
+                <span aria-hidden className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current ${DOT[e.tone]}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="truncate">{e.text}</span>
+                  <span className="text-[11px] text-muted-foreground"> · {relTime(e.at)}</span>
+                </span>
+              </span>
+            )
+            return (
+              <li key={e.key}>
+                {e.href ? (
+                  <Link href={e.href} className="block rounded hover:bg-muted/40 transition-colors -mx-1 px-1">
+                    {inner}
+                  </Link>
+                ) : (
+                  inner
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 
