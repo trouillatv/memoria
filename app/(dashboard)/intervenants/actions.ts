@@ -18,18 +18,32 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
 import { updateUserProfileAsAdmin, getUserRoleById } from '@/lib/db/users'
+import { updateContractEndDate } from '@/lib/db/continuity'
 
 // Mdp temporaire partagé — décision DG 2026-05-14 (même que /admin/users)
 const TEMP_PASSWORD = 'memoria2026'
 
-const createSchema = z.object({
-  email:            z.string().email('Email invalide'),
-  full_name:        z.string().min(1, 'Nom requis').max(120),
-  role:             z.enum(['admin', 'manager', 'chef_equipe']),
-  phone:            z.string().optional().nullable(),
-  commune:          z.string().max(120).optional().nullable(),
-  employment_type:  z.enum(['cdi', 'cdd', 'cdi_chantier']).optional().nullable(),
-})
+const createSchema = z
+  .object({
+    email:            z.string().email('Email invalide'),
+    full_name:        z.string().min(1, 'Nom requis').max(120),
+    role:             z.enum(['admin', 'manager', 'chef_equipe']),
+    phone:            z.string().optional().nullable(),
+    commune:          z.string().max(120).optional().nullable(),
+    employment_type:  z.enum(['cdi', 'cdd', 'cdi_chantier']).optional().nullable(),
+    contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide').optional().nullable(),
+  })
+  // CDD / CDI Chantier → on doit savoir QUAND le contrat se termine (pour
+  // anticiper la passation de mémoire). Un CDI n'a pas de fin attendue.
+  .refine(
+    (d) =>
+      !(d.employment_type === 'cdd' || d.employment_type === 'cdi_chantier') ||
+      !!d.contract_end_date,
+    {
+      message: 'Indiquez la date de fin du contrat (CDD / CDI Chantier).',
+      path: ['contract_end_date'],
+    },
+  )
 
 export type CreateIntervenantInput = z.infer<typeof createSchema>
 
@@ -90,6 +104,11 @@ export async function createIntervenantAction(
     commune: parsed.data.commune ?? null,
     employment_type: parsed.data.employment_type ?? null,
   })
+
+  // Date de fin de contrat (CDD / CDI Chantier) — alimente la Continuité.
+  if (parsed.data.contract_end_date) {
+    await updateContractEndDate(data.user.id, parsed.data.contract_end_date)
+  }
 
   await logAuditEvent({
     userId: auth.userId,

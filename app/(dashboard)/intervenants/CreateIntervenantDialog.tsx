@@ -48,6 +48,10 @@ export function CreateIntervenantDialog() {
   const [commune, setCommune] = useState('')
   const [role, setRole] = useState<Role>('chef_equipe')
   const [employment, setEmployment] = useState<Employment | ''>('')
+  const [contractEndDate, setContractEndDate] = useState('')
+
+  // Un CDD / CDI Chantier a une fin attendue → on exige la date (Continuité).
+  const needsEndDate = employment === 'cdd' || employment === 'cdi_chantier'
 
   function reset() {
     setEmail('')
@@ -56,10 +60,14 @@ export function CreateIntervenantDialog() {
     setCommune('')
     setRole('chef_equipe')
     setEmployment('')
+    setContractEndDate('')
   }
 
   const canSubmit =
-    email.trim() !== '' && fullName.trim() !== '' && !pending
+    email.trim() !== '' &&
+    fullName.trim() !== '' &&
+    (!needsEndDate || contractEndDate !== '') &&
+    !pending
 
   function submit() {
     if (!canSubmit) return
@@ -71,6 +79,7 @@ export function CreateIntervenantDialog() {
         phone: phone.trim() === '' ? null : phone.trim(),
         commune: commune.trim() === '' ? null : commune.trim(),
         employment_type: employment === '' ? null : employment,
+        contract_end_date: needsEndDate && contractEndDate !== '' ? contractEndDate : null,
       })
       if (!r.ok) {
         toast.error(r.error)
@@ -198,6 +207,23 @@ export function CreateIntervenantDialog() {
               </select>
             </Field>
           </div>
+
+          {needsEndDate && (
+            <Field label="Date de fin de contrat *" htmlFor="cri-end-date">
+              <input
+                id="cri-end-date"
+                type="date"
+                value={contractEndDate}
+                onChange={(e) => setContractEndDate(e.target.value)}
+                disabled={pending}
+                required
+                className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                CDD / CDI Chantier : on anticipe la passation de mémoire avant la fin.
+              </p>
+            </Field>
+          )}
         </div>
 
         <DialogFooter>
