@@ -25,7 +25,6 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   FileText,
-  MapPin,
   Pin,
   CheckCircle2,
   Shield,
@@ -36,15 +35,17 @@ import { listContracts } from '@/lib/db/contracts'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
 import {
   getCapitalPreuves,
-  getAOSnapshot,
   listTendersDueSoon,
   getOpenAnomaliesStats,
   getAtRiskEngagements,
   getTenantCumulativeStats,
   getContractSummaries,
+  getRecentAnomalies,
   type TenderDueSoonRow,
   type AtRiskEngagement,
+  type RecentAnomalyItem,
 } from '@/lib/db/dashboard'
+import { anomalyLabel } from '@/lib/anomaly-labels'
 import {
   listRecentPassations,
   listLivingASavoir,
@@ -114,9 +115,9 @@ export default async function DashboardPage() {
   const [
     contracts,
     capital,
-    aoSnapshot,
     tendersDueSoon,
     anomaliesStats,
+    recentAnomalies,
     atRiskEngagements,
     tenantCumulative,
     morningReading,
@@ -127,9 +128,9 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     listContracts(),
     getCapitalPreuves(),
-    getAOSnapshot(),
     listTendersDueSoon(7),
     getOpenAnomaliesStats(),
+    getRecentAnomalies(24),
     getAtRiskEngagements(),
     getTenantCumulativeStats(),
     getTenantTopMorningReading(),
@@ -160,12 +161,14 @@ export default async function DashboardPage() {
       <Hero
         morningReading={morningReading}
         tendersDueSoon={tendersDueSoon}
+        recentAnomalies={recentAnomalies}
         urgentPassations={continuity.counts.j7}
         sharedAwaitingAck={handoverCounts.shared}
         continuityEnabled={continuityEnabled}
       />
 
       <VieDuSysteme
+        recentAnomalies={recentAnomalies}
         tendersDueSoon={tendersDueSoon}
         atRiskEngagements={atRiskEngagements}
         oldAnomaliesCount={anomaliesStats.oldCount}
@@ -174,15 +177,10 @@ export default async function DashboardPage() {
         aSavoir={aSavoir}
       />
 
-      <BarreVolumes
+      <ReservoirEtDefense
         interventions={tenantCumulative.totalInterventions}
         preuves={capital.totalPhotos}
-        contrats={capital.totalContractsActive}
-        ao={aoSnapshot.activeCount}
-        anomalies={anomaliesStats.total}
       />
-
-      <NavContextuelle continuityEnabled={continuityEnabled} />
     </div>
   )
 }
@@ -192,7 +190,7 @@ export default async function DashboardPage() {
 // ----------------------------------------------------------------------------
 
 interface HeroSignal {
-  tone: 'continuity' | 'ao' | 'memory'
+  tone: 'continuity' | 'ao' | 'memory' | 'field'
   title: string
   body?: string
   href?: string
@@ -202,12 +200,14 @@ interface HeroSignal {
 function Hero({
   morningReading,
   tendersDueSoon,
+  recentAnomalies,
   urgentPassations,
   sharedAwaitingAck,
   continuityEnabled,
 }: {
   morningReading: TenantMorningReading
   tendersDueSoon: TenderDueSoonRow[]
+  recentAnomalies: RecentAnomalyItem[]
   urgentPassations: number
   sharedAwaitingAck: number
   continuityEnabled: boolean
@@ -271,6 +271,25 @@ function Hero({
     })
   }
 
+  // Signalements terrain frais (24h) — en dernier dans le hero (souvent
+  // nombreux) pour ne pas recréer l'alarme « 17 anomalies » : le détail vit
+  // dans le fil. Mais leur présence empêche un faux « les lieux sont calmes ».
+  if (recentAnomalies.length > 0) {
+    const n = recentAnomalies.length
+    const first = recentAnomalies[0]!
+    signals.push({
+      tone: 'field',
+      title: `${n} signalement${n > 1 ? 's' : ''} terrain ces dernières 24h.`,
+      body:
+        n === 1
+          ? anomalyLabel(first.description, first.categoryOther, first.category) +
+            (first.siteName ? ` — ${first.siteName}` : '')
+          : undefined,
+      href: n === 1 ? `/interventions/${first.interventionId}` : undefined,
+      linkLabel: n === 1 ? 'Voir le signalement' : undefined,
+    })
+  }
+
   const primary = signals[0] ?? null
   const secondary = signals[1] ?? null
 
@@ -281,9 +300,11 @@ function Hero({
         primary
           ? primary.tone === 'continuity'
             ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20'
-            : primary.tone === 'ao'
-              ? 'border-brand-200 bg-brand-50/40 dark:bg-brand-950/20'
-              : 'border-foreground/10 bg-[#fafaf7] dark:bg-muted/20'
+            : primary.tone === 'field'
+              ? 'border-rose-200 bg-rose-50/40 dark:bg-rose-950/20'
+              : primary.tone === 'ao'
+                ? 'border-brand-200 bg-brand-50/40 dark:bg-brand-950/20'
+                : 'border-foreground/10 bg-[#fafaf7] dark:bg-muted/20'
           : 'border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/15'
       }`}
     >
@@ -319,13 +340,21 @@ function Hero({
 
 function HeroLine({ signal, primary }: { signal: HeroSignal; primary?: boolean }) {
   const Icon =
-    signal.tone === 'continuity' ? ArrowRightLeft : signal.tone === 'ao' ? FileText : Sparkles
+    signal.tone === 'continuity'
+      ? ArrowRightLeft
+      : signal.tone === 'field'
+        ? AlertTriangle
+        : signal.tone === 'ao'
+          ? FileText
+          : Sparkles
   const iconColor =
     signal.tone === 'continuity'
       ? 'text-amber-600'
-      : signal.tone === 'ao'
-        ? 'text-brand-600'
-        : 'text-muted-foreground'
+      : signal.tone === 'field'
+        ? 'text-rose-600'
+        : signal.tone === 'ao'
+          ? 'text-brand-600'
+          : 'text-muted-foreground'
 
   return (
     <div className="flex items-start gap-3">
@@ -370,6 +399,7 @@ interface FilItem {
 }
 
 function VieDuSysteme({
+  recentAnomalies,
   tendersDueSoon,
   atRiskEngagements,
   oldAnomaliesCount,
@@ -377,6 +407,7 @@ function VieDuSysteme({
   recentPassations,
   aSavoir,
 }: {
+  recentAnomalies: RecentAnomalyItem[]
   tendersDueSoon: TenderDueSoonRow[]
   atRiskEngagements: AtRiskEngagement[]
   oldAnomaliesCount: number
@@ -385,6 +416,18 @@ function VieDuSysteme({
   aSavoir: LivingASavoirCard[]
 }) {
   const items: FilItem[] = []
+
+  // Tier 0 — signalements terrain frais (24h) : le lieu vient de parler.
+  for (const a of recentAnomalies.slice(0, 3)) {
+    items.push({
+      key: `anomaly-${a.id}`,
+      icon: AlertTriangle,
+      text: anomalyLabel(a.description, a.categoryOther, a.category),
+      sub: [a.siteName, relTime(a.createdAt)].filter(Boolean).join(' · ') || undefined,
+      href: `/interventions/${a.interventionId}`,
+      accent: true,
+    })
+  }
 
   // Tier 1 — échéances datées (le plus actionnable).
   for (const t of tendersDueSoon.slice(0, 3)) {
@@ -498,63 +541,33 @@ function VieDuSysteme({
 }
 
 // ----------------------------------------------------------------------------
-// 3. BARRE basse — volumes en une ligne (jamais des cartes KPI)
+// 3. PIED — réservoir de mémoire (le moat « par l'évidence ») + lien défense.
+//    Pas de compteurs ERP : contrats / AO / anomalies sont déjà dans le
+//    sidebar (nav globale) et dans le fil. On ne garde que ce qui a un sens
+//    produit propre : le volume de mémoire/preuve accumulée.
 // ----------------------------------------------------------------------------
 
-function BarreVolumes({
+function ReservoirEtDefense({
   interventions,
   preuves,
-  contrats,
-  ao,
-  anomalies,
 }: {
   interventions: number
   preuves: number
-  contrats: number
-  ao: number
-  anomalies: number
 }) {
   const fmt = (n: number) => n.toLocaleString('fr-FR')
   return (
-    <p className="text-xs text-muted-foreground tabular-nums pt-1">
-      {fmt(interventions)} interventions · {fmt(preuves)} preuves · {fmt(contrats)} contrats ·{' '}
-      {fmt(ao)} AO · {fmt(anomalies)} anomalies
-    </p>
-  )
-}
-
-// ----------------------------------------------------------------------------
-// 4. NAVIGATION contextuelle — le dashboard POINTE, ne refait pas
-// ----------------------------------------------------------------------------
-
-function NavContextuelle({ continuityEnabled }: { continuityEnabled: boolean }) {
-  const links: Array<{ href: string; label: string }> = [
-    { href: '/handovers', label: 'Passages de témoin' },
-    ...(continuityEnabled ? [{ href: '/continuite', label: 'Continuité' }] : []),
-    { href: '/tenders', label: 'Appels d’offres' },
-    { href: '/sites', label: 'Sites' },
-    { href: '/contracts', label: 'Contrats' },
-    { href: '/documents', label: 'Bibliothèque' },
-  ]
-  return (
-    <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-4 text-sm">
-      {links.map((l) => (
-        <Link
-          key={l.href}
-          href={l.href}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {l.label} →
-        </Link>
-      ))}
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-4">
+      <p className="text-xs text-muted-foreground tabular-nums">
+        Mémoire accumulée : {fmt(interventions)} interventions documentées · {fmt(preuves)} preuves
+      </p>
       <Link
         href="/litige"
         data-testid="dashboard-litige-link"
-        className="ml-auto inline-flex items-center gap-1.5 text-amber-800/80 hover:text-amber-900 transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs text-amber-800/80 hover:text-amber-900 transition-colors"
       >
         <Shield className="h-3.5 w-3.5" />
         Préparer ma défense
       </Link>
-    </nav>
+    </div>
   )
 }
