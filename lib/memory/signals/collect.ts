@@ -8,6 +8,7 @@ import 'server-only'
 import type { MemorySignal } from './types'
 import { detectHandoverAcknowledged } from './detectors/handover-acknowledged'
 import { detectFreshFieldMemory } from './detectors/fresh-field-memory'
+import { detectMemoryAwaiting } from './detectors/memory-awaiting'
 import { detectUnusualSilence } from './detectors/unusual-silence'
 
 const DETECTORS: Array<() => Promise<MemorySignal[]>> = [
@@ -15,6 +16,7 @@ const DETECTORS: Array<() => Promise<MemorySignal[]>> = [
   detectHandoverAcknowledged,
   detectFreshFieldMemory,
   // Fragilité.
+  detectMemoryAwaiting,
   detectUnusualSilence,
 ]
 

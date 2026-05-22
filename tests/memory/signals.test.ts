@@ -3,6 +3,10 @@ import type { MemorySignal, SignalKind } from '@/lib/memory/signals/types'
 import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
 import { renderSignal } from '@/lib/memory/signals/render'
 import { forSurface } from '@/lib/memory/signals/surface'
+import {
+  buildMemoryAwaitingSignals,
+  type AwaitingBriefInput,
+} from '@/lib/memory/signals/detectors/memory-awaiting.logic'
 
 function makeSignal(kind: SignalKind, over: Partial<MemorySignal> = {}): MemorySignal {
   return {
@@ -78,5 +82,46 @@ describe('moteur d’états de mémoire — couche pure', () => {
     const out = forSurface(signals, { surface: 'site', scope: { siteId: 'b' } })
     expect(out).toHaveLength(1)
     expect(out[0]!.subjectId).toBe('b')
+  })
+})
+
+describe('détecteur memory_awaiting (cœur pur)', () => {
+  const FIXTURE: AwaitingBriefInput[] = [
+    { id: 'b1', sharedAt: '2026-05-10T00:00:00.000Z', consulted: false, sites: [{ site_id: 's1', site_name: 'CHT Magenta' }] },
+    { id: 'b2', sharedAt: '2026-05-18T00:00:00.000Z', consulted: true, sites: [{ site_id: 's1', site_name: 'CHT Magenta' }, { site_id: 's2', site_name: 'Dumbéa Mall' }] },
+    { id: 'b3', sharedAt: '2026-05-22T00:00:00.000Z', consulted: false, sites: [{ site_id: 's3', site_name: 'Aile pédiatrie' }] }, // < seuil → exclu
+  ]
+  const NOW = new Date('2026-05-22T12:00:00.000Z').getTime()
+
+  it('déterministe : mêmes données + même now ⇒ mêmes signaux', () => {
+    const a = buildMemoryAwaitingSignals(FIXTURE, NOW)
+    const b = buildMemoryAwaitingSignals(FIXTURE, NOW)
+    expect(a).toEqual(b)
+  })
+
+  it('agrège par lieu et exclut ce qui est sous le seuil', () => {
+    const out = buildMemoryAwaitingSignals(FIXTURE, NOW)
+    const ids = out.map((s) => s.subjectId)
+    expect(ids).toEqual(['s1', 's2']) // s3 exclu (partagé le jour même)
+    const s1 = out.find((s) => s.subjectId === 's1')!
+    expect(s1.facts.awaitingBriefs).toBe(2)
+    expect(s1.evidence.refs).toEqual(['b1', 'b2'])
+  })
+
+  it('le signal ne porte JAMAIS sur une personne', () => {
+    const out = buildMemoryAwaitingSignals(FIXTURE, NOW)
+    expect(out.every((s) => s.subjectType === 'site')).toBe(true)
+    // @ts-expect-error — 'person' n'existe pas dans SubjectType (verrou de type)
+    expect(out.every((s) => s.subjectType !== 'person')).toBe(true)
+  })
+
+  it('aucun wording impératif côté renderer', () => {
+    const out = buildMemoryAwaitingSignals(FIXTURE, NOW)
+    const forbidden = /\b(doit|doivent|devez|lire|relire|en retard|urgent|veuillez)\b|!/i
+    for (const sig of out) {
+      const r = renderSignal(sig)
+      expect(forbidden.test(r.text)).toBe(false)
+      expect(forbidden.test(r.detail ?? '')).toBe(false)
+    }
   })
 })

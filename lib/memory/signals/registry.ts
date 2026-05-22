@@ -22,5 +22,6 @@ export const SIGNAL_REGISTRY: Record<SignalKind, SignalMeta> = {
   handover_acknowledged: { family: 'continuite', valence: 'sain', label: 'Passation reconnue' },
   fresh_field_memory: { family: 'memoire', valence: 'sain', label: 'Mémoire confirmée récemment' },
   // Fragilité.
+  memory_awaiting: { family: 'continuite', valence: 'fragile', label: 'Mémoire en attente' },
   unusual_silence: { family: 'memoire', valence: 'fragile', label: 'Silence inhabituel' },
 }

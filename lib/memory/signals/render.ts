@@ -28,6 +28,20 @@ export function renderSignal(s: MemorySignal): RenderedSignal {
         href: `/sites/${s.subjectId}`,
       }
     }
+    case 'memory_awaiting': {
+      // Wording strictement non-impératif : on décrit l'état de la mémoire,
+      // jamais « X doit lire » ni « manager en retard ».
+      const n = Number(s.facts.awaitingBriefs ?? 1)
+      const days = Number(s.facts.daysSinceShared ?? 0)
+      return {
+        text:
+          n > 1
+            ? `${s.subjectLabel} — ${n} passations attendent une reconnaissance`
+            : `${s.subjectLabel} — une passation attend une reconnaissance`,
+        detail: `partagé ${daysAgoFr(days)}`,
+        href: `/sites/${s.subjectId}`,
+      }
+    }
     case 'unusual_silence': {
       const days = Number(s.facts.daysSinceLastTrace ?? 0)
       return {
