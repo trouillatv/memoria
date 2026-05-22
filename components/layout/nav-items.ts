@@ -16,6 +16,8 @@ import {
   ArrowRightLeft,
   Clock,
   Eye,
+  Brain,
+  Boxes,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -53,7 +55,10 @@ export const NAV: NavItem[] = [
   // « Documents » séparée. Convergence knowledge_items→documents = tranche future.
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
   // Vincent 2026-05-22 — manuel téléchargeable pour Guillaume.
+  // Vincent 2026-05-23 — les 3 guides (livre web) regroupés dans le menu.
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'] },
+  { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
+  { href: '/comprendre/architecture', label: 'Comprendre l’archi',    icon: Boxes, roles: ['admin', 'manager'] },
   { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'] },
   // Vincent 2026-05-22 — Observation pilote (admin only, post-Sprint E).
   { href: '/admin/observation', label: 'Observation pilote', icon: Eye,         roles: ['admin'] },

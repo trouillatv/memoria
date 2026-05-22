@@ -10,22 +10,18 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { BookOpen, Download, ChevronLeft, ChevronRight, List, X } from 'lucide-react'
-
-export interface ManuelChapter {
-  id: string
-  num: string | null
-  title: string
-  /** Accroche (1er paragraphe), rendu inline. Vide si le chapitre n'en a pas. */
-  leadHtml: string
-  html: string
-}
+import type { BookChapter } from '@/lib/docs/book'
 
 export function ManuelBook({
   chapters,
+  title,
   lastGenerated,
+  downloadHref,
 }: {
-  chapters: ManuelChapter[]
+  chapters: BookChapter[]
+  title: string
   lastGenerated: string | null
+  downloadHref?: string
 }) {
   const [active, setActive] = useState(0)
   const [navOpen, setNavOpen] = useState(false)
@@ -58,7 +54,7 @@ export function ManuelBook({
       {/* ── Sidebar desktop ─────────────────────────────────────────────── */}
       <aside className="hidden lg:block w-64 shrink-0">
         <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pb-8">
-          <SidebarHeader lastGenerated={lastGenerated} />
+          <SidebarHeader title={title} lastGenerated={lastGenerated} downloadHref={downloadHref} />
           <ChapterNav chapters={chapters} active={active} onSelect={goto} />
         </div>
       </aside>
@@ -118,24 +114,34 @@ export function ManuelBook({
 
 // ----------------------------------------------------------------------------
 
-function SidebarHeader({ lastGenerated }: { lastGenerated: string | null }) {
+function SidebarHeader({
+  title,
+  lastGenerated,
+  downloadHref,
+}: {
+  title: string
+  lastGenerated: string | null
+  downloadHref?: string
+}) {
   return (
     <div className="mb-4 pb-4 border-b">
       <div className="flex items-center gap-2 text-sm font-semibold">
         <BookOpen className="h-4 w-4 text-brand-600" />
-        Manuel MemorIA
+        {title}
       </div>
       {lastGenerated && (
         <p className="text-[11px] text-muted-foreground mt-1">Mis à jour le {lastGenerated}</p>
       )}
-      <a
-        href="/manuel.docx"
-        download="MemorIA-MODE-EMPLOI.docx"
-        className="mt-3 inline-flex items-center gap-1.5 text-xs text-brand-700 dark:text-brand-300 hover:underline"
-      >
-        <Download className="h-3.5 w-3.5" />
-        Télécharger (.docx)
-      </a>
+      {downloadHref && (
+        <a
+          href={downloadHref}
+          download
+          className="mt-3 inline-flex items-center gap-1.5 text-xs text-brand-700 dark:text-brand-300 hover:underline"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Télécharger (.docx)
+        </a>
+      )}
     </div>
   )
 }
@@ -145,7 +151,7 @@ function ChapterNav({
   active,
   onSelect,
 }: {
-  chapters: ManuelChapter[]
+  chapters: BookChapter[]
   active: number
   onSelect: (i: number) => void
 }) {
@@ -191,7 +197,7 @@ function ChapterHero({
 }: {
   index: number
   total: number
-  chapter: ManuelChapter
+  chapter: BookChapter
 }) {
   return (
     <header className="mb-8 pb-6 border-b">
@@ -216,7 +222,7 @@ function PrevNextNav({
   active,
   onSelect,
 }: {
-  chapters: ManuelChapter[]
+  chapters: BookChapter[]
   active: number
   onSelect: (i: number) => void
 }) {
