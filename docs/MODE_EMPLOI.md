@@ -88,25 +88,35 @@ Un chef d'équipe **ne voit pas** le dashboard desktop. Quand il se connecte, il
 
 URL : `/dashboard` — c'est votre page d'accueil quand vous vous connectez (sauf chef d'équipe).
 
+Le dashboard n'est **pas** un tableau de KPI. C'est une surface de **mémoire opérationnelle** : il « apparaît au bon moment, puis se retire ». Volontairement sobre, 4 zones seulement (mai 2026 — refonte « collapse éditorial »).
+
 ### Ce que vous y voyez (de haut en bas)
 
 1. **Le bonjour** : prénom + nombre de contrats actifs.
-2. **Ce que les lieux disent ce matin** (si signal IA pertinent) : 1 phrase courte qui émerge d'un site. Rare par construction. Doctrine : *l'IA qui parle tout le temps devient du bruit*.
-3. **Zone Vigilance (en rouge bordeaux, en haut)** :
-   - AO à rendre dans les 7 jours (si vous en avez)
-   - Signalements terrain des dernières 24 h
-   - Engagements à surveiller cette semaine
-   - Contrats sous tension
-4. **Widget Pipeline AO** : 3 chiffres (Actifs / À rendre / Gagnés ce mois). Cliquable → `/tenders`.
-5. **Bouton « Préparer ma défense »** : raccourci vers le mode litige.
-6. **4 stats agrégées** (semaine, capital, AO, anomalies).
-7. **Compteurs** : dossiers clôturés ce mois.
-8. **Liste des contrats** : groupés par « Demandent attention », « En bonne progression », « Inactifs ».
-9. **Capital cumulé** : ligne sobre tout en bas — interventions documentées · photos · incidents traités depuis le démarrage.
-10. **Activité récente** : 8 derniers événements globaux.
+
+2. **« Mémoire active ce matin »** (le bloc principal) : **un seul message** mis en avant (plus un secondaire au maximum), ou un **silence assumé**. Selon ce qui mérite votre attention, il affiche :
+   - 🟢 *« Les lieux sont calmes ce matin »* (fond vert) quand rien ne presse — et c'est très bien ;
+   - 🟠 une **passation à préparer / en attente de reconnaissance** (continuité) ;
+   - une **échéance d'appel d'offres** proche ;
+   - 🔴 un **signalement terrain** récent ;
+   - une **résonance mémoire** (« ce que les lieux disent ce matin »).
+
+3. **« Vie des lieux »** : un **flux unique, hiérarchisé**, regroupé en **familles colorées** (pas une liste plate) :
+   - 🔴 **Attention opérationnelle** (rouge) : signalements terrain, anomalies ouvertes, engagements et contrats à surveiller ;
+   - 🟠 **Continuité** (ambre) : passations reconnues / en attente ;
+   - 🟣 **Appels d'offres** (violet) : échéances ;
+   - 🔵 **Mémoire terrain** (bleu doux) : « à savoir » récents, silence inhabituel d'un site.
+   Densité variable : un signal précis = une ligne normale ; un résumé (« 8 anomalies ouvertes ») = une ligne compacte.
+
+4. **Pied de page** : *« Mémoire accumulée : X interventions documentées · Y preuves »* (votre capital, pas un KPI) + lien discret **« Préparer ma défense »** (mode litige).
+
+Les KPI volumineux, le widget Pipeline AO et le widget « Contrats sous tension » ont été **retirés** : ces chiffres sont accessibles via le menu de gauche (Appels d'offres, Contrats, Sites…). Le dashboard **pointe** vers les pages spécialisées, il ne les recopie pas.
+
+### D'où viennent ces signaux ?
+Chaque signal de « Vie des lieux » est **calculé à partir de faits réels** (dates, statuts, comptages) — jamais inventé. Le système ne montre « silence inhabituel » que s'il y a vraiment une absence de trace, « passation reconnue » que si une reconnaissance a eu lieu, etc. Le sujet est **toujours le lieu ou l'équipe**, jamais une personne.
 
 ### Règle d'or
-**Silence positif** : si la zone vigilance est vide, c'est que tout va bien. Pas de carte qui dit « tout va bien » à votre place — c'est l'absence qui parle.
+**Silence positif** : un matin calme affiche peu de choses — c'est voulu. Le silence donne de la valeur aux moments où le système parle. On ne remplit jamais l'écran pour se rassurer.
 
 ---
 
@@ -457,6 +467,15 @@ Quand Sandrine quitte ton équipe, **toute la mémoire qu'elle avait des sites q
 
 **MemorIA compile tout ça en 2 secondes** dans un brief immuable et partageable.
 
+### La page `/handovers` (vue d'ensemble vivante)
+Même quand vous n'avez **aucun brief à transmettre**, la page n'est pas vide — elle montre que la continuité est suivie :
+- **Bandeau d'état** : 🟢 *« Continuité stable — aucune passation urgente »* (avec la date du dernier témoin reconnu), ou 🟠 *« N passations à préparer cette semaine »* si des contrats se terminent.
+- **Mémoire transmise ce mois-ci** : le **volume préservé** par les passations (sites couverts, « à savoir », anomalies relayées, documents, équipes relais). C'est un volume, **pas un score**.
+- **Dernières passations** : une frise des derniers briefs (« reconnu par X · consulté 3 fois », « brief généré il y a 12 jours », « archivé »).
+- **À savoir, en ce moment** : quelques consignes de site actuellement vivantes.
+
+En dessous, les onglets habituels filtrent les briefs par statut (À transmettre / Partagé / Reconnu / Archivé).
+
 ### Deux types de briefs
 
 #### Type 1 — Changement d'équipe
@@ -774,13 +793,8 @@ C'est pour ça qu'on parle de **continuité de mémoire opérationnelle**, pas d
 - **Tripwires CI** : le code refuse au build toute fonction qui ressemble à de la prédiction de départ (`departureRisk`, `criticalAgent`, `replacementScore`…).
 - **Pas de score, pas de classement, aucune comparaison entre personnes.**
 
-### Le widget dashboard
-Sur ton tableau de bord, si au moins une passation est à préparer dans les 30 jours, tu vois un encart compact :
-- **N passations à préparer** + détail par section (J-7, J-14, J-30)
-- Couleur **rose** si urgent (≤ 7j), **ambre** sinon, **neutre** si rien d'urgent.
-- Cliquable vers `/continuite`.
-
-**Silence positif** : si rien à préparer, le widget ne s'affiche pas du tout.
+### Sur le tableau de bord
+Depuis la refonte « collapse », il n'y a plus d'encart séparé : la continuité remonte directement dans le bloc **« Mémoire active ce matin »**. S'il y a une passation urgente à préparer (contrat finissant ≤ 7 jours), le bandeau passe en ambre avec un lien vers `/continuite`. Sinon, il affiche *« Continuité stable »*. **Silence positif** : rien d'urgent → aucun bruit.
 
 ### Comment l'utiliser au quotidien
 1. **Tu renseignes les dates de fin de contrat** sur les fiches Intervenants (pour les CDD et CDI Chantier de ton équipe).
