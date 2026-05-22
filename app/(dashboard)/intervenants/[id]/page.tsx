@@ -129,6 +129,9 @@ export default async function IntervenantDetailPage({ params }: Props) {
   ])
 
   if (!overview) notFound()
+  // L'admin (compte système) n'est jamais un sujet « intervenant », même via
+  // URL directe (Vincent 2026-05-22). Cohérent avec l'exclusion de la liste.
+  if (overview.role === 'admin') notFound()
 
   if (!access.access.isSelf) {
     await logAuditEvent({

@@ -103,12 +103,15 @@ export async function listContinuityRisks(input: {
 
   const admin = createAdminClient()
 
-  // 1. Récupérer les users avec contract_end_date dans la fenêtre
+  // 1. Récupérer les users avec contract_end_date dans la fenêtre.
+  //    L'admin (compte système) est EXCLU — jamais un sujet de passation
+  //    (Vincent 2026-05-22).
   const { data: users, error: uErr } = await admin
     .from('users')
     .select('id, full_name, email, employment_type, contract_end_date, deleted_at')
     .gte('contract_end_date', graceIso)
     .lte('contract_end_date', horizonIso)
+    .neq('role', 'admin')
     .is('deleted_at', null)
   if (uErr) throw uErr
   if (!users || users.length === 0) {

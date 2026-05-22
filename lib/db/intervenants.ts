@@ -670,11 +670,15 @@ export async function getIntervenantHeatmap(
 export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
   const admin = createAdminClient()
 
-  // 1) Users actifs (tous rôles — les chefs_equipe sont aussi des intervenants)
+  // 1) Users actifs intervenants — managers + chefs_equipe (les chefs_equipe
+  //    sont aussi des intervenants). L'admin (compte système) est EXCLU : ce
+  //    n'est pas un intervenant terrain et ne doit jamais apparaître comme
+  //    sujet (Vincent 2026-05-22).
   const { data: users } = await admin
     .from('users')
     .select('id, email, full_name, role')
     .is('deleted_at', null)
+    .neq('role', 'admin')
     .order('full_name', { ascending: true, nullsFirst: false })
 
   if (!users || users.length === 0) return []
