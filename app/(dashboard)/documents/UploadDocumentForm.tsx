@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { uploadDocumentAction } from './actions'
 import { DOCUMENT_TYPE_OPTIONS, VISIBILITY_OPTIONS } from '@/lib/documents/labels'
+import { classifyDocument, TIER_META } from '@/lib/documents/classify'
 
 type Collection = { id: string; name: string }
 type LinkOption = { id: string; label: string }
@@ -42,6 +43,10 @@ export function UploadDocumentForm({
   const [pending, setPending] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [targetType, setTargetType] = useState('')
+  // Tri d'ingestion : type + nom de fichier → couche mémoire recommandée.
+  const [docType, setDocType] = useState('')
+  const [filename, setFilename] = useState('')
+  const reco = docType ? classifyDocument({ documentType: docType, filename }) : null
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -56,6 +61,8 @@ export function UploadDocumentForm({
     }
     form.reset()
     setTargetType('')
+    setDocType('')
+    setFilename('')
     setMsg({ ok: true, text: 'Document envoyé. Analyse en cours…' })
     router.refresh()
   }
@@ -86,7 +93,13 @@ export function UploadDocumentForm({
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Type *</label>
-          <select name="document_type" required defaultValue="" className={selectCls}>
+          <select
+            name="document_type"
+            required
+            value={docType}
+            onChange={(e) => setDocType(e.target.value)}
+            className={selectCls}
+          >
             <option value="" disabled>
               Choisir…
             </option>
@@ -166,8 +179,29 @@ export function UploadDocumentForm({
 
       <div>
         <label className="text-xs text-muted-foreground">Fichier PDF *</label>
-        <Input type="file" name="file" accept="application/pdf" required />
+        <Input
+          type="file"
+          name="file"
+          accept="application/pdf"
+          required
+          onChange={(e) => setFilename(e.target.files?.[0]?.name ?? '')}
+        />
       </div>
+
+      {/* Tri d'ingestion mémorielle — l'IA propose la couche, l'humain valide. */}
+      {reco && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${TIER_META[reco.tier].badge}`}
+          >
+            {TIER_META[reco.tier].label}
+          </span>
+          <span className="text-muted-foreground">{reco.reason}</span>
+          <span className="ml-auto font-medium">
+            {reco.embeddingRecommended ? '✅ indexation conseillée' : '❌ pas d’indexation'}
+          </span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pending}>
