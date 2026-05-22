@@ -15,6 +15,8 @@ export interface ManuelChapter {
   id: string
   num: string | null
   title: string
+  /** Accroche (1er paragraphe), rendu inline. Vide si le chapitre n'en a pas. */
+  leadHtml: string
   html: string
 }
 
@@ -199,6 +201,12 @@ function ChapterHero({
       <h1 className="mt-2 text-3xl font-semibold tracking-tight leading-tight">
         {chapter.title}
       </h1>
+      {chapter.leadHtml && (
+        <p
+          className="mt-4 text-lg leading-relaxed text-muted-foreground [&_code]:text-sm [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_a]:text-brand-700 [&_a]:underline"
+          dangerouslySetInnerHTML={{ __html: chapter.leadHtml }}
+        />
+      )}
     </header>
   )
 }

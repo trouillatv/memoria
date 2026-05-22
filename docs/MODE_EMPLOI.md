@@ -45,15 +45,15 @@ Il transforme vos traces dispersées (notes terrain, photos, signalements, preuv
 - ❌ **Pas un chatbot qui rédige à votre place**. MemorIA *contextualise*, il ne génère pas.
 - ❌ **Pas un drive**. Les documents servent à nourrir la mémoire, pas à être stockés bêtement.
 
-### La promesse
-Au bout de 6 mois, vous saurez sur n'importe quel site :
-- Ce qui s'y passe régulièrement
-- Ce qui revient comme problème
-- Qui le connaît déjà
-- Quelles preuves vous y avez accumulées
-- Ce que vous y avez promis dans le contrat
-
-Et tout ce capital sera **réutilisable** dès qu'un nouvel AO du même type arrive.
+> [!SUCCESS] La promesse
+> Au bout de 6 mois, vous saurez sur n'importe quel site :
+> - Ce qui s'y passe régulièrement
+> - Ce qui revient comme problème
+> - Qui le connaît déjà
+> - Quelles preuves vous y avez accumulées
+> - Ce que vous y avez promis dans le contrat
+>
+> Et tout ce capital sera **réutilisable** dès qu'un nouvel AO du même type arrive.
 
 ---
 
@@ -115,8 +115,8 @@ Les KPI volumineux, le widget Pipeline AO et le widget « Contrats sous tension 
 ### D'où viennent ces signaux ?
 Chaque signal de « Vie des lieux » est **calculé à partir de faits réels** (dates, statuts, comptages) — jamais inventé. Le système ne montre « silence inhabituel » que s'il y a vraiment une absence de trace, « passation reconnue » que si une reconnaissance a eu lieu, etc. Le sujet est **toujours le lieu ou l'équipe**, jamais une personne.
 
-### Règle d'or
-**Silence positif** : un matin calme affiche peu de choses — c'est voulu. Le silence donne de la valeur aux moments où le système parle. On ne remplit jamais l'écran pour se rassurer.
+> [!TIP] Règle d'or
+> **Silence positif** : un matin calme affiche peu de choses — c'est voulu. Le silence donne de la valeur aux moments où le système parle. On ne remplit jamais l'écran pour se rassurer.
 
 ---
 
@@ -137,8 +137,8 @@ URL : `/aujourdhui` — vue centrée sur le présent.
   - Équipe affectée (ou badge ambre « Non-affecté »)
   - Statut (planifié / en cours / exécuté / validé / sauté)
 
-### Important
-**Pas de notion de « créneau »** dans MemorIA — uniquement des **heures réelles**. Une intervention à 6h30 est listée à 6h30, pas dans « Matin ».
+> [!WARNING] Important
+> **Pas de notion de « créneau »** dans MemorIA — uniquement des **heures réelles**. Une intervention à 6h30 est listée à 6h30, pas dans « Matin ».
 
 ### Liens en bas
 - *Briefing du soir* (préparer demain)
