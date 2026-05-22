@@ -51,6 +51,56 @@ function parseDateRange(raw: string | undefined): SupervisorDateRange {
   return '30d'
 }
 
+function relDaysFr(dateIso: string, todayIso: string): string {
+  const a = new Date(dateIso + 'T00:00:00Z').getTime()
+  const b = new Date(todayIso + 'T00:00:00Z').getTime()
+  const days = Math.round((b - a) / 86_400_000)
+  if (days <= 0) return "aujourd'hui"
+  if (days === 1) return 'hier'
+  if (days < 30) return `il y a ${days} j`
+  const m = Math.floor(days / 30)
+  return m <= 1 ? 'il y a 1 mois' : `il y a ${m} mois`
+}
+
+interface SiteFootprint {
+  openAnomalies: number
+  aSavoir: number
+}
+
+/** Empreinte mémoire directe (sans le moteur) par site : anomalies ouvertes +
+ * « à savoir » actifs. Sert au « signal faible » visible immédiatement. */
+async function getSiteFootprints(siteIds: string[]): Promise<Record<string, SiteFootprint>> {
+  const out: Record<string, SiteFootprint> = {}
+  if (siteIds.length === 0) return out
+  const supabase = createAdminClient()
+  const ensure = (sid: string) => (out[sid] ??= { openAnomalies: 0, aSavoir: 0 })
+
+  const [anoms, notes] = await Promise.all([
+    supabase
+      .from('intervention_anomalies')
+      .select('id, intervention:interventions!inner(mission:missions!inner(site_id))')
+      .eq('status', 'open'),
+    supabase
+      .from('site_notes')
+      .select('site_id')
+      .eq('kind', 'a_savoir')
+      .is('deleted_at', null)
+      .in('site_id', siteIds),
+  ])
+
+  for (const r of (anoms.data ?? []) as Array<{ intervention: unknown }>) {
+    const intv = Array.isArray(r.intervention) ? r.intervention[0] : r.intervention
+    const mission = intv ? (Array.isArray((intv as { mission: unknown }).mission) ? (intv as { mission: { site_id: string }[] }).mission[0] : (intv as { mission: { site_id: string } }).mission) : null
+    const sid = (mission as { site_id?: string } | null)?.site_id
+    if (!sid || !siteIds.includes(sid)) continue
+    ensure(sid).openAnomalies++
+  }
+  for (const r of (notes.data ?? []) as Array<{ site_id: string | null }>) {
+    if (r.site_id) ensure(r.site_id).aSavoir++
+  }
+  return out
+}
+
 export default async function MissionsPage({
   searchParams,
 }: {
@@ -152,6 +202,13 @@ export default async function MissionsPage({
   // injecté sous le titre de groupe. Sujet = le lieu, jamais une personne.
   const signalsBySite = planningSignalsBySite(await collectMemorySignals())
 
+  // Empreinte mémoire DIRECTE (visible tout de suite, sans dépendre du moteur) :
+  // anomalies ouvertes + « à savoir » par lieu affiché.
+  const shownSiteIds = Array.from(
+    new Set(items.map((i) => i.mission?.site?.id).filter((x): x is string => !!x)),
+  )
+  const footprints = await getSiteFootprints(shownSiteIds)
+
   return (
     <div className="space-y-6 max-w-4xl">
       <header>
@@ -229,7 +286,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
             À venir ({upcoming.length})
           </h2>
-          <SiteGroupedList items={upcoming} accent="emerald" signalsBySite={signalsBySite} />
+          <SiteGroupedList items={upcoming} accent="emerald" signalsBySite={signalsBySite} footprints={footprints} today={today} />
         </section>
       )}
 
@@ -238,7 +295,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Récentes ({past.length})
           </h2>
-          <SiteGroupedList items={past} accent="muted" signalsBySite={signalsBySite} />
+          <SiteGroupedList items={past} accent="muted" signalsBySite={signalsBySite} footprints={footprints} today={today} />
         </section>
       )}
 
@@ -347,65 +404,105 @@ function SiteGroupedList({
   items,
   accent,
   signalsBySite,
+  footprints,
+  today,
 }: {
   items: ListItem[]
   accent: 'emerald' | 'muted'
   signalsBySite: Record<string, MemorySignal[]>
+  footprints: Record<string, SiteFootprint>
+  today: string
 }) {
-  const groups = groupBySiteName(items)
+  const enriched = groupBySiteName(items).map((g) => {
+    const fp = g.siteId ? footprints[g.siteId] : undefined
+    const openAnomalies = fp?.openAnomalies ?? 0
+    const aSavoir = fp?.aSavoir ?? 0
+    const hasUnassigned = g.items.some((i) => i.status === 'planned' && !i.assigned_team_id)
+    // Dernière activité documentée (completed/validated) du groupe.
+    let lastDone = ''
+    for (const i of g.items) {
+      if (i.status !== 'completed' && i.status !== 'validated') continue
+      const d = i.scheduled_for ?? i.scheduled_at.slice(0, 10)
+      if (d > lastDone) lastDone = d
+    }
+    const topSignal = g.siteId ? signalsBySite[g.siteId]?.[0] : undefined
+    const attention = openAnomalies > 0 || hasUnassigned
+    return { g, openAnomalies, aSavoir, hasUnassigned, lastDone, topSignal, attention }
+  })
+  // #4 (léger) : les lieux qui nécessitent attention remontent en premier.
+  enriched.sort((a, b) => (a.attention === b.attention ? 0 : a.attention ? -1 : 1))
+
   return (
     <div className="space-y-1.5">
-      {groups.map((g) => {
-        const topSignal = g.siteId ? signalsBySite[g.siteId]?.[0] : undefined
-        const accentCls = topSignal ? FAMILY_ACCENT[SIGNAL_REGISTRY[topSignal.kind].family] : ''
+      {enriched.map(({ g, openAnomalies, aSavoir, hasUnassigned, lastDone, topSignal, attention }) => {
+        const accentCls = attention
+          ? 'border-l-2 border-l-amber-300'
+          : topSignal
+            ? FAMILY_ACCENT[SIGNAL_REGISTRY[topSignal.kind].family]
+            : ''
+        const hasLine =
+          openAnomalies > 0 || aSavoir > 0 || hasUnassigned || !!lastDone || !!topSignal
         return (
-        <details
-          key={g.siteKey}
-          className={cn('group rounded-lg border bg-card overflow-hidden', accentCls)}
-        >
-          <summary
-            className={
-              'flex items-start justify-between gap-3 px-3 py-2.5 cursor-pointer select-none ' +
-              'hover:bg-muted/30 transition-colors list-none [&::-webkit-details-marker]:hidden ' +
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-            }
+          <details
+            key={g.siteKey}
+            className={cn('group rounded-lg border bg-card overflow-hidden', accentCls)}
           >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
-                  aria-hidden
-                />
-                <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="text-sm font-medium truncate">{g.siteName}</span>
-                {g.contractName && (
-                  <span className="text-xs text-muted-foreground truncate">· {g.contractName}</span>
-                )}
-              </div>
-              {topSignal && (
-                <div className="mt-1 ml-[1.4rem]">
-                  <MemorySignalBadge signal={topSignal} />
-                </div>
-              )}
-            </div>
-            <span
+            <summary
               className={
-                'text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ' +
-                (accent === 'emerald'
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-muted text-muted-foreground')
+                'flex items-start justify-between gap-3 px-3 py-2.5 cursor-pointer select-none ' +
+                'hover:bg-muted/30 transition-colors list-none [&::-webkit-details-marker]:hidden ' +
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
               }
             >
-              {g.items.length}
-            </span>
-          </summary>
-          <ul className="space-y-1.5 px-3 pb-3 pt-1 border-t bg-muted/10">
-            {g.items.map((i) => (
-              <InterventionRow key={i.id} item={i} />
-            ))}
-          </ul>
-        </details>
-      )})}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <ChevronRight
+                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-open:rotate-90"
+                    aria-hidden
+                  />
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="text-sm font-medium truncate">{g.siteName}</span>
+                  {g.contractName && (
+                    <span className="text-xs text-muted-foreground truncate">· {g.contractName}</span>
+                  )}
+                </div>
+                {/* #1 signal faible (comptes directs) + #2 différenciation. */}
+                {hasLine && (
+                  <div className="mt-1 ml-[1.4rem] flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                    {openAnomalies > 0 && (
+                      <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="h-3 w-3" aria-hidden />
+                        {openAnomalies} anomalie{openAnomalies > 1 ? 's' : ''} ouverte{openAnomalies > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {hasUnassigned && (
+                      <span className="text-amber-700 dark:text-amber-300">· intervention sans équipe</span>
+                    )}
+                    {aSavoir > 0 && <span>· {aSavoir} à savoir</span>}
+                    {lastDone && <span>· dernière activité {relDaysFr(lastDone, today)}</span>}
+                    {topSignal && <MemorySignalBadge signal={topSignal} />}
+                  </div>
+                )}
+              </div>
+              <span
+                className={
+                  'text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ' +
+                  (accent === 'emerald'
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-muted text-muted-foreground')
+                }
+              >
+                {g.items.length}
+              </span>
+            </summary>
+            <ul className="space-y-1.5 px-3 pb-3 pt-1 border-t bg-muted/10">
+              {g.items.map((i) => (
+                <InterventionRow key={i.id} item={i} />
+              ))}
+            </ul>
+          </details>
+        )
+      })}
     </div>
   )
 }

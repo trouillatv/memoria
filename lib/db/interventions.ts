@@ -55,6 +55,7 @@ export interface SupervisorInterventionRow {
   mission?: {
     name: string
     site?: {
+      id: string
       name: string
       contract?: { id: string; name: string; client_name: string } | null
     } | null
@@ -152,7 +153,7 @@ export async function listInterventionsSupervisor(
   const raw = (data ?? []) as unknown as RawIntervention[]
   const items: SupervisorInterventionRow[] = raw.map((r) => {
     const missionRaw = pickOne<{ name: string; site?: unknown }>(r.mission)
-    const siteRaw = missionRaw ? pickOne<{ name: string; contract?: unknown }>(missionRaw.site) : null
+    const siteRaw = missionRaw ? pickOne<{ id: string; name: string; contract?: unknown }>(missionRaw.site) : null
     const contractRaw = siteRaw
       ? pickOne<{ id: string; name: string; client_name: string }>(siteRaw.contract)
       : null
@@ -170,7 +171,7 @@ export async function listInterventionsSupervisor(
       mission: missionRaw
         ? {
             name: missionRaw.name,
-            site: siteRaw ? { name: siteRaw.name, contract: contractRaw } : null,
+            site: siteRaw ? { id: siteRaw.id, name: siteRaw.name, contract: contractRaw } : null,
           }
         : null,
     }
