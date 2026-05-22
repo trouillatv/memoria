@@ -13,7 +13,6 @@ import {
   listTendersDueSoon,
   getOpenAnomaliesStats,
   getAtRiskEngagements,
-  getContractsUnderTension,
   getRecentActivity,
   getTenantCumulativeStats,
   getContractSummaries,
@@ -26,7 +25,6 @@ import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
 import { StatsBand } from './StatsBand'
 import { AtRiskEngagementsWidget } from './AtRiskEngagementsWidget'
-import { ContractsUnderTensionWidget } from './ContractsUnderTensionWidget'
 import { RecentActivityWidget } from './RecentActivityWidget'
 import { AnomaliesOldWidget } from './AnomaliesOldWidget'
 import { RecentAnomaliesWidget } from './RecentAnomaliesWidget'
@@ -72,7 +70,6 @@ export default async function DashboardPage() {
     tendersDueSoon,
     anomaliesStats,
     atRiskEngagements,
-    contractsUnderTension,
     recentActivity,
     dossiersClosedThisMonth,
     tenantCumulative,
@@ -88,7 +85,6 @@ export default async function DashboardPage() {
     listTendersDueSoon(7),
     getOpenAnomaliesStats(),
     getAtRiskEngagements(),
-    getContractsUnderTension(),
     getRecentActivity(8),
     getDossiersClosedThisMonth(),
     getTenantCumulativeStats(),
@@ -165,8 +161,6 @@ export default async function DashboardPage() {
       <RecentAnomaliesWidget anomalies={recentAnomalies} />
 
       <AtRiskEngagementsWidget engagements={atRiskEngagements} />
-
-      <ContractsUnderTensionWidget contracts={contractsUnderTension} />
 
       {/* Sprint E (Vincent 2026-05-22) — Widget continuité. Silence positif :
           ne s'affiche pas si zéro passation à préparer dans les 30 jours.
