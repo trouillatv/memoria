@@ -71,9 +71,17 @@ export default async function DocumentsPage({
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Téléverser un document
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Téléverser un document
+          </h2>
+          <Link
+            href="/documents/import"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 h-8 text-xs font-medium hover:bg-muted/50 transition-colors"
+          >
+            Importer par lot
+          </Link>
+        </div>
         <UploadDocumentForm
           collections={collections.map((c) => ({ id: c.id, name: c.name }))}
           linkTargets={linkTargets}

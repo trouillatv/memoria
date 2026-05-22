@@ -144,7 +144,10 @@ export async function uploadDocumentAction(
   // l'humain l'a validé. Défaut = indexer (rétro-compat) sauf 'false' explicite.
   // Un document non indexé est rangé en couche 'froide', statut 'ready' (pipeline
   // terminé sans chunks) — pas de coût d'embedding, pas de pollution du retrieval.
-  const embed = input.embed !== 'false'
+  //
+  // GARDE-FOU SERVEUR : un litige n'est JAMAIS indexé automatiquement, quoi que
+  // poste le client ([[litige-no-automatic-reading]]).
+  const embed = input.document_type !== 'litige' && input.embed !== 'false'
   const memoryTier: 'vivante' | 'consultable' | 'froide' | null = embed
     ? (input.memory_tier ?? null)
     : 'froide'

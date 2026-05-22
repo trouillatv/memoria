@@ -76,6 +76,28 @@ export function classifyDocument(input: {
   return { tier: base.tier, embeddingRecommended: base.embed, reason: base.reason }
 }
 
+// Indice LÉGER de type par nom de fichier (explicable, borné — pas d'« IA
+// magique »). Premier motif qui matche gagne ; sinon 'autre'. L'humain corrige.
+const TYPE_GUESS: Array<[RegExp, string]> = [
+  [/\b(facture|devis|avoir)\b/, 'facture'],
+  [/\b(cctp|ccap|\bao\b|appel.?d.?offres?)\b/, 'ao'],
+  [/\b(proc[ée]dure|consigne)\b/, 'procedure'],
+  [/\b(protocole)\b/, 'protocole'],
+  [/\b(s[ée]curit[ée])\b/, 'securite'],
+  [/\b(plan|acc[èe]s|badge)\b/, 'plan_acces'],
+  [/\b(contrat)\b/, 'contrat'],
+  [/\b(avenant)\b/, 'avenant'],
+]
+
+/** Devine un document_type depuis le nom de fichier (heuristique simple). */
+export function guessDocumentType(filename: string): string {
+  const hay = filename.toLowerCase().replace(/[_\-./]+/g, ' ')
+  for (const [re, type] of TYPE_GUESS) {
+    if (re.test(hay)) return type
+  }
+  return 'autre'
+}
+
 /** Libellé + teinte UI d'une couche (pour les badges de triage). */
 export const TIER_META: Record<MemoryTier, { label: string; badge: string }> = {
   vivante: { label: 'Mémoire vivante', badge: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' },
