@@ -689,5 +689,200 @@ export async function recordHandoverShareAccess(token: string): Promise<void> {
     .eq('id', brief.id)
 }
 
+// ----------------------------------------------------------------------------
+// « Faire respirer » la page /handovers — agrégats descriptifs pour rendre la
+// continuité VIVANTE même quand il n'y a aucun brief à transmettre.
+// Vincent 2026-05-22 — P0 « décrire → orchestrer ».
+//
+// Doctrine : volume de mémoire PRÉSERVÉE, jamais score ni performance. Sujet =
+// la mémoire / le lieu. Le seul nom de personne autorisé est « reconnu par X »
+// (fait de processus : qui a accusé réception d'une passation), jamais évaluatif.
+// ----------------------------------------------------------------------------
+
+/** Volume de mémoire portée par les briefs créés ce mois-ci (préservée, pas score). */
+export interface MemoryTransmittedSummary {
+  briefsCount: number
+  sitesCovered: number
+  anomalies: number
+  documents: number
+  aSavoir: number
+  relayTeams: number
+}
+
+/**
+ * Agrège ce que les passages de témoin du mois courant ont mis en mémoire.
+ * Inclut les briefs archivés (la mémoire a quand même été transmise).
+ */
+export async function getMemoryTransmittedThisMonth(): Promise<MemoryTransmittedSummary> {
+  const admin = createAdminClient()
+  const start = new Date()
+  start.setUTCDate(1)
+  start.setUTCHours(0, 0, 0, 0)
+
+  const { data } = await admin
+    .from('handover_briefs')
+    .select('payload, created_at')
+    .gte('created_at', start.toISOString())
+
+  const briefs = (data ?? []) as Array<{ payload: HandoverPayload | null }>
+  const sites = new Set<string>()
+  const relayTeams = new Set<string>()
+  let anomalies = 0
+  let documents = 0
+  let aSavoir = 0
+  for (const b of briefs) {
+    for (const s of b.payload?.sites ?? []) {
+      sites.add(s.site_id)
+      anomalies += s.recentAnomalies?.length ?? 0
+      documents += s.documents?.length ?? 0
+      aSavoir += s.aSavoir?.length ?? 0
+      for (const t of s.neighborTeams ?? []) relayTeams.add(t.team_id)
+    }
+  }
+  return {
+    briefsCount: briefs.length,
+    sitesCovered: sites.size,
+    anomalies,
+    documents,
+    aSavoir,
+    relayTeams: relayTeams.size,
+  }
+}
+
+/** Entrée de la timeline « Dernières passations » (tous statuts confondus). */
+export interface RecentPassationEntry {
+  id: string
+  title: string
+  kind: HandoverKind
+  status: HandoverStatus
+  createdAt: string
+  sitesCount: number
+  accessCount: number
+  /** Nom de la personne ayant accusé réception (fait de processus). */
+  acknowledgedByLabel: string | null
+  acknowledgedAt: string | null
+  targetTeamName: string | null
+  /** True si archivé (soft-deleted) → pas de lien vers le détail. */
+  isArchived: boolean
+}
+
+/**
+ * Dernières passations, tous statuts (y compris archivées), pour montrer que
+ * la continuité est vivante. Ne filtre PAS deleted_at (les archives comptent).
+ */
+export async function listRecentPassations(limit = 6): Promise<RecentPassationEntry[]> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('handover_briefs')
+    .select(
+      'id, title, kind, status, created_at, deleted_at, access_count, acknowledged_by, acknowledged_at, target_team_id, payload',
+    )
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  type Row = {
+    id: string
+    title: string
+    kind: HandoverKind
+    status: HandoverStatus
+    created_at: string
+    deleted_at: string | null
+    access_count: number | null
+    acknowledged_by: string | null
+    acknowledged_at: string | null
+    target_team_id: string | null
+    payload: HandoverPayload | null
+  }
+  const rows = (data ?? []) as Row[]
+  if (rows.length === 0) return []
+
+  const ackIds = Array.from(
+    new Set(rows.map((r) => r.acknowledged_by).filter((v): v is string => !!v)),
+  )
+  const teamIds = Array.from(
+    new Set(rows.map((r) => r.target_team_id).filter((v): v is string => !!v)),
+  )
+  const [usersRes, teamsRes] = await Promise.all([
+    ackIds.length
+      ? admin.from('users').select('id, full_name, email').in('id', ackIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null; email: string }> }),
+    teamIds.length
+      ? admin.from('teams').select('id, name').in('id', teamIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+  ])
+  const userById = new Map(
+    ((usersRes.data ?? []) as Array<{ id: string; full_name: string | null; email: string }>).map(
+      (u) => [u.id, (u.full_name ?? '').trim() || u.email.split('@')[0] || u.email],
+    ),
+  )
+  const teamById = new Map(
+    ((teamsRes.data ?? []) as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]),
+  )
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    kind: r.kind,
+    status: r.status,
+    createdAt: r.created_at,
+    sitesCount: r.payload?.sites?.length ?? 0,
+    accessCount: r.access_count ?? 0,
+    acknowledgedByLabel: r.acknowledged_by ? userById.get(r.acknowledged_by) ?? null : null,
+    acknowledgedAt: r.acknowledged_at,
+    targetTeamName: r.target_team_id ? teamById.get(r.target_team_id) ?? null : null,
+    isArchived: r.status === 'archived' || r.deleted_at !== null,
+  }))
+}
+
+/** Carte « à savoir » vivante (consigne descriptive persistante d'un site). */
+export interface LivingASavoirCard {
+  id: string
+  site_id: string
+  site_name: string
+  body: string
+  notedAt: string
+}
+
+/**
+ * Quelques « à savoir » actuellement actifs (un par site pour la variété).
+ * Matière brute de la mémoire transmise — sujet = le lieu, format passif.
+ */
+export async function listLivingASavoir(limit = 4): Promise<LivingASavoirCard[]> {
+  const admin = createAdminClient()
+  const today = new Date().toISOString().slice(0, 10)
+  const { data } = await admin
+    .from('site_notes')
+    .select('id, body, created_at, kind, active_until, site:sites!inner(id, name, deleted_at)')
+    .eq('kind', 'a_savoir')
+    .is('deleted_at', null)
+    .or(`active_until.is.null,active_until.gte.${today}`)
+    .order('created_at', { ascending: false })
+    .limit(limit * 4)
+
+  type Row = {
+    id: string
+    body: string
+    created_at: string
+    site: { id: string; name: string; deleted_at: string | null } | { id: string; name: string; deleted_at: string | null }[] | null
+  }
+  const out: LivingASavoirCard[] = []
+  const seenSites = new Set<string>()
+  for (const r of (data ?? []) as Row[]) {
+    const site = pickOne(r.site)
+    if (!site?.id || !site.name || site.deleted_at) continue
+    if (seenSites.has(site.id)) continue // un par site
+    seenSites.add(site.id)
+    out.push({
+      id: r.id,
+      site_id: site.id,
+      site_name: site.name,
+      body: r.body,
+      notedAt: r.created_at,
+    })
+    if (out.length >= limit) break
+  }
+  return out
+}
+
 // Re-export pour confort sur les pages
 export { listTeamCompanions }

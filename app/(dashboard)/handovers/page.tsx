@@ -1,9 +1,12 @@
-// /handovers — Liste des passages de témoin.
+// /handovers — Passages de témoin : centre de continuité opérationnelle.
 //
-// Vincent 2026-05-22 — Sprint Équipes C. Admin + manager (chef_equipe redirigé).
+// Vincent 2026-05-22 — Sprint Équipes C, puis P0 « décrire → orchestrer ».
 //
-// Doctrine : la page liste des briefs. Pas de « top créateurs », pas de classement.
-// On filtre par statut (À transmettre / Partagé / Reconnu / Archivé).
+// Doctrine : la page liste des briefs MAIS doit aussi RESPIRER quand il n'y a
+// rien à transmettre — montrer que la mémoire continue d'exister et que le
+// système surveille. Pas de « top créateurs », pas de classement, pas de score.
+// Volume = mémoire PRÉSERVÉE. Le seul nom de personne = « reconnu par X »
+// (fait de processus). Sujet = la mémoire / le lieu.
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -14,12 +17,27 @@ import {
   CheckCircle2,
   Share2,
   Archive,
+  ShieldCheck,
+  AlertTriangle,
+  MapPin,
+  Pin,
+  Users,
+  BookOpen,
+  Eye,
+  Clock,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import {
   listHandoverBriefs,
   countHandoverBriefsByStatus,
+  getMemoryTransmittedThisMonth,
+  listRecentPassations,
+  listLivingASavoir,
+  type RecentPassationEntry,
+  type MemoryTransmittedSummary,
+  type LivingASavoirCard,
 } from '@/lib/db/handover'
+import { listContinuityRisks } from '@/lib/db/continuity'
 import type { HandoverStatus } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -55,6 +73,25 @@ function fmtDateShort(iso: string | null): string {
   })
 }
 
+/** Temps relatif sobre (« hier », « il y a 3 jours », « il y a 2 mois »). */
+function relTime(iso: string | null): string {
+  if (!iso) return ''
+  const diffMs = Date.now() - new Date(iso).getTime()
+  if (diffMs < 0) return "à l'instant"
+  const days = Math.floor(diffMs / 86_400_000)
+  if (days <= 0) {
+    const hours = Math.floor(diffMs / 3_600_000)
+    if (hours <= 0) return "à l'instant"
+    return hours === 1 ? 'il y a 1 heure' : `il y a ${hours} heures`
+  }
+  if (days === 1) return 'hier'
+  if (days < 7) return `il y a ${days} jours`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return weeks === 1 ? 'il y a 1 semaine' : `il y a ${weeks} semaines`
+  const months = Math.floor(days / 30)
+  return months <= 1 ? 'il y a 1 mois' : `il y a ${months} mois`
+}
+
 export default async function HandoversPage({
   searchParams,
 }: {
@@ -70,10 +107,17 @@ export default async function HandoversPage({
       ? (rawStatus as HandoverStatus)
       : 'draft'
 
-  const [briefs, counts] = await Promise.all([
+  const [briefs, counts, summary, recent, aSavoir, continuity] = await Promise.all([
     listHandoverBriefs({ status: filter, limit: 200 }),
     countHandoverBriefsByStatus(),
+    getMemoryTransmittedThisMonth(),
+    listRecentPassations(6),
+    listLivingASavoir(4),
+    listContinuityRisks({ horizonDays: 7, viewerUserId: me.id }),
   ])
+
+  const urgentPassations = continuity.counts.j7
+  const lastAcknowledged = recent.find((p) => p.status === 'acknowledged') ?? null
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -89,89 +133,337 @@ export default async function HandoversPage({
         </p>
       </header>
 
-      {/* Tabs */}
-      <nav className="flex items-center gap-2 border-b" aria-label="Filtre par statut">
-        {VALID_STATUSES.map((s) => {
-          const Icon = STATUS_ICON[s]
-          return (
-            <Link
-              key={s}
-              href={`/handovers?status=${s}`}
-              aria-current={filter === s ? 'page' : undefined}
-              className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${
-                filter === s
-                  ? 'border-brand-600 text-foreground font-medium'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {STATUS_LABEL[s]}
-              <span className="ml-1 text-xs tabular-nums text-muted-foreground">
-                ({counts[s]})
-              </span>
-            </Link>
-          )
-        })}
-      </nav>
+      {/* ── Bandeau d'état — la page respire même sans rien à transmettre ── */}
+      <ContinuityStateBanner
+        urgentPassations={urgentPassations}
+        lastAcknowledged={lastAcknowledged}
+        summary={summary}
+      />
 
-      {/* Liste */}
-      {briefs.length === 0 ? (
-        <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground italic">
-          {filter === 'draft'
-            ? 'Aucun brief à transmettre. Crée-en un depuis une fiche intervenant ou une fiche équipe.'
-            : `Aucun brief ${STATUS_LABEL[filter].toLowerCase()}.`}
-        </div>
-      ) : (
-        <ul className="space-y-2">
-          {briefs.map((b) => {
-            const Icon = STATUS_ICON[b.status as HandoverStatus]
+      {/* ── Mémoire transmise ce mois-ci — volume préservé, jamais score ── */}
+      <MemoryTransmittedCard summary={summary} />
+
+      {/* ── Timeline des dernières passations ── */}
+      <RecentPassationsTimeline entries={recent} />
+
+      {/* ── Cartes « à savoir » actuellement vivantes ── */}
+      <LivingASavoirSection cards={aSavoir} />
+
+      {/* ── Zone de travail : briefs filtrés par statut ── */}
+      <section className="space-y-3 pt-2">
+        <h2 className="text-sm font-medium text-muted-foreground inline-flex items-center gap-1.5">
+          <FileText className="h-4 w-4" />
+          Tous les briefs
+        </h2>
+
+        {/* Tabs */}
+        <nav className="flex items-center gap-2 border-b" aria-label="Filtre par statut">
+          {VALID_STATUSES.map((s) => {
+            const Icon = STATUS_ICON[s]
             return (
-              <li key={b.id}>
-                <Link
-                  href={`/handovers/${b.id}`}
-                  className="block rounded-lg border bg-card p-4 hover:border-brand-300 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground inline-flex items-center gap-1">
-                          <Icon className="h-3 w-3" />
-                          {STATUS_LABEL[b.status as HandoverStatus]}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
-                          {KIND_LABEL[b.kind] ?? b.kind}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">
-                          {fmtDateShort(b.created_at)}
-                        </span>
+              <Link
+                key={s}
+                href={`/handovers?status=${s}`}
+                aria-current={filter === s ? 'page' : undefined}
+                className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${
+                  filter === s
+                    ? 'border-brand-600 text-foreground font-medium'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {STATUS_LABEL[s]}
+                <span className="ml-1 text-xs tabular-nums text-muted-foreground">
+                  ({counts[s]})
+                </span>
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Liste */}
+        {briefs.length === 0 ? (
+          <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground italic">
+            {filter === 'draft'
+              ? 'Aucun brief à transmettre. Crée-en un depuis une fiche intervenant ou une fiche équipe.'
+              : `Aucun brief ${STATUS_LABEL[filter].toLowerCase()}.`}
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {briefs.map((b) => {
+              const Icon = STATUS_ICON[b.status as HandoverStatus]
+              return (
+                <li key={b.id}>
+                  <Link
+                    href={`/handovers/${b.id}`}
+                    className="block rounded-lg border bg-card p-4 hover:border-brand-300 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground inline-flex items-center gap-1">
+                            <Icon className="h-3 w-3" />
+                            {STATUS_LABEL[b.status as HandoverStatus]}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                            {KIND_LABEL[b.kind] ?? b.kind}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {fmtDateShort(b.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium mt-1 truncate">
+                          {b.title}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {b.payload?.sites?.length ?? 0} site
+                          {(b.payload?.sites?.length ?? 0) > 1 ? 's' : ''}
+                          {b.shared_token && b.expires_at && (
+                            <>
+                              {' · Partagé '}
+                              <span className="tabular-nums">
+                                (expire le {fmtDateShort(b.expires_at)})
+                              </span>
+                              {' · '}
+                              {b.access_count} consultation
+                              {b.access_count > 1 ? 's' : ''}
+                            </>
+                          )}
+                        </p>
                       </div>
-                      <p className="text-sm font-medium mt-1 truncate">
-                        {b.title}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {b.payload?.sites?.length ?? 0} site
-                        {(b.payload?.sites?.length ?? 0) > 1 ? 's' : ''}
-                        {b.shared_token && b.expires_at && (
-                          <>
-                            {' · Partagé '}
-                            <span className="tabular-nums">
-                              (expire le {fmtDateShort(b.expires_at)})
-                            </span>
-                            {' · '}
-                            {b.access_count} consultation
-                            {b.access_count > 1 ? 's' : ''}
-                          </>
-                        )}
-                      </p>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  </div>
-                </Link>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Bandeau d'état de continuité — « respiration du vide »
+// ----------------------------------------------------------------------------
+
+function ContinuityStateBanner({
+  urgentPassations,
+  lastAcknowledged,
+  summary,
+}: {
+  urgentPassations: number
+  lastAcknowledged: RecentPassationEntry | null
+  summary: MemoryTransmittedSummary
+}) {
+  const stable = urgentPassations === 0
+
+  if (!stable) {
+    return (
+      <div className="rounded-lg border-2 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+              {urgentPassations} passation{urgentPassations > 1 ? 's' : ''} à préparer cette semaine
+            </p>
+            <p className="text-xs text-amber-800/80 dark:text-amber-200/70 mt-0.5">
+              Des contrats se terminent dans les 7 jours. La mémoire portée par
+              ces équipes mérite d&apos;être transmise avant la rupture.{' '}
+              <Link href="/continuite" className="underline font-medium">
+                Voir la continuité
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border-2 border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/15 p-4">
+      <div className="flex items-start gap-3">
+        <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
+            Continuité stable — aucune passation urgente à préparer
+          </p>
+          <p className="text-xs text-emerald-800/80 dark:text-emerald-200/70 mt-0.5">
+            Aucun contrat ne se termine dans les 7 prochains jours.
+            {lastAcknowledged && (
+              <> Dernier passage de témoin reconnu {relTime(lastAcknowledged.acknowledgedAt)}.</>
+            )}
+            {summary.briefsCount > 0 && (
+              <> {summary.briefsCount} passage{summary.briefsCount > 1 ? 's' : ''} de témoin préparé{summary.briefsCount > 1 ? 's' : ''} ce mois-ci.</>
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Mémoire transmise ce mois-ci — volume préservé (pas un score)
+// ----------------------------------------------------------------------------
+
+function MemoryTransmittedCard({ summary }: { summary: MemoryTransmittedSummary }) {
+  const stats: Array<{ icon: React.ComponentType<{ className?: string }>; value: number; label: string }> = [
+    { icon: ArrowRightLeft, value: summary.briefsCount, label: 'passages de témoin' },
+    { icon: MapPin, value: summary.sitesCovered, label: 'sites couverts' },
+    { icon: Pin, value: summary.aSavoir, label: 'à savoir transmis' },
+    { icon: AlertTriangle, value: summary.anomalies, label: 'anomalies relayées' },
+    { icon: BookOpen, value: summary.documents, label: 'documents joints' },
+    { icon: Users, value: summary.relayTeams, label: 'équipes relais' },
+  ]
+
+  return (
+    <section className="rounded-lg border bg-card p-4 sm:p-5 space-y-3">
+      <h2 className="text-sm font-medium inline-flex items-center gap-1.5">
+        <Clock className="h-4 w-4 text-brand-600" />
+        Mémoire transmise ce mois-ci
+      </h2>
+      {summary.briefsCount === 0 ? (
+        <p className="text-sm text-muted-foreground italic">
+          Aucune mémoire transmise via passage de témoin ce mois-ci. Dès qu&apos;un
+          brief est créé, le volume de mémoire préservée apparaît ici.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {stats.map((s) => (
+            <div key={s.label} className="flex items-center gap-2">
+              <s.icon className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm">
+                <span className="font-semibold tabular-nums">{s.value}</span>{' '}
+                <span className="text-muted-foreground">{s.label}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground italic">
+        Volume de mémoire préservée — pas un score, pas une performance.
+      </p>
+    </section>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Timeline des dernières passations
+// ----------------------------------------------------------------------------
+
+function passationSubline(e: RecentPassationEntry): string {
+  if (e.status === 'acknowledged') {
+    const who = e.acknowledgedByLabel ? `reconnu par ${e.acknowledgedByLabel}` : 'reconnu'
+    return `${who} · ${relTime(e.acknowledgedAt ?? e.createdAt)}`
+  }
+  if (e.status === 'shared') {
+    return e.accessCount > 0
+      ? `partagé · consulté ${e.accessCount} fois`
+      : 'partagé · pas encore consulté'
+  }
+  if (e.status === 'archived') return `passation archivée · ${relTime(e.createdAt)}`
+  return `brief généré · ${relTime(e.createdAt)}`
+}
+
+function RecentPassationsTimeline({ entries }: { entries: RecentPassationEntry[] }) {
+  return (
+    <section className="rounded-lg border bg-card p-4 sm:p-5 space-y-3">
+      <h2 className="text-sm font-medium inline-flex items-center gap-1.5">
+        <ArrowRightLeft className="h-4 w-4 text-brand-600" />
+        Dernières passations
+      </h2>
+
+      {entries.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">
+          Aucun passage de témoin n&apos;a encore été préparé. Dès qu&apos;une
+          personne change d&apos;équipe ou qu&apos;une équipe prend un site, un
+          brief fige la mémoire utile du lieu (à savoir, anomalies, documents,
+          équipes relais) pour que rien ne se perde.
+        </p>
+      ) : (
+        <ul className="space-y-0">
+          {entries.map((e, i) => {
+            const Icon = STATUS_ICON[e.status]
+            const inner = (
+              <div className="flex items-start gap-3 py-2">
+                <div className="flex flex-col items-center shrink-0">
+                  <span
+                    className={`h-6 w-6 rounded-full border flex items-center justify-center ${
+                      e.status === 'acknowledged'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                        : e.status === 'archived'
+                          ? 'bg-muted border-border text-muted-foreground'
+                          : 'bg-brand-50 border-brand-200 text-brand-600'
+                    }`}
+                  >
+                    <Icon className="h-3 w-3" />
+                  </span>
+                  {i < entries.length - 1 && <span className="w-px flex-1 bg-border mt-1 min-h-3" />}
+                </div>
+                <div className="min-w-0 flex-1 pb-1">
+                  <p className="text-sm truncate">
+                    {e.title}
+                    {e.sitesCount > 0 && (
+                      <span className="text-muted-foreground"> · {e.sitesCount} site{e.sitesCount > 1 ? 's' : ''}</span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+                    {e.status === 'shared' && e.accessCount > 0 && <Eye className="h-3 w-3" />}
+                    {passationSubline(e)}
+                  </p>
+                </div>
+              </div>
+            )
+            return (
+              <li key={e.id}>
+                {e.isArchived ? (
+                  <div className="opacity-70">{inner}</div>
+                ) : (
+                  <Link href={`/handovers/${e.id}`} className="block rounded-md hover:bg-muted/40 transition-colors -mx-2 px-2">
+                    {inner}
+                  </Link>
+                )}
               </li>
             )
           })}
         </ul>
       )}
-    </div>
+    </section>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Cartes « à savoir » — mémoire condensée, immédiatement utile (sujet = lieu)
+// ----------------------------------------------------------------------------
+
+function LivingASavoirSection({ cards }: { cards: LivingASavoirCard[] }) {
+  if (cards.length === 0) return null
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-medium inline-flex items-center gap-1.5">
+        <Pin className="h-4 w-4 text-brand-600" />
+        À savoir, en ce moment
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {cards.map((c) => (
+          <div
+            key={c.id}
+            className="rounded-lg border bg-amber-50/30 dark:bg-amber-950/15 border-amber-200/70 dark:border-amber-900/30 p-3.5 space-y-1.5"
+          >
+            <p className="text-sm text-foreground">{c.body}</p>
+            <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+              <MapPin className="h-3 w-3" />
+              <Link href={`/sites/${c.site_id}`} className="hover:underline">
+                {c.site_name}
+              </Link>
+              <span>· noté {relTime(c.notedAt)}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
