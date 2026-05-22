@@ -21,6 +21,7 @@ export const SIGNAL_REGISTRY: Record<SignalKind, SignalMeta> = {
   // Santé (de premier rang — le moteur naît équilibré, pas anxiogène).
   handover_acknowledged: { family: 'continuite', valence: 'sain', label: 'Passation reconnue' },
   fresh_field_memory: { family: 'memoire', valence: 'sain', label: 'Mémoire confirmée récemment' },
+  continuity_stable: { family: 'continuite', valence: 'sain', label: 'Continuité assurée' },
   // Fragilité.
   memory_awaiting: { family: 'continuite', valence: 'fragile', label: 'Mémoire en attente' },
   unusual_silence: { family: 'memoire', valence: 'fragile', label: 'Silence inhabituel' },

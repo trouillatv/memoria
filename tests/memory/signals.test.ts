@@ -20,6 +20,10 @@ import {
   type SiteInput,
   type TraceInput,
 } from '@/lib/memory/signals/detectors/unusual-silence.logic'
+import {
+  buildContinuityStableSignals,
+  type CoverageInput,
+} from '@/lib/memory/signals/detectors/continuity-stable.logic'
 
 const NO_IMPERATIVE = /\b(doit|doivent|devez|lire|relire|en retard|urgent|veuillez)\b|!/i
 
@@ -220,5 +224,37 @@ describe('détecteur unusual_silence (cœur pur)', () => {
   it('sujet site only', () => {
     const out = buildUnusualSilenceSignals(SITES, TRACES, NOW)
     expect(out.every((s) => s.subjectType === 'site')).toBe(true)
+  })
+})
+
+describe('détecteur continuity_stable (cœur pur)', () => {
+  const NOW = new Date('2026-05-22T12:00:00.000Z').getTime()
+  const ROWS: CoverageInput[] = [
+    // s1 : 2 équipes sur la fenêtre → continuité assurée
+    { siteId: 's1', siteName: 'CHT Magenta', teamId: 't1', interventionAt: '2026-05-20' },
+    { siteId: 's1', siteName: 'CHT Magenta', teamId: 't2', interventionAt: '2026-05-15' },
+    { siteId: 's1', siteName: 'CHT Magenta', teamId: 't1', interventionAt: '2026-05-10' },
+    // s2 : une seule équipe → PAS de relais → exclu
+    { siteId: 's2', siteName: 'Dumbéa Mall', teamId: 't3', interventionAt: '2026-05-19' },
+    // s3 : 2 équipes mais hors fenêtre 90j → exclu
+    { siteId: 's3', siteName: 'Vieux site', teamId: 't4', interventionAt: '2025-01-01' },
+    { siteId: 's3', siteName: 'Vieux site', teamId: 't5', interventionAt: '2025-01-02' },
+  ]
+
+  it('déterministe sur mêmes données', () => {
+    expect(buildContinuityStableSignals(ROWS, NOW)).toEqual(buildContinuityStableSignals(ROWS, NOW))
+  })
+
+  it('signale les lieux couverts par >= 2 équipes sur la fenêtre', () => {
+    const out = buildContinuityStableSignals(ROWS, NOW)
+    expect(out.map((s) => s.subjectId)).toEqual(['s1']) // s2 mono-équipe, s3 hors fenêtre
+    expect(out[0]!.facts.knownByTeams).toBe(2)
+    expect(out[0]!.evidence.refs).toEqual(['t1', 't2'])
+  })
+
+  it('sujet site only + santé + rendu non impératif', () => {
+    const out = buildContinuityStableSignals(ROWS, NOW)
+    expect(out.every((s) => s.subjectType === 'site')).toBe(true)
+    for (const sig of out) expect(NO_IMPERATIVE.test(renderSignal(sig).text)).toBe(false)
   })
 })

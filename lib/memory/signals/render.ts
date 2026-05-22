@@ -28,6 +28,13 @@ export function renderSignal(s: MemorySignal): RenderedSignal {
         href: `/sites/${s.subjectId}`,
       }
     }
+    case 'continuity_stable': {
+      const n = Number(s.facts.knownByTeams ?? 0)
+      return {
+        text: `${s.subjectLabel} — continuité assurée, ${n} équipes connaissent ce lieu`,
+        href: `/sites/${s.subjectId}`,
+      }
+    }
     case 'memory_awaiting': {
       // Wording strictement non-impératif : on décrit l'état de la mémoire,
       // jamais « X doit lire » ni « manager en retard ».

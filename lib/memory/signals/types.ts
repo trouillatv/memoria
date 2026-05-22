@@ -23,6 +23,7 @@ export type SubjectType = 'site' | 'team'
 export type SignalKind =
   | 'handover_acknowledged'
   | 'fresh_field_memory'
+  | 'continuity_stable'
   | 'memory_awaiting'
   | 'unusual_silence'
 

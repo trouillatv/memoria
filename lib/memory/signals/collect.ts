@@ -8,6 +8,7 @@ import 'server-only'
 import type { MemorySignal } from './types'
 import { detectHandoverAcknowledged } from './detectors/handover-acknowledged'
 import { detectFreshFieldMemory } from './detectors/fresh-field-memory'
+import { detectContinuityStable } from './detectors/continuity-stable'
 import { detectMemoryAwaiting } from './detectors/memory-awaiting'
 import { detectUnusualSilence } from './detectors/unusual-silence'
 
@@ -15,6 +16,7 @@ const DETECTORS: Array<() => Promise<MemorySignal[]>> = [
   // Santé d'abord (le moteur naît équilibré).
   detectHandoverAcknowledged,
   detectFreshFieldMemory,
+  detectContinuityStable,
   // Fragilité.
   detectMemoryAwaiting,
   detectUnusualSilence,
