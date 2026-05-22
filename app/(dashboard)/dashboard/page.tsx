@@ -58,6 +58,7 @@ import { forSurface } from '@/lib/memory/signals/surface'
 import { renderSignal } from '@/lib/memory/signals/render'
 import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
 import type { MemorySignal } from '@/lib/memory/signals/types'
+import { getMemoryHeatmap, type HeatmapCell, type MemoryTone } from '@/lib/memory/heatmap'
 import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/site-cockpit'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
@@ -129,6 +130,7 @@ export default async function DashboardPage() {
     handoverCounts,
     continuity,
     memorySignalsRaw,
+    heatmap,
   ] = await Promise.all([
     listContracts(),
     getCapitalPreuves(),
@@ -145,6 +147,7 @@ export default async function DashboardPage() {
       ? listContinuityRisks({ horizonDays: 7, viewerUserId: user.id })
       : Promise.resolve({ entries: [], counts: { j7: 0, j14: 0, j30: 0 } }),
     collectMemorySignals(),
+    getMemoryHeatmap(84),
   ])
 
   // Moteur d'états de mémoire (Temps 2) : contextualisé pour le dashboard.
@@ -190,9 +193,10 @@ export default async function DashboardPage() {
         continuityEnabled={continuityEnabled}
       />
 
-      {/* Ligne mémoire — condensations du moteur (Heatmap arrive ensuite, 3e col). */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Ligne mémoire — 3 condensations du moteur (jamais des KPI). */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <ContinuityStateWidget state={continuityState} />
+        <MemoryHeatmap cells={heatmap} />
         <DerniereMemoireUtile events={memoryEvents} />
       </div>
 
@@ -348,6 +352,56 @@ function DerniereMemoireUtile({ events }: { events: MemoryEventItem[] }) {
           })}
         </ul>
       )}
+    </section>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Ligne mémoire — Widget « Heatmap mémoire / continuité » (temps mémoriel)
+// ----------------------------------------------------------------------------
+
+const HEATMAP_TONE: Record<MemoryTone, string> = {
+  green: 'bg-emerald-400/80',
+  amber: 'bg-amber-400/80',
+  blue: 'bg-sky-400/80',
+  red: 'bg-red-400/80',
+}
+const HEATMAP_LABEL: Record<MemoryTone, string> = {
+  green: 'continuité confirmée',
+  amber: 'transmission',
+  blue: 'mémoire récente',
+  red: 'fragilité',
+}
+
+function chunkDays<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+
+function MemoryHeatmap({ cells }: { cells: HeatmapCell[] }) {
+  const weeks = chunkDays(cells, 7)
+  return (
+    <section className="rounded-lg border bg-card p-4">
+      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
+        Temps mémoriel
+      </h2>
+      <div className="flex gap-[3px] overflow-x-auto">
+        {weeks.map((w, wi) => (
+          <div key={wi} className="flex flex-col gap-[3px]">
+            {w.map((c) => (
+              <span
+                key={c.date}
+                title={c.tone ? `${c.date} · ${HEATMAP_LABEL[c.tone]}` : c.date}
+                className={`h-2.5 w-2.5 rounded-[2px] ${c.tone ? HEATMAP_TONE[c.tone] : 'bg-muted/50'}`}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-muted-foreground italic mt-2 leading-snug">
+        Chaque carré = un jour ; sa couleur, ce que la mémoire a fait ce jour-là.
+      </p>
     </section>
   )
 }
