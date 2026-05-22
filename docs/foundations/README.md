@@ -33,6 +33,7 @@ Chaque fichier ici est **autonome** et **lisible séquentiellement**. Pas de ré
 - [**doctrine-memoire.md**](doctrine-memoire.md) — Les 3 couches, écho juste, jury 4 classes, silence positif, philosophie de l'oubli, temps mémoriel.
 - [**sprint-b1-b2.md**](sprint-b1-b2.md) — Niveau B : mémoire documentaire relationnelle (α / β / γ).
 - [**passation.md**](passation.md) — Le passage de témoin automatique (sprint C). Le killer feature.
+- [**moteur-signaux-memoire.md**](moteur-signaux-memoire.md) — Le dashboard éditorial (« collapse », 4 zones) + le moteur de surfaçage (« Temps 2 ») : grammaire du MemorySignal, 4 couches, équilibre santé/fragilité, verrous de type. Snapshot 2026-05-22.
 
 ### 💼 Stratégie commerciale
 - [**roadmap-ao.md**](roadmap-ao.md) — Pourquoi l'AO est central. 3 couches. Note vocale du closing.
