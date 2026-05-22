@@ -72,6 +72,10 @@ export async function createDocument(input: {
   effective_date?: string | null
   expires_date?: string | null
   supersedes_document_id?: string | null
+  /** Couche mémoire (vivante/consultable/froide) décidée à l'ingestion. */
+  memory_tier?: 'vivante' | 'consultable' | 'froide' | null
+  /** Statut initial — 'ready' pour un document volontairement NON indexé. */
+  analysis_status?: DbDocument['analysis_status']
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
@@ -90,7 +94,8 @@ export async function createDocument(input: {
       effective_date: input.effective_date ?? null,
       expires_date: input.expires_date ?? null,
       supersedes_document_id: input.supersedes_document_id ?? null,
-      analysis_status: 'pending',
+      memory_tier: input.memory_tier ?? null,
+      analysis_status: input.analysis_status ?? 'pending',
       created_by: input.created_by,
     })
     .select('id')

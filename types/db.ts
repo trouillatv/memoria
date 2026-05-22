@@ -610,6 +610,8 @@ export interface DbDocument {
   effective_date: string | null
   expires_date: string | null
   analysis_status: DocumentAnalysisStatus
+  /** Couche mémoire décidée à l'ingestion (migration 082). NULL = legacy. */
+  memory_tier: 'vivante' | 'consultable' | 'froide' | null
   failed_reason: string | null
   extraction_source: 'native' | 'ocr' | null
   extracted_text: string | null

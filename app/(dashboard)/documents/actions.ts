@@ -57,6 +57,9 @@ const uploadSchema = z
     target_id: z.string().uuid().optional(),
     effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     expires_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    // Tri d'ingestion (l'humain valide) : indexer (embedding) ou non, + couche.
+    embed: z.enum(['true', 'false']).optional(),
+    memory_tier: z.enum(['vivante', 'consultable', 'froide']).optional(),
   })
   .refine(
     (d) => (d.target_type ? !!d.target_id : !d.target_id),
@@ -129,11 +132,22 @@ export async function uploadDocumentAction(
     target_id: formData.get('target_id') || undefined,
     effective_date: formData.get('effective_date') || undefined,
     expires_date: formData.get('expires_date') || undefined,
+    embed: formData.get('embed') || undefined,
+    memory_tier: formData.get('memory_tier') || undefined,
   })
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
   const input = parsed.data
+
+  // Embedding SÉLECTIF (doctrine ingestion mémorielle) : on n'indexe que si
+  // l'humain l'a validé. Défaut = indexer (rétro-compat) sauf 'false' explicite.
+  // Un document non indexé est rangé en couche 'froide', statut 'ready' (pipeline
+  // terminé sans chunks) — pas de coût d'embedding, pas de pollution du retrieval.
+  const embed = input.embed !== 'false'
+  const memoryTier: 'vivante' | 'consultable' | 'froide' | null = embed
+    ? (input.memory_tier ?? null)
+    : 'froide'
 
   // Upload fichier (bucket privé `documents`, service-role bypass RLS).
   const supabase = createAdminClient()
@@ -162,6 +176,8 @@ export async function uploadDocumentAction(
       size_bytes: file.size,
       effective_date: input.effective_date ?? null,
       expires_date: input.expires_date ?? null,
+      memory_tier: memoryTier,
+      analysis_status: embed ? 'pending' : 'ready',
       created_by: userId,
     })
   } catch (e) {
@@ -181,12 +197,18 @@ export async function uploadDocumentAction(
       filename: file.name,
       document_type: input.document_type,
       collection_id: input.collection_id,
+      memory_tier: memoryTier,
+      indexed: embed,
       ...(input.target_type ? { target_type: input.target_type } : {}),
     },
   })
 
-  // Analyse UNE fois, async, jamais à l'affichage (discipline coût IA).
-  after(() => analyzeDocument(documentId))
+  // Embedding SÉLECTIF : on ne lance l'analyse (extraction + chunking +
+  // embedding) QUE si l'humain a validé l'indexation. Sinon le document est
+  // stocké en archive froide, sans coût IA ni pollution du retrieval.
+  if (embed) {
+    after(() => analyzeDocument(documentId))
+  }
 
   return { ok: true, documentId }
 }

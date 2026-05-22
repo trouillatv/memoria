@@ -46,7 +46,10 @@ export function UploadDocumentForm({
   // Tri d'ingestion : type + nom de fichier → couche mémoire recommandée.
   const [docType, setDocType] = useState('')
   const [filename, setFilename] = useState('')
+  // null = suit la reco ; true/false = override humain.
+  const [embedOverride, setEmbedOverride] = useState<boolean | null>(null)
   const reco = docType ? classifyDocument({ documentType: docType, filename }) : null
+  const embed = embedOverride ?? reco?.embeddingRecommended ?? true
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -63,6 +66,7 @@ export function UploadDocumentForm({
     setTargetType('')
     setDocType('')
     setFilename('')
+    setEmbedOverride(null)
     setMsg({ ok: true, text: 'Document envoyé. Analyse en cours…' })
     router.refresh()
   }
@@ -97,7 +101,10 @@ export function UploadDocumentForm({
             name="document_type"
             required
             value={docType}
-            onChange={(e) => setDocType(e.target.value)}
+            onChange={(e) => {
+              setDocType(e.target.value)
+              setEmbedOverride(null) // suit la reco du nouveau type
+            }}
             className={selectCls}
           >
             <option value="" disabled>
@@ -190,16 +197,35 @@ export function UploadDocumentForm({
 
       {/* Tri d'ingestion mémorielle — l'IA propose la couche, l'humain valide. */}
       {reco && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
-          <span
-            className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${TIER_META[reco.tier].badge}`}
-          >
-            {TIER_META[reco.tier].label}
-          </span>
-          <span className="text-muted-foreground">{reco.reason}</span>
-          <span className="ml-auto font-medium">
-            {reco.embeddingRecommended ? '✅ indexation conseillée' : '❌ pas d’indexation'}
-          </span>
+        <div className="space-y-2 rounded-md border bg-muted/30 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${TIER_META[embed ? reco.tier : 'froide'].badge}`}
+            >
+              {TIER_META[embed ? reco.tier : 'froide'].label}
+            </span>
+            <span className="text-muted-foreground">{reco.reason}</span>
+          </div>
+          <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={embed}
+              onChange={(e) => setEmbedOverride(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input"
+            />
+            <span>
+              Indexer pour la recherche (embedding)
+              <span className="text-muted-foreground"> — {reco.embeddingRecommended ? 'conseillé' : 'déconseillé'} pour ce type</span>
+            </span>
+          </label>
+          {!embed && (
+            <p className="text-[11px] text-muted-foreground italic">
+              Non indexé : stocké en archive, sans coût d’embedding ni pollution de la recherche.
+            </p>
+          )}
+          {/* Soumis à l'action */}
+          <input type="hidden" name="embed" value={embed ? 'true' : 'false'} />
+          <input type="hidden" name="memory_tier" value={reco.tier} />
         </div>
       )}
 
