@@ -7,6 +7,21 @@ import {
   buildMemoryAwaitingSignals,
   type AwaitingBriefInput,
 } from '@/lib/memory/signals/detectors/memory-awaiting.logic'
+import {
+  buildHandoverAcknowledgedSignals,
+  type AckBriefInput,
+} from '@/lib/memory/signals/detectors/handover-acknowledged.logic'
+import {
+  buildFreshFieldMemorySignals,
+  type FieldNoteInput,
+} from '@/lib/memory/signals/detectors/fresh-field-memory.logic'
+import {
+  buildUnusualSilenceSignals,
+  type SiteInput,
+  type TraceInput,
+} from '@/lib/memory/signals/detectors/unusual-silence.logic'
+
+const NO_IMPERATIVE = /\b(doit|doivent|devez|lire|relire|en retard|urgent|veuillez)\b|!/i
 
 function makeSignal(kind: SignalKind, over: Partial<MemorySignal> = {}): MemorySignal {
   return {
@@ -117,11 +132,93 @@ describe('détecteur memory_awaiting (cœur pur)', () => {
 
   it('aucun wording impératif côté renderer', () => {
     const out = buildMemoryAwaitingSignals(FIXTURE, NOW)
-    const forbidden = /\b(doit|doivent|devez|lire|relire|en retard|urgent|veuillez)\b|!/i
     for (const sig of out) {
       const r = renderSignal(sig)
-      expect(forbidden.test(r.text)).toBe(false)
-      expect(forbidden.test(r.detail ?? '')).toBe(false)
+      expect(NO_IMPERATIVE.test(r.text)).toBe(false)
+      expect(NO_IMPERATIVE.test(r.detail ?? '')).toBe(false)
     }
+  })
+})
+
+describe('détecteur handover_acknowledged (cœur pur)', () => {
+  const NOW = new Date('2026-05-22T12:00:00.000Z').getTime()
+  const FIXTURE: AckBriefInput[] = [
+    { id: 'b1', acknowledgedAt: '2026-05-20T00:00:00.000Z', sites: [{ site_id: 's1', site_name: 'CHT Magenta' }] },
+    { id: 'b2', acknowledgedAt: '2026-05-15T00:00:00.000Z', sites: [{ site_id: 's1', site_name: 'CHT Magenta' }] },
+    { id: 'b3', acknowledgedAt: '2026-04-01T00:00:00.000Z', sites: [{ site_id: 's2', site_name: 'Dumbéa Mall' }] }, // hors fenêtre 14j
+  ]
+
+  it('déterministe sur mêmes données', () => {
+    expect(buildHandoverAcknowledgedSignals(FIXTURE, NOW)).toEqual(buildHandoverAcknowledgedSignals(FIXTURE, NOW))
+  })
+
+  it('garde la reconnaissance la plus récente par lieu et exclut hors fenêtre', () => {
+    const out = buildHandoverAcknowledgedSignals(FIXTURE, NOW)
+    expect(out.map((s) => s.subjectId)).toEqual(['s1']) // s2 hors fenêtre
+    expect(out[0]!.lastRelevantEventAt).toBe('2026-05-20T00:00:00.000Z')
+    expect(out[0]!.evidence.refs).toEqual(['b1', 'b2'])
+  })
+
+  it('sujet site only + rendu non impératif', () => {
+    const out = buildHandoverAcknowledgedSignals(FIXTURE, NOW)
+    expect(out.every((s) => s.subjectType === 'site')).toBe(true)
+    for (const sig of out) expect(NO_IMPERATIVE.test(renderSignal(sig).text)).toBe(false)
+  })
+})
+
+describe('détecteur fresh_field_memory (cœur pur)', () => {
+  const NOW = new Date('2026-05-22T12:00:00.000Z').getTime()
+  const FIXTURE: FieldNoteInput[] = [
+    { id: 'n1', siteId: 's1', siteName: 'CHT Magenta', createdAt: '2026-05-21T08:00:00.000Z' },
+    { id: 'n2', siteId: 's1', siteName: 'CHT Magenta', createdAt: '2026-05-19T08:00:00.000Z' },
+    { id: 'n3', siteId: 's2', siteName: 'Dumbéa Mall', createdAt: '2026-05-01T08:00:00.000Z' }, // hors fenêtre 7j
+  ]
+
+  it('déterministe sur mêmes données', () => {
+    expect(buildFreshFieldMemorySignals(FIXTURE, NOW)).toEqual(buildFreshFieldMemorySignals(FIXTURE, NOW))
+  })
+
+  it('agrège par lieu sur la fenêtre et exclut hors fenêtre', () => {
+    const out = buildFreshFieldMemorySignals(FIXTURE, NOW)
+    expect(out.map((s) => s.subjectId)).toEqual(['s1'])
+    expect(out[0]!.facts.notesAdded).toBe(2)
+    expect(out[0]!.evidence.refs).toEqual(['n1', 'n2'])
+  })
+
+  it('sujet site only + rendu non impératif', () => {
+    const out = buildFreshFieldMemorySignals(FIXTURE, NOW)
+    expect(out.every((s) => s.subjectType === 'site')).toBe(true)
+    for (const sig of out) expect(NO_IMPERATIVE.test(renderSignal(sig).text)).toBe(false)
+  })
+})
+
+describe('détecteur unusual_silence (cœur pur)', () => {
+  const NOW = new Date('2026-05-22T12:00:00.000Z').getTime()
+  const SITES: SiteInput[] = [
+    { id: 's1', name: 'CHT Magenta' },
+    { id: 's2', name: 'Dumbéa Mall' },
+    { id: 's3', name: 'Site neuf' },
+  ]
+  const TRACES: TraceInput[] = [
+    { siteId: 's1', scheduledFor: '2026-05-01' }, // 21j → silence
+    { siteId: 's1', scheduledFor: '2026-04-20' },
+    { siteId: 's2', scheduledFor: '2026-05-20' }, // 2j → ok
+    // s3 : aucune trace → pas un silence (site neuf)
+  ]
+
+  it('déterministe sur mêmes données', () => {
+    expect(buildUnusualSilenceSignals(SITES, TRACES, NOW)).toEqual(buildUnusualSilenceSignals(SITES, TRACES, NOW))
+  })
+
+  it('flag seulement les sites ayant eu de l’activité puis silencieux > seuil', () => {
+    const out = buildUnusualSilenceSignals(SITES, TRACES, NOW)
+    expect(out.map((s) => s.subjectId)).toEqual(['s1']) // s2 récent, s3 jamais
+    expect(out[0]!.facts.daysSinceLastTrace).toBe(21)
+    expect(out[0]!.lastRelevantEventAt).toBe('2026-05-01')
+  })
+
+  it('sujet site only', () => {
+    const out = buildUnusualSilenceSignals(SITES, TRACES, NOW)
+    expect(out.every((s) => s.subjectType === 'site')).toBe(true)
   })
 })
