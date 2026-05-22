@@ -443,6 +443,32 @@ export async function getOpenAnomaliesStats(): Promise<OpenAnomaliesStats> {
   }
 }
 
+/**
+ * Variante STRICTE pour le dashboard éditorial (Vincent 2026-05-22) :
+ * ne compte que les anomalies status='open'. `getOpenAnomaliesStats` compte
+ * `resolved_at IS NULL`, ce qui inclut les 'ignored' (écartées) — trompeur
+ * pour afficher « N anomalies ouvertes ». On garde l'ancien helper intact
+ * (utilisé ailleurs + tests), on ajoute la variante propre.
+ */
+export async function getOpenAnomaliesStrict(): Promise<OpenAnomaliesStats> {
+  const supabase = createAdminClient()
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+  const [totalRes, oldRes] = await Promise.all([
+    supabase
+      .from('intervention_anomalies')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'open'),
+    supabase
+      .from('intervention_anomalies')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'open')
+      .lt('created_at', threeDaysAgo),
+  ])
+  if (totalRes.error) throw totalRes.error
+  if (oldRes.error) throw oldRes.error
+  return { total: totalRes.count ?? 0, oldCount: oldRes.count ?? 0 }
+}
+
 // ============================================================================
 // Signalements récents (dernières 24h) — notification in-app manager
 // ============================================================================

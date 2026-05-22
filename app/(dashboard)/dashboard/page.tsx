@@ -25,8 +25,6 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   FileText,
-  Pin,
-  CheckCircle2,
   Shield,
   Sparkles,
 } from 'lucide-react'
@@ -36,7 +34,7 @@ import { getOnboardingProgress } from '@/lib/db/onboarding'
 import {
   getCapitalPreuves,
   listTendersDueSoon,
-  getOpenAnomaliesStats,
+  getOpenAnomaliesStrict,
   getAtRiskEngagements,
   getTenantCumulativeStats,
   getContractSummaries,
@@ -116,7 +114,7 @@ export default async function DashboardPage() {
     contracts,
     capital,
     tendersDueSoon,
-    anomaliesStats,
+    anomaliesOpen,
     recentAnomalies,
     atRiskEngagements,
     tenantCumulative,
@@ -129,7 +127,7 @@ export default async function DashboardPage() {
     listContracts(),
     getCapitalPreuves(),
     listTendersDueSoon(7),
-    getOpenAnomaliesStats(),
+    getOpenAnomaliesStrict(),
     getRecentAnomalies(24),
     getAtRiskEngagements(),
     getTenantCumulativeStats(),
@@ -169,9 +167,10 @@ export default async function DashboardPage() {
 
       <VieDuSysteme
         recentAnomalies={recentAnomalies}
+        openAnomaliesCount={anomaliesOpen.total}
+        oldOpenAnomaliesCount={anomaliesOpen.oldCount}
         tendersDueSoon={tendersDueSoon}
         atRiskEngagements={atRiskEngagements}
-        oldAnomaliesCount={anomaliesStats.oldCount}
         attentionCount={attentionCount}
         recentPassations={recentPassations}
         aSavoir={aSavoir}
@@ -301,7 +300,7 @@ function Hero({
           ? primary.tone === 'continuity'
             ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20'
             : primary.tone === 'field'
-              ? 'border-rose-200 bg-rose-50/40 dark:bg-rose-950/20'
+              ? 'border-red-300 bg-red-50/60 dark:bg-red-950/20'
               : primary.tone === 'ao'
                 ? 'border-brand-200 bg-brand-50/40 dark:bg-brand-950/20'
                 : 'border-foreground/10 bg-[#fafaf7] dark:bg-muted/20'
@@ -351,7 +350,7 @@ function HeroLine({ signal, primary }: { signal: HeroSignal; primary?: boolean }
     signal.tone === 'continuity'
       ? 'text-amber-600'
       : signal.tone === 'field'
-        ? 'text-rose-600'
+        ? 'text-red-600'
         : signal.tone === 'ao'
           ? 'text-brand-600'
           : 'text-muted-foreground'
@@ -391,150 +390,226 @@ function HeroLine({ signal, primary }: { signal: HeroSignal; primary?: boolean }
 
 interface FilItem {
   key: string
-  icon: React.ComponentType<{ className?: string }>
   text: string
   sub?: string
   href?: string
-  accent?: boolean
+  /** Densité variable : 'normal' = signal individuel, 'compact' = résumé. */
+  weight: 'normal' | 'compact'
+}
+
+type Family = 'attention' | 'continuite' | 'ao' | 'memoire'
+
+const FAMILY_META: Record<
+  Family,
+  {
+    label: string
+    icon: React.ComponentType<{ className?: string }>
+    box: string
+    iconColor: string
+    /** Couleur du texte des lignes individuelles (poids normal). */
+    textColor: string
+  }
+> = {
+  // Anomalies & signaux terrain → ROUGE assumé : demande terrain de Guillaume,
+  // cf. [[alertes-doctrine-legere]] (« pivot vers le rouge » pour ce qui mérite
+  // attention). Les autres familles restent en teintes douces.
+  attention: {
+    label: 'Attention opérationnelle',
+    icon: AlertTriangle,
+    box: 'border-red-300 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20',
+    iconColor: 'text-red-600 dark:text-red-300',
+    textColor: 'text-red-900 dark:text-red-50',
+  },
+  continuite: {
+    label: 'Continuité',
+    icon: ArrowRightLeft,
+    box: 'border-amber-200/70 bg-amber-50/30 dark:border-amber-900/30 dark:bg-amber-950/15',
+    iconColor: 'text-amber-600',
+    textColor: 'text-foreground',
+  },
+  ao: {
+    label: 'Appels d’offres',
+    icon: FileText,
+    box: 'border-violet-200/70 bg-violet-50/25 dark:border-violet-900/30 dark:bg-violet-950/15',
+    iconColor: 'text-violet-600',
+    textColor: 'text-foreground',
+  },
+  memoire: {
+    label: 'Mémoire terrain',
+    icon: Sparkles,
+    box: 'border-sky-200/60 bg-sky-50/20 dark:border-sky-900/30 dark:bg-sky-950/10',
+    iconColor: 'text-sky-600',
+    textColor: 'text-foreground',
+  },
 }
 
 function VieDuSysteme({
   recentAnomalies,
+  openAnomaliesCount,
+  oldOpenAnomaliesCount,
   tendersDueSoon,
   atRiskEngagements,
-  oldAnomaliesCount,
   attentionCount,
   recentPassations,
   aSavoir,
 }: {
   recentAnomalies: RecentAnomalyItem[]
+  openAnomaliesCount: number
+  oldOpenAnomaliesCount: number
   tendersDueSoon: TenderDueSoonRow[]
   atRiskEngagements: AtRiskEngagement[]
-  oldAnomaliesCount: number
   attentionCount: number
   recentPassations: RecentPassationEntry[]
   aSavoir: LivingASavoirCard[]
 }) {
-  const items: FilItem[] = []
+  // Regroupement par FAMILLE connue (pas par importance calculée — ça, c'est le
+  // moteur Temps 2). Densité variable : signal individuel = ligne normale,
+  // résumé = ligne compacte. Couleur forte (rouge) réservée à l'attention.
+  const families: Array<{ family: Family; items: FilItem[] }> = []
 
-  // Tier 0 — signalements terrain frais (24h) : le lieu vient de parler.
+  // — Attention opérationnelle (rouge) —
+  const attention: FilItem[] = []
   for (const a of recentAnomalies.slice(0, 3)) {
-    items.push({
+    attention.push({
       key: `anomaly-${a.id}`,
-      icon: AlertTriangle,
       text: anomalyLabel(a.description, a.categoryOther, a.category),
       sub: [a.siteName, relTime(a.createdAt)].filter(Boolean).join(' · ') || undefined,
       href: `/interventions/${a.interventionId}`,
-      accent: true,
+      weight: 'normal',
     })
   }
-
-  // Tier 1 — échéances datées (le plus actionnable).
-  for (const t of tendersDueSoon.slice(0, 3)) {
-    items.push({
-      key: `ao-${t.id}`,
-      icon: FileText,
-      text: `AO « ${t.title} » à rendre ${relDays(t.daysUntilDeadline)}`,
-      sub: t.client_name ?? undefined,
-      href: `/tenders/${t.id}`,
-      accent: t.daysUntilDeadline <= 2,
-    })
-  }
-
-  // Tier 2 — engagements qui méritent un coup d'œil.
   for (const e of atRiskEngagements.slice(0, 3)) {
-    items.push({
+    attention.push({
       key: `eng-${e.engagement_id}`,
-      icon: AlertTriangle,
       text: `${e.short_label} — ${e.reasonDetail}`,
       sub: e.contract_name,
       href: `/contracts/${e.contract_id}`,
+      weight: 'normal',
     })
   }
-
-  // Tier 2bis — contrats demandant attention (factuel, indicatif).
+  if (openAnomaliesCount > 0) {
+    const old =
+      oldOpenAnomaliesCount > 0 ? ` (dont ${oldOpenAnomaliesCount} depuis plus de 3 jours)` : ''
+    attention.push({
+      key: 'anomalies-open',
+      text: `${openAnomaliesCount} anomalie${openAnomaliesCount > 1 ? 's' : ''} ouverte${openAnomaliesCount > 1 ? 's' : ''}${old}`,
+      weight: 'compact',
+    })
+  }
   if (attentionCount > 0) {
-    items.push({
+    attention.push({
       key: 'contracts-attention',
-      icon: AlertTriangle,
       text: `${attentionCount} contrat${attentionCount > 1 ? 's' : ''} demande${attentionCount > 1 ? 'nt' : ''} attention`,
       href: '/contracts',
+      weight: 'compact',
     })
   }
+  if (attention.length > 0) families.push({ family: 'attention', items: attention })
 
-  // Tier 3 — anomalies qui traînent (>3 jours).
-  if (oldAnomaliesCount > 0) {
-    items.push({
-      key: 'anomalies-old',
-      icon: AlertTriangle,
-      text: `${oldAnomaliesCount} anomalie${oldAnomaliesCount > 1 ? 's' : ''} ouverte${oldAnomaliesCount > 1 ? 's' : ''} depuis plus de 3 jours`,
-    })
-  }
-
-  // Tier 4 — vie de la mémoire : passations reconnues / partagées.
-  for (const p of recentPassations.filter((p) => !p.isArchived).slice(0, 2)) {
+  // — Continuité (ambre) —
+  const continuite: FilItem[] = []
+  for (const p of recentPassations.filter((p) => !p.isArchived).slice(0, 3)) {
     const sub =
       p.status === 'acknowledged'
         ? p.acknowledgedByLabel
           ? `reconnu par ${p.acknowledgedByLabel} · ${relTime(p.acknowledgedAt ?? p.createdAt)}`
           : `reconnu · ${relTime(p.acknowledgedAt ?? p.createdAt)}`
         : p.status === 'shared'
-          ? '1 passation attend une reconnaissance'
+          ? 'attend une reconnaissance'
           : `préparé · ${relTime(p.createdAt)}`
-    items.push({
+    continuite.push({
       key: `pass-${p.id}`,
-      icon: p.status === 'acknowledged' ? CheckCircle2 : ArrowRightLeft,
       text: p.title,
       sub,
       href: `/handovers/${p.id}`,
+      weight: 'normal',
     })
   }
+  if (continuite.length > 0) families.push({ family: 'continuite', items: continuite })
 
-  // Tier 5 — « à savoir » vivant (mémoire condensée, sujet = le lieu).
-  for (const c of aSavoir.slice(0, 2)) {
-    items.push({
+  // — Appels d'offres (violet) —
+  const ao: FilItem[] = []
+  for (const t of tendersDueSoon.slice(0, 3)) {
+    ao.push({
+      key: `ao-${t.id}`,
+      text: `« ${t.title} » à rendre ${relDays(t.daysUntilDeadline)}`,
+      sub: t.client_name ?? undefined,
+      href: `/tenders/${t.id}`,
+      weight: 'normal',
+    })
+  }
+  if (ao.length > 0) families.push({ family: 'ao', items: ao })
+
+  // — Mémoire terrain (bleu doux) —
+  const memoire: FilItem[] = []
+  for (const c of aSavoir.slice(0, 3)) {
+    memoire.push({
       key: `asavoir-${c.id}`,
-      icon: Pin,
       text: c.body,
       sub: `${c.site_name} · noté ${relTime(c.notedAt)}`,
       href: `/sites/${c.site_id}`,
+      weight: 'normal',
     })
   }
+  if (memoire.length > 0) families.push({ family: 'memoire', items: memoire })
 
   return (
     <section className="space-y-3">
       <h2 className="text-sm font-medium text-muted-foreground">Vie des lieux</h2>
-      {items.length === 0 ? (
+      {families.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">
           Rien de notable dans la vie des lieux aujourd&apos;hui.
         </p>
       ) : (
-        <ul className="rounded-lg border bg-card divide-y">
-          {items.slice(0, 7).map((it) => {
-            const inner = (
-              <div className="flex items-start gap-3 px-4 py-2.5">
-                <it.icon
-                  className={`h-4 w-4 shrink-0 mt-0.5 ${it.accent ? 'text-rose-600' : 'text-muted-foreground'}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm leading-snug">{it.text}</p>
-                  {it.sub && <p className="text-[11px] text-muted-foreground mt-0.5">{it.sub}</p>}
+        <div className="space-y-3">
+          {families.map(({ family, items }) => {
+            const meta = FAMILY_META[family]
+            return (
+              <div key={family} className={`rounded-lg border ${meta.box}`}>
+                <div className="flex items-center gap-1.5 px-4 pt-2.5 pb-1">
+                  <meta.icon className={`h-3.5 w-3.5 ${meta.iconColor}`} />
+                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    {meta.label}
+                  </span>
                 </div>
+                <ul className="divide-y divide-border/40">
+                  {items.map((it) => {
+                    const inner = (
+                      <div className="px-4 py-2">
+                        <p
+                          className={
+                            it.weight === 'compact'
+                              ? 'text-xs text-muted-foreground'
+                              : `text-sm leading-snug ${meta.textColor}`
+                          }
+                        >
+                          {it.text}
+                        </p>
+                        {it.sub && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{it.sub}</p>
+                        )}
+                      </div>
+                    )
+                    return (
+                      <li key={it.key}>
+                        {it.href ? (
+                          <Link
+                            href={it.href}
+                            className="block hover:bg-background/50 transition-colors"
+                          >
+                            {inner}
+                          </Link>
+                        ) : (
+                          inner
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
               </div>
             )
-            return (
-              <li key={it.key}>
-                {it.href ? (
-                  <Link href={it.href} className="block hover:bg-muted/40 transition-colors">
-                    {inner}
-                  </Link>
-                ) : (
-                  inner
-                )}
-              </li>
-            )
           })}
-        </ul>
+        </div>
       )}
     </section>
   )
