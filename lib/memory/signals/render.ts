@@ -12,8 +12,22 @@ export interface RenderedSignal {
   href: string
 }
 
+/** « il y a X jours » à partir d'un nombre de jours (déterministe, depuis facts). */
+function daysAgoFr(days: number): string {
+  if (days <= 0) return "aujourd'hui"
+  if (days === 1) return 'hier'
+  return `il y a ${days} jours`
+}
+
 export function renderSignal(s: MemorySignal): RenderedSignal {
   switch (s.kind) {
+    case 'handover_acknowledged': {
+      return {
+        text: `${s.subjectLabel} — passation reconnue, mémoire transmise`,
+        detail: `reconnu ${daysAgoFr(Number(s.facts.daysAgo ?? 0))}`,
+        href: `/sites/${s.subjectId}`,
+      }
+    }
     case 'unusual_silence': {
       const days = Number(s.facts.daysSinceLastTrace ?? 0)
       return {

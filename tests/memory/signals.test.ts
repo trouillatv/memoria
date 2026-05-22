@@ -44,6 +44,12 @@ describe('moteur d’états de mémoire — couche pure', () => {
     expect(hasHealthy).toBe(true)
   })
 
+  it('le moteur naît équilibré : au moins autant de santé que de fragilité', () => {
+    const sain = kinds.filter((k) => SIGNAL_REGISTRY[k].valence === 'sain').length
+    const fragile = kinds.filter((k) => SIGNAL_REGISTRY[k].valence === 'fragile').length
+    expect(sain).toBeGreaterThanOrEqual(fragile)
+  })
+
   it('forSurface ordonne la fragilité avant la santé (politique dashboard)', () => {
     const signals = [
       makeSignal('fresh_field_memory', { lastRelevantEventAt: '2026-05-21' }),

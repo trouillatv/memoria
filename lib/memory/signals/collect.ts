@@ -6,12 +6,16 @@
 
 import 'server-only'
 import type { MemorySignal } from './types'
-import { detectUnusualSilence } from './detectors/unusual-silence'
+import { detectHandoverAcknowledged } from './detectors/handover-acknowledged'
 import { detectFreshFieldMemory } from './detectors/fresh-field-memory'
+import { detectUnusualSilence } from './detectors/unusual-silence'
 
 const DETECTORS: Array<() => Promise<MemorySignal[]>> = [
-  detectUnusualSilence,
+  // Santé d'abord (le moteur naît équilibré).
+  detectHandoverAcknowledged,
   detectFreshFieldMemory,
+  // Fragilité.
+  detectUnusualSilence,
 ]
 
 export async function collectMemorySignals(): Promise<MemorySignal[]> {

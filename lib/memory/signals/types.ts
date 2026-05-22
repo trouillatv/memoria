@@ -20,7 +20,7 @@ export type SubjectType = 'site' | 'team'
  * + son renderer + son entrée registre existent (cf. tripwire). Pas de kind
  * orphelin.
  */
-export type SignalKind = 'unusual_silence' | 'fresh_field_memory'
+export type SignalKind = 'handover_acknowledged' | 'fresh_field_memory' | 'unusual_silence'
 
 /** Ce que le système AFFIRME : déterministe vs supposé. Extensible ('llm' au Batch 3). */
 export type Confidence = 'certain' | 'heuristic'

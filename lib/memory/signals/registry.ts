@@ -18,6 +18,9 @@ export interface SignalMeta {
 }
 
 export const SIGNAL_REGISTRY: Record<SignalKind, SignalMeta> = {
-  unusual_silence: { family: 'memoire', valence: 'fragile', label: 'Silence inhabituel' },
+  // Santé (de premier rang — le moteur naît équilibré, pas anxiogène).
+  handover_acknowledged: { family: 'continuite', valence: 'sain', label: 'Passation reconnue' },
   fresh_field_memory: { family: 'memoire', valence: 'sain', label: 'Mémoire confirmée récemment' },
+  // Fragilité.
+  unusual_silence: { family: 'memoire', valence: 'fragile', label: 'Silence inhabituel' },
 }
