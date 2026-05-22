@@ -24,5 +24,6 @@ export const SIGNAL_REGISTRY: Record<SignalKind, SignalMeta> = {
   continuity_stable: { family: 'continuite', valence: 'sain', label: 'Continuité assurée' },
   // Fragilité.
   memory_awaiting: { family: 'continuite', valence: 'fragile', label: 'Mémoire en attente' },
+  relay_instability: { family: 'continuite', valence: 'fragile', label: 'Instabilité de relais' },
   unusual_silence: { family: 'memoire', valence: 'fragile', label: 'Silence inhabituel' },
 }

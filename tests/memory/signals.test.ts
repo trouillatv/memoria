@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { MemorySignal, SignalKind } from '@/lib/memory/signals/types'
 import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
 import { renderSignal } from '@/lib/memory/signals/render'
-import { forSurface } from '@/lib/memory/signals/surface'
+import { forSurface, resolveSubjectConflicts } from '@/lib/memory/signals/surface'
 import {
   buildMemoryAwaitingSignals,
   type AwaitingBriefInput,
@@ -24,6 +24,10 @@ import {
   buildContinuityStableSignals,
   type CoverageInput,
 } from '@/lib/memory/signals/detectors/continuity-stable.logic'
+import {
+  buildRelayInstabilitySignals,
+  type RotationInput,
+} from '@/lib/memory/signals/detectors/relay-instability.logic'
 
 const NO_IMPERATIVE = /\b(doit|doivent|devez|lire|relire|en retard|urgent|veuillez)\b|!/i
 
@@ -256,5 +260,71 @@ describe('détecteur continuity_stable (cœur pur)', () => {
     const out = buildContinuityStableSignals(ROWS, NOW)
     expect(out.every((s) => s.subjectType === 'site')).toBe(true)
     for (const sig of out) expect(NO_IMPERATIVE.test(renderSignal(sig).text)).toBe(false)
+  })
+})
+
+describe('détecteur relay_instability (cœur pur)', () => {
+  const NOW = new Date('2026-05-22T12:00:00.000Z').getTime()
+  const ROWS: RotationInput[] = [
+    // s1 : 3 équipes en 7j → instabilité
+    { siteId: 's1', siteName: 'CHT Magenta', teamId: 't1', interventionAt: '2026-05-20' },
+    { siteId: 's1', siteName: 'CHT Magenta', teamId: 't2', interventionAt: '2026-05-19' },
+    { siteId: 's1', siteName: 'CHT Magenta', teamId: 't3', interventionAt: '2026-05-18' },
+    // s2 : 2 équipes seulement → pas d'instabilité
+    { siteId: 's2', siteName: 'Dumbéa Mall', teamId: 't1', interventionAt: '2026-05-20' },
+    { siteId: 's2', siteName: 'Dumbéa Mall', teamId: 't2', interventionAt: '2026-05-19' },
+    // s3 : 3 équipes mais hors fenêtre 7j → exclu
+    { siteId: 's3', siteName: 'Vieux site', teamId: 't1', interventionAt: '2026-05-01' },
+    { siteId: 's3', siteName: 'Vieux site', teamId: 't2', interventionAt: '2026-05-01' },
+    { siteId: 's3', siteName: 'Vieux site', teamId: 't3', interventionAt: '2026-05-01' },
+  ]
+
+  it('déterministe sur mêmes données', () => {
+    expect(buildRelayInstabilitySignals(ROWS, NOW)).toEqual(buildRelayInstabilitySignals(ROWS, NOW))
+  })
+
+  it('signale >= 3 équipes différentes sur la fenêtre courte', () => {
+    const out = buildRelayInstabilitySignals(ROWS, NOW)
+    expect(out.map((s) => s.subjectId)).toEqual(['s1'])
+    expect(out[0]!.facts.teamsInWindow).toBe(3)
+    expect(out[0]!.evidence.refs).toEqual(['t1', 't2', 't3'])
+  })
+
+  it('sujet site only + rendu non impératif', () => {
+    const out = buildRelayInstabilitySignals(ROWS, NOW)
+    expect(out.every((s) => s.subjectType === 'site')).toBe(true)
+    for (const sig of out) expect(NO_IMPERATIVE.test(renderSignal(sig).text)).toBe(false)
+  })
+})
+
+describe('résolution de conflits par sujet (contextualiseur)', () => {
+  function sig(kind: Parameters<typeof renderSignal>[0]['kind'], subjectId: string): MemorySignal {
+    return {
+      kind,
+      subjectType: 'site',
+      subjectId,
+      subjectLabel: 'X',
+      facts: {},
+      confidence: 'certain',
+      detectedAt: '2026-05-22T00:00:00.000Z',
+      lastRelevantEventAt: null,
+      evidence: { rule: 'test' },
+    }
+  }
+
+  it('relay_instability supprime continuity_stable sur le MÊME site', () => {
+    const out = resolveSubjectConflicts([
+      sig('continuity_stable', 's1'),
+      sig('relay_instability', 's1'),
+    ])
+    expect(out.map((x) => x.kind)).toEqual(['relay_instability'])
+  })
+
+  it('pas de suppression croisée entre sites différents', () => {
+    const out = resolveSubjectConflicts([
+      sig('continuity_stable', 's1'),
+      sig('relay_instability', 's2'),
+    ])
+    expect(out).toHaveLength(2)
   })
 })

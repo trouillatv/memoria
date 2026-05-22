@@ -4,8 +4,35 @@
 // classement global figé dans le signal (un même signal n'a pas la même
 // importance sur le dashboard, le planning ou une fiche site).
 
-import type { MemorySignal } from './types'
+import type { MemorySignal, SignalKind } from './types'
 import { SIGNAL_REGISTRY, type SignalFamily } from './registry'
+
+/**
+ * Conflits sémantiques : certains signaux s'excluent pour un MÊME sujet — on ne
+ * peut pas présenter un lieu comme « continuité assurée » ET en « instabilité
+ * de relais » (fenêtres distinctes, faits tous deux vrais, mais message
+ * contradictoire). La fragilité prime : on ne rassure jamais à tort.
+ */
+const SUPPRESSED_BY: Partial<Record<SignalKind, SignalKind[]>> = {
+  continuity_stable: ['relay_instability'],
+}
+
+/** Retire, par sujet, les signaux supprimés par un signal concurrent présent. */
+export function resolveSubjectConflicts(signals: MemorySignal[]): MemorySignal[] {
+  const presentBySubject = new Map<string, Set<SignalKind>>()
+  for (const s of signals) {
+    const key = `${s.subjectType}:${s.subjectId}`
+    const set = presentBySubject.get(key) ?? new Set<SignalKind>()
+    set.add(s.kind)
+    presentBySubject.set(key, set)
+  }
+  return signals.filter((s) => {
+    const suppressors = SUPPRESSED_BY[s.kind]
+    if (!suppressors) return true
+    const present = presentBySubject.get(`${s.subjectType}:${s.subjectId}`)
+    return !suppressors.some((k) => present?.has(k))
+  })
+}
 
 export interface SurfacePolicy {
   surface: 'dashboard' | 'site' | 'planning'
@@ -20,7 +47,7 @@ export interface SurfacePolicy {
  * choix de SURFACE, assumé ici — pas une importance gravée dans le signal.
  */
 export function forSurface(signals: MemorySignal[], policy: SurfacePolicy): MemorySignal[] {
-  let s = signals
+  let s = resolveSubjectConflicts(signals)
   if (policy.scope?.siteId) {
     s = s.filter((x) => x.subjectType === 'site' && x.subjectId === policy.scope!.siteId)
   }

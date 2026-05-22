@@ -49,6 +49,15 @@ export function renderSignal(s: MemorySignal): RenderedSignal {
         href: `/sites/${s.subjectId}`,
       }
     }
+    case 'relay_instability': {
+      const n = Number(s.facts.teamsInWindow ?? 0)
+      const d = Number(s.facts.windowDays ?? 7)
+      return {
+        text: `${s.subjectLabel} — ${n} équipes différentes en ${d} jours`,
+        detail: 'rotation inhabituelle',
+        href: `/sites/${s.subjectId}`,
+      }
+    }
     case 'unusual_silence': {
       const days = Number(s.facts.daysSinceLastTrace ?? 0)
       return {

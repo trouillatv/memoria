@@ -25,6 +25,7 @@ export type SignalKind =
   | 'fresh_field_memory'
   | 'continuity_stable'
   | 'memory_awaiting'
+  | 'relay_instability'
   | 'unusual_silence'
 
 /** Ce que le système AFFIRME : déterministe vs supposé. Extensible ('llm' au Batch 3). */

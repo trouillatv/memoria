@@ -10,6 +10,7 @@ import { detectHandoverAcknowledged } from './detectors/handover-acknowledged'
 import { detectFreshFieldMemory } from './detectors/fresh-field-memory'
 import { detectContinuityStable } from './detectors/continuity-stable'
 import { detectMemoryAwaiting } from './detectors/memory-awaiting'
+import { detectRelayInstability } from './detectors/relay-instability'
 import { detectUnusualSilence } from './detectors/unusual-silence'
 
 const DETECTORS: Array<() => Promise<MemorySignal[]>> = [
@@ -19,6 +20,7 @@ const DETECTORS: Array<() => Promise<MemorySignal[]>> = [
   detectContinuityStable,
   // Fragilité.
   detectMemoryAwaiting,
+  detectRelayInstability,
   detectUnusualSilence,
 ]
 
