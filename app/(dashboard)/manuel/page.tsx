@@ -54,7 +54,7 @@ export default async function ManuelPage() {
     mdContent = ''
   }
 
-  const rawHtml = mdContent ? await marked.parse(mdContent, { gfm: true }) : ''
+  const rawHtml = mdContent ? await marked.parse(mdContent, { gfm: true, breaks: true }) : ''
   // Injecte un id d'ancrage sur chaque titre (pour la navigation du Sommaire).
   const html = rawHtml.replace(/<h([1-6])>([\s\S]*?)<\/h\1>/g, (_m, lvl, inner: string) => {
     const text = inner.replace(/<[^>]+>/g, '')
@@ -96,7 +96,24 @@ export default async function ManuelPage() {
       {/* Livre en ligne — contenu intégral du manuel */}
       {html ? (
         <article
-          className="rounded-lg border bg-card p-5 sm:p-8 prose prose-sm sm:prose-base max-w-none dark:prose-invert prose-headings:scroll-mt-24 prose-headings:font-semibold prose-h1:text-2xl prose-h2:text-xl prose-h2:border-b prose-h2:pb-1 prose-h2:mt-10 prose-a:text-brand-700 dark:prose-a:text-brand-300 prose-a:no-underline hover:prose-a:underline prose-code:text-xs prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5"
+          className={[
+            'rounded-lg border bg-card p-5 sm:p-8 overflow-x-auto',
+            'prose prose-sm sm:prose-base max-w-none dark:prose-invert',
+            // Titres — hiérarchie claire, h2 = bandeau de section souligné
+            'prose-headings:scroll-mt-24 prose-headings:font-semibold',
+            'prose-h1:text-2xl prose-h1:mb-3',
+            'prose-h2:text-lg prose-h2:mt-10 prose-h2:pb-1.5 prose-h2:border-b prose-h2:border-border prose-h2:text-brand-800 dark:prose-h2:text-brand-200',
+            'prose-h3:text-base prose-h3:mt-6 prose-h3:mb-1',
+            'prose-p:leading-relaxed prose-li:my-0.5 prose-hr:my-8',
+            // Liens
+            'prose-a:text-brand-700 dark:prose-a:text-brand-300 prose-a:no-underline hover:prose-a:underline',
+            // Code inline (sans guillemets parasites)
+            'prose-code:text-xs prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:before:content-none prose-code:after:content-none',
+            // Tableaux — bordures visibles + en-tête teinté
+            'prose-table:w-full prose-table:text-sm prose-table:border prose-table:border-border',
+            'prose-thead:bg-muted/50 prose-th:border prose-th:border-border prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-medium',
+            'prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-td:align-top',
+          ].join(' ')}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       ) : (
