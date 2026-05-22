@@ -64,14 +64,33 @@ export function forSurface(signals: MemorySignal[], policy: SurfacePolicy): Memo
       (b.lastRelevantEventAt ?? '').localeCompare(a.lastRelevantEventAt ?? ''),
   )
 
-  if (!policy.perFamilyCap) return ordered
+  return capPerFamily(ordered, policy.perFamilyCap)
+}
+
+/**
+ * Regroupe les signaux de SITE par site, déjà contextualisés (conflits résolus,
+ * fragilité d'abord, plus récent). Pour le planning : 1 ligne site = sa liste,
+ * le 1er élément est le signal prioritaire (= le badge unique).
+ */
+export function planningSignalsBySite(signals: MemorySignal[]): Record<string, MemorySignal[]> {
+  const ordered = forSurface(signals, { surface: 'planning' })
+  const out: Record<string, MemorySignal[]> = {}
+  for (const s of ordered) {
+    if (s.subjectType !== 'site') continue
+    ;(out[s.subjectId] ??= []).push(s)
+  }
+  return out
+}
+
+function capPerFamily(ordered: MemorySignal[], perFamilyCap?: number): MemorySignal[] {
+  if (!perFamilyCap) return ordered
 
   const perFamily = new Map<SignalFamily, number>()
   const out: MemorySignal[] = []
   for (const sig of ordered) {
     const fam = SIGNAL_REGISTRY[sig.kind].family
     const n = perFamily.get(fam) ?? 0
-    if (n >= policy.perFamilyCap) continue
+    if (n >= perFamilyCap) continue
     perFamily.set(fam, n + 1)
     out.push(sig)
   }

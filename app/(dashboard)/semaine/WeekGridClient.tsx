@@ -40,6 +40,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { InterventionSlot } from '@/types/db'
+import type { MemorySignal } from '@/lib/memory/signals/types'
 import { CellDrawer } from './CellDrawer'
 import { moveInterventionToDayAction } from './actions'
 import type { ReassignTeamOption } from './ReassignTeamDialog'
@@ -56,6 +57,7 @@ export interface WeekGridClientProps {
   rows: SiteRow[]
   todayIso: string
   teams: ReassignTeamOption[]
+  signalsBySite?: Record<string, MemorySignal[]>
   children: React.ReactNode
 }
 
@@ -124,7 +126,7 @@ interface DragPreview {
   teamColor: string | null
 }
 
-export function WeekGridClient({ rows, todayIso, teams, children }: WeekGridClientProps) {
+export function WeekGridClient({ rows, todayIso, teams, signalsBySite, children }: WeekGridClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -267,6 +269,7 @@ export function WeekGridClient({ rows, todayIso, teams, children }: WeekGridClie
         todayIso={todayIso}
         pendingMove={pending}
         activeDragId={activeId}
+        signalsBySite={signalsBySite}
       >
         {children}
       </CellDrawer>

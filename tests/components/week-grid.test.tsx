@@ -203,7 +203,7 @@ describe('WeekGridCell', () => {
     expect(screen.queryByTestId('week-cell-s1-2026-05-11')).not.toBeInTheDocument()
   })
 
-  it('affiche ● + slot + TeamBadge pour une mission affectée', () => {
+  it('affiche ● + TeamBadge pour une mission affectée', () => {
     renderInTable(
       <WeekGridCell
         date="2026-05-11"
@@ -224,7 +224,8 @@ describe('WeekGridCell', () => {
     const btn = screen.getByTestId('week-cell-s1-2026-05-11')
     expect(btn).toBeInTheDocument()
     expect(within(btn).getByText('●')).toBeInTheDocument()
-    expect(within(btn).getByText('m')).toBeInTheDocument()
+    // V6.1 : plus de lettre de créneau (« m ») dans la cellule — on n'affiche
+    // que l'heure de prestation (vide ici car planned_start null) + l'équipe.
     expect(within(btn).getByText('Alpha')).toBeInTheDocument()
   })
 
@@ -241,7 +242,7 @@ describe('WeekGridCell', () => {
       />,
     )
     expect(screen.getByText('●●')).toBeInTheDocument()
-    expect(screen.getByText('m+s')).toBeInTheDocument()
+    // V6.1 : la pluralité est portée par ●●, plus par les lettres « m+s ».
   })
 
   it('affiche ◯ ambre + "Non-affecté" si AUCUNE intervention n’a d’équipe', () => {
@@ -447,8 +448,10 @@ describe('CellDrawer', () => {
     fireEvent.click(screen.getByTestId('week-cell-site-1-2026-05-11'))
     expect(screen.getByTestId('drawer-intervention-i-1')).toBeInTheDocument()
     expect(screen.getByText('Nettoyage hall')).toBeInTheDocument()
-    // Le créneau "matin" est en français dans le drawer, JAMAIS d'heure
-    expect(screen.getByText(/créneau matin/i)).toBeInTheDocument()
+    // V6.1 : le drawer affiche l'HEURE de prestation (ancrage canonique 7h pour
+    // le matin quand pas d'heure précise), JAMAIS « créneau matin ».
+    expect(screen.getByText('7h')).toBeInTheDocument()
+    expect(screen.queryByText(/créneau/i)).not.toBeInTheDocument()
   })
 
   it('affiche "Non-affecté" dans le drawer pour une intervention sans équipe', () => {

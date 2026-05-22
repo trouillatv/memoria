@@ -11,7 +11,9 @@
 // Wrappé par WeekGridClient (DndContext + drawer + état drag).
 
 import type { SiteRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
+import type { MemorySignal } from '@/lib/memory/signals/types'
 import { WeekGridCell } from './WeekGridCell'
+import { MemorySignalBadge } from './MemorySignalBadge'
 
 const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -40,9 +42,11 @@ export interface WeekGridProps {
   rows: SiteRow[]
   /** yyyy-mm-dd UTC — passé par le parent pour highlight de la colonne. */
   todayIso: string
+  /** Signaux mémoire par site (Planning-1) — le 1er = badge prioritaire. */
+  signalsBySite?: Record<string, MemorySignal[]>
 }
 
-export function WeekGrid({ range, rows, todayIso }: WeekGridProps) {
+export function WeekGrid({ range, rows, todayIso, signalsBySite }: WeekGridProps) {
   const days = enumerateDays(range.weekStart)
 
   return (
@@ -88,7 +92,13 @@ export function WeekGrid({ range, rows, todayIso }: WeekGridProps) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <SiteGridRow key={row.site_id} row={row} days={days} todayIso={todayIso} />
+            <SiteGridRow
+              key={row.site_id}
+              row={row}
+              days={days}
+              todayIso={todayIso}
+              topSignal={signalsBySite?.[row.site_id]?.[0]}
+            />
           ))}
         </tbody>
       </table>
@@ -100,10 +110,12 @@ function SiteGridRow({
   row,
   days,
   todayIso,
+  topSignal,
 }: {
   row: SiteRow
   days: string[]
   todayIso: string
+  topSignal?: MemorySignal
 }) {
   return (
     <tr className="border-t" data-site-id={row.site_id}>
@@ -111,11 +123,12 @@ function SiteGridRow({
         scope="row"
         className="text-left align-top px-3 py-2 sticky left-0 bg-card z-10 border-r"
       >
-        <div className="flex flex-col gap-0.5 min-w-[9rem]">
+        <div className="flex flex-col gap-1 min-w-[9rem]">
           <span className="font-medium text-foreground leading-tight">{row.site_name}</span>
           <span className="text-[11px] text-muted-foreground leading-tight">
             {row.contract_name}
           </span>
+          {topSignal && <MemorySignalBadge signal={topSignal} />}
         </div>
       </th>
       {days.map((d) => {

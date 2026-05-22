@@ -33,6 +33,9 @@ import {
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
+import { collectMemorySignals } from '@/lib/memory/signals/collect'
+import { planningSignalsBySite } from '@/lib/memory/signals/surface'
+import type { MemorySignal } from '@/lib/memory/signals/types'
 import { WeekNavigation } from './WeekNavigation'
 import { WeekVigilanceSection } from './WeekVigilance'
 import { CreateInterventionDialog, type MissionOption } from './CreateInterventionDialog'
@@ -187,14 +190,22 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
-  const [siteRows, teamRows, allTeams, missionOptions, memberCounts, vigilance] = await Promise.all([
-    view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
-    view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
-    listTeams(),
-    fetchMissionOptions(),
-    fetchTeamMemberCounts(),
-    getWeekVigilance(range.weekStart, range.weekEnd),
-  ])
+  const [siteRows, teamRows, allTeams, missionOptions, memberCounts, vigilance, memorySignals] =
+    await Promise.all([
+      view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
+      view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
+      listTeams(),
+      fetchMissionOptions(),
+      fetchTeamMemberCounts(),
+      getWeekVigilance(range.weekStart, range.weekEnd),
+      // Planning-1 : collecte UNE SEULE FOIS au niveau page (vue site uniquement).
+      // La vue équipe viendra plus tard (sujet team non activé ici).
+      view === 'site' ? collectMemorySignals() : Promise.resolve<MemorySignal[]>([]),
+    ])
+
+  // Regroupement par site (conflits résolus, fragilité d'abord) — filtrage par
+  // site fait ici, jamais un collect par cellule.
+  const signalsBySite = planningSignalsBySite(memorySignals)
   const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
   const teams = activeTeams.map((t) => ({ id: t.id, name: t.name, color: t.color }))
   const teamOptions = activeTeams.map((t) => ({
@@ -287,8 +298,8 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams}>
-            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} />
+          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite}>
+            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

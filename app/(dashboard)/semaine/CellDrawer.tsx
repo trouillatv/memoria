@@ -42,8 +42,10 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { TeamBadge } from '@/components/ui/team-badge'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
+import type { MemorySignal } from '@/lib/memory/signals/types'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
+import { MemorySignalLine } from './MemorySignalBadge'
 
 const MONTHS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -75,6 +77,8 @@ export interface CellDrawerProps {
   pendingMove?: boolean
   /** Intervention en cours de drag (mute son rendu). */
   activeDragId?: string | null
+  /** Signaux mémoire par site (Planning-1) — « mémoire du lieu » dans le drawer. */
+  signalsBySite?: Record<string, MemorySignal[]>
   /** Contenu du conteneur (grille client-rendered). */
   children: React.ReactNode
 }
@@ -109,6 +113,7 @@ export function CellDrawer({
   todayIso,
   pendingMove,
   activeDragId,
+  signalsBySite,
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
@@ -186,6 +191,21 @@ export function CellDrawer({
           </SheetHeader>
 
           <div className="px-4 py-3 space-y-3">
+            {/* Planning-1 — « mémoire du lieu » : signaux mémoire du site (sujet =
+                le lieu, jamais une personne ni une charge équipe). */}
+            {selected && (signalsBySite?.[selected.siteId]?.length ?? 0) > 0 ? (
+              <section className="rounded-md border bg-muted/20 p-3">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Mémoire du lieu
+                </h4>
+                <ul className="space-y-1.5">
+                  {signalsBySite![selected.siteId]!.map((s) => (
+                    <MemorySignalLine key={`${s.kind}-${s.subjectId}`} signal={s} />
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
             {selected && selected.cells.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">
                 Aucune intervention planifiée ce jour.
