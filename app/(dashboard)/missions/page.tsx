@@ -209,6 +209,10 @@ export default async function MissionsPage({
   )
   const footprints = await getSiteFootprints(shownSiteIds)
 
+  // Auto-expand des groupes quand on a filtré sur une mission ou un site précis
+  // (l'utilisateur a narrow → il veut voir le contenu sans re-cliquer).
+  const forceOpen = Boolean(missionId || siteId)
+
   return (
     <div className="space-y-6 max-w-4xl">
       <header>
@@ -286,7 +290,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
             À venir ({upcoming.length})
           </h2>
-          <SiteGroupedList items={upcoming} accent="emerald" signalsBySite={signalsBySite} footprints={footprints} today={today} />
+          <SiteGroupedList items={upcoming} accent="emerald" signalsBySite={signalsBySite} footprints={footprints} today={today} forceOpen={forceOpen} />
         </section>
       )}
 
@@ -295,7 +299,7 @@ export default async function MissionsPage({
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Récentes ({past.length})
           </h2>
-          <SiteGroupedList items={past} accent="muted" signalsBySite={signalsBySite} footprints={footprints} today={today} />
+          <SiteGroupedList items={past} accent="muted" signalsBySite={signalsBySite} footprints={footprints} today={today} forceOpen={forceOpen} />
         </section>
       )}
 
@@ -406,12 +410,14 @@ function SiteGroupedList({
   signalsBySite,
   footprints,
   today,
+  forceOpen,
 }: {
   items: ListItem[]
   accent: 'emerald' | 'muted'
   signalsBySite: Record<string, MemorySignal[]>
   footprints: Record<string, SiteFootprint>
   today: string
+  forceOpen?: boolean
 }) {
   const enriched = groupBySiteName(items).map((g) => {
     const fp = g.siteId ? footprints[g.siteId] : undefined
@@ -445,6 +451,7 @@ function SiteGroupedList({
         return (
           <details
             key={g.siteKey}
+            open={forceOpen}
             className={cn('group rounded-lg border bg-card overflow-hidden', accentCls)}
           >
             <summary
