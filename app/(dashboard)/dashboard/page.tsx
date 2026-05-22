@@ -173,6 +173,7 @@ export default async function DashboardPage() {
         morningReading={morningReading}
         tendersDueSoon={tendersDueSoon}
         recentAnomalies={recentAnomalies}
+        memorySignals={memorySignals}
         urgentPassations={continuity.counts.j7}
         sharedAwaitingAck={handoverCounts.shared}
         continuityEnabled={continuityEnabled}
@@ -214,6 +215,7 @@ function Hero({
   morningReading,
   tendersDueSoon,
   recentAnomalies,
+  memorySignals,
   urgentPassations,
   sharedAwaitingAck,
   continuityEnabled,
@@ -221,6 +223,7 @@ function Hero({
   morningReading: TenantMorningReading
   tendersDueSoon: TenderDueSoonRow[]
   recentAnomalies: RecentAnomalyItem[]
+  memorySignals: MemorySignal[]
   urgentPassations: number
   sharedAwaitingAck: number
   continuityEnabled: boolean
@@ -300,6 +303,26 @@ function Hero({
           : undefined,
       href: n === 1 ? `/interventions/${first.interventionId}` : undefined,
       linkLabel: n === 1 ? 'Voir le signalement' : undefined,
+    })
+  }
+
+  // Moteur d'états de mémoire : fragilité de SITE (silence inhabituel /
+  // instabilité de relais). En dernier candidat — ne crie pas par-dessus une
+  // résonance ou un signalement, mais empêche un faux « les lieux sont calmes »
+  // quand un lieu mérite l'attention. memory_awaiting est déjà couvert par le
+  // bloc continuité ci-dessus → exclu ici (pas de doublon).
+  const engineFrag = memorySignals.find(
+    (s) => s.kind === 'unusual_silence' || s.kind === 'relay_instability',
+  )
+  if (engineFrag) {
+    const r = renderSignal(engineFrag)
+    const fam = SIGNAL_REGISTRY[engineFrag.kind].family
+    signals.push({
+      tone: fam === 'continuite' ? 'continuity' : 'memory',
+      title: r.text,
+      body: r.detail,
+      href: r.href,
+      linkLabel: 'Voir le site',
     })
   }
 
