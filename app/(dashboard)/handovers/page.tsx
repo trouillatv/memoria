@@ -113,10 +113,9 @@ export default async function HandoversPage({
     getMemoryTransmittedThisMonth(),
     listRecentPassations(6),
     listLivingASavoir(4),
-    listContinuityRisks({ horizonDays: 7, viewerUserId: me.id }),
+    listContinuityRisks({ horizonDays: 30, viewerUserId: me.id }),
   ])
 
-  const urgentPassations = continuity.counts.j7
   const lastAcknowledged = recent.find((p) => p.status === 'acknowledged') ?? null
 
   return (
@@ -133,9 +132,9 @@ export default async function HandoversPage({
         </p>
       </header>
 
-      {/* ── Bandeau d'état — la page respire même sans rien à transmettre ── */}
+      {/* ── Bandeau d'état — indique les fins de contrat proches (30j) ── */}
       <ContinuityStateBanner
-        urgentPassations={urgentPassations}
+        counts={continuity.counts}
         lastAcknowledged={lastAcknowledged}
         summary={summary}
       />
@@ -249,28 +248,35 @@ export default async function HandoversPage({
 // ----------------------------------------------------------------------------
 
 function ContinuityStateBanner({
-  urgentPassations,
+  counts,
   lastAcknowledged,
   summary,
 }: {
-  urgentPassations: number
+  counts: { j7: number; j14: number; j30: number }
   lastAcknowledged: RecentPassationEntry | null
   summary: MemoryTransmittedSummary
 }) {
-  const stable = urgentPassations === 0
+  const total = counts.j7 + counts.j14 + counts.j30
 
-  if (!stable) {
+  if (total > 0) {
+    const parts: string[] = []
+    if (counts.j7 > 0) parts.push(`${counts.j7} cette semaine`)
+    if (counts.j14 > 0) parts.push(`${counts.j14} dans 2 semaines`)
+    if (counts.j30 > 0) parts.push(`${counts.j30} dans le mois`)
     return (
       <div className="rounded-lg border-2 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 p-4">
         <div className="flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-              {urgentPassations} passation{urgentPassations > 1 ? 's' : ''} à préparer cette semaine
+              {total} passation{total > 1 ? 's' : ''} à préparer
+              <span className="font-normal text-amber-800/80 dark:text-amber-200/70">
+                {' '}— {parts.join(' · ')}
+              </span>
             </p>
             <p className="text-xs text-amber-800/80 dark:text-amber-200/70 mt-0.5">
-              Des contrats se terminent dans les 7 jours. La mémoire portée par
-              ces équipes mérite d&apos;être transmise avant la rupture.{' '}
+              Des contrats se terminent bientôt. La mémoire portée par ces équipes
+              mérite d&apos;être transmise avant la rupture.{' '}
               <Link href="/continuite" className="underline font-medium">
                 Voir la continuité
               </Link>
@@ -287,15 +293,14 @@ function ContinuityStateBanner({
         <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
-            Continuité stable — aucune passation urgente à préparer
+            Continuité stable — aucune fin de contrat dans les 30 jours
           </p>
           <p className="text-xs text-emerald-800/80 dark:text-emerald-200/70 mt-0.5">
-            Aucun contrat ne se termine dans les 7 prochains jours.
             {lastAcknowledged && (
-              <> Dernier passage de témoin reconnu {relTime(lastAcknowledged.acknowledgedAt)}.</>
+              <>Dernier passage de témoin reconnu {relTime(lastAcknowledged.acknowledgedAt)}. </>
             )}
             {summary.briefsCount > 0 && (
-              <> {summary.briefsCount} passage{summary.briefsCount > 1 ? 's' : ''} de témoin préparé{summary.briefsCount > 1 ? 's' : ''} ce mois-ci.</>
+              <>{summary.briefsCount} passage{summary.briefsCount > 1 ? 's' : ''} de témoin préparé{summary.briefsCount > 1 ? 's' : ''} ce mois-ci.</>
             )}
           </p>
         </div>
