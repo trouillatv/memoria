@@ -161,6 +161,45 @@ def md_to_docx(md_path: Path, out_path: Path):
             i += 1
             continue
 
+        # Blockquote / admonition  > [!TYPE] Titre
+        if line.lstrip().startswith('>'):
+            bq = []
+            while i < len(lines) and lines[i].lstrip().startswith('>'):
+                bq.append(re.sub(r'^\s*>\s?', '', lines[i].rstrip()))
+                i += 1
+            label = None
+            if bq:
+                am = re.match(r'^\[!(\w+)\]\s*(.*)$', bq[0])
+                if am:
+                    LABELS = {
+                        'TIP': 'Bon réflexe', 'NOTE': 'À retenir', 'INFO': 'À retenir',
+                        'IMPORTANT': 'Important', 'WARNING': 'Attention',
+                        'DANGER': 'À éviter', 'SUCCESS': 'La promesse', 'CAUTION': 'À éviter',
+                    }
+                    label = am.group(2).strip() or LABELS.get(am.group(1).upper(), am.group(1).title())
+                    bq[0] = ''
+            if label:
+                pl = doc.add_paragraph()
+                rl = pl.add_run(label)
+                rl.bold = True
+                rl.font.color.rgb = BRAND
+            for bl in bq:
+                if not bl.strip():
+                    continue
+                lm = re.match(r'^(\s*)([-*+])\s+(.*)', bl)
+                if lm:
+                    try:
+                        bp = doc.add_paragraph(style='List Bullet')
+                    except KeyError:
+                        bp = doc.add_paragraph()
+                        bp.add_run('• ')
+                    add_run_with_inline(bp, lm.group(3))
+                else:
+                    bp = doc.add_paragraph()
+                    add_run_with_inline(bp, bl)
+                bp.paragraph_format.left_indent = Cm(0.6)
+            continue
+
         # Code block ```
         if line.startswith('```'):
             i += 1
@@ -185,6 +224,7 @@ def md_to_docx(md_path: Path, out_path: Path):
             or re.match(r'^\d+\.\s', lines[i].lstrip())
             or lines[i].strip() == '---'
             or lines[i].startswith('```')
+            or lines[i].lstrip().startswith('>')
         ):
             para_lines.append(lines[i].rstrip())
             i += 1

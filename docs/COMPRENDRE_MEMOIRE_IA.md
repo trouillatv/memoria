@@ -242,4 +242,26 @@ L'IA générative (chère, faillible) est **confinée** à un seul endroit : l'A
 
 ---
 
+## Les documents qui dorment : tous ne méritent pas la mémoire
+
+La plus grosse réserve de mémoire d'une entreprise est **déjà là** — dispersée, oubliée, morte : plans, procédures, comptes-rendus, audits, devis, mails PDF. Elle existe, mais elle n'est **jamais reliée au contexte opérationnel**.
+
+MemorIA sait importer ces documents. Mais il refuse le piège du « on vectorise tout » :
+
+> [!DANGER] Le piège du cimetière de PDFs
+> Importer 1000 PDF et tout « embedder » produit du **bruit**, des contradictions, une recherche molle et des coûts qui explosent. MemorIA deviendrait un « ChatPDF géant » — la mort du positionnement.
+
+La vraie question n'est pas *« peut-on indexer ce document ? »* mais **« nourrit-il la mémoire vivante ? »**. D'où **3 couches** :
+
+- 🟢 **Mémoire vivante** — procédures, accès, sécurité, incidents : transformables en savoir opérationnel (un « à savoir » lié au lieu).
+- 🔵 **Mémoire consultable** — contrats, AO, références : indexés, retrouvables par le sens.
+- ❄️ **Archive froide** — factures, preuves, vieux documents : on les garde, **on ne les indexe pas**.
+
+> [!IMPORTANT] L'humain garde la main
+> À l'import, MemorIA **propose** la couche et l'indexation pour chaque document, **et explique pourquoi**. L'humain valide. Rien de magique, rien de caché — c'est la même doctrine partout : *l'IA propose, l'humain arbitre*.
+
+C'est ce qui transforme MemorIA d'un « outil de terrain » en **système de continuité opérationnelle** : le document dormant devient mémoire utile, au moment où elle compte.
+
+---
+
 *Document compagnon : `COMPRENDRE_ARCHITECTURE.md` (les briques techniques) · `MODE_EMPLOI.md` (l'usage quotidien).*

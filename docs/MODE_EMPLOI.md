@@ -29,6 +29,9 @@
 20. [Doctrines à respecter pendant le pilote](#20-doctrines-à-respecter-pendant-le-pilote)
 21. [Que faire si…](#21-que-faire-si)
 22. [**Continuité opérationnelle anticipée**](#22-continuité-opérationnelle-anticipée)
+23. [Le tableau de bord vivant](#23-le-tableau-de-bord-vivant)
+24. [Importer par lot & tri d'ingestion](#24-importer-par-lot--tri-dingestion)
+25. [Continuité des contrats (CDD, prolongation)](#25-continuité-des-contrats-cdd-prolongation)
 
 ---
 
@@ -844,6 +847,54 @@ Depuis la refonte « collapse », il n'y a plus d'encart séparé : la continuit
 ## Mot de la fin
 
 MemorIA n'est pas un outil que vous configurez une fois pour toutes. C'est un **organisme qui apprend** à mesure que vous l'utilisez. Chaque photo déposée, chaque note terrain, chaque AO clôturé enrichit la mémoire collective de votre entreprise.
+
+## 23. Le tableau de bord vivant
+
+Le tableau de bord ne cherche pas à tout afficher — il **apparaît au bon moment puis se retire**. Trois condensations du moteur de mémoire :
+
+- **État de la continuité** — une synthèse sobre du parc (stable / passations en attente / silences).
+- **Temps mémoriel** — un petit calendrier où chaque jour prend la couleur de ce que la mémoire a fait : vert = continuité confirmée, ambre = transmission, bleu = mémoire récente. Pas un graphique d'activité — une respiration.
+- **Dernière mémoire utile** — le fil des derniers artefacts (« à savoir », passations reconnues, signalements).
+
+Puis **Vie des lieux** : les lieux qui méritent attention remontent ; les calmes restent discrets.
+
+> [!TIP] Règle d'or
+> Un tableau de bord calme est un bon signe. Le silence donne de la valeur aux moments où le système parle.
+
+---
+
+## 24. Importer par lot & tri d'ingestion
+
+URL : `/documents` → bouton **Importer par lot**.
+
+L'idée centrale : **tous les documents ne méritent pas la mémoire active.** Vos plans, procédures et comptes-rendus dorment souvent dans des dossiers — MemorIA les transforme en mémoire utile, **sans tout vectoriser aveuglément**.
+
+> [!IMPORTANT] Le principe
+> Pour chaque document, la question n'est pas « peut-on l'indexer ? » mais **« nourrit-il la mémoire vivante ? »**.
+
+**Les 3 couches mémoire :**
+- 🟢 **Vivante** — procédures, accès, sécurité : mémoire opérationnelle.
+- 🔵 **Consultable** — contrats, AO, références : indexés pour la recherche.
+- ❄️ **Froide** — factures, preuves : stockées, **non indexées**.
+
+**Le tableau de triage** : déposez plusieurs PDF. Pour chacun, MemorIA propose un **type**, une **couche** (dérivée du type), une **indexation** (oui/non) et **pourquoi**. Vous changez le type ou l'indexation si besoin — **rien n'est importé tant que vous ne validez pas**. L'import se fait par petits paquets ; si un fichier échoue, les autres passent quand même.
+
+> [!WARNING] Litige
+> Un document de type **litige n'est jamais indexé** automatiquement — verrouillé à l'écran **et** côté serveur.
+
+---
+
+## 25. Continuité des contrats (CDD, prolongation)
+
+Quand vous créez un intervenant en **CDD** ou **CDI Chantier**, MemorIA exige **la date de fin de contrat**. Cette date alimente la continuité :
+
+- **Tableau de bord** & **Passages de témoin** : un encart « N passations à préparer » apparaît **si** une fin approche (≤ 30 jours), avec le détail par échéance. Silence si rien.
+- **Fiche intervenant** : bouton **« Prolonger »** — un CDD renouvelé (même agent ou non) = nouvelle date de fin. Sinon la passation reste à préparer.
+
+> [!TIP] Doctrine
+> Le sujet reste **la passation de mémoire**, jamais la personne. MemorIA n'évalue pas un agent ; il évite qu'un savoir parte avec lui.
+
+---
 
 **Le pilote dure 30 jours.** À la fin :
 - Si Guillaume utilise activement /aujourdhui et /semaine

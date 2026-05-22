@@ -503,6 +503,41 @@ Pour réviser d'un coup d'œil :
 
 ---
 
+## Le moteur de signaux mémoire — « 1 source, N surfaces »
+
+Comment le tableau de bord, le planning et les passages de témoin affichent-ils les **mêmes** signaux sans les recalculer chacun de leur côté ? Grâce à un petit moteur en **4 couches** :
+
+1. **Détecteurs** (`lib/memory/signals/*`) — des fonctions **pures et déterministes** qui produisent des faits : « ce site n'a pas parlé depuis 12 jours », « cette passation attend une reconnaissance ». Pas d'IA, pas de LLM — du SQL et des règles.
+2. **Collecteur** — lance tous les détecteurs, à plat (aucun classement global).
+3. **Contextualiseur** (`forSurface`) — décide **quand parler** selon la surface (dashboard ≠ planning) et résout les conflits (un signal de santé masque un signal fragile).
+4. **Renderer** — le **seul** responsable du texte affiché.
+
+> [!IMPORTANT] La grammaire stricte
+> Un signal ne contient **jamais** de texte, ni de personne comme sujet, ni de score caché. Le sujet est **un lieu ou une équipe, jamais un individu**. Cette discipline est testée (tests dans le même commit).
+
+Résultat : **une seule source de vérité**, déclinée sur plusieurs écrans, expliquée et réversible.
+
+## Le pipeline d'ingestion documentaire
+
+Importer un document n'est pas « le vectoriser ». C'est un **pipeline** qui décide d'abord *si* le document mérite la mémoire active :
+
+```
+PDF déposé
+  → classifyDocument()      (pur : type → couche + reco d'indexation + pourquoi)
+  → triage humain           (l'humain valide type / indexation)
+  → createDocument()        (stockage privé + métadonnées + memory_tier)
+  → analyzeDocument()       (UNIQUEMENT si indexation validée)
+       → extraction → chunking sémantique → embeddings → knowledge_chunks
+```
+
+> [!TIP] Embedding sélectif
+> On ne lance l'étape coûteuse (embeddings) **que** pour les documents « vivante » / « consultable ». Les archives froides sont stockées sans coût IA. C'est la `ai-cost-discipline` appliquée : async, borné, jamais « LLM partout ».
+
+> [!WARNING] Garde-fou litige
+> Un document de type **litige** est forcé en *non indexé* **côté serveur** — on ne fait pas confiance au client. Un litige n'alimente jamais une lecture ou une résonance automatique.
+
+L'import par lot réutilise **exactement** ce pipeline (même action, mêmes garde-fous), avec une **file bornée** (3 fichiers à la fois, jamais 50 en parallèle) et un **import partiel** (un PDF corrompu n'arrête pas les autres). Aucune nouvelle infra : on **étend** l'existant, on ne le double pas.
+
 ## Le mot de la fin — pourquoi tout ça compte
 
 Chaque notion ci-dessus n'est pas là « parce que c'est moderne ». Chacune sert **une des deux missions** de MemorIA :
