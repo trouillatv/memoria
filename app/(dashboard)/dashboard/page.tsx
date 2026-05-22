@@ -59,6 +59,7 @@ import { renderSignal } from '@/lib/memory/signals/render'
 import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { getMemoryHeatmap, type HeatmapCell, type MemoryTone } from '@/lib/memory/heatmap'
+import { ContinuityWidget } from '@/components/dashboard/ContinuityWidget'
 import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/site-cockpit'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
@@ -199,6 +200,10 @@ export default async function DashboardPage() {
         <MemoryHeatmap cells={heatmap} />
         <DerniereMemoireUtile events={memoryEvents} />
       </div>
+
+      {/* Continuité — prévient si une fin de contrat approche (passation à
+          préparer). Silence positif : rien si aucune échéance dans 30j. */}
+      <ContinuityWidget />
 
       <VieDuSysteme
         memorySignals={memorySignals}
@@ -372,6 +377,14 @@ const HEATMAP_LABEL: Record<MemoryTone, string> = {
   blue: 'mémoire récente',
   red: 'fragilité',
 }
+const HEATMAP_LEGEND: Array<{ tone: MemoryTone; label: string }> = [
+  { tone: 'green', label: 'confirmée' },
+  { tone: 'amber', label: 'transmission' },
+  { tone: 'blue', label: 'mémoire récente' },
+  { tone: 'red', label: 'fragilité' },
+]
+// Lignes Lun → Dim.
+const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
 function chunkDays<T>(arr: T[], size: number): T[][] {
   const out: T[][] = []
@@ -379,29 +392,65 @@ function chunkDays<T>(arr: T[], size: number): T[][] {
   return out
 }
 
+/** Index jour de semaine, Lundi=0 … Dimanche=6. */
+function weekdayMon(dateIso: string): number {
+  return (new Date(dateIso + 'T00:00:00Z').getUTCDay() + 6) % 7
+}
+
 function MemoryHeatmap({ cells }: { cells: HeatmapCell[] }) {
-  const weeks = chunkDays(cells, 7)
+  // Alignement calendaire : colonnes = semaines, lignes = Lun→Dim. On comble le
+  // début pour que la 1re cellule tombe sur sa bonne ligne de jour.
+  const padded: Array<HeatmapCell | null> = []
+  if (cells.length > 0) {
+    for (let i = 0; i < weekdayMon(cells[0]!.date); i++) padded.push(null)
+  }
+  padded.push(...cells)
+  const weeks = chunkDays(padded, 7)
+
   return (
     <section className="rounded-lg border bg-card p-4">
       <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
         Temps mémoriel
       </h2>
-      <div className="flex gap-[3px] overflow-x-auto">
-        {weeks.map((w, wi) => (
-          <div key={wi} className="flex flex-col gap-[3px]">
-            {w.map((c) => (
-              <span
-                key={c.date}
-                title={c.tone ? `${c.date} · ${HEATMAP_LABEL[c.tone]}` : c.date}
-                className={`h-2.5 w-2.5 rounded-[2px] ${c.tone ? HEATMAP_TONE[c.tone] : 'bg-muted/50'}`}
-              />
-            ))}
-          </div>
+
+      <div className="flex gap-1.5">
+        {/* Étiquettes jours (Lun→Dim) */}
+        <div className="flex flex-col gap-[3px] pr-0.5">
+          {WEEKDAY_LABELS.map((w, i) => (
+            <span key={i} className="h-2.5 w-2 text-center text-[8px] leading-[10px] text-muted-foreground/70">
+              {w}
+            </span>
+          ))}
+        </div>
+        {/* Colonnes = semaines */}
+        <div className="flex gap-[3px] overflow-x-auto">
+          {weeks.map((col, ci) => (
+            <div key={ci} className="flex flex-col gap-[3px]">
+              {Array.from({ length: 7 }).map((_, ri) => {
+                const c = col[ri]
+                if (!c) return <span key={ri} className="h-2.5 w-2.5" />
+                return (
+                  <span
+                    key={ri}
+                    title={c.tone ? `${c.date} · ${HEATMAP_LABEL[c.tone]}` : c.date}
+                    className={`h-2.5 w-2.5 rounded-[2px] ${c.tone ? HEATMAP_TONE[c.tone] : 'bg-muted/50'}`}
+                  />
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Légende couleurs */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5 text-[10px] text-muted-foreground">
+        {HEATMAP_LEGEND.map((l) => (
+          <span key={l.tone} className="inline-flex items-center gap-1">
+            <span className={`h-2 w-2 rounded-[2px] ${HEATMAP_TONE[l.tone]}`} />
+            {l.label}
+          </span>
         ))}
       </div>
-      <p className="text-[11px] text-muted-foreground italic mt-2 leading-snug">
-        Chaque carré = un jour ; sa couleur, ce que la mémoire a fait ce jour-là.
-      </p>
     </section>
   )
 }
