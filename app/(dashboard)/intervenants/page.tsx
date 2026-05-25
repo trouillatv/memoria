@@ -116,7 +116,7 @@ export default async function IntervenantsListPage() {
                 {/* Continuité — territoires connus (mémoire portée, pas KPI). */}
                 <div className="mt-3.5 space-y-1.5">
                   {i.sitesKnown > 0 ? (
-                    <p className="text-sm inline-flex items-start gap-1.5">
+                    <p className="text-sm flex items-start gap-1.5">
                       <MapPin className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
                       <span className="min-w-0">
                         Suit régulièrement {i.sitesKnown} lieu{i.sitesKnown > 1 ? 'x' : ''}
