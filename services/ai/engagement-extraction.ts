@@ -103,6 +103,17 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
       measurable: true,
       confidence: 0.85,
     },
+    {
+      // Clause à pénalité → destination suggérée 'vigilance' (démo du pattern).
+      source_type: 'ao_clause',
+      source_excerpt:
+        "Pénalité de 2% du montant mensuel par manquement constaté lors d'un contrôle inopiné",
+      source_ref: { page: 27, section: '6.3' },
+      category: 'compliance',
+      short_label: 'Pénalité 2% par manquement',
+      measurable: true,
+      confidence: 0.9,
+    },
   ],
 }
 
