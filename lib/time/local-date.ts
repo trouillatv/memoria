@@ -8,10 +8,10 @@
 // → on filtre les interventions d'hier au lieu d'aujourd'hui. Bug invisible
 // en plein jour, visible le matin.
 
-const NETO_TIMEZONE = 'Pacific/Noumea'
+const NOUMEA_TIMEZONE = 'Pacific/Noumea'
 
 const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-  timeZone: NETO_TIMEZONE,
+  timeZone: NOUMEA_TIMEZONE,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
@@ -52,7 +52,7 @@ export function addDaysLocal(iso: string, days: number): string {
 // etc.). Évite l'écueil silencieux : un événement créé à 09h Nouméa =
 // 22h UTC la veille → la locale serveur en UTC affiche un jour trop tôt.
 const dayMonthFormatter = new Intl.DateTimeFormat('fr-FR', {
-  timeZone: NETO_TIMEZONE,
+  timeZone: NOUMEA_TIMEZONE,
   day: 'numeric',
   month: 'long',
 })

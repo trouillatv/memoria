@@ -61,7 +61,7 @@ export function findCommonBigrams(a: string, b: string): string[] {
 }
 
 // Format français court « 20 mai » en zone Nouméa. Délégué au helper
-// centralisé `lib/time/local-date.ts` (NETO_TIMEZONE='Pacific/Noumea').
+// centralisé `lib/time/local-date.ts` (NOUMEA_TIMEZONE='Pacific/Noumea').
 // Évite la fuite UTC silencieuse : une trace créée à 09h Nouméa = 22h UTC
 // la veille → afficher la date UTC serait un jour trop tôt.
 export { frDayMonthLocal as frDayMonth } from '@/lib/time/local-date'

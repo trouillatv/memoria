@@ -339,7 +339,7 @@ export interface DossierProps {
   includeIdentities: boolean
   /** Date d'expiration du token (ISO), affichée dans le header. */
   expiresAt?: string | null
-  /** Nom du tenant si dispo (affiché dans le header sous "NETOIAGE"). */
+  /** Nom du tenant si dispo (affiché dans le header, à la place d'un nom en dur). */
   tenantName?: string
 }
 
@@ -385,7 +385,7 @@ export function ProofDossierPdf({
     >
       <Page size="A4" style={styles.page}>
         {/* Header — Slice S1 Pilier 6 : prestataire en hero, MemorIA en footer.
-            Si tenantName absent : fallback "Votre entreprise" (jamais "NETOIAGE"). */}
+            Si tenantName absent : fallback "Votre entreprise" (jamais un nom de marque en dur). */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.brand}>
