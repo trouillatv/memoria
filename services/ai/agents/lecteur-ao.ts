@@ -65,7 +65,10 @@ export const lecteurAoAgent: AIAgent<LecteurAoInput, LecteurAoOutput> = {
       userMessage,
       responseSchema: lecteurAoOutputSchema,
       modelTier: 'heavy',
-      maxOutputTokens: 2500,
+      // Analyse AO complète = JSON volumineux. Thinking désormais désactivé sur
+      // les sorties JSON (cf. provider) → tout le budget va au JSON. Headroom
+      // large pour éviter la troncature (cause de « received null »).
+      maxOutputTokens: 8000,
     })
 
     const parsed = lecteurAoOutputSchema.safeParse(r.parsed)
