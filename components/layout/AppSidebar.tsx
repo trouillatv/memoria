@@ -34,11 +34,10 @@ export function AppSidebar({
         </Link>
       </div>
       <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4 space-y-1">
-        {visible.map(({ href, label, icon: Icon }) => {
+        {visible.map(({ href, label, icon: Icon, groupStart }) => {
           const active = isActive(pathname, href)
-          return (
+          const link = (
             <Link
-              key={href}
               href={href}
               aria-current={active ? 'page' : undefined}
               className={cn(
@@ -56,6 +55,15 @@ export function AppSidebar({
               />
               {label}
             </Link>
+          )
+          if (!groupStart) return <div key={href}>{link}</div>
+          return (
+            <div key={href} className="pt-3 space-y-1">
+              <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                {groupStart}
+              </div>
+              {link}
+            </div>
           )
         })}
       </nav>
