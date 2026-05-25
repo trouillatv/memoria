@@ -38,6 +38,8 @@ export interface DbUser {
   // Migration 081 (Vincent 2026-05-22) — Sprint E continuité anticipée.
   // Sujet : la mémoire opérationnelle, jamais la valeur de la personne.
   contract_end_date: string | null
+  // Migration 084 (Vincent 2026-05-26) — thème UI préféré, réappliqué au login.
+  theme_preference: string | null
 }
 
 export interface DbActivityLog {

@@ -5,9 +5,15 @@ import { Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { updateThemePreferenceAction } from '@/app/(dashboard)/account/actions'
 
 export function ThemeToggle() {
   const { setTheme } = useTheme()
+  // Applique le thème ET le persiste en base (réappliqué au login, cross-device).
+  function apply(theme: string) {
+    setTheme(theme)
+    void updateThemePreferenceAction(theme)
+  }
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>
@@ -16,11 +22,10 @@ export function ThemeToggle() {
         <span className="sr-only">Toggle theme</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme('light')}>Clair</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme('dark')}>Sombre</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme('system')}>Système</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme('ocre')}>Ocre</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme('petrole')}>Pétrole</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => apply('light')}>Clair</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => apply('dark')}>Sombre</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => apply('ocre')}>Ocre</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => apply('petrole')}>Pétrole</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

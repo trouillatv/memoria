@@ -28,7 +28,15 @@ import {
   AlertOctagon,
   Activity,
   MessageSquare,
+  Palette,
 } from 'lucide-react'
+
+const THEME_LABELS: Record<string, string> = {
+  light: 'Clair',
+  dark: 'Sombre',
+  ocre: 'Ocre',
+  petrole: 'Pétrole',
+}
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import {
   buildObservationSnapshot,
@@ -251,6 +259,38 @@ export default async function AdminObservationPage({
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ── Thèmes les plus utilisés ───────────────────────────────────── */}
+      <section className="rounded-lg border bg-card p-5 space-y-3">
+        <h2 className="text-base font-semibold inline-flex items-center gap-2">
+          <Palette className="h-4 w-4 text-brand-600" />
+          Thèmes les plus utilisés
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Préférence d&apos;affichage choisie par les intervenants (hors admin).
+          « Clair » inclut les comptes qui n&apos;ont jamais changé de thème.
+        </p>
+        {snap.themeUsage.totalUsers === 0 ? (
+          <p className="text-sm text-muted-foreground italic">Aucun intervenant.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {snap.themeUsage.byTheme.map((t) => {
+              const pct = Math.round((t.count / snap.themeUsage.totalUsers) * 100)
+              return (
+                <div key={t.theme} className="flex items-center gap-3">
+                  <span className="w-16 shrink-0 text-xs">{THEME_LABELS[t.theme] ?? t.theme}</span>
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {t.count} · {pct}%
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       {/* ── 2. Qualité d'usage ─────────────────────────────────────────── */}

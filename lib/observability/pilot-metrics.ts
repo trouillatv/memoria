@@ -118,6 +118,12 @@ export interface AlertSignal {
   detail: string
 }
 
+/** Répartition des thèmes UI choisis par les utilisateurs (préférence actuelle). */
+export interface ThemeUsage {
+  byTheme: Array<{ theme: string; count: number }>
+  totalUsers: number
+}
+
 export interface ObservationSnapshot {
   period: PeriodDays
   periodStart: string
@@ -129,6 +135,7 @@ export interface ObservationSnapshot {
   production: MemoryProduction
   engineHealth: EngineHealthItem[]
   menuAdoption: MenuUsage[]
+  themeUsage: ThemeUsage
   alerts: AlertSignal[]
 }
 
@@ -572,6 +579,28 @@ function computeAlerts(
   return alerts
 }
 
+// ─── Thèmes les plus utilisés ───────────────────────────────────────────────
+
+// Préférence actuelle (users.theme_preference). NULL = défaut clair non modifié.
+async function getThemeUsage(): Promise<ThemeUsage> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('users')
+    .select('theme_preference')
+    .is('deleted_at', null)
+    .neq('role', 'admin')
+  const rows = (data ?? []) as Array<{ theme_preference: string | null }>
+  const counts = new Map<string, number>()
+  for (const r of rows) {
+    const t = r.theme_preference ?? 'light' // non défini = clair (le défaut)
+    counts.set(t, (counts.get(t) ?? 0) + 1)
+  }
+  const byTheme = Array.from(counts.entries())
+    .map(([theme, count]) => ({ theme, count }))
+    .sort((a, b) => b.count - a.count)
+  return { byTheme, totalUsers: rows.length }
+}
+
 // ─── Snapshot complet ───────────────────────────────────────────────────────
 
 export async function buildObservationSnapshot(
@@ -580,13 +609,14 @@ export async function buildObservationSnapshot(
   const periodStart = isoDaysAgo(period)
   const periodEnd = new Date().toISOString()
 
-  const [volumes, quality, engagement, production, engineHealth, menuAdoption] = await Promise.all([
+  const [volumes, quality, engagement, production, engineHealth, menuAdoption, themeUsage] = await Promise.all([
     getBriefVolumes(periodStart),
     getBriefQuality(periodStart),
     getEngagement(periodStart),
     getMemoryProduction(periodStart),
     getEngineHealth(periodStart),
     getMenuAdoption(periodStart),
+    getThemeUsage(),
   ])
   const centering = await getCenteringMetrics(periodStart, volumes)
   const alerts = computeAlerts(period, volumes, quality, engagement, centering)
@@ -602,6 +632,7 @@ export async function buildObservationSnapshot(
     production,
     engineHealth,
     menuAdoption,
+    themeUsage,
     alerts,
   }
 }

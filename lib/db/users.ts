@@ -17,7 +17,7 @@ export async function getCurrentUserWithProfile(): Promise<DbUser | null> {
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type')
+    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type, theme_preference')
     .eq('id', user.id)
     .is('deleted_at', null)
     .single()
