@@ -16,6 +16,10 @@ export type { EngagementDestination }
 const VIGILANCE_RE =
   /(p[ée]nalit|sanction|r[ée]sili|amende|retenue sur|manquement|mise en demeure|contr[ôo]le inopin|zone sensible|zones? à risque)/
 
+// Savoir opérationnel du LIEU (→ « à savoir » site) : accès, logistique, contacts.
+const A_SAVOIR_RE =
+  /(acc[èe]s|badge|code d|horaire d.acc|livraison|r[ée]ception des|stationnement|parking|quai|local (m[ée]nage|technique|poubelle|d[ée]chet)|point de collecte|consigne d.acc)/
+
 export interface DestinationSuggestion {
   destination: EngagementDestination
   reason: string
@@ -32,6 +36,9 @@ export function suggestDestination(input: {
     .replace(/[_\-./]+/g, ' ')
   if (VIGILANCE_RE.test(hay)) {
     return { destination: 'vigilance', reason: 'Pénalité / risque / point sensible détecté' }
+  }
+  if (A_SAVOIR_RE.test(hay)) {
+    return { destination: 'a_savoir', reason: 'Savoir opérationnel du lieu (accès / logistique)' }
   }
   return { destination: 'contract_engagement', reason: 'Obligation contractuelle standard' }
 }

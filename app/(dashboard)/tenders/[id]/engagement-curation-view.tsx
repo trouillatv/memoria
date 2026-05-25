@@ -18,7 +18,7 @@ const CATEGORIES: EngagementCategory[] = [
 ]
 
 // Destinations proposables à la curation en V1 (a_savoir/mission = à la conversion).
-const CURATION_DESTINATIONS: EngagementDestination[] = ['contract_engagement', 'vigilance']
+const CURATION_DESTINATIONS: EngagementDestination[] = ['contract_engagement', 'vigilance', 'a_savoir']
 
 /** Réf. source affichable (page / section) depuis le jsonb source_ref. */
 function sourceRefLabel(ref: Record<string, unknown> | null): string {

@@ -11,6 +11,7 @@ import {
   getContractMemory,
 } from '@/lib/db/contracts'
 import { listEngagementsByContract } from '@/lib/db/engagements'
+import { listSitesByContract } from '@/lib/db/sites'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -19,6 +20,7 @@ import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
 import { ContractVigilancePanel } from './ContractVigilancePanel'
+import { ASavoirPropositionsPanel } from './ASavoirPropositionsPanel'
 import { ContractTabs } from './contract-tabs'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import { DossierConfidenceBadge } from '@/components/ui/dossier-confidence-badge'
@@ -37,7 +39,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const me = await getCurrentUserWithProfile()
   const myRole = me?.role ?? null
 
-  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs] =
+  const [engagements, missions, interventions, continuity, summaryMap, vitals, expiry, memory, contractDocs, contractSites] =
     await Promise.all([
       listEngagementsByContract(id),
       listMissionsByContract(id),
@@ -48,6 +50,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       getContractExpiry(id),
       getContractMemory(id, myRole),
       listDocumentsForTarget('contract', id),
+      listSitesByContract(id),
     ])
 
   // visibility_level respecté (section 4a) : aucun document non autorisé
@@ -129,9 +132,15 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       })
     : null
 
-  const unplannedEngagements = engagements.filter((e) => !planned.has(e.id))
-  // Points de vigilance issus de l'AO (proposition validée destination=vigilance).
+  // Routage par destination (Atelier IA v2) : seules les obligations sont des
+  // « promesses » planifiables/suivies. Vigilance + à savoir vont dans leurs
+  // panneaux dédiés et NE polluent PAS la liste des promesses.
+  const obligations = engagements.filter((e) => e.destination === 'contract_engagement')
   const vigilances = engagements.filter((e) => e.destination === 'vigilance')
+  const aSavoirProps = engagements.filter(
+    (e) => e.destination === 'a_savoir' && !(e.source_ref as Record<string, unknown> | null)?.materialized_at,
+  )
+  const unplannedEngagements = obligations.filter((e) => !planned.has(e.id))
   const unplannedCount = unplannedEngagements.length
 
   return (
@@ -358,12 +367,18 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
 
       <ContractVigilancePanel vigilances={vigilances} />
 
+      <ASavoirPropositionsPanel
+        propositions={aSavoirProps.map((e) => ({ id: e.id, short_label: e.short_label, source_excerpt: e.source_excerpt }))}
+        sites={contractSites.map((s) => ({ id: s.id, name: s.name }))}
+        contractId={id}
+      />
+
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Promesses du contrat ({engagements.length})
+            Promesses du contrat ({obligations.length})
           </h2>
-          {engagements.length > 0 && unplannedCount > 0 && (
+          {obligations.length > 0 && unplannedCount > 0 && (
             <Link
               href={`/contracts/${id}/missions`}
               className="text-xs text-muted-foreground hover:text-foreground hover:underline"
@@ -373,13 +388,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           )}
         </div>
 
-        {engagements.length === 0 ? (
+        {obligations.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border p-4">
             Aucune promesse active sur ce contrat.
           </p>
         ) : (
           <ul className="space-y-3">
-            {engagements.map((e) => (
+            {obligations.map((e) => (
               <li key={e.id} className="rounded-lg border p-4 bg-card">
                 <div className="min-w-0 mb-3">
                   <div className="text-sm font-semibold mb-0.5">{e.short_label}</div>
