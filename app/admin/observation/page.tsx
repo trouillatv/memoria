@@ -36,6 +36,7 @@ const THEME_LABELS: Record<string, string> = {
   dark: 'Sombre',
   ocre: 'Ocre',
   petrole: 'Pétrole',
+  archive: 'Archive claire',
 }
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import {

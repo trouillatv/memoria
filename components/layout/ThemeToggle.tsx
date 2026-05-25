@@ -26,6 +26,7 @@ export function ThemeToggle() {
         <DropdownMenuItem onClick={() => apply('dark')}>Sombre</DropdownMenuItem>
         <DropdownMenuItem onClick={() => apply('ocre')}>Ocre</DropdownMenuItem>
         <DropdownMenuItem onClick={() => apply('petrole')}>Pétrole</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => apply('archive')}>Archive claire</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
