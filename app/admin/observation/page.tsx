@@ -182,11 +182,19 @@ export default async function AdminObservationPage({
                     : 'border-border bg-background'
               }`}
             >
-              <span className="text-xs">{s.label}</span>
-              <span className="text-lg font-semibold tabular-nums">{s.count}</span>
+              <span className="text-xs min-w-0 truncate">{s.label}</span>
+              <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
+                produit <strong className="text-foreground">{s.count}</strong> · vu{' '}
+                <strong className="text-foreground">{s.shown}</strong>
+              </span>
             </div>
           ))}
         </div>
+        <p className="text-[11px] text-muted-foreground italic">
+          « Vu » = nombre d&apos;<strong>impressions</strong> sur le dashboard (par type, agrégé).
+          Les signaux sont des badges d&apos;info non cliquables : on mesure l&apos;apparition,
+          pas le clic. Croiser avec « Adoption des menus » pour voir s&apos;il a agi.
+        </p>
       </section>
 
       {/* ── Adoption des menus (Couche A — feedback produit) ───────────── */}

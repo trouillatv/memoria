@@ -20,6 +20,8 @@
 
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
+import { insertActivityLog } from '@/lib/db/activity-logs'
 import {
   ShieldCheck,
   AlertTriangle,
@@ -156,6 +158,21 @@ export default async function DashboardPage() {
     surface: 'dashboard',
     perFamilyCap: 3,
   })
+
+  // Observation produit (Couche B) : log des IMPRESSIONS de signaux (par type,
+  // agrégé) — quels signaux apparaissent réellement. Best-effort, non bloquant.
+  if (memorySignals.length > 0) {
+    const shownKinds = memorySignals.map((s) => s.kind)
+    after(() =>
+      insertActivityLog({
+        userId: user.id,
+        entityType: 'signal',
+        entityId: null,
+        action: 'shown',
+        metadata: { kinds: shownKinds },
+      }).catch(() => {}),
+    )
+  }
 
   // Widgets « ligne mémoire » — condensations du moteur, pas des KPI.
   // État du parc : comptes BRUTS (non plafonnés) par kind.

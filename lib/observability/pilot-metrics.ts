@@ -93,7 +93,10 @@ export interface EngineHealthItem {
   label: string
   family: string
   valence: string
+  /** Signaux de ce type ACTUELLEMENT produits par le moteur (snapshot). */
   count: number
+  /** Fois où ce type a été AFFICHÉ sur le dashboard (impressions, période). */
+  shown: number
 }
 
 // Couche A — Adoption des menus : « quelles surfaces servent / sont mortes ? ».
@@ -344,11 +347,24 @@ async function getMemoryProduction(periodStart: string): Promise<MemoryProductio
 
 // ─── Santé du moteur (Couche A — part production) ───────────────────────────
 
-async function getEngineHealth(): Promise<EngineHealthItem[]> {
-  // Snapshot ACTUEL des signaux produits (état courant, pas borné période).
-  const signals = await collectMemorySignals().catch(() => [])
+async function getEngineHealth(periodStart: string): Promise<EngineHealthItem[]> {
+  const admin = createAdminClient()
+  // Produits : snapshot ACTUEL. Affichés : impressions sur la période
+  // (activity_logs entity_type='signal' action='shown', metadata.kinds[]).
+  const [signals, impressions] = await Promise.all([
+    collectMemorySignals().catch(() => []),
+    admin.from('activity_logs').select('metadata')
+      .eq('entity_type', 'signal').eq('action', 'shown').gte('created_at', periodStart),
+  ])
   const counts = new Map<string, number>()
   for (const s of signals) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1)
+  const shownCounts = new Map<string, number>()
+  for (const r of (impressions.data ?? []) as Array<{ metadata: { kinds?: unknown } | null }>) {
+    const kinds = r.metadata?.kinds
+    if (Array.isArray(kinds)) {
+      for (const k of kinds) if (typeof k === 'string') shownCounts.set(k, (shownCounts.get(k) ?? 0) + 1)
+    }
+  }
   return (Object.keys(SIGNAL_REGISTRY) as Array<keyof typeof SIGNAL_REGISTRY>).map((kind) => {
     const meta = SIGNAL_REGISTRY[kind]
     return {
@@ -357,6 +373,7 @@ async function getEngineHealth(): Promise<EngineHealthItem[]> {
       family: meta.family,
       valence: meta.valence,
       count: counts.get(kind) ?? 0,
+      shown: shownCounts.get(kind) ?? 0,
     }
   })
 }
@@ -524,7 +541,7 @@ export async function buildObservationSnapshot(
     getBriefQuality(periodStart),
     getEngagement(periodStart),
     getMemoryProduction(periodStart),
-    getEngineHealth(),
+    getEngineHealth(periodStart),
     getMenuAdoption(periodStart),
   ])
   const centering = await getCenteringMetrics(periodStart, volumes)
