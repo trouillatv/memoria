@@ -31,39 +31,41 @@ export interface NavItem {
   groupStart?: string
 }
 
+// Ordre = importance / fréquence d'usage (Vincent 2026-05-26).
+// 1) Pilotage quotidien (Semaine + Briefing gardés en haut) →
+// 2) Cœur opérationnel (Missions/Sites/Contrats/Équipes) →
+// 3) Mémoire & continuité (Intervenants/Passages/Continuité) →
+// 4) Commercial & docs → 5) Guides → 6) Admin.
 export const NAV: NavItem[] = [
+  // — Pilotage quotidien —
   { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'] },
   { href: '/aujourdhui', label: 'Interventions du jour',  icon: ListChecks,    roles: ['admin', 'manager'] },
   { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
+  // — Cœur opérationnel —
   { href: '/missions',   label: 'Missions',               icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
-  { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
-  // Vincent 2026-05-22 — Sprint Équipes C (passages de témoin).
-  { href: '/handovers',  label: 'Passages de témoin',     icon: ArrowRightLeft, roles: ['admin', 'manager'] },
-  // Sprint E — Continuité anticipée (gated par ENV CONTINUITY_PAGE_ENABLED).
-  // Le lien reste visible (la page renvoie 404 si OFF) — cohérent avec Intervenants.
-  { href: '/continuite', label: 'Continuité',              icon: Clock,          roles: ['admin', 'manager'] },
-  // Vincent 2026-05-21 — module Intervenants gated par ENV INTERVENANTS_PAGE_ENABLED.
-  // Si la feature est désactivée côté serveur, la page renvoie 404 ; le lien reste
-  // affiché mais inopérant (volontaire pour ne pas faire dépendre la nav d'une
-  // lecture process.env côté client).
-  { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
-  { href: '/preuves',    label: 'Dossier de preuves',     icon: FileSearch,    roles: ['admin', 'manager'] },
-  { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
-  { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'] },
-  // Option C (Vincent 2026-05-19) : « Bibliothèque » = bibliothèque
-  // documentaire vivante (/documents). /library (savoir curé knowledge_items)
-  // reste intacte (route directe + lien contextuel AO) ; pas d'entrée
-  // « Documents » séparée. Convergence knowledge_items→documents = tranche future.
+  { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
+  { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
+  // — Mémoire & continuité —
+  // Intervenants gated ENV INTERVENANTS_PAGE_ENABLED ; le lien reste visible
+  // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
+  { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
+  // Sprint Équipes C — passages de témoin.
+  { href: '/handovers',  label: 'Passages de témoin',     icon: ArrowRightLeft, roles: ['admin', 'manager'] },
+  // Sprint E — Continuité anticipée (gated ENV CONTINUITY_PAGE_ENABLED, 404 si OFF).
+  { href: '/continuite', label: 'Continuité',              icon: Clock,          roles: ['admin', 'manager'] },
+  // — Commercial & documents —
+  { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
+  { href: '/preuves',    label: 'Dossier de preuves',     icon: FileSearch,    roles: ['admin', 'manager'] },
+  // « Bibliothèque » = bibliothèque documentaire vivante (/documents).
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
-  // Vincent 2026-05-22 — manuel téléchargeable pour Guillaume.
-  // Vincent 2026-05-23 — les 3 guides (livre web) regroupés sous l'en-tête « Guides ».
+  // — Guides (les 3 regroupés sous l'en-tête « Guides ») —
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'], groupStart: 'Guides' },
   { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
   { href: '/comprendre/architecture', label: 'Comprendre l’archi',    icon: Boxes, roles: ['admin', 'manager'] },
+  // — Admin —
   { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'], groupStart: 'Admin' },
-  // Vincent 2026-05-22 — Observation pilote (admin only, post-Sprint E).
   { href: '/admin/observation', label: 'Observation pilote', icon: Eye,         roles: ['admin'] },
 ]
 
