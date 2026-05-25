@@ -180,6 +180,25 @@ export async function listSitesByContract(contractId: string): Promise<DbSite[]>
 }
 
 /**
+ * Sites de PLUSIEURS contrats en UNE requête (anti-N+1). Utilisé par la liste
+ * /contracts pour agréger les signaux mémoire (indexés par site) au contrat.
+ * Retour minimal : id, nom, contract_id.
+ */
+export async function listSitesForContracts(
+  contractIds: string[],
+): Promise<Array<{ id: string; name: string; contract_id: string }>> {
+  if (contractIds.length === 0) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('sites')
+    .select('id, name, contract_id')
+    .in('contract_id', contractIds)
+    .is('deleted_at', null)
+  if (error) throw error
+  return (data ?? []) as Array<{ id: string; name: string; contract_id: string }>
+}
+
+/**
  * Vue globale d'un site enrichie pour la page /sites :
  *  - rattachement contrat lisible (nom + statut)
  *  - dernière intervention exécutée (pour le seuil d'inactivité 6 mois)

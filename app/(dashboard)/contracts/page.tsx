@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { FileCheck, SearchX, Building2, Calendar, ChevronRight, ListChecks } from 'lucide-react'
+import { FileCheck, SearchX, Building2, Calendar, ChevronRight, ListChecks, Sparkles } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -9,6 +9,11 @@ import { PaginationBar } from '@/components/ui/pagination-bar'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { listContractsPaged } from '@/lib/db/contracts'
 import { countEngagementsByContracts } from '@/lib/db/engagements'
+import { listSitesForContracts } from '@/lib/db/sites'
+import { collectMemorySignals } from '@/lib/memory/signals/collect'
+import { getAtRiskEngagements, getContractSummaries } from '@/lib/db/dashboard'
+import type { MemorySignal } from '@/lib/memory/signals/types'
+import { computeContractClimate, type ContractClimate } from '@/lib/contracts/climate'
 import type { ContractStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
 
@@ -42,8 +47,55 @@ export default async function ContractsPage({
     limit: PAGE_SIZE,
   })
 
-  // Single query for all engagement counts, no N+1
-  const countByContract = await countEngagementsByContracts(contracts.map((c) => c.id))
+  const contractIds = contracts.map((c) => c.id)
+  const activeIds = contracts.filter((c) => c.status === 'active').map((c) => c.id)
+
+  // Données mémoire — toutes batch/globales (constant quel que soit le nombre
+  // de cartes, jamais une boucle par contrat). Le moteur de signaux est indexé
+  // par SITE → on agrège au contrat via la map site→contrat.
+  const [countByContract, sitesRows, signals, atRisk, summaries] = await Promise.all([
+    countEngagementsByContracts(contractIds),
+    listSitesForContracts(contractIds),
+    collectMemorySignals(),
+    getAtRiskEngagements(),
+    getContractSummaries(activeIds),
+  ])
+
+  // contrat → sites
+  const siteIdsByContract = new Map<string, string[]>()
+  for (const s of sitesRows) {
+    const arr = siteIdsByContract.get(s.contract_id) ?? []
+    arr.push(s.id)
+    siteIdsByContract.set(s.contract_id, arr)
+  }
+  // site → signaux (tous les détecteurs émettent subjectType='site')
+  const signalsBySite = new Map<string, MemorySignal[]>()
+  for (const sig of signals) {
+    if (sig.subjectType !== 'site') continue
+    const arr = signalsBySite.get(sig.subjectId) ?? []
+    arr.push(sig)
+    signalsBySite.set(sig.subjectId, arr)
+  }
+  // contrat → nb engagements à risque
+  const atRiskByContract = new Map<string, number>()
+  for (const e of atRisk) {
+    atRiskByContract.set(e.contract_id, (atRiskByContract.get(e.contract_id) ?? 0) + 1)
+  }
+  // Climat mémoriel — calculé pour les contrats ACTIFS uniquement (pour les
+  // autres, le badge de cycle de vie suffit). Pur, zéro requête.
+  const climateByContract = new Map<string, ContractClimate>()
+  for (const c of contracts) {
+    if (c.status !== 'active') continue
+    climateByContract.set(
+      c.id,
+      computeContractClimate({
+        siteIds: siteIdsByContract.get(c.id) ?? [],
+        signalsBySite,
+        atRiskCount: atRiskByContract.get(c.id) ?? 0,
+        needsAttention: summaries.get(c.id)?.needsAttention ?? false,
+      }),
+    )
+  }
 
   const hasActiveFilters = Boolean(params.status || params.search)
   const isEmpty = total === 0
@@ -174,11 +226,12 @@ export default async function ContractsPage({
                   year: 'numeric',
                 })
               : null
+            const climate = climateByContract.get(c.id) ?? null
             return (
               <Link
                 key={c.id}
                 href={`/contracts/${c.id}`}
-                className="group block rounded-xl border bg-card p-4 transition-all hover:border-brand-200 hover:shadow-md hover:-translate-y-0.5"
+                className="group block rounded-2xl border border-border/60 bg-stone-50/50 dark:bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-brand-200/70"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -190,10 +243,29 @@ export default async function ContractsPage({
                       {c.client_name}
                     </p>
                   </div>
-                  <StatusBadge status={c.status} className="shrink-0" />
+                  {/* Contrat actif → climat mémoriel ; sinon → cycle de vie. */}
+                  {climate ? (
+                    <ClimateChip climate={climate} />
+                  ) : (
+                    <StatusBadge status={c.status} className="shrink-0" />
+                  )}
                 </div>
 
-                <div className="mt-3 pt-3 border-t flex items-center justify-between gap-3 text-xs">
+                {/* Ligne mémoire — UNIQUEMENT si réelle (calme = puce seule). */}
+                {climate?.line && (
+                  <p
+                    className={cn(
+                      'mt-3 inline-flex items-center gap-1.5 text-xs',
+                      climate.tone === 'vigilance' ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
+                    )}
+                  >
+                    <Sparkles className="h-3 w-3 shrink-0" />
+                    {climate.line}
+                  </p>
+                )}
+
+                {/* Footer démoté — métadonnées administratives, plus le centre. */}
+                <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between gap-3 text-xs">
                   <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                     <Calendar className="h-3 w-3" />
                     {endDate ? `${startDate} → ${endDate}` : `Depuis ${startDate}`}
@@ -213,6 +285,37 @@ export default async function ContractsPage({
 
       <PaginationBar page={page} pageSize={PAGE_SIZE} total={total} />
     </div>
+  )
+}
+
+// Puce de climat mémoriel — réutilise les tons du dashboard (sauge = sain,
+// ambre = vigilance, neutre = calme). Jamais de rouge ici (plafond ambre).
+function ClimateChip({ climate }: { climate: ContractClimate }) {
+  const chrome: Record<ContractClimate['tone'], { box: string; dot: string }> = {
+    stable: {
+      box: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 ring-emerald-200/50 dark:ring-emerald-900/40',
+      dot: 'bg-emerald-500',
+    },
+    vigilance: {
+      box: 'text-amber-700 dark:text-amber-300 bg-amber-50/70 dark:bg-amber-950/20 ring-amber-200/60 dark:ring-amber-900/40',
+      dot: 'bg-amber-500',
+    },
+    calme: {
+      box: 'text-muted-foreground bg-muted/50 ring-border',
+      dot: 'bg-muted-foreground/40',
+    },
+  }
+  const c = chrome[climate.tone]
+  return (
+    <span
+      className={cn(
+        'shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1',
+        c.box,
+      )}
+    >
+      <span aria-hidden className={cn('h-1.5 w-1.5 rounded-full', c.dot)} />
+      {climate.label}
+    </span>
   )
 }
 
