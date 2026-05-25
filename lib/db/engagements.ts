@@ -2,10 +2,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type {
   DbEngagement,
   EngagementCategory,
+  EngagementDestination,
   EngagementEvidence,
   EngagementSourceType,
   EngagementStatus,
 } from '@/types/db'
+import { suggestDestination } from '@/lib/engagements/destination'
 
 export async function listEngagementsByTender(tenderId: string): Promise<DbEngagement[]> {
   const supabase = createAdminClient()
@@ -88,6 +90,13 @@ export async function bulkInsertEngagements(input: {
     short_label: e.short_label,
     measurable: e.measurable,
     ai_confidence: e.ai_confidence,
+    // Destination SUGGÉRÉE (déterministe, explicable) — l'humain valide à la
+    // curation. Défaut = obligation de contrat.
+    destination: suggestDestination({
+      category: e.category,
+      sourceExcerpt: e.source_excerpt,
+      shortLabel: e.short_label,
+    }).destination,
   }))
   const { data, error } = await supabase.from('engagements').insert(rows).select('*')
   if (error) throw error
@@ -101,6 +110,7 @@ export async function curateEngagement(
     category?: EngagementCategory
     measurable?: boolean
     proof_requirement?: 'photo' | 'anomaly_documented' | 'none'
+    destination?: EngagementDestination
   }
 ): Promise<void> {
   const supabase = createAdminClient()
@@ -121,6 +131,7 @@ export async function curateEngagement(
   if (patch.category !== undefined) updates.category = patch.category
   if (patch.measurable !== undefined) updates.measurable = patch.measurable
   if (patch.proof_requirement !== undefined) updates.proof_requirement = patch.proof_requirement
+  if (patch.destination !== undefined) updates.destination = patch.destination
 
   const { error } = await supabase
     .from('engagements')

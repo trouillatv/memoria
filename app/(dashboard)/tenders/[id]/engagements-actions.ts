@@ -70,6 +70,7 @@ const curateSchema = z.object({
   category: z.enum(['frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other']).optional(),
   measurable: z.boolean().optional(),
   proof_requirement: z.enum(['photo', 'anomaly_documented', 'none']).optional(),
+  destination: z.enum(['contract_engagement', 'vigilance', 'a_savoir', 'mission']).optional(),
 })
 
 export async function curateEngagementAction(formData: FormData) {
@@ -85,6 +86,7 @@ export async function curateEngagementAction(formData: FormData) {
     category: formData.get('category') || undefined,
     measurable,
     proof_requirement: formData.get('proof_requirement') || undefined,
+    destination: formData.get('destination') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 

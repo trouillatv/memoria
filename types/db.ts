@@ -221,6 +221,9 @@ export interface DbContract {
 
 export type EngagementSourceType = 'ao_clause' | 'memoire_engagement' | 'manual'
 
+// Destination d'une proposition extraite (Atelier IA v2, migration 083).
+export type EngagementDestination = 'contract_engagement' | 'vigilance' | 'a_savoir' | 'mission'
+
 export type EngagementCategory =
   | 'frequency'
   | 'quality'
@@ -254,6 +257,7 @@ export interface DbEngagement {
   ai_confidence: number | null
   status: EngagementStatus
   proof_requirement: EngagementProofRequirement
+  destination: EngagementDestination
   created_at: string
   updated_at: string
   created_by: string | null
