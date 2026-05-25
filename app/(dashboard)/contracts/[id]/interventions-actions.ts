@@ -6,6 +6,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
+import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import type { ChecklistTemplateItem } from '@/types/db'
 
 async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
@@ -17,13 +18,19 @@ async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: st
   return { userId: user.id }
 }
 
-const createInterventionSchema = z.object({
-  mission_id: z.string().uuid(),
-  // Doctrine V2 : créneau explicite (matin/après-midi/soir), pas d'heure
-  // précise. La date est une yyyy-mm-dd.
-  scheduled_for: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
-  slot: z.enum(['morning', 'afternoon', 'evening']),
-})
+const hhmmRe = /^([01]\d|2[0-3]):[0-5]\d$/
+const createInterventionSchema = z
+  .object({
+    mission_id: z.string().uuid(),
+    scheduled_for: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format date attendu YYYY-MM-DD'),
+    // V6.2 — heure précise (début + fin obligatoires), plus de créneau saisi.
+    planned_start_hhmm: z.string().regex(hhmmRe, 'Heure de début invalide (HH:MM)'),
+    planned_end_hhmm: z.string().regex(hhmmRe, 'Heure de fin invalide (HH:MM)'),
+  })
+  .refine((d) => d.planned_end_hhmm > d.planned_start_hhmm, {
+    message: "L'heure de fin doit être après le début",
+    path: ['planned_end_hhmm'],
+  })
 
 export async function createInterventionAction(formData: FormData) {
   const auth = await requireManagerOrAdmin()
@@ -32,18 +39,23 @@ export async function createInterventionAction(formData: FormData) {
   const parsed = createInterventionSchema.safeParse({
     mission_id: formData.get('mission_id'),
     scheduled_for: formData.get('scheduled_for'),
-    slot: formData.get('slot'),
+    planned_start_hhmm: formData.get('planned_start_hhmm'),
+    planned_end_hhmm: formData.get('planned_end_hhmm'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
   const mission = await getMission(parsed.data.mission_id)
   if (!mission) return { error: 'Mission introuvable' }
 
-  // Create intervention — mode recommandé scheduled_for + slot.
+  // V6.2 — slot dérivé de l'heure de début (grille + cohérence vues). L'heure
+  // précise écrase l'ancrage côté createIntervention.
+  const slot = slotFromUtcHour(Number(parsed.data.planned_start_hhmm.slice(0, 2)))
   const interventionId = await createIntervention({
     mission_id: parsed.data.mission_id,
     scheduled_for: parsed.data.scheduled_for,
-    slot: parsed.data.slot,
+    slot,
+    planned_start_hhmm: parsed.data.planned_start_hhmm,
+    planned_end_hhmm: parsed.data.planned_end_hhmm,
     created_by: auth.userId,
   })
 

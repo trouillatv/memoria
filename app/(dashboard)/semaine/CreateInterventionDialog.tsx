@@ -84,9 +84,15 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
     ? (teams.find((t) => t.id === selectedMission.defaultTeamId)?.name ?? 'Équipe par défaut')
     : null
 
-  // V6.1 — l'heure de début est obligatoire. Plus de fallback créneau.
+  // V6.2 — heure de début ET de fin obligatoires (fin de l'ancrage créneau).
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
   const canSubmit =
-    missionId !== '' && scheduledFor !== '' && plannedStartHHMM !== '' && !pending
+    missionId !== '' &&
+    scheduledFor !== '' &&
+    HHMM.test(plannedStartHHMM) &&
+    HHMM.test(plannedEndHHMM) &&
+    plannedStartHHMM < plannedEndHHMM &&
+    !pending
 
   function reset() {
     setMissionId('')
@@ -217,7 +223,7 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
               </div>
               <div className="space-y-1">
                 <label htmlFor="planned-end" className="text-[11px] text-muted-foreground">
-                  Fin
+                  Fin *
                 </label>
                 <input
                   id="planned-end"
@@ -225,8 +231,8 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
                   step={300}
                   value={plannedEndHHMM}
                   onChange={(e) => setPlannedEndHHMM(e.target.value)}
-                  disabled={pending || !plannedStartHHMM}
-                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  disabled={pending}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             </div>
