@@ -1,5 +1,4 @@
 import { LoginForm } from './LoginForm'
-import { ArrowRight } from 'lucide-react'
 
 export default async function LoginPage({
   searchParams,
@@ -42,17 +41,6 @@ export default async function LoginPage({
         <p className="mt-4 text-center text-xs text-muted-foreground">
           Les comptes sont créés sur invitation.
         </p>
-      </div>
-
-      {/* Bloc démo */}
-      <div className="rounded-xl border border-brand-100 bg-brand-50 p-4">
-        <p className="text-xs font-semibold text-brand-700 mb-2 flex items-center gap-1.5">
-          <ArrowRight className="h-3.5 w-3.5" /> Accès démo
-        </p>
-        <div className="space-y-1 text-xs text-brand-600 font-mono">
-          <p>Email : <span className="font-semibold">demo@memoria.nc</span></p>
-          <p>Mot de passe : <span className="font-semibold">memoria2026</span></p>
-        </div>
       </div>
     </div>
   )
