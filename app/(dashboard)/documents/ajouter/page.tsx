@@ -8,7 +8,6 @@ import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
 import { listTeams } from '@/lib/db/teams'
-import { NewCollectionForm } from '../NewCollectionForm'
 import { UploadDocumentForm } from '../UploadDocumentForm'
 
 // /documents/ajouter — upload UNITAIRE (split de surface C). La consultation
@@ -63,14 +62,10 @@ export default async function AddDocumentPage({
           </Link>
         </div>
         <p className="text-sm text-muted-foreground">
-          Un document est toujours classé dans une collection. Crée-en une si besoin,
-          puis téléverse.
+          Un document est toujours classé dans une collection (créées depuis la{' '}
+          <Link href="/documents" className="underline hover:text-foreground">Bibliothèque</Link>).
         </p>
       </header>
-
-      <section className="rounded-lg border bg-card p-4">
-        <NewCollectionForm />
-      </section>
 
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">

@@ -10,6 +10,7 @@ import {
 } from '@/lib/db/documents'
 import { analysisStatusLabel } from '@/lib/documents/labels'
 import { DocumentRowActions } from './DocumentRowActions'
+import { NewCollectionForm } from './NewCollectionForm'
 
 // Bibliothèque documentaire — CONSULTATION uniquement (split de surface C).
 // L'ajout vit ailleurs : /documents/ajouter (unitaire) · /documents/import (lot).
@@ -80,6 +81,14 @@ export default async function DocumentsPage() {
           </Link>
         </div>
       </header>
+
+      {/* Organisation : créer une collection (le rangement vit dans la Bibliothèque). */}
+      <section className="rounded-lg border bg-card p-4">
+        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Nouvelle collection
+        </h2>
+        <NewCollectionForm />
+      </section>
 
       <section className="space-y-4">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
