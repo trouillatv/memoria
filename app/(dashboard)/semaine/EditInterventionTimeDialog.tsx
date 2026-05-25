@@ -32,6 +32,8 @@ interface Props {
   /** HH:MM existant, ou '' si pas de saisie précise actuellement. */
   initialStartHHMM: string
   initialEndHHMM: string
+  /** YYYY-MM-DD : jour actuel de l'intervention (replanifiable ici). */
+  initialDate: string
   /** Libellé court (« Bionettoyage sanitaires · 06h30 – 08h00 ») pour le titre du dialog. */
   label?: string
   trigger?: React.ReactNode
@@ -41,16 +43,18 @@ export function EditInterventionTimeDialog({
   interventionId,
   initialStartHHMM,
   initialEndHHMM,
+  initialDate,
   label,
   trigger,
 }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
+  const [date, setDate] = useState(initialDate)
   const [start, setStart] = useState(initialStartHHMM)
   const [end, setEnd] = useState(initialEndHHMM)
 
-  const canSubmit = !pending && (
+  const canSubmit = !pending && /^\d{4}-\d{2}-\d{2}$/.test(date) && (
     // Saisie cohérente : soit start vide (= retirer), soit start non vide.
     start === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(start)
   )
@@ -62,12 +66,17 @@ export function EditInterventionTimeDialog({
         interventionId,
         plannedStartHHMM: start === '' ? null : start,
         plannedEndHHMM:   end === '' ? null : end,
+        newScheduledFor:  date !== initialDate ? date : undefined,
       })
       if (!r.ok) {
         toast.error(r.error ?? 'Erreur inconnue')
         return
       }
-      toast.success(start === '' ? 'Heure précise retirée — retour à l’horaire d’ancrage' : 'Horaire mis à jour')
+      toast.success(
+        date !== initialDate
+          ? 'Jour et horaire mis à jour'
+          : start === '' ? 'Heure précise retirée — retour à l’horaire d’ancrage' : 'Horaire mis à jour',
+      )
       setOpen(false)
       router.refresh()
     })
@@ -95,14 +104,27 @@ export function EditInterventionTimeDialog({
       />
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Horaire de prestation</DialogTitle>
+          <DialogTitle>Replanifier la prestation</DialogTitle>
           <DialogDescription>
             {label ? `${label} · ` : ''}
-            Heure de début et fin (optionnel). Laisse vide pour revenir à l'horaire d'ancrage par défaut.
+            Jour et heure (l'heure reste optionnelle — laisse vide pour l'horaire d'ancrage par défaut).
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
+          <div className="space-y-1">
+            <label htmlFor="edit-day" className="text-xs text-muted-foreground">
+              Jour
+            </label>
+            <input
+              id="edit-day"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              disabled={pending}
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="edit-start" className="text-xs text-muted-foreground">
@@ -144,7 +166,7 @@ export function EditInterventionTimeDialog({
             </button>
           )}
           <p className="text-[11px] text-muted-foreground/70">
-            La date ne change pas. Pour changer de jour, utilise le drag-and-drop dans la grille.
+            Change le jour ci-dessus, ou par drag-and-drop dans la grille.
           </p>
         </div>
 

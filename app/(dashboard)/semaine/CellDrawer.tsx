@@ -273,6 +273,7 @@ export function CellDrawer({
                       {isPlanned && (
                         <EditInterventionTimeDialog
                           interventionId={c.id}
+                          initialDate={selected.date}
                           initialStartHHMM={extractHHMM(c.planned_start) ?? ''}
                           initialEndHHMM={extractHHMM(c.planned_end) ?? ''}
                           label={`${c.mission_name} · ${formatInterventionTimeLabel({

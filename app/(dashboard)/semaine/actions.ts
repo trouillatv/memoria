@@ -799,6 +799,9 @@ const updateTimeSchema = z.object({
   interventionId: z.string().uuid(),
   plannedStartHHMM: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').nullable(),
   plannedEndHHMM:   z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').nullable(),
+  // V6.2 (Vincent 2026-05-26) : changer aussi le JOUR depuis le dialogue
+  // (alternative au drag-and-drop). Optionnel → garde la date existante.
+  newScheduledFor: z.string().regex(ymdRe, 'Format YYYY-MM-DD requis').optional(),
 }).refine(
   (d) => !d.plannedEndHHMM || !!d.plannedStartHHMM,
   { message: 'Heure de fin nécessite heure de début', path: ['plannedEndHHMM'] },
@@ -810,6 +813,8 @@ export async function updateInterventionTimeAction(
     /** null = retirer l'heure précise (retour à l'ancrage canonique). */
     plannedStartHHMM: string | null
     plannedEndHHMM: string | null
+    /** YYYY-MM-DD : nouveau jour (optionnel). Absent = jour inchangé. */
+    newScheduledFor?: string
   }
 ): Promise<{ ok: boolean; error?: string }> {
   const auth = await requireManagerOrAdmin()
@@ -842,22 +847,25 @@ export async function updateInterventionTimeAction(
     return { ok: false, error: 'Intervention sans date' }
   }
 
+  // V6.2 — jour effectif : la nouvelle date si fournie, sinon l'existante.
+  const effectiveDate = parsed.data.newScheduledFor ?? ex.scheduled_for
+
   let newPlannedStart: string
   let newPlannedEnd: string | null = null
   if (parsed.data.plannedStartHHMM) {
-    newPlannedStart = `${ex.scheduled_for}T${parsed.data.plannedStartHHMM}:00.000Z`
+    newPlannedStart = `${effectiveDate}T${parsed.data.plannedStartHHMM}:00.000Z`
     if (parsed.data.plannedEndHHMM) {
-      const tsEnd = `${ex.scheduled_for}T${parsed.data.plannedEndHHMM}:00.000Z`
+      const tsEnd = `${effectiveDate}T${parsed.data.plannedEndHHMM}:00.000Z`
       if (new Date(tsEnd).getTime() <= new Date(newPlannedStart).getTime()) {
         return { ok: false, error: 'Heure de fin doit être après heure de début' }
       }
       newPlannedEnd = tsEnd
     }
   } else {
-    // Retour à l'ancrage canonique du slot existant.
+    // Retour à l'ancrage canonique du slot existant (sur le jour effectif).
     newPlannedStart = ex.slot
-      ? buildScheduledAt(ex.scheduled_for, ex.slot)
-      : `${ex.scheduled_for}T00:00:00.000Z`
+      ? buildScheduledAt(effectiveDate, ex.slot)
+      : `${effectiveDate}T00:00:00.000Z`
   }
 
   // V6.1 (Vincent 2026-05-20) : vérifier le conflit d'équipe AVANT l'update.
@@ -870,7 +878,7 @@ export async function updateInterventionTimeAction(
       admin,
       teamId: ex.assigned_team_id,
       missionId: ex.mission_id,
-      scheduledFor: ex.scheduled_for,
+      scheduledFor: effectiveDate,
       slot: ex.slot,
       sourcePlannedStart: newPlannedStart,
       sourcePlannedEnd: newPlannedEnd,
@@ -892,6 +900,7 @@ export async function updateInterventionTimeAction(
       planned_start: newPlannedStart,
       planned_end: newPlannedEnd,
       scheduled_at: newPlannedStart, // cohérence vues legacy
+      scheduled_for: effectiveDate,  // V6.2 — jour replanifiable depuis le dialogue
     })
     .eq('id', parsed.data.interventionId)
   if (upErr) return { ok: false, error: upErr.message }
