@@ -355,6 +355,17 @@ Pour chaque AO, vous obtenez :
 - **Mémoire technique** : le texte exploitable, modifiable, avec **insertion de preuves** depuis votre capital.
 - **Atelier IA** : conversation avec 6 agents spécialisés (Lecteur AO, Mémoire technique, Conformité, Financier, Terrain, Contradicteur). **L'agent Contradicteur** challenge votre approche — utilisez-le.
 
+### Des engagements aux propositions opérationnelles
+Dans l'Atelier, **« Extraire les engagements »** transforme l'AO en **propositions typées** — pas juste du texte. Chaque proposition cite **l'extrait source** exact (p. X · § Y) et reçoit une **destination suggérée** que **vous validez** :
+- **Obligation contrat** → deviendra une *promesse* du contrat (planifiable, suivie en preuve).
+- **Vigilance** → pénalité / point sensible → panneau **« Points de vigilance issus de l'AO »** sur le contrat.
+- **À savoir** → savoir du lieu (accès, livraison…) → à **pousser vers un site** depuis le contrat → devient un « à savoir » de la mémoire du lieu.
+
+> [!TIP] L'IA propose, vous validez
+> Rien n'est publié automatiquement. Vous corrigez le type et la destination en curation avant que ça devienne un objet opérationnel.
+
+À la **conversion en contrat**, les obligations deviennent les promesses ; vigilances et à savoir vont dans leurs surfaces dédiées.
+
 ### Sources documentaires cliquables
 Sous la synthèse et l'analyse détaillée, vous voyez la liste des documents que l'IA a utilisés. **Chaque ligne est cliquable** → ouvre le document complet. Si un document est de type `litige`, il est signalé avec une icône balance et un avertissement « consulter avec prudence ».
 
@@ -397,8 +408,20 @@ Chaque document a un **niveau de visibilité** :
 - `field` : visible côté mobile chef d'équipe
 - `client_portal` : un jour, visible client (pas encore implémenté)
 
-### Indexation
-Chaque document chargé est **automatiquement chunké et embeddé** par l'IA. Cela alimente le matcher AO et les résonances site → document. **Coût : quelques centimes par document.**
+### Ajouter des documents
+Un seul bouton **« Ajouter des documents »** : dépose **1 ou plusieurs** PDF. Pour chacun, MemorIA propose un **type**, une **couche mémoire** et une **indexation** ; tu valides avant l'import. La création de **collection** se fait depuis la Bibliothèque (une collection = un tiroir de rangement).
+
+> [!TIP] Doublons
+> Si tu importes deux fois le même fichier, MemorIA le détecte (**« déjà là »**) et ne le duplique pas : il **réutilise** le document et ajoute simplement le nouveau rattachement.
+
+### Indexation — SÉLECTIVE (plus « tout embeddé »)
+Tous les documents ne méritent pas la mémoire active. Chaque doc affiche son état :
+- 🟢 **Indexé** — embeddé, retrouvable par la recherche / les résonances (couches *vivante* et *consultable*).
+- ❄️ **Non indexé** — couche *froide* : stocké, **pas d'embedding** (factures, archives). Zéro coût IA.
+- *Indexation… / échouée* selon le pipeline.
+
+### Rattachements (un doc, plusieurs liens)
+Un document est **un seul nœud** mais peut être **rattaché à plusieurs entités** : Contrat, Site, Client, AO, Équipe. La liste et la fiche montrent « **Rattaché à : Contrat X · Site Z** ». Depuis la fiche, le bouton **« + rattacher »** ajoute un lien (ex. relier un CCTP à un client **et** un AO). Jamais de doublon de document.
 
 ---
 
