@@ -32,6 +32,7 @@ const ANALYSIS_LABEL: Record<string, string> = {
 
 export default async function DocumentViewerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
   searchParams: Promise<{ from?: string }>
