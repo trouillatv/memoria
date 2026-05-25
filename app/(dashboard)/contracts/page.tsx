@@ -231,11 +231,11 @@ export default async function ContractsPage({
               <Link
                 key={c.id}
                 href={`/contracts/${c.id}`}
-                className="group block rounded-2xl border border-border/60 bg-stone-50/50 dark:bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-brand-200/70"
+                className="group block rounded-2xl border border-border/60 bg-stone-50/50 dark:bg-card p-5 shadow-sm transition-[transform,box-shadow,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:shadow-md hover:border-brand-200/70 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold leading-tight truncate group-hover:text-brand-700">
+                    <h3 className="text-base font-semibold leading-tight truncate transition-colors duration-200 group-hover:text-brand-700">
                       {c.name}
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5 inline-flex items-center gap-1.5 truncate">
@@ -274,7 +274,7 @@ export default async function ContractsPage({
                     <ListChecks className="h-3 w-3" />
                     {engagementsCount}
                     <span className="hidden sm:inline">&nbsp;engagement{engagementsCount > 1 ? 's' : ''}</span>
-                    <ChevronRight className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all text-brand-600" />
+                    <ChevronRight className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] text-brand-600" />
                   </span>
                 </div>
               </Link>

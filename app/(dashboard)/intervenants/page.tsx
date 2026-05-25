@@ -99,7 +99,7 @@ export default async function IntervenantsListPage() {
               <Link
                 key={i.id}
                 href={`/intervenants/${i.id}`}
-                className="group block rounded-2xl border border-border/60 bg-stone-50/50 dark:bg-card p-5 hover:border-brand-200/70 hover:shadow-md hover:-translate-y-0.5 transition-all"
+                className="group block rounded-2xl border border-border/60 bg-stone-50/50 dark:bg-card p-5 transition-[transform,box-shadow,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-brand-200/70 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 {/* Identité — d'abord la personne, pas ses chiffres. */}
                 <div className="flex items-start gap-3">
@@ -110,7 +110,7 @@ export default async function IntervenantsListPage() {
                     <div className="text-sm font-semibold truncate">{displayName}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{roleLabelFr(i.role)}</div>
                   </div>
-                  <ArrowRight className="h-4 w-4 mt-1 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0" />
+                  <ArrowRight className="h-4 w-4 mt-1 text-muted-foreground/40 group-hover:text-foreground transition-colors duration-200 shrink-0" />
                 </div>
 
                 {/* Continuité — territoires connus (mémoire portée, pas KPI). */}
