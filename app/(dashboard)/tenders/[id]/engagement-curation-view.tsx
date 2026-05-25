@@ -9,11 +9,24 @@ import {
   curateEngagementAction,
   rejectEngagementsAction,
 } from './engagements-actions'
-import type { DbEngagement, EngagementCategory, EngagementProofRequirement } from '@/types/db'
+import type { DbEngagement, EngagementCategory, EngagementProofRequirement, EngagementDestination } from '@/types/db'
+import { DESTINATION_META } from '@/lib/engagements/destination'
 
 const CATEGORIES: EngagementCategory[] = [
   'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
 ]
+
+// Destinations proposables à la curation en V1 (a_savoir/mission = à la conversion).
+const CURATION_DESTINATIONS: EngagementDestination[] = ['contract_engagement', 'vigilance']
+
+/** Réf. source affichable (page / section) depuis le jsonb source_ref. */
+function sourceRefLabel(ref: Record<string, unknown> | null): string {
+  if (!ref) return ''
+  const parts: string[] = []
+  if (ref.page != null) parts.push(`p. ${ref.page}`)
+  if (ref.section != null) parts.push(`§ ${ref.section}`)
+  return parts.join(' · ')
+}
 
 export function EngagementCurationView({ engagements }: { engagements: DbEngagement[] }) {
   const router = useRouter()
@@ -62,13 +75,14 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
 
   async function saveEdit(
     id: string,
-    patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement }
+    patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination }
   ) {
     const fd = new FormData()
     fd.set('id', id)
     if (patch.short_label !== undefined) fd.set('short_label', patch.short_label)
     if (patch.category !== undefined) fd.set('category', patch.category)
     if (patch.proof_requirement !== undefined) fd.set('proof_requirement', patch.proof_requirement)
+    if (patch.destination !== undefined) fd.set('destination', patch.destination)
     startTransition(async () => {
       const r = await curateEngagementAction(fd)
       if (r && 'error' in r && r.error) {
@@ -156,6 +170,12 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
                 ) : (
                   <>
                     <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${DESTINATION_META[e.destination].badge}`}
+                        title="Destination proposée — modifiable à l'édition"
+                      >
+                        {DESTINATION_META[e.destination].label}
+                      </span>
                       <span className="text-[10px] text-muted-foreground">
                         conf. {e.ai_confidence?.toFixed(2) ?? '—'}
                       </span>
@@ -167,6 +187,11 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
                     </div>
                     <div className="text-sm font-semibold mb-1">{e.short_label}</div>
                     <div className="text-xs text-muted-foreground italic">« {e.source_excerpt} »</div>
+                    {sourceRefLabel(e.source_ref) && (
+                      <div className="text-[10px] text-muted-foreground/80 mt-0.5">
+                        source : {sourceRefLabel(e.source_ref)}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -203,18 +228,20 @@ function EditForm({
 }: {
   engagement: DbEngagement
   pending: boolean
-  onSave: (patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement }) => void
+  onSave: (patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination }) => void
   onCancel: () => void
 }) {
   const [label, setLabel] = useState(engagement.short_label)
   const [category, setCategory] = useState<EngagementCategory>(engagement.category)
   const [proofReq, setProofReq] = useState<EngagementProofRequirement>(engagement.proof_requirement)
+  const [destination, setDestination] = useState<EngagementDestination>(engagement.destination)
 
   function submit() {
-    const patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement } = {}
+    const patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination } = {}
     if (label !== engagement.short_label) patch.short_label = label
     if (category !== engagement.category) patch.category = category
     if (proofReq !== engagement.proof_requirement) patch.proof_requirement = proofReq
+    if (destination !== engagement.destination) patch.destination = destination
     if (Object.keys(patch).length === 0) {
       onCancel()
       return
@@ -249,6 +276,17 @@ function EditForm({
         >
           {(Object.keys(PROOF_REQUIREMENT_LABELS) as EngagementProofRequirement[]).map((p) => (
             <option key={p} value={p}>{PROOF_REQUIREMENT_LABELS[p]}</option>
+          ))}
+        </select>
+        <select
+          value={destination}
+          onChange={(ev) => setDestination(ev.target.value as EngagementDestination)}
+          className="rounded border p-1 text-xs"
+          disabled={pending}
+          title="Destination de la proposition"
+        >
+          {CURATION_DESTINATIONS.map((d) => (
+            <option key={d} value={d}>{DESTINATION_META[d].label}</option>
           ))}
         </select>
         <div className="flex items-center gap-1 ml-auto">
