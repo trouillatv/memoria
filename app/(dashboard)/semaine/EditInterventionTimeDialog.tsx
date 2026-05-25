@@ -54,37 +54,32 @@ export function EditInterventionTimeDialog({
   const [start, setStart] = useState(initialStartHHMM)
   const [end, setEnd] = useState(initialEndHHMM)
 
-  const canSubmit = !pending && /^\d{4}-\d{2}-\d{2}$/.test(date) && (
-    // Saisie cohérente : soit start vide (= retirer), soit start non vide.
-    start === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(start)
-  )
+  // Heure de début ET de fin obligatoires (plus d'ancrage matin/après-midi/soir).
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+  const canSubmit =
+    !pending &&
+    /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+    HHMM.test(start) &&
+    HHMM.test(end) &&
+    start < end
 
   function submit() {
     if (!canSubmit) return
     startTransition(async () => {
       const r = await updateInterventionTimeAction({
         interventionId,
-        plannedStartHHMM: start === '' ? null : start,
-        plannedEndHHMM:   end === '' ? null : end,
+        plannedStartHHMM: start,
+        plannedEndHHMM:   end,
         newScheduledFor:  date !== initialDate ? date : undefined,
       })
       if (!r.ok) {
         toast.error(r.error ?? 'Erreur inconnue')
         return
       }
-      toast.success(
-        date !== initialDate
-          ? 'Jour et horaire mis à jour'
-          : start === '' ? 'Heure précise retirée — retour à l’horaire d’ancrage' : 'Horaire mis à jour',
-      )
+      toast.success(date !== initialDate ? 'Jour et horaire mis à jour' : 'Horaire mis à jour')
       setOpen(false)
       router.refresh()
     })
-  }
-
-  function clear() {
-    setStart('')
-    setEnd('')
   }
 
   return (
@@ -97,7 +92,7 @@ export function EditInterventionTimeDialog({
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
             >
               <Clock className="h-3 w-3" />
-              Modifier heure
+              Replanifier
             </button>
           )
         }
@@ -107,7 +102,7 @@ export function EditInterventionTimeDialog({
           <DialogTitle>Replanifier la prestation</DialogTitle>
           <DialogDescription>
             {label ? `${label} · ` : ''}
-            Jour et heure (l'heure reste optionnelle — laisse vide pour l'horaire d'ancrage par défaut).
+            Jour, heure de début et de fin.
           </DialogDescription>
         </DialogHeader>
 
@@ -150,21 +145,11 @@ export function EditInterventionTimeDialog({
                 step={300}
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
-                disabled={pending || !start}
-                className="w-full rounded-md border bg-background px-2 py-1.5 text-sm disabled:opacity-50"
+                disabled={pending}
+                className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
               />
             </div>
           </div>
-          {start && (
-            <button
-              type="button"
-              onClick={clear}
-              disabled={pending}
-              className="text-xs text-muted-foreground hover:text-destructive underline-offset-2 hover:underline"
-            >
-              Retirer l'heure précise (retour à l'horaire d'ancrage)
-            </button>
-          )}
           <p className="text-[11px] text-muted-foreground/70">
             Change le jour ci-dessus, ou par drag-and-drop dans la grille.
           </p>
