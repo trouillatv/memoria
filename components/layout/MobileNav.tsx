@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, LayoutDashboard } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types/db'
@@ -39,7 +39,8 @@ export function MobileNav({ role, fullName }: { role: UserRole; fullName: string
             className="flex items-center gap-2 font-semibold"
             onClick={() => setOpen(false)}
           >
-            <LayoutDashboard className="h-5 w-5 text-brand-600" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="" className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-black/5" />
             <span>MemorIA</span>
           </Link>
         </div>

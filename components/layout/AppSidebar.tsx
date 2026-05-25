@@ -8,7 +8,6 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 import { cn } from '@/lib/utils'
 import { NAV, isActive } from './nav-items'
@@ -29,7 +28,8 @@ export function AppSidebar({
           href={role === 'admin' || role === 'manager' ? '/dashboard' : '/missions'}
           className="flex items-center gap-2 font-semibold rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
         >
-          <LayoutDashboard className="h-5 w-5 text-brand-600" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-black/5" />
           <span>MemorIA</span>
         </Link>
       </div>

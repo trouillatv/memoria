@@ -10,9 +10,12 @@ export default async function LoginPage({
     <div className="space-y-4">
       {/* Logo + titre */}
       <div className="text-center mb-6">
-        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-white font-bold text-xl shadow-sm">
-          M
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.png"
+          alt="MemorIA"
+          className="mx-auto mb-3 h-14 w-14 rounded-2xl object-cover ring-1 ring-black/5 shadow-sm"
+        />
         <h1 className="text-xl font-semibold text-gray-900">MemorIA</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Gestion terrain · Appels d'offres</p>
       </div>
