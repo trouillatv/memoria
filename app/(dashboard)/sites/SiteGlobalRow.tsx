@@ -195,7 +195,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
   const hasFields = hasAnySiteField(site)
 
   return (
-    <li className={`rounded-lg border bg-card overflow-hidden ${muted}`}>
+    <li className={`rounded-lg border bg-card overflow-hidden transition-[box-shadow,border-color] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] hover:border-brand-200/60 hover:shadow-sm ${muted}`}>
       {/* Cluster A — Identification primaire : nom + badges + actions */}
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
         <div className="min-w-0 flex-1 space-y-1">
