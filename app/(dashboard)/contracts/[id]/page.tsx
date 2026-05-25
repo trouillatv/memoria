@@ -18,6 +18,7 @@ import { LinkedDocumentsList } from '@/components/documents/LinkedDocumentsList'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
+import { ContractVigilancePanel } from './ContractVigilancePanel'
 import { ContractTabs } from './contract-tabs'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import { DossierConfidenceBadge } from '@/components/ui/dossier-confidence-badge'
@@ -129,6 +130,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
     : null
 
   const unplannedEngagements = engagements.filter((e) => !planned.has(e.id))
+  // Points de vigilance issus de l'AO (proposition validée destination=vigilance).
+  const vigilances = engagements.filter((e) => e.destination === 'vigilance')
   const unplannedCount = unplannedEngagements.length
 
   return (
@@ -352,6 +355,8 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </Link>
         </section>
       )}
+
+      <ContractVigilancePanel vigilances={vigilances} />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
