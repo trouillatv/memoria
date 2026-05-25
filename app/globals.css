@@ -193,6 +193,27 @@
     --reading-border: 239 68% 66%;
     --reading-bg:     239 84% 67%;
     --reading-label:  239 84% 48%;
+    /* Avertissements — l'ambre par défaut se noie dans le fond ocre. On
+       re-sature la palette amber (fills + bordures) UNIQUEMENT dans ce thème
+       pour que les alertes ressortent nettement sur le sable. */
+    --color-amber-50:  hsl(44 92% 87%);
+    --color-amber-100: hsl(43 90% 80%);
+    --color-amber-200: hsl(41 86% 68%);
+    --color-amber-300: hsl(39 83% 60%);
+    --color-amber-400: hsl(37 84% 53%);
+    --color-amber-500: hsl(35 88% 48%);
+    /* Rouge — même problème : les rouges clairs se noient sur le marron.
+       On re-sature red + rose (fills/bordures) pour rendre les alertes
+       (ex. « dette ») visibles. */
+    --color-red-50:  hsl(2 82% 91%);
+    --color-red-100: hsl(2 80% 85%);
+    --color-red-200: hsl(1 76% 75%);
+    --color-red-300: hsl(0 75% 66%);
+    --color-red-400: hsl(0 75% 58%);
+    --color-rose-50:  hsl(350 82% 91%);
+    --color-rose-100: hsl(350 80% 85%);
+    --color-rose-200: hsl(350 74% 75%);
+    --color-rose-300: hsl(350 72% 66%);
   }
 
   * {
