@@ -218,7 +218,9 @@ export async function runInitialAnalysisAgent(input: InitialAnalysisInput): Prom
         userMessage,
         responseSchema: analysisOutputSchema,
         modelTier: prompt.modelTier,
-        maxOutputTokens: 1000,
+        // 1000 tronquait l'analyse AO (JSON volumineux) -> « Failed to parse ».
+        // Thinking désactivé sur le JSON (provider) -> tout le budget au JSON.
+        maxOutputTokens: 8000,
       })
 
       // Parse the result

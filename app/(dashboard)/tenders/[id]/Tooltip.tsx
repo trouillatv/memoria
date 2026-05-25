@@ -59,7 +59,7 @@ export function Tooltip({ content, delay = 150, side = 'right', children }: Tool
             side === 'left'   && 'right-full top-1/2 -translate-y-1/2 mr-2',
             side === 'bottom' && 'top-full left-1/2 -translate-x-1/2 mt-1'
           )}
-          style={{ maxWidth: 240 }}
+          style={{ maxWidth: 360 }}
         >
           {content}
         </span>
