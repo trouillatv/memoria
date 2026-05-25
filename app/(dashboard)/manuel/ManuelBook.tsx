@@ -9,8 +9,17 @@
 // que l'expérience de lecture (état du chapitre actif).
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { BookOpen, Download, ChevronLeft, ChevronRight, List, X } from 'lucide-react'
 import type { BookChapter } from '@/lib/docs/book'
+
+// Les 3 guides — inter-liés sur chaque page (« Comprendre » accessible depuis le Manuel).
+const GUIDES = [
+  { href: '/manuel', label: 'Manuel' },
+  { href: '/comprendre/memoire-ia', label: 'Comprendre la mémoire' },
+  { href: '/comprendre/architecture', label: 'Comprendre l’archi' },
+]
 
 export function ManuelBook({
   chapters,
@@ -123,6 +132,7 @@ function SidebarHeader({
   lastGenerated: string | null
   downloadHref?: string
 }) {
+  const pathname = usePathname() ?? ''
   return (
     <div className="mb-4 pb-4 border-b">
       <div className="flex items-center gap-2 text-sm font-semibold">
@@ -142,6 +152,26 @@ function SidebarHeader({
           Télécharger (.docx)
         </a>
       )}
+      {/* Inter-liens des 3 guides — « Comprendre » accessibles depuis le Manuel. */}
+      <nav className="mt-3 space-y-0.5" aria-label="Guides">
+        {GUIDES.map((g) => {
+          const current = pathname === g.href
+          return (
+            <Link
+              key={g.href}
+              href={g.href}
+              aria-current={current ? 'page' : undefined}
+              className={`block rounded px-2 py-1 text-xs transition-colors ${
+                current
+                  ? 'bg-brand-50 text-brand-900 font-medium dark:bg-brand-950/40 dark:text-brand-100'
+                  : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+              }`}
+            >
+              {g.label}
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }
