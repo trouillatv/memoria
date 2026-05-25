@@ -189,6 +189,36 @@ export default async function AdminObservationPage({
         </div>
       </section>
 
+      {/* ── Adoption des menus (Couche A — feedback produit) ───────────── */}
+      <section className="rounded-lg border bg-card p-5 space-y-3">
+        <h2 className="text-base font-semibold inline-flex items-center gap-2">
+          <Eye className="h-4 w-4 text-brand-600" />
+          Adoption des menus — quelles surfaces servent&nbsp;? ({period} j)
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Niveau <strong>feature</strong> (route), pas la personne. Un menu jamais ouvert
+          = candidat à retirer (« développé pour rien »).
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {snap.menuAdoption.map((m) => (
+            <div
+              key={m.href}
+              className={`rounded-md border px-3 py-2 flex items-center justify-between gap-2 ${
+                m.count === 0
+                  ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
+                  : 'border-border bg-background'
+              }`}
+            >
+              <span className="text-xs truncate">
+                {m.label}
+                {m.count === 0 && <span className="text-amber-700 dark:text-amber-300"> · jamais ouvert</span>}
+              </span>
+              <span className="text-sm font-semibold tabular-nums">{m.count}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── 2. Qualité d'usage ─────────────────────────────────────────── */}
       <section className="rounded-lg border bg-card p-5 space-y-4">
         <h2 className="text-base font-semibold inline-flex items-center gap-2">

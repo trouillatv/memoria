@@ -23,6 +23,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { collectMemorySignals } from '@/lib/memory/signals/collect'
 import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
+import { NAV } from '@/components/layout/nav-items'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,14 @@ export interface EngineHealthItem {
   count: number
 }
 
+// Couche A — Adoption des menus : « quelles surfaces servent / sont mortes ? ».
+// Niveau FEATURE (route), pas niveau personne. Visites via activity_logs.
+export interface MenuUsage {
+  href: string
+  label: string
+  count: number
+}
+
 export interface AlertSignal {
   level: 'red' | 'amber' | 'info'
   category: 'sub-intelligence' | 'overconstruction' | 'invisible' | 'engagement'
@@ -112,6 +121,7 @@ export interface ObservationSnapshot {
   centering: CenteringMetrics
   production: MemoryProduction
   engineHealth: EngineHealthItem[]
+  menuAdoption: MenuUsage[]
   alerts: AlertSignal[]
 }
 
@@ -351,6 +361,33 @@ async function getEngineHealth(): Promise<EngineHealthItem[]> {
   })
 }
 
+// ─── Adoption des menus (Couche A) ──────────────────────────────────────────
+
+async function getMenuAdoption(periodStart: string): Promise<MenuUsage[]> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('activity_logs')
+    .select('metadata')
+    .eq('entity_type', 'page')
+    .eq('action', 'view')
+    .gte('created_at', periodStart)
+
+  const counts = new Map<string, number>()
+  for (const r of (data ?? []) as Array<{ metadata: { route?: string } | null }>) {
+    const route = r.metadata?.route
+    if (typeof route === 'string') counts.set(route, (counts.get(route) ?? 0) + 1)
+  }
+
+  // Croise avec les menus NAV : compte les visites du menu + sous-routes.
+  return NAV.map((item) => {
+    let count = 0
+    for (const [route, c] of counts) {
+      if (route === item.href || route.startsWith(item.href + '/')) count += c
+    }
+    return { href: item.href, label: item.label, count }
+  }).sort((a, b) => a.count - b.count) // menus morts (0) en premier
+}
+
 // ─── Alertes (règles agrégées) ──────────────────────────────────────────────
 
 function computeAlerts(
@@ -482,12 +519,13 @@ export async function buildObservationSnapshot(
   const periodStart = isoDaysAgo(period)
   const periodEnd = new Date().toISOString()
 
-  const [volumes, quality, engagement, production, engineHealth] = await Promise.all([
+  const [volumes, quality, engagement, production, engineHealth, menuAdoption] = await Promise.all([
     getBriefVolumes(periodStart),
     getBriefQuality(periodStart),
     getEngagement(periodStart),
     getMemoryProduction(periodStart),
     getEngineHealth(),
+    getMenuAdoption(periodStart),
   ])
   const centering = await getCenteringMetrics(periodStart, volumes)
   const alerts = computeAlerts(period, volumes, quality, engagement, centering)
@@ -502,6 +540,7 @@ export async function buildObservationSnapshot(
     centering,
     production,
     engineHealth,
+    menuAdoption,
     alerts,
   }
 }

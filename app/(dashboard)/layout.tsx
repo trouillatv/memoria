@@ -5,6 +5,7 @@ import { AppSidebar } from '@/components/layout/AppSidebar'
 import { AppTopbar } from '@/components/layout/AppTopbar'
 import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { FeedbackButton } from '@/components/ui/FeedbackButton'
+import { PageViewLogger } from './PageViewLogger'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -39,6 +40,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Vincent 2026-05-21 — bouton feedback flottant desktop seulement
           (le composant lui-même se masque avec hidden md:inline-flex). */}
       <FeedbackButton />
+      <PageViewLogger />
     </div>
   )
 }
