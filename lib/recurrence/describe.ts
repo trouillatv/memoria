@@ -78,8 +78,18 @@ export function joinSlotsFr(slots: InterventionSlot[] | null | undefined): strin
  *   "Tous les 15 du mois, a partir du 11 mai 2026"
  *   "Le 11 mai 2026" (one_shot, slots vides)
  */
+/** "06:30" → "06h30". */
+function fmtHHMM(hhmm: string): string {
+  return hhmm.replace(':', 'h')
+}
+
 export function describeTemplate(t: DbInterventionTemplate): string {
-  const slotsPart = joinSlotsFr(t.slots)
+  // Migration 085 — heure précise si définie ; sinon créneau (legacy).
+  const slotsPart = t.planned_start_hhmm
+    ? t.planned_end_hhmm
+      ? `${fmtHHMM(t.planned_start_hhmm)}–${fmtHHMM(t.planned_end_hhmm)}`
+      : fmtHHMM(t.planned_start_hhmm)
+    : joinSlotsFr(t.slots)
 
   if (t.frequency === 'one_shot') {
     const datePart = formatDateFr(t.starts_on)

@@ -25,7 +25,6 @@ import {
 import type {
   DbInterventionTemplate,
   InterventionFrequency,
-  InterventionSlot,
 } from '@/types/db'
 
 interface RecurrenceModalProps {
@@ -55,12 +54,6 @@ const DAY_OF_WEEK_OPTIONS: { value: number; label: string }[] = [
   { value: 7, label: 'Dimanche' },
 ]
 
-const SLOT_OPTIONS: { value: InterventionSlot; label: string }[] = [
-  { value: 'morning', label: 'Matin' },
-  { value: 'afternoon', label: 'Après-midi' },
-  { value: 'evening', label: 'Soir' },
-]
-
 function todayIso(): string {
   const now = new Date()
   const yyyy = now.getFullYear()
@@ -88,13 +81,15 @@ export function RecurrenceModal({
       : (template?.frequency ?? 'daily')
   const initialDayOfWeek = template?.day_of_week ?? null
   const initialDayOfMonth = template?.day_of_month ?? null
-  const initialSlots = new Set<InterventionSlot>(template?.slots ?? [])
+  const initialStart = template?.planned_start_hhmm ?? ''
+  const initialEnd = template?.planned_end_hhmm ?? ''
   const initialStartsOn = template?.starts_on ?? todayIso()
 
   const [frequency, setFrequency] = useState<InterventionFrequency>(initialFrequency)
   const [dayOfWeek, setDayOfWeek] = useState<number | null>(initialDayOfWeek)
   const [dayOfMonth, setDayOfMonth] = useState<number | null>(initialDayOfMonth)
-  const [slots, setSlots] = useState<Set<InterventionSlot>>(initialSlots)
+  const [startTime, setStartTime] = useState<string>(initialStart)
+  const [endTime, setEndTime] = useState<string>(initialEnd)
   const [startsOn, setStartsOn] = useState<string>(initialStartsOn)
   const [error, setError] = useState<string | null>(null)
 
@@ -105,14 +100,16 @@ export function RecurrenceModal({
       setFrequency(template.frequency)
       setDayOfWeek(template.day_of_week ?? null)
       setDayOfMonth(template.day_of_month ?? null)
-      setSlots(new Set(template.slots ?? []))
+      setStartTime(template.planned_start_hhmm ?? '')
+      setEndTime(template.planned_end_hhmm ?? '')
       setStartsOn(template.starts_on)
       setError(null)
     } else {
       setFrequency('daily')
       setDayOfWeek(null)
       setDayOfMonth(null)
-      setSlots(new Set())
+      setStartTime('')
+      setEndTime('')
       setStartsOn(todayIso())
       setError(null)
     }
@@ -120,21 +117,13 @@ export function RecurrenceModal({
 
   if (!open) return null
 
-  function toggleSlot(s: InterventionSlot) {
-    setSlots((prev) => {
-      const next = new Set(prev)
-      if (next.has(s)) next.delete(s)
-      else next.add(s)
-      return next
-    })
-  }
-
   function reset() {
     if (!template) {
       setFrequency('daily')
       setDayOfWeek(null)
       setDayOfMonth(null)
-      setSlots(new Set())
+      setStartTime('')
+      setEndTime('')
       setStartsOn(todayIso())
     }
     setError(null)
@@ -145,8 +134,12 @@ export function RecurrenceModal({
     onClose()
   }
 
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
   const isValid =
     !!startsOn &&
+    HHMM.test(startTime) &&
+    HHMM.test(endTime) &&
+    startTime < endTime &&
     (frequency !== 'weekly' || dayOfWeek !== null) &&
     (frequency !== 'monthly' || (dayOfMonth !== null && dayOfMonth >= 1 && dayOfMonth <= 28))
 
@@ -161,7 +154,9 @@ export function RecurrenceModal({
         frequency,
         day_of_week: frequency === 'weekly' ? dayOfWeek : null,
         day_of_month: frequency === 'monthly' ? dayOfMonth : null,
-        slots: Array.from(slots),
+        slots: [],
+        planned_start_hhmm: startTime,
+        planned_end_hhmm: endTime,
         starts_on: startsOn,
       }
       startTransition(async () => {
@@ -184,7 +179,9 @@ export function RecurrenceModal({
       frequency,
       day_of_week: frequency === 'weekly' ? dayOfWeek : null,
       day_of_month: frequency === 'monthly' ? dayOfMonth : null,
-      slots: Array.from(slots),
+      slots: [],
+      planned_start_hhmm: startTime,
+      planned_end_hhmm: endTime,
       starts_on: startsOn,
     }
 
@@ -302,34 +299,38 @@ export function RecurrenceModal({
           )}
         </fieldset>
 
-        {/* Q3 — A quel moment de la journee ? */}
-        <fieldset className="space-y-2" data-testid="q-slots">
-          <legend className="text-sm font-medium">À quel moment de la journée ?</legend>
-          <p className="text-[11px] text-muted-foreground">
-            Optionnel — laissez vide pour une intervention par jour.
-          </p>
-          <div className="flex items-center gap-2 flex-wrap">
-            {SLOT_OPTIONS.map((s) => {
-              const selected = slots.has(s.value)
-              return (
-                <button
-                  key={s.value}
-                  type="button"
-                  data-testid={`slot-chip-${s.value}`}
-                  aria-pressed={selected}
-                  onClick={() => toggleSlot(s.value)}
-                  disabled={pending}
-                  className={
-                    selected
-                      ? 'inline-flex items-center px-3 py-1.5 rounded-full border text-xs font-medium bg-foreground text-background border-foreground'
-                      : 'inline-flex items-center px-3 py-1.5 rounded-full border text-xs font-medium bg-background hover:bg-muted/50'
-                  }
-                >
-                  {s.label}
-                </button>
-              )
-            })}
+        {/* Q3 — À quelle heure ? (début + fin obligatoires, plus de créneaux) */}
+        <fieldset className="space-y-2" data-testid="q-time">
+          <legend className="text-sm font-medium">À quelle heure ?</legend>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label htmlFor="rec-start" className="text-xs text-muted-foreground">Début</label>
+              <input
+                id="rec-start"
+                type="time"
+                step={300}
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                disabled={pending}
+                className="w-full rounded border p-2 text-sm bg-background"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="rec-end" className="text-xs text-muted-foreground">Fin</label>
+              <input
+                id="rec-end"
+                type="time"
+                step={300}
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                disabled={pending}
+                className="w-full rounded border p-2 text-sm bg-background"
+              />
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Chaque occurrence sera planifiée à cette heure précise.
+          </p>
         </fieldset>
 
         {/* Q4 — A partir de quand ? */}

@@ -16,7 +16,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
-import { buildScheduledAt } from '@/lib/time/prestation-slot'
+import { buildScheduledAt, slotFromUtcHour } from '@/lib/time/prestation-slot'
 import type {
   DbInterventionTemplate,
   InterventionFrequency,
@@ -36,6 +36,8 @@ export interface CreateTemplateInput {
   slots?: InterventionSlot[] | null
   day_of_week?: number | null // 1-7, requis si frequency='weekly'
   day_of_month?: number | null // 1-31, requis si frequency='monthly'
+  planned_start_hhmm?: string | null // 'HH:MM' — heure précise des occurrences
+  planned_end_hhmm?: string | null
   starts_on: string // date ISO yyyy-mm-dd
   ends_on?: string | null
   created_by?: string | null
@@ -48,6 +50,8 @@ export interface UpdateTemplateInput {
   slots?: InterventionSlot[] | null
   day_of_week?: number | null
   day_of_month?: number | null
+  planned_start_hhmm?: string | null
+  planned_end_hhmm?: string | null
   starts_on?: string
   ends_on?: string | null
   active?: boolean
@@ -144,6 +148,8 @@ export async function createTemplate(input: CreateTemplateInput): Promise<DbInte
       slots: input.slots ?? null,
       day_of_week: input.day_of_week ?? null,
       day_of_month: input.day_of_month ?? null,
+      planned_start_hhmm: input.planned_start_hhmm ?? null,
+      planned_end_hhmm: input.planned_end_hhmm ?? null,
       starts_on: input.starts_on,
       ends_on: input.ends_on ?? null,
       created_by: input.created_by ?? null,
@@ -166,6 +172,8 @@ export async function updateTemplate(
   if (input.slots !== undefined) patch.slots = input.slots
   if (input.day_of_week !== undefined) patch.day_of_week = input.day_of_week
   if (input.day_of_month !== undefined) patch.day_of_month = input.day_of_month
+  if (input.planned_start_hhmm !== undefined) patch.planned_start_hhmm = input.planned_start_hhmm
+  if (input.planned_end_hhmm !== undefined) patch.planned_end_hhmm = input.planned_end_hhmm
   if (input.starts_on !== undefined) patch.starts_on = input.starts_on
   if (input.ends_on !== undefined) patch.ends_on = input.ends_on
   if (input.active !== undefined) patch.active = input.active
@@ -366,6 +374,7 @@ export async function generateInterventionsFromTemplates(params: {
     scheduled_for: string
     slot: InterventionSlot | null
     planned_start: string
+    planned_end: string | null
     status: InterventionStatus
     team: string[]
   }
@@ -379,23 +388,35 @@ export async function generateInterventionsFromTemplates(params: {
     if (effectiveStart > effectiveEnd) continue
 
     const dates = enumerateDates(effectiveStart, effectiveEnd)
-    const slots: (InterventionSlot | null)[] =
-      tpl.slots && tpl.slots.length > 0 ? tpl.slots : [null]
+    // V6.2 — heure précise : un seul créneau DÉRIVÉ de l'heure de début (pour la
+    // grille + l'index d'unicité). Sinon : créneaux du template (legacy) ou null.
+    const hasTime =
+      typeof tpl.planned_start_hhmm === 'string' && /^\d{2}:\d{2}$/.test(tpl.planned_start_hhmm)
+    const slots: (InterventionSlot | null)[] = hasTime
+      ? [slotFromUtcHour(Number(tpl.planned_start_hhmm!.slice(0, 2)))]
+      : tpl.slots && tpl.slots.length > 0
+        ? tpl.slots
+        : [null]
     const inheritedTeam = teamByMission.get(tpl.mission_id) ?? []
 
     for (const date of dates) {
       if (!matchesFrequency(tpl, date)) continue
       const dateIso = date.toISOString().slice(0, 10)
       for (const slot of slots) {
-        const scheduledAt = buildScheduledAt(dateIso, slot)
+        const plannedStart = hasTime
+          ? `${dateIso}T${tpl.planned_start_hhmm}:00.000Z`
+          : buildScheduledAt(dateIso, slot)
+        const plannedEnd =
+          hasTime && tpl.planned_end_hhmm ? `${dateIso}T${tpl.planned_end_hhmm}:00.000Z` : null
         rowsToInsert.push({
           mission_id: tpl.mission_id,
           template_id: tpl.id,
-          scheduled_at: scheduledAt,
+          scheduled_at: plannedStart,
           scheduled_for: dateIso,
           slot,
-          // V6.1 — champ honnête de la prestation (= ancrage canonique).
-          planned_start: scheduledAt,
+          // Heure honnête de la prestation (précise si définie, sinon ancrage créneau).
+          planned_start: plannedStart,
+          planned_end: plannedEnd,
           status: 'planned',
           team: inheritedTeam,
         })

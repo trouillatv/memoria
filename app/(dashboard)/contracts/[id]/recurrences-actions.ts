@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { getMission } from '@/lib/db/missions'
+import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import {
   archiveTemplate,
   createTemplate,
@@ -29,6 +30,21 @@ async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: st
 
 const frequencySchema = z.enum(['daily', 'weekdays', 'weekly', 'monthly', 'one_shot'])
 const slotSchema = z.enum(['morning', 'afternoon', 'evening'])
+const hhmmRe = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** Dérive slot + heures depuis l'heure précise (si fournie). Le slot reste
+ *  utile à la grille et à l'index d'unicité ; l'heure exacte vit dans le template. */
+function deriveTimeFields(
+  startHHMM: string | undefined,
+  endHHMM: string | undefined,
+  fallbackSlots: ('morning' | 'afternoon' | 'evening')[],
+): { slots: ('morning' | 'afternoon' | 'evening')[] | null; planned_start_hhmm: string | null; planned_end_hhmm: string | null } {
+  if (startHHMM) {
+    const slot = slotFromUtcHour(Number(startHHMM.slice(0, 2)))
+    return { slots: [slot], planned_start_hhmm: startHHMM, planned_end_hhmm: endHHMM ?? null }
+  }
+  return { slots: fallbackSlots.length > 0 ? fallbackSlots : null, planned_start_hhmm: null, planned_end_hhmm: null }
+}
 
 const createRecurrenceSchema = z
   .object({
@@ -39,9 +55,14 @@ const createRecurrenceSchema = z
     day_of_week: z.number().int().min(1).max(7).nullable().optional(),
     day_of_month: z.number().int().min(1).max(31).nullable().optional(),
     slots: z.array(slotSchema).max(3).default([]),
+    planned_start_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
+    planned_end_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
     starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
   })
   .superRefine((data, ctx) => {
+    if (data.planned_start_hhmm && data.planned_end_hhmm && data.planned_end_hhmm <= data.planned_start_hhmm) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "L'heure de fin doit être après le début", path: ['planned_end_hhmm'] })
+    }
     if (data.frequency === 'weekly' && (data.day_of_week === null || data.day_of_week === undefined)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -66,6 +87,8 @@ export interface CreateRecurrenceInput {
   day_of_week?: number | null
   day_of_month?: number | null
   slots: ('morning' | 'afternoon' | 'evening')[]
+  planned_start_hhmm?: string
+  planned_end_hhmm?: string
   starts_on: string
 }
 
@@ -89,13 +112,16 @@ export async function createRecurrenceAction(
   if (!mission) return { ok: false, error: 'Mission introuvable' }
 
   const title = (parsed.data.title?.trim() || mission.name).slice(0, 200)
+  const t = deriveTimeFields(parsed.data.planned_start_hhmm, parsed.data.planned_end_hhmm, parsed.data.slots)
 
   try {
     const tpl = await createTemplate({
       mission_id: parsed.data.mission_id,
       title,
       frequency: parsed.data.frequency,
-      slots: parsed.data.slots.length > 0 ? parsed.data.slots : null,
+      slots: t.slots,
+      planned_start_hhmm: t.planned_start_hhmm,
+      planned_end_hhmm: t.planned_end_hhmm,
       day_of_week:
         parsed.data.frequency === 'weekly' ? (parsed.data.day_of_week ?? null) : null,
       day_of_month:
@@ -141,9 +167,14 @@ const updateRecurrenceSchema = z
     day_of_week: z.number().int().min(1).max(7).nullable().optional(),
     day_of_month: z.number().int().min(1).max(31).nullable().optional(),
     slots: z.array(slotSchema).max(3).default([]),
+    planned_start_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
+    planned_end_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
     starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
   })
   .superRefine((data, ctx) => {
+    if (data.planned_start_hhmm && data.planned_end_hhmm && data.planned_end_hhmm <= data.planned_start_hhmm) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "L'heure de fin doit être après le début", path: ['planned_end_hhmm'] })
+    }
     if (data.frequency === 'weekly' && (data.day_of_week === null || data.day_of_week === undefined)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -168,6 +199,8 @@ export interface UpdateRecurrenceInput {
   day_of_week?: number | null
   day_of_month?: number | null
   slots: ('morning' | 'afternoon' | 'evening')[]
+  planned_start_hhmm?: string
+  planned_end_hhmm?: string
   starts_on: string
 }
 
@@ -197,10 +230,13 @@ export async function updateRecurrenceAction(
   const title = (parsed.data.title?.trim() || existing.title).slice(0, 200)
 
   try {
+    const t = deriveTimeFields(parsed.data.planned_start_hhmm, parsed.data.planned_end_hhmm, parsed.data.slots)
     const updated = await updateTemplate(parsed.data.templateId, {
       title,
       frequency: parsed.data.frequency,
-      slots: parsed.data.slots.length > 0 ? parsed.data.slots : null,
+      slots: t.slots,
+      planned_start_hhmm: t.planned_start_hhmm,
+      planned_end_hhmm: t.planned_end_hhmm,
       day_of_week:
         parsed.data.frequency === 'weekly' ? (parsed.data.day_of_week ?? null) : null,
       day_of_month:

@@ -361,6 +361,9 @@ export interface DbInterventionTemplate {
   slots: InterventionSlot[] | null
   day_of_week: number | null
   day_of_month: number | null
+  // Migration 085 — heure précise par occurrence (HH:MM). NULL = ancrage créneau.
+  planned_start_hhmm: string | null
+  planned_end_hhmm: string | null
   starts_on: string  // date ISO (YYYY-MM-DD)
   ends_on: string | null
   active: boolean

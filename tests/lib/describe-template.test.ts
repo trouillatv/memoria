@@ -12,6 +12,8 @@ function makeTemplate(patch: Partial<DbInterventionTemplate>): DbInterventionTem
     slots: null,
     day_of_week: null,
     day_of_month: null,
+    planned_start_hhmm: null,
+    planned_end_hhmm: null,
     starts_on: '2026-05-11',
     ends_on: null,
     active: true,
