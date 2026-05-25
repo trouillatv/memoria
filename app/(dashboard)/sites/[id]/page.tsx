@@ -247,7 +247,7 @@ export default async function SitePage({ params }: PageProps) {
           <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
             <CardTitle>Documents ({visibleSiteDocs.length})</CardTitle>
             <Link
-              href={`/documents/ajouter?target_type=site&target_id=${id}`}
+              href={`/documents/import?target_type=site&target_id=${id}`}
               className="text-xs font-normal text-muted-foreground hover:text-foreground hover:underline"
             >
               Ajouter un document →

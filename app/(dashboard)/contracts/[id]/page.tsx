@@ -262,7 +262,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             Documents ({visibleContractDocs.length})
           </h2>
           <Link
-            href={`/documents/ajouter?target_type=contract&target_id=${id}`}
+            href={`/documents/import?target_type=contract&target_id=${id}`}
             className="text-xs text-muted-foreground hover:text-foreground hover:underline"
           >
             Ajouter un document →

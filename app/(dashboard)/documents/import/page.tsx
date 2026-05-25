@@ -16,12 +16,18 @@ import { BatchImportForm } from './BatchImportForm'
 
 export const dynamic = 'force-dynamic'
 
-export default async function DocumentsImportPage() {
+export default async function DocumentsImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ target_type?: string; target_id?: string }>
+}) {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) notFound()
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') notFound()
+
+  const sp = await searchParams
 
   const [collections, contracts, sites, clients, tenders, teams] = await Promise.all([
     listDocumentCollections(),
@@ -46,17 +52,19 @@ export default async function DocumentsImportPage() {
         <Link href="/documents" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-3.5 w-3.5" /> Bibliothèque
         </Link>
-        <h1 className="text-2xl font-semibold">Importer par lot</h1>
+        <h1 className="text-2xl font-semibold">Ajouter des documents</h1>
         <p className="text-sm text-muted-foreground">
-          Déposez plusieurs PDF. MemorIA propose une couche mémoire et l’indexation
-          pour chacun — <strong>vous validez avant l’import</strong>. Rien n’est envoyé tant que
-          vous ne lancez pas.
+          Déposez un ou plusieurs PDF. MemorIA propose une couche mémoire et
+          l’indexation pour chacun — <strong>vous validez avant l’import</strong>. Rien
+          n’est envoyé tant que vous ne lancez pas.
         </p>
       </header>
 
       <BatchImportForm
         collections={collections.map((c) => ({ id: c.id, name: c.name }))}
         linkTargets={linkTargets}
+        prefillTargetType={sp.target_type}
+        prefillTargetId={sp.target_id}
       />
     </div>
   )

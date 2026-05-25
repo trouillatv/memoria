@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Upload } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import {
@@ -64,22 +64,13 @@ export default async function DocumentsPage() {
             relisible à la source.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/documents/ajouter"
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 text-white px-3 h-9 text-sm font-medium hover:bg-brand-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Ajouter un document
-          </Link>
-          <Link
-            href="/documents/import"
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm font-medium hover:bg-muted/50 transition-colors"
-          >
-            <Upload className="h-4 w-4" />
-            Importer par lot
-          </Link>
-        </div>
+        <Link
+          href="/documents/import"
+          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 text-white px-3 h-9 text-sm font-medium hover:bg-brand-700 transition-colors shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+          Ajouter des documents
+        </Link>
       </header>
 
       {/* Organisation : créer une collection (le rangement vit dans la Bibliothèque). */}

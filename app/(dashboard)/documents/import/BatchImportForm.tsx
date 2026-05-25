@@ -45,16 +45,25 @@ function rowEmbed(row: Row): boolean {
 export function BatchImportForm({
   collections,
   linkTargets,
+  prefillTargetType,
+  prefillTargetId,
 }: {
   collections: Collection[]
   linkTargets: LinkTargets
+  prefillTargetType?: string
+  prefillTargetId?: string
 }) {
   const router = useRouter()
   const [rows, setRows] = useState<Row[]>([])
   const [collectionId, setCollectionId] = useState('')
   const [visibility, setVisibility] = useState('manager')
-  const [targetType, setTargetType] = useState('')
-  const [targetId, setTargetId] = useState('')
+  // Pré-rempli si on vient d'une fiche contrat/site (« Ajouter un document »).
+  const [targetType, setTargetType] = useState(
+    prefillTargetType && linkTargets[prefillTargetType] ? prefillTargetType : '',
+  )
+  const [targetId, setTargetId] = useState(
+    prefillTargetType && linkTargets[prefillTargetType] && prefillTargetId ? prefillTargetId : '',
+  )
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState(false)
 
