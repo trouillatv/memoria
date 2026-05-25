@@ -51,12 +51,12 @@ export const NAV: NavItem[] = [
   // Intervenants gated ENV INTERVENANTS_PAGE_ENABLED ; le lien reste visible
   // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
   { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
+  { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
   // Sprint Équipes C — passages de témoin.
   { href: '/handovers',  label: 'Passages de témoin',     icon: ArrowRightLeft, roles: ['admin', 'manager'] },
   // Sprint E — Continuité anticipée (gated ENV CONTINUITY_PAGE_ENABLED, 404 si OFF).
   { href: '/continuite', label: 'Continuité',              icon: Clock,          roles: ['admin', 'manager'] },
-  // — Commercial & documents —
-  { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
+  // — Preuves & documents —
   { href: '/preuves',    label: 'Dossier de preuves',     icon: FileSearch,    roles: ['admin', 'manager'] },
   // « Bibliothèque » = bibliothèque documentaire vivante (/documents).
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
