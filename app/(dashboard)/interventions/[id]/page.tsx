@@ -14,7 +14,7 @@ import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
+import { formatInterventionTimeLabel, extractHHMM } from '@/lib/time/prestation-slot'
 import { listTeamConflictsForSlot } from '@/lib/scheduling/team-conflict'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
@@ -391,7 +391,12 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
           <SkipInterventionTriggerSupervisor interventionId={intervention.id} />
           {intervention.assigned_team_id && (
-            <RescheduleTrigger interventionId={intervention.id} />
+            <RescheduleTrigger
+              interventionId={intervention.id}
+              initialDate={intervention.scheduled_for ?? ''}
+              initialStartHHMM={extractHHMM(intervention.planned_start) ?? ''}
+              initialEndHHMM={extractHHMM(intervention.planned_end) ?? ''}
+            />
           )}
         </div>
       )}
