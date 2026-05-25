@@ -62,6 +62,22 @@ function fmtPct(p: number | null): string {
   return `${p.toFixed(0)}%`
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  manager: 'Manager',
+  chef_equipe: 'Chef d’équipe',
+  inconnu: '?',
+}
+
+/** Ventilation PAR RÔLE (jamais nommée) : « Manager 40 · Chef 0 ». */
+function roleBreakdown(byRole: Record<string, number>): string {
+  const parts = Object.entries(byRole)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([role, n]) => `${ROLE_LABELS[role] ?? role} ${n}`)
+  return parts.join(' · ')
+}
+
 export default async function AdminObservationPage({
   searchParams,
 }: {
@@ -174,7 +190,7 @@ export default async function AdminObservationPage({
           {snap.engineHealth.map((s) => (
             <div
               key={s.kind}
-              className={`rounded-md border px-3 py-2 flex items-center justify-between gap-2 ${
+              className={`rounded-md border px-3 py-2 ${
                 s.valence === 'fragile'
                   ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
                   : s.valence === 'sain'
@@ -182,11 +198,16 @@ export default async function AdminObservationPage({
                     : 'border-border bg-background'
               }`}
             >
-              <span className="text-xs min-w-0 truncate">{s.label}</span>
-              <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
-                produit <strong className="text-foreground">{s.count}</strong> · vu{' '}
-                <strong className="text-foreground">{s.shown}</strong>
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs min-w-0 truncate">{s.label}</span>
+                <span className="text-[11px] tabular-nums text-muted-foreground shrink-0">
+                  produit <strong className="text-foreground">{s.count}</strong> · vu{' '}
+                  <strong className="text-foreground">{s.shown}</strong>
+                </span>
+              </div>
+              {s.shown > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">{roleBreakdown(s.shownByRole)}</p>
+              )}
             </div>
           ))}
         </div>
@@ -211,17 +232,22 @@ export default async function AdminObservationPage({
           {snap.menuAdoption.map((m) => (
             <div
               key={m.href}
-              className={`rounded-md border px-3 py-2 flex items-center justify-between gap-2 ${
+              className={`rounded-md border px-3 py-2 ${
                 m.count === 0
                   ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
                   : 'border-border bg-background'
               }`}
             >
-              <span className="text-xs truncate">
-                {m.label}
-                {m.count === 0 && <span className="text-amber-700 dark:text-amber-300"> · jamais ouvert</span>}
-              </span>
-              <span className="text-sm font-semibold tabular-nums">{m.count}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs truncate">
+                  {m.label}
+                  {m.count === 0 && <span className="text-amber-700 dark:text-amber-300"> · jamais ouvert</span>}
+                </span>
+                <span className="text-sm font-semibold tabular-nums">{m.count}</span>
+              </div>
+              {m.count > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">{roleBreakdown(m.byRole)}</p>
+              )}
             </div>
           ))}
         </div>

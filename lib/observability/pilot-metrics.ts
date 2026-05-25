@@ -97,6 +97,8 @@ export interface EngineHealthItem {
   count: number
   /** Fois où ce type a été AFFICHÉ sur le dashboard (impressions, période). */
   shown: number
+  /** Impressions ventilées par RÔLE (jamais par personne nommée). */
+  shownByRole: Record<string, number>
 }
 
 // Couche A — Adoption des menus : « quelles surfaces servent / sont mortes ? ».
@@ -105,6 +107,8 @@ export interface MenuUsage {
   href: string
   label: string
   count: number
+  /** Visites ventilées par RÔLE (admin / manager / chef_equipe) — jamais nommé. */
+  byRole: Record<string, number>
 }
 
 export interface AlertSignal {
@@ -143,6 +147,20 @@ function avg(values: number[]): number | null {
 
 function countMatches(strings: string[], regex: RegExp): number {
   return strings.filter((s) => regex.test(s.toLowerCase())).length
+}
+
+/** Rôle par user_id (admin/manager/chef_equipe). Pour ventiler PAR RÔLE,
+ *  jamais par personne nommée. */
+async function rolesFor(userIds: Array<string | null>): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  const ids = Array.from(new Set(userIds.filter((x): x is string => !!x)))
+  if (ids.length === 0) return map
+  const admin = createAdminClient()
+  const { data } = await admin.from('users').select('id, role').in('id', ids)
+  for (const r of (data ?? []) as Array<{ id: string; role: string | null }>) {
+    if (r.role) map.set(r.id, r.role)
+  }
+  return map
 }
 
 // ─── Volumes briefs ─────────────────────────────────────────────────────────
@@ -353,16 +371,27 @@ async function getEngineHealth(periodStart: string): Promise<EngineHealthItem[]>
   // (activity_logs entity_type='signal' action='shown', metadata.kinds[]).
   const [signals, impressions] = await Promise.all([
     collectMemorySignals().catch(() => []),
-    admin.from('activity_logs').select('metadata')
+    admin.from('activity_logs').select('user_id, metadata')
       .eq('entity_type', 'signal').eq('action', 'shown').gte('created_at', periodStart),
   ])
+  const impRows = (impressions.data ?? []) as Array<{ user_id: string | null; metadata: { kinds?: unknown } | null }>
+  const roleByUser = await rolesFor(impRows.map((r) => r.user_id))
+
   const counts = new Map<string, number>()
   for (const s of signals) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1)
+
   const shownCounts = new Map<string, number>()
-  for (const r of (impressions.data ?? []) as Array<{ metadata: { kinds?: unknown } | null }>) {
+  const shownRole = new Map<string, Map<string, number>>()
+  for (const r of impRows) {
     const kinds = r.metadata?.kinds
-    if (Array.isArray(kinds)) {
-      for (const k of kinds) if (typeof k === 'string') shownCounts.set(k, (shownCounts.get(k) ?? 0) + 1)
+    if (!Array.isArray(kinds)) continue
+    const role = (r.user_id && roleByUser.get(r.user_id)) || 'inconnu'
+    for (const k of kinds) {
+      if (typeof k !== 'string') continue
+      shownCounts.set(k, (shownCounts.get(k) ?? 0) + 1)
+      if (!shownRole.has(k)) shownRole.set(k, new Map())
+      const rm = shownRole.get(k)!
+      rm.set(role, (rm.get(role) ?? 0) + 1)
     }
   }
   return (Object.keys(SIGNAL_REGISTRY) as Array<keyof typeof SIGNAL_REGISTRY>).map((kind) => {
@@ -374,6 +403,7 @@ async function getEngineHealth(periodStart: string): Promise<EngineHealthItem[]>
       valence: meta.valence,
       count: counts.get(kind) ?? 0,
       shown: shownCounts.get(kind) ?? 0,
+      shownByRole: Object.fromEntries(shownRole.get(kind) ?? []),
     }
   })
 }
@@ -384,24 +414,38 @@ async function getMenuAdoption(periodStart: string): Promise<MenuUsage[]> {
   const admin = createAdminClient()
   const { data } = await admin
     .from('activity_logs')
-    .select('metadata')
+    .select('user_id, metadata')
     .eq('entity_type', 'page')
     .eq('action', 'view')
     .gte('created_at', periodStart)
+  const rows = (data ?? []) as Array<{ user_id: string | null; metadata: { route?: string } | null }>
+  const roleByUser = await rolesFor(rows.map((r) => r.user_id))
 
-  const counts = new Map<string, number>()
-  for (const r of (data ?? []) as Array<{ metadata: { route?: string } | null }>) {
+  // route -> total, route -> (role -> count)
+  const total = new Map<string, number>()
+  const roleByRoute = new Map<string, Map<string, number>>()
+  for (const r of rows) {
     const route = r.metadata?.route
-    if (typeof route === 'string') counts.set(route, (counts.get(route) ?? 0) + 1)
+    if (typeof route !== 'string') continue
+    total.set(route, (total.get(route) ?? 0) + 1)
+    const role = (r.user_id && roleByUser.get(r.user_id)) || 'inconnu'
+    if (!roleByRoute.has(route)) roleByRoute.set(route, new Map())
+    const rm = roleByRoute.get(route)!
+    rm.set(role, (rm.get(role) ?? 0) + 1)
   }
 
-  // Croise avec les menus NAV : compte les visites du menu + sous-routes.
+  // Croise avec les menus NAV : visites du menu + sous-routes, ventilées par rôle.
   return NAV.map((item) => {
     let count = 0
-    for (const [route, c] of counts) {
-      if (route === item.href || route.startsWith(item.href + '/')) count += c
+    const byRole: Record<string, number> = {}
+    for (const [route, c] of total) {
+      if (route === item.href || route.startsWith(item.href + '/')) {
+        count += c
+        const rm = roleByRoute.get(route)
+        if (rm) for (const [role, rc] of rm) byRole[role] = (byRole[role] ?? 0) + rc
+      }
     }
-    return { href: item.href, label: item.label, count }
+    return { href: item.href, label: item.label, count, byRole }
   }).sort((a, b) => a.count - b.count) // menus morts (0) en premier
 }
 
