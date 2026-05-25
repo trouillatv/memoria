@@ -273,7 +273,7 @@ export default async function TenderDetailPage({
                 <TenderClientCapitalCard capital={clientCapital} />
                 {/* AO-1 L3 (Vincent 2026-05-21) — sources [doc:id] cliquables
                     sous la synthèse, vers /documents/[id]. */}
-                <TenderDocumentSourcesSection sources={documentSources ?? []} />
+                <TenderDocumentSourcesSection sources={documentSources ?? []} tenderId={id} />
               </>
             )}
             {view === 'analyse' && analysis && (
@@ -281,7 +281,7 @@ export default async function TenderDetailPage({
                 <TenderAnalyseDetaillee analysis={analysis} />
                 {/* AO-1 L3 (Vincent 2026-05-21) — sources [doc:id] cliquables
                     aussi visibles dans la vue analyse détaillée. */}
-                <TenderDocumentSourcesSection sources={documentSources ?? []} />
+                <TenderDocumentSourcesSection sources={documentSources ?? []} tenderId={id} />
               </>
             )}
             {view === 'memoire' && analysis && (

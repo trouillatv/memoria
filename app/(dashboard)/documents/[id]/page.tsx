@@ -34,8 +34,15 @@ export default async function DocumentViewerPage({
   params,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ from?: string }>
 }) {
   const { id } = await params
+  // Retour contextuel : si on vient d'un AO (?from=/tenders/...), on y revient.
+  // Validé interne (commence par "/" mais pas "//") pour éviter tout open-redirect.
+  const { from } = await searchParams
+  const safeFrom = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : null
+  const backHref = safeFrom ?? '/documents'
+  const backLabel = safeFrom?.startsWith('/tenders/') ? "Retour à l'appel d'offres" : 'Bibliothèque documentaire'
 
   // Auth + rôle
   const supabase = await createServerClient()
@@ -82,10 +89,10 @@ export default async function DocumentViewerPage({
   return (
     <div className="space-y-6 max-w-4xl">
       <Link
-        href="/documents"
+        href={backHref}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
-        ← Bibliothèque documentaire
+        ← {backLabel}
       </Link>
 
       <header className="space-y-3">

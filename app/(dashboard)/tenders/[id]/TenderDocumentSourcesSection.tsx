@@ -24,9 +24,10 @@ function iconFor(documentType: string | null) {
 
 interface Props {
   sources: TenderDocumentSource[]
+  tenderId: string
 }
 
-export function TenderDocumentSourcesSection({ sources }: Props) {
+export function TenderDocumentSourcesSection({ sources, tenderId }: Props) {
   if (sources.length === 0) return null
 
   return (
@@ -44,7 +45,7 @@ export function TenderDocumentSourcesSection({ sources }: Props) {
             return (
               <li key={s.id} className="px-6 py-3">
                 <Link
-                  href={`/documents/${s.id}`}
+                  href={`/documents/${s.id}?from=/tenders/${tenderId}`}
                   className="flex items-start gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
                 >
                   <Icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
