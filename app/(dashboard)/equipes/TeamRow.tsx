@@ -47,7 +47,7 @@ export async function TeamRow({ team, availableUsers }: Props) {
     <div
       data-slot="team-row"
       data-team-id={team.id}
-      className="flex flex-col gap-3 border-t px-4 py-4 first:border-t-0 sm:flex-row sm:items-start sm:justify-between transition-colors duration-200 hover:bg-muted/30"
+      className="flex flex-col gap-3 border-t px-4 py-4 first:border-t-0 sm:flex-row sm:items-start sm:justify-between transition-colors duration-200 hover:bg-muted/60"
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
