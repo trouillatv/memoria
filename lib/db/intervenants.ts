@@ -172,6 +172,8 @@ export interface IntervenantListRow {
   role: string
   teams: Array<{ team_id: string; team_name: string; team_color: string | null }>
   sitesKnown: number
+  /** Noms des lieux les plus suivis (max 2), par fréquence — « territoires connus ». */
+  topSites: string[]
   interventionsParticipated: number
   lastParticipationDate: string | null
 }
@@ -703,7 +705,8 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
 
   // 3) Participations agrégées via team_members → assigned_team_id
   // (fix « tout à 0 » Vincent 2026-05-21 : intervention_participants peu peuplée).
-  type Stats = { sites: Set<string>; count: number; lastAt: string | null }
+  // siteFreq garde le nom + la fréquence par site → « territoires connus ».
+  type Stats = { siteFreq: Map<string, { name: string; count: number }>; count: number; lastAt: string | null }
   const statsByUser = new Map<string, Stats>()
 
   // Reverse map team_id → user_ids (pour distribuer les counts des interventions)
@@ -725,7 +728,7 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
         scheduled_for,
         mission:missions!inner(
           name,
-          site:sites!inner(id)
+          site:sites!inner(id, name)
         )
       `)
       .in('assigned_team_id', teamIdsAll)
@@ -739,13 +742,15 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
       const mission = pickOne(row.mission) as { name?: string; site?: unknown } | null
       if (!mission?.name) continue
       if (isSystemMissionName(mission.name)) continue
-      const site = pickOne(mission.site) as { id?: string } | null
+      const site = pickOne(mission.site) as { id?: string; name?: string } | null
       if (!site?.id) continue
 
       const userIdsOfTeam = teamMembersByTeam.get(row.assigned_team_id) ?? []
       for (const uid of userIdsOfTeam) {
-        const stats = statsByUser.get(uid) ?? { sites: new Set<string>(), count: 0, lastAt: null }
-        stats.sites.add(site.id)
+        const stats = statsByUser.get(uid) ?? { siteFreq: new Map<string, { name: string; count: number }>(), count: 0, lastAt: null }
+        const prev = stats.siteFreq.get(site.id)
+        if (prev) prev.count += 1
+        else stats.siteFreq.set(site.id, { name: site.name ?? '—', count: 1 })
         stats.count += 1
         if (row.scheduled_for && (!stats.lastAt || row.scheduled_for > stats.lastAt)) {
           stats.lastAt = row.scheduled_for
@@ -756,14 +761,20 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
   }
 
   return users.map<IntervenantListRow>((u) => {
-    const stats = statsByUser.get(u.id) ?? { sites: new Set<string>(), count: 0, lastAt: null }
+    const stats = statsByUser.get(u.id) ?? { siteFreq: new Map<string, { name: string; count: number }>(), count: 0, lastAt: null }
+    // Top 2 lieux par fréquence (puis alphabétique) — « territoires connus ».
+    const topSites = Array.from(stats.siteFreq.values())
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+      .slice(0, 2)
+      .map((s) => s.name)
     return {
       id: u.id,
       full_name: u.full_name,
       email: u.email,
       role: u.role,
       teams: teamsByUser.get(u.id) ?? [],
-      sitesKnown: stats.sites.size,
+      sitesKnown: stats.siteFreq.size,
+      topSites,
       interventionsParticipated: stats.count,
       lastParticipationDate: stats.lastAt,
     }
