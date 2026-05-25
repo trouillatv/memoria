@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
-import { getDocument } from '@/lib/db/documents'
+import { getDocument, getDocumentLinkLabels } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
 import { DocumentActions } from './DocumentActions'
@@ -74,6 +74,15 @@ export default async function DocumentViewerPage({
     .maybeSingle()
   const collectionName = (col as { name?: string } | null)?.name ?? '—'
 
+  // Rattachements polymorphes résolus en libellés (« Contrat X · Client Y »).
+  const docLinks = (await getDocumentLinkLabels([id])).get(id) ?? []
+  const TARGET_LABEL: Record<string, string> = {
+    contract: 'Contrat', site: 'Site', client: 'Client', tender: 'AO', team: 'Équipe',
+  }
+  const TIER_LABEL: Record<string, string> = {
+    vivante: 'Vivante', consultable: 'Consultable', froide: 'Froide',
+  }
+
   // Audit OUVERTURE — une fois par chargement de page (pas en boucle render).
   await logAuditEvent({
     userId: user.id,
@@ -136,6 +145,20 @@ export default async function DocumentViewerPage({
           <div>
             <dt className="text-xs text-muted-foreground">Cycle de vie</dt>
             <dd className="font-medium">{doc.status}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Couche mémoire</dt>
+            <dd className="font-medium">{doc.memory_tier ? (TIER_LABEL[doc.memory_tier] ?? doc.memory_tier) : '—'}</dd>
+          </div>
+          <div className="col-span-2 md:col-span-3">
+            <dt className="text-xs text-muted-foreground">Rattaché à</dt>
+            <dd className="font-medium">
+              {docLinks.length === 0 ? (
+                <span className="text-muted-foreground italic font-normal">aucun rattachement</span>
+              ) : (
+                docLinks.map((l) => `${TARGET_LABEL[l.type] ?? l.type} ${l.label}`).join(' · ')
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Effet</dt>

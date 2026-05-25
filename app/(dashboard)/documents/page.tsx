@@ -5,6 +5,7 @@ import { getUserRoleById } from '@/lib/db/users'
 import {
   listDocumentCollections,
   listDocumentsByCollection,
+  getDocumentLinkLabels,
 } from '@/lib/db/documents'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
@@ -18,6 +19,23 @@ import { DocumentRowActions } from './DocumentRowActions'
 // Bibliothèque documentaire — UI phase 4a. Lecture/organisation/upload par
 // un humain. ZÉRO IA (pas de recall, pas de résumé, pas d'injection agents).
 // Role-gaté manager/admin (cohérent visionneuse).
+
+const TIER_LABEL: Record<string, string> = {
+  vivante: 'Vivante',
+  consultable: 'Consultable',
+  froide: 'Froide',
+}
+const TARGET_LABEL: Record<string, string> = {
+  contract: 'Contrat',
+  site: 'Site',
+  client: 'Client',
+  tender: 'AO',
+  team: 'Équipe',
+}
+function fmtAddedDate(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })
+}
 
 export default async function DocumentsPage({
   searchParams,
@@ -45,6 +63,12 @@ export default async function DocumentsPage({
       docs: await listDocumentsByCollection(c.id),
     })),
   )
+  // Tri par date d'ajout (plus récent en haut) dans chaque collection.
+  for (const c of byCollection) {
+    c.docs.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+  }
+  // Rattachements résolus en libellés, en batch (« Contrat X · Client Y »).
+  const linkLabels = await getDocumentLinkLabels(byCollection.flatMap((c) => c.docs.map((d) => d.id)))
 
   // Entités rattachables chargées EN BASE (jamais d'UUID à saisir).
   // Bornées (pilote) ; intervention/tenant hors picker (cf. form).
@@ -114,7 +138,7 @@ export default async function DocumentsPage({
                   {docs.map((d) => (
                     <li
                       key={d.id}
-                      className="flex items-center justify-between gap-3 py-2 text-sm flex-wrap"
+                      className="flex items-start justify-between gap-3 py-2 text-sm flex-wrap"
                     >
                       <span className="min-w-0">
                         <Link
@@ -125,8 +149,16 @@ export default async function DocumentsPage({
                         </Link>
                         <span className="text-xs text-muted-foreground">
                           {' '}· {d.document_type}
+                          {d.memory_tier && <>{' '}· {TIER_LABEL[d.memory_tier] ?? d.memory_tier}</>}
                           {' '}· {analysisStatusLabel(d.analysis_status)}
+                          {' '}· ajouté le {fmtAddedDate(d.created_at)}
                         </span>
+                        {(linkLabels.get(d.id)?.length ?? 0) > 0 && (
+                          <span className="block text-[11px] text-muted-foreground/90 mt-0.5">
+                            Rattaché à :{' '}
+                            {linkLabels.get(d.id)!.map((l) => `${TARGET_LABEL[l.type] ?? l.type} ${l.label}`).join(' · ')}
+                          </span>
+                        )}
                       </span>
                       <DocumentRowActions
                         documentId={d.id}

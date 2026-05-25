@@ -185,6 +185,65 @@ export async function listDocumentLinks(documentId: string): Promise<DbDocumentL
   return (data ?? []) as DbDocumentLink[]
 }
 
+// --- Rattachements résolus en libellés (« Contrat X · Client Y ») ----------
+// Modèle : un document = 1 nœud, document_links polymorphe → N rattachements.
+// Batch : 1 requête liens + 1 requête par type d'entité (jamais N×M).
+
+export interface DocLinkLabel {
+  type: DocumentTargetType
+  label: string
+}
+
+const TARGET_LABEL_SOURCE: Partial<Record<DocumentTargetType, { table: string; nameCol: string }>> = {
+  contract: { table: 'contracts', nameCol: 'name' },
+  site: { table: 'sites', nameCol: 'name' },
+  client: { table: 'clients', nameCol: 'name' },
+  tender: { table: 'tenders', nameCol: 'title' },
+  team: { table: 'teams', nameCol: 'name' },
+}
+
+export async function getDocumentLinkLabels(
+  documentIds: string[],
+): Promise<Map<string, DocLinkLabel[]>> {
+  const out = new Map<string, DocLinkLabel[]>()
+  if (documentIds.length === 0) return out
+  const supabase = createAdminClient()
+
+  const { data: links } = await supabase
+    .from('document_links')
+    .select('document_id, target_type, target_id')
+    .in('document_id', documentIds)
+  const rows = (links ?? []) as Array<{ document_id: string; target_type: DocumentTargetType; target_id: string }>
+  if (rows.length === 0) return out
+
+  // Collecte des target_id par type, puis résolution batch des noms.
+  const idsByType = new Map<DocumentTargetType, Set<string>>()
+  for (const r of rows) {
+    if (!idsByType.has(r.target_type)) idsByType.set(r.target_type, new Set())
+    idsByType.get(r.target_type)!.add(r.target_id)
+  }
+  const labelByKey = new Map<string, string>() // `${type}:${id}` -> label
+  for (const [type, ids] of idsByType) {
+    const src = TARGET_LABEL_SOURCE[type]
+    if (!src) continue
+    const { data } = await supabase
+      .from(src.table)
+      .select(`id, ${src.nameCol}`)
+      .in('id', Array.from(ids))
+    for (const d of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+      labelByKey.set(`${type}:${d.id as string}`, (d[src.nameCol] as string) ?? '—')
+    }
+  }
+
+  for (const r of rows) {
+    const label = labelByKey.get(`${r.target_type}:${r.target_id}`)
+    if (!label) continue // entité supprimée / introuvable : on n'affiche pas un UUID
+    if (!out.has(r.document_id)) out.set(r.document_id, [])
+    out.get(r.document_id)!.push({ type: r.target_type, label })
+  }
+  return out
+}
+
 // --- Pipeline (I) : statut d'analyse ---------------------------------------
 
 /**
