@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Plus, Upload } from 'lucide-react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import {
@@ -7,18 +8,12 @@ import {
   listDocumentsByCollection,
   getDocumentLinkLabels,
 } from '@/lib/db/documents'
-import { listContracts } from '@/lib/db/contracts'
-import { listSites, listClients } from '@/lib/db/sites'
-import { listTenders } from '@/lib/db/tenders'
-import { listTeams } from '@/lib/db/teams'
 import { analysisStatusLabel } from '@/lib/documents/labels'
-import { NewCollectionForm } from './NewCollectionForm'
-import { UploadDocumentForm } from './UploadDocumentForm'
 import { DocumentRowActions } from './DocumentRowActions'
 
-// Bibliothèque documentaire — UI phase 4a. Lecture/organisation/upload par
-// un humain. ZÉRO IA (pas de recall, pas de résumé, pas d'injection agents).
-// Role-gaté manager/admin (cohérent visionneuse).
+// Bibliothèque documentaire — CONSULTATION uniquement (split de surface C).
+// L'ajout vit ailleurs : /documents/ajouter (unitaire) · /documents/import (lot).
+// ZÉRO IA (pas de recall, pas de résumé). Role-gaté manager/admin.
 
 const TIER_LABEL: Record<string, string> = {
   vivante: 'Vivante',
@@ -37,26 +32,14 @@ function fmtAddedDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
-export default async function DocumentsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ target_type?: string; target_id?: string }>
-}) {
+export default async function DocumentsPage() {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) notFound()
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') notFound()
 
-  const sp = await searchParams
-  const [collections, contracts, sites, clients, tenders, teams] = await Promise.all([
-    listDocumentCollections(),
-    listContracts(),
-    listSites(),
-    listClients(),
-    listTenders(),
-    listTeams(),
-  ])
+  const collections = await listDocumentCollections()
   const byCollection = await Promise.all(
     collections.map(async (c) => ({
       collection: c,
@@ -70,49 +53,33 @@ export default async function DocumentsPage({
   // Rattachements résolus en libellés, en batch (« Contrat X · Client Y »).
   const linkLabels = await getDocumentLinkLabels(byCollection.flatMap((c) => c.docs.map((d) => d.id)))
 
-  // Entités rattachables chargées EN BASE (jamais d'UUID à saisir).
-  // Bornées (pilote) ; intervention/tenant hors picker (cf. form).
-  const linkTargets: Record<string, { id: string; label: string }[]> = {
-    contract: contracts.map((c) => ({ id: c.id, label: c.name })),
-    site: sites.map((s) => ({ id: s.id, label: s.name })),
-    client: clients.map((c) => ({ id: c.id, label: c.name })),
-    tender: tenders.map((t) => ({ id: t.id, label: t.title })),
-    team: teams.map((t) => ({ id: t.id, label: t.name })),
-  }
-
   return (
     <div className="space-y-6 max-w-4xl">
-      <header>
-        <h1 className="text-2xl font-semibold">Bibliothèque documentaire</h1>
-        <p className="text-sm text-muted-foreground">
-          Un document est toujours classé dans une collection et relisible à
-          la source.
-        </p>
-      </header>
-
-      <section className="rounded-lg border bg-card p-4">
-        <NewCollectionForm />
-      </section>
-
-      <section className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Téléverser un document
-          </h2>
+      <header className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold">Bibliothèque documentaire</h1>
+          <p className="text-sm text-muted-foreground">
+            Consultation. Chaque document est classé dans une collection et
+            relisible à la source.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/documents/ajouter"
+            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 text-white px-3 h-9 text-sm font-medium hover:bg-brand-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Ajouter un document
+          </Link>
           <Link
             href="/documents/import"
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 h-8 text-xs font-medium hover:bg-muted/50 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 h-9 text-sm font-medium hover:bg-muted/50 transition-colors"
           >
+            <Upload className="h-4 w-4" />
             Importer par lot
           </Link>
         </div>
-        <UploadDocumentForm
-          collections={collections.map((c) => ({ id: c.id, name: c.name }))}
-          linkTargets={linkTargets}
-          prefillTargetType={sp.target_type}
-          prefillTargetId={sp.target_id}
-        />
-      </section>
+      </header>
 
       <section className="space-y-4">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -120,7 +87,7 @@ export default async function DocumentsPage({
         </h2>
         {collections.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border p-4">
-            Aucune collection. Crée la première ci-dessus.
+            Aucune collection. Crée la première via « Ajouter un document ».
           </p>
         ) : (
           byCollection.map(({ collection, docs }) => (
