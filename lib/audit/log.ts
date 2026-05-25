@@ -34,6 +34,7 @@ export type AuditAction =
   | 'evidence_inserted'
   | 'opened'
   | 'downloaded'
+  | 'linked'
   // Vincent 2026-05-22 — consultation de pages sensibles (Intervenants, Continuité).
   | 'consulted'
 

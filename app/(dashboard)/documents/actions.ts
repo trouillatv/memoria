@@ -363,3 +363,54 @@ export async function deleteDocumentAction(
   revalidatePath('/documents')
   return { ok: true }
 }
+
+// ===========================================================================
+// Rattacher un document à une entité (+ rattacher) — manager+ only
+// ===========================================================================
+//
+// Modèle : document unique + document_links polymorphe. addDocumentLink est
+// idempotent (upsert onConflict) → ré-rattacher au même cible = no-op.
+
+const addLinkSchema = z.object({
+  document_id: z.string().uuid(),
+  target_type: z.enum(['contract', 'site', 'client', 'tender', 'team']),
+  target_id: z.string().uuid(),
+})
+
+export async function addDocumentLinkAction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  let userId: string
+  try {
+    userId = await requireManagerOrAdmin()
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
+  }
+
+  const parsed = addLinkSchema.safeParse({
+    document_id: formData.get('document_id'),
+    target_type: formData.get('target_type'),
+    target_id: formData.get('target_id'),
+  })
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+
+  const doc = await getDocument(parsed.data.document_id)
+  if (!doc || doc.deleted_at) return { ok: false, error: 'Document introuvable' }
+
+  try {
+    await addDocumentLink(parsed.data.document_id, parsed.data.target_type, parsed.data.target_id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Rattachement échoué' }
+  }
+
+  await logAuditEvent({
+    userId,
+    entityType: 'document',
+    entityId: parsed.data.document_id,
+    action: 'linked',
+    metadata: { target_type: parsed.data.target_type, target_id: parsed.data.target_id },
+  }).catch(() => {})
+
+  revalidatePath(`/documents/${parsed.data.document_id}`)
+  return { ok: true }
+}

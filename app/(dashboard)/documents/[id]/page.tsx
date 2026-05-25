@@ -4,9 +4,14 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getDocument, getDocumentLinkLabels } from '@/lib/db/documents'
+import { listContracts } from '@/lib/db/contracts'
+import { listSites, listClients } from '@/lib/db/sites'
+import { listTenders } from '@/lib/db/tenders'
+import { listTeams } from '@/lib/db/teams'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
 import { DocumentActions } from './DocumentActions'
+import { AddLinkToDocument } from './AddLinkToDocument'
 
 // Visionneuse documentaire — phase 3 (spec 2026-05-19).
 // Doctrine : artefact mémoire relisible + audité, role-gaté par
@@ -76,6 +81,17 @@ export default async function DocumentViewerPage({
 
   // Rattachements polymorphes résolus en libellés (« Contrat X · Client Y »).
   const docLinks = (await getDocumentLinkLabels([id])).get(id) ?? []
+  // Entités rattachables (pour « + rattacher »), chargées en base.
+  const [lContracts, lSites, lClients, lTenders, lTeams] = await Promise.all([
+    listContracts(), listSites(), listClients(), listTenders(), listTeams(),
+  ])
+  const linkTargets: Record<string, { id: string; label: string }[]> = {
+    contract: lContracts.map((c) => ({ id: c.id, label: c.name })),
+    site: lSites.map((s) => ({ id: s.id, label: s.name })),
+    client: lClients.map((c) => ({ id: c.id, label: c.name })),
+    tender: lTenders.map((t) => ({ id: t.id, label: t.title })),
+    team: lTeams.map((t) => ({ id: t.id, label: t.name })),
+  }
   const TARGET_LABEL: Record<string, string> = {
     contract: 'Contrat', site: 'Site', client: 'Client', tender: 'AO', team: 'Équipe',
   }
@@ -159,6 +175,11 @@ export default async function DocumentViewerPage({
                 docLinks.map((l) => `${TARGET_LABEL[l.type] ?? l.type} ${l.label}`).join(' · ')
               )}
             </dd>
+            {(role === 'admin' || role === 'manager') && (
+              <div className="mt-2">
+                <AddLinkToDocument documentId={doc.id} linkTargets={linkTargets} />
+              </div>
+            )}
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Effet</dt>
