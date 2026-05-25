@@ -148,7 +148,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
       <button
         type="button"
         onClick={() => setStep('form')}
-        className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted/50 transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium hover:bg-primary/80 transition-colors"
       >
         <Plus className="h-4 w-4" />
         Nouveau site
