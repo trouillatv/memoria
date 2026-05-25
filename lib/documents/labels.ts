@@ -14,6 +14,22 @@ export function analysisStatusLabel(s: DocumentAnalysisStatus | string): string 
   return map[s] ?? s
 }
 
+// Marqueur d'indexation (embedding) explicite : croise le statut d'analyse et
+// la couche mémoire. Une couche 'froide' = stockée SANS embedding → « Non
+// indexé », même si analysis_status='ready'. Évite le « Prêt » trompeur.
+export function indexationState(
+  analysisStatus: DocumentAnalysisStatus | string,
+  memoryTier: 'vivante' | 'consultable' | 'froide' | null | undefined,
+): { label: string; indexed: boolean | null } {
+  if (analysisStatus === 'failed') return { label: 'Indexation échouée', indexed: false }
+  if (analysisStatus === 'pending' || analysisStatus === 'ocr' || analysisStatus === 'extracting' || analysisStatus === 'chunking') {
+    return { label: 'Indexation…', indexed: null }
+  }
+  // Terminal ('ready') : indexé sauf si volontairement froide (non embeddé).
+  if (memoryTier === 'froide') return { label: 'Non indexé', indexed: false }
+  return { label: 'Indexé', indexed: true }
+}
+
 export const DOCUMENT_TYPE_OPTIONS: { value: DocumentType; label: string }[] = [
   { value: 'contrat', label: 'Contrat' },
   { value: 'avenant', label: 'Avenant' },

@@ -8,7 +8,7 @@ import {
   listDocumentsByCollection,
   getDocumentLinkLabels,
 } from '@/lib/db/documents'
-import { analysisStatusLabel } from '@/lib/documents/labels'
+import { indexationState } from '@/lib/documents/labels'
 import { DocumentRowActions } from './DocumentRowActions'
 import { NewCollectionForm } from './NewCollectionForm'
 
@@ -117,7 +117,7 @@ export default async function DocumentsPage() {
                         <span className="text-xs text-muted-foreground">
                           {' '}· {d.document_type}
                           {d.memory_tier && <>{' '}· {TIER_LABEL[d.memory_tier] ?? d.memory_tier}</>}
-                          {' '}· {analysisStatusLabel(d.analysis_status)}
+                          {' '}· {indexationState(d.analysis_status, d.memory_tier).label}
                           {' '}· ajouté le {fmtAddedDate(d.created_at)}
                         </span>
                         {(linkLabels.get(d.id)?.length ?? 0) > 0 && (

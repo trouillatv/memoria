@@ -8,6 +8,7 @@ import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
 import { listTeams } from '@/lib/db/teams'
+import { indexationState } from '@/lib/documents/labels'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
 import { DocumentActions } from './DocumentActions'
@@ -165,6 +166,10 @@ export default async function DocumentViewerPage({
           <div>
             <dt className="text-xs text-muted-foreground">Couche mémoire</dt>
             <dd className="font-medium">{doc.memory_tier ? (TIER_LABEL[doc.memory_tier] ?? doc.memory_tier) : '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Indexation</dt>
+            <dd className="font-medium">{indexationState(doc.analysis_status, doc.memory_tier).label}</dd>
           </div>
           <div className="col-span-2 md:col-span-3">
             <dt className="text-xs text-muted-foreground">Rattaché à</dt>
