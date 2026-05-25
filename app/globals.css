@@ -153,6 +153,48 @@
     --reading-label:  239 68% 78%;
   }
 
+  /* Thème « Ocre » — option opt-in (sélecteur), pas le défaut. Famille CLAIRE,
+     fond ocre léger / marron clair, cartes blanc chaud, accent pétrole. */
+  .ocre {
+    --background: 36 34% 90%;
+    --foreground: 28 14% 20%;
+    --card: 40 44% 96%;
+    --card-foreground: 28 14% 20%;
+    --popover: 40 44% 96%;
+    --popover-foreground: 28 14% 20%;
+    --primary: 189 53% 30%;
+    --primary-foreground: 40 40% 97%;
+    --secondary: 36 30% 87%;
+    --secondary-foreground: 28 14% 24%;
+    --muted: 36 30% 88%;
+    --muted-foreground: 30 12% 42%;
+    --accent: 38 36% 85%;
+    --accent-foreground: 28 14% 24%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 40 40% 97%;
+    --border: 36 24% 82%;
+    --input: 36 24% 82%;
+    --ring: 189 50% 38%;
+    --radius: 0.75rem;
+    --chart-1: 189 53% 32%;
+    --chart-2: 187 42% 46%;
+    --chart-3: 192 38% 38%;
+    --chart-4: 185 36% 58%;
+    --chart-5: 189 28% 72%;
+    --sidebar: 36 32% 88%;
+    --sidebar-foreground: 28 14% 20%;
+    --sidebar-primary: 189 53% 30%;
+    --sidebar-primary-foreground: 40 40% 97%;
+    --sidebar-accent: 38 36% 85%;
+    --sidebar-accent-foreground: 28 14% 24%;
+    --sidebar-border: 36 24% 82%;
+    --sidebar-ring: 189 50% 38%;
+    /* Cognition — indigo, inchangé (cohérent avec le défaut). */
+    --reading-border: 239 68% 66%;
+    --reading-bg:     239 84% 67%;
+    --reading-label:  239 84% 48%;
+  }
+
   * {
     border-color: hsl(var(--border));
   }

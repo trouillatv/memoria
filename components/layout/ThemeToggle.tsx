@@ -19,6 +19,10 @@ export function ThemeToggle() {
         <DropdownMenuItem onClick={() => setTheme('light')}>Clair</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('dark')}>Sombre</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('system')}>Système</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme('ocre')} className="gap-2">
+          <span aria-hidden className="h-3 w-3 rounded-full border border-black/10 bg-[hsl(36_34%_82%)]" />
+          Ocre
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
