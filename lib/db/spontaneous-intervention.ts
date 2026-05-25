@@ -109,8 +109,9 @@ export async function findOrCreateSpontaneousIntervention(
       scheduled_at: scheduledAt,
       scheduled_for: today,
       slot,
-      // V6.1 — champ honnête de la prestation (= ancrage canonique).
-      planned_start: scheduledAt,
+      // V6.2 — heure HONNÊTE : l'instant réel du dépôt (now), pas l'ancrage
+      // créneau. Le slot reste dérivé de l'heure courante (bucket grille).
+      planned_start: now.toISOString(),
       team: [],
       assigned_team_id: userTeamIds[0],
       status: 'completed' satisfies InterventionStatus,

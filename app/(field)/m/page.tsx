@@ -7,6 +7,7 @@ import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
@@ -47,11 +48,6 @@ function formatScheduledTime(civilDate: string): { day: string; isToday: boolean
 }
 
 // V5.1 — Doctrine V2 : créneaux nommés, JAMAIS d'heures précises.
-const SLOT_LABELS: Record<string, string> = {
-  morning: 'Matin',
-  afternoon: 'Après-midi',
-  evening: 'Soir',
-}
 
 // V5.1 — Badge créneau coloré (signature visuelle descriptive du moment de
 // la journée). Teintes douces -100/-900, pas saturées alarmistes.
@@ -356,6 +352,8 @@ export default async function FieldHomePage({
                   siteName={site?.name ?? null}
                   scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
                   slot={i.slot ?? null}
+                  plannedStart={i.planned_start}
+                  plannedEnd={i.planned_end}
                   status={i.status}
                   skippedReason={i.skipped_reason}
                   primary
@@ -406,6 +404,8 @@ export default async function FieldHomePage({
                   siteName={site?.name ?? null}
                   scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
                   slot={i.slot ?? null}
+                  plannedStart={i.planned_start}
+                  plannedEnd={i.planned_end}
                   status={i.status}
                   skippedReason={i.skipped_reason}
                   primary={false}
@@ -426,6 +426,8 @@ function InterventionCard({
   siteName,
   scheduledFor,
   slot,
+  plannedStart,
+  plannedEnd,
   status,
   skippedReason,
   primary,
@@ -435,12 +437,20 @@ function InterventionCard({
   siteName: string | null
   scheduledFor: string
   slot: string | null
+  plannedStart: string | null
+  plannedEnd: string | null
   status: string
   skippedReason: string | null
   primary: boolean
 }) {
   const { day, isToday } = formatScheduledTime(scheduledFor)
-  const slotLabel = slot ? SLOT_LABELS[slot] ?? null : null
+  // V6.2 — affiche l'HEURE (précise si saisie, ancrage sinon), jamais le mot
+  // « matin ». Le slot ne sert plus qu'à la couleur du badge.
+  const slotLabel = formatInterventionTimeLabel({
+    planned_start: plannedStart,
+    planned_end: plannedEnd,
+    slot: (slot as 'morning' | 'afternoon' | 'evening' | null) ?? null,
+  })
   const slotBadgeClass = slot
     ? SLOT_BADGE_CLASSES[slot] ?? 'bg-muted text-foreground border-border'
     : 'bg-muted text-foreground border-border'
