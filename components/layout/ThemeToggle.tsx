@@ -20,6 +20,7 @@ export function ThemeToggle() {
         <DropdownMenuItem onClick={() => setTheme('dark')}>Sombre</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('system')}>Système</DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('ocre')}>Ocre</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme('petrole')}>Pétrole</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

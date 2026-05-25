@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *, .petrole *));
 
 @theme {
   /* Palette `brand-*` : RÉSERVÉE à l'identité (logo, séparateur sidebar active,
@@ -216,11 +216,69 @@
     --color-rose-300: hsl(350 72% 66%);
   }
 
+  /* Thème « Pétrole » — option opt-in, FAMILLE SOMBRE (les variantes dark: des
+     composants s'appliquent via le @custom-variant étendu plus haut).
+     « Atelier de mémoire » : graphite bleuté désaturé + accent bleu pétrole. */
+  .petrole {
+    /* Navy DÉSATURÉ (graphite bleuté), pas bleu Bic.
+       Respiration = basse saturation + cartes nettement élevées + bordures
+       quasi invisibles. Pétrole / ardoise / blanc cassé / sauge / ambre doux. */
+    --background: 213 26% 15%;
+    --foreground: 210 22% 92%;
+    --card: 211 21% 21%;
+    --card-foreground: 210 22% 93%;
+    --popover: 211 21% 24%;
+    --popover-foreground: 210 22% 93%;
+    --primary: 194 52% 53%;
+    --primary-foreground: 200 45% 11%;
+    --secondary: 212 17% 25%;
+    --secondary-foreground: 210 20% 92%;
+    --muted: 212 15% 24%;
+    --muted-foreground: 211 14% 70%;
+    --accent: 198 32% 28%;
+    --accent-foreground: 210 22% 94%;
+    --destructive: 2 58% 56%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 212 14% 27%;
+    --input: 212 14% 27%;
+    --ring: 194 52% 53%;
+    --radius: 0.75rem;
+    --chart-1: 194 52% 53%;
+    --chart-2: 158 30% 55%;
+    --chart-3: 38 70% 60%;
+    --chart-4: 210 24% 66%;
+    --chart-5: 280 35% 66%;
+    --sidebar: 214 30% 12%;
+    --sidebar-foreground: 210 20% 88%;
+    --sidebar-primary: 194 52% 53%;
+    --sidebar-primary-foreground: 200 45% 11%;
+    --sidebar-accent: 211 24% 22%;
+    --sidebar-accent-foreground: 210 22% 94%;
+    --sidebar-border: 212 15% 24%;
+    --sidebar-ring: 194 52% 53%;
+    /* Cognition — indigo lumineux (mode sombre). */
+    --reading-border: 239 68% 74%;
+    --reading-bg:     239 84% 67%;
+    --reading-label:  239 68% 78%;
+    /* Sémantique adoucie pour navy : sauge (positif), ambre doux, rouge rare. */
+    --color-emerald-400: hsl(158 34% 60%);
+    --color-emerald-500: hsl(158 32% 52%);
+    --color-emerald-600: hsl(159 30% 45%);
+    --color-amber-300:   hsl(40 72% 64%);
+    --color-amber-400:   hsl(38 74% 56%);
+    --color-amber-500:   hsl(36 76% 50%);
+  }
+
   * {
     border-color: hsl(var(--border));
   }
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+  /* Pétrole — halo diffus très léger derrière le contenu (« respiration »). */
+  .petrole body {
+    background-image: radial-gradient(75% 55% at 50% -8%, hsl(196 55% 42% / 0.10), transparent 60%);
+    background-attachment: fixed;
   }
 }
