@@ -7,6 +7,7 @@
 
 import { ShieldAlert } from 'lucide-react'
 import type { DbEngagement } from '@/types/db'
+import { CATEGORY_LABELS } from '@/lib/engagements/labels'
 
 function refLabel(ref: Record<string, unknown> | null): string {
   if (!ref) return ''
@@ -37,7 +38,7 @@ export function ContractVigilancePanel({ vigilances }: { vigilances: DbEngagemen
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium">{v.short_label}</span>
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {v.category}
+                  {CATEGORY_LABELS[v.category]}
                 </span>
                 {v.status === 'active' && (
                   <span className="ml-auto text-[10px] rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">

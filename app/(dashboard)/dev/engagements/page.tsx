@@ -1,5 +1,6 @@
 import { listAllEngagements } from '@/lib/db/engagements'
 import { listContracts } from '@/lib/db/contracts'
+import { CATEGORY_LABELS } from '@/lib/engagements/labels'
 import { notFound } from 'next/navigation'
 
 export default async function DevEngagementsPage() {
@@ -50,7 +51,7 @@ export default async function DevEngagementsPage() {
             {engagements.map((e) => (
               <li key={e.id} className="rounded border bg-card p-3 text-xs">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-mono uppercase text-[10px] text-muted-foreground">{e.category}</span>
+                  <span className="uppercase text-[10px] text-muted-foreground">{CATEGORY_LABELS[e.category]}</span>
                   <span className="font-mono uppercase text-[10px]">{e.status}</span>
                   {e.ai_confidence !== null && (
                     <span className="text-[10px] text-muted-foreground">conf. {e.ai_confidence.toFixed(2)}</span>

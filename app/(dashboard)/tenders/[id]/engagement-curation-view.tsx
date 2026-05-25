@@ -11,6 +11,7 @@ import {
 } from './engagements-actions'
 import type { DbEngagement, EngagementCategory, EngagementProofRequirement, EngagementDestination } from '@/types/db'
 import { DESTINATION_META } from '@/lib/engagements/destination'
+import { CATEGORY_LABELS } from '@/lib/engagements/labels'
 
 const CATEGORIES: EngagementCategory[] = [
   'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
@@ -266,7 +267,7 @@ function EditForm({
           className="rounded border p-1 text-xs"
           disabled={pending}
         >
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
         </select>
         <select
           value={proofReq}
