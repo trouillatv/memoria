@@ -69,7 +69,7 @@ export async function listTenderDocumentSources(
   const admin = createAdminClient()
   const { data: docs, error } = await admin
     .from('documents')
-    .select('id, title, document_type, visibility_level')
+    .select('id, title:filename, document_type, visibility_level')
     .in('id', sourceIds.map((s) => s.id))
     .is('deleted_at', null)
   if (error) throw error
