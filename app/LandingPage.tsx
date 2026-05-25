@@ -13,7 +13,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white font-bold text-sm">M</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="MemorIA" className="h-8 w-8 rounded-lg object-cover ring-1 ring-black/5" />
             <span className="text-lg font-semibold tracking-tight">MemorIA</span>
           </div>
           <Link
