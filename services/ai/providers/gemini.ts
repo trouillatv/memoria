@@ -20,7 +20,12 @@ export class GeminiProvider implements AIProvider {
         systemInstruction: input.systemPrompt,
         temperature: 0.3,
         maxOutputTokens: input.maxOutputTokens ?? 1500,
-        ...(input.responseSchema ? { responseMimeType: 'application/json' } : {}),
+        // Sortie JSON structurée : on DÉSACTIVE le thinking (gemini-2.5-flash).
+        // Sinon le raisonnement interne consomme maxOutputTokens avant d'émettre
+        // le JSON → texte tronqué/vide → parse échoue (cf. extraction engagements).
+        ...(input.responseSchema
+          ? { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } }
+          : {}),
       },
       contents: input.userMessage,
     })
@@ -28,8 +33,13 @@ export class GeminiProvider implements AIProvider {
     const text = response.text ?? ''
     let parsed: unknown = null
     if (input.responseSchema) {
+      // Strip défensif d'un éventuel fence ```json … ``` avant parse.
+      const cleaned = text
+        .replace(/^\s*```(?:json)?\s*/i, '')
+        .replace(/\s*```\s*$/i, '')
+        .trim()
       try {
-        parsed = JSON.parse(text)
+        parsed = JSON.parse(cleaned)
       } catch {
         parsed = null
       }
