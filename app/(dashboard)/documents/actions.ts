@@ -6,6 +6,7 @@
 // agents, pas de bulk import (phases ultérieures). Zéro génération LLM.
 
 import { z } from 'zod'
+import { createHash } from 'node:crypto'
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
@@ -106,6 +107,8 @@ export interface UploadDocumentResult {
   ok: boolean
   documentId?: string
   error?: string
+  /** Le doc existait déjà (même content_hash) → nœud réutilisé, lien ajouté. */
+  duplicate?: boolean
 }
 
 export async function uploadDocumentAction(
@@ -157,6 +160,28 @@ export async function uploadDocumentAction(
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
   const storagePath = `${globalThis.crypto.randomUUID()}/${Date.now()}-${safeName}`
   const buffer = Buffer.from(await file.arrayBuffer())
+  const contentHash = createHash('sha256').update(buffer).digest('hex')
+
+  // DÉDUP : ce contenu est-il déjà importé ? Le document est un NŒUD unique ;
+  // document_links est polymorphe → un doc peut être rattaché à un contrat ET
+  // un client en même temps. Sur doublon : on RÉUTILISE le nœud et on ajoute le
+  // nouveau lien (pas de re-upload, pas de doc dupliqué). On prévient (duplicate).
+  const { data: existingDoc } = await supabase
+    .from('documents')
+    .select('id, filename')
+    .eq('content_hash', contentHash)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (existingDoc) {
+    if (input.target_type && input.target_id) {
+      try {
+        await addDocumentLink(existingDoc.id, input.target_type, input.target_id)
+      } catch (e) {
+        console.error('[uploadDocumentAction] dedup addDocumentLink failed:', e)
+      }
+    }
+    return { ok: true, documentId: existingDoc.id, duplicate: true }
+  }
 
   const { error: uploadErr } = await supabase.storage
     .from('documents')
@@ -181,30 +206,42 @@ export async function uploadDocumentAction(
       expires_date: input.expires_date ?? null,
       memory_tier: memoryTier,
       analysis_status: embed ? 'pending' : 'ready',
+      content_hash: contentHash,
       created_by: userId,
     })
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Création échouée' }
   }
 
+  // Le document est créé : un échec de lien ou d'audit ne doit PAS faire
+  // échouer l'import (sinon throw non-catché → message masqué « Server
+  // Components render error » côté client). Best-effort, on logge et on continue.
   if (input.target_type && input.target_id) {
-    await addDocumentLink(documentId, input.target_type, input.target_id)
+    try {
+      await addDocumentLink(documentId, input.target_type, input.target_id)
+    } catch (e) {
+      console.error('[uploadDocumentAction] addDocumentLink failed:', e)
+    }
   }
 
-  await logAuditEvent({
-    userId,
-    entityType: 'document',
-    entityId: documentId,
-    action: 'created',
-    metadata: {
-      filename: file.name,
-      document_type: input.document_type,
-      collection_id: input.collection_id,
-      memory_tier: memoryTier,
-      indexed: embed,
-      ...(input.target_type ? { target_type: input.target_type } : {}),
-    },
-  })
+  try {
+    await logAuditEvent({
+      userId,
+      entityType: 'document',
+      entityId: documentId,
+      action: 'created',
+      metadata: {
+        filename: file.name,
+        document_type: input.document_type,
+        collection_id: input.collection_id,
+        memory_tier: memoryTier,
+        indexed: embed,
+        ...(input.target_type ? { target_type: input.target_type } : {}),
+      },
+    })
+  } catch (e) {
+    console.error('[uploadDocumentAction] audit failed:', e)
+  }
 
   // Embedding SÉLECTIF : on ne lance l'analyse (extraction + chunking +
   // embedding) QUE si l'humain a validé l'indexation. Sinon le document est

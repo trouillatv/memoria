@@ -20,7 +20,7 @@ type Collection = { id: string; name: string }
 type LinkOption = { id: string; label: string }
 type LinkTargets = Record<string, LinkOption[]>
 
-type RowStatus = 'idle' | 'uploading' | 'ok' | 'error'
+type RowStatus = 'idle' | 'uploading' | 'ok' | 'error' | 'duplicate'
 interface Row {
   id: string
   file: File
@@ -91,6 +91,7 @@ export function BatchImportForm({
     setDone(false)
     // Queue bornée 3-par-3 (jamais Promise.all(N)). Échec d'un fichier =
     // n'interrompt pas les autres (import partiel).
+    let failed = 0
     await runPool(rows, 3, async (row) => {
       patchRow(row.id, { status: 'uploading', error: undefined })
       try {
@@ -106,15 +107,26 @@ export function BatchImportForm({
           fd.set('target_id', targetId)
         }
         const r = await uploadDocumentAction(fd)
-        patchRow(row.id, r.ok ? { status: 'ok' } : { status: 'error', error: r.error ?? 'Échec' })
+        if (r.ok) {
+          patchRow(row.id, { status: r.duplicate ? 'duplicate' : 'ok' })
+        } else {
+          failed++
+          patchRow(row.id, { status: 'error', error: r.error ?? 'Échec' })
+        }
       } catch (e) {
+        failed++
         patchRow(row.id, { status: 'error', error: e instanceof Error ? e.message : 'Échec' })
       }
       return null
     })
     setImporting(false)
     setDone(true)
-    router.refresh()
+    // Import réussi (aucun échec) → on file à la Bibliothèque.
+    if (failed === 0) {
+      router.push('/documents')
+    } else {
+      router.refresh()
+    }
   }
 
   if (collections.length === 0) {
@@ -226,6 +238,7 @@ export function BatchImportForm({
                   <div className="col-span-1 flex justify-end">
                     {row.status === 'uploading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                     {row.status === 'ok' && <Check className="h-4 w-4 text-emerald-600" />}
+                    {row.status === 'duplicate' && <span className="text-[10px] font-medium text-amber-600">déjà là</span>}
                     {row.status === 'error' && <X className="h-4 w-4 text-red-600" />}
                   </div>
                 </div>
