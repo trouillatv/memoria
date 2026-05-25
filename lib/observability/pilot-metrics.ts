@@ -21,6 +21,8 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { collectMemorySignals } from '@/lib/memory/signals/collect'
+import { SIGNAL_REGISTRY } from '@/lib/memory/signals/registry'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -74,6 +76,25 @@ export interface CenteringMetrics {
   briefsOversized: number
 }
 
+// Couche A — Production de mémoire : « le système se nourrit-il ? »
+export interface MemoryProduction {
+  aSavoirCreated: number
+  anomaliesDocumented: number
+  documentsUploaded: number
+  documentsCold: number // memory_tier='froide' (stockés, non indexés)
+}
+
+// Couche A — Santé du moteur : signaux ACTUELLEMENT produits, par type.
+// (La part « production » du moteur. Le vu/cliqué/ignoré = Couche B,
+//  nécessite une instrumentation d'impressions/clics non encore en place.)
+export interface EngineHealthItem {
+  kind: string
+  label: string
+  family: string
+  valence: string
+  count: number
+}
+
 export interface AlertSignal {
   level: 'red' | 'amber' | 'info'
   category: 'sub-intelligence' | 'overconstruction' | 'invisible' | 'engagement'
@@ -89,6 +110,8 @@ export interface ObservationSnapshot {
   quality: BriefQuality
   engagement: Engagement
   centering: CenteringMetrics
+  production: MemoryProduction
+  engineHealth: EngineHealthItem[]
   alerts: AlertSignal[]
 }
 
@@ -289,6 +312,45 @@ async function getCenteringMetrics(
   }
 }
 
+// ─── Production de mémoire (Couche A) ───────────────────────────────────────
+
+async function getMemoryProduction(periodStart: string): Promise<MemoryProduction> {
+  const admin = createAdminClient()
+  const [aSavoir, anomalies, docs] = await Promise.all([
+    admin.from('site_notes').select('id', { count: 'exact', head: true })
+      .eq('kind', 'a_savoir').is('deleted_at', null).gte('created_at', periodStart),
+    admin.from('intervention_anomalies').select('id', { count: 'exact', head: true })
+      .gte('created_at', periodStart),
+    admin.from('documents').select('memory_tier').is('deleted_at', null).gte('created_at', periodStart),
+  ])
+  const docRows = (docs.data ?? []) as Array<{ memory_tier: string | null }>
+  return {
+    aSavoirCreated: aSavoir.count ?? 0,
+    anomaliesDocumented: anomalies.count ?? 0,
+    documentsUploaded: docRows.length,
+    documentsCold: docRows.filter((d) => d.memory_tier === 'froide').length,
+  }
+}
+
+// ─── Santé du moteur (Couche A — part production) ───────────────────────────
+
+async function getEngineHealth(): Promise<EngineHealthItem[]> {
+  // Snapshot ACTUEL des signaux produits (état courant, pas borné période).
+  const signals = await collectMemorySignals().catch(() => [])
+  const counts = new Map<string, number>()
+  for (const s of signals) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1)
+  return (Object.keys(SIGNAL_REGISTRY) as Array<keyof typeof SIGNAL_REGISTRY>).map((kind) => {
+    const meta = SIGNAL_REGISTRY[kind]
+    return {
+      kind,
+      label: meta.label,
+      family: meta.family,
+      valence: meta.valence,
+      count: counts.get(kind) ?? 0,
+    }
+  })
+}
+
 // ─── Alertes (règles agrégées) ──────────────────────────────────────────────
 
 function computeAlerts(
@@ -420,10 +482,12 @@ export async function buildObservationSnapshot(
   const periodStart = isoDaysAgo(period)
   const periodEnd = new Date().toISOString()
 
-  const [volumes, quality, engagement] = await Promise.all([
+  const [volumes, quality, engagement, production, engineHealth] = await Promise.all([
     getBriefVolumes(periodStart),
     getBriefQuality(periodStart),
     getEngagement(periodStart),
+    getMemoryProduction(periodStart),
+    getEngineHealth(),
   ])
   const centering = await getCenteringMetrics(periodStart, volumes)
   const alerts = computeAlerts(period, volumes, quality, engagement, centering)
@@ -436,6 +500,8 @@ export async function buildObservationSnapshot(
     quality,
     engagement,
     centering,
+    production,
+    engineHealth,
     alerts,
   }
 }

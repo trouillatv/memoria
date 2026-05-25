@@ -141,6 +141,54 @@ export default async function AdminObservationPage({
         </div>
       </section>
 
+      {/* ── Production de mémoire (Couche A) ───────────────────────────── */}
+      <section className="rounded-lg border bg-card p-5 space-y-4">
+        <h2 className="text-base font-semibold inline-flex items-center gap-2">
+          <Activity className="h-4 w-4 text-brand-600" />
+          Production de mémoire — le système se nourrit-il&nbsp;? ({period} j)
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KPI label="« À savoir » créés" value={snap.production.aSavoirCreated} help="Mémoire vivante du lieu" />
+          <KPI label="Anomalies documentées" value={snap.production.anomaliesDocumented} />
+          <KPI label="Documents importés" value={snap.production.documentsUploaded} />
+          <KPI
+            label="dont archives froides"
+            value={snap.production.documentsCold}
+            help="Stockés, non indexés (tri d'ingestion)"
+          />
+        </div>
+      </section>
+
+      {/* ── Santé du moteur (Couche A — production des signaux) ─────────── */}
+      <section className="rounded-lg border bg-card p-5 space-y-3">
+        <h2 className="text-base font-semibold inline-flex items-center gap-2">
+          <Activity className="h-4 w-4 text-brand-600" />
+          Santé du moteur — signaux produits actuellement
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Ce que le moteur surface aujourd&apos;hui, par type. C&apos;est la part
+          <strong> production</strong> ; le <em>vu / cliqué / ignoré</em> par signal
+          relève de la Couche B (instrumentation agrégée, non encore en place).
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {snap.engineHealth.map((s) => (
+            <div
+              key={s.kind}
+              className={`rounded-md border px-3 py-2 flex items-center justify-between gap-2 ${
+                s.valence === 'fragile'
+                  ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
+                  : s.valence === 'sain'
+                    ? 'border-emerald-200 bg-emerald-50/30 dark:bg-emerald-950/15'
+                    : 'border-border bg-background'
+              }`}
+            >
+              <span className="text-xs">{s.label}</span>
+              <span className="text-lg font-semibold tabular-nums">{s.count}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── 2. Qualité d'usage ─────────────────────────────────────────── */}
       <section className="rounded-lg border bg-card p-5 space-y-4">
         <h2 className="text-base font-semibold inline-flex items-center gap-2">
