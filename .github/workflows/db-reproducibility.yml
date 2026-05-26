@@ -1,0 +1,43 @@
+name: DB schema reproducibility
+
+# Rejoue TOUTES les migrations sur une base PostgreSQL vierge (Linux, CLI stable).
+# But : garantir que le schéma se reconstruit from scratch — détecte toute dérive
+# prod↔migrations (colonne utilisée avant d'être créée, BOM, ordre cassé…).
+# Déclenché quand les migrations ou la config Supabase changent.
+
+on:
+  push:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+      - '.github/workflows/db-reproducibility.yml'
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+jobs:
+  db-reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Stack minimal : DB + auth + REST + storage. On exclut Studio/Realtime/
+      # Edge/Analytics (non requis pour valider le schéma) → démarrage plus rapide.
+      - name: Start Supabase (DB only services)
+        run: supabase start -x studio,realtime,edge-runtime,imgproxy,inbucket,vector,supavisor
+
+      # LE test : recrée la base et rejoue toutes les migrations dans l'ordre.
+      # Échoue (et fait échouer la CI) si une migration ne passe pas from scratch.
+      - name: Reset DB — re-apply every migration from scratch
+        run: supabase db reset
+
+      - name: Stop
+        if: always()
+        run: supabase stop --no-backup
