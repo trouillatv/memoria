@@ -51,8 +51,9 @@ export function BrandLegalDialog() {
           <section className="space-y-1">
             <p className="font-medium text-foreground">Éditeur</p>
             <p>
-              MemorIA — [raison sociale], [forme juridique]. [RIDET / SIRET].
-              Nouvelle-Calédonie. Directeur de la publication : [nom].
+              MemorIA est édité par Vincent Trouillat (personne physique),
+              Nouvelle-Calédonie. Aucune société n&apos;est constituée à ce stade.
+              Directeur de la publication : Vincent Trouillat.
             </p>
           </section>
 
