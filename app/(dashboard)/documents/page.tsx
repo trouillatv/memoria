@@ -86,8 +86,9 @@ export default async function DocumentsPage() {
           Collections ({collections.length})
         </h2>
         {collections.length === 0 ? (
-          <p className="text-sm text-muted-foreground rounded-lg border p-4">
-            Aucune collection. Crée la première via « Ajouter un document ».
+          <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-4">
+            Votre bibliothèque démarre ici. Créez une première collection ci-dessus
+            (ex. « Contrats », « Sécurité », « Procédures ») pour commencer à y ranger vos documents.
           </p>
         ) : (
           byCollection.map(({ collection, docs }) => (
@@ -99,7 +100,9 @@ export default async function DocumentsPage() {
                 </span>
               </h3>
               {docs.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Vide.</p>
+                <p className="text-xs text-muted-foreground italic">
+                  Collection prête — aucun document pour l&apos;instant.
+                </p>
               ) : (
                 <ul className="divide-y">
                   {docs.map((d) => (

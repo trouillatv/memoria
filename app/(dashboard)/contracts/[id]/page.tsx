@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { FileBarChart, AlertTriangle } from 'lucide-react'
+import { FileBarChart, AlertTriangle, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import {
@@ -322,32 +322,39 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       {/* Avertissement : engagements non couverts par aucune mission.
           Placé juste après "Continuité du service" pour le voir en haut,
           avant la liste détaillée des promesses ci-dessous. */}
-      {unplannedCount > 0 && (
+      {unplannedCount > 0 && (() => {
+        // État INITIAL (toutes les promesses encore à rattacher, contrat fraîchement
+        // extrait) ≠ alerte. On distingue « prochaine étape » (ton neutre/brand) d'un
+        // vrai écart partiel (ambre) — Vincent 2026-05-27.
+        const allUnplanned = obligations.length > 0 && unplannedCount === obligations.length
+        const tone = allUnplanned
+          ? { box: 'border-brand-200 bg-brand-50/40', title: 'text-brand-900', bullet: 'text-brand-700', body: 'text-brand-900/80', excerpt: 'text-brand-900/70', link: 'text-brand-800 hover:text-brand-900' }
+          : { box: 'border-amber-200 bg-amber-50/40', title: 'text-amber-900', bullet: 'text-amber-700', body: 'text-amber-900/80', excerpt: 'text-amber-900/70', link: 'text-amber-900 hover:text-amber-950' }
+        return (
         <section
           aria-labelledby="unplanned-engagements-heading"
-          className="rounded-lg border border-amber-200 bg-amber-50/40 p-4 space-y-3"
+          className={`rounded-lg border p-4 space-y-3 ${tone.box}`}
         >
           <h2
             id="unplanned-engagements-heading"
-            className="text-sm font-semibold inline-flex items-center gap-2 text-amber-900"
+            className={`text-sm font-semibold inline-flex items-center gap-2 ${tone.title}`}
           >
-            <AlertTriangle className="h-4 w-4" aria-hidden />
-            Promesses non couvertes par une mission ({unplannedCount})
+            {allUnplanned ? <ListChecks className="h-4 w-4" aria-hidden /> : <AlertTriangle className="h-4 w-4" aria-hidden />}
+            {allUnplanned ? 'Prochaine étape' : 'Promesses à rattacher à une mission'} ({unplannedCount})
           </h2>
-          <p className="text-xs text-amber-900/80">
-            Ces engagements contractuels ne sont rattachés à aucune mission.
-            Tant qu&apos;ils ne sont pas cochés dans la fiche d&apos;une mission,
-            ils ne contribueront pas à la preuve de tenue du contrat — même
-            si le travail est physiquement effectué.
+          <p className={`text-xs ${tone.body}`}>
+            {allUnplanned
+              ? 'Les promesses de ce contrat ont été extraites. Rattachez-les à une mission pour qu’elles comptent dans la preuve de tenue du contrat.'
+              : 'Ces promesses ne sont rattachées à aucune mission. Rattachez-les pour qu’elles contribuent à la preuve de tenue du contrat, même quand le travail est effectué.'}
           </p>
           <ul className="space-y-1.5 text-sm">
             {unplannedEngagements.map((e) => (
               <li key={e.id} className="flex items-baseline gap-2">
-                <span className="text-amber-700 shrink-0">•</span>
+                <span className={`shrink-0 ${tone.bullet}`}>•</span>
                 <span>
-                  <span className="font-medium text-amber-900">{e.short_label}</span>
+                  <span className={`font-medium ${tone.title}`}>{e.short_label}</span>
                   {e.source_excerpt && (
-                    <span className="text-amber-900/70 italic">
+                    <span className={`italic ${tone.excerpt}`}>
                       {' '}— « {e.source_excerpt.slice(0, 80)}
                       {e.source_excerpt.length > 80 ? '…' : ''} »
                     </span>
@@ -358,12 +365,13 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </ul>
           <Link
             href={`/contracts/${id}/missions`}
-            className="inline-flex items-center text-xs font-medium text-amber-900 hover:text-amber-950 underline underline-offset-4"
+            className={`inline-flex items-center text-xs font-medium underline underline-offset-4 ${tone.link}`}
           >
             Aller aux missions pour les rattacher →
           </Link>
         </section>
-      )}
+        )
+      })()}
 
       <ContractVigilancePanel vigilances={vigilances} />
 
@@ -383,7 +391,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               href={`/contracts/${id}/missions`}
               className="text-xs text-muted-foreground hover:text-foreground hover:underline"
             >
-              {unplannedCount} promesse{unplannedCount > 1 ? 's' : ''} non couverte{unplannedCount > 1 ? 's' : ''} →
+              {unplannedCount} à rattacher →
             </Link>
           )}
         </div>

@@ -99,6 +99,18 @@ function DetailFooter({ ratios }: { ratios: EngagementComplianceRatios }) {
     return <p className="text-[11px] text-muted-foreground italic">Engagement non encore activé.</p>
   }
 
+  // État INITIAL (rien n'a encore démarré) ≠ échec : on ne crie pas « à reprendre ».
+  // Distingue « pas encore de données » d'un vrai maillon faible (Vincent 2026-05-27).
+  const noActivity =
+    ratios.planned === 0 && ratios.executed === 0 && ratios.proven === 0 && ratios.validated === 0
+  if (noActivity) {
+    return (
+      <p className="text-[11px] text-muted-foreground italic">
+        Engagement en place — pas encore d&apos;activité documentée. À planifier dans une mission.
+      </p>
+    )
+  }
+
   // Identify weakest link parmi planned/executed/proven/validated
   const dimensions = [
     { label: 'planification', v: ratios.planned, key: 'planned' },
