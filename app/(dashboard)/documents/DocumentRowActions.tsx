@@ -72,7 +72,7 @@ export function DocumentRowActions({
 
   return (
     <span className="flex items-center gap-2 shrink-0">
-      {otherCollections.length > 0 && (
+      {(otherCollections.length > 0 || currentCollectionId) && (
         <>
           <select
             aria-label="Déplacer vers une collection"
@@ -85,6 +85,8 @@ export function DocumentRowActions({
             {otherCollections.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
+            {/* Permet d'orpheliner un doc (→ « Sans collection ») sans drag-drop. */}
+            {currentCollectionId && <option value="none">Sans collection</option>}
           </select>
           <span className="text-xs text-muted-foreground/40">·</span>
         </>
