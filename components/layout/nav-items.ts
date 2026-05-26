@@ -14,7 +14,6 @@ import {
   BookMarked,
   ShieldAlert,
   ArrowRightLeft,
-  Clock,
   Eye,
   Brain,
   Boxes,
@@ -52,10 +51,10 @@ export const NAV: NavItem[] = [
   // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
   { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
   { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
-  // Sprint Équipes C — passages de témoin.
+  // Passages de témoin — inclut désormais le radar « À anticiper » (fins de
+  // contrat). Fusion 2026-05-27 de l'ancienne entrée « Continuité » (redondante,
+  // source de confusion) ; /continuite redirige ici.
   { href: '/handovers',  label: 'Passages de témoin',     icon: ArrowRightLeft, roles: ['admin', 'manager'] },
-  // Sprint E — Continuité anticipée (gated ENV CONTINUITY_PAGE_ENABLED, 404 si OFF).
-  { href: '/continuite', label: 'Continuité',              icon: Clock,          roles: ['admin', 'manager'] },
   // — Preuves & documents —
   { href: '/preuves',    label: 'Dossier de preuves',     icon: FileSearch,    roles: ['admin', 'manager'] },
   // « Bibliothèque » = bibliothèque documentaire vivante (/documents).

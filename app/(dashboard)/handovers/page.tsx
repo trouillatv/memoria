@@ -17,7 +17,6 @@ import {
   CheckCircle2,
   Share2,
   Archive,
-  ShieldCheck,
   AlertTriangle,
   MapPin,
   Pin,
@@ -38,6 +37,7 @@ import {
   type LivingASavoirCard,
 } from '@/lib/db/handover'
 import { listContinuityRisks } from '@/lib/db/continuity'
+import { ContinuityRadarSection } from './ContinuityRadarSection'
 import type { HandoverStatus } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -116,8 +116,6 @@ export default async function HandoversPage({
     listContinuityRisks({ horizonDays: 30, viewerUserId: me.id }),
   ])
 
-  const lastAcknowledged = recent.find((p) => p.status === 'acknowledged') ?? null
-
   return (
     <div className="space-y-6 max-w-5xl">
       <header className="space-y-1">
@@ -126,18 +124,15 @@ export default async function HandoversPage({
           Passages de témoin
         </h1>
         <p className="text-sm text-muted-foreground">
-          Briefs de continuité quand quelqu&apos;un bascule ou qu&apos;une équipe
-          prend un nouveau site. Documente le site et la mémoire utile, jamais la
-          personne.
+          Anticiper les passations (fins de contrat proches) et transmettre la
+          mémoire d&apos;un lieu quand quelqu&apos;un bascule ou qu&apos;une équipe
+          prend un site. Le sujet est la mémoire, jamais la personne.
         </p>
       </header>
 
-      {/* ── Bandeau d'état — indique les fins de contrat proches (30j) ── */}
-      <ContinuityStateBanner
-        counts={continuity.counts}
-        lastAcknowledged={lastAcknowledged}
-        summary={summary}
-      />
+      {/* ── À anticiper — radar des fins de contrat (ex-page Continuité, fusionnée
+            ici pour éviter deux entrées redondantes, Vincent 2026-05-27) ── */}
+      <ContinuityRadarSection entries={continuity.entries} />
 
       {/* ── Mémoire transmise ce mois-ci — volume préservé, jamais score ── */}
       <MemoryTransmittedCard summary={summary} />
@@ -271,68 +266,6 @@ export default async function HandoversPage({
 // ----------------------------------------------------------------------------
 // Bandeau d'état de continuité — « respiration du vide »
 // ----------------------------------------------------------------------------
-
-function ContinuityStateBanner({
-  counts,
-  lastAcknowledged,
-  summary,
-}: {
-  counts: { j7: number; j14: number; j30: number }
-  lastAcknowledged: RecentPassationEntry | null
-  summary: MemoryTransmittedSummary
-}) {
-  const total = counts.j7 + counts.j14 + counts.j30
-
-  if (total > 0) {
-    const parts: string[] = []
-    if (counts.j7 > 0) parts.push(`${counts.j7} cette semaine`)
-    if (counts.j14 > 0) parts.push(`${counts.j14} dans 2 semaines`)
-    if (counts.j30 > 0) parts.push(`${counts.j30} dans le mois`)
-    return (
-      <div className="rounded-lg border-2 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 p-4">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-              {total} passation{total > 1 ? 's' : ''} à préparer
-              <span className="font-normal text-amber-800/80 dark:text-amber-200/70">
-                {' '}— {parts.join(' · ')}
-              </span>
-            </p>
-            <p className="text-xs text-amber-800/80 dark:text-amber-200/70 mt-0.5">
-              Des contrats se terminent bientôt. La mémoire portée par ces équipes
-              mérite d&apos;être transmise avant la rupture.{' '}
-              <Link href="/continuite" className="underline font-medium">
-                Voir la continuité
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-lg border-2 border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/15 p-4">
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
-            Continuité stable — aucune fin de contrat dans les 30 jours
-          </p>
-          <p className="text-xs text-emerald-800/80 dark:text-emerald-200/70 mt-0.5">
-            {lastAcknowledged && (
-              <>Dernier passage de témoin reconnu {relTime(lastAcknowledged.acknowledgedAt)}. </>
-            )}
-            {summary.briefsCount > 0 && (
-              <>{summary.briefsCount} passage{summary.briefsCount > 1 ? 's' : ''} de témoin préparé{summary.briefsCount > 1 ? 's' : ''} ce mois-ci.</>
-            )}
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ----------------------------------------------------------------------------
 // Mémoire transmise ce mois-ci — volume préservé (pas un score)
