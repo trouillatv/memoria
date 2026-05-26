@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *, .petrole *));
+@custom-variant dark (&:is(.dark *, .petrole *, .monolithe *));
 
 @theme {
   /* Palette `brand-*` : RÉSERVÉE à l'identité (logo, séparateur sidebar active,
@@ -331,6 +331,54 @@
     --color-rose-50:  hsl(355 45% 88%);
     --color-rose-200: hsl(355 40% 74%);
     --color-rose-600: hsl(353 45% 45%);
+  }
+
+  /* ── MONOLITHE ──────────────────────────────────────────────────────────
+     Thème premium minéral (graphite / pierre / aluminium brossé), accent
+     champagne-cuivre. Opt-in (sélecteur), JAMAIS le défaut. Sombre : la
+     variante `dark:` est activée pour .monolithe (cf. @custom-variant en tête),
+     donc les composants dark-aware rendent correctement. Ambiance : silencieuse,
+     dense, monolithique. Coins structurés (radius réduit). États désaturés
+     (sauge / cuivre / terre cuite) via --destructive et charts. */
+  .monolithe {
+    --background: 210 10.5% 7.5%;
+    --foreground: 216 33.3% 97.1%;
+    --card: 213.3 12.7% 13.9%;
+    --card-foreground: 216 33.3% 97.1%;
+    --popover: 213.3 12.7% 13.9%;
+    --popover-foreground: 216 33.3% 97.1%;
+    --primary: 37.8 45.1% 60%;
+    --primary-foreground: 210 13% 9%;
+    --secondary: 212.7 12.6% 17.1%;
+    --secondary-foreground: 216 33.3% 97.1%;
+    --muted: 213.3 12.7% 13.9%;
+    --muted-foreground: 213 11% 64.3%;
+    --accent: 212.7 12.6% 17.1%;
+    --accent-foreground: 216 33.3% 97.1%;
+    --destructive: 0 25.5% 48.4%;
+    --destructive-foreground: 216 33.3% 97.1%;
+    --border: 213.8 13.3% 23.5%;
+    --input: 213.8 13.3% 23.5%;
+    --ring: 37.8 45.1% 60%;
+    /* Coins moins arrondis = plus structurés / architecturaux. */
+    --radius: 0.25rem;
+    --chart-1: 37.8 45.1% 60%;
+    --chart-2: 133.8 10.2% 49.8%;
+    --chart-3: 36.2 46% 49.4%;
+    --chart-4: 0 25.5% 48.4%;
+    --chart-5: 213 11% 64.3%;
+    --sidebar: 210 12.5% 6.3%;
+    --sidebar-foreground: 216 33.3% 97.1%;
+    --sidebar-primary: 37.8 45.1% 60%;
+    --sidebar-primary-foreground: 210 13% 9%;
+    --sidebar-accent: 213.3 12.7% 13.9%;
+    --sidebar-accent-foreground: 216 33.3% 97.1%;
+    --sidebar-border: 212.7 12.6% 17.1%;
+    --sidebar-ring: 37.8 45.1% 60%;
+    /* Cognition — acier minéral désaturé (ni vif, ni alarmant). */
+    --reading-border: 219 18.3% 57.3%;
+    --reading-bg:     219 18.3% 57.3%;
+    --reading-label:  219 18% 70%;
   }
 
   * {
