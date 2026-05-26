@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             mode sombre. Le toggle ThemeToggle reste fonctionnel : l'user
             peut explicitement passer en dark via le toggle, sa préférence
             sera persistée en localStorage. */}
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={['light', 'dark', 'ocre', 'petrole', 'archive']}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={['light', 'dark', 'ocre', 'petrole', 'archive', 'monolithe']}>
           {children}
           <Toaster />
         </ThemeProvider>

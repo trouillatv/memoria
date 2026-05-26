@@ -76,7 +76,7 @@ export async function updateProfileAction(
   return { ok: true }
 }
 
-const PERSISTABLE_THEMES = ['light', 'dark', 'ocre', 'petrole', 'archive'] as const
+const PERSISTABLE_THEMES = ['light', 'dark', 'ocre', 'petrole', 'archive', 'monolithe'] as const
 
 /**
  * Persiste le thème UI préféré de l'utilisateur (réappliqué au login,

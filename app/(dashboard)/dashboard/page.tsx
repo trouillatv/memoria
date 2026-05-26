@@ -29,6 +29,7 @@ import {
   FileText,
   Shield,
   Sparkles,
+  ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listContracts } from '@/lib/db/contracts'
@@ -329,6 +330,7 @@ function buildRecentMemoryEvents(input: {
       key: `an-${a.id}`,
       text: `Signalement terrain${a.siteName ? ` — ${a.siteName}` : ''}`,
       at: a.createdAt,
+      href: a.interventionId ? `/interventions/${a.interventionId}` : undefined,
       tone: 'attention',
     })
   }
@@ -363,8 +365,12 @@ function DerniereMemoireUtile({ events }: { events: MemoryEventItem[] }) {
             return (
               <li key={e.key}>
                 {e.href ? (
-                  <Link href={e.href} className="block rounded hover:bg-muted/40 transition-colors -mx-1 px-1">
-                    {inner}
+                  <Link
+                    href={e.href}
+                    className="group flex items-center gap-1 rounded hover:bg-muted/40 transition-colors -mx-1 px-1"
+                  >
+                    <span className="min-w-0 flex-1">{inner}</span>
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                   </Link>
                 ) : (
                   inner
@@ -926,9 +932,10 @@ function VieDuSysteme({
                         {it.href ? (
                           <Link
                             href={it.href}
-                            className="block hover:bg-background/50 transition-colors"
+                            className="group flex items-center hover:bg-background/50 transition-colors"
                           >
-                            {inner}
+                            <span className="min-w-0 flex-1">{inner}</span>
+                            <ChevronRight className="mr-3 h-4 w-4 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
                           </Link>
                         ) : (
                           inner
@@ -972,7 +979,7 @@ function ReservoirEtDefense({
         className="inline-flex items-center gap-1.5 text-xs text-amber-800/80 hover:text-amber-900 transition-colors"
       >
         <Shield className="h-3.5 w-3.5" />
-        Préparer ma défense
+        Préparer un dossier
       </Link>
     </div>
   )

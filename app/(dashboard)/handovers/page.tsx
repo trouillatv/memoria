@@ -182,11 +182,36 @@ export default async function HandoversPage({
 
         {/* Liste */}
         {briefs.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground italic">
-            {filter === 'draft'
-              ? 'Aucun brief à transmettre. Crée-en un depuis une fiche intervenant ou une fiche équipe.'
-              : `Aucun brief ${STATUS_LABEL[filter].toLowerCase()}.`}
-          </div>
+          filter === 'draft' ? (
+            <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-10 text-center">
+              <p className="text-sm font-medium">Aucun brief à transmettre.</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+                Un passage de témoin fige la mémoire utile d'un lieu (à savoir,
+                anomalies, documents, équipes relais) pour qu'elle survive à un
+                départ ou un changement d'équipe. Préparez-en un :
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Link
+                  href="/intervenants"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Préparer une passation (une personne change d'équipe)
+                </Link>
+                <Link
+                  href="/equipes"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Préparer une passation (une équipe prend un site)
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground italic">
+              {`Aucun brief ${STATUS_LABEL[filter].toLowerCase()}.`}
+            </div>
+          )
         ) : (
           <ul className="space-y-2">
             {briefs.map((b) => {

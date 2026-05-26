@@ -3,6 +3,8 @@
 > **But** : vérifier si MemorIA tient ses promesses *côté utilisateur* — pas si le code compile.
 > Trois rôles joués de bout en bout : **Manager exploitation**, **Chef d'équipe terrain**, **Admin/pilote**.
 > Audit fondé sur le code réel (fichiers cités). **Aucune correction à ce stade** — on cartographie d'abord.
+>
+> **MAJ 2026-05-26 — vérification empirique live.** Les parcours ont été **rejoués dans l'app qui tourne** (Supabase local seedé : 4 contrats, 6 sites, 131 interventions, 3 équipes ; comptes test par rôle), via un harnais Playwright jetable (`scripts/dev/walkthrough-capture.ts`) qui pilote Chromium et capture screenshots + texte + affordances par écran. Des agents ont ensuite joué chaque rôle sur les **écrans réels** (rapports : `tmp/walkthrough/{manager,chef,admin}/REPORT.md`, traces replayables `trace-*.zip`). **Zéro appel LLM** (clés IA vidées ; Atelier IA jugé statiquement). Les statuts ci-dessous portent le marqueur **[live]** quand confirmés/infirmés par l'observation directe. Voir §1bis.
 
 ---
 
@@ -26,6 +28,50 @@
 | A4 | Piloter sans dériver (anti-deux-morts) | Admin | `/admin/observation` | 🟢 OK | Par rôle, jamais nominatif — conforme |
 
 Légende : 🟢 fonctionne · 🟡 friction / partiel · 🔴 trou métier.
+
+---
+
+## 1bis. Vérification live (2026-05-26) — confirmé / infirmé / nouveau
+
+Méthode : 30 écrans capturés (manager 17, chef 4, admin 9) sur base seedée réelle, jugés par des agents jouant chaque rôle. Lentille = promesse métier (compréhensible ? mémoire au bon moment ? froid/ERP ? œil guidé ? bruit ?), pas « le bouton marche ».
+
+**✅ Confirmés par l'observation directe**
+- **M3 — passation : pire que prévu.** Pas seulement « brief vierge » : **0 brief** (onglets À transmettre/Partagé/Reconnu/Archivé = 0/0/0/0), `/continuite` vide, **aucun CTA pour amorcer** un brief. La promesse phare (« survivre aux ruptures humaines ») est *non démontrable* en l'état. **P0.**
+- **C4 — brief invisible côté chef.** Sur `/m`, aucun moyen de voir un brief (ni notif, ni historique, ni menu). Confirmé par absence. **P0.**
+- **C2 — mémoire de site tronquée sur mobile.** L'encart « Premier passage / Anomalies 30 j » n'affiche qu'**1 anomalie**, sans lien « mémoire complète ». **P1.**
+- **C5 — clôture sans preuve.** « Mission terminée » est **plein/actif à 0/6 tâches et 0 photo**, sans avertissement. **P1.**
+- **M1 / dashboard** = bons signaux (« mémoire active », « vie des lieux ») mais **cul-de-sac d'action** (anomalies non cliquables, unique CTA « Préparer ma défense »). **P1.**
+- **A3 / A4** — `/admin/observation` exemplaire (par rôle, anti-deux-morts) ; `/intervenants/[id]` sans transparence côté personne. **Correction board 2026-05-26** : la *préparation* d'un dossier litige EST auditée (`litige/actions.ts:157,207` → `litige_dossier_prepared`) ; seul le trou de la **route PDF** `litige/dossier/route.ts` (non loggée) subsiste. L'ancienne mention « litige non audité » était fausse.
+
+**❌ Infirmés / nuancés**
+- **C3 — « anomalie impossible avant Commencer » : INFIRMÉ** sur cet échantillon. L'intervention seedée était déjà « Mission en cours » et **« Signaler un problème » est présent**. L'état « avant Commencer » (site fermé à l'arrivée) n'a PAS été reproduit → à re-tester sur une intervention non démarrée avant de conclure.
+- **M2 — vigilances read-only** : pas de bloc « vigilances » visible sur les captures ; le signal manager réel est « X promesses non couvertes par une mission » (actionnable). À recadrer.
+
+**🆕 Nouveaux trous / risques (non vus à la lecture du code)**
+- **[P0] Atterrissage post-login sur `/missions`** (liste ERP de 131 lignes, doublons) au lieu de `/dashboard` — pour le manager ET l'admin. Le premier contact avec le produit est son écran le plus « ERP froid » → risque direct de « mort par sous-intelligence ».
+- **[P1 — risque doctrine] Heatmap « Densité 90 jours » PAR PERSONNE** sur `/intervenants/[id]`. C'est le **seul écran où le rendu visuel trahit la doctrine** que le texte défend (« pas de score/classement ») : un calendrier de chaleur individuel se lit comme un registre de présentéisme. À recadrer (sujet = activité du lieu) ou retirer.
+- **[P2 — risque doctrine] Classement implicite par volume** sur la liste `/intervenants` (juxtaposition 89 / 28 / 0 interventions), atténué par le tri alpha mais réel.
+- **[P2] Wording « Préparer ma défense » / « Préparation de défense »** : martial/évaluatif, détonne avec le ton descriptif du reste.
+- **[P2] Fuites au manager sur l'AO** : colonne « Score » vide (colonne morte) + « Fournisseur IA : mock / Mock Démo » exposé.
+- **[P2] Frictions** : `/documents/import` bloqué par « créer une collection d'abord » sans moyen sur place ; contrat affichant « 0% » partout (anxiogène, défaut de rattachement mal expliqué) ; `/sites/[id]` « Activité récente » dupliquée 10×, dates incohérentes (29 vs 26 mai) ; `/m` « À VENIR » = 16 cartes pleine hauteur noyant « aujourd'hui ».
+
+**🟢 Confirmé sain (à préserver)** : dashboard mémoriel, `/sites/[id]` (mémoire du lieu, fragilité « pas de chef » bien formulée), `/continuite` (pédagogie doctrinale), `/admin/observation` (auto-surveillance anti-dérive), bloc « Capital client » de l'AO (« des faits, pas un score »), contact+téléphone en tête d'intervention, indicateur de sync « Tout est envoyé ». **Pas de dérive RH/pointage/GPS** côté terrain.
+
+---
+
+## 1ter. État des corrections (2026-05-26)
+
+Corrections appliquées dans l'ordre de priorité décidé, **un commit par priorité**, sur la branche `fix/audit-live-parcours-metier`.
+
+| Prio | Correctif | Statut | Vérification |
+|------|-----------|--------|--------------|
+| P1 | Post-login → `/dashboard` (admin/manager) au lieu de `/missions` ; chef → `/m` inchangé. `loginAction` + `app/page.tsx`. | ✅ **corrigé** | Live : manager/admin → `/dashboard`, chef → `/m`. |
+| P2 | Empty states `/continuite` + `/handovers` actionnables : 2 CTA explicites « Préparer une passation » → `/intervenants` (personne change d'équipe) et `/equipes` (équipe prend un site), pointant vers le flow de création existant. | ✅ **corrigé** | Live : CTA présents sur les 2 pages. **À re-tester** end-to-end (créer un brief via le flow, le partager, le retrouver). |
+| P3 | Dashboard : anomalies de « Dernière mémoire utile » rendues cliquables (`/interventions/[id]`) ; chevrons d'affordance sur « Vie des lieux » + « Dernière mémoire utile » ; « Préparer ma défense » → « Préparer un dossier ». | ✅ **corrigé** | Live : 5 liens `/interventions/`, chevrons visibles, nouveau libellé. |
+| P4 | App terrain `/m` : section « Briefs à lire » listant les briefs partagés pertinents pour le chef (sa team en target, ou lui en subject), chacun ouvrant `/h/[token]`. `listSharedHandoverBriefsForChef` + rendu. | ✅ **corrigé** | Live : section affichée avec un brief de test, lien → `/h/[token]` (accusé « C'est lu » OK). **À re-tester** avec un brief créé via le flow normal. |
+| P5 | Heatmap « Densité — 90 derniers jours » de la fiche intervenant. | ⏸️ **non retenu** | Décision Vincent 2026-05-26 : **heatmap conservée en l'état**. Le risque doctrine (lecture présentéisme) reste **identifié mais assumé** — à surveiller, pas corrigé. |
+
+> Note doctrine : le risque P5 (calendrier de densité par personne) demeure ouvert par choix. Si la perception « surveillance » remonte en pilote, le recadrage (territoires connus / derniers relais / mémoire transmise — déjà présents en sections descriptives plus bas sur la fiche) reste l'option de repli.
 
 ---
 
@@ -101,16 +147,21 @@ Légende : 🟢 fonctionne · 🟡 friction / partiel · 🔴 trou métier.
 ## 3. Trous métier priorisés
 
 ### P0 — bloquant pour la promesse produit
-1. **Passation = brief vierge** (M3). Le cœur de MemorIA (« survivre aux ruptures humaines ») repose sur la passation, mais le brief n'est **pas pré-peuplé** (sites du contrat + mémoire 14 j + équipe). → La promesse de continuité n'est pas tenue automatiquement.
-2. **Brief invisible côté chef** (C4). Le chef reçoit le lien par SMS, **aucun accès/notif/historique dans `/m`**. Lien perdu = mémoire perdue. Brise la boucle passation → reconnaissance.
-3. **Litige non audité** (A3). Action sensible (juridique) sans trace de création. Risque de responsabilité.
+1. **Passation = brief vierge — et même 0 brief** (M3) **[live]**. Non seulement le brief n'est pas pré-peuplé (sites + mémoire + équipe), mais l'observation montre **0 passation, `/continuite` vide, aucun CTA d'amorçage**. La promesse de continuité n'est ni automatique ni démontrable.
+2. **Brief invisible côté chef** (C4) **[live]**. Le chef reçoit le lien par SMS, **aucun accès/notif/historique dans `/m`**. Lien perdu = mémoire perdue. Brise la boucle passation → reconnaissance.
+3. **Litige non audité** (A3) **[live]**. Action sensible (juridique) sans trace de création visible. Risque de responsabilité. + **transparence user = 0** sur `/intervenants/[id]` (la personne consultée ne sait pas qu'elle l'est).
+4. **Premier écran post-login = `/missions`** (NOUVEAU, **[live]**). Manager ET admin atterrissent sur une liste ERP de 131 lignes (doublons, 0 CTA) au lieu du `/dashboard` mémoriel. Le produit se présente par son pire visage → « mort par sous-intelligence » dès l'entrée. *Correctif a priori léger (redirection par défaut).*
 
 ### P1 — friction forte / promesse partielle
-4. **Mémoire de site tronquée sur mobile** (C2) : 2 fragments max, pas de « mémoire complète » avant l'arrivée → « la mémoire au bon moment » est partielle.
-5. **Vigilances sans chaîne d'action** (M2/M4) : extraites, affichées, mais aucune suite (dispatch, suivi, résolution).
-6. **À savoir AO → site, 1 par 1** (M4) : pas de matérialisation par lot.
-7. **Anomalie impossible avant « Commencer »** (C3) : workflow dénaturé (site fermé à l'arrivée).
-8. **Changement de rôle non audité** (A1).
+5. **Mémoire de site tronquée sur mobile** (C2) **[live]** : ~1-2 fragments max, pas de « mémoire complète » avant l'arrivée → « la mémoire au bon moment » est partielle.
+6. **Clôture sans preuve** (C5) **[live]** : « Mission terminée » actif à 0 tâche / 0 photo, sans confirmation douce. (Doctrine : confirmation non bloquante, jamais un blocage dur.)
+7. **Dashboard = cul-de-sac d'action** (M1) **[live]** : bons signaux mais rien de cliquable, CTA unique ambigu.
+8. **Heatmap « Densité 90 j » par personne** (NOUVEAU, **[live]**, risque doctrine) : seul écran où le rendu visuel contredit le wording anti-score → recadrer (sujet = activité du lieu) ou retirer.
+9. **Vigilances sans chaîne d'action** (M2/M4) : extraites, affichées, mais aucune suite (dispatch, suivi, résolution).
+10. **À savoir AO → site, 1 par 1** (M4) : pas de matérialisation par lot ; engagements « à curer » sans action de curation à l'écran **[live]**.
+11. **Changement de rôle non audité** (A1) : reset MDP en dur visible ; absence de trace UI (à confirmer côté serveur).
+
+> ⚠️ **Retiré des P1** : « Anomalie impossible avant Commencer » (ancien #7) — **INFIRMÉ [live]** (« Signaler un problème » présent en cours d'intervention). À re-tester uniquement sur une intervention non démarrée.
 
 ### P2 — polish / V2
 9. Raccourcis « dashboard → action » (M1).

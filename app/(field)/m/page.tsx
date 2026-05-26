@@ -1,9 +1,11 @@
 import Link from 'next/link'
-import { ArrowRight, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History } from 'lucide-react'
+import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
+import { listActiveTeamIdsForUser } from '@/lib/db/teams'
+import { listSharedHandoverBriefsForChef } from '@/lib/db/handover'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
@@ -75,6 +77,11 @@ export default async function FieldHomePage({
   const isFuture = selectedDate > todayIso
 
   const supabase = createAdminClient()
+
+  // P1 audit live (2026-05-26) — briefs de passation retrouvables sur le terrain
+  // même si le lien SMS est perdu. Silence positif : ne s'affiche que s'il y en a.
+  const chefTeamIds = await listActiveTeamIdsForUser(user.id)
+  const handoverBriefs = await listSharedHandoverBriefsForChef(user.id, chefTeamIds)
 
   // Paralléliser : agentInterventions (pour FAB/ensure) + interventions visibles
   // en même temps. Avant : agentInterventions bloquait en séquentiel.
@@ -322,6 +329,48 @@ export default async function FieldHomePage({
                 </Link>
               </li>
             ))}
+          </ul>
+        </section>
+      )}
+
+      {/* P1 audit live — Briefs de passation reçus, retrouvables ici même si le
+          lien SMS est perdu. Ouvre la vue publique /h/[token] (lisible sans
+          login, avec accusé « C'est lu »). Sujet = mémoire transmise. */}
+      {handoverBriefs.length > 0 && isToday && (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+            <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Briefs à lire
+          </h2>
+          <ul className="space-y-1.5">
+            {handoverBriefs.map((b) => {
+              const ack = b.status === 'acknowledged'
+              const siteCount = b.payload?.sites?.length ?? 0
+              return (
+                <li key={b.id}>
+                  <Link
+                    href={`/h/${b.shared_token}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 active:bg-indigo-100/80 dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:active:bg-indigo-950/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{b.title}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {siteCount > 0 ? `${siteCount} site${siteCount > 1 ? 's' : ''} · ` : ''}
+                        mémoire transmise
+                      </div>
+                    </div>
+                    {ack ? (
+                      <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Lu
+                      </span>
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </Link>
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}

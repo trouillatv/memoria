@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# scratch / harnais de capture (artefacts jetables : screenshots, traces, env local)
+/tmp
+
 # next.js
 /.next/
 /out/
