@@ -13,6 +13,7 @@ import { indexationState } from '@/lib/documents/labels'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
+import { memoryState, MEMORY_STATE_LABEL, MEMORY_STATE_MEANING } from '@/lib/memory/temps-memoriel'
 import { DocumentActions } from './DocumentActions'
 import { AddLinkToDocument } from './AddLinkToDocument'
 
@@ -119,6 +120,18 @@ export default async function DocumentViewerPage({
   // (responsabilise avant « Réanalyser »). Réel, pas théorique.
   const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
 
+  // Temps mémoriel (Sprint D) + supersession VISIBLE : une mémoire qui en
+  // remplace une autre ne doit jamais disparaître en silence.
+  const memState = memoryState({ status: doc.status, expiresAt: doc.expires_date })
+  const [supersededByRes, supersedesRes] = await Promise.all([
+    admin.from('documents').select('id, filename').eq('supersedes_document_id', doc.id).is('deleted_at', null).maybeSingle(),
+    doc.supersedes_document_id
+      ? admin.from('documents').select('id, filename').eq('id', doc.supersedes_document_id).is('deleted_at', null).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  const supersededBy = supersededByRes.data as { id: string; filename: string } | null
+  const supersedes = (supersedesRes.data ?? null) as { id: string; filename: string } | null
+
   return (
     <div className="space-y-6 max-w-4xl">
       <Link
@@ -169,8 +182,10 @@ export default async function DocumentViewerPage({
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Cycle de vie</dt>
-            <dd className="font-medium">{doc.status}</dd>
+            <dt className="text-xs text-muted-foreground">Temps mémoriel</dt>
+            <dd className="font-medium" title={memState ? MEMORY_STATE_MEANING[memState] : undefined}>
+              {memState ? MEMORY_STATE_LABEL[memState] : doc.status}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Couche mémoire</dt>
@@ -195,6 +210,29 @@ export default async function DocumentViewerPage({
               </div>
             )}
           </div>
+          {(supersededBy || supersedes) && (
+            <div className="col-span-2 md:col-span-3">
+              <dt className="text-xs text-muted-foreground">Continuité documentaire</dt>
+              <dd className="font-medium space-y-0.5">
+                {supersededBy && (
+                  <p className="text-sm">
+                    Remplacé par{' '}
+                    <Link href={`/documents/${supersededBy.id}`} className="underline hover:text-foreground">
+                      {supersededBy.filename}
+                    </Link>
+                  </p>
+                )}
+                {supersedes && (
+                  <p className="text-sm text-muted-foreground">
+                    Remplace{' '}
+                    <Link href={`/documents/${supersedes.id}`} className="underline hover:text-foreground">
+                      {supersedes.filename}
+                    </Link>
+                  </p>
+                )}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-xs text-muted-foreground">Effet</dt>
             <dd className="font-medium">{frDate(doc.effective_date)}</dd>
