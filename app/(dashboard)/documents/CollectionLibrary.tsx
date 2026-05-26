@@ -53,6 +53,7 @@ export function CollectionLibrary({
   const router = useRouter()
   const [pending, start] = useTransition()
   const [dragOver, setDragOver] = useState<string | null>(null) // collectionId|'none'
+  const [draggingId, setDraggingId] = useState<string | null>(null) // doc en cours de glissement
   const [editing, setEditing] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
@@ -131,7 +132,7 @@ export function CollectionLibrary({
             onDragOver={(e) => { e.preventDefault(); setDragOver(key) }}
             onDragLeave={() => setDragOver((cur) => (cur === key ? null : cur))}
             onDrop={(e) => onDrop(e, g.collectionId)}
-            className={`rounded-lg border bg-card p-4 transition-colors ${isDragTarget ? 'border-brand-400 ring-2 ring-brand-300/50 bg-brand-50/30' : isOrphan ? 'border-dashed' : ''}`}
+            className={`rounded-lg border bg-card p-4 transition-[background-color,border-color,box-shadow,transform] duration-150 ease-out ${isDragTarget ? 'border-brand-400 ring-2 ring-brand-300/50 bg-brand-50/30 shadow-lg motion-safe:-translate-y-0.5 motion-safe:scale-[1.01]' : isOrphan ? 'border-dashed' : ''}`}
           >
             {/* En-tête collection */}
             <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -187,8 +188,9 @@ export function CollectionLibrary({
                   <li
                     key={d.id}
                     draggable
-                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', d.id); e.dataTransfer.effectAllowed = 'move' }}
-                    className="flex items-start justify-between gap-3 py-2 text-sm flex-wrap cursor-grab active:cursor-grabbing"
+                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', d.id); e.dataTransfer.effectAllowed = 'move'; setDraggingId(d.id) }}
+                    onDragEnd={() => setDraggingId(null)}
+                    className={`flex items-start justify-between gap-3 py-2 text-sm flex-wrap cursor-grab active:cursor-grabbing transition-opacity duration-150 ${draggingId === d.id ? 'opacity-40' : 'opacity-100'}`}
                   >
                     <span className="min-w-0">
                       <Link href={`/documents/${d.id}`} className="font-medium underline hover:text-foreground break-words">{d.filename}</Link>

@@ -58,9 +58,9 @@ export default async function DocumentsPage() {
         </div>
         <Link
           href="/documents/import"
-          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 text-white px-3 h-9 text-sm font-medium hover:bg-brand-700 transition-colors shrink-0"
+          className="group inline-flex items-center gap-1.5 rounded-md bg-brand-600 text-white px-3 h-9 text-sm font-medium hover:bg-brand-700 transition-[background-color,transform] active:scale-[0.97] shrink-0"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4 transition-transform group-hover:rotate-90" />
           Ajouter des documents
         </Link>
       </header>
