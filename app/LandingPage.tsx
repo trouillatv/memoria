@@ -31,7 +31,7 @@ export default function LandingPage() {
         <div className="grid gap-12 md:grid-cols-2 md:items-center">
           <div className="space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-              Mémoire opérationnelle · Entreprises de nettoyage · Nouvelle-Calédonie
+              Mémoire opérationnelle augmentée · Équipes de terrain & multi-sites · Nouvelle-Calédonie
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-gray-900 md:text-5xl">
               Quand quelqu'un s'en va,<br />
@@ -42,6 +42,10 @@ export default function LandingPage() {
               anomalies, passations — et la fait apparaître au bon moment, à la bonne
               personne. Les départs, fins de contrat et changements d'équipe ne vous
               coûtent plus votre mémoire.
+            </p>
+            <p className="text-sm text-gray-400">
+              Pensé pour les équipes de terrain et les organisations multi-sites —
+              quel que soit le métier.
             </p>
             <div className="flex flex-wrap gap-3">
               <a
@@ -71,8 +75,8 @@ export default function LandingPage() {
             <p className="mb-4 text-xs text-gray-400">Équipe Nouméa Centre reprend le site</p>
             {[
               { icon: <KeyRound className="h-4 w-4 text-brand-600" />, label: 'Accès', text: 'Badge au PC sécurité · niveau -1, vestiaire dédié' },
-              { icon: <FileText className="h-4 w-4 text-brand-600" />, label: 'À savoir', text: 'Protocole d\'asepsie strict · bionettoyage avant 6h' },
-              { icon: <AlertTriangle className="h-4 w-4 text-amber-500" />, label: 'Anomalie 30j', text: 'Produit désinfectant rationné dans le local technique' },
+              { icon: <FileText className="h-4 w-4 text-brand-600" />, label: 'À savoir', text: 'Zone à accès réglementé · créneau avant ouverture, EPI obligatoires' },
+              { icon: <AlertTriangle className="h-4 w-4 text-amber-500" />, label: 'Anomalie 30j', text: 'Porte coupe-feu signalée bloquée · local technique' },
             ].map((item) => (
               <div key={item.label} className="mb-2.5 flex items-start gap-3 rounded-xl border border-gray-100 p-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-50">
@@ -207,7 +211,7 @@ export default function LandingPage() {
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 mb-1">Dumbéa Mall · Parties communes</p>
+                <p className="font-semibold text-gray-900 mb-1">Dumbéa Mall · Hall principal</p>
                 <p className="text-sm text-gray-500 leading-relaxed">
                   Robinet signalé en <span className="font-medium text-gray-900">octobre</span>,
                   fuite notée en <span className="font-medium text-gray-900">janvier</span>,
@@ -238,7 +242,7 @@ export default function LandingPage() {
                 <Layers className="h-5 w-5 text-brand-600" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 mb-1">Appel d'offres · bionettoyage hospitalier</p>
+                <p className="font-semibold text-gray-900 mb-1">Appel d'offres · marché de services multi-sites</p>
                 <p className="text-sm text-gray-500 leading-relaxed">
                   Critère « traçabilité des passages » exigé.{' '}
                   <span className="font-medium text-gray-900">Des interventions documentées</span> sur des sites comparables,
