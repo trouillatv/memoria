@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
@@ -117,9 +118,10 @@ export default async function DocumentViewerPage({
     <div className="space-y-6 max-w-4xl">
       <Link
         href={backHref}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        className="group inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 h-8 text-sm text-muted-foreground transition-colors hover:text-foreground hover:bg-muted active:scale-[0.97] motion-safe:transition-transform"
       >
-        ← {backLabel}
+        <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+        {backLabel}
       </Link>
 
       <header className="space-y-3">
