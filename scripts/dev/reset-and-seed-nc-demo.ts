@@ -971,6 +971,43 @@ async function seedHandoverBrief(
   return { token, title }
 }
 
+/**
+ * Compte propriétaire/admin canonique (Vincent 2026-05-27) : admin@memoria.nc /
+ * memoria2026!, login direct (pas de changement de mdp forcé). Indépendant des
+ * comptes démo (TEST_ACCOUNTS) ; recréé/mis à jour à chaque seed from scratch.
+ */
+async function ensureOwnerAdmin(supabase: SupabaseAdmin): Promise<void> {
+  const email = 'admin@memoria.nc'
+  const password = 'memoria2026!'
+  const { data: list } = await supabase.auth.admin.listUsers()
+  const existing = list?.users?.find((u) => u.email === email)
+  let id: string
+  if (existing) {
+    await supabase.auth.admin.updateUserById(existing.id, {
+      password,
+      email_confirm: true,
+      app_metadata: { role: 'admin' },
+      user_metadata: { full_name: 'Admin', role: 'admin' },
+    })
+    id = existing.id
+  } else {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      app_metadata: { role: 'admin' },
+      user_metadata: { full_name: 'Admin', role: 'admin' },
+    })
+    if (error) throw error
+    id = data.user!.id
+  }
+  await supabase
+    .from('users')
+    .update({ role: 'admin', full_name: 'Admin', must_change_password: false })
+    .eq('id', id)
+  console.log(`  ✓ Admin propriétaire : ${email} / ${password} (login direct)`)
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   assertSafeEnvironment(args)
@@ -991,6 +1028,7 @@ async function main() {
   // 2) Users + teams
   console.log('\n========== UTILISATEURS ==========')
   const users = await ensureTestUsers(supabase)
+  await ensureOwnerAdmin(supabase)
   const adminEmail = TEST_ACCOUNTS.find((a) => a.role === 'admin')!.email
   const admin = users.get(adminEmail)!
   console.log(`[admin] ${adminEmail} → id=${admin.id}`)
