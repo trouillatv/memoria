@@ -47,6 +47,11 @@ import {
 } from '@/lib/db/interventions'
 import { createTeam } from '@/lib/db/teams'
 import { createShareToken } from '@/lib/db/proof-share'
+import {
+  buildTeamTakesSitePayload,
+  createHandoverBrief,
+  shareHandoverBrief,
+} from '@/lib/db/handover'
 import type {
   ChecklistTemplateItem,
   PhotoKind,
@@ -182,6 +187,9 @@ function fail(msg: string): never {
 // Ordre crucial : enfants → parents. On ne touche PAS aux users / users auth.
 // On ne touche PAS aux logs (activity_logs, ai_usage) qui sont audit.
 const RESET_TABLES: Array<{ name: string; label: string }> = [
+  // Feuille : référence teams/sites/users → à purger AVANT eux (sinon FK/cascade
+  // casse la suppression de teams/clients). Ajouté avec le seed de passation.
+  { name: 'handover_briefs', label: 'passages de témoin' },
   { name: 'proof_share_tokens', label: 'tokens de partage de preuve' },
   { name: 'intervention_photos', label: 'photos d\'intervention' },
   { name: 'intervention_validations', label: 'validations' },
@@ -906,6 +914,63 @@ async function confirmInteractive(args: CliArgs): Promise<boolean> {
   return false
 }
 
+/**
+ * Passage de témoin DÉMONTRABLE (P0 audit board 2026-05-26). Crée un brief réel,
+ * pré-peuplé et PARTAGÉ, pour que la promesse « la mémoire survit aux ruptures
+ * humaines » soit visible dès la démo : dans /handovers, ouvrable via /h/[token],
+ * et dans /m côté chef (équipe cible). Pose aussi une fin de contrat proche pour
+ * que /continuite montre une passation à anticiper (sujet = continuité).
+ */
+async function seedHandoverBrief(
+  supabase: SupabaseAdmin,
+  users: Map<string, { id: string; fullName: string }>,
+  adminId: string,
+): Promise<{ token: string | null; title: string } | null> {
+  const chef = users.get('chef.noumea@memoria.local')
+  if (!chef) return null
+  const { data: tm } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', chef.id)
+    .is('left_at', null)
+    .limit(1)
+  const teamId = tm?.[0]?.team_id
+  if (!teamId) return null
+  const { data: site } = await supabase
+    .from('sites')
+    .select('id')
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle()
+  if (!site) return null
+
+  const { payload, title } = await buildTeamTakesSitePayload({
+    targetTeamId: teamId,
+    siteId: site.id,
+  })
+  const brief = await createHandoverBrief({
+    kind: 'team_takes_site',
+    targetTeamId: teamId,
+    siteId: site.id,
+    payload,
+    title,
+    createdBy: adminId,
+  })
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  const { token } = await shareHandoverBrief(brief.id, expiresAt)
+
+  // /continuite : fin de contrat proche sur un autre chef → passation anticipée.
+  const agent = users.get('agent.demo@memoria.local')
+  if (agent) {
+    const end = new Date(Date.now() + 18 * 24 * 60 * 60 * 1000)
+    await supabase
+      .from('users')
+      .update({ contract_end_date: end.toISOString().slice(0, 10) })
+      .eq('id', agent.id)
+  }
+  return { token, title }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   assertSafeEnvironment(args)
@@ -953,6 +1018,16 @@ async function main() {
   console.log('\n========== TOKENS DE PARTAGE ==========')
   const tokensInfo = await seedProofTokens(supabase, admin.id)
 
+  // 7.5) Passage de témoin démontrable (brief réel partagé)
+  console.log('\n========== PASSAGE DE TÉMOIN ==========')
+  const briefInfo = await seedHandoverBrief(supabase, users, admin.id)
+  if (briefInfo) {
+    console.log(`  ✓ Brief partagé : « ${briefInfo.title} » → /h/${briefInfo.token}`)
+    console.log('  ✓ Fin de contrat J-18 sur agent.demo → /continuite montre une passation à anticiper')
+  } else {
+    console.log('  ⚠ Brief non créé (chef / équipe / site manquant).')
+  }
+
   // 8) Summary
   console.log('\n========== RÉSUMÉ FINAL ==========')
   console.log(`Tenders            : ${CONTRACTS.length}`)
@@ -969,6 +1044,7 @@ async function main() {
   console.log(`Teams              : ${teamMap.size}`)
   console.log(`Test users         : ${users.size}`)
   console.log(`Proof tokens       : ${tokensInfo.count}`)
+  console.log(`Passation          : ${briefInfo ? '1 brief partagé + fin de contrat J-18' : '0'}`)
   console.log('')
   console.log('Comptes de test (mot de passe commun : ' + TEST_PASSWORD + ')')
   for (const acc of TEST_ACCOUNTS) {
