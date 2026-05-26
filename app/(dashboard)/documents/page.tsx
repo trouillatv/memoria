@@ -9,16 +9,9 @@ import {
   listOrphanDocuments,
   getDocumentLinkLabels,
 } from '@/lib/db/documents'
-import { getActiveProvider } from '@/lib/ai/embeddings'
+import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
 import { NewCollectionForm } from './NewCollectionForm'
 import { CollectionLibrary, type LibGroup } from './CollectionLibrary'
-
-// Modèle d'embedding par provider actif (aligné lib/ai/embed-knowledge-chunks).
-const EMBED_MODEL_BY_PROVIDER: Record<string, string> = {
-  google: 'gemini-embedding-001',
-  openai: 'text-embedding-3-small',
-  voyage: 'voyage-3',
-}
 
 // Bibliothèque documentaire — CONSULTATION uniquement (split de surface C).
 // L'ajout vit ailleurs : /documents/ajouter (unitaire) · /documents/import (lot).
@@ -31,8 +24,7 @@ export default async function DocumentsPage() {
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') notFound()
 
-  const provider = getActiveProvider()
-  const embedModel = provider ? EMBED_MODEL_BY_PROVIDER[provider] : null
+  const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
 
   const collections = await listDocumentCollections()
   const [byCollection, orphans] = await Promise.all([
@@ -101,7 +93,7 @@ export default async function DocumentsPage() {
             (ex. « Contrats », « Sécurité », « Procédures ») pour commencer à y ranger vos documents.
           </p>
         ) : (
-          <CollectionLibrary groups={groups} linkLabels={linkLabelsRecord} embedModel={embedModel} />
+          <CollectionLibrary groups={groups} linkLabels={linkLabelsRecord} avgCostUsd={docAvgCost.avgUsd} costSampleCount={docAvgCost.count} />
         )}
       </section>
     </div>

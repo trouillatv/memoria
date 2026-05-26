@@ -16,15 +16,13 @@ const IN_FLIGHT_STATUSES = ['pending', 'extracting', 'ocr', 'chunking']
 export function DocumentActions({
   documentId,
   analysisStatus,
-  costModel,
-  costTokens,
-  costEstimateUsd,
+  avgCostUsd,
+  costSampleCount,
 }: {
   documentId: string
   analysisStatus: string
-  costModel?: string | null
-  costTokens?: number | null
-  costEstimateUsd?: number | null
+  avgCostUsd?: number | null
+  costSampleCount?: number
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -78,7 +76,7 @@ export function DocumentActions({
         >
           {pending ? '…' : 'Réanalyser'}
         </Button>
-        <AiCostHint model={costModel} tokens={costTokens} estimateUsd={costEstimateUsd} />
+        <AiCostHint avgUsd={avgCostUsd} sampleCount={costSampleCount} label="analyse de document" />
       </span>
       <Button
         type="button"

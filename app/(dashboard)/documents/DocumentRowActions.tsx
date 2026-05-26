@@ -17,14 +17,16 @@ export function DocumentRowActions({
   analysisStatus,
   currentCollectionId,
   collections = [],
-  embedModel = null,
+  avgCostUsd = null,
+  costSampleCount = 0,
 }: {
   documentId: string
   filename: string
   analysisStatus: string
   currentCollectionId?: string
   collections?: { id: string; name: string }[]
-  embedModel?: string | null
+  avgCostUsd?: number | null
+  costSampleCount?: number
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -103,7 +105,7 @@ export function DocumentRowActions({
       >
         Réanalyser
       </button>
-      <AiCostHint model={embedModel} />
+      <AiCostHint avgUsd={avgCostUsd} sampleCount={costSampleCount} label="analyse de document" />
       <span className="text-xs text-muted-foreground/40">·</span>
       <button
         type="button"

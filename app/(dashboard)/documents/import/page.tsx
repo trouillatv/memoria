@@ -8,14 +8,8 @@ import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
 import { listTeams } from '@/lib/db/teams'
-import { getActiveProvider } from '@/lib/ai/embeddings'
+import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
 import { BatchImportForm } from './BatchImportForm'
-
-const EMBED_MODEL_BY_PROVIDER: Record<string, string> = {
-  google: 'gemini-embedding-001',
-  openai: 'text-embedding-3-small',
-  voyage: 'voyage-3',
-}
 
 // Import par lot (Phase 2 V1) — dépôt multi-fichiers → triage → validation
 // humaine → import séquentiel borné. Réutilise uploadDocumentAction + l'embedding
@@ -35,6 +29,8 @@ export default async function DocumentsImportPage({
   if (role !== 'admin' && role !== 'manager') notFound()
 
   const sp = await searchParams
+
+  const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
 
   const [collections, contracts, sites, clients, tenders, teams] = await Promise.all([
     listDocumentCollections(),
@@ -72,7 +68,8 @@ export default async function DocumentsImportPage({
         linkTargets={linkTargets}
         prefillTargetType={sp.target_type}
         prefillTargetId={sp.target_id}
-        embedModel={(() => { const p = getActiveProvider(); return p ? EMBED_MODEL_BY_PROVIDER[p] : null })()}
+        avgCostUsd={docAvgCost.avgUsd}
+        costSampleCount={docAvgCost.count}
       />
     </div>
   )

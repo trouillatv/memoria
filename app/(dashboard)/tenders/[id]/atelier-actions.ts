@@ -215,6 +215,43 @@ export async function listConversationsAction(tenderId: string) {
   return listConversations(tenderId)
 }
 
+/** Coût IA moyen OBSERVÉ par agent (feature = nom d'agent), sur les
+ *  dernières exécutions réussies. Sert à afficher dans le sélecteur d'agents
+ *  « cette analyse coûte en moyenne X » AVANT de lancer — réel, pas théorique.
+ *  Vincent 2026-05-27. Manager/admin only (cohérent atelier). */
+export async function getAgentAvgCostsAction(): Promise<
+  Record<string, { avgUsd: number | null; count: number }>
+> {
+  await requireManagerOrAdmin()
+  const supabase = createAdminClient()
+  const AGENT_FEATURES = [
+    'lecteur_ao', 'memoire_technique', 'contradicteur',
+    'financier', 'terrain', 'conformite', 'general',
+  ]
+  const { data } = await supabase
+    .from('ai_usage')
+    .select('feature, cost_usd')
+    .in('feature', AGENT_FEATURES)
+    .eq('status', 'success')
+    .not('cost_usd', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(400)
+
+  const acc: Record<string, { sum: number; count: number }> = {}
+  for (const r of (data ?? []) as Array<{ feature: string; cost_usd: number | null }>) {
+    const a = acc[r.feature] ?? { sum: 0, count: 0 }
+    a.sum += r.cost_usd ?? 0
+    a.count += 1
+    acc[r.feature] = a
+  }
+  const out: Record<string, { avgUsd: number | null; count: number }> = {}
+  for (const f of AGENT_FEATURES) {
+    const a = acc[f]
+    out[f] = a && a.count > 0 ? { avgUsd: a.sum / a.count, count: a.count } : { avgUsd: null, count: 0 }
+  }
+  return out
+}
+
 export async function getAgentAnalysesStatusAction(tenderId: string) {
   const supabase = await createServerClient()
   const { data } = await supabase

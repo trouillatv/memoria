@@ -46,11 +46,13 @@ function fmtAddedDate(iso: string | null): string {
 export function CollectionLibrary({
   groups,
   linkLabels,
-  embedModel = null,
+  avgCostUsd = null,
+  costSampleCount = 0,
 }: {
   groups: LibGroup[]
   linkLabels: Record<string, { type: string; label: string }[]>
-  embedModel?: string | null
+  avgCostUsd?: number | null
+  costSampleCount?: number
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -214,7 +216,8 @@ export function CollectionLibrary({
                       analysisStatus={d.analysis_status}
                       currentCollectionId={g.collectionId ?? undefined}
                       collections={allCollections}
-                      embedModel={embedModel}
+                      avgCostUsd={avgCostUsd}
+                      costSampleCount={costSampleCount}
                     />
                   </li>
                 ))}

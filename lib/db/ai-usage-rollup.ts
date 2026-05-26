@@ -269,6 +269,36 @@ export async function getAIHealthSummary(): Promise<AIHealthSummary> {
   }
 }
 
+export interface AvgCostSample {
+  /** Coût USD moyen par opération sur l'échantillon, null si aucun historique. */
+  avgUsd: number | null
+  /** Nombre d'opérations réussies prises dans la moyenne. */
+  count: number
+}
+
+/** Coût moyen OBSERVÉ des N dernières opérations IA réussies pour un ou
+ *  plusieurs `feature` donnés. Sert à afficher à l'utilisateur « ce type
+ *  d'action coûte en moyenne X » AVANT qu'il clique — basé sur le réel, pas
+ *  sur une estimation théorique. Vincent 2026-05-27. */
+export async function getAverageCostForFeatures(
+  features: string[],
+  sample: number = 20,
+): Promise<AvgCostSample> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('ai_usage')
+    .select('cost_usd')
+    .in('feature', features)
+    .eq('status', 'success')
+    .not('cost_usd', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(sample)
+  const rows = (data ?? []) as Array<{ cost_usd: number | null }>
+  if (rows.length === 0) return { avgUsd: null, count: 0 }
+  const sum = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0)
+  return { avgUsd: sum / rows.length, count: rows.length }
+}
+
 export interface AIProductionSummary {
   resonancesActiveB1: number
   resonancesActiveB2: number

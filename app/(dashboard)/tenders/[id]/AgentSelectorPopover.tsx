@@ -5,8 +5,12 @@ import { Check, Search } from 'lucide-react'
 import { AGENTS } from './agents-metadata'
 import { AGENT_COLORS } from './agents-colors'
 import { MAX_AGENTS } from './copilote-mode'
+import { getAgentAvgCostsAction } from './atelier-actions'
+import { formatXpf } from '@/lib/format/currency'
 import { cn } from '@/lib/utils'
 import type { ChatAgentName } from '@/types/db'
+
+type AvgCost = { avgUsd: number | null; count: number }
 
 interface AgentSelectorPopoverProps {
   open: boolean
@@ -22,7 +26,19 @@ const ALL_AGENTS: ChatAgentName[] = [
 
 export function AgentSelectorPopover({ open, onOpenChange, selected, onChange }: AgentSelectorPopoverProps) {
   const [query, setQuery] = useState('')
+  const [avgCosts, setAvgCosts] = useState<Record<string, AvgCost> | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  // Coût IA moyen observé par agent — chargé à la 1ʳᵉ ouverture (responsabilise
+  // avant de lancer). Silencieux si échec : l'absence de chiffre n'empêche rien.
+  useEffect(() => {
+    if (!open || avgCosts !== null) return
+    let alive = true
+    getAgentAvgCostsAction()
+      .then((c) => { if (alive) setAvgCosts(c) })
+      .catch(() => { if (alive) setAvgCosts({}) })
+    return () => { alive = false }
+  }, [open, avgCosts])
 
   useEffect(() => {
     if (!open) return
@@ -103,6 +119,21 @@ export function AgentSelectorPopover({ open, onOpenChange, selected, onChange }:
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium">{meta.label}</div>
                   <div className="text-xs text-muted-foreground line-clamp-1">{meta.description}</div>
+                  {avgCosts && (() => {
+                    const c = avgCosts[agent]
+                    if (c && c.count > 0 && typeof c.avgUsd === 'number') {
+                      return (
+                        <div className="text-[11px] text-muted-foreground/80 mt-0.5">
+                          ≈ {formatXpf(c.avgUsd)} / analyse · moyenne sur {c.count}
+                        </div>
+                      )
+                    }
+                    return (
+                      <div className="text-[11px] text-muted-foreground/50 mt-0.5">
+                        coût mesuré dès la 1ʳᵉ analyse
+                      </div>
+                    )
+                  })()}
                 </div>
                 {isSelected && <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />}
               </button>

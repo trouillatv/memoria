@@ -1,15 +1,14 @@
 'use client'
 
-// Indice de coût IA — tooltip discret (ⓘ) à côté des boutons d'analyse
-// documentaire (Vincent 2026-05-27). N'encombre pas l'UI : rien d'affiché
+// Indice de coût IA — tooltip discret (ⓘ) à côté des boutons qui déclenchent
+// une opération IA (Vincent 2026-05-27). N'encombre pas l'UI : rien d'affiché
 // en permanence, le détail apparaît au survol.
 //
-// Doctrine coût IA + honnêteté : on ne ment pas par un faux « 0,00 $ ».
-// - Estimation chiffrée quand on connaît la taille du texte (page détail).
-// - Sinon, explication du modèle de coût (embeddings négligeables, OCR
-//   = quelques centimes pour un PDF scanné).
-// Le coût est calculé côté serveur (source unique estimateCostUsd) et passé
-// en prop — ce composant ne duplique aucune table de prix.
+// Principe (clarifié 2026-05-27) : PAS un prix exact théorique, mais une
+// MOYENNE OBSERVÉE des dernières actions du même type (lues dans ai_usage,
+// passées en prop depuis le serveur). Si aucun historique → on le dit, sans
+// inventer de chiffre. Affichage en XPF (ratio stable, lib/format/currency).
+// Sert à responsabiliser l'utilisateur AVANT le clic — visible managers+admins.
 
 import { Info } from 'lucide-react'
 import {
@@ -21,18 +20,18 @@ import {
 import { formatXpf } from '@/lib/format/currency'
 
 export function AiCostHint({
-  model,
-  estimateUsd,
-  tokens,
+  avgUsd,
+  sampleCount = 0,
+  label = 'opération',
 }: {
-  /** Modèle d'embedding actif (ex. gemini-embedding-001), null si aucune clé. */
-  model?: string | null
-  /** Coût estimé en USD (calculé serveur). null = tarif non répertorié ou inconnu. */
-  estimateUsd?: number | null
-  /** Tokens d'entrée estimés (≈ caractères / 4). */
-  tokens?: number | null
+  /** Coût USD moyen observé sur les N dernières actions de ce type. */
+  avgUsd?: number | null
+  /** Taille de l'échantillon (0 = aucun historique). */
+  sampleCount?: number
+  /** Nom du type d'action, ex. « analyse de document », « lecture AO ». */
+  label?: string
 }) {
-  const hasEstimate = typeof tokens === 'number' && tokens > 0
+  const hasHistory = sampleCount > 0 && typeof avgUsd === 'number'
 
   return (
     <TooltipProvider delay={120}>
@@ -41,7 +40,7 @@ export function AiCostHint({
           render={
             <button
               type="button"
-              aria-label="Coût IA estimé de l'analyse"
+              aria-label="Coût IA estimé de cette action"
               className="inline-flex items-center text-muted-foreground/60 transition-colors hover:text-muted-foreground"
             />
           }
@@ -49,22 +48,23 @@ export function AiCostHint({
           <Info className="h-3.5 w-3.5" />
         </TooltipTrigger>
         <TooltipContent side="top" className="flex-col items-start gap-1 py-2 text-left">
-          <span className="font-semibold">Coût IA de l’analyse</span>
-          {model ? (
-            <span className="opacity-90">Modèle : {model}</span>
+          <span className="font-semibold">Coût IA indicatif</span>
+          {hasHistory ? (
+            <>
+              <span className="opacity-90">
+                ≈ {formatXpf(avgUsd!)} par {label}
+              </span>
+              <span className="opacity-70">
+                Moyenne des {sampleCount} dernière{sampleCount > 1 ? 's' : ''} de ce
+                type — pas un prix exact.
+              </span>
+            </>
           ) : (
-            <span className="opacity-90">Aucune clé IA active — analyse en mode dégradé.</span>
-          )}
-          {hasEstimate && (
-            <span className="opacity-90">
-              ~{tokens!.toLocaleString('fr-FR')} tokens ·{' '}
-              {typeof estimateUsd === 'number' ? `≈ ${formatXpf(estimateUsd)}` : 'tarif non répertorié'}
+            <span className="opacity-80">
+              Pas encore de référence : le coût moyen s’affichera après les
+              premières {label}s.
             </span>
           )}
-          <span className="opacity-70">
-            Embeddings du texte (coût quasi nul). Un PDF scanné ajoute
-            l’OCR — quelques dizaines de francs selon le nombre de pages.
-          </span>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

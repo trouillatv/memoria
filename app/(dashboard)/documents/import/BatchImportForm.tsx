@@ -49,13 +49,15 @@ export function BatchImportForm({
   linkTargets,
   prefillTargetType,
   prefillTargetId,
-  embedModel = null,
+  avgCostUsd = null,
+  costSampleCount = 0,
 }: {
   collections: Collection[]
   linkTargets: LinkTargets
   prefillTargetType?: string
   prefillTargetId?: string
-  embedModel?: string | null
+  avgCostUsd?: number | null
+  costSampleCount?: number
 }) {
   const router = useRouter()
   const [rows, setRows] = useState<Row[]>([])
@@ -290,7 +292,7 @@ export function BatchImportForm({
           <Button onClick={importAll} disabled={!canImport}>
             {importing ? <><Loader2 className="h-4 w-4 animate-spin" /> Import en cours…</> : `Importer ${rows.length || ''} document${rows.length > 1 ? 's' : ''}`}
           </Button>
-          <AiCostHint model={embedModel} />
+          <AiCostHint avgUsd={avgCostUsd} sampleCount={costSampleCount} label="analyse de document" />
         </span>
         {!collectionId && rows.length > 0 && (
           <span className="text-xs text-muted-foreground">Choisis une collection.</span>
