@@ -9,16 +9,25 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    setError(null)
     const supabase = createClient()
-    await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/change-password`,
-    })
-    setSent(true)
+    // URL ABSOLUE obligatoire (Supabase rejette un redirect relatif) et qui
+    // passe par /auth/callback pour échanger le code contre une session avant
+    // d'atterrir sur /change-password. window.location.origin = l'origine
+    // réelle (localhost/127.0.0.1/prod) — pas de dépendance à une env var.
+    const redirectTo = `${window.location.origin}/auth/callback?next=/change-password`
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
     setLoading(false)
+    if (resetError) {
+      setError("Impossible d'envoyer le lien. Réessayez dans un instant.")
+      return
+    }
+    setSent(true)
   }
 
   return (
@@ -58,6 +67,9 @@ export default function ForgotPasswordPage() {
                 className="w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </div>
+            {error && (
+              <p className="text-xs text-red-600" role="alert">{error}</p>
+            )}
             <button
               type="submit"
               disabled={loading}
