@@ -6,32 +6,15 @@ import { getUserRoleById } from '@/lib/db/users'
 import {
   listDocumentCollections,
   listDocumentsByCollection,
+  listOrphanDocuments,
   getDocumentLinkLabels,
 } from '@/lib/db/documents'
-import { indexationState } from '@/lib/documents/labels'
-import { DocumentRowActions } from './DocumentRowActions'
 import { NewCollectionForm } from './NewCollectionForm'
+import { CollectionLibrary, type LibGroup } from './CollectionLibrary'
 
 // Bibliothèque documentaire — CONSULTATION uniquement (split de surface C).
 // L'ajout vit ailleurs : /documents/ajouter (unitaire) · /documents/import (lot).
 // ZÉRO IA (pas de recall, pas de résumé). Role-gaté manager/admin.
-
-const TIER_LABEL: Record<string, string> = {
-  vivante: 'Vivante',
-  consultable: 'Consultable',
-  froide: 'Froide',
-}
-const TARGET_LABEL: Record<string, string> = {
-  contract: 'Contrat',
-  site: 'Site',
-  client: 'Client',
-  tender: 'AO',
-  team: 'Équipe',
-}
-function fmtAddedDate(iso: string | null): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })
-}
 
 export default async function DocumentsPage() {
   const supabase = await createServerClient()
@@ -41,18 +24,27 @@ export default async function DocumentsPage() {
   if (role !== 'admin' && role !== 'manager') notFound()
 
   const collections = await listDocumentCollections()
-  const byCollection = await Promise.all(
-    collections.map(async (c) => ({
-      collection: c,
-      docs: await listDocumentsByCollection(c.id),
-    })),
-  )
-  // Tri par date d'ajout (plus récent en haut) dans chaque collection.
+  const [byCollection, orphans] = await Promise.all([
+    Promise.all(
+      collections.map(async (c) => ({ collection: c, docs: await listDocumentsByCollection(c.id) })),
+    ),
+    listOrphanDocuments(),
+  ])
   for (const c of byCollection) {
     c.docs.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
   }
-  // Rattachements résolus en libellés, en batch (« Contrat X · Client Y »).
-  const linkLabels = await getDocumentLinkLabels(byCollection.flatMap((c) => c.docs.map((d) => d.id)))
+  const linkLabels = await getDocumentLinkLabels([
+    ...byCollection.flatMap((c) => c.docs.map((d) => d.id)),
+    ...orphans.map((d) => d.id),
+  ])
+  const linkLabelsRecord = Object.fromEntries(linkLabels) as Record<string, { type: string; label: string }[]>
+
+  const toLibDoc = (d: { id: string; filename: string; document_type: string; memory_tier: 'vivante' | 'consultable' | 'froide' | null; analysis_status: string; created_at: string }) =>
+    ({ id: d.id, filename: d.filename, document_type: d.document_type, memory_tier: d.memory_tier, analysis_status: d.analysis_status, created_at: d.created_at })
+  const groups: LibGroup[] = [
+    ...byCollection.map(({ collection, docs }) => ({ collectionId: collection.id, name: collection.name, docs: docs.map(toLibDoc) })),
+    ...(orphans.length > 0 ? [{ collectionId: null, name: 'Sans collection', docs: orphans.map(toLibDoc) }] : []),
+  ]
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -82,67 +74,23 @@ export default async function DocumentsPage() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Collections ({collections.length})
-        </h2>
-        {collections.length === 0 ? (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Collections ({collections.length})
+          </h2>
+          {groups.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              Glissez un document d&apos;une collection à l&apos;autre · renommez / réordonnez / supprimez via les icônes.
+            </span>
+          )}
+        </div>
+        {groups.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-4">
             Votre bibliothèque démarre ici. Créez une première collection ci-dessus
             (ex. « Contrats », « Sécurité », « Procédures ») pour commencer à y ranger vos documents.
           </p>
         ) : (
-          byCollection.map(({ collection, docs }) => (
-            <div key={collection.id} className="rounded-lg border bg-card p-4">
-              <h3 className="text-sm font-semibold mb-2">
-                {collection.name}{' '}
-                <span className="text-xs font-normal text-muted-foreground">
-                  · {docs.length} document{docs.length > 1 ? 's' : ''}
-                </span>
-              </h3>
-              {docs.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">
-                  Collection prête — aucun document pour l&apos;instant.
-                </p>
-              ) : (
-                <ul className="divide-y">
-                  {docs.map((d) => (
-                    <li
-                      key={d.id}
-                      className="flex items-start justify-between gap-3 py-2 text-sm flex-wrap"
-                    >
-                      <span className="min-w-0">
-                        <Link
-                          href={`/documents/${d.id}`}
-                          className="font-medium underline hover:text-foreground break-words"
-                        >
-                          {d.filename}
-                        </Link>
-                        <span className="text-xs text-muted-foreground">
-                          {' '}· {d.document_type}
-                          {d.memory_tier && <>{' '}· {TIER_LABEL[d.memory_tier] ?? d.memory_tier}</>}
-                          {' '}· {indexationState(d.analysis_status, d.memory_tier).label}
-                          {' '}· ajouté le {fmtAddedDate(d.created_at)}
-                        </span>
-                        {(linkLabels.get(d.id)?.length ?? 0) > 0 && (
-                          <span className="block text-[11px] text-muted-foreground/90 mt-0.5">
-                            Rattaché à :{' '}
-                            {linkLabels.get(d.id)!.map((l) => `${TARGET_LABEL[l.type] ?? l.type} ${l.label}`).join(' · ')}
-                          </span>
-                        )}
-                      </span>
-                      <DocumentRowActions
-                        documentId={d.id}
-                        filename={d.filename}
-                        analysisStatus={d.analysis_status}
-                        currentCollectionId={collection.id}
-                        collections={collections.map((c) => ({ id: c.id, name: c.name }))}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))
+          <CollectionLibrary groups={groups} linkLabels={linkLabelsRecord} />
         )}
       </section>
     </div>

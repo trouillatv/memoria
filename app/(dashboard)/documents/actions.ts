@@ -21,6 +21,9 @@ import {
   softDeleteDocument,
   getDocument,
   moveDocumentToCollection,
+  renameDocumentCollection,
+  reorderDocumentCollections,
+  deleteDocumentCollection,
 } from '@/lib/db/documents'
 import { analyzeDocument } from '@/lib/documents/analyze'
 
@@ -104,12 +107,13 @@ export async function createDocumentCollectionAction(
   }
 }
 
+// collection_id : un uuid, ou '' / 'none' = « Sans collection » (orphelin).
 const moveSchema = z.object({
   document_id: z.string().uuid(),
-  collection_id: z.string().uuid(),
+  collection_id: z.union([z.string().uuid(), z.literal(''), z.literal('none')]),
 })
 
-/** Déplace un document vers une autre collection. Manager/admin. */
+/** Déplace un document vers une autre collection (ou « sans collection »). Manager/admin. */
 export async function moveDocumentAction(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -124,19 +128,93 @@ export async function moveDocumentAction(
     collection_id: formData.get('collection_id'),
   })
   if (!parsed.success) return { ok: false, error: 'Champs invalides.' }
+  const target = parsed.data.collection_id === '' || parsed.data.collection_id === 'none'
+    ? null
+    : parsed.data.collection_id
   try {
-    await moveDocumentToCollection(parsed.data.document_id, parsed.data.collection_id)
+    await moveDocumentToCollection(parsed.data.document_id, target)
     await logAuditEvent({
       userId,
       entityType: 'document',
       entityId: parsed.data.document_id,
       action: 'updated',
-      metadata: { kind: 'document_moved_collection', collection_id: parsed.data.collection_id },
+      metadata: { kind: 'document_moved_collection', collection_id: target },
     })
     revalidatePath('/documents')
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Déplacement échoué.' }
+  }
+}
+
+const renameSchema = z.object({ collection_id: z.string().uuid(), name: z.string().min(2).max(120) })
+
+/** Renomme une collection. Manager/admin. */
+export async function renameCollectionAction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  let userId: string
+  try { userId = await requireManagerOrAdmin() } catch { return { ok: false, error: 'Accès refusé.' } }
+  const parsed = renameSchema.safeParse({
+    collection_id: formData.get('collection_id'),
+    name: (formData.get('name') as string | null)?.trim(),
+  })
+  if (!parsed.success) return { ok: false, error: 'Nom invalide (2-120 caractères).' }
+  try {
+    await renameDocumentCollection(parsed.data.collection_id, parsed.data.name)
+    revalidatePath('/documents')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec.' }
+  }
+}
+
+/** Réordonne les collections (liste d'ids ordonnée). Manager/admin. */
+export async function reorderCollectionsAction(
+  orderedIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  try { await requireManagerOrAdmin() } catch { return { ok: false, error: 'Accès refusé.' } }
+  if (!Array.isArray(orderedIds) || orderedIds.some((x) => typeof x !== 'string')) {
+    return { ok: false, error: 'Liste invalide.' }
+  }
+  try {
+    await reorderDocumentCollections(orderedIds)
+    revalidatePath('/documents')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec.' }
+  }
+}
+
+const deleteCollectionSchema = z.object({
+  collection_id: z.string().uuid(),
+  mode: z.enum(['cascade', 'orphan']),
+})
+
+/** Supprime une collection. mode=cascade (supprime les docs) | orphan (docs → sans collection). Manager/admin. */
+export async function deleteCollectionAction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  let userId: string
+  try { userId = await requireManagerOrAdmin() } catch { return { ok: false, error: 'Accès refusé.' } }
+  const parsed = deleteCollectionSchema.safeParse({
+    collection_id: formData.get('collection_id'),
+    mode: formData.get('mode'),
+  })
+  if (!parsed.success) return { ok: false, error: 'Champs invalides.' }
+  try {
+    await deleteDocumentCollection(parsed.data.collection_id, parsed.data.mode)
+    await logAuditEvent({
+      userId,
+      entityType: 'document',
+      entityId: parsed.data.collection_id,
+      action: 'soft_deleted',
+      metadata: { kind: 'collection_deleted', mode: parsed.data.mode },
+    })
+    revalidatePath('/documents')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec.' }
   }
 }
 

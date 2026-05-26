@@ -603,6 +603,7 @@ export interface DbDocumentCollection {
   name: string
   scope_type: string | null
   scope_id: string | null
+  position: number
   created_at: string
   deleted_at: string | null
 }
@@ -610,7 +611,7 @@ export interface DbDocumentCollection {
 export interface DbDocument {
   id: string
   tenant_id: string | null
-  collection_id: string
+  collection_id: string | null
   document_type: DocumentType
   tags: string[]
   visibility_level: DocumentVisibility

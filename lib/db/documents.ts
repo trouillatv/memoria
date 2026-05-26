@@ -47,9 +47,73 @@ export async function listDocumentCollections(): Promise<DbDocumentCollection[]>
     .from('document_collections')
     .select('*')
     .is('deleted_at', null)
+    .order('position', { ascending: true })
     .order('name', { ascending: true })
   if (error) throw error
   return (data ?? []) as DbDocumentCollection[]
+}
+
+/** Renomme une collection. */
+export async function renameDocumentCollection(id: string, name: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('document_collections').update({ name }).eq('id', id)
+  if (error) throw error
+}
+
+/** Réordonne les collections : position = index dans la liste fournie. */
+export async function reorderDocumentCollections(orderedIds: string[]): Promise<void> {
+  const supabase = createAdminClient()
+  await Promise.all(
+    orderedIds.map((id, i) =>
+      supabase.from('document_collections').update({ position: i }).eq('id', id),
+    ),
+  )
+}
+
+/**
+ * Supprime une collection (soft delete). Deux modes pour ses documents :
+ *  - 'cascade' : soft-delete aussi les documents de la collection.
+ *  - 'orphan'  : détache les documents (collection_id = null) → « Sans collection ».
+ */
+export async function deleteDocumentCollection(
+  id: string,
+  mode: 'cascade' | 'orphan',
+): Promise<void> {
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+  if (mode === 'cascade') {
+    const { error: docErr } = await supabase
+      .from('documents')
+      .update({ deleted_at: now })
+      .eq('collection_id', id)
+      .is('deleted_at', null)
+    if (docErr) throw docErr
+  } else {
+    const { error: orphanErr } = await supabase
+      .from('documents')
+      .update({ collection_id: null })
+      .eq('collection_id', id)
+      .is('deleted_at', null)
+    if (orphanErr) throw orphanErr
+  }
+  const { error } = await supabase
+    .from('document_collections')
+    .update({ deleted_at: now })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Documents sans collection (orphelins) — groupe « Sans collection ». */
+export async function listOrphanDocuments(): Promise<DbDocument[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('documents')
+    .select('*')
+    .is('collection_id', null)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbDocument[]
 }
 
 // --- Documents --------------------------------------------------------------
@@ -116,10 +180,10 @@ export async function getDocument(id: string): Promise<DbDocument | null> {
   return (data as DbDocument | null) ?? null
 }
 
-/** Déplace un document vers une autre collection (réassigne collection_id). */
+/** Déplace un document vers une autre collection (ou null = « Sans collection »). */
 export async function moveDocumentToCollection(
   documentId: string,
-  collectionId: string,
+  collectionId: string | null,
 ): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
