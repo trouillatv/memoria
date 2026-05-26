@@ -31,7 +31,7 @@ jobs:
       # Stack minimal : DB + auth + REST + storage. On exclut Studio/Realtime/
       # Edge/Analytics (non requis pour valider le schéma) → démarrage plus rapide.
       - name: Start Supabase (DB only services)
-        run: supabase start -x studio,realtime,edge-runtime,imgproxy,inbucket,vector,supavisor
+        run: supabase start -x studio,realtime,edge-runtime,imgproxy,mailpit,vector,logflare,supavisor
 
       # LE test : recrée la base et rejoue toutes les migrations dans l'ordre.
       # Échoue (et fait échouer la CI) si une migration ne passe pas from scratch.

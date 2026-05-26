@@ -5,6 +5,22 @@
 -- La similarity (internal_score) n'est jamais exposée en UI.
 -- Calcul à la demande derrière Suspense — jamais bloquant.
 
+-- Prérequis de reproductibilité (Vincent 2026-05-26) : cette fonction (et 060)
+-- référencent sites.tenant_id, mais la migration dédiée (061) est numérotée APRÈS.
+-- Un rebuild from scratch (db reset / CI) échouait ici. On crée donc la colonne
+-- avant, de façon IDEMPOTENTE : no-op sur le cloud déjà migré, 061 reste un no-op.
+ALTER TABLE public.sites ADD COLUMN IF NOT EXISTS tenant_id uuid;
+DO $prereq$
+DECLARE v_tenant_id uuid;
+BEGIN
+  SELECT tenant_id INTO v_tenant_id FROM public.sites WHERE tenant_id IS NOT NULL LIMIT 1;
+  IF v_tenant_id IS NULL THEN v_tenant_id := gen_random_uuid(); END IF;
+  UPDATE public.sites SET tenant_id = v_tenant_id WHERE tenant_id IS NULL;
+  EXECUTE 'ALTER TABLE public.sites ALTER COLUMN tenant_id SET DEFAULT ''' || v_tenant_id || '''';
+END $prereq$;
+ALTER TABLE public.sites ALTER COLUMN tenant_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS sites_tenant_id_idx ON public.sites (tenant_id);
+
 CREATE OR REPLACE FUNCTION public.find_similar_traces_for_tenant(
   p_tenant_id    uuid,
   p_embedding    vector(768),
