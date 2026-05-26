@@ -269,68 +269,70 @@
     --color-amber-500:   hsl(36 76% 50%);
   }
 
-  /* Thème « Archive claire » — option opt-in, FAMILLE CLAIRE. Registre / carnet
-     de mémoire : fond papier ivoire chaud, cartes blanc cassé, encre graphite,
-     accent tabac/bronze, sémantique sauge / ambre doux / bordeaux discret.
-     Pro et moderne — ni parchemin, ni vieux papier jauni. */
+  /* Thème « Archive claire » — option opt-in, FAMILLE CLAIRE, registre FROID
+     (Vincent 2026-05-26 : ocre était trop proche, on sépare chaud↔froid).
+     « Papier froid / pierre » : fond pierre neutre légèrement bleuté, cartes
+     blanc froid, encre ardoise, accent ACIER/graphite. Sémantique désaturée
+     froide (sauge, ocre sourd, brique discrète). Pro, minéral clair — l'opposé
+     thermique d'ocre (terre chaude / pétrole). */
   .archive {
-    --background: 43 38% 94%;
-    --foreground: 150 8% 13%;
-    --card: 45 56% 99%;
-    --card-foreground: 150 8% 13%;
-    --popover: 45 56% 99%;
-    --popover-foreground: 150 8% 13%;
-    --primary: 28 46% 37%;
-    --primary-foreground: 45 50% 97%;
-    --secondary: 40 33% 89%;
-    --secondary-foreground: 30 10% 22%;
-    --muted: 40 30% 90%;
-    --muted-foreground: 33 9% 40%;
-    --accent: 34 42% 86%;
-    --accent-foreground: 28 30% 24%;
-    --destructive: 1 48% 42%;
-    --destructive-foreground: 45 50% 97%;
-    --border: 38 30% 81%;
-    --input: 38 30% 81%;
-    --ring: 28 46% 42%;
+    --background: 213 16% 93%;
+    --foreground: 215 16% 20%;
+    --card: 210 22% 98%;
+    --card-foreground: 215 16% 20%;
+    --popover: 210 22% 98%;
+    --popover-foreground: 215 16% 20%;
+    --primary: 215 22% 38%;
+    --primary-foreground: 210 22% 98%;
+    --secondary: 213 16% 89%;
+    --secondary-foreground: 215 16% 24%;
+    --muted: 213 16% 90%;
+    --muted-foreground: 215 10% 42%;
+    --accent: 213 18% 86%;
+    --accent-foreground: 215 16% 24%;
+    --destructive: 4 42% 46%;
+    --destructive-foreground: 210 22% 98%;
+    --border: 214 14% 83%;
+    --input: 214 14% 83%;
+    --ring: 215 22% 42%;
     --radius: 0.75rem;
-    --chart-1: 28 46% 42%;
-    --chart-2: 112 16% 46%;
-    --chart-3: 36 70% 45%;
-    --chart-4: 33 14% 52%;
-    --chart-5: 90 18% 48%;
-    --sidebar: 42 34% 92%;
-    --sidebar-foreground: 150 8% 13%;
-    --sidebar-primary: 28 46% 37%;
-    --sidebar-primary-foreground: 45 50% 97%;
-    --sidebar-accent: 34 42% 86%;
-    --sidebar-accent-foreground: 28 30% 24%;
-    --sidebar-border: 38 30% 81%;
-    --sidebar-ring: 28 46% 42%;
+    --chart-1: 215 22% 40%;
+    --chart-2: 200 18% 50%;
+    --chart-3: 215 10% 60%;
+    --chart-4: 210 12% 70%;
+    --chart-5: 220 14% 80%;
+    --sidebar: 213 16% 90%;
+    --sidebar-foreground: 215 16% 20%;
+    --sidebar-primary: 215 22% 38%;
+    --sidebar-primary-foreground: 210 22% 98%;
+    --sidebar-accent: 213 18% 84%;
+    --sidebar-accent-foreground: 215 16% 24%;
+    --sidebar-border: 214 14% 83%;
+    --sidebar-ring: 215 22% 42%;
     /* Cognition — indigo (clair, comme le défaut). */
     --reading-border: 239 68% 66%;
     --reading-bg:     239 84% 67%;
     --reading-label:  239 84% 48%;
-    /* Sémantique sur papier : sauge (succès), ambre doux, bordeaux (danger).
-       Fills re-saturés pour ressortir du fond ivoire. */
-    --color-emerald-50:  hsl(96 30% 88%);
-    --color-emerald-100: hsl(98 28% 80%);
-    --color-emerald-500: hsl(112 18% 44%);
-    --color-emerald-600: hsl(114 20% 38%);
-    --color-emerald-700: hsl(116 22% 31%);
-    --color-amber-50:  hsl(42 80% 86%);
-    --color-amber-100: hsl(40 78% 78%);
-    --color-amber-200: hsl(38 72% 66%);
-    --color-amber-500: hsl(36 72% 44%);
-    --color-amber-600: hsl(34 74% 40%);
-    --color-red-50:  hsl(2 50% 88%);
-    --color-red-100: hsl(2 48% 82%);
-    --color-red-200: hsl(2 44% 72%);
-    --color-red-600: hsl(1 48% 44%);
-    --color-red-700: hsl(0 50% 38%);
-    --color-rose-50:  hsl(355 45% 88%);
-    --color-rose-200: hsl(355 40% 74%);
-    --color-rose-600: hsl(353 45% 45%);
+    /* Sémantique FROIDE : sauge bleutée (succès), ocre sourd (alerte douce),
+       brique froide (danger). Désaturée pour rester minérale sur la pierre. */
+    --color-emerald-50:  hsl(168 18% 89%);
+    --color-emerald-100: hsl(166 18% 81%);
+    --color-emerald-500: hsl(168 20% 40%);
+    --color-emerald-600: hsl(170 22% 34%);
+    --color-emerald-700: hsl(172 24% 28%);
+    --color-amber-50:  hsl(40 36% 87%);
+    --color-amber-100: hsl(38 34% 79%);
+    --color-amber-200: hsl(36 30% 69%);
+    --color-amber-500: hsl(36 42% 46%);
+    --color-amber-600: hsl(34 44% 40%);
+    --color-red-50:  hsl(6 32% 89%);
+    --color-red-100: hsl(6 30% 82%);
+    --color-red-200: hsl(6 28% 73%);
+    --color-red-600: hsl(5 42% 47%);
+    --color-red-700: hsl(4 44% 40%);
+    --color-rose-50:  hsl(348 24% 89%);
+    --color-rose-200: hsl(348 22% 75%);
+    --color-rose-600: hsl(348 34% 50%);
   }
 
   /* ── MONOLITHE ──────────────────────────────────────────────────────────
