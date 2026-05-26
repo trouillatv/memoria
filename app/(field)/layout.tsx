@@ -5,6 +5,8 @@ import { LogoutButton } from './m/logout-button'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
 import { FieldSyncDrainer } from './sync-drainer'
+import { ThemeSync } from '@/components/layout/ThemeSync'
+import { ThemeToggle } from '@/components/layout/ThemeToggle'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -20,11 +22,8 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   const firstName = baseName.split(' ')[0] ?? baseName
 
   return (
-    <div className="min-h-screen" style={{ background: '#fafafa' }}>
-      <header
-        className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08]"
-        style={{ background: 'rgba(250, 250, 250, 0.95)' }}
-      >
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
         <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
           <div className="text-sm">
             Bonjour <span className="font-semibold">{firstName}</span>
@@ -42,7 +41,14 @@ export default async function FieldLayout({ children }: { children: React.ReactN
         >
           Mon compte
         </Link>
+        {/* Thème : sélecteur accessible directement depuis le terrain (mobile).
+            Persiste en base + cross-device, comme le toggle desktop. */}
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
       </footer>
+      {/* Réapplique le thème persisté de l'user en entrant sur le terrain. */}
+      <ThemeSync theme={user.theme_preference} />
       <SyncToastBridge />
       <FieldSyncDrainer />
     </div>
