@@ -56,9 +56,17 @@ export async function getEmbedding(text: string): Promise<number[] | null> {
   return null
 }
 
+/** Concurrence par fenêtre — conservateur (≈5 simultanées) pour gagner ~5×
+ *  sur le backfill sans risquer le rate-limit provider. Aligné sur
+ *  EMBED_BATCH_SIZE de embed-knowledge-chunks. */
+const BATCH_CONCURRENCY = 5
+
 /**
- * Calcule en batch — utile pour le backfill. Préserve l'ordre.
+ * Calcule en batch — utile pour le backfill. Préserve l'ordre (zip strict).
+ * Parallélise par fenêtres de BATCH_CONCURRENCY (gain ~5× vs séquentiel).
  * Retourne (number[] | null)[] de même longueur que texts.
+ * NB : le tracking ai_usage est de la responsabilité de l'appelant (comme
+ * pour getEmbedding) — ce helper bas niveau reste silencieux.
  */
 export async function getEmbeddingsBatch(
   texts: string[],
@@ -66,9 +74,13 @@ export async function getEmbeddingsBatch(
   const provider = getActiveProvider()
   if (provider === null) return texts.map(() => null)
 
-  const results: (number[] | null)[] = []
-  for (const t of texts) {
-    results.push(await getEmbedding(t))
+  const results: (number[] | null)[] = new Array(texts.length).fill(null)
+  for (let i = 0; i < texts.length; i += BATCH_CONCURRENCY) {
+    const window = texts.slice(i, i + BATCH_CONCURRENCY)
+    const embedded = await Promise.all(
+      window.map((t) => getEmbedding(t).catch(() => null)),
+    )
+    for (let j = 0; j < embedded.length; j++) results[i + j] = embedded[j]
   }
   return results
 }
