@@ -16,6 +16,7 @@ import { DOCUMENT_TYPE_OPTIONS, VISIBILITY_OPTIONS } from '@/lib/documents/label
 import { classifyDocument, guessDocumentType, TIER_META } from '@/lib/documents/classify'
 import { runPool } from '@/lib/documents/batch'
 import { NewCollectionForm } from '../NewCollectionForm'
+import { AiCostHint } from '../AiCostHint'
 
 type Collection = { id: string; name: string }
 type LinkOption = { id: string; label: string }
@@ -48,11 +49,13 @@ export function BatchImportForm({
   linkTargets,
   prefillTargetType,
   prefillTargetId,
+  embedModel = null,
 }: {
   collections: Collection[]
   linkTargets: LinkTargets
   prefillTargetType?: string
   prefillTargetId?: string
+  embedModel?: string | null
 }) {
   const router = useRouter()
   const [rows, setRows] = useState<Row[]>([])
@@ -283,9 +286,12 @@ export function BatchImportForm({
       )}
 
       <div className="flex items-center gap-3">
-        <Button onClick={importAll} disabled={!canImport}>
-          {importing ? <><Loader2 className="h-4 w-4 animate-spin" /> Import en cours…</> : `Importer ${rows.length || ''} document${rows.length > 1 ? 's' : ''}`}
-        </Button>
+        <span className="inline-flex items-center gap-1.5">
+          <Button onClick={importAll} disabled={!canImport}>
+            {importing ? <><Loader2 className="h-4 w-4 animate-spin" /> Import en cours…</> : `Importer ${rows.length || ''} document${rows.length > 1 ? 's' : ''}`}
+          </Button>
+          <AiCostHint model={embedModel} />
+        </span>
         {!collectionId && rows.length > 0 && (
           <span className="text-xs text-muted-foreground">Choisis une collection.</span>
         )}

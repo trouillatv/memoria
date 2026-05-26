@@ -9,15 +9,22 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { relaunchDocumentAnalysisAction, deleteDocumentAction } from '../actions'
+import { AiCostHint } from '../AiCostHint'
 
 const IN_FLIGHT_STATUSES = ['pending', 'extracting', 'ocr', 'chunking']
 
 export function DocumentActions({
   documentId,
   analysisStatus,
+  costModel,
+  costTokens,
+  costEstimateUsd,
 }: {
   documentId: string
   analysisStatus: string
+  costModel?: string | null
+  costTokens?: number | null
+  costEstimateUsd?: number | null
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -61,15 +68,18 @@ export function DocumentActions({
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <Button
-        type="button"
-        variant="outline"
-        onClick={onRelaunch}
-        disabled={pending || analysisInFlight}
-        title={analysisInFlight ? 'Analyse en cours' : undefined}
-      >
-        {pending ? '…' : 'Réanalyser'}
-      </Button>
+      <span className="inline-flex items-center gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onRelaunch}
+          disabled={pending || analysisInFlight}
+          title={analysisInFlight ? 'Analyse en cours' : undefined}
+        >
+          {pending ? '…' : 'Réanalyser'}
+        </Button>
+        <AiCostHint model={costModel} tokens={costTokens} estimateUsd={costEstimateUsd} />
+      </span>
       <Button
         type="button"
         variant="outline"

@@ -12,6 +12,8 @@ import { listTeams } from '@/lib/db/teams'
 import { indexationState } from '@/lib/documents/labels'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
+import { getActiveProvider } from '@/lib/ai/embeddings'
+import { estimateCostUsd } from '@/services/ai/tracking'
 import { DocumentActions } from './DocumentActions'
 import { AddLinkToDocument } from './AddLinkToDocument'
 
@@ -26,6 +28,13 @@ function frDate(iso: string | null): string {
   if (!iso) return '—'
   const [y, m, d] = iso.split('T')[0].split('-')
   return `${d}/${m}/${y}`
+}
+
+// Modèle d'embedding par provider actif (aligné lib/ai/embed-knowledge-chunks).
+const EMBED_MODEL_BY_PROVIDER: Record<string, string> = {
+  google: 'gemini-embedding-001',
+  openai: 'text-embedding-3-small',
+  voyage: 'voyage-3',
 }
 
 const ANALYSIS_LABEL: Record<string, string> = {
@@ -134,12 +143,24 @@ export default async function DocumentViewerPage({
               : ''}
           </p>
         </div>
-        {(role === 'admin' || role === 'manager') && (
-          <DocumentActions
-            documentId={doc.id}
-            analysisStatus={doc.analysis_status}
-          />
-        )}
+        {(role === 'admin' || role === 'manager') && (() => {
+          // Estimation coût IA pour responsabiliser AVANT le clic « Réanalyser ».
+          // Embeddings seuls : tokens ≈ caractères / 4. Source unique de prix :
+          // estimateCostUsd (table déterministe). Affiché en XPF via AiCostHint.
+          const provider = getActiveProvider()
+          const costModel = provider ? EMBED_MODEL_BY_PROVIDER[provider] : null
+          const costTokens = doc.extracted_text ? Math.ceil(doc.extracted_text.length / 4) : null
+          const costEstimateUsd = costModel && costTokens ? estimateCostUsd(costModel, costTokens, 0) : null
+          return (
+            <DocumentActions
+              documentId={doc.id}
+              analysisStatus={doc.analysis_status}
+              costModel={costModel}
+              costTokens={costTokens}
+              costEstimateUsd={costEstimateUsd}
+            />
+          )
+        })()}
       </header>
 
       <section className="rounded-lg border bg-card p-4">

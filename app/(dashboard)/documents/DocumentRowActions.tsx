@@ -7,6 +7,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { relaunchDocumentAnalysisAction, deleteDocumentAction, moveDocumentAction } from './actions'
+import { AiCostHint } from './AiCostHint'
 
 const IN_FLIGHT = ['pending', 'extracting', 'ocr', 'chunking']
 
@@ -16,12 +17,14 @@ export function DocumentRowActions({
   analysisStatus,
   currentCollectionId,
   collections = [],
+  embedModel = null,
 }: {
   documentId: string
   filename: string
   analysisStatus: string
   currentCollectionId?: string
   collections?: { id: string; name: string }[]
+  embedModel?: string | null
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -100,6 +103,7 @@ export function DocumentRowActions({
       >
         Réanalyser
       </button>
+      <AiCostHint model={embedModel} />
       <span className="text-xs text-muted-foreground/40">·</span>
       <button
         type="button"
