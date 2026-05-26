@@ -15,6 +15,7 @@ import { uploadDocumentAction } from '../actions'
 import { DOCUMENT_TYPE_OPTIONS, VISIBILITY_OPTIONS } from '@/lib/documents/labels'
 import { classifyDocument, guessDocumentType, TIER_META } from '@/lib/documents/classify'
 import { runPool } from '@/lib/documents/batch'
+import { NewCollectionForm } from '../NewCollectionForm'
 
 type Collection = { id: string; name: string }
 type LinkOption = { id: string; label: string }
@@ -139,10 +140,18 @@ export function BatchImportForm({
   }
 
   if (collections.length === 0) {
+    // Pas de collection → on ne renvoie plus l'utilisateur ailleurs : il en crée
+    // une ICI (création rapide sur place), la page se rafraîchit et l'import
+    // s'ouvre juste après (Vincent 2026-05-27).
     return (
-      <p className="text-sm text-muted-foreground rounded-lg border p-4">
-        Crée d’abord une collection sur la Bibliothèque : un document doit toujours être classé.
-      </p>
+      <div className="rounded-lg border border-dashed p-5 space-y-3 max-w-lg">
+        <p className="text-sm font-medium">Avant d&apos;importer, créez une collection</p>
+        <p className="text-xs text-muted-foreground">
+          Un document est toujours classé dans une collection (ex. « Contrats »,
+          « Sécurité », « Procédures »). Créez-en une ici — l&apos;import s&apos;ouvre juste après.
+        </p>
+        <NewCollectionForm />
+      </div>
     )
   }
 
