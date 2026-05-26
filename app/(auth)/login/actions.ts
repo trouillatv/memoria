@@ -40,13 +40,14 @@ export async function loginAction(formData: FormData) {
 
     // Redirect par rôle :
     // - chef_equipe (agent terrain) → /m (route mobile bornée, Slice 3.0)
-    // - admin / manager → /missions (ou ?next= si fourni)
+    // - admin / manager → /dashboard (cockpit mémoriel = vitrine du produit ;
+    //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
     if (profile.role === 'chef_equipe') {
       redirect('/m')
     }
 
-    redirect(parsed.data.next ?? '/missions')
+    redirect(parsed.data.next ?? '/dashboard')
   }
 
-  redirect('/missions')
+  redirect('/dashboard')
 }
