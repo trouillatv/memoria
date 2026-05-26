@@ -18,6 +18,56 @@ import {
 import { MonitoringShell } from './MonitoringShell'
 import { AIHealthSection } from './AIHealthSection'
 import { AIMemorySection } from './AIMemorySection'
+import { getAuditActivitySummary } from '@/lib/db/activity-logs'
+import { getAuditFailureStats } from '@/lib/audit/log'
+
+/**
+ * Santé du journal d'audit — rend l'audit OBSERVABLE (board 2026-05-26).
+ * Le garde-fou « audit obligatoire » était théorique tant qu'un échec restait
+ * un console.warn silencieux. Ici : volume 24h, dernier événement, et échecs
+ * détectés (cette instance).
+ */
+async function AuditHealthCard() {
+  const [summary, fails] = await Promise.all([
+    getAuditActivitySummary(),
+    Promise.resolve(getAuditFailureStats()),
+  ])
+  const fmt = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'
+  const hasFailures = fails.failures > 0
+  return (
+    <section
+      className={`rounded-lg border p-4 ${hasFailures ? 'border-red-300 bg-red-50/50 dark:bg-red-950/20' : 'bg-card'}`}
+    >
+      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
+        Journal d'audit
+      </h2>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 text-sm">
+        <div>
+          <div className="text-2xl font-semibold tabular-nums">{summary.count24h}</div>
+          <div className="text-xs text-muted-foreground">événements tracés (24h)</div>
+        </div>
+        <div>
+          <div className="text-sm font-medium">{fmt(summary.lastAt)}</div>
+          <div className="text-xs text-muted-foreground">dernier événement</div>
+        </div>
+        <div>
+          <div className={`text-2xl font-semibold tabular-nums ${hasFailures ? 'text-red-600' : 'text-emerald-600'}`}>
+            {fails.failures}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            échecs d'écriture (cette instance){hasFailures && fails.last ? ` · dernier : ${fails.last.action}` : ''}
+          </div>
+        </div>
+      </div>
+      {hasFailures && (
+        <p className="mt-2 text-xs text-red-700 dark:text-red-300">
+          ⚠️ Des consultations/actions sensibles ont pu ne PAS être tracées. Vérifier la base / les RLS.
+        </p>
+      )}
+    </section>
+  )
+}
 
 type Tab = 'ia' | 'adoption'
 type IaSubtab = 'apis' | 'console' | 'production'
@@ -59,6 +109,11 @@ export default async function AdminMonitoringPage({
 
   return (
     <div className="space-y-6">
+      {/* Santé du journal d'audit — toujours visible (board 2026-05-26). */}
+      <Suspense fallback={null}>
+        <AuditHealthCard />
+      </Suspense>
+
       {/* ── Onglets principaux ──────────────────────────────────────── */}
       <nav className="flex items-center gap-2 border-b" aria-label="Onglets monitoring">
         <TabLink

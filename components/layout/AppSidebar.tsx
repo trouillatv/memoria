@@ -11,6 +11,7 @@ import { usePathname } from 'next/navigation'
 import type { UserRole } from '@/types/db'
 import { cn } from '@/lib/utils'
 import { NAV, isActive } from './nav-items'
+import { BrandLegalDialog } from './BrandLegalDialog'
 
 export function AppSidebar({
   role,
@@ -24,14 +25,7 @@ export function AppSidebar({
   return (
     <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r bg-card">
       <div className="flex h-16 items-center border-b px-4">
-        <Link
-          href={role === 'admin' || role === 'manager' ? '/dashboard' : '/missions'}
-          className="flex items-center gap-2 font-semibold rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-black/5" />
-          <span>MemorIA</span>
-        </Link>
+        <BrandLegalDialog />
       </div>
       <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-4 space-y-1">
         {visible.map(({ href, label, icon: Icon, groupStart }) => {

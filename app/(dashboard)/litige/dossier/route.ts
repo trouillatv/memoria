@@ -17,6 +17,7 @@ import { getShareTokenById } from '@/lib/db/proof-share'
 import { LitigeDossierPdf } from '@/lib/pdf/litige-dossier'
 import { getTenantName } from '@/lib/tenant'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logAuditEvent } from '@/lib/audit/log'
 
 export async function GET(req: Request) {
   // 1. Auth — admin/manager.
@@ -121,7 +122,23 @@ export async function GET(req: Request) {
     )
   }
 
-  // 8. Response avec headers PDF.
+  // 8. Audit (action à portée juridique → trace obligatoire de qui/quoi/quand).
+  await logAuditEvent({
+    userId: user.id,
+    entityType: 'site',
+    entityId: siteId,
+    action: 'downloaded',
+    metadata: {
+      kind: 'litige_dossier_pdf',
+      site_name: siteName,
+      date_from: dateFrom,
+      date_to: dateTo,
+      token_id: tokenId ?? null,
+      counts,
+    },
+  })
+
+  // 9. Response avec headers PDF.
   const filename = `preparation-defense-${dateFrom}_${dateTo}.pdf`
 
   return new NextResponse(new Uint8Array(pdfBuffer), {

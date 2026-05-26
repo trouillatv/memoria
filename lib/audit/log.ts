@@ -46,6 +46,21 @@ export interface AuditEvent {
   metadata?: Record<string, unknown>
 }
 
+// Compteur d'échecs d'audit (par instance) — le garde-fou « audit obligatoire »
+// était théorique tant que l'échec restait un console.warn invisible (board
+// 2026-05-26). On le rend OBSERVABLE : console.error + compteur exposé dans
+// /admin/monitoring. NB : en mémoire process (pas de persistance cross-instance)
+// — suffisant comme signal en pilote ; un échec ici signale une dérive DB/RLS.
+let auditFailureCount = 0
+let lastAuditFailure: { at: string; action: string; message: string } | null = null
+
+export function getAuditFailureStats(): {
+  failures: number
+  last: { at: string; action: string; message: string } | null
+} {
+  return { failures: auditFailureCount, last: lastAuditFailure }
+}
+
 export async function logAuditEvent(event: AuditEvent): Promise<void> {
   try {
     await insertActivityLog({
@@ -56,7 +71,14 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
       metadata:   event.metadata,
     })
   } catch (e) {
-    // Log warning mais ne casse pas le flow métier
-    console.warn('[audit] failed to insert activity log:', e)
+    // Ne casse pas le flow métier, mais l'échec n'est PLUS silencieux :
+    // console.error (visible en logs prod) + compteur surfacé dans monitoring.
+    auditFailureCount += 1
+    lastAuditFailure = {
+      at: new Date().toISOString(),
+      action: `${event.entityType}.${event.action}`,
+      message: e instanceof Error ? e.message : String(e),
+    }
+    console.error('[audit] ÉCHEC insertion activity log (garde-fou audit):', e)
   }
 }

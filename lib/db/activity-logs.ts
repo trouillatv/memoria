@@ -27,6 +27,55 @@ export async function listActivityLogs(query: ActivityLogQuery = {}): Promise<Db
   return (data ?? []) as DbActivityLog[]
 }
 
+/**
+ * Santé du journal d'audit (pour /admin/monitoring) : volume sur 24h et date
+ * du dernier événement. Si 0 sur un système actif, l'audit ne s'écrit plus.
+ * Admin client (les logs ne sont pas lisibles en RLS par tous).
+ */
+export async function getAuditActivitySummary(): Promise<{ count24h: number; lastAt: string | null }> {
+  const supabase = createAdminClient()
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const [{ count }, { data: last }] = await Promise.all([
+    supabase.from('activity_logs').select('*', { count: 'exact', head: true }).gte('created_at', since),
+    supabase.from('activity_logs').select('created_at').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+  ])
+  return { count24h: count ?? 0, lastAt: (last as { created_at?: string } | null)?.created_at ?? null }
+}
+
+/**
+ * Transparence (board 2026-05-26) : combien de fois la fiche d'une personne a
+ * été consultée, AGRÉGÉ PAR RÔLE du consultant — jamais nominatif. Permet
+ * d'afficher à la personne « vous avez été consulté(e) » sur /account.
+ * Admin client + scope strict entity_id = ce user.
+ */
+export async function getProfileConsultationSummary(userId: string): Promise<{
+  total: number
+  byRole: Record<string, number>
+  lastAt: string | null
+}> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('activity_logs')
+    .select('metadata, created_at')
+    .eq('entity_type', 'user')
+    .eq('entity_id', userId)
+    .eq('action', 'opened')
+    .order('created_at', { ascending: false })
+    .limit(500)
+  const rows = (data ?? []) as Array<{ metadata: Record<string, unknown> | null; created_at: string }>
+  const consultations = rows.filter((r) => r.metadata?.kind === 'intervenants_page_consulted')
+  const byRole: Record<string, number> = {}
+  for (const r of consultations) {
+    const role = String(r.metadata?.viewer_role ?? 'inconnu')
+    byRole[role] = (byRole[role] ?? 0) + 1
+  }
+  return {
+    total: consultations.length,
+    byRole,
+    lastAt: consultations[0]?.created_at ?? null,
+  }
+}
+
 export async function insertActivityLog(input: {
   userId: string | null
   entityType: string
