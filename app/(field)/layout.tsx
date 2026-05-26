@@ -7,6 +7,7 @@ import { SyncToastBridge } from './sync-toast-bridge'
 import { FieldSyncDrainer } from './sync-drainer'
 import { ThemeSync } from '@/components/layout/ThemeSync'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
+import { PageViewLogger } from '@/app/(dashboard)/PageViewLogger'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -49,6 +50,9 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       </footer>
       {/* Réapplique le thème persisté de l'user en entrant sur le terrain. */}
       <ThemeSync theme={user.theme_preference} />
+      {/* Instrumentation : ouverture des surfaces terrain (/m…) — savoir si le
+          pilote vit côté chef. Niveau route/feature, pas de surveillance. */}
+      <PageViewLogger />
       <SyncToastBridge />
       <FieldSyncDrainer />
     </div>
