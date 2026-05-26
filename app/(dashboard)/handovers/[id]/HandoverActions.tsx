@@ -3,9 +3,10 @@
 // Actions sur un brief : Partager, Marquer comme reconnu, Archiver.
 // Vincent 2026-05-22.
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Share2, CheckCircle2, Archive, Loader2, Copy } from 'lucide-react'
+import QRCode from 'qrcode'
+import { Share2, CheckCircle2, Archive, Loader2, Copy, QrCode, FileDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,11 +35,26 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [shareOpen, setShareOpen] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [daysValid, setDaysValid] = useState(7)
 
   const archived = status === 'archived'
   const acknowledged = status === 'acknowledged'
   const expired = expiresAt != null && new Date(expiresAt) < new Date()
+
+  // QR du lien public — généré côté client (le lien /h/<token> est stable tant
+  // que le token n'expire pas). Sert à l'imprimer / le montrer à la relève qui
+  // scanne pour ouvrir le brief sur son téléphone.
+  const shareUrl = sharedToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/h/${sharedToken}` : null
+  useEffect(() => {
+    if (!shareUrl) { setQrDataUrl(null); return }
+    let alive = true
+    QRCode.toDataURL(shareUrl, { errorCorrectionLevel: 'M', margin: 1, scale: 8 })
+      .then((url) => { if (alive) setQrDataUrl(url) })
+      .catch(() => { if (alive) setQrDataUrl(null) })
+    return () => { alive = false }
+  }, [shareUrl])
 
   function handleShare() {
     startTransition(async () => {
@@ -149,10 +165,81 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
           </DialogContent>
         </Dialog>
       ) : (
-        <Button variant="outline" size="sm" onClick={copyShareUrl}>
-          <Copy className="h-3.5 w-3.5" />
-          Copier l'URL publique
-        </Button>
+        <>
+          <Button variant="outline" size="sm" onClick={copyShareUrl}>
+            <Copy className="h-3.5 w-3.5" />
+            Copier l'URL publique
+          </Button>
+
+          {/* QR à montrer/imprimer pour la relève — le moment magique terrain */}
+          <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+            <DialogTrigger
+              render={
+                <Button variant="outline" size="sm">
+                  <QrCode className="h-3.5 w-3.5" />
+                  Code QR
+                </Button>
+              }
+            />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Partager par QR code</DialogTitle>
+                <DialogDescription>
+                  La relève scanne ce code pour ouvrir le brief sur son téléphone,
+                  sans connexion. Imprime-le ou montre-le à l’écran.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col items-center gap-3 py-2">
+                {qrDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={qrDataUrl}
+                    alt="QR code du brief"
+                    className="h-56 w-56 rounded-lg border bg-white p-2"
+                  />
+                ) : (
+                  <div className="h-56 w-56 rounded-lg border bg-muted/30 flex items-center justify-center text-xs text-muted-foreground">
+                    Génération…
+                  </div>
+                )}
+                {shareUrl && (
+                  <p className="text-[11px] text-muted-foreground break-all text-center max-w-xs">{shareUrl}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={copyShareUrl}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Copier l'URL
+                </Button>
+                {sharedToken && (
+                  <Button
+                    variant="outline"
+                    render={
+                      <a href={`/h/${sharedToken}/pdf`} target="_blank" rel="noopener noreferrer" />
+                    }
+                  >
+                    <FileDown className="h-3.5 w-3.5" />
+                    Ouvrir le PDF
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Lien PDF direct (hors dialog) */}
+          {sharedToken && (
+            <Button
+              variant="ghost"
+              size="sm"
+              render={
+                <a href={`/h/${sharedToken}/pdf`} target="_blank" rel="noopener noreferrer" />
+              }
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              PDF
+            </Button>
+          )}
+        </>
       )}
 
       {/* Marquer reconnu */}

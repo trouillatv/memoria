@@ -19,7 +19,7 @@
 // Doctrine [[brief-moment-magique]] : c'est la vitrine du produit, pas un
 // détail UX.
 
-import { ShieldCheck, ShieldX, Clock, ArrowRightLeft, MapPin } from 'lucide-react'
+import { ShieldCheck, ShieldX, Clock, ArrowRightLeft, MapPin, FileDown } from 'lucide-react'
 import type { Metadata } from 'next'
 import {
   getHandoverBriefByToken,
@@ -137,6 +137,15 @@ export default async function PublicHandoverPage({ params }: PageProps) {
           <span>{KIND_LABEL[brief.kind] ?? brief.kind}</span>
         </div>
         <h1 className="text-xl sm:text-2xl font-semibold leading-tight">{brief.title}</h1>
+        <a
+          href={`/h/${token}/pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs rounded-md border bg-background px-2.5 h-8 text-muted-foreground transition-[colors,transform] hover:text-foreground hover:bg-muted active:scale-[0.97]"
+        >
+          <FileDown className="h-3.5 w-3.5" />
+          Télécharger le PDF (imprimable)
+        </a>
       </header>
 
       {/* Sommaire cliquable — uniquement si plusieurs sites */}
