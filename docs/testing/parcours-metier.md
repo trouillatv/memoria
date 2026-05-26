@@ -41,7 +41,7 @@ Méthode : 30 écrans capturés (manager 17, chef 4, admin 9) sur base seedée r
 - **C2 — mémoire de site tronquée sur mobile.** L'encart « Premier passage / Anomalies 30 j » n'affiche qu'**1 anomalie**, sans lien « mémoire complète ». **P1.**
 - **C5 — clôture sans preuve.** « Mission terminée » est **plein/actif à 0/6 tâches et 0 photo**, sans avertissement. **P1.**
 - **M1 / dashboard** = bons signaux (« mémoire active », « vie des lieux ») mais **cul-de-sac d'action** (anomalies non cliquables, unique CTA « Préparer ma défense »). **P1.**
-- **A3 / A4** — `/admin/observation` exemplaire (par rôle, anti-deux-morts) ; `/litige` et `/intervenants/[id]` sans trace/transparence visible. **P0 litige.**
+- **A3 / A4** — `/admin/observation` exemplaire (par rôle, anti-deux-morts) ; `/intervenants/[id]` sans transparence côté personne. **Correction board 2026-05-26** : la *préparation* d'un dossier litige EST auditée (`litige/actions.ts:157,207` → `litige_dossier_prepared`) ; seul le trou de la **route PDF** `litige/dossier/route.ts` (non loggée) subsiste. L'ancienne mention « litige non audité » était fausse.
 
 **❌ Infirmés / nuancés**
 - **C3 — « anomalie impossible avant Commencer » : INFIRMÉ** sur cet échantillon. L'intervention seedée était déjà « Mission en cours » et **« Signaler un problème » est présent**. L'état « avant Commencer » (site fermé à l'arrivée) n'a PAS été reproduit → à re-tester sur une intervention non démarrée avant de conclure.
