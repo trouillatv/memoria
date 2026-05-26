@@ -136,6 +136,21 @@ function assertSafeEnvironment(args: CliArgs): void {
     )
   }
 
+  // Garde-fou DUR (Vincent 2026-05-26) : ce script ne doit JAMAIS toucher un
+  // projet Supabase hébergé (cloud = *.supabase.co). On exige une cible locale.
+  if (url.toLowerCase().includes('supabase.co')) {
+    fail(
+      `NEXT_PUBLIC_SUPABASE_URL pointe vers un projet hébergé (${url}). ` +
+      'Ce script est LOCAL-ONLY : vise http://127.0.0.1:54121 (Supabase local). Abandon.',
+    )
+  }
+  if (!/127\.0\.0\.1|localhost/.test(url)) {
+    fail(
+      `NEXT_PUBLIC_SUPABASE_URL (${url}) n'est pas une URL locale. ` +
+      'Attendu : 127.0.0.1 / localhost. Abandon par précaution.',
+    )
+  }
+
   // Heuristique anti-prod : refus si l'URL contient des marqueurs typiques prod
   const prodMarkers = ['prod', 'production', 'live']
   for (const m of prodMarkers) {
