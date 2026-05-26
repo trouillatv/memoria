@@ -584,6 +584,42 @@ export async function listHandoverBriefs(
   return (data ?? []) as DbHandoverBrief[]
 }
 
+/**
+ * Briefs de passation qu'un chef d'équipe doit pouvoir RETROUVER dans l'app
+ * terrain (`/m`) — même si le lien SMS est perdu (P1 audit live 2026-05-26).
+ *
+ * Pertinents pour le chef = briefs PARTAGÉS (donc dotés d'un shared_token, donc
+ * ouvrables via /h/[token] sans login) ET :
+ *   - destinés à une de ses équipes (target_team_id), OU
+ *   - qui le concernent personnellement (subject_user_id).
+ * On exclut les archivés / expirés. Sujet = la mémoire transmise, jamais un
+ * jugement sur la personne.
+ */
+export async function listSharedHandoverBriefsForChef(
+  userId: string,
+  teamIds: string[],
+): Promise<DbHandoverBrief[]> {
+  const admin = createAdminClient()
+  const orFilters = [`subject_user_id.eq.${userId}`]
+  if (teamIds.length > 0) {
+    orFilters.push(`target_team_id.in.(${teamIds.join(',')})`)
+  }
+  const { data, error } = await admin
+    .from('handover_briefs')
+    .select('*')
+    .in('status', ['shared', 'acknowledged'])
+    .not('shared_token', 'is', null)
+    .is('deleted_at', null)
+    .or(orFilters.join(','))
+    .order('shared_at', { ascending: false })
+    .limit(10)
+  if (error) throw error
+  const now = Date.now()
+  return (data ?? []).filter(
+    (b) => !b.expires_at || new Date(b.expires_at).getTime() > now,
+  ) as DbHandoverBrief[]
+}
+
 export async function countHandoverBriefsByStatus(): Promise<Record<HandoverStatus, number>> {
   const admin = createAdminClient()
   const out: Record<HandoverStatus, number> = {
