@@ -390,6 +390,38 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
+  /* Pages publiques (landing + auth : login, mot de passe oublié…) : thème
+     CLAIR forcé par défaut, quel que soit le thème persisté de l'app — Vincent
+     2026-05-27 (« le thème par défaut de MemorIA est clair »). On réinitialise
+     les variables de thème en clair sur le conteneur : même les composants à
+     variables (Card, bg-muted…) redeviennent clairs sous un thème sombre. Plus
+     le fond du body, pour qu'aucun débordement sombre n'apparaisse. N'affecte
+     pas les pages applicatives (pas de .force-light-theme). */
+  .force-light-theme {
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+  }
+  body:has(.force-light-theme) {
+    background-color: #ffffff;
+    color: #111827;
+  }
   /* Pétrole — halo diffus très léger derrière le contenu (« respiration »). */
   .petrole body {
     background-image: radial-gradient(75% 55% at 50% -8%, hsl(196 55% 42% / 0.10), transparent 60%);

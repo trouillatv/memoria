@@ -7,7 +7,7 @@ import {
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="force-light-theme min-h-screen bg-white text-gray-900">
 
       {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/90 backdrop-blur-sm">
