@@ -116,6 +116,20 @@ export async function getDocument(id: string): Promise<DbDocument | null> {
   return (data as DbDocument | null) ?? null
 }
 
+/** Déplace un document vers une autre collection (réassigne collection_id). */
+export async function moveDocumentToCollection(
+  documentId: string,
+  collectionId: string,
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({ collection_id: collectionId })
+    .eq('id', documentId)
+    .is('deleted_at', null)
+  if (error) throw error
+}
+
 export async function listDocumentsByCollection(
   collectionId: string,
 ): Promise<DbDocument[]> {

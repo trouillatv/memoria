@@ -134,6 +134,8 @@ export default async function DocumentsPage() {
                         documentId={d.id}
                         filename={d.filename}
                         analysisStatus={d.analysis_status}
+                        currentCollectionId={collection.id}
+                        collections={collections.map((c) => ({ id: c.id, name: c.name }))}
                       />
                     </li>
                   ))}

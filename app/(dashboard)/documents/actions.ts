@@ -20,6 +20,7 @@ import {
   updateDocumentAnalysisStatus,
   softDeleteDocument,
   getDocument,
+  moveDocumentToCollection,
 } from '@/lib/db/documents'
 import { analyzeDocument } from '@/lib/documents/analyze'
 
@@ -100,6 +101,42 @@ export async function createDocumentCollectionAction(
     return { ok: true, collectionId }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Création échouée' }
+  }
+}
+
+const moveSchema = z.object({
+  document_id: z.string().uuid(),
+  collection_id: z.string().uuid(),
+})
+
+/** Déplace un document vers une autre collection. Manager/admin. */
+export async function moveDocumentAction(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  let userId: string
+  try {
+    userId = await requireManagerOrAdmin()
+  } catch {
+    return { ok: false, error: 'Accès refusé.' }
+  }
+  const parsed = moveSchema.safeParse({
+    document_id: formData.get('document_id'),
+    collection_id: formData.get('collection_id'),
+  })
+  if (!parsed.success) return { ok: false, error: 'Champs invalides.' }
+  try {
+    await moveDocumentToCollection(parsed.data.document_id, parsed.data.collection_id)
+    await logAuditEvent({
+      userId,
+      entityType: 'document',
+      entityId: parsed.data.document_id,
+      action: 'updated',
+      metadata: { kind: 'document_moved_collection', collection_id: parsed.data.collection_id },
+    })
+    revalidatePath('/documents')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Déplacement échoué.' }
   }
 }
 

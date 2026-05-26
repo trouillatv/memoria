@@ -6,7 +6,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { relaunchDocumentAnalysisAction, deleteDocumentAction } from './actions'
+import { relaunchDocumentAnalysisAction, deleteDocumentAction, moveDocumentAction } from './actions'
 
 const IN_FLIGHT = ['pending', 'extracting', 'ocr', 'chunking']
 
@@ -14,16 +14,34 @@ export function DocumentRowActions({
   documentId,
   filename,
   analysisStatus,
+  currentCollectionId,
+  collections = [],
 }: {
   documentId: string
   filename: string
   analysisStatus: string
+  currentCollectionId?: string
+  collections?: { id: string; name: string }[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [err, setErr] = useState<string | null>(null)
 
   const inFlight = IN_FLIGHT.includes(analysisStatus)
+  const otherCollections = collections.filter((c) => c.id !== currentCollectionId)
+
+  function onMove(collectionId: string) {
+    if (!collectionId) return
+    setErr(null)
+    startTransition(async () => {
+      const fd = new FormData()
+      fd.set('document_id', documentId)
+      fd.set('collection_id', collectionId)
+      const r = await moveDocumentAction(fd)
+      if (r.ok) router.refresh()
+      else setErr(r.error ?? 'Échec')
+    })
+  }
 
   function onRelaunch() {
     setErr(null)
@@ -54,6 +72,23 @@ export function DocumentRowActions({
 
   return (
     <span className="flex items-center gap-2 shrink-0">
+      {otherCollections.length > 0 && (
+        <>
+          <select
+            aria-label="Déplacer vers une collection"
+            disabled={pending}
+            defaultValue=""
+            onChange={(e) => { onMove(e.target.value); e.currentTarget.value = '' }}
+            className="text-xs rounded border border-input bg-background px-1.5 py-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            <option value="">Déplacer vers…</option>
+            {otherCollections.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground/40">·</span>
+        </>
+      )}
       <button
         type="button"
         onClick={onRelaunch}
