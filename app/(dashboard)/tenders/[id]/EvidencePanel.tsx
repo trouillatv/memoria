@@ -132,19 +132,20 @@ export async function EvidencePanel({
 
 function EvidenceCard({
   engagement,
-  similarity,
   evidence,
   tenderId,
   alreadyInsertedSet,
 }: {
   engagement: DbEngagement
+  // `similarity` reste passé par l'appelant pour ordonner les évidences, mais
+  // n'est JAMAIS exposé en UI (doctrine : l'internal_score cosine ne se montre
+  // pas — pas de pourcentage, pas de « confidence » chiffrée). Non destructuré.
   similarity: number
   evidence: EngagementEvidence
   tenderId: string
   alreadyInsertedSet: Set<string>
 }) {
   const durationLabel = formatDuration(evidence.durationDays)
-  const similarityPercent = Math.round(similarity * 100)
   const anomaliesTotal = evidence.anomaliesResolved + evidence.anomaliesOpen
 
   return (
@@ -216,7 +217,7 @@ function EvidenceCard({
       </div>
 
       <div className="text-[10px] text-muted-foreground italic mt-2">
-        Proximité avec votre mémoire : {similarityPercent}%
+        Écho avec une situation connue
       </div>
     </li>
   )
