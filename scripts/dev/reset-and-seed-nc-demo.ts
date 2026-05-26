@@ -982,11 +982,15 @@ async function ensureOwnerAdmin(supabase: SupabaseAdmin): Promise<void> {
   const { data: list } = await supabase.auth.admin.listUsers()
   const existing = list?.users?.find((u) => u.email === email)
   let id: string
+  // memoria2026! = mot de passe TEMPORAIRE de 1ʳᵉ connexion : must_change_password
+  // (app_metadata pour le proxy JWT + public.users) → forcé vers /change-password
+  // au 1er login (Vincent 2026-05-27).
+  const appMeta = { role: 'admin', must_change_password: true }
   if (existing) {
     await supabase.auth.admin.updateUserById(existing.id, {
       password,
       email_confirm: true,
-      app_metadata: { role: 'admin' },
+      app_metadata: appMeta,
       user_metadata: { full_name: 'Admin', role: 'admin' },
     })
     id = existing.id
@@ -995,7 +999,7 @@ async function ensureOwnerAdmin(supabase: SupabaseAdmin): Promise<void> {
       email,
       password,
       email_confirm: true,
-      app_metadata: { role: 'admin' },
+      app_metadata: appMeta,
       user_metadata: { full_name: 'Admin', role: 'admin' },
     })
     if (error) throw error
@@ -1003,9 +1007,9 @@ async function ensureOwnerAdmin(supabase: SupabaseAdmin): Promise<void> {
   }
   await supabase
     .from('users')
-    .update({ role: 'admin', full_name: 'Admin', must_change_password: false })
+    .update({ role: 'admin', full_name: 'Admin', must_change_password: true })
     .eq('id', id)
-  console.log(`  ✓ Admin propriétaire : ${email} / ${password} (login direct)`)
+  console.log(`  ✓ Admin propriétaire : ${email} / ${password} (TEMP — changement obligatoire au 1er login)`)
 }
 
 async function main() {
