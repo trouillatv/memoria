@@ -158,6 +158,7 @@ export default async function HandoversPage({
               <Link
                 key={s}
                 href={`/handovers?status=${s}`}
+                scroll={false}
                 aria-current={filter === s ? 'page' : undefined}
                 className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${
                   filter === s
