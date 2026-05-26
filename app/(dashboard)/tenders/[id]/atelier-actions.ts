@@ -224,30 +224,35 @@ export async function getAgentAvgCostsAction(): Promise<
 > {
   await requireManagerOrAdmin()
   const supabase = createAdminClient()
-  const AGENT_FEATURES = [
+  const AGENTS = [
     'lecteur_ao', 'memoire_technique', 'contradicteur',
     'financier', 'terrain', 'conformite', 'general',
   ]
+  // Le coût réel d'un agent est loggué sous des features PRÉFIXÉES, jamais le
+  // nom nu : `init_analysis_<agent>` (analyse initiale) et `chat_<agent>`
+  // (conversation). On agrège les deux par agent (vérifié sur ai_usage réel).
+  const features = AGENTS.flatMap((a) => [`init_analysis_${a}`, `chat_${a}`])
   const { data } = await supabase
     .from('ai_usage')
     .select('feature, cost_usd')
-    .in('feature', AGENT_FEATURES)
+    .in('feature', features)
     .eq('status', 'success')
     .not('cost_usd', 'is', null)
     .order('created_at', { ascending: false })
-    .limit(400)
+    .limit(600)
 
   const acc: Record<string, { sum: number; count: number }> = {}
   for (const r of (data ?? []) as Array<{ feature: string; cost_usd: number | null }>) {
-    const a = acc[r.feature] ?? { sum: 0, count: 0 }
+    const agent = r.feature.replace(/^(init_analysis_|chat_)/, '')
+    const a = acc[agent] ?? { sum: 0, count: 0 }
     a.sum += r.cost_usd ?? 0
     a.count += 1
-    acc[r.feature] = a
+    acc[agent] = a
   }
   const out: Record<string, { avgUsd: number | null; count: number }> = {}
-  for (const f of AGENT_FEATURES) {
-    const a = acc[f]
-    out[f] = a && a.count > 0 ? { avgUsd: a.sum / a.count, count: a.count } : { avgUsd: null, count: 0 }
+  for (const agent of AGENTS) {
+    const a = acc[agent]
+    out[agent] = a && a.count > 0 ? { avgUsd: a.sum / a.count, count: a.count } : { avgUsd: null, count: 0 }
   }
   return out
 }
