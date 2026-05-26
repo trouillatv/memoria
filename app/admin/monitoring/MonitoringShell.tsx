@@ -63,7 +63,7 @@ export function MonitoringShell({
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors active:scale-[0.98] motion-safe:transition-transform ${
               tab === t.key
                 ? 'border-brand-600 text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/40'
@@ -74,9 +74,11 @@ export function MonitoringShell({
         ))}
       </div>
 
-      {/* Content */}
-      {tab === 'adoption' && <AdoptionTab stats={stats} feed={feed} />}
-      {tab === 'health' && <OperationalHealthTab kpis={kpis} contracts={contracts} />}
+      {/* Content — re-fade à chaque changement d'onglet (key=tab). */}
+      <div key={tab} className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200">
+        {tab === 'adoption' && <AdoptionTab stats={stats} feed={feed} />}
+        {tab === 'health' && <OperationalHealthTab kpis={kpis} contracts={contracts} />}
+      </div>
     </div>
   )
 }
