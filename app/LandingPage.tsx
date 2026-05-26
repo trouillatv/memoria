@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import {
-  Shield, ClipboardList, Camera, FileText, Users, TrendingUp,
-  CheckCircle2, ArrowRight, Building2, HardHat, Briefcase,
-  AlertTriangle, Clock, Layers, Sparkles,
+  Shield, Camera, FileText, Users, TrendingUp,
+  CheckCircle2, ArrowRight, ArrowRightLeft, HardHat, Briefcase,
+  AlertTriangle, Layers, KeyRound,
 } from 'lucide-react'
 
 export default function LandingPage() {
@@ -31,16 +31,17 @@ export default function LandingPage() {
         <div className="grid gap-12 md:grid-cols-2 md:items-center">
           <div className="space-y-6">
             <div className="inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-              Entreprises de nettoyage · Nouvelle-Calédonie
+              Mémoire opérationnelle · Entreprises de nettoyage · Nouvelle-Calédonie
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight text-gray-900 md:text-5xl">
-              Vos équipes passent.<br />
-              <span className="text-brand-600">Les traces restent.</span><br />
-              Faites-en un capital.
+              Quand quelqu'un s'en va,<br />
+              <span className="text-brand-600">le savoir du terrain reste.</span>
             </h1>
             <p className="text-lg text-gray-500 leading-relaxed">
-              MemorIA documente chaque intervention, relie ce que les équipes oublient,
-              et transforme vos passages terrain en preuves irréfutables.
+              MemorIA garde la mémoire opérationnelle de chaque site — accès, à-savoir,
+              anomalies, passations — et la fait apparaître au bon moment, à la bonne
+              personne. Les départs, fins de contrat et changements d'équipe ne vous
+              coûtent plus votre mémoire.
             </p>
             <div className="flex flex-wrap gap-3">
               <a
@@ -58,39 +59,34 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Fausse card d'intervention */}
+          {/* Aperçu : un passage de témoin — la mémoire d'un lieu transmise à la relève */}
           <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-lg shadow-gray-100/80">
             <div className="mb-4 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">Aujourd'hui</span>
-              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">3 passages effectués</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-gray-400">
+                <ArrowRightLeft className="h-3.5 w-3.5" /> Passage de témoin
+              </span>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">Lu par la relève</span>
             </div>
+            <p className="mb-3 text-sm font-semibold text-gray-900">Médipôle — Blocs opératoires</p>
+            <p className="mb-4 text-xs text-gray-400">Équipe Nouméa Centre reprend le site</p>
             {[
-              { site: 'Tour Pentecost · RDC', agent: 'M. Kalosil', photos: 4, status: 'done' },
-              { site: 'Résidence Baie des Citrons · Entrée', agent: 'M. Wejieme', photos: 2, status: 'done' },
-              { site: 'Centre Commercial Foch · Allée A', agent: 'Mme. Tein', photos: 0, status: 'progress' },
+              { icon: <KeyRound className="h-4 w-4 text-brand-600" />, label: 'Accès', text: 'Badge au PC sécurité · niveau -1, vestiaire dédié' },
+              { icon: <FileText className="h-4 w-4 text-brand-600" />, label: 'À savoir', text: 'Protocole d\'asepsie strict · bionettoyage avant 6h' },
+              { icon: <AlertTriangle className="h-4 w-4 text-amber-500" />, label: 'Anomalie 30j', text: 'Produit désinfectant rationné dans le local technique' },
             ].map((item) => (
-              <div key={item.site} className="mb-3 flex items-center gap-3 rounded-xl border border-gray-100 p-3">
-                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${item.status === 'done' ? 'bg-emerald-50' : 'bg-amber-50'}`}>
-                  {item.status === 'done'
-                    ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    : <ClipboardList className="h-4 w-4 text-amber-600" />
-                  }
+              <div key={item.label} className="mb-2.5 flex items-start gap-3 rounded-xl border border-gray-100 p-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-50">
+                  {item.icon}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">{item.site}</p>
-                  <p className="text-xs text-gray-400">{item.agent}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{item.label}</p>
+                  <p className="text-sm text-gray-700">{item.text}</p>
                 </div>
-                {item.photos > 0 && (
-                  <div className="flex items-center gap-1 text-xs text-gray-400">
-                    <Camera className="h-3.5 w-3.5" />
-                    {item.photos}
-                  </div>
-                )}
               </div>
             ))}
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-brand-100 bg-brand-50 p-3">
-              <FileText className="h-4 w-4 shrink-0 text-brand-600" />
-              <p className="text-xs text-brand-700 font-medium">Rapport mensuel généré · Prêt à envoyer au client</p>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" />
+              <p className="text-xs text-brand-700 font-medium">Mémoire transmise · rien ne s'est perdu au changement d'équipe</p>
             </div>
           </div>
         </div>
@@ -105,10 +101,10 @@ export default function LandingPage() {
               <span className="mb-4 inline-block rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-600 uppercase tracking-wider">Avant</span>
               <ul className="space-y-3 text-sm text-gray-600">
                 {[
-                  'Fiches papier perdues, photos éparpillées sur WhatsApp',
-                  'Litige client → impossible de prouver que l\'équipe est passée',
-                  'Appel d\'offres perdu faute de références documentées',
-                  'Chef d\'équipe sans visibilité sur l\'avancement en temps réel',
+                  'Une personne expérimentée s\'en va — tout ce qu\'elle savait du site part avec elle',
+                  'Nouvelle équipe sur un site : personne pour transmettre l\'essentiel',
+                  'La passation se résume à un coup de fil pressé, et beaucoup de chance',
+                  'Litige client : impossible de prouver que l\'équipe est bien passée',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <span className="mt-0.5 text-red-400">✕</span>
@@ -121,10 +117,10 @@ export default function LandingPage() {
               <span className="mb-4 inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600 uppercase tracking-wider">Avec MemorIA</span>
               <ul className="space-y-3 text-sm text-gray-600">
                 {[
-                  'Chaque passage documenté : photos horodatées, signature, commentaires',
+                  'La mémoire du lieu survit aux départs, aux fins de contrat, aux changements d\'équipe',
+                  'Un brief de passation prêt en un clic : accès, à-savoir, anomalies, équipes relais',
+                  'La bonne information apparaît au bon moment — avant d\'agir, directement sur le terrain',
                   'Dossier de preuves exportable en PDF en 30 secondes',
-                  'Les signaux faibles reliés entre eux — un problème récurrent détecté avant que le client ne se plaigne',
-                  'Tableau de bord temps réel — qui est où, quoi, quand',
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
@@ -147,17 +143,17 @@ export default function LandingPage() {
               {
                 icon: <Briefcase className="h-6 w-6 text-brand-600" />,
                 title: 'Dirigeant',
-                desc: 'Prouvez la qualité de vos prestations à vos clients, remportez des appels d\'offres grâce à vos références documentées, et pilotez l\'activité depuis un tableau de bord clair.',
+                desc: 'Gagnez les appels d\'offres avec une mémoire terrain réelle — interventions, preuves et références datées. Et ne perdez plus le savoir d\'un site quand une personne-clé s\'en va.',
               },
               {
                 icon: <Users className="h-6 w-6 text-brand-600" />,
                 title: 'Responsable d\'exploitation',
-                desc: 'Planifiez les interventions, affectez vos équipes, suivez l\'avancement en temps réel et générez les rapports mensuels sans ressaisie manuelle.',
+                desc: 'Pilotez la continuité : qui porte la mémoire de quel site, quelles passations anticiper, où ça se fragilise. Préparez un passage de témoin avant qu\'un contrat se termine.',
               },
               {
                 icon: <HardHat className="h-6 w-6 text-brand-600" />,
-                title: 'Agent terrain',
-                desc: 'Retrouvez votre planning, documentez chaque passage avec votre téléphone et signalez les anomalies — sans formation, en quelques secondes.',
+                title: 'Chef d\'équipe terrain',
+                desc: 'Sur votre téléphone : la journée, ce qu\'il faut savoir avant d\'entrer sur un site, les briefs reçus et la preuve de chaque passage — sans formation, en quelques secondes.',
               },
             ].map((p) => (
               <div key={p.title} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
@@ -176,12 +172,12 @@ export default function LandingPage() {
       <section className="bg-gray-50 py-20">
         <div className="mx-auto max-w-6xl px-6">
           <h2 className="mb-3 text-center text-2xl font-bold text-gray-900">Comment ça marche</h2>
-          <p className="mb-12 text-center text-gray-500">Opérationnel en une journée.</p>
+          <p className="mb-12 text-center text-gray-500">La mémoire se construit toute seule, à partir du travail réel.</p>
           <div className="grid gap-6 md:grid-cols-3">
             {[
-              { n: '1', icon: <ClipboardList className="h-6 w-6 text-brand-600" />, title: 'Planifiez', desc: 'Créez vos sites, vos missions et affectez les équipes. L\'app terrain est prête immédiatement.' },
-              { n: '2', icon: <Camera className="h-6 w-6 text-brand-600" />, title: 'Documentez', desc: 'Vos agents photographient, notent et signent depuis leur téléphone. Tout est horodaté et géolocalisé.' },
-              { n: '3', icon: <FileText className="h-6 w-6 text-brand-600" />, title: 'Prouvez', desc: 'Générez en un clic les rapports mensuels et dossiers de preuves prêts à envoyer à vos clients.' },
+              { n: '1', icon: <Camera className="h-6 w-6 text-brand-600" />, title: 'Le terrain documente', desc: 'Vos équipes notent, photographient et signalent depuis leur téléphone, au fil des interventions. Sans ressaisie.' },
+              { n: '2', icon: <Layers className="h-6 w-6 text-brand-600" />, title: 'MemorIA garde et relie', desc: 'Chaque trace nourrit la mémoire du lieu. Rien ne se perd — même quand les équipes changent ou qu\'une personne s\'en va.' },
+              { n: '3', icon: <ArrowRightLeft className="h-6 w-6 text-brand-600" />, title: 'Elle apparaît au bon moment', desc: 'La mémoire utile remonte d\'elle-même : avant une intervention, lors d\'une passation, quand un appel d\'offres arrive.' },
             ].map((step) => (
               <div key={step.n} className="relative rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
                 <div className="mb-4 flex items-center gap-3">
@@ -200,8 +196,8 @@ export default function LandingPage() {
       <section className="py-20">
         <div className="mx-auto max-w-4xl px-6">
           <div className="mb-10 text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Ce que MemorIA révèle</h2>
-            <p className="mt-3 text-gray-500">Ce que vos équipes vivent mais n'arrivent pas à formuler.</p>
+            <h2 className="text-2xl font-bold text-gray-900">Ce que MemorIA fait remonter</h2>
+            <p className="mt-3 text-gray-500">Ce que vos équipes vivent, mais que personne n'a le temps de relier.</p>
           </div>
 
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-100">
@@ -211,27 +207,28 @@ export default function LandingPage() {
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 mb-1">Bloc B · Tour Pentecost</p>
+                <p className="font-semibold text-gray-900 mb-1">Dumbéa Mall · Parties communes</p>
                 <p className="text-sm text-gray-500 leading-relaxed">
-                  Problème de robinet signalé en <span className="font-medium text-gray-900">octobre</span>,
-                  fuite d'eau notée en <span className="font-medium text-gray-900">janvier</span>,
+                  Robinet signalé en <span className="font-medium text-gray-900">octobre</span>,
+                  fuite notée en <span className="font-medium text-gray-900">janvier</span>,
                   moisissure photographiée en <span className="font-medium text-gray-900">mars</span>.
-                  Trois signalements distincts.{' '}
-                  <span className="font-semibold text-amber-600">Un seul problème non traité.</span>
+                  Trois signalements distincts, par trois personnes.{' '}
+                  <span className="font-semibold text-amber-600">Un seul problème, jamais relié.</span>
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-4 p-6">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50">
-                <Clock className="h-5 w-5 text-red-500" />
+                <ArrowRightLeft className="h-5 w-5 text-red-500" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 mb-1">Entrée nord · Résidence Baie des Citrons</p>
+                <p className="font-semibold text-gray-900 mb-1">Équipe Nouméa Centre · fin de contrat proche</p>
                 <p className="text-sm text-gray-500 leading-relaxed">
-                  Absente du planning depuis <span className="font-medium text-gray-900">11 semaines</span>.
-                  Aucune alerte envoyée. Le client n'a pas encore réclamé.{' '}
-                  <span className="font-semibold text-red-600">Il va le faire.</span>
+                  Un contrat se termine dans <span className="font-medium text-gray-900">18 jours</span>.
+                  La mémoire de <span className="font-medium text-gray-900">4 sites</span> — dont le Médipôle —
+                  repose aujourd'hui sur cette équipe.{' '}
+                  <span className="font-semibold text-red-600">Préparez la relève avant que le savoir parte.</span>
                 </p>
               </div>
             </div>
@@ -241,19 +238,20 @@ export default function LandingPage() {
                 <Layers className="h-5 w-5 text-brand-600" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 mb-1">Appel d'offres · Mairie de Nouméa</p>
+                <p className="font-semibold text-gray-900 mb-1">Appel d'offres · bionettoyage hospitalier</p>
                 <p className="text-sm text-gray-500 leading-relaxed">
-                  Critère "traçabilité des passages" demandé.{' '}
-                  <span className="font-medium text-gray-900">47 interventions documentées</span> sur des sites comparables
-                  dans votre historique.{' '}
-                  <span className="font-semibold text-brand-600">Dossier de références prêt en 1 clic.</span>
+                  Critère « traçabilité des passages » exigé.{' '}
+                  <span className="font-medium text-gray-900">Des interventions documentées</span> sur des sites comparables,
+                  déjà dans votre mémoire.{' '}
+                  <span className="font-semibold text-brand-600">Dossier de références assemblé au bon moment.</span>
                 </p>
               </div>
             </div>
           </div>
 
           <p className="mt-5 text-center text-xs text-gray-400">
-            Pas un chatbot. Pas un dashboard de plus. Une mémoire qui relie ce que les équipes oublient.
+            Pas un chatbot. Pas un ERP de plus. Une mémoire opérationnelle qui survit aux départs —
+            elle rapproche et fait apparaître, vous décidez.
           </p>
         </div>
       </section>
@@ -264,9 +262,9 @@ export default function LandingPage() {
           <h2 className="mb-12 text-center text-2xl font-bold text-gray-900">Ce que vous y gagnez</h2>
           <div className="grid gap-6 md:grid-cols-3">
             {[
-              { icon: <Shield className="h-6 w-6 text-brand-600" />, title: 'Zéro litige sans réponse', desc: 'Chaque passage est prouvé. Fini les contestations client sans fondement : le dossier est prêt en 30 secondes.' },
-              { icon: <TrendingUp className="h-6 w-6 text-brand-600" />, title: 'Appels d\'offres gagnés', desc: 'Vos références sont documentées, datées et exportables. Vos candidatures deviennent concrètes.' },
-              { icon: <Building2 className="h-6 w-6 text-brand-600" />, title: 'Équipes autonomes', desc: 'Agents, chefs d\'équipe, managers — chacun voit exactement ce qu\'il a besoin de voir, sans surcharge.' },
+              { icon: <ArrowRightLeft className="h-6 w-6 text-brand-600" />, title: 'La mémoire ne part plus avec les gens', desc: 'Départ, CDD qui finit, changement d\'équipe : le savoir du site reste. La relève prend le relais avec un brief prêt, pas une page blanche.' },
+              { icon: <TrendingUp className="h-6 w-6 text-brand-600" />, title: 'Appels d\'offres gagnés', desc: 'Vos références terrain sont réelles, datées et exportables. La mémoire utile s\'assemble au moment où l\'AO arrive.' },
+              { icon: <Shield className="h-6 w-6 text-brand-600" />, title: 'Zéro litige sans réponse', desc: 'Chaque passage est documenté. Fini les contestations sans fondement : le dossier de preuves est prêt en 30 secondes.' },
             ].map((b) => (
               <div key={b.title} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50">{b.icon}</div>
@@ -281,7 +279,7 @@ export default function LandingPage() {
       {/* CTA FINAL */}
       <section className="bg-brand-600 py-20">
         <div className="mx-auto max-w-2xl px-6 text-center">
-          <h2 className="mb-4 text-3xl font-bold text-white">Prêt à transformer vos interventions en capital ?</h2>
+          <h2 className="mb-4 text-3xl font-bold text-white">Prêt à ne plus perdre la mémoire de vos lieux ?</h2>
           <p className="mb-8 text-brand-100">Sans engagement · Sans carte bancaire · Déploiement en 1 jour</p>
           <a
             href="mailto:trouillatv@gmail.com?subject=Demande%20de%20d%C3%A9mo%20MemorIA"
