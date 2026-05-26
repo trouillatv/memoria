@@ -1,4 +1,4 @@
-﻿-- Seed admin initial — placeholder.
+-- Seed admin initial — placeholder.
 -- L'insertion réelle de l'utilisateur admin dans auth.users se fait via
 -- scripts/bootstrap-admin.ts (Task 6), car la création d'un user Supabase Auth
 -- nécessite l'API admin Auth (hash mdp, etc.) — pas faisable en SQL pur.
