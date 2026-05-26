@@ -52,6 +52,7 @@ import { IntervenantPhotoGallery } from './IntervenantPhotoGallery'
 import { IntervenantRhythm } from './IntervenantRhythm'
 import { CreateMemberChangeButton } from '@/app/(dashboard)/handovers/CreateMemberChangeButton'
 import { ContractEndDateEditor } from './ContractEndDateEditor'
+import { OffboardingDialog } from './OffboardingDialog'
 import { listTeams } from '@/lib/db/teams'
 import { isContinuityFeatureEnabled } from '@/lib/continuity/access'
 import type { InterventionSlot } from '@/types/db'
@@ -245,7 +246,18 @@ export default async function IntervenantDetailPage({ params }: Props) {
               Manager+admin uniquement (self exclu pour garde-fou doctrinal :
               une personne ne génère pas son propre brief). */}
           {!access.access.isSelf && (
-            <div className="pt-2">
+            <div className="pt-2 flex flex-wrap items-center gap-2">
+              {/* Parcours guidé : date de fin → passation → désactivation. */}
+              <OffboardingDialog
+                subjectUserId={overview.id}
+                subjectLabel={
+                  (overview.full_name?.trim() || overview.email.split('@')[0] || 'cette personne')
+                }
+                initialEndDate={overview.contract_end_date ?? null}
+                currentTeams={overview.teams.map((t) => ({ id: t.team_id, name: t.team_name }))}
+                allTeams={allTeams.map((t) => ({ id: t.id, name: t.name }))}
+                viewerIsAdmin={access.access.viewer.role === 'admin'}
+              />
               <CreateMemberChangeButton
                 subjectUserId={overview.id}
                 subjectLabel={
