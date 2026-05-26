@@ -96,7 +96,7 @@ export function DocumentRowActions({
         onClick={onRelaunch}
         disabled={pending || inFlight}
         title={inFlight ? 'Analyse en cours' : 'Réanalyser'}
-        className="text-xs underline text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:no-underline"
+        className="text-xs underline text-muted-foreground transition-transform hover:text-foreground active:scale-95 disabled:opacity-50 disabled:no-underline disabled:active:scale-100"
       >
         Réanalyser
       </button>
@@ -106,7 +106,7 @@ export function DocumentRowActions({
         onClick={onDelete}
         disabled={pending}
         title="Supprimer"
-        className="text-xs underline text-destructive/80 hover:text-destructive disabled:opacity-50"
+        className="text-xs underline text-destructive/80 transition-transform hover:text-destructive active:scale-95 disabled:opacity-50 disabled:active:scale-100"
       >
         Supprimer
       </button>

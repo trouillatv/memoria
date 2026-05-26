@@ -137,13 +137,13 @@ export function CollectionLibrary({
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               {!isOrphan && editing === g.collectionId ? (
                 <form
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-1 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-1 motion-safe:duration-150"
                   onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get('name') as string)?.trim(); if (v) rename(g.collectionId as string, v) }}
                 >
                   <input name="name" defaultValue={g.name} autoFocus minLength={2} maxLength={120}
                     className="text-sm rounded border border-input bg-background px-2 py-1" />
-                  <button type="submit" disabled={pending} className="text-emerald-600 p-1" title="Enregistrer"><Check className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setEditing(null)} className="text-muted-foreground p-1" title="Annuler"><X className="h-4 w-4" /></button>
+                  <button type="submit" disabled={pending} className="text-emerald-600 p-1 transition-transform active:scale-90" title="Enregistrer"><Check className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setEditing(null)} className="text-muted-foreground p-1 transition-transform active:scale-90" title="Annuler"><X className="h-4 w-4" /></button>
                 </form>
               ) : (
                 <h3 className="text-sm font-semibold">
@@ -154,24 +154,24 @@ export function CollectionLibrary({
 
               {!isOrphan && editing !== g.collectionId && (
                 <div className="ml-auto flex items-center gap-0.5 text-muted-foreground">
-                  <button type="button" onClick={() => reorder(realIndex, -1)} disabled={pending || realIndex <= 0} className="p-1 hover:text-foreground disabled:opacity-30" title="Monter"><ChevronUp className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => reorder(realIndex, 1)} disabled={pending || realIndex >= realGroups.length - 1} className="p-1 hover:text-foreground disabled:opacity-30" title="Descendre"><ChevronDown className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => setEditing(g.collectionId)} disabled={pending} className="p-1 hover:text-foreground" title="Renommer"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button type="button" onClick={() => setConfirmDelete(g.collectionId)} disabled={pending} className="p-1 hover:text-destructive" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => reorder(realIndex, -1)} disabled={pending || realIndex <= 0} className="p-1 transition-transform hover:text-foreground active:scale-90 disabled:opacity-30 disabled:active:scale-100" title="Monter"><ChevronUp className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => reorder(realIndex, 1)} disabled={pending || realIndex >= realGroups.length - 1} className="p-1 transition-transform hover:text-foreground active:scale-90 disabled:opacity-30 disabled:active:scale-100" title="Descendre"><ChevronDown className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => setEditing(g.collectionId)} disabled={pending} className="p-1 transition-transform hover:text-foreground active:scale-90" title="Renommer"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => setConfirmDelete(g.collectionId)} disabled={pending} className="p-1 transition-transform hover:text-destructive active:scale-90" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               )}
             </div>
 
             {/* Confirmation de suppression (2 modes) — jamais pour les orphelins */}
             {!isOrphan && confirmDelete === g.collectionId && (
-              <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2 text-sm">
+              <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2 text-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 motion-safe:duration-150">
                 <p>Supprimer « {g.name} » — que faire des {g.docs.length} document{g.docs.length > 1 ? 's' : ''} ?</p>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => remove(g.collectionId as string, 'orphan')} disabled={pending}
-                    className="text-xs rounded-md border px-3 py-1.5 hover:bg-muted">Les mettre sans collection</button>
+                    className="text-xs rounded-md border px-3 py-1.5 transition-[transform,background-color] hover:bg-muted active:scale-[0.97]">Les mettre sans collection</button>
                   <button type="button" onClick={() => remove(g.collectionId as string, 'cascade')} disabled={pending}
-                    className="text-xs rounded-md border border-destructive/40 text-destructive px-3 py-1.5 hover:bg-destructive/10">Supprimer aussi les fichiers</button>
-                  <button type="button" onClick={() => setConfirmDelete(null)} className="text-xs px-2 py-1.5 text-muted-foreground">Annuler</button>
+                    className="text-xs rounded-md border border-destructive/40 text-destructive px-3 py-1.5 transition-[transform,background-color] hover:bg-destructive/10 active:scale-[0.97]">Supprimer aussi les fichiers</button>
+                  <button type="button" onClick={() => setConfirmDelete(null)} className="text-xs px-2 py-1.5 text-muted-foreground transition-transform active:scale-[0.97]">Annuler</button>
                 </div>
               </div>
             )}
