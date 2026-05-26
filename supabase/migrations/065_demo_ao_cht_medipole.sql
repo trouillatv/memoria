@@ -92,8 +92,13 @@ BEGIN
   FROM auth.users
   LIMIT 1;
 
+  -- Reproductibilité (Vincent 2026-05-26) : ce seed [DEMO] dépend d'un utilisateur
+  -- existant. Sur une base vierge (db reset / CI), il n'y en a pas → on SKIPPE
+  -- proprement au lieu d'avorter tout le rebuild. Les données de démo n'ont pas
+  -- leur place dans une base de test/CI de toute façon.
   IF v_admin_id IS NULL THEN
-    RAISE EXCEPTION 'Aucun utilisateur trouvé — appliquer ce script après le seed des comptes.';
+    RAISE NOTICE '[DEMO 065] Aucun utilisateur — seed démo ignoré (base vierge). Build OK.';
+    RETURN;
   END IF;
 
   -- Vérifier si l'AO existe déjà (idempotence)
