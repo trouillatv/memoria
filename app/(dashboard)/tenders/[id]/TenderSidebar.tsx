@@ -262,13 +262,11 @@ export function TenderSidebar({
                   <span>{sources.libraryItemsCount} item{sources.libraryItemsCount > 1 ? 's' : ''} bibliothèque</span>
                 </li>
               )}
-              {sources.provider && (
+              {/* Provider IA masqué en mode démo/mock (détail technique). */}
+              {sources.provider && !sources.isMock && (
                 <li className="flex items-center gap-1.5">
                   <Bot className="h-3 w-3 shrink-0" />
                   <span className="capitalize">{sources.provider}</span>
-                  {sources.isMock && (
-                    <Badge className="bg-amber-100 text-amber-800 text-[10px] px-1 py-0 h-4 ml-0.5">Démo</Badge>
-                  )}
                 </li>
               )}
             </ul>

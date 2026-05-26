@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { TenderStatusBadge } from './[id]/TenderStatusBadge'
-import { TenderScoreBadge } from './[id]/TenderScoreBadge'
 import type { DbTender } from '@/types/db'
 
 function formatDate(iso: string | null): string {
@@ -34,7 +33,6 @@ export function TenderListTable({ items }: { items: DbTender[] }) {
             <th className="text-left px-3 py-2">Donneur d&apos;ordre</th>
             <th className="text-left px-3 py-2">Échéance</th>
             <th className="text-left px-3 py-2">Statut</th>
-            <th className="text-left px-3 py-2">Score</th>
             <th className="text-right px-3 py-2"></th>
           </tr>
         </thead>
@@ -47,7 +45,6 @@ export function TenderListTable({ items }: { items: DbTender[] }) {
               <td className="px-3 py-2 text-xs text-muted-foreground">{t.client_name ?? '—'}</td>
               <td className={`px-3 py-2 text-xs ${deadlineClass(t.deadline)}`}>{formatDate(t.deadline)}</td>
               <td className="px-3 py-2"><TenderStatusBadge status={t.status} /></td>
-              <td className="px-3 py-2"><TenderScoreBadge score={t.opportunity_score} /></td>
               <td className="px-3 py-2 text-right">
                 <Link href={`/tenders/${t.id}`} className="text-xs text-brand-600 hover:underline">Voir</Link>
               </td>

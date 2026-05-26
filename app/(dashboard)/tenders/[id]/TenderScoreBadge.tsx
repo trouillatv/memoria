@@ -1,7 +1,8 @@
 import { Badge } from '@/components/ui/badge'
 
 export function TenderScoreBadge({ score }: { score: number | null }) {
-  if (score === null || score === undefined) return <span className="text-xs text-muted-foreground">—</span>
+  // Pas de score calculé → rien (plutôt qu'un « — » qui fait badge/colonne mort).
+  if (score === null || score === undefined) return null
   const cls =
     score >= 70 ? 'bg-emerald-100 text-emerald-700' :
     score >= 40 ? 'bg-amber-100 text-amber-700' :

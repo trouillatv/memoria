@@ -19,14 +19,22 @@ export function TenderSynthese({ tender, analysis, document, pdfSignedUrl }: Ten
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <TenderScoreBadge score={tender.opportunity_score} />
+            {tender.opportunity_score !== null ? (
+              <TenderScoreBadge score={tender.opportunity_score} />
+            ) : (
+              <span className="text-xs text-muted-foreground italic">Non évalué</span>
+            )}
           </div>
           <div className="text-xs text-muted-foreground space-y-1">
-            <div>
-              <span className="font-medium">Fournisseur IA :</span>{' '}
-              {analysis.provider}
-              {analysis.model ? ` (${analysis.model})` : ''}
-            </div>
+            {/* Fournisseur IA masqué en mode démo/mock (détail technique, pas
+                pertinent pour un manager). Affiché seulement pour un vrai provider. */}
+            {analysis.provider && analysis.provider !== 'mock' && (
+              <div>
+                <span className="font-medium">Fournisseur IA :</span>{' '}
+                {analysis.provider}
+                {analysis.model ? ` (${analysis.model})` : ''}
+              </div>
+            )}
             {analysis.library_snapshot && (
               <div>
                 <span className="font-medium">Contexte bibliothèque :</span>{' '}
