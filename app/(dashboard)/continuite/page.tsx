@@ -134,10 +134,27 @@ export default async function ContinuitePage() {
         <div className="rounded-lg border border-dashed bg-emerald-50/40 dark:bg-emerald-950/20 px-6 py-8 text-center">
           <CheckCircle2 className="h-8 w-8 mx-auto text-emerald-600 mb-2" />
           <p className="text-sm font-medium">Aucune passation à anticiper dans les 30 jours.</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Pour qu'une personne apparaisse ici, sa date de fin de contrat doit
-            être renseignée sur sa fiche. Cf. /intervenants/[id].
+          <p className="text-xs text-muted-foreground mt-1 mx-auto max-w-md">
+            Cette page anticipe les passations à partir des dates de fin de
+            contrat renseignées sur les fiches. Vous pouvez aussi préparer un
+            passage de témoin à tout moment :
           </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <Link
+              href="/intervenants"
+              className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
+            >
+              <Users className="h-3.5 w-3.5" />
+              Préparer une passation (une personne change d'équipe)
+            </Link>
+            <Link
+              href="/equipes"
+              className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              Préparer une passation (une équipe prend un site)
+            </Link>
+          </div>
         </div>
       )}
 
