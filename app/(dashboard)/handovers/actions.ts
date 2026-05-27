@@ -102,6 +102,12 @@ export async function createMemberChangeBriefAction(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
 
+  // Garde-fou doctrinal au niveau SERVEUR (pas seulement en UI) : on ne génère
+  // pas son propre passage de témoin. (Audit board A3.)
+  if (parsed.data.subjectUserId === auth.userId) {
+    return { ok: false, error: 'Vous ne pouvez pas préparer votre propre passage de témoin.' }
+  }
+
   try {
     const { payload, title } = await buildMemberChangePayload({
       subjectUserId: parsed.data.subjectUserId,

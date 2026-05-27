@@ -198,6 +198,10 @@ async function buildSiteContextEntry(
       )
     `)
     .eq('status', 'open')
+    // Scoper la requête AU SITE côté DB (via les jointures !inner), sinon le
+    // limit(40) GLOBAL peut écarter silencieusement les anomalies du site quand
+    // l'entreprise en a beaucoup ailleurs → brief incomplet. (Audit board A1.)
+    .eq('intervention.mission.site_id', base.site_id)
     .gte('created_at', ninetyDaysAgo)
     .order('created_at', { ascending: false })
     .limit(40)
@@ -681,12 +685,15 @@ export async function shareHandoverBrief(
       status: 'shared',
     })
     .eq('id', id)
+    .is('deleted_at', null) // jamais (re)partager un brief supprimé (audit A2)
   if (error) throw error
   return { token }
 }
 
 export async function acknowledgeHandoverBrief(id: string, userId: string): Promise<void> {
   const admin = createAdminClient()
+  // Garde-fou DB : on ne « reconnaît » jamais un brief supprimé ou archivé,
+  // même via un id forgé (l'UPDATE ne ciblait pas deleted_at/status — audit A2).
   const { error } = await admin
     .from('handover_briefs')
     .update({
@@ -695,6 +702,8 @@ export async function acknowledgeHandoverBrief(id: string, userId: string): Prom
       acknowledged_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .is('deleted_at', null)
+    .neq('status', 'archived')
   if (error) throw error
 }
 

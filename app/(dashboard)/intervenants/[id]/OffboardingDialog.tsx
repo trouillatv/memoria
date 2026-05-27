@@ -132,14 +132,12 @@ export function OffboardingDialog(props: Props) {
         {step === 1 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Renseignez la date de fin de contrat. Elle déclenche l&apos;anticipation
-              de la passation (radar « À anticiper »).
+              Renseignez la date de fin de contrat. Obligatoire : elle fixe la date
+              d&apos;effet du passage de témoin et déclenche l&apos;anticipation
+              (radar « À anticiper »).
             </p>
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            <div className="flex justify-between gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={() => setStep(2)} disabled={pending}>
-                Passer
-              </Button>
+            <div className="flex justify-end gap-2 pt-1">
               <Button size="sm" onClick={saveDate} disabled={pending || !endDate}>
                 Enregistrer et continuer <ArrowRight className="h-3.5 w-3.5" />
               </Button>

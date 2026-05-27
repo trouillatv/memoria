@@ -76,13 +76,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: `Erreur génération PDF: ${msg}` }, { status: 500 })
   }
 
-  const stub = (brief.title || 'brief')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // retire les diacritiques
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .slice(0, 40) || 'brief'
+  // Nom de fichier NEUTRE : pas le titre (qui contient le nom de la personne)
+  // → un PDF téléchargé/transféré ne doit pas exposer de PII. (Audit board A4.)
+  const stub = brief.id.slice(0, 8)
 
   return new NextResponse(new Uint8Array(pdfBuffer), {
     headers: {
