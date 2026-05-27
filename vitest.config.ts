@@ -18,6 +18,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
+      // TEST-ONLY : neutralise le garde-fou de build `server-only` en unit tests
+      // (jamais appliqué au build Next réel — cf. tests/stubs/server-only.ts).
+      'server-only': path.resolve(__dirname, 'tests/stubs/server-only.ts'),
     },
   },
 })
