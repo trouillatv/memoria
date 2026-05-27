@@ -23,6 +23,7 @@ import {
   shareHandoverBrief,
   acknowledgeHandoverBrief,
   archiveHandoverBrief,
+  softDeleteHandoverBrief,
 } from '@/lib/db/handover'
 import { logAuditEvent } from '@/lib/audit/log'
 
@@ -292,6 +293,31 @@ export async function archiveBriefAction(input: { id: string }): Promise<MutateR
       entityId: parsed.data.id,
       action: 'soft_deleted',
       metadata: { kind: 'handover_brief_archived' },
+    })
+    revalidatePath('/handovers')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erreur' }
+  }
+}
+
+export async function deleteBriefAction(input: { id: string }): Promise<MutateResult> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return { ok: false, error: auth.error }
+  const parsed = idSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+  try {
+    const existing = await getHandoverBrief(parsed.data.id)
+    if (!existing) return { ok: false, error: 'Brief introuvable' }
+    await softDeleteHandoverBrief(parsed.data.id)
+    await logAuditEvent({
+      userId: auth.userId,
+      entityType: 'site',
+      entityId: parsed.data.id,
+      action: 'soft_deleted',
+      metadata: { kind: 'handover_brief_deleted' },
     })
     revalidatePath('/handovers')
     return { ok: true }

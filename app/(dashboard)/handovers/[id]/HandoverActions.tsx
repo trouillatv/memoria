@@ -6,7 +6,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
-import { Share2, CheckCircle2, Archive, Loader2, Copy, QrCode, FileDown } from 'lucide-react'
+import { Share2, CheckCircle2, Archive, Loader2, Copy, QrCode, FileDown, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,6 +22,7 @@ import {
   shareBriefAction,
   acknowledgeBriefAction,
   archiveBriefAction,
+  deleteBriefAction,
 } from '../actions'
 
 interface Props {
@@ -95,6 +96,23 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
     })
   }
 
+  function handleDelete() {
+    if (!confirm(
+      'Supprimer ce passage de témoin ?\n\n' +
+      'Il disparaît de l\'application et le lien public cesse de fonctionner. ' +
+      'La donnée est conservée et restaurable par un administrateur.',
+    )) return
+    startTransition(async () => {
+      const r = await deleteBriefAction({ id: briefId })
+      if (r.ok) {
+        toast.success('Passage de témoin supprimé')
+        router.push('/handovers')
+      } else {
+        toast.error(r.error ?? 'Erreur')
+      }
+    })
+  }
+
   function copyShareUrl() {
     if (!sharedToken) return
     const url = `${window.location.origin}/h/${sharedToken}`
@@ -104,8 +122,20 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
 
   if (archived) {
     return (
-      <div className="rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground italic">
-        Brief archivé — actions désactivées.
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-md border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground italic">
+          Brief archivé.
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleDelete}
+          disabled={pending}
+          className="text-destructive hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Supprimer
+        </Button>
       </div>
     )
   }
@@ -262,6 +292,17 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
       >
         <Archive className="h-3.5 w-3.5" />
         Archiver
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handleDelete}
+        disabled={pending}
+        className="text-destructive hover:text-destructive"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Supprimer
       </Button>
     </div>
   )

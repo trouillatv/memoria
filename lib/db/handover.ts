@@ -700,12 +700,25 @@ export async function acknowledgeHandoverBrief(id: string, userId: string): Prom
 
 export async function archiveHandoverBrief(id: string): Promise<void> {
   const admin = createAdminClient()
+  // Archiver = mettre de côté, PAS supprimer : le brief reste consultable dans
+  // l'onglet « Archivé » (cf. texte de confirmation). On ne touche donc plus à
+  // deleted_at ici (corrigé 2026-05-27 — avant, l'archive masquait tout).
   const { error } = await admin
     .from('handover_briefs')
-    .update({
-      status: 'archived',
-      deleted_at: new Date().toISOString(),
-    })
+    .update({ status: 'archived' })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Suppression (soft) d'un passage de témoin : disparaît de toutes les surfaces
+ *  (listes, onglet Archivé, lien public /h/[token]) car les requêtes filtrent
+ *  `deleted_at IS NULL`. Donnée conservée en base (doctrine : on ne détruit pas),
+ *  restaurable par un admin. */
+export async function softDeleteHandoverBrief(id: string): Promise<void> {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('handover_briefs')
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
 }
