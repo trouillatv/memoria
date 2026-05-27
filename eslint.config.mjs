@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Ajouts (script `eslint .`) — bruit hors périmètre applicatif :
+    "node_modules/**",
+    "tmp/**",
+    ".agents/**",
+    "coverage/**",
   ]),
 ]);
 
