@@ -12,7 +12,7 @@
 import * as fs from 'fs'
 import { createClient } from '@supabase/supabase-js'
 // Node 20 lacks native WebSocket — provide ws as transport.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const ws = require('ws')
 
 function loadEnvLocal() {
@@ -39,7 +39,7 @@ async function main() {
     throw new Error('Missing INITIAL_ADMIN_EMAIL or INITIAL_ADMIN_PASSWORD')
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const supabase = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
     // @ts-ignore — ws types don't align with WebSocketLikeConstructor on Node 20

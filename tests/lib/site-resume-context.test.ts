@@ -32,7 +32,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __RESUME_TEST_USER_ID__: string | undefined
 }
 

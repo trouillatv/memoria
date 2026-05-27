@@ -248,7 +248,7 @@ async function importSkipAction() {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __SKIP_TEST_USER_ID__: string | undefined
 }
 

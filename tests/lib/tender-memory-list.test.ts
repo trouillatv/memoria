@@ -55,7 +55,7 @@ interface Seed {
 describe('listTenderMemory — page mémoire journal (MC-3)', () => {
   let adminId: string
   const createdTenders: string[] = []
-  let seeded: Seed[] = []
+  const seeded: Seed[] = []
 
   beforeAll(async () => {
     adminId = await getAdminUserId()

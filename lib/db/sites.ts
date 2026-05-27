@@ -261,8 +261,8 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   const allMissionIds = Array.from(missionsBySite.values()).flat()
 
   // Interventions exécutées sur ces missions (signal d'activité)
-  let interventionsBySite = new Map<string, number>()
-  let lastBySite = new Map<string, string>()
+  const interventionsBySite = new Map<string, number>()
+  const lastBySite = new Map<string, string>()
   if (allMissionIds.length > 0) {
     const { data: ints, error: iErr } = await supabase
       .from('interventions')

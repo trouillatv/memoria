@@ -360,7 +360,7 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
               const url = signedUrls[p.storage_path]
               return url ? (
                 <div key={p.id} className="relative rounded overflow-hidden border bg-muted group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  { }
                   <a href={url} target="_blank" rel="noopener noreferrer" className="block">
                     <img src={url} alt={p.kind} className="w-full h-32 object-cover" />
                   </a>

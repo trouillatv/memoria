@@ -90,7 +90,7 @@ function NoteAudioPlayer({ src, durationSeconds }: { src: string; durationSecond
       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground w-[68px] text-right">
         {fmtClock(clamped)} / {fmtClock(total)}
       </span>
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      { }
       <audio
         ref={audioRef}
         src={src}

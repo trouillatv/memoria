@@ -52,7 +52,7 @@ async function importActions() {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __REASSIGN_TEST_USER_ID__: string | undefined
 }
 

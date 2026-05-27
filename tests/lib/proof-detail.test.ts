@@ -32,9 +32,9 @@ let adminId: string
 
 let normalInterventionId: string
 let skippedInterventionId: string
-let anomalyIds: string[] = []
-let validationIds: string[] = []
-let checklistIds: string[] = []
+const anomalyIds: string[] = []
+const validationIds: string[] = []
+const checklistIds: string[] = []
 
 async function setupTestData() {
   const supabase = createAdminClient()

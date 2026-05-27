@@ -15,7 +15,7 @@ import * as fs from 'fs'
 
 // Node 20 lacks native WebSocket — Supabase realtime client requires it at construction.
 // Polyfill `globalThis.WebSocket` BEFORE any @supabase/* import.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const ws = require('ws')
 if (typeof (globalThis as { WebSocket?: unknown }).WebSocket === 'undefined') {
   ;(globalThis as { WebSocket: unknown }).WebSocket = ws

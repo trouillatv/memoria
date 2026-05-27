@@ -624,7 +624,7 @@ export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
   ).toISOString()
   const allMissionIds = Array.from(new Set(allMissions.map((m) => m.id)))
 
-  let recentByMission = new Map<string, number>()
+  const recentByMission = new Map<string, number>()
   if (allMissionIds.length > 0) {
     const { data: recentInterventions, error: riErr } = await supabase
       .from('interventions')
@@ -640,7 +640,7 @@ export async function getAtRiskEngagements(): Promise<AtRiskEngagement[]> {
   }
 
   // 4) Dernière exécution par engagement (pour formuler le delta de jours)
-  let lastExecutedByMission = new Map<string, string>()
+  const lastExecutedByMission = new Map<string, string>()
   if (allMissionIds.length > 0) {
     const { data: lastExec, error: leErr } = await supabase
       .from('interventions')
@@ -781,7 +781,7 @@ export async function getContractsUnderTension(): Promise<ContractUnderTension[]
   const allEngagementIds = (engagements ?? []).map((e) => (e as { id: string }).id)
 
   // 2) Missions couvrant ces engagements → mission_id → engagement_ids[]
-  let missionToEngagements = new Map<string, string[]>()
+  const missionToEngagements = new Map<string, string[]>()
   let missionIdsCovering: string[] = []
   if (allEngagementIds.length > 0) {
     const { data: missions, error: mErr } = await supabase
@@ -802,8 +802,8 @@ export async function getContractsUnderTension(): Promise<ContractUnderTension[]
   const cutoffIso = new Date(
     Date.now() - TENSION_RECENT_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString()
-  let executedByMission = new Map<string, Array<{ id: string; status: string }>>()
-  let interventionIds: string[] = []
+  const executedByMission = new Map<string, Array<{ id: string; status: string }>>()
+  const interventionIds: string[] = []
   if (missionIdsCovering.length > 0) {
     const { data: interventions, error: iErr } = await supabase
       .from('interventions')
@@ -820,7 +820,7 @@ export async function getContractsUnderTension(): Promise<ContractUnderTension[]
     }
   }
 
-  let photosByIntervention = new Set<string>()
+  const photosByIntervention = new Set<string>()
   if (interventionIds.length > 0) {
     const { data: photos, error: pErr } = await supabase
       .from('intervention_photos')

@@ -145,7 +145,7 @@ export default async function FieldHomePage({
   // KPI chef d'équipe : interventions terminées sur les 7 derniers jours glissants
   // avec tâches obligatoires non cochées. Utilise missionById/siteById déjà chargés.
   type IncompleteKPI = { interventionId: string; missionName: string; siteName: string; missingCount: number; executedAt: string | null }
-  let incompleteKPIs: IncompleteKPI[] = []
+  const incompleteKPIs: IncompleteKPI[] = []
   if (user.role === 'chef_equipe' || user.role === 'admin' || user.role === 'manager') {
     const sevenDaysAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString()
     const completedRecentIds = interventions
@@ -181,7 +181,7 @@ export default async function FieldHomePage({
   // À régulariser : interventions des 7 derniers jours (hors aujourd'hui)
   // toujours en 'planned'. Utilise missionById/siteById déjà chargés.
   type OverdueKPI = { interventionId: string; missionName: string; siteName: string; scheduledFor: string; daysAgo: number }
-  let overdueKPIs: OverdueKPI[] = []
+  const overdueKPIs: OverdueKPI[] = []
   if (user.role === 'chef_equipe' || user.role === 'admin' || user.role === 'manager') {
     const sevenAgoIso = addDaysLocal(todayIso, -7)
     const overdueRaw = interventions.filter(

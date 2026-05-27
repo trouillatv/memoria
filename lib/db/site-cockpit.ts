@@ -307,7 +307,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
 
   let contractName: string | null = null
   let clientName: string | null = null
-  let clientId: string | null = (site as { client_id?: string | null }).client_id ?? null
+  const clientId: string | null = (site as { client_id?: string | null }).client_id ?? null
   let contractStartedAt: string | null = null
 
   // Résoudre le nom du client directement depuis la table clients
@@ -1286,7 +1286,7 @@ export async function getSiteRecentRhythm(
     const memberUserIds = Array.from(
       new Set(((memberships ?? []) as Array<{ team_id: string; user_id: string }>).map((m) => m.user_id)),
     )
-    let memberNameById = new Map<string, string>()
+    const memberNameById = new Map<string, string>()
     if (memberUserIds.length > 0) {
       const { data: users } = await supabase
         .from('users')
@@ -1479,7 +1479,7 @@ export async function getSiteTeamPresences(
     new Set(((memberships ?? []) as Array<{ team_id: string; user_id: string }>).map((m) => m.user_id)),
   )
 
-  let nameById = new Map<string, string>()
+  const nameById = new Map<string, string>()
   if (memberUserIds.length > 0) {
     const { data: users } = await supabase
       .from('users')

@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 /**
  * scripts/phase5-smoke.ts
  *
@@ -23,7 +23,7 @@
 import * as fs from 'fs'
 
 // Node 20 lacks native WebSocket — Supabase realtime client requires it.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+ 
 const ws = require('ws')
 if (typeof (globalThis as { WebSocket?: unknown }).WebSocket === 'undefined') {
   ;(globalThis as { WebSocket: unknown }).WebSocket = ws

@@ -158,7 +158,7 @@ export async function getContractContinuity(contractId: string): Promise<Contrac
     }
 
     // Itère du mois courant en remontant tant que le mois est présent.
-    let cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
     while (monthsSet.has(yearMonthKey(cursor))) {
       consecutiveMonthsWithIntervention += 1
       cursor.setUTCMonth(cursor.getUTCMonth() - 1)
@@ -170,7 +170,7 @@ export async function getContractContinuity(contractId: string): Promise<Contrac
 
     // weeksWithoutInterruption : semaines ISO consécutives rétroactives depuis
     // la semaine courante avec >= 1 intervention executed.
-    let weekCursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    const weekCursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
     while (weeksSet.has(isoWeekKey(weekCursor))) {
       weeksWithoutInterruption += 1
       weekCursor.setUTCDate(weekCursor.getUTCDate() - 7)

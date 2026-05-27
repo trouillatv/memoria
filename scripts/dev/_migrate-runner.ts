@@ -82,7 +82,7 @@ async function tryExecSqlRpc(sql: string, label: string): Promise<boolean> {
     auth: { persistSession: false },
   })
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const { error } = await (sb as any).rpc('exec_sql', { sql })
     if (!error) {
       console.log(`✓ ${label} appliquée via RPC exec_sql`)
