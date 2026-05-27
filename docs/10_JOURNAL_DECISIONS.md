@@ -4,6 +4,37 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-05-27 — Passages de témoin : date d'effet obligatoire, suppression, audit board Lot A
+
+**Décision** :
+- **Date d'effet obligatoire** sur tout passage de témoin (changement d'équipe + prise de site), saisie à toutes les portes (sélecteur `/handovers`, fiches, offboarding) ; affichée sur le brief, la page publique et le PDF.
+- **Suppression** (soft-delete) d'un brief, distincte de l'**archivage** — qui, corrigé, ne masque plus le brief (il reste dans l'onglet « Archivé »). Donnée conservée, restaurable par admin, action tracée.
+- Audit board `/handovers` → **Lot A** livré : complétude des anomalies scopée au site côté DB, garde-fous `deleted_at`/`status` sur share+acknowledge, self-exclusion appliquée au serveur, nom de fichier PDF neutre.
+- `/h/[token]` : **PDF imprimable + QR** ; **sélecteur de personne** depuis `/handovers` (fin d'une fausse impasse vers la liste des intervenants).
+
+**Raison** : un passage de témoin doit toujours dire à partir de quand il est effectif ; un brief créé par erreur doit pouvoir disparaître sans détruire la donnée ; un brief de continuité incomplet ou un nom qui fuite casse la confiance terrain.
+
+**Alternative écartée** : date d'effet facultative (jugée moins bloquante par l'audit terrain) — arbitrage Vincent pour l'obligatoire partout (cohérence).
+
+**Impact code** : `app/(dashboard)/handovers/**`, `lib/db/handover.ts`, migration `088`, `app/h/[token]/**`, `OffboardingDialog`.
+
+## 2026-05-27 — Coût IA visible en XPF + temps mémoriel (Sprint D, moitié 1)
+
+**Décision** :
+- Coût IA affiché en **tooltip discret, en XPF** (ratio d'affichage stable USD→XPF, pas de FX live), basé sur la **moyenne observée** des dernières actions du même type — responsabilise avant le clic, visible managers+admins.
+- **Temps mémoriel** : grammaire figée à **4 états humains** (Présent / En sommeil / Clos / Remplacé), déterministe, zéro score. Résolution explicite des résonances (statut `resolved`, réversible) + **supersession visible** sur les documents. Garde-fous CI.
+- **Moitié 2 de Sprint D** (calibration de la décroissance, apparition adaptative) **gelée** jusqu'à l'usage réel de Guillaume.
+
+**Raison** : transparence honnête du coût (devise du pilote = XPF) ; rendre le temps de la mémoire explicable sans sur-sémantiser ni introduire de score.
+
+**Impact code** : `lib/memory/temps-memoriel.ts`, `lib/format/currency.ts`, `app/(dashboard)/documents/**`, `AiCostHint`, migrations `087`.
+
+## 2026-05-27 — Gestion des collections documentaires
+
+**Décision** : déplacer un document entre collections (glisser-déposer + menu), groupe « Sans collection », éditer une collection (renommer / réordonner / supprimer avec 2 modes : orphelin ou suppression des fichiers). `collection_id` devient nullable. Les rattachements document↔site/mission sont **préservés** quel que soit le rangement.
+
+**Impact code** : `app/(dashboard)/documents/CollectionLibrary.tsx`, `lib/db/documents.ts`, migration `086`.
+
 ## 2026-05-20 — Niveau B : raffinements gravés sur B0 (verrou produit anti-hallucination)
 
 **Décision** : Vincent ratifie B0 avec 3 raffinements **non négociables** intégrés au spec :
