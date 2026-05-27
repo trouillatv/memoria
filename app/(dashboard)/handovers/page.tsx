@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   MapPin,
   Pin,
+  Users,
   BookOpen,
   Eye,
   Clock,
