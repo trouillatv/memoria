@@ -137,6 +137,12 @@ export default async function PublicHandoverPage({ params }: PageProps) {
           <span>{KIND_LABEL[brief.kind] ?? brief.kind}</span>
         </div>
         <h1 className="text-xl sm:text-2xl font-semibold leading-tight">{brief.title}</h1>
+        {brief.effective_date && (
+          <p className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-200">
+            <Clock className="h-3.5 w-3.5" />
+            Effectif à partir du {brief.effective_date.split('-').reverse().join('/')}
+          </p>
+        )}
         <a
           href={`/h/${token}/pdf`}
           target="_blank"

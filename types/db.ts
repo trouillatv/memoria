@@ -436,6 +436,8 @@ export interface DbHandoverBrief {
   payload: HandoverPayload
   title: string
   status: HandoverStatus
+  /** Date à partir de laquelle le passage de témoin est effectif (remplacement). */
+  effective_date: string | null
   shared_token: string | null
   shared_at: string | null
   expires_at: string | null

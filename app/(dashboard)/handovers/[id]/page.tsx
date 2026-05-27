@@ -145,6 +145,12 @@ export default async function HandoverDetailPage({
                 <Calendar className="h-3 w-3" />
                 Créé le {fmtDateTime(brief.created_at)}
               </span>
+              {brief.effective_date && (
+                <span className="text-[11px] inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+                  <Calendar className="h-3 w-3" />
+                  Effectif à partir du {brief.effective_date.split('-').reverse().join('/')}
+                </span>
+              )}
             </div>
             <h1 className="text-xl font-semibold leading-tight">{brief.title}</h1>
           </div>

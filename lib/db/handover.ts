@@ -512,6 +512,8 @@ export interface CreateHandoverBriefInput {
   payload: HandoverPayload
   title: string
   createdBy: string
+  /** Date d'effet du passage de témoin (YYYY-MM-DD), optionnelle. */
+  effectiveDate?: string | null
 }
 
 export async function createHandoverBrief(
@@ -529,6 +531,7 @@ export async function createHandoverBrief(
       payload: input.payload,
       title: input.title,
       status: 'draft',
+      effective_date: input.effectiveDate ?? null,
       created_by: input.createdBy,
     })
     .select('*')

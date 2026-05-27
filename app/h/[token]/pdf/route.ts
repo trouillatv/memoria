@@ -65,6 +65,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         title: brief.title,
         kind: brief.kind,
         payload: brief.payload,
+        effectiveDate: brief.effective_date,
         qrDataUrl,
         shareUrl,
       }),

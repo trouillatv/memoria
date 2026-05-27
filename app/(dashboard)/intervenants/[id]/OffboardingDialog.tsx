@@ -74,6 +74,8 @@ export function OffboardingDialog(props: Props) {
         subjectUserId: props.subjectUserId,
         sourceTeamId: sourceTeam || null,
         targetTeamId: targetTeam,
+        // La passation devient effective à la date de fin saisie à l'étape 1.
+        effectiveDate: endDate || null,
       })
       if (!r.ok) { toast.error(r.error ?? 'Erreur'); return }
       setBriefId(r.briefId ?? null)

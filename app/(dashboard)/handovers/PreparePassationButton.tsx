@@ -28,6 +28,7 @@ export function PreparePassationButton({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
+  const [effectiveDate, setEffectiveDate] = useState('')
   const [pending, start] = useTransition()
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -39,7 +40,7 @@ export function PreparePassationButton({
   function pick(id: string) {
     setBusyId(id)
     start(async () => {
-      const r = await createMemberChangeBriefAction({ subjectUserId: id })
+      const r = await createMemberChangeBriefAction({ subjectUserId: id, effectiveDate: effectiveDate || null })
       if (r.ok && r.briefId) {
         setOpen(false)
         router.push(`/handovers/${r.briefId}`)
@@ -72,6 +73,21 @@ export function PreparePassationButton({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          <div className="space-y-1">
+            <label htmlFor="passation-date" className="text-xs font-medium text-muted-foreground">
+              Effectif à partir du (optionnel)
+            </label>
+            <input
+              id="passation-date"
+              type="date"
+              value={effectiveDate}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Date à laquelle la personne est remplacée. Tu pourras la modifier ensuite.
+            </p>
+          </div>
           <div className="flex items-center gap-2 rounded-md border px-3 py-2">
             <Search className="h-3.5 w-3.5 text-muted-foreground" />
             <input

@@ -46,15 +46,19 @@ async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
 // Schemas
 // ----------------------------------------------------------------------------
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide').nullable().optional()
+
 const createMemberChangeSchema = z.object({
   subjectUserId: z.string().uuid(),
   sourceTeamId: z.string().uuid().nullable().optional(),
   targetTeamId: z.string().uuid().nullable().optional(),
+  effectiveDate: isoDate,
 })
 
 const createTeamTakesSiteSchema = z.object({
   targetTeamId: z.string().uuid(),
   siteId: z.string().uuid(),
+  effectiveDate: isoDate,
 })
 
 const idSchema = z.object({ id: z.string().uuid() })
@@ -83,6 +87,7 @@ export async function createMemberChangeBriefAction(input: {
   subjectUserId: string
   sourceTeamId?: string | null
   targetTeamId?: string | null
+  effectiveDate?: string | null
 }): Promise<CreateBriefResult> {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return { ok: false, error: auth.error }
@@ -105,6 +110,7 @@ export async function createMemberChangeBriefAction(input: {
       targetTeamId: parsed.data.targetTeamId ?? null,
       payload,
       title,
+      effectiveDate: parsed.data.effectiveDate ?? null,
       createdBy: auth.userId,
     })
     await logAuditEvent({
@@ -132,6 +138,7 @@ export async function createMemberChangeBriefAction(input: {
 export async function createTeamTakesSiteBriefAction(input: {
   targetTeamId: string
   siteId: string
+  effectiveDate?: string | null
 }): Promise<CreateBriefResult> {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return { ok: false, error: auth.error }
@@ -152,6 +159,7 @@ export async function createTeamTakesSiteBriefAction(input: {
       siteId: parsed.data.siteId,
       payload,
       title,
+      effectiveDate: parsed.data.effectiveDate ?? null,
       createdBy: auth.userId,
     })
     await logAuditEvent({
@@ -301,6 +309,7 @@ export async function createMemberChangeBriefFormAction(formData: FormData): Pro
     subjectUserId: String(formData.get('subjectUserId') ?? ''),
     sourceTeamId: (formData.get('sourceTeamId') as string) || null,
     targetTeamId: (formData.get('targetTeamId') as string) || null,
+    effectiveDate: (formData.get('effectiveDate') as string) || null,
   })
   if (result.ok && result.briefId) {
     redirect(`/handovers/${result.briefId}`)
@@ -313,6 +322,7 @@ export async function createTeamTakesSiteBriefFormAction(formData: FormData): Pr
   const result = await createTeamTakesSiteBriefAction({
     targetTeamId: String(formData.get('targetTeamId') ?? ''),
     siteId: String(formData.get('siteId') ?? ''),
+    effectiveDate: (formData.get('effectiveDate') as string) || null,
   })
   if (result.ok && result.briefId) {
     redirect(`/handovers/${result.briefId}`)

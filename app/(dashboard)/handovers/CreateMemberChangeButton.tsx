@@ -45,6 +45,7 @@ export function CreateMemberChangeButton({
     currentTeams[0]?.id ?? '',
   )
   const [targetTeamId, setTargetTeamId] = useState<string>('')
+  const [effectiveDate, setEffectiveDate] = useState<string>('')
   const [pending, startTransition] = useTransition()
 
   function submit() {
@@ -53,6 +54,7 @@ export function CreateMemberChangeButton({
         subjectUserId,
         sourceTeamId: sourceTeamId || null,
         targetTeamId: targetTeamId || null,
+        effectiveDate: effectiveDate || null,
       })
       if (r.ok && r.briefId) {
         toast.success('Brief généré')
@@ -122,6 +124,20 @@ export function CreateMemberChangeButton({
             </select>
             <p className="text-[11px] text-muted-foreground">
               L&apos;équipe à qui transmettre le brief.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="effective-date">Effectif à partir du (optionnel)</Label>
+            <input
+              id="effective-date"
+              type="date"
+              value={effectiveDate}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Date à laquelle la personne est remplacée sur ses sites.
             </p>
           </div>
         </div>

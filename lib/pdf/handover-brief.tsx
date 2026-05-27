@@ -78,7 +78,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border, borderRadius: 3, paddingVertical: 2, paddingHorizontal: 6,
     fontSize: 8, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6,
   },
-  title: { fontSize: 18, fontWeight: 700, marginBottom: 10 },
+  title: { fontSize: 18, fontWeight: 700, marginBottom: 4 },
+  effective: { fontSize: 10, fontWeight: 700, color: COLORS.warn, marginBottom: 10 },
 
   section: { marginBottom: 12 },
   sectionTitle: { fontSize: 8, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
@@ -133,12 +134,15 @@ export function HandoverBriefPdf({
   title,
   kind,
   payload,
+  effectiveDate,
   qrDataUrl,
   shareUrl,
 }: {
   title: string
   kind: string
   payload: HandoverPayload
+  /** Date d'effet (YYYY-MM-DD), optionnelle. */
+  effectiveDate?: string | null
   qrDataUrl?: string | null
   shareUrl: string
 }) {
@@ -160,6 +164,11 @@ export function HandoverBriefPdf({
 
         <Text style={styles.kindBadge}>{KIND_LABEL[kind] ?? kind}</Text>
         <Text style={styles.title}>{title}</Text>
+        {effectiveDate ? (
+          <Text style={styles.effective}>
+            Effectif à partir du {effectiveDate.split('-').reverse().join('/')}
+          </Text>
+        ) : null}
 
         {/* Contexte */}
         <View style={styles.section}>

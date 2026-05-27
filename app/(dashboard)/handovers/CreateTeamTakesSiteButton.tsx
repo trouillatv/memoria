@@ -36,6 +36,7 @@ export function CreateTeamTakesSiteButton({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [siteId, setSiteId] = useState<string>('')
+  const [effectiveDate, setEffectiveDate] = useState<string>('')
   const [pending, startTransition] = useTransition()
 
   function submit() {
@@ -47,6 +48,7 @@ export function CreateTeamTakesSiteButton({
       const r = await createTeamTakesSiteBriefAction({
         targetTeamId: teamId,
         siteId,
+        effectiveDate: effectiveDate || null,
       })
       if (r.ok && r.briefId) {
         toast.success('Brief généré')
@@ -96,6 +98,20 @@ export function CreateTeamTakesSiteButton({
           </select>
           <p className="text-[11px] text-muted-foreground">
             {availableSites.length} site{availableSites.length > 1 ? 's' : ''} disponible{availableSites.length > 1 ? 's' : ''}.
+          </p>
+        </div>
+
+        <div className="space-y-2 mt-3">
+          <Label htmlFor="tts-effective-date">Effectif à partir du (optionnel)</Label>
+          <input
+            id="tts-effective-date"
+            type="date"
+            value={effectiveDate}
+            onChange={(e) => setEffectiveDate(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Date à laquelle l&apos;équipe prend effectivement le site.
           </p>
         </div>
 
