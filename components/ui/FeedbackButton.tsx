@@ -10,9 +10,9 @@
 //   - Submit → POST /api/feedback
 //   - Toast succès / erreur selon la raison
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { usePathname } from 'next/navigation'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -25,12 +25,29 @@ import {
 import { Button } from '@/components/ui/button'
 
 const MAX_LENGTH = 2000
+const HINT_SEEN_KEY = 'memoria.feedbackHintSeen'
 
 export function FeedbackButton() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [pending, startTransition] = useTransition()
+  // Nudge d'accueil : une seule fois (mémorisé), invite à signaler bug/idée.
+  const [showHint, setShowHint] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      if (localStorage.getItem(HINT_SEEN_KEY)) return
+    } catch { /* localStorage indispo : on montre le nudge quand même */ }
+    const t = setTimeout(() => setShowHint(true), 1500) // laisse la page se poser
+    return () => clearTimeout(t)
+  }, [])
+
+  function markHintSeen() {
+    try { localStorage.setItem(HINT_SEEN_KEY, '1') } catch { /* ignore */ }
+    setShowHint(false)
+  }
 
   function reset() {
     setMessage('')
@@ -79,14 +96,46 @@ export function FeedbackButton() {
 
   return (
     <>
+      {/* Nudge d'accueil — invite à signaler bug/idée. Une seule fois, desktop. */}
+      {showHint && !open && (
+        <div className="hidden md:block fixed bottom-[5.5rem] right-6 z-40 w-64 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
+          <div className="relative rounded-xl border bg-popover text-popover-foreground shadow-xl ring-1 ring-foreground/5">
+            <button
+              type="button"
+              onClick={markHintSeen}
+              aria-label="Fermer"
+              className="absolute top-2 right-2 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(true); markHintSeen() }}
+              className="block w-full text-left p-3.5 pr-8"
+            >
+              <p className="text-sm font-medium">Un souci, un bug, une idée&nbsp;?</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Dis-le-moi directement ici&nbsp;— je lis tous les retours.
+              </p>
+            </button>
+            {/* flèche pointant vers la bulle, en bas à droite */}
+            <span className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 rounded-[2px] border-b border-r bg-popover" />
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { setOpen(true); if (showHint) markHintSeen() }}
         aria-label="Envoyer un retour"
         title="Envoyer un retour"
         className="hidden md:inline-flex fixed bottom-6 right-6 z-40 items-center justify-center h-11 w-11 rounded-full bg-foreground text-background shadow-lg hover:scale-105 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <MessageSquare className="h-5 w-5" />
+        {/* halo doux tant que le nudge est visible, pour attirer l'œil */}
+        {showHint && (
+          <span className="absolute inset-0 rounded-full bg-foreground/20 motion-safe:animate-ping" aria-hidden />
+        )}
+        <MessageSquare className="relative h-5 w-5" />
       </button>
 
       <Dialog
