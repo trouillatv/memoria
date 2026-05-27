@@ -111,6 +111,10 @@ export function ManuelBook({
               // Tableaux — légers, espacés, sans grille lourde
               'prose-table:text-sm prose-thead:border-b-2 prose-thead:border-border prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-td:px-3 prose-td:py-2 prose-td:border-t prose-td:border-border/60 prose-td:align-top',
             ].join(' ')}
+            // HTML de confiance : généré côté serveur depuis docs/MODE_EMPLOI.md
+            // (versionné dans le repo), jamais saisi/importé par un utilisateur.
+            // ⚠️ Si un jour ce contenu devient éditable ou importé, sanitation
+            // OBLIGATOIRE (ex. DOMPurify) avant injection.
             dangerouslySetInnerHTML={{ __html: current!.html }}
           />
 
@@ -240,6 +244,9 @@ function ChapterHero({
       {chapter.leadHtml && (
         <p
           className="mt-4 text-lg leading-relaxed text-muted-foreground [&_code]:text-sm [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_a]:text-brand-700 [&_a]:underline"
+          // HTML de confiance : issu de docs/MODE_EMPLOI.md (repo), jamais saisi
+          // par un utilisateur. Si contenu éditable/importé un jour → sanitation
+          // OBLIGATOIRE avant injection.
           dangerouslySetInnerHTML={{ __html: chapter.leadHtml }}
         />
       )}
