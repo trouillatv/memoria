@@ -214,6 +214,7 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
                 {sharedToken && (
                   <Button
                     variant="outline"
+                    nativeButton={false}
                     render={
                       <a href={`/h/${sharedToken}/pdf`} target="_blank" rel="noopener noreferrer" />
                     }
@@ -231,6 +232,7 @@ export function HandoverActions({ briefId, status, sharedToken, expiresAt }: Pro
             <Button
               variant="ghost"
               size="sm"
+              nativeButton={false}
               render={
                 <a href={`/h/${sharedToken}/pdf`} target="_blank" rel="noopener noreferrer" />
               }

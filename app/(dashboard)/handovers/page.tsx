@@ -20,7 +20,6 @@ import {
   AlertTriangle,
   MapPin,
   Pin,
-  Users,
   BookOpen,
   Eye,
   Clock,
@@ -37,7 +36,9 @@ import {
   type LivingASavoirCard,
 } from '@/lib/db/handover'
 import { listContinuityRisks } from '@/lib/db/continuity'
+import { listIntervenantsForList } from '@/lib/db/intervenants'
 import { ContinuityRadarSection } from './ContinuityRadarSection'
+import { PreparePassationButton } from './PreparePassationButton'
 import type { HandoverStatus } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -107,14 +108,21 @@ export default async function HandoversPage({
       ? (rawStatus as HandoverStatus)
       : 'draft'
 
-  const [briefs, counts, summary, recent, aSavoir, continuity] = await Promise.all([
+  const [briefs, counts, summary, recent, aSavoir, continuity, peopleRows] = await Promise.all([
     listHandoverBriefs({ status: filter, limit: 200 }),
     countHandoverBriefsByStatus(),
     getMemoryTransmittedThisMonth(),
     listRecentPassations(6),
     listLivingASavoir(4),
     listContinuityRisks({ horizonDays: 30, viewerUserId: me.id }),
+    listIntervenantsForList(),
   ])
+
+  // Personnes éligibles à une passation : tous les intervenants (admin déjà
+  // exclu côté requête) sauf soi-même (on ne génère pas son propre brief).
+  const passationPeople = peopleRows
+    .filter((p) => p.id !== me.id)
+    .map((p) => ({ id: p.id, label: p.full_name ?? p.email }))
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -187,13 +195,7 @@ export default async function HandoversPage({
                 départ ou un changement d'équipe. Préparez-en un :
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <Link
-                  href="/intervenants"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  Préparer une passation (une personne change d'équipe)
-                </Link>
+                <PreparePassationButton people={passationPeople} />
                 <Link
                   href="/equipes"
                   className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
