@@ -102,16 +102,17 @@ export function CreateTeamTakesSiteButton({
         </div>
 
         <div className="space-y-2 mt-3">
-          <Label htmlFor="tts-effective-date">Effectif à partir du (optionnel)</Label>
+          <Label htmlFor="tts-effective-date">Effectif à partir du <span className="text-destructive">*</span></Label>
           <input
             id="tts-effective-date"
             type="date"
+            required
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           />
           <p className="text-[11px] text-muted-foreground">
-            Date à laquelle l&apos;équipe prend effectivement le site.
+            Date à laquelle l&apos;équipe prend effectivement le site — obligatoire.
           </p>
         </div>
 
@@ -119,7 +120,7 @@ export function CreateTeamTakesSiteButton({
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
             Annuler
           </Button>
-          <Button onClick={submit} disabled={pending || !siteId}>
+          <Button onClick={submit} disabled={pending || !siteId || !effectiveDate}>
             {pending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (

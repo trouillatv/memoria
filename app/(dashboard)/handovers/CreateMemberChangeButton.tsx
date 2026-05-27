@@ -128,16 +128,17 @@ export function CreateMemberChangeButton({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="effective-date">Effectif à partir du (optionnel)</Label>
+            <Label htmlFor="effective-date">Effectif à partir du <span className="text-destructive">*</span></Label>
             <input
               id="effective-date"
               type="date"
+              required
               value={effectiveDate}
               onChange={(e) => setEffectiveDate(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
             <p className="text-[11px] text-muted-foreground">
-              Date à laquelle la personne est remplacée sur ses sites.
+              Date à laquelle la personne est remplacée sur ses sites — obligatoire.
             </p>
           </div>
         </div>
@@ -146,7 +147,7 @@ export function CreateMemberChangeButton({
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
             Annuler
           </Button>
-          <Button onClick={submit} disabled={pending}>
+          <Button onClick={submit} disabled={pending || !effectiveDate}>
             {pending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (

@@ -47,19 +47,23 @@ async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
 // Schemas
 // ----------------------------------------------------------------------------
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide').nullable().optional()
+// Date d'effet OBLIGATOIRE (Vincent 2026-05-27) : un passage de témoin doit
+// toujours dire à partir de quand il prend effet.
+const isoDateRequired = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "La date d'effet est obligatoire")
 
 const createMemberChangeSchema = z.object({
   subjectUserId: z.string().uuid(),
   sourceTeamId: z.string().uuid().nullable().optional(),
   targetTeamId: z.string().uuid().nullable().optional(),
-  effectiveDate: isoDate,
+  effectiveDate: isoDateRequired,
 })
 
 const createTeamTakesSiteSchema = z.object({
   targetTeamId: z.string().uuid(),
   siteId: z.string().uuid(),
-  effectiveDate: isoDate,
+  effectiveDate: isoDateRequired,
 })
 
 const idSchema = z.object({ id: z.string().uuid() })

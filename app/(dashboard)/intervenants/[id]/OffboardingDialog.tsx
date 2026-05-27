@@ -68,6 +68,7 @@ export function OffboardingDialog(props: Props) {
   }
 
   function makeBrief() {
+    if (!endDate) { toast.error("Renseigne la date de fin (étape 1) : elle fixe la date d'effet du passage de témoin."); setStep(1); return }
     if (!targetTeam) { toast.error("Choisis l'équipe qui reprend la mémoire."); return }
     start(async () => {
       const r = await createMemberChangeBriefAction({
@@ -187,7 +188,7 @@ export function OffboardingDialog(props: Props) {
               {briefId ? (
                 <Button size="sm" onClick={() => setStep(3)}>Continuer <ArrowRight className="h-3.5 w-3.5" /></Button>
               ) : (
-                <Button size="sm" onClick={makeBrief} disabled={pending}>Préparer la passation</Button>
+                <Button size="sm" onClick={makeBrief} disabled={pending || !endDate} title={!endDate ? 'Date de fin requise (étape 1)' : undefined}>Préparer la passation</Button>
               )}
             </div>
           </div>

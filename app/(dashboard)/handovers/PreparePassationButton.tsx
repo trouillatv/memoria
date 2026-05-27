@@ -74,18 +74,21 @@ export function PreparePassationButton({
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <label htmlFor="passation-date" className="text-xs font-medium text-muted-foreground">
-              Effectif à partir du (optionnel)
+            <label htmlFor="passation-date" className="text-xs font-medium text-foreground">
+              Effectif à partir du <span className="text-destructive">*</span>
             </label>
             <input
               id="passation-date"
               type="date"
+              required
               value={effectiveDate}
               onChange={(e) => setEffectiveDate(e.target.value)}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
             <p className="text-[11px] text-muted-foreground">
-              Date à laquelle la personne est remplacée. Tu pourras la modifier ensuite.
+              {effectiveDate
+                ? 'Choisis ensuite la personne ci-dessous.'
+                : 'Date à laquelle la personne est remplacée — obligatoire pour continuer.'}
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-md border px-3 py-2">
@@ -108,9 +111,10 @@ export function PreparePassationButton({
                 <li key={p.id}>
                   <button
                     type="button"
-                    disabled={pending}
+                    disabled={pending || !effectiveDate}
+                    title={!effectiveDate ? "Renseigne d'abord la date d'effet" : undefined}
                     onClick={() => pick(p.id)}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50 disabled:opacity-50"
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="truncate">{p.label}</span>
                     {busyId === p.id ? (
