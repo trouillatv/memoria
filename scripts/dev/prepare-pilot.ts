@@ -410,6 +410,7 @@ async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
   const confirmOn = process.argv.find((a) => a.startsWith('--confirm-on='))?.slice('--confirm-on='.length)
   const yes = process.argv.includes('--yes')
+  const resetOnly = process.argv.includes('--reset-only') // vide les données, garde les comptes, PAS de seed
   if (!confirmOn || !url.includes(confirmOn)) {
     console.error('✗ Sécurité : passe --confirm-on=<sous-chaîne de NEXT_PUBLIC_SUPABASE_URL>.')
     console.error(`  URL : ${url.replace(/(https?:\/\/[^.]+).*/, '$1...(masqué)')}`)
@@ -419,9 +420,16 @@ async function main() {
   const dryRun = !yes
 
   console.log(dryRun ? '\n*** DRY-RUN (rien ne sera écrit) ***' : '\n*** EXÉCUTION RÉELLE ***')
+  console.log(`Mode  : ${resetOnly ? 'RESET-ONLY (vide tout, garde les comptes, pas de seed)' : 'reset + seed'}`)
   console.log(`Cible : ${url.replace(/(https?:\/\/[^.]+).*/, '$1...(masqué)')}`)
 
   await resetTables(supabase, dryRun)
+
+  if (!dryRun && resetOnly) {
+    console.log('\n[reset-only] Données métier vidées. Comptes auth conservés tels quels. Aucun seed.')
+    console.log('Guillaume démarre sur une base vide.')
+    return
+  }
 
   if (dryRun) {
     console.log('\n========== PLAN DE SEED (non exécuté) ==========')
