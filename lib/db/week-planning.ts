@@ -23,136 +23,21 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 
-// ----------------------------------------------------------------------------
-// Types publics
-// ----------------------------------------------------------------------------
+// Types + helpers PURS (client-safe) extraits dans lib/week-planning-helpers.ts
+// pour casser la chaîne d'import qui faisait remonter `admin` (server-only)
+// dans le bundle client via WeekNavigation.tsx — vu par Turbopack en build prod.
+// Ce fichier reste server-only ; re-export pour la compat des appelants serveur.
+export {
+  type WeekRange,
+  type WeekInterventionCell,
+  type SiteRow,
+  type TeamRow,
+  getWeekRange,
+  parseWeekParam,
+  formatWeekParam,
+} from '@/lib/week-planning-helpers'
 
-export interface WeekRange {
-  /** Lundi yyyy-mm-dd UTC. */
-  weekStart: string
-  /** Dimanche yyyy-mm-dd UTC. */
-  weekEnd: string
-  /** Numéro de semaine ISO 8601 (1-53). */
-  weekNumber: number
-  /** Année ISO 8601 (année du jeudi de la semaine). */
-  year: number
-}
-
-export interface WeekInterventionCell {
-  id: string
-  mission_id: string
-  mission_name: string
-  site_id: string
-  site_name: string
-  contract_id: string
-  contract_name: string
-  scheduled_for: string
-  slot: string | null
-  status: string
-  skipped_at: string | null
-  assigned_team_id: string | null
-  assigned_team_name: string | null
-  assigned_team_color: string | null
-  // V6.1 — heure précise (ancrage prestation, jamais pointage personne).
-  planned_start: string | null
-  planned_end: string | null
-}
-
-export interface SiteRow {
-  site_id: string
-  site_name: string
-  contract_id: string
-  contract_name: string
-  /** Map yyyy-mm-dd → interventions du jour. */
-  days: Record<string, WeekInterventionCell[]>
-}
-
-export interface TeamRow {
-  /** null = "Non-affecté" (toujours rangée en dernier). */
-  team_id: string | null
-  team_name: string
-  team_color: string | null
-  /** Effectif courant — info descriptive, jamais KPI. */
-  member_count: number
-  days: Record<string, WeekInterventionCell[]>
-}
-
-// ----------------------------------------------------------------------------
-// getWeekRange — ISO 8601 (Lundi=1 → Dimanche=7)
-// ----------------------------------------------------------------------------
-
-/**
- * Calcule la semaine ISO 8601 contenant la date de référence.
- *
- * - Lundi est le 1er jour (1), Dimanche est le 7e (7).
- * - `weekNumber` est calculé selon ISO 8601 : la semaine 1 contient le
- *   premier jeudi de l'année.
- * - L'`year` retourné est l'année ISO du jeudi de la semaine (peut différer
- *   de l'année civile en bord d'année).
- *
- * Travaille en UTC pour éviter les drifts de timezone côté serveur.
- */
-export function getWeekRange(ref: Date | string): WeekRange {
-  const d = typeof ref === 'string' ? new Date(ref + 'T00:00:00Z') : new Date(ref)
-  d.setUTCHours(0, 0, 0, 0)
-  const day = d.getUTCDay() // 0=Sun, 1=Mon, ...
-  const diff = day === 0 ? -6 : 1 - day
-  const monday = new Date(d)
-  monday.setUTCDate(d.getUTCDate() + diff)
-  const sunday = new Date(monday)
-  sunday.setUTCDate(monday.getUTCDate() + 6)
-  const target = new Date(monday)
-  target.setUTCDate(target.getUTCDate() + 3)
-  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4))
-  const weekNumber =
-    1 +
-    Math.round(
-      ((target.getTime() - firstThursday.getTime()) / 86400000 -
-        3 +
-        (firstThursday.getUTCDay() || 7)) /
-        7
-    )
-  return {
-    weekStart: monday.toISOString().slice(0, 10),
-    weekEnd: sunday.toISOString().slice(0, 10),
-    weekNumber,
-    year: target.getUTCFullYear(),
-  }
-}
-
-// ----------------------------------------------------------------------------
-// parseWeekParam / formatWeekParam — URL `?week=2026-W20`
-// ----------------------------------------------------------------------------
-
-const WEEK_PARAM_RE = /^(\d{4})-W(\d{1,2})$/
-
-/**
- * Parse un paramètre `?week=YYYY-Www` (ISO 8601) en `WeekRange`.
- *
- * - `undefined` ou chaîne vide → semaine courante (aujourd'hui).
- * - Format invalide → semaine courante (fail-safe pour ne pas casser l'UI).
- */
-export function parseWeekParam(raw: string | undefined | null): WeekRange {
-  if (!raw) return getWeekRange(new Date())
-  const m = WEEK_PARAM_RE.exec(raw.trim())
-  if (!m) return getWeekRange(new Date())
-  const year = Number(m[1])
-  const week = Number(m[2])
-  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1 || week > 53) {
-    return getWeekRange(new Date())
-  }
-  // ISO 8601 : le jeudi de la semaine est dans l'année ISO. On prend le 4 jan
-  // de `year`, qui est toujours dans la semaine 1 ISO, puis on shift de
-  // (week - 1) semaines, puis on recalcule via getWeekRange pour normaliser.
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  jan4.setUTCDate(jan4.getUTCDate() + (week - 1) * 7)
-  return getWeekRange(jan4)
-}
-
-/** Inverse de `parseWeekParam` : produit la chaîne canonique `YYYY-Www`. */
-export function formatWeekParam(range: WeekRange): string {
-  return `${range.year}-W${String(range.weekNumber).padStart(2, '0')}`
-}
+import type { WeekRange, WeekInterventionCell, SiteRow, TeamRow } from '@/lib/week-planning-helpers'
 
 // ----------------------------------------------------------------------------
 // listInterventionsForWeek — fetch des interventions de la fenêtre

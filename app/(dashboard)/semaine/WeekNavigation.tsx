@@ -10,7 +10,10 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { formatWeekParam, getWeekRange, parseWeekParam, type WeekRange } from '@/lib/db/week-planning'
+// Import depuis helpers PURS (pas '@/lib/db/week-planning') pour que ce client
+// component ne fasse pas remonter `admin` (server-only) dans le bundle client
+// au build Turbopack.
+import { formatWeekParam, getWeekRange, parseWeekParam, type WeekRange } from '@/lib/week-planning-helpers'
 
 export interface WeekNavigationProps {
   /** Semaine actuellement affichée (résolue côté serveur). */
