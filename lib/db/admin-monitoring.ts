@@ -29,7 +29,14 @@ export interface UserAdoptionRow {
   email: string
   full_name: string | null
   role: string
-  last_sign_in_at: string | null
+  /**
+   * Dernière présence active dans l'app : dérivée de MAX(activity_logs.created_at)
+   * (page views via PageViewLogger + actions métier loggées), PAS de
+   * auth.users.last_sign_in_at qui reste figé après le premier sign-in tant que
+   * la session se renouvelle par refresh_token → trompeur (≈ date de création
+   * quand l'utilisateur ne s'est connecté qu'une fois).
+   */
+  last_activity_at: string | null
   actions_in_period: number
   status: 'active' | 'dormant' | 'inactive'
 }
@@ -51,56 +58,81 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
   const sb = createAdminClient()
   const since = cutoff(period)
 
-  const [dbUsersRes, authData, logsRes] = await Promise.all([
-    sb.from('users').select('id, email, full_name, role').is('deleted_at', null),
-    sb.auth.admin.listUsers({ perPage: 1000 }),
-    sb.from('activity_logs').select('user_id').gte('created_at', since).not('user_id', 'is', null),
+  // Charge tous les utilisateurs, isole les admins → exclus du dataset adoption
+  // (leurs actions sont du tooling/hygiène, pas un signal d'adoption produit).
+  const { data: allUsers } = await sb
+    .from('users')
+    .select('id, email, full_name, role')
+    .is('deleted_at', null)
+  const adminIds = (allUsers ?? []).filter((u) => u.role === 'admin').map((u) => u.id)
+  const monitoredUsers = (allUsers ?? []).filter((u) => u.role !== 'admin')
+  const monitoredIds = monitoredUsers.map((u) => u.id)
+
+  // Si aucun utilisateur monitoré, on évite des requêtes IN () vides.
+  const monitoredIdsForIn = monitoredIds.length ? monitoredIds : ['00000000-0000-0000-0000-000000000000']
+
+  // 1) Compteur d'actions SUR la période. 2) MAX(created_at) global = dernière
+  // présence active (page views via PageViewLogger + actions métier). Bien plus
+  // fiable que auth.last_sign_in_at qui ne s'actualise qu'au sign-in (cf.
+  // commentaire de l'interface UserAdoptionRow).
+  const [periodLogsRes, latestLogsRes] = await Promise.all([
+    sb.from('activity_logs').select('user_id')
+      .gte('created_at', since).not('user_id', 'is', null).in('user_id', monitoredIdsForIn),
+    sb.from('activity_logs').select('user_id, created_at')
+      .not('user_id', 'is', null).in('user_id', monitoredIdsForIn)
+      .order('created_at', { ascending: false }),
   ])
 
-  const lastSignIn = new Map<string, string | null>()
-  for (const u of authData.data?.users ?? []) {
-    lastSignIn.set(u.id, u.last_sign_in_at ?? null)
-  }
-
   const actionCounts = new Map<string, number>()
-  for (const log of logsRes.data ?? []) {
-    if (log.user_id) {
-      actionCounts.set(log.user_id, (actionCounts.get(log.user_id) ?? 0) + 1)
-    }
+  for (const log of periodLogsRes.data ?? []) {
+    if (log.user_id) actionCounts.set(log.user_id, (actionCounts.get(log.user_id) ?? 0) + 1)
+  }
+  const lastActivityAt = new Map<string, string>()
+  for (const log of latestLogsRes.data ?? []) {
+    // Trié desc → la 1ère occurrence par user est la plus récente.
+    if (log.user_id && !lastActivityAt.has(log.user_id)) lastActivityAt.set(log.user_id, log.created_at)
   }
 
   const now = Date.now()
   const MS_7D = 7 * 24 * 60 * 60 * 1000
   const MS_30D = 30 * 24 * 60 * 60 * 1000
 
-  const users: UserAdoptionRow[] = (dbUsersRes.data ?? []).map(u => {
-    const signIn = lastSignIn.get(u.id) ?? null
+  const users: UserAdoptionRow[] = monitoredUsers.map((u) => {
+    const lastAt = lastActivityAt.get(u.id) ?? null
     const actions = actionCounts.get(u.id) ?? 0
     let status: 'active' | 'dormant' | 'inactive'
-    if (!signIn) {
-      status = 'inactive'
-    } else {
-      const elapsed = now - new Date(signIn).getTime()
+    if (!lastAt) status = 'inactive'
+    else {
+      const elapsed = now - new Date(lastAt).getTime()
       if (elapsed < MS_7D) status = 'active'
       else if (elapsed < MS_30D) status = 'dormant'
       else status = 'inactive'
     }
-    return { ...u, last_sign_in_at: signIn, actions_in_period: actions, status }
+    return { ...u, last_activity_at: lastAt, actions_in_period: actions, status }
   })
 
   users.sort((a, b) => {
-    if (!a.last_sign_in_at && !b.last_sign_in_at) return 0
-    if (!a.last_sign_in_at) return 1
-    if (!b.last_sign_in_at) return -1
-    return b.last_sign_in_at.localeCompare(a.last_sign_in_at)
+    if (!a.last_activity_at && !b.last_activity_at) return 0
+    if (!a.last_activity_at) return 1
+    if (!b.last_activity_at) return -1
+    return b.last_activity_at.localeCompare(a.last_activity_at)
   })
 
+  // Breakdown : exclut les actions effectuées PAR un admin (filtre serveur
+  // via .not(col, 'in', '(uuids)') quand des admins existent).
+  const adminInClause = adminIds.length ? `(${adminIds.join(',')})` : null
+  const photosQ = sb.from('intervention_photos').select('id', { count: 'exact', head: true }).gte('taken_at', since)
+  const anomaliesQ = sb.from('intervention_anomalies').select('id', { count: 'exact', head: true }).gte('created_at', since)
+  const validationsQ = sb.from('intervention_validations').select('id', { count: 'exact', head: true }).gte('validated_at', since)
+  const resetsQ = sb.from('activity_logs').select('id', { count: 'exact', head: true }).eq('action', 'password_reset_forced').gte('created_at', since)
+  const intQ = sb.from('interventions').select('id', { count: 'exact', head: true }).gte('created_at', since)
+
   const [photosRes, anomaliesRes, validationsRes, resetsRes, intRes] = await Promise.all([
-    sb.from('intervention_photos').select('id', { count: 'exact', head: true }).gte('taken_at', since),
-    sb.from('intervention_anomalies').select('id', { count: 'exact', head: true }).gte('created_at', since),
-    sb.from('intervention_validations').select('id', { count: 'exact', head: true }).gte('validated_at', since),
-    sb.from('activity_logs').select('id', { count: 'exact', head: true }).eq('action', 'password_reset_forced').gte('created_at', since),
-    sb.from('interventions').select('id', { count: 'exact', head: true }).gte('created_at', since),
+    adminInClause ? photosQ.not('taken_by', 'in', adminInClause) : photosQ,
+    adminInClause ? anomaliesQ.not('reported_by', 'in', adminInClause) : anomaliesQ,
+    adminInClause ? validationsQ.not('validated_by', 'in', adminInClause) : validationsQ,
+    adminInClause ? resetsQ.not('user_id', 'in', adminInClause) : resetsQ,
+    adminInClause ? intQ.not('created_by', 'in', adminInClause) : intQ,
   ])
 
   return {
@@ -158,6 +190,10 @@ export async function getActivityFeed(period: PeriodDays, roleFilter?: string): 
       user_role: u?.role ?? null,
     }
   })
+
+  // Exclut systématiquement les actions admin du feed adoption (cohérent avec
+  // les compteurs et le tableau utilisateurs de getAdoptionStats).
+  entries = entries.filter(e => e.user_role !== 'admin')
 
   if (roleFilter) {
     entries = entries.filter(e => e.user_role === roleFilter)

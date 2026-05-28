@@ -113,8 +113,8 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
               className="rounded border px-2 py-1 text-xs bg-background"
               aria-label="Filtrer par rôle"
             >
+              {/* Admin volontairement absent : exclu du dataset adoption côté serveur. */}
               <option value="">Tous les rôles</option>
-              <option value="admin">Admin</option>
               <option value="manager">Manager</option>
               <option value="chef_equipe">Chef équipe</option>
             </select>
@@ -163,7 +163,7 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
                     <div className="text-xs text-muted-foreground">{u.email}</div>
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{ROLE_LABEL[u.role] ?? u.role}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(u.last_sign_in_at)}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(u.last_activity_at)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-xs">{u.actions_in_period}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_CLASS[u.status]}`}>
@@ -195,8 +195,8 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
             onChange={e => setRoleFilter(e.target.value)}
             className="rounded border px-2 py-1 text-xs bg-background"
           >
+            {/* Admin volontairement absent : feed adoption filtré côté serveur. */}
             <option value="">Tous les rôles</option>
-            <option value="admin">Admin</option>
             <option value="manager">Manager</option>
             <option value="chef_equipe">Chef équipe</option>
           </select>
