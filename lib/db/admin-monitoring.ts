@@ -30,11 +30,15 @@ export interface UserAdoptionRow {
   full_name: string | null
   role: string
   /**
-   * Dernière présence active dans l'app : dérivée de MAX(activity_logs.created_at)
-   * (page views via PageViewLogger + actions métier loggées), PAS de
-   * auth.users.last_sign_in_at qui reste figé après le premier sign-in tant que
-   * la session se renouvelle par refresh_token → trompeur (≈ date de création
-   * quand l'utilisateur ne s'est connecté qu'une fois).
+   * Dernière présence active dans l'app. Combine deux sources via MAX :
+   *   1. MAX(activity_logs.created_at) par user — page views (PageViewLogger
+   *      monté sur /(dashboard)/* et /(field)/*) + actions métier loggées.
+   *      Bouge à chaque navigation et chaque action.
+   *   2. auth.users.last_sign_in_at — sign-in explicite (Supabase managed).
+   *      Ne bouge PAS au refresh de session (rolling tokens), donc reste
+   *      figé après le premier login tant que la session ne ré-expire pas.
+   *      Sert de filet de sécurité quand activity_logs est vide.
+   * NB : il n'existe pas de `users.last_login_at` dans ce schéma.
    */
   last_activity_at: string | null
   actions_in_period: number
@@ -71,26 +75,40 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
   // Si aucun utilisateur monitoré, on évite des requêtes IN () vides.
   const monitoredIdsForIn = monitoredIds.length ? monitoredIds : ['00000000-0000-0000-0000-000000000000']
 
-  // 1) Compteur d'actions SUR la période. 2) MAX(created_at) global = dernière
-  // présence active (page views via PageViewLogger + actions métier). Bien plus
-  // fiable que auth.last_sign_in_at qui ne s'actualise qu'au sign-in (cf.
-  // commentaire de l'interface UserAdoptionRow).
-  const [periodLogsRes, latestLogsRes] = await Promise.all([
+  // Dernière présence : MAX(activity_logs.created_at, auth.last_sign_in_at).
+  // - activity_logs : page views (PageViewLogger sur dashboard + field) + actions
+  //   métier → bouge à chaque interaction réelle. Source principale.
+  // - auth.last_sign_in_at : filet de sécurité si activity_logs est vide pour
+  //   un user (compte fraîchement créé qui s'est connecté sans naviguer).
+  // Aucune des deux ne bouge sur un simple refresh de session — c'est inhérent
+  // à Supabase. activity_logs résout ce problème en pratique.
+  const [periodLogsRes, latestLogsRes, authData] = await Promise.all([
     sb.from('activity_logs').select('user_id')
       .gte('created_at', since).not('user_id', 'is', null).in('user_id', monitoredIdsForIn),
     sb.from('activity_logs').select('user_id, created_at')
       .not('user_id', 'is', null).in('user_id', monitoredIdsForIn)
       .order('created_at', { ascending: false }),
+    sb.auth.admin.listUsers({ perPage: 1000 }),
   ])
 
   const actionCounts = new Map<string, number>()
   for (const log of periodLogsRes.data ?? []) {
     if (log.user_id) actionCounts.set(log.user_id, (actionCounts.get(log.user_id) ?? 0) + 1)
   }
-  const lastActivityAt = new Map<string, string>()
+  const lastFromLogs = new Map<string, string>()
   for (const log of latestLogsRes.data ?? []) {
     // Trié desc → la 1ère occurrence par user est la plus récente.
-    if (log.user_id && !lastActivityAt.has(log.user_id)) lastActivityAt.set(log.user_id, log.created_at)
+    if (log.user_id && !lastFromLogs.has(log.user_id)) lastFromLogs.set(log.user_id, log.created_at)
+  }
+  const lastFromAuth = new Map<string, string>()
+  for (const u of authData.data?.users ?? []) {
+    if (u.last_sign_in_at) lastFromAuth.set(u.id, u.last_sign_in_at)
+  }
+  // MAX des deux sources par user.
+  function maxIso(a: string | undefined, b: string | undefined): string | null {
+    if (!a) return b ?? null
+    if (!b) return a
+    return a > b ? a : b
   }
 
   const now = Date.now()
@@ -98,7 +116,7 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
   const MS_30D = 30 * 24 * 60 * 60 * 1000
 
   const users: UserAdoptionRow[] = monitoredUsers.map((u) => {
-    const lastAt = lastActivityAt.get(u.id) ?? null
+    const lastAt = maxIso(lastFromLogs.get(u.id), lastFromAuth.get(u.id))
     const actions = actionCounts.get(u.id) ?? 0
     let status: 'active' | 'dormant' | 'inactive'
     if (!lastAt) status = 'inactive'
