@@ -124,7 +124,7 @@ export default async function AdminMonitoringPage({
         <TabLink
           href={`/admin/monitoring?tab=adoption${period !== 30 ? `&period=${period}` : ''}`}
           active={tab === 'adoption'}
-          label="Adoption"
+          label="Usage réel"
         />
       </nav>
 

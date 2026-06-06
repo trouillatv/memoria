@@ -14,6 +14,7 @@
 // le sujet lui-même DOIT être loggée via logAuditEvent (côté caller).
 
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { canViewerAccessIntervenantInScope } from '@/lib/db/intervenants'
 import type { DbUser, UserRole } from '@/types/db'
 
 /**
@@ -70,6 +71,14 @@ export async function checkIntervenantsPageAccess(
 
   if (!isSelf && !isPrivileged) {
     return { allowed: false, reason: 'forbidden' }
+  }
+  if (!isSelf && isPrivileged && targetUserId !== null) {
+    const inScope = await canViewerAccessIntervenantInScope({
+      viewerId: viewer.id,
+      viewerEmail: viewer.email,
+      targetUserId,
+    })
+    if (!inScope) return { allowed: false, reason: 'forbidden' }
   }
 
   return { allowed: true, access: { viewer, isSelf, isPrivileged } }

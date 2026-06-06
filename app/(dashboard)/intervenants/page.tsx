@@ -66,7 +66,10 @@ export default async function IntervenantsListPage() {
   }
   if (!access.access.isPrivileged) notFound()
 
-  const intervenants = await listIntervenantsForList()
+  const intervenants = await listIntervenantsForList({
+    id: access.access.viewer.id,
+    email: access.access.viewer.email,
+  })
 
   return (
     <div className="space-y-6 max-w-5xl">

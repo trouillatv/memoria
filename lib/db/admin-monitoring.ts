@@ -45,6 +45,28 @@ export interface UserAdoptionRow {
   status: 'active' | 'dormant' | 'inactive'
 }
 
+export interface PilotUsageRow extends UserAdoptionRow {
+  active_days_30d: number
+  notes_created: number
+  briefs_created: number
+  briefs_read: number
+  documents_consulted: number
+}
+
+export interface PilotHealth {
+  label: 'Inactif' | 'Exploration' | 'Utilisation réelle'
+  tone: 'red' | 'amber' | 'green'
+  activeDays: number
+}
+
+export interface MemoryMoments {
+  total: number
+  notes: number
+  briefs: number
+  documents: number
+  anomalies: number
+}
+
 export interface ActionBreakdown {
   interventions_created: number
   photos_uploaded: number
@@ -54,13 +76,48 @@ export interface ActionBreakdown {
 }
 
 export interface AdoptionStats {
-  users: UserAdoptionRow[]
+  users: PilotUsageRow[]
   breakdown: ActionBreakdown
+  pilotHealth: PilotHealth
+  memoryMoments: MemoryMoments
+  guillaumeLastActivityAt: string | null
+}
+
+export function getPilotHealth(users: Pick<PilotUsageRow, 'active_days_30d'>[]): PilotHealth {
+  const activeDays = Math.max(0, ...users.map((u) => u.active_days_30d))
+  if (activeDays === 0) return { label: 'Inactif', tone: 'red', activeDays }
+  if (activeDays <= 3) return { label: 'Exploration', tone: 'amber', activeDays }
+  return { label: 'Utilisation réelle', tone: 'green', activeDays }
+}
+
+export function summarizeMemoryMoments(input: Omit<MemoryMoments, 'total'>): MemoryMoments {
+  return {
+    ...input,
+    total: input.notes + input.briefs + input.documents + input.anomalies,
+  }
+}
+
+function inc(map: Map<string, number>, key: string | null | undefined, amount = 1) {
+  if (!key) return
+  map.set(key, (map.get(key) ?? 0) + amount)
+}
+
+function routeFromMetadata(metadata: unknown): string {
+  if (!metadata || typeof metadata !== 'object') return ''
+  const route = (metadata as { route?: unknown }).route
+  return typeof route === 'string' ? route : ''
+}
+
+function isDetailRoute(route: string, prefix: string): boolean {
+  if (!route.startsWith(prefix)) return false
+  const rest = route.slice(prefix.length)
+  return rest.length > 0 && !rest.includes('/')
 }
 
 export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStats> {
   const sb = createAdminClient()
   const since = cutoff(period)
+  const since30 = cutoff(30)
 
   // Charge tous les utilisateurs, isole les admins → exclus du dataset adoption
   // (leurs actions sont du tooling/hygiène, pas un signal d'adoption produit).
@@ -82,12 +139,14 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
   //   un user (compte fraîchement créé qui s'est connecté sans naviguer).
   // Aucune des deux ne bouge sur un simple refresh de session — c'est inhérent
   // à Supabase. activity_logs résout ce problème en pratique.
-  const [periodLogsRes, latestLogsRes, authData] = await Promise.all([
+  const [periodLogsRes, latestLogsRes, logs30Res, authData] = await Promise.all([
     sb.from('activity_logs').select('user_id')
       .gte('created_at', since).not('user_id', 'is', null).in('user_id', monitoredIdsForIn),
     sb.from('activity_logs').select('user_id, created_at')
       .not('user_id', 'is', null).in('user_id', monitoredIdsForIn)
       .order('created_at', { ascending: false }),
+    sb.from('activity_logs').select('user_id, entity_type, action, metadata, created_at')
+      .gte('created_at', since30).not('user_id', 'is', null).in('user_id', monitoredIdsForIn),
     sb.auth.admin.listUsers({ perPage: 1000 }),
   ])
 
@@ -104,6 +163,45 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
   for (const u of authData.data?.users ?? []) {
     if (u.last_sign_in_at) lastFromAuth.set(u.id, u.last_sign_in_at)
   }
+
+  const activeDaysByUser = new Map<string, Set<string>>()
+  const briefsReadByUser = new Map<string, number>()
+  const docsConsultedByUser = new Map<string, number>()
+  for (const log of logs30Res.data ?? []) {
+    if (!log.user_id) continue
+    const day = String(log.created_at).slice(0, 10)
+    const set = activeDaysByUser.get(log.user_id) ?? new Set<string>()
+    set.add(day)
+    activeDaysByUser.set(log.user_id, set)
+
+    const route = routeFromMetadata(log.metadata)
+    if (
+      log.entity_type === 'page' &&
+      log.action === 'view' &&
+      isDetailRoute(route, '/handovers/')
+    ) {
+      inc(briefsReadByUser, log.user_id)
+    }
+    if (
+      (log.entity_type === 'document' && ['opened', 'downloaded'].includes(String(log.action))) ||
+      (log.entity_type === 'page' && log.action === 'view' && isDetailRoute(route, '/documents/'))
+    ) {
+      inc(docsConsultedByUser, log.user_id)
+    }
+  }
+
+  const [notesRes, briefsRes, documentsRes, anomaliesMonthRes] = await Promise.all([
+    sb.from('site_notes').select('created_by').gte('created_at', since30),
+    sb.from('handover_briefs').select('created_by').gte('created_at', since30),
+    sb.from('documents').select('created_by', { count: 'exact' }).gte('created_at', since30),
+    sb.from('intervention_anomalies').select('id', { count: 'exact', head: true }).gte('created_at', since30),
+  ])
+
+  const notesByUser = new Map<string, number>()
+  for (const note of notesRes.data ?? []) inc(notesByUser, note.created_by)
+  const briefsByUser = new Map<string, number>()
+  for (const brief of briefsRes.data ?? []) inc(briefsByUser, brief.created_by)
+
   // MAX des deux sources par user.
   function maxIso(a: string | undefined, b: string | undefined): string | null {
     if (!a) return b ?? null
@@ -115,7 +213,7 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
   const MS_7D = 7 * 24 * 60 * 60 * 1000
   const MS_30D = 30 * 24 * 60 * 60 * 1000
 
-  const users: UserAdoptionRow[] = monitoredUsers.map((u) => {
+  const users: PilotUsageRow[] = monitoredUsers.map((u) => {
     const lastAt = maxIso(lastFromLogs.get(u.id), lastFromAuth.get(u.id))
     const actions = actionCounts.get(u.id) ?? 0
     let status: 'active' | 'dormant' | 'inactive'
@@ -126,7 +224,17 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
       else if (elapsed < MS_30D) status = 'dormant'
       else status = 'inactive'
     }
-    return { ...u, last_activity_at: lastAt, actions_in_period: actions, status }
+    return {
+      ...u,
+      last_activity_at: lastAt,
+      actions_in_period: actions,
+      status,
+      active_days_30d: activeDaysByUser.get(u.id)?.size ?? 0,
+      notes_created: notesByUser.get(u.id) ?? 0,
+      briefs_created: briefsByUser.get(u.id) ?? 0,
+      briefs_read: briefsReadByUser.get(u.id) ?? 0,
+      documents_consulted: docsConsultedByUser.get(u.id) ?? 0,
+    }
   })
 
   users.sort((a, b) => {
@@ -153,6 +261,11 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
     adminInClause ? intQ.not('created_by', 'in', adminInClause) : intQ,
   ])
 
+  const guillaume =
+    users.find((u) => u.email.toLowerCase() === 'guillaume.demene@memoria.nc') ??
+    users.find((u) => `${u.full_name ?? ''} ${u.email}`.toLowerCase().includes('guillaume')) ??
+    null
+
   return {
     users,
     breakdown: {
@@ -162,6 +275,14 @@ export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStat
       validations_done: validationsRes.count ?? 0,
       password_resets: resetsRes.count ?? 0,
     },
+    pilotHealth: getPilotHealth(users),
+    memoryMoments: summarizeMemoryMoments({
+      notes: notesRes.data?.length ?? 0,
+      briefs: briefsRes.data?.length ?? 0,
+      documents: documentsRes.count ?? 0,
+      anomalies: anomaliesMonthRes.count ?? 0,
+    }),
+    guillaumeLastActivityAt: guillaume?.last_activity_at ?? null,
   }
 }
 

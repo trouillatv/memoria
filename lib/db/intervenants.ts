@@ -187,6 +187,98 @@ function pickOne<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] as T) ?? null : v
 }
 
+export function getDemoClientScopeForViewerEmail(email: string | null | undefined): string | null {
+  switch ((email ?? '').trim().toLowerCase()) {
+    case 'adrien@memoria.nc':
+      return 'BatiSud Construction'
+    default:
+      return null
+  }
+}
+
+export function filterIntervenantUsersForScope<T extends { id: string }>(
+  users: T[],
+  allowedUserIds: Set<string> | null,
+): T[] {
+  if (!allowedUserIds) return users
+  return users.filter((user) => allowedUserIds.has(user.id))
+}
+
+async function resolveIntervenantScopeUserIds(input: {
+  viewerId: string
+  viewerEmail: string
+}): Promise<Set<string> | null> {
+  const clientName = getDemoClientScopeForViewerEmail(input.viewerEmail)
+  if (!clientName) return null
+
+  const admin = createAdminClient()
+  const allowed = new Set<string>([input.viewerId])
+
+  const { data: client, error: clientErr } = await admin
+    .from('clients')
+    .select('id')
+    .eq('name', clientName)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (clientErr) throw clientErr
+  if (!client) return allowed
+
+  const { data: sites, error: siteErr } = await admin
+    .from('sites')
+    .select('id')
+    .eq('client_id', client.id)
+    .is('deleted_at', null)
+  if (siteErr) throw siteErr
+  const siteIds = (sites ?? []).map((site) => site.id as string)
+  if (siteIds.length === 0) return allowed
+
+  const { data: missions, error: missionErr } = await admin
+    .from('missions')
+    .select('id')
+    .in('site_id', siteIds)
+    .is('deleted_at', null)
+  if (missionErr) throw missionErr
+  const missionIds = (missions ?? []).map((mission) => mission.id as string)
+  if (missionIds.length === 0) return allowed
+
+  const { data: interventions, error: interventionErr } = await admin
+    .from('interventions')
+    .select('assigned_team_id')
+    .in('mission_id', missionIds)
+    .not('assigned_team_id', 'is', null)
+  if (interventionErr) throw interventionErr
+  const teamIds = Array.from(
+    new Set((interventions ?? []).map((row) => row.assigned_team_id as string).filter(Boolean)),
+  )
+  if (teamIds.length === 0) return allowed
+
+  const { data: memberships, error: memberErr } = await admin
+    .from('team_members')
+    .select('user_id')
+    .in('team_id', teamIds)
+    .is('left_at', null)
+  if (memberErr) throw memberErr
+  for (const row of memberships ?? []) {
+    if (row.user_id) allowed.add(row.user_id as string)
+  }
+
+  return allowed
+}
+
+export async function canViewerAccessIntervenantInScope(input: {
+  viewerId: string
+  viewerEmail: string
+  targetUserId: string
+}): Promise<boolean> {
+  if (input.viewerId === input.targetUserId) return true
+  const allowedUserIds = await resolveIntervenantScopeUserIds({
+    viewerId: input.viewerId,
+    viewerEmail: input.viewerEmail,
+  })
+  if (!allowedUserIds) return true
+  return allowedUserIds.has(input.targetUserId)
+}
+
 // ----------------------------------------------------------------------------
 // fetchUserParticipations — source unique des participations d'un intervenant
 // ----------------------------------------------------------------------------
@@ -669,23 +761,37 @@ export async function getIntervenantHeatmap(
  * Pas de classement — tri alphabétique uniquement. Tous les counters sont
  * descriptifs (faits cumulés), aucun score, aucune moyenne.
  */
-export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
+export async function listIntervenantsForList(viewer?: {
+  id: string
+  email: string
+} | null): Promise<IntervenantListRow[]> {
   const admin = createAdminClient()
+  const scopedUserIds = viewer
+    ? await resolveIntervenantScopeUserIds({ viewerId: viewer.id, viewerEmail: viewer.email })
+    : null
 
   // 1) Users actifs intervenants — managers + chefs_equipe (les chefs_equipe
   //    sont aussi des intervenants). L'admin (compte système) est EXCLU : ce
   //    n'est pas un intervenant terrain et ne doit jamais apparaître comme
   //    sujet (Vincent 2026-05-22).
-  const { data: users } = await admin
+  let usersQuery = admin
     .from('users')
     .select('id, email, full_name, role')
     .is('deleted_at', null)
     .neq('role', 'admin')
     .order('full_name', { ascending: true, nullsFirst: false })
+  if (scopedUserIds) {
+    const ids = Array.from(scopedUserIds)
+    if (ids.length === 0) return []
+    usersQuery = usersQuery.in('id', ids)
+  }
+  const { data: users } = await usersQuery
 
   if (!users || users.length === 0) return []
+  const visibleUsers = filterIntervenantUsersForScope(users, scopedUserIds)
+  if (visibleUsers.length === 0) return []
 
-  const userIds = users.map((u) => u.id)
+  const userIds = visibleUsers.map((u) => u.id)
 
   // 2) Équipes actives par user
   const { data: memberRows } = await admin
@@ -760,7 +866,7 @@ export async function listIntervenantsForList(): Promise<IntervenantListRow[]> {
     }
   }
 
-  return users.map<IntervenantListRow>((u) => {
+  return visibleUsers.map<IntervenantListRow>((u) => {
     const stats = statsByUser.get(u.id) ?? { siteFreq: new Map<string, { name: string; count: number }>(), count: 0, lastAt: null }
     // Top 2 lieux par fréquence (puis alphabétique) — « territoires connus ».
     const topSites = Array.from(stats.siteFreq.values())

@@ -116,7 +116,7 @@ export default async function HandoversPage({
     listRecentPassations(6),
     listLivingASavoir(4),
     listContinuityRisks({ horizonDays: 30, viewerUserId: me.id }),
-    listIntervenantsForList(),
+    listIntervenantsForList({ id: me.id, email: me.email }),
   ])
 
   // Personnes éligibles à une passation : tous les intervenants (admin déjà

@@ -44,7 +44,7 @@ function buildMailHref(date: string, text: string, url: string, to: string): str
 function buildWhatsAppHref(phone: string, text: string, url: string): string {
   const payload = encodeURIComponent(`${text}\n\nDétails : ${url}`)
   const digits = phone.replace(/^\+/, '')
-  return `whatsapp://send?phone=${digits}&text=${payload}`
+  return `https://wa.me/${digits}?text=${payload}`
 }
 
 export function BriefingShareModal({ text, url, date, isManager, usersWithPhone }: Props) {
@@ -162,6 +162,8 @@ export function BriefingShareModal({ text, url, date, isManager, usersWithPhone 
                 {selectedUser && (
                   <a
                     href={waHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     onClick={() => setOpen(false)}
                     className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:bg-emerald-700 transition-colors"
                   >

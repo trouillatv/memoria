@@ -37,7 +37,7 @@ export function MonitoringShell({
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">Monitoring</h1>
-          <p className="text-sm text-muted-foreground">Adoption et santé opérationnelle de l'application.</p>
+          <p className="text-sm text-muted-foreground">Usage réel du pilote et santé opérationnelle.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Période :</span>
@@ -56,7 +56,7 @@ export function MonitoringShell({
       {/* Tabs */}
       <div className="border-b flex gap-0">
         {([
-          { key: 'adoption', label: 'Adoption' },
+          { key: 'adoption', label: 'Pilote MVO' },
           { key: 'health', label: 'Santé opérationnelle' },
         ] as { key: Tab; label: string }[]).map(t => (
           <button

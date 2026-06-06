@@ -354,10 +354,10 @@ function DerniereMemoireUtile({ events }: { events: MemoryEventItem[] }) {
         <ul className="space-y-1.5">
           {events.map((e) => {
             const inner = (
-              <span className="flex items-start gap-2 text-sm leading-snug">
+              <span className="flex min-w-0 items-start gap-2 text-sm leading-snug">
                 <span aria-hidden className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-current ${DOT[e.tone]}`} />
-                <span className="min-w-0 flex-1">
-                  <span className="truncate">{e.text}</span>
+                <span className="min-w-0 flex-1 break-words">
+                  <span>{e.text}</span>
                   <span className="text-[11px] text-muted-foreground"> · {relTime(e.at)}</span>
                 </span>
               </span>
@@ -367,10 +367,10 @@ function DerniereMemoireUtile({ events }: { events: MemoryEventItem[] }) {
                 {e.href ? (
                   <Link
                     href={e.href}
-                    className="group flex items-center gap-1 rounded hover:bg-muted/40 transition-colors -mx-1 px-1"
+                    className="group flex min-w-0 items-start gap-1 rounded hover:bg-muted/40 transition-colors -mx-1 px-1"
                   >
                     <span className="min-w-0 flex-1">{inner}</span>
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+                    <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                   </Link>
                 ) : (
                   inner

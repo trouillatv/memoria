@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { AdoptionStats, ActivityEntry, UserAdoptionRow } from '@/lib/db/admin-monitoring'
+import type { AdoptionStats, ActivityEntry, PilotHealth, UserAdoptionRow } from '@/lib/db/admin-monitoring'
 
 const STATUS_LABEL: Record<UserAdoptionRow['status'], string> = {
   active: 'Actif',
@@ -13,6 +13,12 @@ const STATUS_CLASS: Record<UserAdoptionRow['status'], string> = {
   active: 'bg-emerald-100 text-emerald-700',
   dormant: 'bg-amber-100 text-amber-700',
   inactive: 'bg-slate-100 text-slate-500',
+}
+
+const PILOT_HEALTH_CLASS: Record<PilotHealth['tone'], string> = {
+  red: 'border-red-200 bg-red-50 text-red-800 dark:bg-red-950/20 dark:text-red-200',
+  amber: 'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-200',
+  green: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200',
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -72,6 +78,48 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
 
   return (
     <div className="space-y-8">
+      <section className="grid gap-3 md:grid-cols-[1.2fr_1fr]">
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
+            Dernière activité de Guillaume
+          </h2>
+          <div className="text-3xl font-semibold tracking-tight">
+            {formatDate(stats.guillaumeLastActivityAt)}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Signal principal du pilote : est-ce que MemorIA est rouvert sans relance.
+          </p>
+        </div>
+        <div className={`rounded-lg border p-4 ${PILOT_HEALTH_CLASS[stats.pilotHealth.tone]}`}>
+          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] opacity-75 mb-2.5">
+            Santé du pilote
+          </h2>
+          <div className="text-2xl font-semibold">{stats.pilotHealth.label}</div>
+          <p className="mt-1 text-xs opacity-80">
+            {stats.pilotHealth.activeDays} jour{stats.pilotHealth.activeDays > 1 ? 's' : ''} actif{stats.pilotHealth.activeDays > 1 ? 's' : ''} sur 30 jours.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">
+          Moments mémoriels créés ce mois
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { label: 'Total', value: stats.memoryMoments.total },
+            { label: 'Notes', value: stats.memoryMoments.notes },
+            { label: 'Passations', value: stats.memoryMoments.briefs },
+            { label: 'Documents', value: stats.memoryMoments.documents },
+            { label: 'Anomalies', value: stats.memoryMoments.anomalies },
+          ].map(item => (
+            <div key={item.label} className="rounded-lg border bg-card p-4 text-center">
+              <div className="text-2xl font-bold tabular-nums">{item.value}</div>
+              <div className="text-xs text-muted-foreground mt-1">{item.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
       {/* Répartition des actions */}
       <section>
         <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Actions sur la période</h2>
@@ -150,8 +198,12 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
               <tr>
                 <th className="text-left px-3 py-2">Nom</th>
                 <th className="text-left px-3 py-2">Rôle</th>
-                <th className="text-left px-3 py-2">Dernière connexion</th>
-                <th className="text-right px-3 py-2">Actions</th>
+                <th className="text-left px-3 py-2">Dernière activité</th>
+                <th className="text-right px-3 py-2">Jours actifs 30j</th>
+                <th className="text-right px-3 py-2">Notes</th>
+                <th className="text-right px-3 py-2">Briefs créés</th>
+                <th className="text-right px-3 py-2">Briefs lus</th>
+                <th className="text-right px-3 py-2">Docs consultés</th>
                 <th className="text-left px-3 py-2">Statut</th>
               </tr>
             </thead>
@@ -164,7 +216,11 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{ROLE_LABEL[u.role] ?? u.role}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(u.last_activity_at)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-xs">{u.actions_in_period}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-xs">{u.active_days_30d}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-xs">{u.notes_created}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-xs">{u.briefs_created}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-xs">{u.briefs_read}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-xs">{u.documents_consulted}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_CLASS[u.status]}`}>
                       {STATUS_LABEL[u.status]}
@@ -174,7 +230,7 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
               ))}
               {filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={9} className="px-3 py-8 text-center text-sm text-muted-foreground">
                     {stats.users.length === 0
                       ? 'Aucun utilisateur'
                       : 'Aucun utilisateur ne correspond aux filtres.'}
