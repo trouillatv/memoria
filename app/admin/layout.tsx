@@ -10,7 +10,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-muted/20">
       <header className="bg-slate-900 text-white border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-3">
+        <div className="w-full px-4 md:px-8 py-3">
           {/* Titre */}
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center font-bold shrink-0">N</div>
@@ -30,7 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </nav>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-8">{children}</main>
+      <main className="w-full px-4 md:px-8 py-6 md:py-8 [&>*]:!mx-0 [&>*]:!w-full [&>*]:!max-w-none">{children}</main>
     </div>
   )
 }

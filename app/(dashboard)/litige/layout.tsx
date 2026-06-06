@@ -21,7 +21,7 @@ export default function LitigeLayout({ children }: { children: React.ReactNode }
           Pas de sidebar visible (elle est masquée par l'overlay full-bleed). */}
       <div className="min-h-screen bg-slate-100">
         <header className="bg-white border-b border-slate-200">
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="w-full px-4 md:px-8 py-3 flex items-center justify-between">
             <Link
               href="/dashboard"
               className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
@@ -36,7 +36,7 @@ export default function LitigeLayout({ children }: { children: React.ReactNode }
             </div>
           </div>
         </header>
-        <main className="max-w-2xl mx-auto px-4 py-8">{children}</main>
+        <main className="w-full px-4 md:px-8 py-8">{children}</main>
       </div>
     </div>
   )
