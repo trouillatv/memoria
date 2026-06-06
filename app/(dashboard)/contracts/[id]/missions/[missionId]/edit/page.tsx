@@ -45,7 +45,7 @@ export default async function EditMissionPage({
   const stats = await getTemplateStatsBatch(activeTemplates.map((t) => t.id))
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       {/* Breadcrumb : remplace les UUIDs par les noms (Contrats > [contrat] >
           Missions > [mission] > Édition). */}
       <DynamicCrumb segmentId={contract.id} label={contract.name} />

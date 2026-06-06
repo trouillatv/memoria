@@ -42,7 +42,7 @@ export default async function AdminPreparationPage() {
   const withoutPhone = chefs.filter((c) => !c.phone)
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       <header>
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <Bell className="h-6 w-6 text-brand-600" />

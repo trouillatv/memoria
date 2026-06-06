@@ -13,7 +13,7 @@ export default async function ConvertPage({ params }: { params: Promise<{ id: st
 
   if (!ELIGIBLE_STATUSES.includes(tender.status as typeof ELIGIBLE_STATUSES[number])) {
     return (
-      <div className="max-w-2xl space-y-3">
+      <div className="w-full space-y-3">
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-6">
           <h2 className="text-sm font-semibold text-rose-800 mb-2">
             Conversion impossible

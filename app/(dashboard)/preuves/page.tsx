@@ -72,7 +72,7 @@ export default async function PreuvesPage({ searchParams }: PageProps) {
   // Empty state d'accueil — pas de query DB inutile tant qu'aucun filtre n'est posé.
   if (!hasAnyFilter) {
     return (
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         <Header />
         <FiltersWrapper siteOptions={siteOptions} hasActiveFilters={false} />
         <Card>
@@ -99,7 +99,7 @@ export default async function PreuvesPage({ searchParams }: PageProps) {
   })
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <Header />
       <FiltersWrapper siteOptions={siteOptions} hasActiveFilters={hasAnyFilter} />
 

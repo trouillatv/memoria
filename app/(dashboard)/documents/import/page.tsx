@@ -50,7 +50,7 @@ export default async function DocumentsImportPage({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <header className="space-y-1">
         <Link href="/documents" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-3.5 w-3.5" /> Bibliothèque

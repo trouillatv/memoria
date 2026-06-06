@@ -123,7 +123,7 @@ export default async function BriefingPage({
   const isManager = user.role === 'manager' || user.role === 'admin'
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold inline-flex items-center gap-2">

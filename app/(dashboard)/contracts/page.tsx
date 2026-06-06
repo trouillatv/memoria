@@ -112,7 +112,7 @@ export default async function ContractsPage({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       {/* Header — Doctrine V5 Pilier 6 : sobre, pas marketing.
           Icône brand + titre + sous-titre. Stats-bar à droite (lecture rapide). */}
       <header className="flex items-start justify-between gap-4 flex-wrap">

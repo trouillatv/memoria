@@ -29,7 +29,7 @@ export default async function NewMissionPage({
 
   if (sites.length === 0 && otherSites.length === 0) {
     return (
-      <div className="max-w-2xl rounded-lg border border-amber-200 bg-amber-50 p-6">
+      <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-6">
         <p className="text-sm text-amber-800">
           Aucun site sur ce contrat. Ajoutez d&apos;abord un site avant de créer une mission.
         </p>
@@ -38,7 +38,7 @@ export default async function NewMissionPage({
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <header>
         <h1 className="text-2xl font-semibold">Nouvelle mission</h1>
         <p className="text-sm text-muted-foreground">{contract.name}</p>

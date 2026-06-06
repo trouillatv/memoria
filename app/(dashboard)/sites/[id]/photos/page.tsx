@@ -17,7 +17,7 @@ export default async function SitePhotosPage({ params }: PageProps) {
   if (!identity) notFound()
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="w-full px-4 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <Link
           href={`/sites/${id}`}

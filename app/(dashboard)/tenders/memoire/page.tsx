@@ -94,7 +94,7 @@ export default async function TenderMemoirePage({ searchParams }: PageProps) {
   const hasActiveFilters = Boolean(outcome || tag || search)
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <header className="space-y-2">
         <Link
           href="/tenders"

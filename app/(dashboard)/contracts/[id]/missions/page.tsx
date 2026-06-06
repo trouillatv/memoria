@@ -44,7 +44,7 @@ export default async function ContractMissionsPage({
   const filterSite = filterSiteId ? siteById.get(filterSiteId) : null
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header>
         <h1 className="text-2xl font-semibold">{contract.name}</h1>

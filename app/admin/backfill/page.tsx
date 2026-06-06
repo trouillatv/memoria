@@ -34,7 +34,7 @@ export default function BackfillPage() {
   const [state, action, isPending] = useActionState<State, FormData>(runBackfillAction, null)
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="w-full space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Backfill mémoire IA</h1>
         <p className="mt-2 text-sm text-muted-foreground">

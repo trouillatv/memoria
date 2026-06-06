@@ -126,7 +126,7 @@ export default async function HandoversPage({
     .map((p) => ({ id: p.id, label: p.full_name ?? p.email }))
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <ArrowRightLeft className="h-6 w-6 text-brand-600" />

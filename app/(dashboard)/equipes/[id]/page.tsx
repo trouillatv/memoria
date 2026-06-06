@@ -155,7 +155,7 @@ export default async function TeamProfilePage({
   })()
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-6 w-full">
       {/* ── Breadcrumb ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/equipes" className="inline-flex items-center gap-1 hover:text-foreground">

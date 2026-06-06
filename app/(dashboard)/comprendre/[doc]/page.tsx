@@ -50,7 +50,7 @@ export default async function ComprendrePage({ params }: { params: Promise<{ doc
   const chapters = await splitIntoChapters(mdContent)
 
   return (
-    <div className="max-w-6xl mx-auto py-2">
+    <div className="w-full py-2">
       <ManuelBook
         chapters={chapters}
         title={cfg.title}

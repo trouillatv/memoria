@@ -101,7 +101,7 @@ export default async function AdminFeedbackPage({
   })
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <MessageSquare className="h-6 w-6 text-brand-600" />

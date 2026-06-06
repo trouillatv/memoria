@@ -27,7 +27,7 @@ export default async function DevFieldPage() {
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
         Page debug Field MVP — Slice 2.0 livrée. Affiche le compte des entités créées.
         Les vraies pages produit arrivent en slices 2.1 → 2.5.

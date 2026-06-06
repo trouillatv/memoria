@@ -8,7 +8,7 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
   const engagements = await listEngagementsByTender(id)
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 w-full">
       <BackButton />
       <div className="flex items-center justify-between">
         <div>

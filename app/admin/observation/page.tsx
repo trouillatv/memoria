@@ -101,7 +101,7 @@ export default async function AdminObservationPage({
   const snap = await buildObservationSnapshot(period)
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <Eye className="h-6 w-6 text-brand-600" />

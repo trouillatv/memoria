@@ -23,7 +23,7 @@ export default async function ContractSitesPage({ params }: { params: Promise<{ 
   )
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header>
         <h1 className="text-2xl font-semibold">{contract.name}</h1>

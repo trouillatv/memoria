@@ -115,7 +115,7 @@ export default async function SitePage({ params }: PageProps) {
   )
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <DynamicCrumb segmentId={id} label={identity.name} />
       {identity.clientName && (
         <BreadcrumbPrefix crumbs={[

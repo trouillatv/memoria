@@ -214,7 +214,7 @@ export default async function MissionsPage({
   const forceOpen = Boolean(missionId || siteId)
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <header>
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <Calendar className="h-5 w-5 text-sky-600" />

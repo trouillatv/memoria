@@ -71,7 +71,7 @@ export default async function ProofDetailPage({ params }: PageProps) {
       : `${proof.anomalies.length} (${resolvedCount} résolue${resolvedCount > 1 ? 's' : ''})`
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       {/* Retour */}
       <Link
         href="/preuves"

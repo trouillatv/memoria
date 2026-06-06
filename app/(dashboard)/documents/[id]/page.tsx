@@ -133,7 +133,7 @@ export default async function DocumentViewerPage({
   const supersedes = (supersedesRes.data ?? null) as { id: string; filename: string } | null
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       <Link
         href={backHref}
         className="group inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 h-8 text-sm text-muted-foreground transition-colors hover:text-foreground hover:bg-muted active:scale-[0.97] motion-safe:transition-transform"

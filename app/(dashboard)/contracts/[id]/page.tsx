@@ -144,7 +144,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   const unplannedCount = unplannedEngagements.length
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full">
       {/* Enregistre le nom du contrat dans le breadcrumb (remplace l'UUID). */}
       <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <header className="space-y-1">

@@ -67,7 +67,7 @@ export default async function MonthlyReportPage({ params, searchParams }: PagePr
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 py-4">
+    <div className="w-full space-y-6 py-4">
       <Link
         href={`/contracts/${id}`}
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"

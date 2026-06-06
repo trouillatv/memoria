@@ -10,7 +10,7 @@ export default async function DevEngagementsPage() {
     listContracts(),
   ])
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
         🛠 Page debug Slice 0 — visualisation directe des tables `contracts` et `engagements`.
         À remplacer par les vraies pages produit (slices suivantes).

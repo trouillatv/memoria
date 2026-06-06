@@ -83,7 +83,7 @@ export default async function ContractCapsulePage({
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       <header className="space-y-1">
         <Link
           href={`/contracts/${contractId}`}

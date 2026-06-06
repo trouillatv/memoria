@@ -46,7 +46,7 @@ export default async function SitesGlobalPage() {
   )
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 w-full">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold inline-flex items-center gap-2">

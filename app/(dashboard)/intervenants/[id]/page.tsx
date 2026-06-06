@@ -152,7 +152,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
   const initials = initialsOf(overview.full_name ?? overview.email.split('@')[0] ?? null)
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <Link
         href="/intervenants"
         className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"

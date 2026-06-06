@@ -8,7 +8,7 @@ export default async function NewTenderPage() {
   const items = await listKnowledgeItems({})
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
+    <div className="w-full space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Analyser un nouvel AO</h1>
         <p className="text-sm text-muted-foreground">

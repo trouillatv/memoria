@@ -112,7 +112,7 @@ export default async function DashboardPage() {
   // Mode bootstrap : aucun contrat actif → welcome card seule.
   if (!onboarding.hasActiveContract) {
     return (
-      <div className="space-y-6 max-w-5xl">
+      <div className="space-y-6 w-full">
         <WelcomeCard progress={onboarding} />
       </div>
     )
@@ -195,7 +195,7 @@ export default async function DashboardPage() {
   const active = contracts.filter((c) => c.status === 'active')
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <DashboardHeader
         firstName={firstName}
         activeContractsCount={active.length}

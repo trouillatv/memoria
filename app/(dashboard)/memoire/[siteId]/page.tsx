@@ -41,7 +41,7 @@ export default async function MemoireSitePage({ params }: PageProps) {
   const resonance = await findResonance(siteId, { periodDays: 180, topK: 5 })
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       <header className="space-y-1">
         <Link
           href={`/sites/${siteId}`}

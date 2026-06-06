@@ -224,7 +224,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     hasAnyTrace
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full">
       {/* Breadcrumb : Sites > [Site] > [Mission] quand le site est connu. */}
       {site ? (
         <BreadcrumbPrefix
