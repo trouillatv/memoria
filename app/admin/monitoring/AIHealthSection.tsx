@@ -2,7 +2,7 @@ import { checkEmbeddingApiHealth } from '@/lib/ai/check-api-health'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const PROVIDER_LABEL: Record<string, string> = {
-  google: 'Gemini (gemini-embedding-2)',
+  google: 'Gemini (gemini-embedding-001)',
   openai: 'OpenAI (text-embedding-3-small)',
   voyage: 'Voyage AI (voyage-3)',
 }
