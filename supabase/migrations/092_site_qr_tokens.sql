@@ -34,9 +34,9 @@ create policy "org members can read tokens"
   using (
     site_id in (
       select s.id from public.sites s
-      join public.profiles p on p.organization_id = s.organization_id
-      where p.id = auth.uid()
-        and p.role in ('admin', 'manager')
+      join public.users u on u.organization_id = s.organization_id
+      where u.id = auth.uid()
+        and u.role in ('admin', 'manager')
         and s.deleted_at is null
     )
   );
