@@ -20,6 +20,7 @@ export type AuditEntityType =
   | 'report' | 'client' | 'site' | 'document'
   // Vincent 2026-05-21 : feedback in-app (cf. /admin/feedback).
   | 'feedback'
+  | 'organization'
 
 export type AuditAction =
   | 'analysis_relaunched'

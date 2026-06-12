@@ -1,0 +1,123 @@
+'use server'
+
+import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getUserRoleById, updateUserProfileAsAdmin } from '@/lib/db/users'
+import { createOrganisation, assignUserToOrg } from '@/lib/db/organisations'
+import { logAuditEvent } from '@/lib/audit/log'
+import type { UserRole } from '@/types/db'
+
+const TEMP_PASSWORD = 'memoria2026'
+
+async function requireAdmin() {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const role = await getUserRoleById(user.id)
+  if (role !== 'admin') throw new Error('Forbidden')
+  return user.id
+}
+
+const createOrgSchema = z.object({
+  name: z.string().min(1).max(100).trim(),
+})
+
+export async function createOrgAction(formData: FormData) {
+  const adminId = await requireAdmin()
+  const parsed = createOrgSchema.safeParse({ name: formData.get('name') })
+  if (!parsed.success) return { error: 'Nom invalide' }
+
+  const org = await createOrganisation(parsed.data.name)
+
+  await logAuditEvent({
+    userId: adminId, entityType: 'organization', entityId: org.id,
+    action: 'created',
+    metadata: { name: org.name, slug: org.slug },
+  })
+
+  revalidatePath('/admin/organisations')
+  return { ok: true as const, org }
+}
+
+const createUserInOrgSchema = z.object({
+  email: z.string().email(),
+  full_name: z.string().min(1),
+  role: z.enum(['admin', 'manager', 'chef_equipe']),
+  org_id: z.string().uuid(),
+  mode: z.enum(['invite', 'temp_password']),
+})
+
+export async function createUserInOrgAction(formData: FormData) {
+  const adminId = await requireAdmin()
+  const parsed = createUserInOrgSchema.safeParse({
+    email:     formData.get('email'),
+    full_name: formData.get('full_name'),
+    role:      formData.get('role'),
+    org_id:    formData.get('org_id'),
+    mode:      formData.get('mode'),
+  })
+  if (!parsed.success) return { error: 'Champs invalides' }
+
+  const supabase = createAdminClient()
+  const { email, full_name, role, org_id, mode } = parsed.data
+
+  let userId: string
+  if (mode === 'invite') {
+    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+      data: { full_name, role },
+    })
+    if (error) return { error: error.message }
+    if (!data.user) return { error: 'Invitation échouée' }
+    userId = data.user.id
+    await updateUserProfileAsAdmin(userId, { role: role as UserRole, full_name })
+  } else {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password: TEMP_PASSWORD,
+      email_confirm: true,
+      app_metadata: { role, must_change_password: true, organization_id: org_id },
+    })
+    if (error) return { error: error.message }
+    if (!data.user) return { error: 'Création échouée' }
+    userId = data.user.id
+    await updateUserProfileAsAdmin(userId, { role: role as UserRole, full_name, must_change_password: true })
+  }
+
+  await assignUserToOrg(userId, org_id)
+
+  await logAuditEvent({
+    userId: adminId, entityType: 'user', entityId: userId,
+    action: 'created',
+    metadata: { mode, email, role, org_id },
+  })
+
+  revalidatePath('/admin/organisations')
+  return { ok: true as const }
+}
+
+const assignOrgSchema = z.object({
+  user_id: z.string().uuid(),
+  org_id: z.string().uuid(),
+})
+
+export async function assignUserToOrgAction(formData: FormData) {
+  const adminId = await requireAdmin()
+  const parsed = assignOrgSchema.safeParse({
+    user_id: formData.get('user_id'),
+    org_id:  formData.get('org_id'),
+  })
+  if (!parsed.success) return { error: 'Invalid' }
+
+  await assignUserToOrg(parsed.data.user_id, parsed.data.org_id)
+
+  await logAuditEvent({
+    userId: adminId, entityType: 'user', entityId: parsed.data.user_id,
+    action: 'updated',
+    metadata: { field: 'organization_id', new_org: parsed.data.org_id },
+  })
+
+  revalidatePath('/admin/organisations')
+  return { ok: true as const }
+}

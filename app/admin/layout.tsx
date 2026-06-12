@@ -21,12 +21,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
           {/* Nav : grille 3×2 sur mobile, ligne sur desktop */}
           <nav className="grid grid-cols-3 gap-1 md:flex md:items-center md:gap-4">
-            <Link href="/admin/users"       className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Utilisateurs</Link>
-            <Link href="/admin/preparation" className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Préparation</Link>
-            <Link href="/admin/monitoring"  className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Monitoring</Link>
-            <Link href="/admin/feedback"    className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Feedback</Link>
-            <Link href="/admin/backfill"    className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Backfill IA</Link>
-            <Link href="/missions"          className="col-span-2 md:col-span-1 md:ml-auto text-center md:text-left text-xs text-slate-400 hover:text-white bg-slate-700 md:bg-transparent rounded px-2 py-2 md:p-0">← Retour app</Link>
+            <Link href="/admin/users"          className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Utilisateurs</Link>
+            <Link href="/admin/organisations"  className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Entreprises</Link>
+            <Link href="/admin/preparation"    className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Préparation</Link>
+            <Link href="/admin/monitoring"     className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Monitoring</Link>
+            <Link href="/admin/feedback"       className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Feedback</Link>
+            <Link href="/admin/backfill"       className="text-center md:text-left text-xs text-slate-300 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Backfill IA</Link>
+            <Link href="/missions"             className="col-span-3 md:col-span-1 md:ml-auto text-center md:text-left text-xs text-slate-400 hover:text-white bg-slate-700 md:bg-transparent rounded px-2 py-2 md:p-0">← Retour app</Link>
           </nav>
         </div>
       </header>

@@ -46,7 +46,7 @@ export async function listUsersForAdmin(): Promise<DbUser[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type')
+    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type, organization_id')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
