@@ -1,11 +1,12 @@
 // Page publique /qr/[token] — journal du chantier sans login.
 // Accessible à toute personne ayant scanné le QR Code du chantier.
-// Mobile-first. Audit silencieux (access_count).
+// Mobile-first, lecture seule. Aucune action, aucun lien interne.
+// Vérification : token non révoqué + non expiré (dans getSiteByQrToken).
 
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
-import { MapPin, Users, Camera, AlertTriangle, Building2, CheckCircle2, Clock } from 'lucide-react'
+import { MapPin, Users, Camera, AlertTriangle, Building2, CheckCircle2, Clock, Briefcase } from 'lucide-react'
 import { getSiteByQrToken, recordQrAccess } from '@/lib/db/site-qr'
 import { getSiteJournal, type JournalEntry, type JournalIntervention } from '@/lib/db/site-journal'
 
@@ -82,12 +83,12 @@ function InterventionCard({ intv }: { intv: JournalIntervention }) {
         {intv.anomaliesOpen === 0 && intv.anomaliesResolved > 0 && (
           <span className="inline-flex items-center gap-1 text-green-600">
             <CheckCircle2 className="h-3 w-3" />
-            résolue{intv.anomaliesResolved > 1 ? 's' : ''}
+            {intv.anomaliesResolved} anomalie{intv.anomaliesResolved > 1 ? 's' : ''} résolue{intv.anomaliesResolved > 1 ? 's' : ''}
           </span>
         )}
       </div>
 
-      {/* Entreprises */}
+      {/* Entreprises sous-traitantes */}
       {intv.companies.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {intv.companies.map((c) => (
@@ -102,10 +103,10 @@ function InterventionCard({ intv }: { intv: JournalIntervention }) {
         </div>
       )}
 
-      {/* Notes */}
+      {/* Notes terrain */}
       {intv.notes && (
         <p className="text-xs text-muted-foreground border-l-2 border-border pl-2 italic leading-relaxed">
-          {intv.notes.length > 200 ? intv.notes.slice(0, 200) + '…' : intv.notes}
+          {intv.notes.length > 300 ? intv.notes.slice(0, 300) + '…' : intv.notes}
         </p>
       )}
     </div>
@@ -117,10 +118,11 @@ function InterventionCard({ intv }: { intv: JournalIntervention }) {
 export default async function QrPublicPage({ params }: PageProps) {
   const { token } = await params
 
+  // getSiteByQrToken vérifie token actif (non révoqué, non expiré), site non supprimé.
   const site = await getSiteByQrToken(token)
   if (!site) notFound()
 
-  // Audit silencieux
+  // Audit silencieux — ne bloque pas l'affichage si ça échoue.
   recordQrAccess(token).catch(() => {})
 
   const entries: JournalEntry[] = await getSiteJournal(site.id, { limit: 60 })
@@ -136,8 +138,8 @@ export default async function QrPublicPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* En-tête */}
-      <div className="border-b bg-card px-4 py-5 space-y-1">
+      {/* En-tête chantier */}
+      <div className="border-b bg-card px-4 py-5 space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
             MemorIA
@@ -147,19 +149,29 @@ export default async function QrPublicPage({ params }: PageProps) {
             {exportDate}
           </span>
         </div>
+
         <h1 className="text-xl font-semibold leading-tight">{site.name}</h1>
+
+        {site.clientName && (
+          <p className="text-sm text-muted-foreground inline-flex items-center gap-1">
+            <Briefcase className="h-3.5 w-3.5 shrink-0" />
+            {site.clientName}
+          </p>
+        )}
+
         {site.address && (
           <p className="text-sm text-muted-foreground inline-flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
             {site.address}
           </p>
         )}
+
         <p className="text-xs text-muted-foreground pt-0.5">
           Journal du chantier · {totalInterventions} intervention{totalInterventions !== 1 ? 's' : ''}
         </p>
       </div>
 
-      {/* Journal */}
+      {/* Journal chronologique */}
       <div className="px-4 py-4 space-y-6 max-w-2xl mx-auto">
         {entries.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-12">

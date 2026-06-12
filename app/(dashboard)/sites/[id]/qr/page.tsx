@@ -1,11 +1,12 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import QRCode from 'qrcode'
-import { QrCode, Download, Eye, Clock } from 'lucide-react'
+import { QrCode, Download, Eye, Clock, ShieldOff } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteQrInfo } from '@/lib/db/site-qr'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ActivateQrButton } from './ActivateQrButton'
+import { RevokeQrButton } from './RevokeQrButton'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -24,8 +25,9 @@ export default async function SiteQrPage({ params }: PageProps) {
     process.env.NEXT_PUBLIC_BASE_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
+  const tok = info.token
   let qrDataUrl: string | null = null
-  const publicUrl = info.qr_token ? `${baseUrl}/qr/${info.qr_token}` : null
+  const publicUrl = tok ? `${baseUrl}/qr/${tok.token}` : null
 
   if (publicUrl) {
     try {
@@ -36,18 +38,19 @@ export default async function SiteQrPage({ params }: PageProps) {
         color: { dark: '#0f172a', light: '#ffffff' },
       })
     } catch {
-      // génération QR non bloquante
+      // non bloquant
     }
   }
 
-  const lastAccess = info.qr_last_accessed_at
-    ? new Date(info.qr_last_accessed_at).toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-        timeZone: 'Pacific/Noumea',
-      })
-    : null
+  const fmt = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleDateString('fr-FR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'Pacific/Noumea',
+        })
+      : null
 
   return (
     <div className="space-y-6 w-full max-w-lg">
@@ -74,13 +77,13 @@ export default async function SiteQrPage({ params }: PageProps) {
         </p>
       </header>
 
-      {!info.qr_token ? (
+      {!tok ? (
         <div className="rounded-lg border border-dashed p-8 text-center space-y-4">
           <QrCode className="h-12 w-12 text-muted-foreground/40 mx-auto" />
           <div className="space-y-1">
             <p className="text-sm font-medium">Pas encore de QR Code</p>
             <p className="text-xs text-muted-foreground">
-              Générez un lien unique pour ce chantier. Il sera valable indéfiniment.
+              Générez un lien unique pour ce chantier. Il sera valable indéfiniment, sauf révocation.
             </p>
           </div>
           <ActivateQrButton siteId={id} />
@@ -132,19 +135,31 @@ export default async function SiteQrPage({ params }: PageProps) {
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Eye className="h-3.5 w-3.5" />
-              {info.qr_access_count} accès
+              {tok.access_count} accès
             </span>
-            {lastAccess && (
+            {tok.last_accessed_at && (
               <span className="inline-flex items-center gap-1">
                 <Clock className="h-3.5 w-3.5" />
-                Dernier : {lastAccess}
+                Dernier : {fmt(tok.last_accessed_at)}
               </span>
             )}
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Ce QR Code donne accès en lecture seule au journal du chantier, sans connexion. Idéal pour une impression à coller sur la porte ou dans le bureau de chantier.
+            Ce QR Code donne accès en lecture seule au journal du chantier, sans connexion.
+            Idéal pour une impression à coller sur la porte ou dans le bureau de chantier.
           </p>
+
+          {/* Révocation */}
+          <div className="border-t pt-4 flex items-center gap-3">
+            <ShieldOff className="h-4 w-4 text-muted-foreground" />
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground">
+                Révoquer génère un lien invalide immédiatement. Un nouveau QR Code peut être créé après.
+              </p>
+            </div>
+            <RevokeQrButton siteId={id} />
+          </div>
         </div>
       )}
     </div>
