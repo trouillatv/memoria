@@ -8,7 +8,7 @@
 
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Trash2, RotateCcw, Smartphone, Monitor } from 'lucide-react'
+import { Check, Trash2, RotateCcw, Smartphone, Monitor, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient as createBrowserClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
@@ -25,6 +25,7 @@ interface Entry {
   created_at: string
   author_label: string
   author_role: string
+  author_org: string | null
 }
 
 function formatDateFr(iso: string): string {
@@ -112,6 +113,15 @@ export function FeedbackRow({ entry }: { entry: Entry }) {
           <Badge variant="outline" className="text-[10px]">
             {roleLabelFr(entry.author_role)}
           </Badge>
+          {entry.author_org && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Building2 className="h-3 w-3" />
+                {entry.author_org}
+              </span>
+            </>
+          )}
           {entry.page && (
             <>
               <span className="text-xs text-muted-foreground">·</span>

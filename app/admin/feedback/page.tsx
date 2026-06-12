@@ -28,6 +28,7 @@ interface FeedbackEntry {
   /** Nom complet ou email de l'auteur (chargé via join). */
   author_label: string
   author_role: string
+  author_org: string | null
 }
 
 export default async function AdminFeedbackPage({
@@ -57,7 +58,7 @@ export default async function AdminFeedbackPage({
       .eq('status', 'spam'),
     admin
       .from('feedback')
-      .select('id, user_id, message, page, user_agent, status, created_at, author:users(full_name, email, role)')
+      .select('id, user_id, message, page, user_agent, status, created_at, author:users(full_name, email, role, org:organizations(name))')
       .eq('status', filter)
       .order('created_at', { ascending: false })
       .limit(500),
@@ -70,6 +71,13 @@ export default async function AdminFeedbackPage({
     all: (openRes.count ?? 0) + (doneRes.count ?? 0) + (spamRes.count ?? 0),
   }
 
+  type OrgShape = { name: string } | Array<{ name: string }> | null
+  type AuthorShape = {
+    full_name: string | null
+    email: string
+    role: string
+    org: OrgShape
+  }
   type Row = {
     id: string
     user_id: string
@@ -78,7 +86,7 @@ export default async function AdminFeedbackPage({
     user_agent: string | null
     status: FeedbackStatus
     created_at: string
-    author: { full_name: string | null; email: string; role: string } | Array<{ full_name: string | null; email: string; role: string }> | null
+    author: AuthorShape | AuthorShape[] | null
   }
   const pickOne = <T,>(v: T | T[] | null | undefined): T | null => {
     if (v === null || v === undefined) return null
@@ -86,7 +94,8 @@ export default async function AdminFeedbackPage({
   }
 
   const entries: FeedbackEntry[] = ((listRes.data ?? []) as Row[]).map((r) => {
-    const author = pickOne(r.author) as { full_name: string | null; email: string; role: string } | null
+    const author = pickOne(r.author) as AuthorShape | null
+    const org = pickOne(author?.org) as { name: string } | null
     return {
       id: r.id,
       user_id: r.user_id,
@@ -97,6 +106,7 @@ export default async function AdminFeedbackPage({
       created_at: r.created_at,
       author_label: author?.full_name ?? author?.email ?? 'Utilisateur inconnu',
       author_role: author?.role ?? '—',
+      author_org: org?.name ?? null,
     }
   })
 
