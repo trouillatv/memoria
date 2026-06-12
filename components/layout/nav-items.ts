@@ -17,6 +17,7 @@ import {
   Eye,
   Brain,
   Boxes,
+  Search,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -36,6 +37,8 @@ export interface NavItem {
 // 3) Mémoire & continuité (Intervenants/Passages/Continuité) →
 // 4) Commercial & docs → 5) Guides → 6) Admin.
 export const NAV: NavItem[] = [
+  // — Recherche —
+  { href: '/recherche',  label: 'Recherche',              icon: Search,        roles: ['admin', 'manager'] },
   // — Pilotage quotidien —
   { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'] },
   { href: '/aujourdhui', label: 'Interventions du jour',  icon: ListChecks,    roles: ['admin', 'manager'] },

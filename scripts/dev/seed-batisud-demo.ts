@@ -1,4 +1,4 @@
-/**
+﻿/**
  * scripts/dev/seed-batisud-demo.ts
  *
  * Seed additionnel, non destructif, pour une démo BTP gros œuvre.
@@ -943,7 +943,7 @@ async function main() {
   const chef = await ensureDemoUser(
     supabase,
     BATISUD_CHEF_EMAIL,
-    'Chef chantier BatiSud',
+    'Fred Martin',
     'chef_equipe',
     '+687701235',
   )

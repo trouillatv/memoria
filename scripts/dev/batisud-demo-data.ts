@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AnomalyCategory,
   InterventionSlot,
   InterventionStatus,
@@ -31,7 +31,7 @@ export const BATISUD_SITES: BatiSudSiteSeed[] = [
   {
     name: 'Extension Médipôle',
     address: 'Koutio, Nouméa',
-    contactName: 'Mme Vaki - Maîtrise d’œuvre',
+    contactName: "Mme Vaki - Maîtrise d'œuvre",
     contactPhone: '+687 79 08 44',
     accessInstructions: 'Livraisons béton par entrée technique, contrôle sécurité à chaque passage.',
   },
@@ -47,7 +47,7 @@ export const BATISUD_SITES: BatiSudSiteSeed[] = [
     address: 'Nouméa, zone portuaire',
     contactName: 'Mme Sipa - Exploitation portuaire',
     contactPhone: '+687 75 31 91',
-    accessInstructions: 'EPI haute visibilité et autorisation portuaire exigés à l’entrée.',
+    accessInstructions: "EPI haute visibilité et autorisation portuaire exigés à l'entrée.",
   },
 ]
 
@@ -161,11 +161,11 @@ const PAST_NOTES = [
   'Photos ferraillage à prendre impérativement avant fermeture du coffrage.',
   'SOCOTEC demande photo du ferraillage avant fermeture coffrage.',
   'Repères rouges déplacés de 3 mètres par le géomètre. Utiliser les axes bleus.',
-  'Présence d’une nappe d’eau sous la zone sud après fortes pluies.',
+  "Présence d'une nappe d'eau sous la zone sud après fortes pluies.",
 ]
 
 export const BATISUD_SITE_NOTES: Array<{ siteName: string; body: string; kind: 'note' | 'a_savoir' }> = [
-  { siteName: 'Chantier Lycée de Païta', body: 'Présence d’une nappe d’eau sous la zone sud après fortes pluies.', kind: 'a_savoir' },
+  { siteName: 'Chantier Lycée de Païta', body: "Présence d'une nappe d'eau sous la zone sud après fortes pluies.", kind: 'a_savoir' },
   { siteName: 'Chantier Lycée de Païta', body: 'Accès camion pompe difficile après 7h30, prévoir arrivée avant circulation école.', kind: 'a_savoir' },
   { siteName: 'Extension Médipôle', body: 'Repères rouges déplacés de 3 mètres par le géomètre. Utiliser les axes bleus.', kind: 'a_savoir' },
   { siteName: 'Extension Médipôle', body: 'SOCOTEC demande photo du ferraillage avant fermeture coffrage.', kind: 'a_savoir' },
@@ -245,8 +245,13 @@ const COMPANIES: Record<string, BatiSudInterventionCompany[]> = {
   ],
 }
 
+const NOTE_OVERRIDES: Record<string, string> = {
+  "past-03": "Reprise réservation plomberie bâtiment C — décalage 40 cm validé plan V4. Plomberie du Pacifique présente tout l'après-midi.",
+  "past-07": "Pose porte palière 42 bâtiment C — vérification menuiserie et serrurerie conforme plan V5. Fred Martin sur site, poses conformes aux cotes.",
+}
+
 const ANOMALIES: Record<string, BatiSudInterventionSeed['anomaly']> = {
-  'past-01': { category: 'autre', categoryOther: 'Sol humide', description: 'Présence d’une nappe d’eau sous la zone sud après fortes pluies.', resolved: true },
+  'past-01': { category: 'autre', categoryOther: 'Sol humide', description: "Présence d'une nappe d'eau sous la zone sud après fortes pluies.", resolved: true },
   'past-02': { category: 'autre', categoryOther: 'Ferraillage à reprendre', description: 'Armatures insuffisantes relevées sur le voile Nord avant correction.', resolved: true },
   'past-03': { category: 'materiel_casse', description: 'Réservation plomberie déplacée de 40 cm suite à modification plan V4.', resolved: true },
   'past-04': { category: 'acces_bloque', description: 'Accès camion pompe bloqué par véhicule extérieur après 7h30.', resolved: false },
@@ -267,9 +272,11 @@ export function toIsoDate(baseDate: Date, dayOffset: number): string {
 export function buildBatiSudInterventionSeeds(baseDate = new Date()): BatiSudInterventionSeed[] {
   return SCHEDULE.map((item, index) => {
     const isPast = item.dayOffset < 0
-    const note = isPast
-      ? PAST_NOTES[index % PAST_NOTES.length]
-      : `Planifié le ${toIsoDate(baseDate, item.dayOffset)} : ${item.title.toLowerCase()}.`
+    const note = NOTE_OVERRIDES[item.key] ?? (
+      isPast
+        ? PAST_NOTES[index % PAST_NOTES.length]
+        : `Planifié le ${toIsoDate(baseDate, item.dayOffset)} : ${item.title.toLowerCase()}.`
+    )
     const anomaly = ANOMALIES[item.key]
     return {
       ...item,
