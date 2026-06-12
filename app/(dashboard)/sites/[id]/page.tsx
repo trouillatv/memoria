@@ -259,9 +259,15 @@ export default async function SitePage({ params }: PageProps) {
         </Card>
       )}
 
-      {/* V5.1 Slice 5 — Lien Atelier mémoire / Résonances.
-          Entrée discrète, bas de page, pas en hero. */}
-      <div className="pt-2 border-t border-border/40 text-sm">
+      {/* V5.1 Slice 5 — Lien Atelier mémoire / Résonances + Journal.
+          Entrées discrètes, bas de page, pas en hero. */}
+      <div className="pt-2 border-t border-border/40 text-sm flex items-center gap-6">
+        <Link
+          href={`/sites/${id}/journal`}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Journal du chantier →
+        </Link>
         <Link
           href={`/memoire/${id}`}
           className="text-muted-foreground hover:text-foreground transition-colors"

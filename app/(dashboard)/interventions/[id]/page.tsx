@@ -10,6 +10,7 @@ import {
   getValidationByIntervention,
 } from '@/lib/db/interventions'
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
+import { listCompaniesForIntervention } from '@/lib/db/intervention-companies'
 import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
@@ -23,6 +24,7 @@ import { VoiceNotesSection } from './VoiceNotesSection'
 import type { VoiceNoteDisplay } from './VoiceNotesSection'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { ParticipantsPanel } from './participants-panel'
+import { CompaniesPanel } from './companies-panel'
 import { AssignTeamButton } from './AssignTeamButton'
 import { ShareInterventionButton } from '@/components/share/ShareInterventionButton'
 import { formatInterventionShareText } from '@/lib/share/format-intervention'
@@ -55,7 +57,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents, companies] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
@@ -64,6 +66,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     listParticipantsForIntervention(id),
     listValidatedVoiceNotesByIntervention(id),
     listAccessEventsByIntervention(id),
+    listCompaniesForIntervention(id).catch(() => []),
   ])
 
   const supabase = createAdminClient()
@@ -318,6 +321,9 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         assignedTeam={assignedTeam ? { name: assignedTeam.name, color: assignedTeam.color } : null}
         participants={participants}
       />
+
+      <CompaniesPanel interventionId={intervention.id} companies={companies} />
+
       {/* Bouton Affecter / Réassigner équipe — visible tant que l'intervention
           est planned. Au-delà, l'équipe est figée (immuabilité preuve). */}
       {isPlanned && (
