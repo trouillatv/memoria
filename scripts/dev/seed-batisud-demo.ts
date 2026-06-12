@@ -51,6 +51,7 @@ import {
   BATISUD_TEAMS,
   buildBatiSudInterventionSeeds,
   toIsoDate,
+  type BatiSudInterventionCompany,
 } from './batisud-demo-data'
 
 type SupabaseAdmin = ReturnType<typeof createAdminClient>
@@ -68,6 +69,7 @@ interface SeedSummary {
   notesCreated: number
   documentsCreated: number
   handoversCreated: number
+  companiesCreated: number
   sharedToken: string | null
 }
 
@@ -860,6 +862,42 @@ async function verifySeed(
   }
 }
 
+async function ensureInterventionCompanies(
+  supabase: SupabaseAdmin,
+  interventionId: string,
+  companies: BatiSudInterventionCompany[],
+  adminId: string,
+  organizationId: string,
+): Promise<number> {
+  if (companies.length === 0) return 0
+  const { data: existing, error: fetchErr } = await supabase
+    .from('intervention_companies')
+    .select('company_name')
+    .eq('intervention_id', interventionId)
+  if (fetchErr) {
+    if ((fetchErr as { code?: string }).code === '42P01') return 0
+    throw fetchErr
+  }
+  const existingNames = new Set((existing ?? []).map((r) => (r.company_name as string).toLowerCase()))
+  let inserted = 0
+  for (const company of companies) {
+    if (existingNames.has(company.company_name.toLowerCase())) continue
+    const { error } = await supabase.from('intervention_companies').insert({
+      intervention_id: interventionId,
+      company_name: company.company_name,
+      role_description: company.role_description ?? null,
+      created_by: adminId,
+      organization_id: organizationId,
+    })
+    if (error) {
+      if ((error as { code?: string }).code === '42P01') return inserted
+      throw error
+    }
+    inserted++
+  }
+  return inserted
+}
+
 async function main() {
   const supabase = createAdminClient()
   const summary: SeedSummary = {
@@ -875,12 +913,13 @@ async function main() {
     notesCreated: 0,
     documentsCreated: 0,
     handoversCreated: 0,
+    companiesCreated: 0,
     sharedToken: null,
   }
 
   const { data: admin, error: adminErr } = await supabase
     .from('users')
-    .select('id')
+    .select('id, organization_id')
     .eq('role', 'admin')
     .is('deleted_at', null)
     .limit(1)
@@ -888,6 +927,7 @@ async function main() {
   if (adminErr) throw adminErr
   if (!admin) throw new Error('Aucun admin trouvé. Lance db:bootstrap-admin avant ce seed.')
   const adminId = admin.id as string
+  const organizationId = admin.organization_id as string
 
   summary.clientId = await ensureClient(supabase)
   const contract = await ensureContract(supabase, adminId)
@@ -1008,6 +1048,17 @@ async function main() {
           comment: 'Validation manager démo BatiSud.',
         })
       }
+    }
+
+    if (seed.companies.length > 0) {
+      const inserted = await ensureInterventionCompanies(
+        supabase,
+        intervention.id,
+        seed.companies,
+        adminId,
+        organizationId,
+      )
+      summary.companiesCreated += inserted
     }
   }
 

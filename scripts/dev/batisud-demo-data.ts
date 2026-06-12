@@ -125,6 +125,11 @@ export const BATISUD_MISSIONS: BatiSudMissionSeed[] = [
   },
 ]
 
+export interface BatiSudInterventionCompany {
+  company_name: string
+  role_description?: string
+}
+
 export interface BatiSudInterventionSeed {
   key: string
   siteName: string
@@ -145,6 +150,7 @@ export interface BatiSudInterventionSeed {
     resolved: boolean
   }
   validate: boolean
+  companies: BatiSudInterventionCompany[]
 }
 
 const PAST_NOTES = [
@@ -190,7 +196,7 @@ export const BATISUD_DOCUMENTS = [
   },
 ]
 
-const SCHEDULE: Array<Omit<BatiSudInterventionSeed, 'notes' | 'photos' | 'validate'> & {
+const SCHEDULE: Array<Omit<BatiSudInterventionSeed, 'notes' | 'photos' | 'validate' | 'companies'> & {
   photoLabel: string
 }> = [
   { key: 'past-01', dayOffset: -13, siteName: 'Chantier Lycée de Païta', missionName: 'Contrôle coulage dalle bâtiment B', title: 'Coulage dalle bâtiment B - préparation zone sud', slot: 'morning', plannedStart: '06:30', plannedEnd: '09:30', status: 'validated', teamName: 'Gros œuvre Nord', photoLabel: 'Zone sud avant coulage' },
@@ -214,6 +220,30 @@ const SCHEDULE: Array<Omit<BatiSudInterventionSeed, 'notes' | 'photos' | 'valida
   { key: 'future-11', dayOffset: 18, siteName: 'Résidence Anse Vata', missionName: 'Vérification ferraillage voile Nord', title: 'Contrôle ferraillage cages ascenseur', slot: 'morning', plannedStart: '07:00', plannedEnd: '10:00', status: 'planned', teamName: 'Gros œuvre Nord', photoLabel: 'Cage ascenseur' },
   { key: 'future-12', dayOffset: 20, siteName: 'Réhabilitation Port Autonome', missionName: 'Contrôle implantation axes', title: 'Contrôle implantation longrine quai', slot: 'afternoon', plannedStart: '14:00', plannedEnd: '16:30', status: 'planned', teamName: 'Finitions structure', photoLabel: 'Longrine quai' },
 ]
+
+const COMPANIES: Record<string, BatiSudInterventionCompany[]> = {
+  'past-01': [
+    { company_name: 'Béton Services NC', role_description: "Fourniture et livraison béton prêt à l'emploi" },
+    { company_name: 'Pompe Béton Pacifique', role_description: 'Location pompe à béton' },
+  ],
+  'past-02': [
+    { company_name: 'Ferraillage Expert NC', role_description: 'Pose et contrôle armatures voile Nord' },
+  ],
+  'past-03': [
+    { company_name: 'Plomberie du Pacifique', role_description: 'Réservations et raccordements plomberie' },
+  ],
+  'past-06': [
+    { company_name: 'Béton Services NC', role_description: 'Fourniture béton coffrage' },
+    { company_name: 'Menuiserie Coffrage NC', role_description: 'Fourniture coffrages bois' },
+  ],
+  'past-08': [
+    { company_name: 'Étanchéité du Pacifique', role_description: 'Étanchéité réservations techniques' },
+  ],
+  'future-01': [
+    { company_name: 'Béton Services NC', role_description: "Fourniture et livraison béton prêt à l'emploi" },
+    { company_name: 'Pompe Béton Pacifique', role_description: 'Location pompe à béton' },
+  ],
+}
 
 const ANOMALIES: Record<string, BatiSudInterventionSeed['anomaly']> = {
   'past-01': { category: 'autre', categoryOther: 'Sol humide', description: 'Présence d’une nappe d’eau sous la zone sud après fortes pluies.', resolved: true },
@@ -245,6 +275,7 @@ export function buildBatiSudInterventionSeeds(baseDate = new Date()): BatiSudInt
       ...item,
       notes: note,
       anomaly,
+      companies: COMPANIES[item.key] ?? [],
       validate: item.status === 'validated',
       photos: isPast || anomaly
         ? [
