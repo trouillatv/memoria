@@ -274,6 +274,12 @@ export default async function SitePage({ params }: PageProps) {
         >
           Atelier mémoire →
         </Link>
+        <Link
+          href={`/sites/${id}/qr`}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          QR Code →
+        </Link>
       </div>
     </div>
   )
