@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
 export const metadata: Metadata = {
   title: 'MemorIA',
-  description: 'Gestion terrain & appels d\'offres pour entreprises de nettoyage',
+  description: 'Mémoire opérationnelle de vos chantiers',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
@@ -16,8 +16,11 @@ export const metadata: Metadata = {
     statusBarStyle: 'black-translucent',
   },
   icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/icons/apple-touch-icon.png',
   },
 }
 

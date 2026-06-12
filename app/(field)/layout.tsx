@@ -42,6 +42,19 @@ export default async function FieldLayout({ children }: { children: React.ReactN
         >
           Mon compte
         </Link>
+        {/* "Voir version bureau" — visible uniquement pour les admin/manager
+            qui peuvent utiliser les deux surfaces selon contexte. */}
+        {(user.role === 'admin' || user.role === 'manager') && (
+          <>
+            <span aria-hidden className="text-muted-foreground/60">·</span>
+            <Link
+              href="/dashboard"
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Version bureau →
+            </Link>
+          </>
+        )}
         {/* Thème : sélecteur accessible directement depuis le terrain (mobile).
             Persiste en base + cross-device, comme le toggle desktop. */}
         <div className="ml-auto">

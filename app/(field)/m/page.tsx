@@ -13,6 +13,8 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
+import { listOrgTodayInterventions } from '@/lib/db/field-today'
+import { ManagerTodayView } from './ManagerTodayView'
 
 /** J1 — Prénom de l'agent à partir du `full_name` (1er mot). Fallback : local-part
  * de l'email avant `@` capitalisée. Évite « Bonjour user@email.com » disgracieux. */
@@ -237,6 +239,24 @@ export default async function FieldHomePage({
         .filter((abs) => !todayMissionNames.has(abs.missionName))
         .sort((a, b) => b.weeksSince - a.weeksSince).slice(0, 2)
     : []
+
+  // Vue superviseur : pour les managers/admins sans intervention assignée,
+  // afficher toutes les interventions du jour de l'organisation.
+  const isManager = user.role === 'admin' || user.role === 'manager'
+  const orgTodaySites =
+    isManager && isToday && interventions.length === 0 && user.organization_id
+      ? await listOrgTodayInterventions(user.organization_id, todayIso)
+      : []
+
+  if (interventions.length === 0 && orgTodaySites.length > 0) {
+    return (
+      <div className="space-y-6 max-w-md pb-32">
+        <DateNav todayIso={todayIso} selectedIso={selectedDate} />
+        <ManagerTodayView sites={orgTodaySites} todayLabel="aujourd'hui" />
+        <FreePhotoFab sites={fabSites} />
+      </div>
+    )
+  }
 
   if (interventions.length === 0) {
     return (
