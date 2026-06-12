@@ -19,6 +19,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listTeamCompanions } from '@/lib/db/team-profile'
 import type {
@@ -524,6 +525,7 @@ export async function createHandoverBrief(
   input: CreateHandoverBriefInput,
 ): Promise<DbHandoverBrief> {
   const admin = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await admin
     .from('handover_briefs')
     .insert({
@@ -537,6 +539,7 @@ export async function createHandoverBrief(
       status: 'draft',
       effective_date: input.effectiveDate ?? null,
       created_by: input.createdBy,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()
@@ -579,6 +582,7 @@ export async function listHandoverBriefs(
   filter: HandoverListFilter = {},
 ): Promise<DbHandoverBrief[]> {
   const admin = createAdminClient()
+  const orgId = await getOrgId()
   let q = admin
     .from('handover_briefs')
     .select('*')
@@ -586,6 +590,7 @@ export async function listHandoverBriefs(
     .order('created_at', { ascending: false })
   if (filter.status) q = q.eq('status', filter.status)
   if (filter.limit) q = q.limit(filter.limit)
+  if (orgId) q = q.eq('organization_id', orgId)
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbHandoverBrief[]
@@ -629,6 +634,7 @@ export async function listSharedHandoverBriefsForChef(
 
 export async function countHandoverBriefsByStatus(): Promise<Record<HandoverStatus, number>> {
   const admin = createAdminClient()
+  const orgId = await getOrgId()
   const out: Record<HandoverStatus, number> = {
     draft: 0,
     shared: 0,
@@ -638,11 +644,13 @@ export async function countHandoverBriefsByStatus(): Promise<Record<HandoverStat
   const statuses: HandoverStatus[] = ['draft', 'shared', 'acknowledged', 'archived']
   await Promise.all(
     statuses.map(async (s) => {
-      const { count } = await admin
+      let q = admin
         .from('handover_briefs')
         .select('id', { count: 'exact', head: true })
         .eq('status', s)
         .is('deleted_at', null)
+      if (orgId) q = q.eq('organization_id', orgId)
+      const { count } = await q
       out[s] = count ?? 0
     }),
   )
@@ -776,14 +784,17 @@ export interface MemoryTransmittedSummary {
  */
 export async function getMemoryTransmittedThisMonth(): Promise<MemoryTransmittedSummary> {
   const admin = createAdminClient()
+  const orgId = await getOrgId()
   const start = new Date()
   start.setUTCDate(1)
   start.setUTCHours(0, 0, 0, 0)
 
-  const { data } = await admin
+  let qMem = admin
     .from('handover_briefs')
     .select('payload, created_at')
     .gte('created_at', start.toISOString())
+  if (orgId) qMem = qMem.eq('organization_id', orgId)
+  const { data } = await qMem
 
   const briefs = (data ?? []) as Array<{ payload: HandoverPayload | null }>
   const sites = new Set<string>()
@@ -833,13 +844,16 @@ export interface RecentPassationEntry {
  */
 export async function listRecentPassations(limit = 6): Promise<RecentPassationEntry[]> {
   const admin = createAdminClient()
-  const { data } = await admin
+  const orgId = await getOrgId()
+  let qPassations = admin
     .from('handover_briefs')
     .select(
       'id, title, kind, status, created_at, deleted_at, access_count, acknowledged_by, acknowledged_at, target_team_id, payload',
     )
     .order('created_at', { ascending: false })
     .limit(limit)
+  if (orgId) qPassations = qPassations.eq('organization_id', orgId)
+  const { data } = await qPassations
 
   type Row = {
     id: string
@@ -910,8 +924,9 @@ export interface LivingASavoirCard {
  */
 export async function listLivingASavoir(limit = 4): Promise<LivingASavoirCard[]> {
   const admin = createAdminClient()
+  const orgId = await getOrgId()
   const today = new Date().toISOString().slice(0, 10)
-  const { data } = await admin
+  let qASavoir = admin
     .from('site_notes')
     .select('id, body, created_at, kind, active_until, site:sites!inner(id, name, deleted_at)')
     .eq('kind', 'a_savoir')
@@ -919,6 +934,8 @@ export async function listLivingASavoir(limit = 4): Promise<LivingASavoirCard[]>
     .or(`active_until.is.null,active_until.gte.${today}`)
     .order('created_at', { ascending: false })
     .limit(limit * 4)
+  if (orgId) qASavoir = qASavoir.eq('organization_id', orgId)
+  const { data } = await qASavoir
 
   type Row = {
     id: string

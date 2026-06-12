@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getUserRoleById } from '@/lib/db/users'
+import { getUserRoleById, getOrgId } from '@/lib/db/users'
 import {
   updateSite,
   softDeleteSite,
@@ -159,6 +159,7 @@ export async function createSiteGlobalAction(
   }
 
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   let resolvedClientId: string
   let resolvedClientName: string
 
@@ -172,21 +173,22 @@ export async function createSiteGlobalAction(
     resolvedClientId = cl.id
     resolvedClientName = cl.name
   } else {
-    // Création ou lookup du client par nom
+    // Création ou lookup du client par nom (scoped to org)
     const trimmedClientName = client_name_new!.trim()
-    const { data: existing } = await supabase
+    let qExisting = supabase
       .from('clients')
       .select('id, name')
       .ilike('name', trimmedClientName)
       .is('deleted_at', null)
-      .maybeSingle()
+    if (orgId) qExisting = qExisting.eq('organization_id', orgId)
+    const { data: existing } = await qExisting.maybeSingle()
     if (existing) {
       resolvedClientId = existing.id
       resolvedClientName = existing.name
     } else {
       const { data: created, error: createErr } = await supabase
         .from('clients')
-        .insert({ name: trimmedClientName })
+        .insert({ name: trimmedClientName, ...(orgId ? { organization_id: orgId } : {}) })
         .select('id, name')
         .single()
       if (createErr || !created) return { error: 'Impossible de créer le client' }

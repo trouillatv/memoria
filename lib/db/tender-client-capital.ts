@@ -12,6 +12,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 
 export interface TenderClientCapital {
   /** Nom du client tel qu'il apparaît sur l'AO. Null si non renseigné. */
@@ -55,13 +56,16 @@ export async function getTenderClientCapital(
 ): Promise<TenderClientCapital> {
   if (!clientName || clientName.trim() === '') return EMPTY
   const admin = createAdminClient()
+  const orgId = await getOrgId()
 
   // 1) Contrats avec ce client_name (case-insensitive via ilike)
-  const { data: contracts, error: cErr } = await admin
+  let qContracts = admin
     .from('contracts')
     .select('id, name')
     .ilike('client_name', clientName.trim())
     .is('deleted_at', null)
+  if (orgId) qContracts = qContracts.eq('organization_id', orgId)
+  const { data: contracts, error: cErr } = await qContracts
   if (cErr) throw cErr
   const contractRows = (contracts ?? []) as Array<{ id: string; name: string }>
   if (contractRows.length === 0) {

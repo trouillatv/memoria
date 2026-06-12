@@ -1,5 +1,6 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 
 // Helpers de requête sur ai_usage pour la console admin /admin/ai-monitoring.
 // Pure SQL côté serveur — ZÉRO appel IA pour observer l'IA. Doctrine.
@@ -21,11 +22,14 @@ export interface AIUsageByFeatureRow {
 export async function getAIUsageByFeature(days: number = 7): Promise<AIUsageByFeatureRow[]> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const supabase = createAdminClient()
-  const { data } = await supabase
+  const orgId = await getOrgId()
+  let q = supabase
     .from('ai_usage')
     .select('feature, input_tokens, output_tokens, cost_usd, status, created_at, model, provider')
     .gte('created_at', since)
     .order('created_at', { ascending: false })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data } = await q
 
   const map = new Map<string, AIUsageByFeatureRow>()
   for (const row of (data ?? []) as Array<{
@@ -82,11 +86,14 @@ export interface AIUsageRecentCall {
  *  « activité récente » de la console admin. */
 export async function getRecentAICalls(limit: number = 50): Promise<AIUsageRecentCall[]> {
   const supabase = createAdminClient()
-  const { data } = await supabase
+  const orgId = await getOrgId()
+  let q = supabase
     .from('ai_usage')
     .select('id, created_at, feature, model, provider, input_tokens, output_tokens, cost_usd, duration_ms, status, error_msg')
     .order('created_at', { ascending: false })
     .limit(limit)
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data } = await q
   return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     createdAt: r.created_at as string,
@@ -125,10 +132,10 @@ export interface AIUsageHeadline {
 export async function getAIUsageHeadline(days: number = 7): Promise<AIUsageHeadline> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('ai_usage')
-    .select('status, cost_usd, input_tokens, output_tokens')
-    .gte('created_at', since)
+  const orgId = await getOrgId()
+  let qH = supabase.from('ai_usage').select('status, cost_usd, input_tokens, output_tokens').gte('created_at', since)
+  if (orgId) qH = qH.eq('organization_id', orgId)
+  const { data } = await qH
   let totalCalls = 0, totalErrors = 0, totalCostUsd = 0
   let totalInputTokens = 0, totalOutputTokens = 0
   type Row = {
@@ -167,11 +174,10 @@ export interface AIModelInfo {
 export async function getAIModelsActive(days: number = 7): Promise<AIModelInfo[]> {
   const since = new Date(Date.now() - days * 86_400_000).toISOString()
   const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('ai_usage')
-    .select('provider, model, created_at')
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
+  const orgId = await getOrgId()
+  let qM = supabase.from('ai_usage').select('provider, model, created_at').gte('created_at', since).order('created_at', { ascending: false })
+  if (orgId) qM = qM.eq('organization_id', orgId)
+  const { data } = await qM
 
   const map = new Map<string, AIModelInfo>()
   for (const r of (data ?? []) as Array<{ provider: string; model: string | null; created_at: string }>) {
@@ -195,12 +201,10 @@ export async function getAIModelsActive(days: number = 7): Promise<AIModelInfo[]
 /** Les N dernières erreurs IA, triées DESC. Pour le bloc « erreurs récentes ». */
 export async function getAIRecentErrors(limit: number = 5): Promise<AIUsageRecentCall[]> {
   const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('ai_usage')
-    .select('id, created_at, feature, model, provider, input_tokens, output_tokens, cost_usd, duration_ms, status, error_msg')
-    .eq('status', 'error')
-    .order('created_at', { ascending: false })
-    .limit(limit)
+  const orgId = await getOrgId()
+  let qE = supabase.from('ai_usage').select('id, created_at, feature, model, provider, input_tokens, output_tokens, cost_usd, duration_ms, status, error_msg').eq('status', 'error').order('created_at', { ascending: false }).limit(limit)
+  if (orgId) qE = qE.eq('organization_id', orgId)
+  const { data } = await qE
   return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     createdAt: r.created_at as string,
@@ -235,10 +239,10 @@ export interface AIHealthSummary {
 export async function getAIHealthSummary(): Promise<AIHealthSummary> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('ai_usage')
-    .select('feature, status')
-    .gte('created_at', since)
+  const orgId = await getOrgId()
+  let qHS = supabase.from('ai_usage').select('feature, status').gte('created_at', since)
+  if (orgId) qHS = qHS.eq('organization_id', orgId)
+  const { data } = await qHS
 
   const counts = {
     embeddings: { calls: 0, errors: 0 },

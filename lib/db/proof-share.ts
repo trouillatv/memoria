@@ -15,6 +15,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import {
   getContractMonthlyReport,
   type MonthlyReportData,
@@ -153,6 +154,7 @@ export async function createShareToken(
   input: CreateShareTokenInput,
 ): Promise<ProofShareToken> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   const days = clampDurationDays(input.durationDays)
   const token = generateToken()
@@ -165,6 +167,7 @@ export async function createShareToken(
       expires_at: expiresAtFromNow(days),
       include_identities: input.includeIdentities ?? false,
       created_by: input.createdBy ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()
@@ -306,6 +309,7 @@ export async function createMonthlyReportToken(
   const tokenValue = generateToken()
 
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('proof_share_tokens')
     .insert({
@@ -318,6 +322,7 @@ export async function createMonthlyReportToken(
       expires_at: expiresAtFromNow(days),
       include_identities: input.includeIdentities ?? false,
       created_by: input.createdBy ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()

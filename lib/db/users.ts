@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { DbUser, UserRole } from '@/types/db'
@@ -5,25 +6,36 @@ import type { DbUser, UserRole } from '@/types/db'
 /**
  * Récupère le user authentifié courant + son profil métier (role).
  * Renvoie null si pas authentifié.
- *
- * Utilisée partout dans les Server Components / Server Actions —
- * point de centralisation pour l'éventuelle migration multi-tenant
- * (filtre par company_id à ajouter ici plus tard).
+ * Wrapped avec React cache() pour dédupliquer dans le même render/request.
  */
-export async function getCurrentUserWithProfile(): Promise<DbUser | null> {
+export const getCurrentUserWithProfile = cache(async (): Promise<DbUser | null> => {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type, theme_preference')
+    .select('id, email, full_name, role, must_change_password, created_at, deleted_at, organization_id, phone, commune, employment_type, theme_preference')
     .eq('id', user.id)
     .is('deleted_at', null)
     .single()
 
   if (error || !data) return null
   return data as DbUser
+})
+
+/**
+ * Retourne l'organization_id de l'utilisateur courant.
+ * Retourne null si pas de session ou pas d'org assignée.
+ * Utilise getCurrentUserWithProfile() — dédupliqué par React cache().
+ */
+export async function getOrgId(): Promise<string | null> {
+  try {
+    const user = await getCurrentUserWithProfile()
+    return user?.organization_id ?? null
+  } catch {
+    return null
+  }
 }
 
 /**

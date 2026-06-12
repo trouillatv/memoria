@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { DbMission, MissionCadence, ChecklistTemplateItem } from '@/types/db'
 
 export async function listMissionsBySite(siteId: string): Promise<DbMission[]> {
@@ -57,6 +58,7 @@ export async function createMission(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('missions')
     .insert({
@@ -68,6 +70,7 @@ export async function createMission(input: {
       engagement_ids: input.engagement_ids ?? [],
       default_checklist: input.default_checklist ?? [],
       created_by: input.created_by,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()

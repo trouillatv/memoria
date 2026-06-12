@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { buildScheduledAt, slotFromScheduledAt, buildPlannedTimestamp } from '@/lib/time/prestation-slot'
@@ -79,6 +80,7 @@ export async function listInterventionsSupervisor(
   query: SupervisorInterventionsQuery = {},
 ): Promise<SupervisorInterventionsResult> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   // Compute date lower bound from dateRange
   const dateRange = query.dateRange ?? 'all'
@@ -124,6 +126,7 @@ export async function listInterventionsSupervisor(
   if (query.status) q = q.eq('status', query.status)
   if (missionIdsForSite) q = q.in('mission_id', missionIdsForSite)
   if (query.missionId) q = q.eq('mission_id', query.missionId)
+  if (orgId) q = q.eq('organization_id', orgId)
 
   const offset = Math.max(0, query.offset ?? 0)
   const limit = Math.max(1, query.limit ?? 50)
@@ -238,6 +241,8 @@ export async function createIntervention(input: {
   planned_end_hhmm?: string
   team?: string[]
   created_by: string | null
+  /** Org override — si fourni, utilise cet id au lieu de getOrgId(). Utile pour les scripts. */
+  organization_id?: string | null
 }): Promise<string> {
   let scheduled_for: string
   let slot: 'morning' | 'afternoon' | 'evening'
@@ -283,6 +288,7 @@ export async function createIntervention(input: {
   }
 
   const supabase = createAdminClient()
+  const orgId = input.organization_id !== undefined ? input.organization_id : await getOrgId()
   const { data, error } = await supabase
     .from('interventions')
     .insert({
@@ -297,6 +303,7 @@ export async function createIntervention(input: {
       team: input.team ?? [],
       status: 'planned' as InterventionStatus,
       created_by: input.created_by,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()

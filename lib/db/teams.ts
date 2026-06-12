@@ -26,6 +26,7 @@
 //  « charge équipe » ou « % complétion équipe » → refus immédiat.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { DbTeam, DbTeamMember } from '@/types/db'
 
 // ----------------------------------------------------------------------------
@@ -57,11 +58,10 @@ export interface UpdateTeamInput {
 /** Liste toutes les équipes non archivées, triées par nom. */
 export async function listTeams(): Promise<DbTeam[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('teams')
-    .select('*')
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
+  const orgId = await getOrgId()
+  let q = supabase.from('teams').select('*').is('deleted_at', null).order('name', { ascending: true })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
@@ -82,6 +82,7 @@ export async function getTeam(id: string): Promise<DbTeam | null> {
 /** Crée une team. Le contrôle d'unicité de nom est délégué à la DB (idx_teams_name_active). */
 export async function createTeam(input: CreateTeamInput): Promise<DbTeam> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('teams')
     .insert({
@@ -89,6 +90,7 @@ export async function createTeam(input: CreateTeamInput): Promise<DbTeam> {
       color: input.color ?? null,
       icon: input.icon ?? null,
       created_by: input.created_by ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()
@@ -176,11 +178,10 @@ export interface TeamWithMemberCount extends DbTeam {
  */
 export async function listTeamsWithMemberCount(): Promise<TeamWithMemberCount[]> {
   const supabase = createAdminClient()
-  const { data: teams, error: tErr } = await supabase
-    .from('teams')
-    .select('*')
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
+  const orgId = await getOrgId()
+  let tQ = supabase.from('teams').select('*').is('deleted_at', null).order('name', { ascending: true })
+  if (orgId) tQ = tQ.eq('organization_id', orgId)
+  const { data: teams, error: tErr } = await tQ
   if (tErr) throw tErr
   if (!teams || teams.length === 0) return []
 
@@ -359,13 +360,12 @@ export interface OrphanUser {
  */
 export async function listOrphanUsers(): Promise<OrphanUser[]> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   // 1) Tous les chef_equipe non archivés
-  const { data: users, error: uErr } = await supabase
-    .from('users')
-    .select('id, full_name, email, role')
-    .eq('role', 'chef_equipe')
-    .is('deleted_at', null)
+  let uQ = supabase.from('users').select('id, full_name, email, role').eq('role', 'chef_equipe').is('deleted_at', null)
+  if (orgId) uQ = uQ.eq('organization_id', orgId)
+  const { data: users, error: uErr } = await uQ
   if (uErr) throw uErr
   if (!users || users.length === 0) return []
 

@@ -11,6 +11,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { ProofShareToken } from '@/lib/db/proof-share'
 
 const TOKEN_BYTES = 24
@@ -53,6 +54,7 @@ export async function createMonthlyCapsule(
   input: CreateMonthlyCapsuleInput,
 ): Promise<ProofShareToken> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const days = clampDuration(input.durationDays)
 
   const { data, error } = await supabase
@@ -67,6 +69,7 @@ export async function createMonthlyCapsule(
       expires_at: expiresAtFromNow(days),
       include_identities: false,
       created_by: input.createdBy ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()
@@ -95,6 +98,7 @@ export async function createIncidentCapsule(
     throw new Error('createIncidentCapsule: photoIds doit contenir 1 ou 2 photos')
   }
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const days = clampDuration(input.durationDays)
 
   const { data, error } = await supabase
@@ -108,6 +112,7 @@ export async function createIncidentCapsule(
       expires_at: expiresAtFromNow(days),
       include_identities: false,
       created_by: input.createdBy ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()

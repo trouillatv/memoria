@@ -1,5 +1,6 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { DbTenderChatMessage, DbTenderChatAttachment, DbTenderConversation, ChatAgentName } from '@/types/db'
 
 export async function listConversations(tenderId: string): Promise<DbTenderConversation[]> {
@@ -15,9 +16,10 @@ export async function listConversations(tenderId: string): Promise<DbTenderConve
 
 export async function createConversation(tenderId: string, name: string, position: number): Promise<DbTenderConversation> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('tender_conversations')
-    .insert({ tender_id: tenderId, name, position })
+    .insert({ tender_id: tenderId, name, position, ...(orgId ? { organization_id: orgId } : {}) })
     .select('id, tender_id, name, position, created_at, updated_at')
     .single()
   if (error || !data) throw error ?? new Error('No data')
@@ -71,6 +73,7 @@ export async function insertChatMessage(input: {
   metadata?: Record<string, unknown>
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('tender_chat_messages')
     .insert({
@@ -81,6 +84,7 @@ export async function insertChatMessage(input: {
       role: input.role,
       content: input.content,
       metadata: input.metadata ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()
@@ -96,6 +100,7 @@ export async function insertChatAttachment(input: {
   extracted_text?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('tender_chat_attachments')
     .insert({
@@ -104,6 +109,7 @@ export async function insertChatAttachment(input: {
       filename: input.filename,
       size_bytes: input.size_bytes,
       extracted_text: input.extracted_text ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()

@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, localDateOf } from '@/lib/time/local-date'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
@@ -206,11 +207,10 @@ export async function getContract(id: string): Promise<DbContract | null> {
 
 export async function listContracts(): Promise<DbContract[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('contracts')
-    .select('*')
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
+  const orgId = await getOrgId()
+  let q = supabase.from('contracts').select('*').is('deleted_at', null).order('created_at', { ascending: false })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
@@ -233,11 +233,13 @@ export interface ContractListResult {
  */
 export async function listContractsPaged(query: ContractListQuery = {}): Promise<ContractListResult> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   let q = supabase
     .from('contracts')
     .select('*', { count: 'exact' })
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
+  if (orgId) q = q.eq('organization_id', orgId)
 
   if (query.status) q = q.eq('status', query.status)
   if (query.search) {
@@ -266,6 +268,7 @@ export async function createContract(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('contracts')
     .insert({
@@ -276,6 +279,7 @@ export async function createContract(input: {
       end_date: input.end_date ?? null,
       status: 'active' as ContractStatus,
       created_by: input.created_by,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()

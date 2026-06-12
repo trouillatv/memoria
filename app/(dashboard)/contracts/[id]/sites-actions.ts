@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getUserRoleById } from '@/lib/db/users'
+import { getUserRoleById, getOrgId } from '@/lib/db/users'
 import { createSite, updateSite } from '@/lib/db/sites'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -54,6 +54,7 @@ function pickSiteFields(formData: FormData) {
  */
 async function ensureClientForContract(contractId: string): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data: contract } = await supabase
     .from('contracts')
     .select('client_name')
@@ -61,19 +62,20 @@ async function ensureClientForContract(contractId: string): Promise<string> {
     .maybeSingle()
   if (!contract) throw new Error('Contract not found')
 
-  // Try to find existing
-  const { data: existing } = await supabase
+  // Try to find existing (scoped to org)
+  let qExisting = supabase
     .from('clients')
     .select('id')
     .eq('name', contract.client_name)
     .is('deleted_at', null)
-    .maybeSingle()
+  if (orgId) qExisting = qExisting.eq('organization_id', orgId)
+  const { data: existing } = await qExisting.maybeSingle()
   if (existing) return existing.id
 
   // Create
   const { data, error } = await supabase
     .from('clients')
-    .insert({ name: contract.client_name })
+    .insert({ name: contract.client_name, ...(orgId ? { organization_id: orgId } : {}) })
     .select('id')
     .single()
   if (error) throw error

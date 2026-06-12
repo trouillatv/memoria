@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 
 /**
  * Progression d'onboarding d'un nouveau tenant.
@@ -26,25 +27,18 @@ export interface OnboardingProgress {
  */
 export async function getOnboardingProgress(): Promise<OnboardingProgress> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
+
+  const tq = supabase.from('tenders').select('id', { count: 'exact', head: true }).is('deleted_at', null)
+  const eq = supabase.from('engagements').select('id', { count: 'exact', head: true }).eq('status', 'curated')
+  const cq = supabase.from('contracts').select('id', { count: 'exact', head: true }).eq('status', 'active').is('deleted_at', null)
+  const mq = supabase.from('missions').select('id', { count: 'exact', head: true }).is('deleted_at', null)
 
   const [tendersRes, curatedRes, activeContractsRes, missionsRes] = await Promise.all([
-    supabase
-      .from('tenders')
-      .select('id', { count: 'exact', head: true })
-      .is('deleted_at', null),
-    supabase
-      .from('engagements')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'curated'),
-    supabase
-      .from('contracts')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'active')
-      .is('deleted_at', null),
-    supabase
-      .from('missions')
-      .select('id', { count: 'exact', head: true })
-      .is('deleted_at', null),
+    (orgId ? tq.eq('organization_id', orgId) : tq),
+    (orgId ? eq.eq('organization_id', orgId) : eq),
+    (orgId ? cq.eq('organization_id', orgId) : cq),
+    (orgId ? mq.eq('organization_id', orgId) : mq),
   ])
 
   if (tendersRes.error) throw tendersRes.error

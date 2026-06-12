@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getOrgId } from '@/lib/db/users'
 import type { DbActivityLog } from '@/types/db'
 
 export interface ActivityLogQuery {
@@ -84,6 +85,7 @@ export async function insertActivityLog(input: {
   metadata?: Record<string, unknown>
 }): Promise<void> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { error } = await supabase
     .from('activity_logs')
     .insert({
@@ -92,6 +94,7 @@ export async function insertActivityLog(input: {
       entity_id:   input.entityId,
       action:      input.action,
       metadata:    input.metadata ?? {},
+      ...(orgId ? { organization_id: orgId } : {}),
     })
   if (error) throw error
 }

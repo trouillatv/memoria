@@ -9,6 +9,7 @@
 // lieux, événements.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 
 export type MemoryHitType = 'anomaly' | 'site_note' | 'intervention' | 'photo'
 
@@ -36,12 +37,14 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
   if (q.length < 2) return []
 
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase.rpc('search_memory', {
     p_q: q,
     p_contract_id: opts.contractId ?? null,
     p_site_id: opts.siteId ?? null,
     p_period_days: opts.periodDays ?? 365,
     p_limit: opts.limit ?? 50,
+    p_org_id: orgId ?? null,
   })
 
   if (error) {

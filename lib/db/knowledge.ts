@@ -1,5 +1,6 @@
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { DbKnowledgeItem, KnowledgeCategory } from '@/types/db'
 
 export interface KnowledgeQuery {
@@ -59,6 +60,7 @@ export async function createKnowledgeItem(input: {
   tags?: string[] | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('knowledge_items')
     .insert({
@@ -67,6 +69,7 @@ export async function createKnowledgeItem(input: {
       content_markdown: input.content_markdown,
       file_path: input.file_path ?? null,
       tags: input.tags ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()

@@ -9,6 +9,7 @@
 // Doctrine : signal ambre, jamais rouge. Format passif descriptif.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { InterventionSlot } from '@/types/db'
 
 export interface UnassignedInterventionLite {
@@ -50,9 +51,10 @@ export async function getWeekVigilance(
   endIso: string,
 ): Promise<WeekVigilance> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   // 1) Pull toutes les interventions actives de la fenêtre (planned ou in_progress)
-  const { data, error } = await supabase
+  let q = supabase
     .from('interventions')
     .select(
       `id, scheduled_for, slot, planned_start, planned_end, assigned_team_id,
@@ -62,6 +64,8 @@ export async function getWeekVigilance(
     .gte('scheduled_for', startIso)
     .lte('scheduled_for', endIso)
     .in('status', ['planned', 'in_progress'])
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
 
   type SiteLite = { name: string }

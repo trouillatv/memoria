@@ -15,6 +15,7 @@
 //     (cf. doctrine planning §1-6 — signaux ROUGE STOP).
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { buildScheduledAt, slotFromUtcHour } from '@/lib/time/prestation-slot'
 import type {
@@ -138,6 +139,7 @@ export async function getTemplate(id: string): Promise<DbInterventionTemplate | 
 
 export async function createTemplate(input: CreateTemplateInput): Promise<DbInterventionTemplate> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('intervention_templates')
     .insert({
@@ -153,6 +155,7 @@ export async function createTemplate(input: CreateTemplateInput): Promise<DbInte
       starts_on: input.starts_on,
       ends_on: input.ends_on ?? null,
       created_by: input.created_by ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()
@@ -306,6 +309,7 @@ export async function generateInterventionsFromTemplates(params: {
   }
 
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   // 3. Résoudre la liste des mission_id ciblées (si siteId fourni)
   let scopedMissionIds: string[] | null = null
@@ -414,11 +418,11 @@ export async function generateInterventionsFromTemplates(params: {
           scheduled_at: plannedStart,
           scheduled_for: dateIso,
           slot,
-          // Heure honnête de la prestation (précise si définie, sinon ancrage créneau).
           planned_start: plannedStart,
           planned_end: plannedEnd,
           status: 'planned',
           team: inheritedTeam,
+          ...(orgId ? { organization_id: orgId } : {}),
         })
       }
     }

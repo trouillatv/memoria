@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 
 // Monitoring admin — exception doctrinale assumée.
 //
@@ -116,15 +117,15 @@ function isDetailRoute(route: string, prefix: string): boolean {
 
 export async function getAdoptionStats(period: PeriodDays): Promise<AdoptionStats> {
   const sb = createAdminClient()
+  const orgId = await getOrgId()
   const since = cutoff(period)
   const since30 = cutoff(30)
 
   // Charge tous les utilisateurs, isole les admins → exclus du dataset adoption
   // (leurs actions sont du tooling/hygiène, pas un signal d'adoption produit).
-  const { data: allUsers } = await sb
-    .from('users')
-    .select('id, email, full_name, role')
-    .is('deleted_at', null)
+  let qUsers = sb.from('users').select('id, email, full_name, role').is('deleted_at', null)
+  if (orgId) qUsers = qUsers.eq('organization_id', orgId)
+  const { data: allUsers } = await qUsers
   const adminIds = (allUsers ?? []).filter((u) => u.role === 'admin').map((u) => u.id)
   const monitoredUsers = (allUsers ?? []).filter((u) => u.role !== 'admin')
   const monitoredIds = monitoredUsers.map((u) => u.id)

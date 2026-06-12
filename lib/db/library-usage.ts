@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 
 /**
  * Compte les citations d'items de bibliothèque dans :
@@ -11,13 +12,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export async function getLibraryUsageCounts(opts: { sinceDays?: number } = {}): Promise<Map<string, number>> {
   const since = new Date(Date.now() - (opts.sinceDays ?? 30) * 24 * 60 * 60 * 1000).toISOString()
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const counts = new Map<string, number>()
 
   // 1. Chat messages
-  const { data: chatRows } = await supabase
-    .from('tender_chat_messages')
-    .select('metadata')
-    .gte('created_at', since)
+  let qChat = supabase.from('tender_chat_messages').select('metadata').gte('created_at', since)
+  if (orgId) qChat = qChat.eq('organization_id', orgId)
+  const { data: chatRows } = await qChat
 
   for (const row of chatRows ?? []) {
     const meta = row.metadata as Record<string, unknown> | null
@@ -32,10 +33,9 @@ export async function getLibraryUsageCounts(opts: { sinceDays?: number } = {}): 
   }
 
   // 2. Tender analyses (constraints / risks / checklist)
-  const { data: analysisRows } = await supabase
-    .from('tender_analyses')
-    .select('constraints, risks, checklist')
-    .gte('created_at', since)
+  let qAnalysis = supabase.from('tender_analyses').select('constraints, risks, checklist').gte('created_at', since)
+  if (orgId) qAnalysis = qAnalysis.eq('organization_id', orgId)
+  const { data: analysisRows } = await qAnalysis
 
   for (const row of analysisRows ?? []) {
     for (const fieldName of ['constraints', 'risks', 'checklist'] as const) {

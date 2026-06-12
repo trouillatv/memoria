@@ -23,6 +23,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import type { EmploymentType } from '@/types/db'
 
@@ -102,17 +103,20 @@ export async function listContinuityRisks(input: {
   const graceIso = graceDate.toISOString().slice(0, 10)
 
   const admin = createAdminClient()
+  const orgId = await getOrgId()
 
   // 1. Récupérer les users avec contract_end_date dans la fenêtre.
   //    L'admin (compte système) est EXCLU — jamais un sujet de passation
   //    (Vincent 2026-05-22).
-  const { data: users, error: uErr } = await admin
+  let qUsers = admin
     .from('users')
     .select('id, full_name, email, employment_type, contract_end_date, deleted_at')
     .gte('contract_end_date', graceIso)
     .lte('contract_end_date', horizonIso)
     .neq('role', 'admin')
     .is('deleted_at', null)
+  if (orgId) qUsers = qUsers.eq('organization_id', orgId)
+  const { data: users, error: uErr } = await qUsers
   if (uErr) throw uErr
   if (!users || users.length === 0) {
     return { entries: [], counts: { j7: 0, j14: 0, j30: 0 } }

@@ -12,6 +12,7 @@
 // Discipline coût IA : analysé UNE fois (analysis_status), jamais au render.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type {
   DbDocument,
   DbDocumentCollection,
@@ -28,12 +29,14 @@ export async function createDocumentCollection(input: {
   scope_id?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('document_collections')
     .insert({
       name: input.name,
       scope_type: input.scope_type ?? null,
       scope_id: input.scope_id ?? null,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()
@@ -43,12 +46,11 @@ export async function createDocumentCollection(input: {
 
 export async function listDocumentCollections(): Promise<DbDocumentCollection[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('document_collections')
-    .select('*')
-    .is('deleted_at', null)
-    .order('position', { ascending: true })
-    .order('name', { ascending: true })
+  const orgId = await getOrgId()
+  let q = supabase.from('document_collections').select('*').is('deleted_at', null)
+    .order('position', { ascending: true }).order('name', { ascending: true })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbDocumentCollection[]
 }
@@ -106,12 +108,10 @@ export async function deleteDocumentCollection(
 /** Documents sans collection (orphelins) — groupe « Sans collection ». */
 export async function listOrphanDocuments(): Promise<DbDocument[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('documents')
-    .select('*')
-    .is('collection_id', null)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
+  const orgId = await getOrgId()
+  let q = supabase.from('documents').select('*').is('collection_id', null).is('deleted_at', null).order('created_at', { ascending: false })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbDocument[]
 }
@@ -143,6 +143,7 @@ export async function createDocument(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const { data, error } = await supabase
     .from('documents')
     .insert({
@@ -161,6 +162,7 @@ export async function createDocument(input: {
       memory_tier: input.memory_tier ?? null,
       analysis_status: input.analysis_status ?? 'pending',
       created_by: input.created_by,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('id')
     .single()

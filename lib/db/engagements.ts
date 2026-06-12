@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type {
   DbEngagement,
   EngagementCategory,
@@ -35,11 +36,10 @@ export async function listEngagementsByContract(contractId: string): Promise<DbE
 export async function listAllEngagements(): Promise<DbEngagement[]> {
   // Used by debug page only
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('engagements')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(200)
+  const orgId = await getOrgId()
+  let q = supabase.from('engagements').select('*').order('created_at', { ascending: false }).limit(200)
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
@@ -79,6 +79,7 @@ export async function bulkInsertEngagements(input: {
 }): Promise<DbEngagement[]> {
   if (input.engagements.length === 0) return []
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   const rows = input.engagements.map((e) => ({
     tender_id: input.tender_id,
     created_by: input.created_by,
@@ -97,6 +98,7 @@ export async function bulkInsertEngagements(input: {
       sourceExcerpt: e.source_excerpt,
       shortLabel: e.short_label,
     }).destination,
+    ...(orgId ? { organization_id: orgId } : {}),
   }))
   const { data, error } = await supabase.from('engagements').insert(rows).select('*')
   if (error) throw error
@@ -148,6 +150,7 @@ export async function createEngagementManual(input: {
   created_by: string | null
 }): Promise<DbEngagement> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
   // status is 'active' when directly linked to a contract, otherwise 'extracted'
   const status: EngagementStatus = input.contract_id ? 'active' : 'extracted'
   const { data, error } = await supabase
@@ -164,6 +167,7 @@ export async function createEngagementManual(input: {
       ai_confidence: null,
       status,
       created_by: input.created_by,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()

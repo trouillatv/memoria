@@ -21,6 +21,13 @@ export type KnowledgeCategory =
  *  Information structurelle non comparative. Jamais affichée en classement. */
 export type EmploymentType = 'cdi' | 'cdd' | 'cdi_chantier'
 
+export interface DbOrganization {
+  id: string
+  name: string
+  slug: string | null
+  created_at: string
+}
+
 export interface DbUser {
   id: string
   email: string
@@ -29,6 +36,8 @@ export interface DbUser {
   must_change_password: boolean
   created_at: string
   deleted_at: string | null
+  // Migration 089 — multi-tenancy
+  organization_id: string | null
   // Sprint 4 PC — coordonnée WhatsApp 1-à-1 (Maxim 9 : jamais groupe collectif).
   // Format E.164 imposé par CHECK constraint en DB (migration 035).
   phone: string | null

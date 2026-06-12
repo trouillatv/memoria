@@ -30,6 +30,7 @@
 // l'intervention.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { ensureSystemMission } from '@/lib/db/system-missions'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -102,6 +103,7 @@ export async function findOrCreateSpontaneousIntervention(
   // scheduled_at dérivé du slot via le module canonique (V6.1).
   const scheduledAt = buildScheduledAt(today, slot)
 
+  const orgId = await getOrgId()
   const { data: inserted, error: insertErr } = await supabase
     .from('interventions')
     .insert({
@@ -109,14 +111,13 @@ export async function findOrCreateSpontaneousIntervention(
       scheduled_at: scheduledAt,
       scheduled_for: today,
       slot,
-      // V6.2 — heure HONNÊTE : l'instant réel du dépôt (now), pas l'ancrage
-      // créneau. Le slot reste dérivé de l'heure courante (bucket grille).
       planned_start: now.toISOString(),
       team: [],
       assigned_team_id: userTeamIds[0],
       status: 'completed' satisfies InterventionStatus,
       executed_at: now.toISOString(),
       created_by: userId,
+      ...(orgId ? { organization_id: orgId } : {}),
     })
     .select('*')
     .single()

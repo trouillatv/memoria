@@ -16,6 +16,7 @@
 //   - Pas de score qualité, pas de classement.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, tomorrowLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
 export interface EveningBriefing {
@@ -93,9 +94,10 @@ export interface EveningBriefing {
 
 export async function buildEveningBriefing(targetDate: string): Promise<EveningBriefing> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   // 1) Interventions prévues à la date cible (status planned ou in_progress)
-  const { data: rows, error } = await supabase
+  let qEvening = supabase
     .from('interventions')
     .select(
       `id, slot, assigned_team_id,
@@ -104,6 +106,8 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     )
     .eq('scheduled_for', targetDate)
     .in('status', ['planned', 'in_progress'])
+  if (orgId) qEvening = qEvening.eq('organization_id', orgId)
+  const { data: rows, error } = await qEvening
   if (error) throw error
 
   type TeamLite = { id: string; name: string; color: string | null }

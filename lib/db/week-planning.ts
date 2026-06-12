@@ -21,6 +21,7 @@
 //   - Toute fonction qui agrège un KPI par personne ou par équipe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 
 // Types + helpers PURS (client-safe) extraits dans lib/week-planning-helpers.ts
@@ -75,7 +76,8 @@ export async function listInterventionsForWeek(
   range: WeekRange
 ): Promise<WeekInterventionCell[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
+  const orgId = await getOrgId()
+  let qWeek = supabase
     .from('interventions')
     .select(
       `
@@ -110,7 +112,9 @@ export async function listInterventionsForWeek(
     // depuis le backfill migration 071. Fallback NULLS LAST pour les
     // éventuelles legacy qui auraient échappé.
     .order('planned_start', { ascending: true, nullsFirst: false })
+  if (orgId) qWeek = qWeek.eq('organization_id', orgId)
 
+  const { data, error } = await qWeek
   if (error) throw error
 
   const out: WeekInterventionCell[] = []

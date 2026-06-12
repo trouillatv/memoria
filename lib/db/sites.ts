@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSite, DbSiteNote } from '@/types/db'
 
@@ -59,22 +60,27 @@ export interface SiteForMatching {
  */
 export async function listSitesForMatching(): Promise<SiteForMatching[]> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
   // Tente d'abord avec les nouvelles colonnes (post-migration 062)
-  const { data, error } = await supabase
+  let baseQ = supabase
     .from('sites')
     .select('id, name, normalized_name, canonical_site_key, client_id, client:clients(name)')
     .is('deleted_at', null)
     .order('name')
+  if (orgId) baseQ = baseQ.eq('organization_id', orgId)
+  const { data, error } = await baseQ
 
   // Si 42703 (colonne absente) : migration pas encore appliquée → fallback sans ces colonnes
   if (error) {
     if ((error as { code?: string }).code === '42703') {
-      const { data: fallback, error: fallbackErr } = await supabase
+      let fallbackQ = supabase
         .from('sites')
         .select('id, name, client_id, client:clients(name)')
         .is('deleted_at', null)
         .order('name')
+      if (orgId) fallbackQ = fallbackQ.eq('organization_id', orgId)
+      const { data: fallback, error: fallbackErr } = await fallbackQ
       if (fallbackErr) throw fallbackErr
       return (fallback ?? []).map((s) => {
         const cl = s.client as { name: string } | { name: string }[] | null
@@ -110,11 +116,10 @@ export interface ClientLite { id: string; name: string }
 
 export async function listClients(): Promise<ClientLite[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('clients')
-    .select('id, name')
-    .is('deleted_at', null)
-    .order('name')
+  const orgId = await getOrgId()
+  let q = supabase.from('clients').select('id, name').is('deleted_at', null).order('name')
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return (data ?? []) as ClientLite[]
 }
@@ -128,12 +133,10 @@ export interface ContractLite {
 
 export async function listActiveContractsLite(): Promise<ContractLite[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('contracts')
-    .select('id, name, client_name')
-    .is('deleted_at', null)
-    .neq('status', 'archived')
-    .order('name')
+  const orgId = await getOrgId()
+  let q = supabase.from('contracts').select('id, name, client_name').is('deleted_at', null).neq('status', 'archived').order('name')
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   // contracts n'a pas encore de FK client_id directe — on expose null
   return (data ?? []).map((c) => ({
@@ -146,11 +149,10 @@ export async function listActiveContractsLite(): Promise<ContractLite[]> {
 
 export async function listSites(): Promise<DbSite[]> {
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('sites')
-    .select('*')
-    .is('deleted_at', null)
-    .order('name')
+  const orgId = await getOrgId()
+  let q = supabase.from('sites').select('*').is('deleted_at', null).order('name')
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
@@ -218,12 +220,15 @@ export interface SiteWithStats extends DbSite {
 /** Liste tous les sites actifs du tenant, enrichis pour l'affichage global. */
 export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
 
-  const { data: sites, error } = await supabase
+  let qSites = supabase
     .from('sites')
     .select('*, contract:contracts(name, status), client:clients(name)')
     .is('deleted_at', null)
     .order('name')
+  if (orgId) qSites = qSites.eq('organization_id', orgId)
+  const { data: sites, error } = await qSites
   if (error) throw error
   const rows = (sites ?? []) as Array<
     DbSite & {
