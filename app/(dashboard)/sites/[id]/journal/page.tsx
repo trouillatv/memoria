@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, MapPin } from 'lucide-react'
+import { BookOpen, MapPin, Download } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteJournal } from '@/lib/db/site-journal'
@@ -40,10 +40,22 @@ export default async function SiteJournalPage({ params }: PageProps) {
       </Link>
 
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <BookOpen className="h-5 w-5 text-muted-foreground" />
-          Journal du chantier
-        </h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <BookOpen className="h-5 w-5 text-muted-foreground" />
+            Journal du chantier
+          </h1>
+          <a
+            href={`/sites/${id}/journal/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            title="Télécharger le journal complet en PDF"
+          >
+            <Download className="h-3.5 w-3.5" />
+            PDF
+          </a>
+        </div>
         <p className="text-sm text-muted-foreground inline-flex items-center gap-1">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
           {identity.name}
