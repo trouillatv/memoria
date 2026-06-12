@@ -2,17 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AccountProfileForm } from '@/app/(dashboard)/account/AccountProfileForm'
 import { AccountPasswordForm } from '@/app/(dashboard)/account/AccountPasswordForm'
+import { HomePreferenceToggle } from '@/app/(dashboard)/account/HomePreferenceToggle'
 
 // Mock the server actions + sonner.toast — hoisted refs so vi.mock factories see them.
 type ActionResult = { ok: boolean; error?: string }
 const {
   updateProfileMock,
+  updateHomePreferenceMock,
+  applyHomePreferenceAndLogoutMock,
   changePasswordMock,
   logoutMock,
   toastSuccess,
   toastError,
 } = vi.hoisted(() => ({
   updateProfileMock: vi.fn<(input: unknown) => Promise<ActionResult>>(async () => ({ ok: true })),
+  updateHomePreferenceMock: vi.fn<(pref: 'dashboard' | 'terrain') => Promise<{ ok: boolean }>>(async () => ({ ok: true })),
+  applyHomePreferenceAndLogoutMock: vi.fn<(pref: 'dashboard' | 'terrain') => Promise<{ ok: boolean }>>(async () => ({ ok: true })),
   changePasswordMock: vi.fn<(input: unknown) => Promise<ActionResult>>(async () => ({ ok: true })),
   logoutMock: vi.fn(async () => {}),
   toastSuccess: vi.fn(),
@@ -21,6 +26,8 @@ const {
 
 vi.mock('@/app/(dashboard)/account/actions', () => ({
   updateProfileAction: (input: unknown) => updateProfileMock(input),
+  updateHomePreferenceAction: (pref: 'dashboard' | 'terrain') => updateHomePreferenceMock(pref),
+  applyHomePreferenceAndLogoutAction: (pref: 'dashboard' | 'terrain') => applyHomePreferenceAndLogoutMock(pref),
   changePasswordAction: (input: unknown) => changePasswordMock(input),
   logoutAction: () => logoutMock(),
 }))
@@ -123,6 +130,33 @@ describe('AccountProfileForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /enregistrer/i }))
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('Boom')
+    })
+  })
+})
+
+describe('HomePreferenceToggle', () => {
+  beforeEach(() => {
+    updateHomePreferenceMock.mockClear()
+    applyHomePreferenceAndLogoutMock.mockClear()
+    toastSuccess.mockClear()
+    toastError.mockClear()
+    updateHomePreferenceMock.mockResolvedValue({ ok: true })
+    applyHomePreferenceAndLogoutMock.mockResolvedValue({ ok: true })
+  })
+
+  it('selects a home preference locally then applies it with logout', async () => {
+    render(<HomePreferenceToggle current="terrain" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /tableau de bord/i }))
+
+    expect(updateHomePreferenceMock).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /tableau de bord/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /vue terrain/i })).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(screen.getByRole('button', { name: /appliquer/i }))
+
+    await waitFor(() => {
+      expect(applyHomePreferenceAndLogoutMock).toHaveBeenCalledWith('dashboard')
     })
   })
 })

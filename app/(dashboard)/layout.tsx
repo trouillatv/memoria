@@ -7,6 +7,7 @@ import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { FeedbackButton } from '@/components/ui/FeedbackButton'
 import { PageViewLogger } from './PageViewLogger'
 import { ThemeSync } from '@/components/layout/ThemeSync'
+import { shouldRedirectDashboardRequestToField } from '@/lib/navigation/home'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
@@ -14,16 +15,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (user.must_change_password) redirect('/change-password')
 
   const pathname = (await headers()).get('x-pathname') ?? ''
-  const isAccountPage = pathname.startsWith('/account')
-
-  // Redirect vers /m si :
-  //   - chef_equipe (toujours terrain, forcé par rôle)
-  //   - ou home_preference = 'terrain' (Adrien, managers terrain)
-  // SAUF la page /account, accessible à tous les rôles.
-  const wantsField =
-    user.role === 'chef_equipe' ||
-    (user.home_preference === 'terrain' && !isAccountPage)
-  if (wantsField && !isAccountPage) redirect('/m')
+  // home_preference choisit l'accueil au login, pas un verrou de navigation.
+  if (shouldRedirectDashboardRequestToField({ ...user, pathname })) redirect('/m')
 
   const fullName = user.full_name || user.email
   return (

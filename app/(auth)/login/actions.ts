@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getCurrentUserMiniProfile } from '@/lib/db/users'
+import { resolveHomeDestination } from '@/lib/navigation/home'
 
 const schema = z.object({
   email: z.string().email(),
@@ -42,11 +43,7 @@ export async function loginAction(formData: FormData) {
     // - chef_equipe (agent terrain) → /m (route mobile bornée, Slice 3.0)
     // - admin / manager → /dashboard (cockpit mémoriel = vitrine du produit ;
     //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
-    if (profile.role === 'chef_equipe') {
-      redirect('/m')
-    }
-
-    redirect(parsed.data.next ?? '/dashboard')
+    redirect(parsed.data.next ?? resolveHomeDestination(profile))
   }
 
   redirect('/dashboard')

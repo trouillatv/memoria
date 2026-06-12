@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 interface UpdateProfileInput {
   full_name: string
@@ -89,12 +90,24 @@ export async function updateHomePreferenceAction(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false }
-  const { error } = await supabase
+  const admin = createAdminClient()
+  const { error } = await admin
     .from('users')
     .update({ home_preference: pref })
     .eq('id', user.id)
   if (!error) revalidatePath('/account')
   return { ok: !error }
+}
+
+export async function applyHomePreferenceAndLogoutAction(
+  pref: 'dashboard' | 'terrain',
+): Promise<{ ok: boolean }> {
+  const result = await updateHomePreferenceAction(pref)
+  if (!result.ok) return result
+
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect('/login')
 }
 
 export async function updateThemePreferenceAction(theme: string): Promise<{ ok: boolean }> {
