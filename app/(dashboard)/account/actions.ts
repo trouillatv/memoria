@@ -83,6 +83,20 @@ const PERSISTABLE_THEMES = ['light', 'dark', 'ocre', 'petrole', 'archive', 'mono
  * cross-device). Best-effort : silencieux si non connecté / thème inconnu.
  * Pas de revalidate (le thème est déjà appliqué côté client par next-themes).
  */
+export async function updateHomePreferenceAction(
+  pref: 'dashboard' | 'terrain',
+): Promise<{ ok: boolean }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false }
+  const { error } = await supabase
+    .from('users')
+    .update({ home_preference: pref })
+    .eq('id', user.id)
+  if (!error) revalidatePath('/account')
+  return { ok: !error }
+}
+
 export async function updateThemePreferenceAction(theme: string): Promise<{ ok: boolean }> {
   if (!(PERSISTABLE_THEMES as readonly string[]).includes(theme)) return { ok: false }
   const supabase = await createClient()

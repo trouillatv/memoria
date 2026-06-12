@@ -16,10 +16,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = (await headers()).get('x-pathname') ?? ''
   const isAccountPage = pathname.startsWith('/account')
 
-  // chef_equipe (agent terrain) ne doit PAS voir le dashboard desktop —
+  // Redirect vers /m si :
+  //   - chef_equipe (toujours terrain, forcé par rôle)
+  //   - ou home_preference = 'terrain' (Adrien, managers terrain)
   // SAUF la page /account, accessible à tous les rôles.
-  // Belt + suspenders avec le check role dans app/(field)/layout.tsx.
-  if (user.role === 'chef_equipe' && !isAccountPage) redirect('/m')
+  const wantsField =
+    user.role === 'chef_equipe' ||
+    (user.home_preference === 'terrain' && !isAccountPage)
+  if (wantsField && !isAccountPage) redirect('/m')
 
   const fullName = user.full_name || user.email
   return (

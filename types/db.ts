@@ -49,6 +49,9 @@ export interface DbUser {
   contract_end_date: string | null
   // Migration 084 (Vincent 2026-05-26) — thème UI préféré, réappliqué au login.
   theme_preference: string | null
+  // Migration 093 (Vincent 2026-06-12) — porte d'entrée préférée.
+  // 'dashboard' = pilotage (Guillaume), 'terrain' = /m (Adrien, Fred).
+  home_preference: 'dashboard' | 'terrain'
 }
 
 export interface DbActivityLog {

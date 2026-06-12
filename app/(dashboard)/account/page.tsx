@@ -6,6 +6,7 @@ import { getProfileConsultationSummary } from '@/lib/db/activity-logs'
 import { AccountProfileForm } from './AccountProfileForm'
 import { AccountPasswordForm } from './AccountPasswordForm'
 import { AccountLogoutSection } from './AccountLogoutSection'
+import { HomePreferenceToggle } from './HomePreferenceToggle'
 
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Administrateur',
@@ -89,6 +90,22 @@ export default async function AccountPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Masqué pour chef_equipe : toujours sur /m, pas de choix. */}
+      {user.role !== 'chef_equipe' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Page d&apos;accueil</CardTitle>
+            <CardDescription>
+              Choisissez la surface qui s&apos;ouvre par défaut au login.
+              Vous pouvez toujours naviguer vers l&apos;autre surface.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <HomePreferenceToggle current={user.home_preference ?? 'dashboard'} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

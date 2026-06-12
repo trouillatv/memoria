@@ -262,6 +262,7 @@ async function ensureDemoUser(
   fullName: string,
   role: 'manager' | 'chef_equipe',
   phone: string,
+  homePreference: 'dashboard' | 'terrain' = 'dashboard',
 ): Promise<{ id: string; created: boolean }> {
   const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
   if (listErr) throw listErr
@@ -274,7 +275,7 @@ async function ensureDemoUser(
     if (authErr) throw authErr
     const { error: userErr } = await supabase
       .from('users')
-      .update({ email, full_name: fullName, role, phone, deleted_at: null })
+      .update({ email, full_name: fullName, role, phone, deleted_at: null, home_preference: homePreference })
       .eq('id', existing.id)
     if (userErr) throw userErr
     return { id: existing.id, created: false }
@@ -300,6 +301,7 @@ async function ensureDemoUser(
       phone,
       must_change_password: true,
       deleted_at: null,
+      home_preference: homePreference,
     })
   if (upsertErr) throw upsertErr
   return { id: created.user.id, created: true }
@@ -933,12 +935,14 @@ async function main() {
   const contract = await ensureContract(supabase, adminId)
   summary.contractId = contract.id
 
+  // Adrien = manager BTP, profil "terrain" : ouvre /m au login.
   const adrien = await ensureDemoUser(
     supabase,
     BATISUD_ADRIEN_EMAIL,
     'Adrien Démo BatiSud',
     'manager',
     '+687701234',
+    'terrain',
   )
   const chef = await ensureDemoUser(
     supabase,
@@ -946,6 +950,7 @@ async function main() {
     'Fred Martin',
     'chef_equipe',
     '+687701235',
+    'terrain',
   )
 
   const teamIds = new Map<string, string>()
