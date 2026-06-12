@@ -97,6 +97,69 @@ export async function createUserInOrgAction(formData: FormData) {
   return { ok: true as const }
 }
 
+const createOrgWithUserSchema = z.object({
+  org_name:  z.string().min(1).max(100).trim(),
+  email:     z.string().email(),
+  full_name: z.string().min(1),
+  role:      z.enum(['manager', 'chef_equipe']),
+  mode:      z.enum(['invite', 'temp_password']),
+})
+
+export async function createOrgWithUserAction(formData: FormData) {
+  const adminId = await requireAdmin()
+  const parsed = createOrgWithUserSchema.safeParse({
+    org_name:  formData.get('org_name'),
+    email:     formData.get('email'),
+    full_name: formData.get('full_name'),
+    role:      formData.get('role'),
+    mode:      formData.get('mode'),
+  })
+  if (!parsed.success) return { error: 'Champs invalides' }
+
+  const { org_name, email, full_name, role, mode } = parsed.data
+
+  const org = await createOrganisation(org_name)
+
+  const supabase = createAdminClient()
+  let userId: string
+  if (mode === 'invite') {
+    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+      data: { full_name, role },
+    })
+    if (error) return { error: error.message }
+    if (!data.user) return { error: 'Invitation échouée' }
+    userId = data.user.id
+    await updateUserProfileAsAdmin(userId, { role: role as UserRole, full_name })
+  } else {
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password: TEMP_PASSWORD,
+      email_confirm: true,
+      app_metadata: { role, must_change_password: true, organization_id: org.id },
+    })
+    if (error) return { error: error.message }
+    if (!data.user) return { error: 'Création échouée' }
+    userId = data.user.id
+    await updateUserProfileAsAdmin(userId, { role: role as UserRole, full_name, must_change_password: true })
+  }
+
+  await assignUserToOrg(userId, org.id)
+
+  await logAuditEvent({
+    userId: adminId, entityType: 'organization', entityId: org.id,
+    action: 'created',
+    metadata: { name: org.name, slug: org.slug },
+  })
+  await logAuditEvent({
+    userId: adminId, entityType: 'user', entityId: userId,
+    action: 'created',
+    metadata: { mode, email, role, org_id: org.id },
+  })
+
+  revalidatePath('/admin/organisations')
+  return { ok: true as const }
+}
+
 const assignOrgSchema = z.object({
   user_id: z.string().uuid(),
   org_id: z.string().uuid(),

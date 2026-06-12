@@ -2,7 +2,7 @@ import { listOrganisations } from '@/lib/db/organisations'
 import { listUsersForAdmin } from '@/lib/db/users'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CreateOrgForm, CreateUserInOrgForm, MoveUserOrgForm } from './OrgForms'
+import { CreateOrgWithUserForm, CreateOrgForm, CreateUserInOrgForm, MoveUserOrgForm } from './OrgForms'
 import type { UserRole } from '@/types/db'
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -41,6 +41,8 @@ export default async function AdminOrganisationsPage() {
           {orgs.length} entreprise{orgs.length > 1 ? 's' : ''} — chaque espace est isolé, vierge à la création.
         </p>
       </div>
+
+      <CreateOrgWithUserForm />
 
       <CreateOrgForm />
 
