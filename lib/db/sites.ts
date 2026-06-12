@@ -456,20 +456,25 @@ export async function createSite(input: {
   canonical_site_key?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
+  const baseFields = {
+    client_id: input.client_id,
+    contract_id: input.contract_id,
+    name: input.name,
+    address: input.address ?? null,
+    notes: input.notes ?? null,
+    access_code: input.access_code ?? null,
+    alarm_code: input.alarm_code ?? null,
+    contact_name: input.contact_name ?? null,
+    contact_phone: input.contact_phone ?? null,
+    access_hours: input.access_hours ?? null,
+    access_instructions: input.access_instructions ?? null,
+    ...(orgId ? { organization_id: orgId } : {}),
+  }
   const { data, error } = await supabase
     .from('sites')
     .insert({
-      client_id: input.client_id,
-      contract_id: input.contract_id,
-      name: input.name,
-      address: input.address ?? null,
-      notes: input.notes ?? null,
-      access_code: input.access_code ?? null,
-      alarm_code: input.alarm_code ?? null,
-      contact_name: input.contact_name ?? null,
-      contact_phone: input.contact_phone ?? null,
-      access_hours: input.access_hours ?? null,
-      access_instructions: input.access_instructions ?? null,
+      ...baseFields,
       ...(input.canonical_site_key != null ? { canonical_site_key: input.canonical_site_key } : {}),
     })
     .select('id')
@@ -479,19 +484,7 @@ export async function createSite(input: {
   if (error && (error as { code?: string }).code === '42703' && input.canonical_site_key != null) {
     const { data: data2, error: err2 } = await supabase
       .from('sites')
-      .insert({
-        client_id: input.client_id,
-        contract_id: input.contract_id,
-        name: input.name,
-        address: input.address ?? null,
-        notes: input.notes ?? null,
-        access_code: input.access_code ?? null,
-        alarm_code: input.alarm_code ?? null,
-        contact_name: input.contact_name ?? null,
-        contact_phone: input.contact_phone ?? null,
-        access_hours: input.access_hours ?? null,
-        access_instructions: input.access_instructions ?? null,
-      })
+      .insert(baseFields)
       .select('id')
       .single()
     if (err2) throw err2
