@@ -12,7 +12,7 @@ export function MobileBottomNav() {
         <Camera className="h-5 w-5" />
         <span>Photos</span>
       </Link>
-      <Link href="/missions" className="flex flex-col items-center text-xs gap-1">
+      <Link href="/account" className="flex flex-col items-center text-xs gap-1">
         <User className="h-5 w-5" />
         <span>Profil</span>
       </Link>
