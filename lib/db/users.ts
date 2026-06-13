@@ -136,18 +136,26 @@ export async function getCurrentUserRole(): Promise<UserRole | null> {
  * Récupère un mini-profil (role + must_change_password) pour le user authentifié courant.
  * Pour login/redirect logic. Utilise le client serveur (cookies), passe par RLS.
  */
-export async function getCurrentUserMiniProfile(): Promise<{ role: UserRole; must_change_password: boolean } | null> {
+export async function getCurrentUserMiniProfile(): Promise<{
+  role: UserRole
+  must_change_password: boolean
+  home_preference: 'dashboard' | 'terrain'
+} | null> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data, error } = await supabase
     .from('users')
-    .select('role, must_change_password')
+    .select('role, must_change_password, home_preference')
     .eq('id', user.id)
     .is('deleted_at', null)
     .maybeSingle()
   if (error || !data) return null
-  return { role: data.role as UserRole, must_change_password: data.must_change_password }
+  return {
+    role: data.role as UserRole,
+    must_change_password: data.must_change_password,
+    home_preference: data.home_preference as 'dashboard' | 'terrain',
+  }
 }
 
 /**
