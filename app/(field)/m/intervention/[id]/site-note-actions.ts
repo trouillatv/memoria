@@ -59,5 +59,6 @@ export async function addSiteNoteAction(
   // revalide à la fois /m et /m/intervention. Le caller passe par router.refresh()
   // côté client pour mise à jour immédiate.
   revalidatePath('/m', 'layout')
+  revalidatePath('/sites', 'layout')
   return { ok: true }
 }

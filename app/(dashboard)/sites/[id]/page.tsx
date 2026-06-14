@@ -158,9 +158,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <IdentityHeader site={identity} />
       </header>
 
-      {aSavoirActive.length > 0 && (
-        <ASavoirManager siteId={id} active={aSavoirActive} />
-      )}
+      <ASavoirManager siteId={id} active={aSavoirActive} />
 
       {/* Accès rapide — toujours visible, avant les onglets */}
       <div className="flex items-center gap-2 flex-wrap">

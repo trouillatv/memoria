@@ -319,33 +319,34 @@ export default async function FieldInterventionPage({
       )}
 
       {/* Sprint 2 — Section « À savoir pour ce site ».
-          Silence positif : si 0 notes → section absente, pas de placeholder. */}
-      {siteId && siteNotes.length > 0 && (
+          Rendu dès qu'il y a du contenu à afficher (notes OU bouton d'ajout).
+          Le wrapper <section> reste stable entre « 0 notes » et « N notes » quand
+          !showResumeMode, ce qui évite le remontage de AddSiteNoteButton et la
+          perte de l'état optimiste `createdNotes`. */}
+      {siteId && (siteNotes.length > 0 || !showResumeMode) && (
         <section aria-labelledby="site-notes-heading">
-          <h2
-            id="site-notes-heading"
-            className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2"
-          >
-            <MapPin className="h-3 w-3" />À savoir pour ce site
-          </h2>
-          <ul className="space-y-1.5">
-            {siteNotes.slice(0, 5).map((note) => (
-              <li key={note.id} className="text-sm leading-relaxed">
-                • {note.body}
-                <span className="text-[10px] text-muted-foreground/60 ml-2">
-                  ({formatRelativeShort(note.created_at)})
-                </span>
-              </li>
-            ))}
-          </ul>
-          <AddSiteNoteButton siteId={siteId} />
+          {siteNotes.length > 0 && (
+            <>
+              <h2
+                id="site-notes-heading"
+                className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2"
+              >
+                <MapPin className="h-3 w-3" />À savoir pour ce site
+              </h2>
+              <ul className="space-y-1.5 mb-2">
+                {siteNotes.slice(0, 5).map((note) => (
+                  <li key={note.id} className="text-sm leading-relaxed">
+                    • {note.body}
+                    <span className="text-[10px] text-muted-foreground/60 ml-2">
+                      ({formatRelativeShort(note.created_at)})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!showResumeMode && <AddSiteNoteButton siteId={siteId} />}
         </section>
-      )}
-
-      {/* Cas : pas de notes ET pas de mode reprise → on permet quand même
-          d'ajouter une note (premier ajout). Bouton discret seul. */}
-      {siteId && siteNotes.length === 0 && !showResumeMode && (
-        <AddSiteNoteButton siteId={siteId} />
       )}
 
       {siteRequiresHandover && (
