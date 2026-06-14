@@ -1,0 +1,266 @@
+// lib/db/clients.ts
+// Helpers pour la page Client 360°.
+//
+// Architecture :
+//   clients → sites (FK client_id) → missions → interventions
+//   clients ↔ contracts (matching par client_name ILIKE — pas de FK)
+
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+export interface ClientRow {
+  id: string
+  name: string
+  contact_name: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  address: string | null
+  notes: string | null
+}
+
+export interface ClientWithStats extends ClientRow {
+  siteCount: number
+  contractCount: number
+}
+
+export interface ClientDetail extends ClientRow {
+  sites: Array<{
+    id: string
+    name: string
+    address: string | null
+    missionCount: number
+  }>
+  contracts: Array<{
+    id: string
+    name: string
+    status: string
+    end_date: string | null
+    start_date: string | null
+  }>
+  recentInterventions: Array<{
+    id: string
+    missionName: string
+    siteName: string
+    scheduled_for: string | null
+    status: string
+    slot: string | null
+  }>
+  openAnomalyCount: number
+  totalInterventionCount: number
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Liste tous les clients avec le compte de sites et de contrats. */
+export async function listClientsWithStats(): Promise<ClientWithStats[]> {
+  const supabase = createAdminClient()
+  const orgId = await getOrgId()
+
+  let clientQ = supabase
+    .from('clients')
+    .select('id, name, contact_name, contact_email, contact_phone, address, notes')
+    .is('deleted_at', null)
+    .order('name')
+  if (orgId) clientQ = clientQ.eq('organization_id', orgId)
+  const { data: clients, error } = await clientQ
+  if (error) throw error
+  if (!clients || clients.length === 0) return []
+
+  const clientIds = (clients as ClientRow[]).map((c) => c.id)
+
+  // Sites par client_id
+  const { data: siteRows } = await supabase
+    .from('sites')
+    .select('id, client_id')
+    .in('client_id', clientIds)
+    .is('deleted_at', null)
+
+  const siteCountByClient = new Map<string, number>()
+  for (const s of (siteRows ?? []) as Array<{ id: string; client_id: string }>) {
+    siteCountByClient.set(s.client_id, (siteCountByClient.get(s.client_id) ?? 0) + 1)
+  }
+
+  // Contrats : match par client_name (texte libre) vs client.name
+  // On charge tous les contrats puis on regroupe côté JS par nom normalisé.
+  const { data: contractRows } = await supabase
+    .from('contracts')
+    .select('id, client_name')
+  const contractCountByClient = new Map<string, number>()
+  const clientNameMap = new Map<string, string>() // normalized → client id
+  for (const c of (clients as ClientRow[])) {
+    clientNameMap.set(c.name.toLowerCase().trim(), c.id)
+  }
+  for (const cr of (contractRows ?? []) as Array<{ id: string; client_name: string }>) {
+    const key = cr.client_name.toLowerCase().trim()
+    const clientId = clientNameMap.get(key)
+    if (clientId) {
+      contractCountByClient.set(clientId, (contractCountByClient.get(clientId) ?? 0) + 1)
+    }
+  }
+
+  return (clients as ClientRow[]).map((c) => ({
+    ...c,
+    siteCount: siteCountByClient.get(c.id) ?? 0,
+    contractCount: contractCountByClient.get(c.id) ?? 0,
+  }))
+}
+
+/** Charge le détail complet d'un client pour la vue 360°. */
+export async function getClientDetail(id: string): Promise<ClientDetail | null> {
+  const supabase = createAdminClient()
+
+  const { data: client } = await supabase
+    .from('clients')
+    .select('id, name, contact_name, contact_email, contact_phone, address, notes')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!client) return null
+
+  const c = client as ClientRow
+
+  // Sites du client
+  const { data: siteRows } = await supabase
+    .from('sites')
+    .select('id, name, address')
+    .eq('client_id', id)
+    .is('deleted_at', null)
+    .order('name')
+
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string; address: string | null }>
+  const siteIds = sites.map((s) => s.id)
+
+  // Contrats liés par nom (ILIKE)
+  const { data: contractRows } = await supabase
+    .from('contracts')
+    .select('id, name, status, start_date, end_date')
+    .ilike('client_name', c.name.trim())
+    .order('end_date', { ascending: false })
+
+  const contracts = (contractRows ?? []) as Array<{
+    id: string
+    name: string
+    status: string
+    start_date: string | null
+    end_date: string | null
+  }>
+
+  if (siteIds.length === 0) {
+    return {
+      ...c,
+      sites: [],
+      contracts,
+      recentInterventions: [],
+      openAnomalyCount: 0,
+      totalInterventionCount: 0,
+    }
+  }
+
+  // Missions par site (pour afficher le compte)
+  const { data: missionRows } = await supabase
+    .from('missions')
+    .select('id, site_id')
+    .in('site_id', siteIds)
+    .is('deleted_at', null)
+
+  const missionCountBySite = new Map<string, number>()
+  const allMissionIds: string[] = []
+  for (const m of (missionRows ?? []) as Array<{ id: string; site_id: string }>) {
+    missionCountBySite.set(m.site_id, (missionCountBySite.get(m.site_id) ?? 0) + 1)
+    allMissionIds.push(m.id)
+  }
+
+  const sitesWithCount = sites.map((s) => ({
+    ...s,
+    missionCount: missionCountBySite.get(s.id) ?? 0,
+  }))
+
+  if (allMissionIds.length === 0) {
+    return {
+      ...c,
+      sites: sitesWithCount,
+      contracts,
+      recentInterventions: [],
+      openAnomalyCount: 0,
+      totalInterventionCount: 0,
+    }
+  }
+
+  // Interventions récentes (30 dernières) + total + anomalies ouvertes
+  const pickOne = <T>(v: T | T[] | null): T | null => {
+    if (v === null) return null
+    return Array.isArray(v) ? v[0] ?? null : v
+  }
+
+  const [interventionRes, anomalyRes, totalRes] = await Promise.all([
+    supabase
+      .from('interventions')
+      .select(
+        'id, status, slot, scheduled_for, mission:missions!inner(name, site:sites!inner(name))',
+      )
+      .in('mission_id', allMissionIds)
+      .order('scheduled_for', { ascending: false })
+      .limit(30),
+    supabase
+      .from('intervention_anomalies')
+      .select('id, intervention_id', { count: 'exact', head: true })
+      .eq('status', 'open')
+      .in(
+        'intervention_id',
+        // Sous-requête émulée : on passe les IDs d'interventions récentes
+        // (Supabase ne supporte pas les sous-requêtes natives côté JS)
+        // → on fera le compte après avoir récupéré les IDs d'intervention
+        ['00000000-0000-0000-0000-000000000000'], // placeholder, remplacé ci-dessous
+      ),
+    supabase
+      .from('interventions')
+      .select('id', { count: 'exact', head: true })
+      .in('mission_id', allMissionIds),
+  ])
+
+  type MRow = { name: string; site: { name: string } | { name: string }[] | null }
+  const recentInterventions = (
+    (interventionRes.data ?? []) as Array<{
+      id: string
+      status: string
+      slot: string | null
+      scheduled_for: string | null
+      mission: MRow | MRow[] | null
+    }>
+  ).map((r) => {
+    const mission = pickOne(r.mission)
+    const site = pickOne(mission?.site ?? null)
+    return {
+      id: r.id,
+      missionName: mission?.name ?? '—',
+      siteName: (site as { name: string } | null)?.name ?? '—',
+      scheduled_for: r.scheduled_for,
+      status: r.status,
+      slot: r.slot,
+    }
+  })
+
+  // Anomalies ouvertes : on récupère le compte via les IDs d'intervention réels
+  const allInterventionIds = recentInterventions.map((r) => r.id)
+  let openAnomalyCount = 0
+  if (allInterventionIds.length > 0) {
+    const { count } = await supabase
+      .from('intervention_anomalies')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'open')
+      .in('intervention_id', allInterventionIds)
+    openAnomalyCount = count ?? 0
+  }
+
+  return {
+    ...c,
+    sites: sitesWithCount,
+    contracts,
+    recentInterventions,
+    openAnomalyCount,
+    totalInterventionCount: totalRes.count ?? 0,
+  }
+}

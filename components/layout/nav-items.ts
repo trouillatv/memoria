@@ -18,6 +18,7 @@ import {
   Brain,
   Boxes,
   Search,
+  Building2,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -45,6 +46,7 @@ export const NAV: NavItem[] = [
   { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
+  { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },
   { href: '/missions',   label: 'Missions',               icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
   { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'] },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
