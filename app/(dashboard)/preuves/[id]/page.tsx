@@ -31,7 +31,7 @@ import {
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
-import { listShareTokensForIntervention } from '@/lib/db/proof-share'
+import { listShareTokensForIntervention, listShareCommentsForToken } from '@/lib/db/proof-share'
 import { formatDateLong, formatDuration } from '@/lib/format'
 import { ProofPhotoGrid } from './ProofPhotoGrid'
 import { ProofChecklist } from './ProofChecklist'
@@ -56,6 +56,12 @@ export default async function ProofDetailPage({ params }: PageProps) {
   // Sprint 6 — Lecture des share tokens actifs (non révoqués) pour la
   // section "Liens de partage actifs" qui expose le cycle de vie + clôture.
   const shareTokens = await listShareTokensForIntervention(id)
+
+  // Migration 091 — Commentaires reçus des visiteurs externes pour chaque token.
+  const commentEntries = await Promise.all(
+    shareTokens.map(async (t) => [t.id, await listShareCommentsForToken(t.id)] as const)
+  )
+  const commentsByToken = new Map(commentEntries)
 
   const dateSource = proof.executed_at ?? proof.scheduled_at
   const dateLabel = dateSource
@@ -142,7 +148,7 @@ export default async function ProofDetailPage({ params }: PageProps) {
       </Card>
 
       {/* Sprint 6 — Cycle de vie des liens partagés + clôture mentale (verrou V3) */}
-      <ShareTokensSection tokens={shareTokens} />
+      <ShareTokensSection tokens={shareTokens} commentsByToken={commentsByToken} />
 
       {/* Meta band : 4 stats sobres */}
       <Card>
