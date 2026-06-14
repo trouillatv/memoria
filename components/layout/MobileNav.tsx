@@ -35,7 +35,7 @@ export function MobileNav({ role, fullName }: { role: UserRole; fullName: string
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <div className="flex h-14 items-center border-b px-4">
           <Link
-            href={role === 'admin' || role === 'manager' ? '/dashboard' : '/missions'}
+            href={role === 'admin' || role === 'manager' ? '/dashboard' : '/planning'}
             className="flex items-center gap-2 font-semibold"
             onClick={() => setOpen(false)}
           >

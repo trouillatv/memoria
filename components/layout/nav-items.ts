@@ -3,6 +3,7 @@ import {
   ListChecks,
   Calendar,
   CalendarCheck,
+  CalendarDays,
   ClipboardList,
   Users,
   UserCog,
@@ -47,7 +48,8 @@ export const NAV: NavItem[] = [
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
   { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },
-  { href: '/missions',   label: 'Planning',               icon: ClipboardList, roles: ['admin', 'manager', 'chef_equipe'] },
+  { href: '/missions',   label: 'Missions',               icon: ClipboardList, roles: ['admin', 'manager'] },
+  { href: '/planning',   label: 'Planning',               icon: CalendarDays,  roles: ['admin', 'manager', 'chef_equipe'] },
   { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'] },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },

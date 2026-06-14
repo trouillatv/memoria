@@ -7,7 +7,8 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import type { UserRole } from '@/types/db'
 
 const NAV = [
-  { href: '/missions', label: 'Missions',          roles: ['admin', 'manager', 'chef_equipe'] },
+  { href: '/planning', label: 'Planning',           roles: ['admin', 'manager', 'chef_equipe'] },
+  { href: '/missions', label: 'Missions',           roles: ['admin', 'manager'] },
   { href: '/tenders',  label: 'Dossiers de démarrage', roles: ['admin', 'manager'] },
   // Option C : « Bibliothèque » → expérience documentaire vivante (/documents).
   // /library (savoir curé) reste intacte, hors menu principal.
