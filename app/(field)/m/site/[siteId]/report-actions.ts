@@ -25,11 +25,17 @@ import {
   setTranscript,
   setReportStatus,
   setReportText,
+  setReportAnalysis,
   bulkInsertProposals,
   curateProposal,
   markProposalCreated,
 } from '@/lib/db/site-reports'
-import { createSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import {
+  createSiteAction,
+  markSiteActionPlanned,
+  markSiteActionDone,
+  listSiteActionsBySite,
+} from '@/lib/db/site-actions'
 import { createMission } from '@/lib/db/missions'
 import { createIntervention, createAnomaly } from '@/lib/db/interventions'
 import { createSiteNote } from '@/lib/db/sites'
@@ -327,7 +333,14 @@ export async function getReportCurationContextAction(siteId: string): Promise<{
 }
 
 export async function analyzeReportAction(formData: FormData): Promise<
-  | { ok: true; count: number; proposals: DbSiteReportProposal[] }
+  | {
+      ok: true
+      count: number
+      proposals: DbSiteReportProposal[]
+      participants: import('@/types/db').SiteReportParticipant[]
+      risks: import('@/types/db').SiteReportRisk[]
+      priorUpdates: import('@/services/ai/site-report-analysis').PriorActionUpdate[]
+    }
   | { ok: false; error: string }
 > {
   const auth = await requireFieldAgent()
@@ -363,11 +376,20 @@ export async function analyzeReportAction(formData: FormData): Promise<
     return { ok: false, error: 'Rien à analyser (transcription et notes vides)' }
   }
 
+  // Comparaison réunion : injecter les actions ouvertes antérieures.
+  const priorOpen = await listSiteActionsBySite(report.site_id, { status: 'open' })
+  const priorOpenActions = priorOpen.map((a) => ({
+    id: a.id,
+    title: a.title,
+    corps_etat: a.corps_etat,
+  }))
+
   try {
-    const { proposals } = await runSiteReportAnalysisAgent({
+    const { proposals, participants, risks, priorUpdates } = await runSiteReportAnalysisAgent({
       transcript,
       textInput,
       attachmentNames,
+      priorOpenActions,
       userId: auth.userId,
     })
     const inserted = await bulkInsertProposals({
@@ -383,8 +405,10 @@ export async function analyzeReportAction(formData: FormData): Promise<
         ai_confidence: p.ai_confidence,
       })),
     })
+    // Persister la reconstruction (présents + risques) sur le compte-rendu.
+    await setReportAnalysis(parsed.data.report_id, { participants, risks })
     await setReportStatus(parsed.data.report_id, 'proposed')
-    return { ok: true, count: inserted.length, proposals: inserted }
+    return { ok: true, count: inserted.length, proposals: inserted, participants, risks, priorUpdates }
   } catch (e) {
     // Échec IA : l'artefact + les pièces restent visibles dans le journal.
     await setReportStatus(
@@ -634,4 +658,38 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
   revalidatePath(`/m/site/${siteId}`)
 
   return { ok: true, created, skipped, hasTomorrowIntervention }
+}
+
+// ── 7. Comparaison réunion : clore une action ouverte antérieure ────────────
+
+export async function markPriorActionDoneAction(
+  actionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  if (!z.string().uuid().safeParse(actionId).success) return { ok: false, error: 'Identifiant invalide' }
+  await markSiteActionDone(actionId)
+  return { ok: true }
+}
+
+// ── 8. Risque détecté → point de vigilance (note « à savoir ») ──────────────
+
+const vigilanceSchema = z.object({
+  site_id: z.string().uuid(),
+  label: z.string().trim().min(3).max(140),
+})
+
+export async function createVigilanceFromRiskAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = vigilanceSchema.safeParse({
+    site_id: formData.get('site_id'),
+    label: formData.get('label'),
+  })
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  await createSiteNote({ siteId: parsed.data.site_id, body: clip140(parsed.data.label), kind: 'a_savoir' })
+  revalidatePath(`/sites/${parsed.data.site_id}`)
+  return { ok: true }
 }

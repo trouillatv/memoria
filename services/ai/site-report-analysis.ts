@@ -2,7 +2,11 @@ import { z } from 'zod'
 import { getAIProvider } from './factory'
 import { withAITracking } from './tracking'
 import type { AIProviderName } from './index'
-import type { SiteReportProposalType } from '@/types/db'
+import type {
+  SiteReportProposalType,
+  SiteReportParticipant,
+  SiteReportRisk,
+} from '@/types/db'
 import { SITE_REPORT_ANALYZER_V1 } from './prompts/site-report-analyzer.v1'
 
 // ---------------------------------------------------------------------------
@@ -31,6 +35,31 @@ const missionLinkSchema = z.object({
 }).nullable().catch(null)
 
 const analysisSchema = z.object({
+  // 👥 Présents détectés (coordination descriptive)
+  participants: z.array(
+    z.object({
+      name: z.string().max(120).catch(''),
+      role: z.string().max(60).nullable().catch(null),
+      kind: z.enum(['person', 'company', 'control', 'other']).catch('person'),
+    }),
+  ).catch([]),
+  // ⚠️ Risques & dépendances (rôle conducteur de travaux)
+  risks: z.array(
+    z.object({
+      kind: z.enum(['dependency', 'preparation', 'vigilance', 'risk']).catch('risk'),
+      label: z.string().max(200).catch(''),
+      rationale: z.string().max(600).nullable().catch(null),
+    }),
+  ).catch([]),
+  // 🔄 Comparaison : statut des actions ouvertes antérieures (par index)
+  prior_updates: z.array(
+    z.object({
+      index: z.number().int().catch(-1),
+      status: z.enum(['still_open', 'done']).catch('still_open'),
+      note: z.string().max(200).nullable().catch(null),
+    }),
+  ).catch([]),
+  // 📋 Décisions détectées
   proposals: z.array(
     z.object({
       type: z.enum(PROPOSAL_TYPES).catch('action'),
@@ -60,15 +89,35 @@ export interface SiteReportProposal {
   payload: Record<string, unknown>
 }
 
+/** Mise à jour proposée d'une action ouverte antérieure (comparaison réunion). */
+export interface PriorActionUpdate {
+  actionId: string
+  title: string
+  corps_etat: string | null
+  status: 'still_open' | 'done'
+  note: string | null
+}
+
 export interface SiteReportAnalysisResult {
+  participants: SiteReportParticipant[]
+  risks: SiteReportRisk[]
+  priorUpdates: PriorActionUpdate[]
   proposals: SiteReportProposal[]
   metadata: Record<string, unknown>
+}
+
+/** Action ouverte antérieure injectée pour la comparaison de réunion. */
+export interface PriorOpenAction {
+  id: string
+  title: string
+  corps_etat: string | null
 }
 
 export interface SiteReportAnalysisInput {
   transcript: string
   textInput: string | null
   attachmentNames: string[]
+  priorOpenActions: PriorOpenAction[]
   userId: string | null
 }
 
@@ -78,6 +127,35 @@ export interface SiteReportAnalysisInput {
 // ---------------------------------------------------------------------------
 
 const MOCK_FIXTURE: AnalysisParsed = {
+  participants: [
+    { name: 'Adrien', role: 'Conducteur de travaux', kind: 'person' },
+    { name: 'Fred', role: 'Chef de chantier', kind: 'person' },
+    { name: 'SOCOTEC', role: 'Bureau de contrôle', kind: 'control' },
+    { name: 'Dupont Plomberie', role: 'Plomberie', kind: 'company' },
+    { name: 'Martin Électricité', role: 'Électricité', kind: 'company' },
+  ],
+  risks: [
+    {
+      kind: 'dependency',
+      label: 'Pose des portes bloquée tant que l\'électricité étage 2 n\'est pas validée',
+      rationale: 'finir les portes / réservations électriques A203 mentionnées ensemble',
+    },
+    {
+      kind: 'preparation',
+      label: 'Contrôle SOCOTEC jeudi — aucune préparation identifiée',
+      rationale: 'SOCOTEC passe jeudi',
+    },
+    {
+      kind: 'vigilance',
+      label: 'Zone sud toujours humide après fortes pluies',
+      rationale: 'attention humidité zone sud',
+    },
+  ],
+  // Index dans la liste des actions ouvertes antérieures injectées (mock : 0/1).
+  prior_updates: [
+    { index: 0, status: 'done', note: 'Livraison menuiseries effectuée' },
+    { index: 1, status: 'still_open', note: 'Réservations A203 toujours en attente' },
+  ],
   proposals: [
     {
       type: 'action',
@@ -186,6 +264,11 @@ export async function runSiteReportAnalysisAgent(
     if (provider.name === 'mock') {
       userMessage = `__MOCK_FIXTURE__:${JSON.stringify(MOCK_FIXTURE)}`
     } else {
+      const priorList = input.priorOpenActions.length > 0
+        ? input.priorOpenActions
+            .map((a, i) => `[${i}] ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`)
+            .join('\n')
+        : '(aucune)'
       userMessage = [
         '=== Transcription corrigée ===',
         input.transcript?.slice(0, 12000) || '(vide)',
@@ -196,7 +279,11 @@ export async function runSiteReportAnalysisAgent(
         '=== Pièces jointes (noms de fichiers uniquement) ===',
         input.attachmentNames.length > 0 ? input.attachmentNames.join('\n') : '(aucune)',
         '',
-        'Extrais les décisions au format JSON { "proposals": [ ... ] }.',
+        '=== Actions ouvertes des réunions précédentes (à comparer, par index) ===',
+        priorList,
+        '',
+        'Reconstruis la réunion au format JSON :',
+        '{ "participants": [...], "risks": [...], "prior_updates": [{ "index": N, "status": "still_open|done", "note": "..." }], "proposals": [...] }',
       ].join('\n')
     }
 
@@ -255,7 +342,26 @@ export async function runSiteReportAnalysisAgent(
       },
     }))
 
+  const participants: SiteReportParticipant[] = parsed.participants
+    .filter((p) => p.name.trim().length > 0)
+    .map((p) => ({ name: p.name.slice(0, 120), role: p.role, kind: p.kind }))
+
+  const risks: SiteReportRisk[] = parsed.risks
+    .filter((r) => r.label.trim().length > 0)
+    .map((r) => ({ kind: r.kind, label: r.label.slice(0, 200), rationale: r.rationale }))
+
+  // Comparaison : résoudre les index vers les actions ouvertes injectées.
+  const priorUpdates: PriorActionUpdate[] = parsed.prior_updates
+    .filter((u) => u.index >= 0 && u.index < input.priorOpenActions.length)
+    .map((u) => {
+      const a = input.priorOpenActions[u.index]
+      return { actionId: a.id, title: a.title, corps_etat: a.corps_etat, status: u.status, note: u.note }
+    })
+
   return {
+    participants,
+    risks,
+    priorUpdates,
     proposals,
     metadata: {
       provider: provider.name,

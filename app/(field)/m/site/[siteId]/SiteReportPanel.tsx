@@ -16,7 +16,10 @@ import {
   Sparkles, CheckCircle2, CalendarClock,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { DbSiteAction, DbSiteReportProposal } from '@/types/db'
+import type {
+  DbSiteAction, DbSiteReportProposal, SiteReportParticipant, SiteReportRisk,
+} from '@/types/db'
+import type { PriorActionUpdate } from '@/services/ai/site-report-analysis'
 import {
   createReportDraftAction,
   uploadReportAttachmentAction,
@@ -67,6 +70,9 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
   const [missions, setMissions] = useState<Array<{ id: string; name: string }>>([])
   const [meetingNumber, setMeetingNumber] = useState(1)
   const [openActions, setOpenActions] = useState<DbSiteAction[]>([])
+  const [participants, setParticipants] = useState<SiteReportParticipant[]>([])
+  const [risks, setRisks] = useState<SiteReportRisk[]>([])
+  const [priorUpdates, setPriorUpdates] = useState<PriorActionUpdate[]>([])
 
   // Done
   const [doneSummary, setDoneSummary] = useState<{ created: number; hasTomorrowIntervention: boolean } | null>(null)
@@ -208,6 +214,9 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       if (!res.ok) { toast.error(res.error); setStep('review'); return }
       const ctx = await getReportCurationContextAction(siteId)
       setProposals(res.proposals)
+      setParticipants(res.participants)
+      setRisks(res.risks)
+      setPriorUpdates(res.priorUpdates)
       setMissions(ctx.missions)
       setMeetingNumber(ctx.meetingNumber)
       setOpenActions(ctx.openActions)
@@ -360,10 +369,14 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       {step === 'curation' && (
         <SiteReportCuration
           reportId={reportId!}
+          siteId={siteId}
           proposals={proposals}
           existingMissions={missions}
           meetingNumber={meetingNumber}
           openActions={openActions}
+          participants={participants}
+          risks={risks}
+          priorUpdates={priorUpdates}
           onDone={(r) => { setDoneSummary(r); setStep('done'); router.refresh() }}
         />
       )}

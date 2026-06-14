@@ -346,6 +346,20 @@ export type SiteReportStatus =
 
 export type SiteReportTranscriptStatus = 'none' | 'pending' | 'done' | 'failed'
 
+// Présent détecté à la réunion (coordination descriptive, jamais score).
+export interface SiteReportParticipant {
+  name: string
+  role: string | null
+  kind: 'person' | 'company' | 'control' | 'other'
+}
+
+// Risque / dépendance proposé par l'IA (conducteur de travaux assistant).
+export interface SiteReportRisk {
+  kind: 'dependency' | 'preparation' | 'vigilance' | 'risk'
+  label: string
+  rationale: string | null
+}
+
 export interface DbSiteReport {
   id: string
   site_id: string
@@ -360,6 +374,8 @@ export interface DbSiteReport {
   transcript_status: SiteReportTranscriptStatus
   text_input: string | null
   analysis_error: string | null
+  participants: SiteReportParticipant[]
+  risks: SiteReportRisk[]
   created_by: string | null
   created_at: string
   updated_at: string

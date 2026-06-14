@@ -10,7 +10,9 @@ import type {
   DbSiteReportAttachment,
   DbSiteReportProposal,
   SiteReportAttachmentKind,
+  SiteReportParticipant,
   SiteReportProposalType,
+  SiteReportRisk,
   SiteReportStatus,
   SiteReportTranscriptStatus,
 } from '@/types/db'
@@ -159,6 +161,19 @@ export async function setReportStatus(
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+  if (error) throw error
+}
+
+/** Persiste la reconstruction IA (présents + risques) sur le compte-rendu. */
+export async function setReportAnalysis(
+  id: string,
+  patch: { participants?: SiteReportParticipant[]; risks?: SiteReportRisk[] },
+): Promise<void> {
+  const supabase = createAdminClient()
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (patch.participants !== undefined) update.participants = patch.participants
+  if (patch.risks !== undefined) update.risks = patch.risks
+  const { error } = await supabase.from('site_reports').update(update).eq('id', id)
   if (error) throw error
 }
 

@@ -968,8 +968,14 @@ Depuis un chantier (fiche site, ou page mobile `/m/site`), le bouton **« Compte
 **Le cycle :**
 1. Vous capturez (voix + texte + photos + pièces). Le texte saisi est sauvé **en premier** — rien n'est perdu.
 2. MemorIA **transcrit** la voix. Vous **relisez et corrigez** la transcription.
-3. **« Analyser et proposer »** : MemorIA détecte les **décisions** du compte-rendu et les **route** selon leur nature.
-4. **Curation** — les décisions sont regroupées par **corps d'état** (Menuiserie, Électricité, Plomberie, SOCOTEC, Livraison…). Vous **acceptez, éditez ou rejetez** chacune.
+3. **« Analyser »** : MemorIA **reconstruit la réunion** — pas un résumé, une mémoire opérationnelle.
+4. **L'écran de reconstruction** affiche :
+   - 👥 **Présents détectés** (personnes, entreprises, bureau de contrôle) ;
+   - 🔄 **Depuis la dernière réunion** — ce qui est **terminé** (à clôturer d'un clic), ce qui reste **ouvert**, ce qui est **nouveau** ;
+   - 🏗 **Corps d'état concernés** avec le nombre de décisions ;
+   - 📋 **Décisions** routées (action / intervention / mission / anomalie / vigilance / mémoire client / preuve) ;
+   - ⚠️ **Risques & dépendances** (« portes bloquées tant que l'électricité n'est pas validée », « SOCOTEC jeudi sans préparation ») — convertibles en point de vigilance.
+   Vous **acceptez, éditez ou rejetez** chaque élément.
 5. **« Créer les éléments validés »** — chaque décision validée devient une vraie ligne, **sans ressaisie**.
 
 **Où va chaque décision :**
