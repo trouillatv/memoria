@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MemorIA - directions premium</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f1eb;
+      color: #171717;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 48px 24px 64px; }
+    h1 { margin: 0; max-width: 820px; font-size: clamp(34px, 5vw, 64px); line-height: .96; letter-spacing: -.035em; }
+    .lead { max-width: 760px; margin: 18px 0 34px; color: #625b52; font-size: 18px; line-height: 1.55; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .option { overflow: hidden; border: 1px solid #d8d1c5; background: #fffaf2; box-shadow: 0 24px 70px rgba(34, 28, 20, .12); }
+    .visual { min-height: 330px; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+    .body { padding: 20px; border-top: 1px solid rgba(0,0,0,.08); background: rgba(255,255,255,.62); }
+    .body h2 { margin: 0 0 8px; font-size: 20px; letter-spacing: -.015em; }
+    .body p { margin: 0; color: #6a6259; line-height: 1.5; font-size: 14px; }
+    .top { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+    .headline { font-size: 36px; line-height: 1.02; font-weight: 760; letter-spacing: -.03em; }
+    .small { color: inherit; opacity: .72; line-height: 1.5; }
+    .tiles { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tile { padding: 13px; border: 1px solid currentColor; color: inherit; background: rgba(255,255,255,.04); }
+    .tile strong { display: block; margin-bottom: 4px; font-size: 18px; }
+    .monolithe .visual { background: #11100e; color: #f7f3ea; }
+    .monolithe .top, .monolithe .tile strong { color: #c9b985; }
+    .archive .visual { background: #eef1f3; color: #26313b; }
+    .archive .panel { padding: 20px; border: 1px solid #d9dee2; background: #fbfcfc; }
+    .archive .actions { margin-top: auto; display: flex; gap: 10px; }
+    .archive .actions span { padding: 10px 12px; border: 1px solid #c8ced3; font-size: 12px; }
+    .archive .actions span:first-child { background: #26313b; color: white; border-color: #26313b; }
+    .terrain .visual { background: #f7f1e6; color: #241f1a; }
+    .terrain .photo { height: 88px; background: linear-gradient(135deg, #1f6f78, #d7a94f); }
+    .chips { margin-top: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    .chips span { padding: 9px 11px; background: #e8decf; font-size: 12px; }
+    .chips span:first-child { background: #1f6f78; color: white; }
+    .note { margin-top: 28px; padding: 18px 20px; border-left: 4px solid #171717; background: #fffaf2; color: #403a33; line-height: 1.55; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Quelle direction premium pour MemorIA ?</h1>
+    <p class="lead">La landing actuelle explique bien le produit, mais sa grammaire visuelle reste trop SaaS standard. Voici trois registres possibles pour rendre la promesse plus haut de gamme sans perdre la clart&eacute; terrain.</p>
+
+    <section class="grid">
+      <article class="option monolithe">
+        <div class="visual">
+          <div class="top"><strong>MemorIA</strong><span>Passation active</span></div>
+          <div style="border-top:1px solid #5f5547; padding-top:20px">
+            <div class="headline">Le savoir du terrain reste.</div>
+            <p class="small">Graphite, pierre, accent champagne. Une sensation de produit strategique, mature, presque institutionnel.</p>
+          </div>
+          <div class="tiles">
+            <div class="tile"><strong>18j</strong><span>avant relais</span></div>
+            <div class="tile"><strong>4 sites</strong><span>a transmettre</span></div>
+          </div>
+        </div>
+        <div class="body">
+          <h2>A. Monolithe operationnel</h2>
+          <p>Le plus premium et le plus differenciant. Tres fort pour sortir du SaaS bleu, mais a manier avec sobriete pour rester terrain.</p>
+        </div>
+      </article>
+
+      <article class="option archive">
+        <div class="visual">
+          <div class="top"><strong>MemorIA</strong><span>Memoire des lieux</span></div>
+          <div class="panel">
+            <div class="headline">La continuite ne repose plus sur une seule personne.</div>
+            <p class="small">Clair, editorial, dirigeant. Premium sobre et immediatement credible.</p>
+          </div>
+          <div class="actions"><span>Voir la demo</span><span>Se connecter</span></div>
+        </div>
+        <div class="body">
+          <h2>B. Archive claire executive</h2>
+          <p>Le plus sur commercialement. Moins spectaculaire que A, mais tres lisible pour dirigeant et responsable d'exploitation.</p>
+        </div>
+      </article>
+
+      <article class="option terrain">
+        <div class="visual">
+          <div class="photo"></div>
+          <div class="headline">Chaque site garde son histoire.</div>
+          <p class="small">Plus humain, plus local, plus chaleureux. La Nouvelle-Caledonie devient un signal discret, pas une imagerie touristique.</p>
+          <div class="chips"><span>Acces</span><span>A savoir</span><span>Preuves</span></div>
+        </div>
+        <div class="body">
+          <h2>C. Terrain premium</h2>
+          <p>Le plus incarne. Interessant pour la marque, mais plus risque si la page ressemble a une brochure locale.</p>
+        </div>
+      </article>
+    </section>
+
+    <p class="note"><strong>Recommandation :</strong> partir sur A si tu veux une vraie rupture premium, ou B si la priorite est la conversion dirigeant avec moins de risque. Dans les deux cas, le hero doit devenir une scene de passation, pas une carte produit generique.</p>
+  </main>
+</body>
+</html>
