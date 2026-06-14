@@ -540,18 +540,7 @@ function SiteGroupedList({
               </span>
             </summary>
             <div className="border-t bg-muted/10">
-              {g.missionIds.size === 1 && g.contractId && g.missionId && (
-                <div className="px-3 pt-2 pb-1">
-                  <Link
-                    href={`/contracts/${g.contractId}/missions/${g.missionId}/edit`}
-                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ClipboardList className="h-3 w-3" />
-                    {g.missionName}
-                    <ChevronRight className="h-3 w-3" />
-                  </Link>
-                </div>
-              )}
+              <MissionLinks items={g.items} />
               <ul className="space-y-1.5 px-3 pb-3 pt-1">
                 {g.items.map((i) => (
                   <InterventionRow key={i.id} item={i} />
@@ -561,6 +550,34 @@ function SiteGroupedList({
           </details>
         )
       })}
+    </div>
+  )
+}
+
+function MissionLinks({ items }: { items: ListItem[] }) {
+  const seen = new Map<string, { name: string; contractId: string | null }>()
+  for (const i of items) {
+    const id = i.mission?.id
+    if (!id || seen.has(id)) continue
+    seen.set(id, {
+      name: i.mission?.name ?? 'Mission',
+      contractId: i.mission?.site?.contract?.id ?? null,
+    })
+  }
+  if (seen.size === 0) return null
+  return (
+    <div className="px-3 pt-2 pb-1 flex flex-wrap gap-x-3 gap-y-1">
+      {Array.from(seen.entries()).map(([id, { name, contractId }]) => (
+        <Link
+          key={id}
+          href={contractId ? `/contracts/${contractId}/missions/${id}/edit` : `/missions`}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ClipboardList className="h-3 w-3 shrink-0" />
+          {name}
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        </Link>
+      ))}
     </div>
   )
 }
