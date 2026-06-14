@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { listClientsWithStats } from '@/lib/db/clients'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { redirect } from 'next/navigation'
+import { CreateClientButton } from './CreateClientButton'
 
 export default async function ClientsPage() {
   const user = await getCurrentUserWithProfile()
@@ -15,18 +16,21 @@ export default async function ClientsPage() {
 
   return (
     <div className="space-y-6 w-full">
-      <header>
-        <h1 className="text-2xl font-semibold">Clients</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Vue agrégée par client — contrats, sites et activité.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Clients</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Vue agrégée par client — contrats, sites et activité.
+          </p>
+        </div>
+        <CreateClientButton />
       </header>
 
       {clients.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="Aucun client"
-          description="Les clients sont créés automatiquement lors de l'ajout de sites."
+          description="Créez votre premier client ou ajoutez un site pour en créer un automatiquement."
         />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

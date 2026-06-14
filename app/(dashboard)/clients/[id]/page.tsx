@@ -14,9 +14,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { StatusValue } from '@/components/ui/status-badge'
-import { getClientDetail } from '@/lib/db/clients'
+import { getClientDetail, getClientRecentRhythm } from '@/lib/db/clients'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
+import { SiteRhythm } from '@/app/(dashboard)/sites/[id]/SiteRhythm'
+import { SiteHeatmapCalendar } from '@/app/(dashboard)/sites/[id]/SiteHeatmapCalendar'
 
 const SLOT_FR: Record<string, string> = {
   morning: 'Matin',
@@ -43,6 +45,15 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const contractCount = client.contracts.length
   const siteCount = client.sites.length
   const hasNotes = !!client.notes?.trim()
+
+  // Rythme + densité agrégés sur tous les sites du client (même indicateurs
+  // que la fiche site, mais consolidés au niveau client).
+  const [rhythm14, rhythm90] = siteCount > 0
+    ? await Promise.all([
+        getClientRecentRhythm(id, 14),
+        getClientRecentRhythm(id, 90),
+      ])
+    : [[], []]
 
   return (
     <div className="space-y-6 w-full">
@@ -172,6 +183,41 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
         {/* Colonne droite : contrats + activité */}
         <div className="lg:col-span-2 space-y-4">
+
+          {/* Rythme 14 jours — agrégé tous sites du client */}
+          {siteCount > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Rythme — 14 derniers jours
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <SiteRhythm days={rhythm14} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Densité 90 jours — heatmap agrégée tous sites du client */}
+          {siteCount > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5" />
+                  Densité — 90 derniers jours
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <SiteHeatmapCalendar days={rhythm90} />
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  Toutes les traces des sites de ce client. Chaque carré = un jour ;
+                  plus la couleur est foncée, plus il y a eu d&apos;activité.
+                  Aujourd&apos;hui : carré entouré.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Contrats */}
           {contractCount > 0 && (

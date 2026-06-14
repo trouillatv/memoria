@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getCurrentUserMiniProfile } from '@/lib/db/users'
-import { resolveHomeDestination } from '@/lib/navigation/home'
+import { headers } from 'next/headers'
+import { resolveHomeDestination, isMobileUserAgent } from '@/lib/navigation/home'
 
 const schema = z.object({
   email: z.string().email(),
@@ -43,7 +44,8 @@ export async function loginAction(formData: FormData) {
     // - chef_equipe (agent terrain) → /m (route mobile bornée, Slice 3.0)
     // - admin / manager → /dashboard (cockpit mémoriel = vitrine du produit ;
     //   /missions est une liste ERP, mauvaise porte d'entrée — audit live 2026-05-26)
-    redirect(parsed.data.next ?? resolveHomeDestination(profile))
+    const ua = (await headers()).get('user-agent')
+    redirect(parsed.data.next ?? resolveHomeDestination(profile, isMobileUserAgent(ua)))
   }
 
   redirect('/dashboard')

@@ -54,7 +54,6 @@ import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
-import { CreateClientForSiteButton } from './CreateClientForSiteButton'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -187,8 +186,6 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <Sparkles className="h-3.5 w-3.5" />
           Atelier mémoire
         </Link>
-        {/* Création client — uniquement si le site n'en a pas encore */}
-        {!identity.clientId && <CreateClientForSiteButton siteId={id} />}
       </div>
 
       {/* Navigation onglets — mobile uniquement */}

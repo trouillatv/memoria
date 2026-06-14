@@ -1,8 +1,8 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Clock, ShieldOff, Hourglass, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, ShieldOff, Hourglass, XCircle, Share2, ChevronDown } from 'lucide-react'
 import type { InterventionToken } from '@/lib/db/intervention-tokens'
 import { GenerateInterventionTokenButton } from '@/app/(dashboard)/briefing/GenerateInterventionTokenButton'
 import { revokeTokenAction } from './token-revoke-action'
@@ -150,29 +150,58 @@ function TokenRow({
 }
 
 export function TokensPanel({ interventionId, missionName, siteName, tokens }: Props) {
+  const [open, setOpen] = useState(false)
+
+  const activeCount = tokens.filter(
+    (t) => !t.revoked_at && !t.validated_at && (!t.expires_at || new Date(t.expires_at) >= new Date()),
+  ).length
+
   return (
-    <section className="rounded-lg border bg-card p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          Liens externes
-        </h2>
-      </div>
-      <p className="text-xs text-muted-foreground italic">
-        Envoyez un lien sécurisé à un sous-traitant, livreur ou bureau de contrôle.
-        Il confirme l&apos;intervention sans compte MemorIA.
-      </p>
-      <GenerateInterventionTokenButton
-        interventionId={interventionId}
-        missionName={missionName}
-        siteName={siteName}
-      />
-      {tokens.length > 0 && (
-        <ul className="space-y-2 mt-2">
-          {tokens.map((tok) => (
-            <TokenRow key={tok.id} token={tok} interventionId={interventionId} />
-          ))}
-        </ul>
+    <div className="rounded-lg border bg-card overflow-hidden">
+      {/* Trigger compact */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/30 transition-colors text-left"
+      >
+        <Share2 className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="font-medium">Partager à un externe</span>
+        {activeCount > 0 && (
+          <span className="ml-1 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+            {activeCount} actif{activeCount > 1 ? 's' : ''}
+          </span>
+        )}
+        {tokens.length > 0 && activeCount === 0 && (
+          <span className="ml-1 text-[10px] text-muted-foreground">
+            {tokens.length} lien{tokens.length > 1 ? 's' : ''}
+          </span>
+        )}
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* Contenu déplié */}
+      {open && (
+        <div className="border-t px-4 py-4 space-y-3">
+          <p className="text-xs text-muted-foreground italic">
+            Envoyez un lien sécurisé à un sous-traitant, livreur ou bureau de contrôle.
+            Il confirme l&apos;intervention sans compte MemorIA.
+          </p>
+          <GenerateInterventionTokenButton
+            interventionId={interventionId}
+            missionName={missionName}
+            siteName={siteName}
+          />
+          {tokens.length > 0 && (
+            <ul className="space-y-2 mt-2">
+              {tokens.map((tok) => (
+                <TokenRow key={tok.id} token={tok} interventionId={interventionId} />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
-    </section>
+    </div>
   )
 }

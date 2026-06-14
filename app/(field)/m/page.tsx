@@ -648,7 +648,7 @@ function InterventionCard({
           {primary && !isCompleted && !isSkipped && (
             <div className="flex flex-col items-center justify-center shrink-0">
               <div className="rounded-full bg-foreground text-background px-4 py-3 text-sm font-medium flex items-center gap-1" style={{ minHeight: 64, minWidth: 64 }}>
-                {isInProgress ? 'Réouvrir' : 'Démarrer'}
+                {isInProgress ? 'Continuer' : 'Démarrer'}
                 <ArrowRight className="h-4 w-4" />
               </div>
             </div>

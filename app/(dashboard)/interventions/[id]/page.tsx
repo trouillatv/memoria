@@ -307,6 +307,13 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
+      <TokensPanel
+        interventionId={intervention.id}
+        missionName={mission?.name ?? 'Intervention'}
+        siteName={site?.name ?? ''}
+        tokens={allTokens}
+      />
+
       {/* Lecture du lieu — signal mnémonique (absence, résonance, persistance).
           Jamais de verdict, jamais de recommandation. Visible uniquement si signal. */}
       {siteReadings.length > 0 && (
@@ -381,13 +388,6 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         interventionId={intervention.id}
         status={intervention.status}
         existingValidation={validation}
-      />
-
-      <TokensPanel
-        interventionId={intervention.id}
-        missionName={mission?.name ?? 'Intervention'}
-        siteName={site?.name ?? ''}
-        tokens={allTokens}
       />
 
       <VoiceNotesSection notes={voiceNoteDisplays} />

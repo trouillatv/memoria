@@ -7,6 +7,56 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getSiteRecentRhythm, type SiteRhythmDay } from '@/lib/db/site-cockpit'
+
+const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
+
+/**
+ * Rythme agrégé d'un client : somme des traces de TOUS ses sites par jour,
+ * sur N jours glissants. Réutilise getSiteRecentRhythm par site puis fusionne
+ * (counts additionnés, tooltips dédupliqués). Même type que la page site.
+ */
+export async function getClientRecentRhythm(
+  clientId: string,
+  daysBack = 14,
+): Promise<SiteRhythmDay[]> {
+  const supabase = createAdminClient()
+
+  const { data: siteRows } = await supabase
+    .from('sites')
+    .select('id')
+    .eq('client_id', clientId)
+    .is('deleted_at', null)
+  const siteIds = (siteRows ?? []).map((s) => (s as { id: string }).id)
+
+  const perSite = await Promise.all(
+    siteIds.map((id) => getSiteRecentRhythm(id, daysBack)),
+  )
+
+  // Squelette des N jours : depuis le premier site, ou via un site vide.
+  const base = perSite[0] ?? (await getSiteRecentRhythm(EMPTY_UUID, daysBack))
+  const merged: SiteRhythmDay[] = base.map((d) => ({
+    ...d,
+    count: 0,
+    tooltipLines: [],
+  }))
+  const idxByDate = new Map(merged.map((d, i) => [d.date, i]))
+
+  for (const site of perSite) {
+    for (const day of site) {
+      const idx = idxByDate.get(day.date)
+      if (idx === undefined) continue
+      merged[idx].count += day.count
+      for (const line of day.tooltipLines) {
+        if (!merged[idx].tooltipLines.includes(line)) {
+          merged[idx].tooltipLines.push(line)
+        }
+      }
+    }
+  }
+  merged.forEach((d) => d.tooltipLines.sort())
+  return merged
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

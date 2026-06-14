@@ -33,7 +33,9 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function interventionActionLabel(status: string): string {
-  return status === 'planned' ? 'Démarrer' : 'Réouvrir'
+  if (status === 'planned') return 'Démarrer'
+  if (status === 'in_progress') return 'Continuer'
+  return 'Réouvrir'
 }
 
 interface Props {

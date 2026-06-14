@@ -7,16 +7,18 @@ import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
 import { FeedbackButton } from '@/components/ui/FeedbackButton'
 import { PageViewLogger } from './PageViewLogger'
 import { ThemeSync } from '@/components/layout/ThemeSync'
-import { shouldRedirectDashboardRequestToField } from '@/lib/navigation/home'
+import { shouldRedirectDashboardRequestToField, isMobileUserAgent } from '@/lib/navigation/home'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.must_change_password) redirect('/change-password')
 
-  const pathname = (await headers()).get('x-pathname') ?? ''
+  const h = await headers()
+  const pathname = h.get('x-pathname') ?? ''
+  const isMobile = isMobileUserAgent(h.get('user-agent'))
   // home_preference choisit l'accueil au login, pas un verrou de navigation.
-  if (shouldRedirectDashboardRequestToField({ ...user, pathname })) redirect('/m')
+  if (shouldRedirectDashboardRequestToField({ ...user, pathname }, isMobile)) redirect('/m')
 
   const fullName = user.full_name || user.email
   return (
