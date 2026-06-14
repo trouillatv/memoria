@@ -12,6 +12,7 @@ import { MissionEditor } from './mission-editor'
 import { RecurrenceSection } from './RecurrenceSection'
 import { RecurrenceRowActions } from './RecurrenceRowActions'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
+import { SmartBackLink } from '@/components/nav/SmartBackLink'
 import type { InterventionStatus } from '@/types/db'
 
 // Wording statut FR — aggregate, jamais d'identite d'agent.
@@ -50,7 +51,8 @@ export default async function EditMissionPage({
           Missions > [mission] > Édition). */}
       <DynamicCrumb segmentId={contract.id} label={contract.name} />
       <DynamicCrumb segmentId={mission.id} label={mission.name} />
-      <header>
+      <header className="space-y-1">
+        <SmartBackLink fallbackHref="/missions" label="Missions" />
         <h1 className="text-2xl font-semibold">Édition mission</h1>
         <p className="text-sm text-muted-foreground">
           {contract.name} · {sites.find((s) => s.id === mission.site_id)?.name ?? '—'}
