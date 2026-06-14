@@ -179,6 +179,20 @@ export async function createInterventionToken(input: {
   return data as InterventionToken
 }
 
+/** Tous les tokens d'une intervention (y compris révoqués), triés par date de création desc. */
+export async function listAllTokensForIntervention(
+  interventionId: string,
+): Promise<InterventionToken[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_tokens')
+    .select('*')
+    .eq('intervention_id', interventionId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as InterventionToken[]
+}
+
 /** Tokens validés pour une intervention — source des "Confirmations externes" dans la fiche. */
 export async function listTokenValidationsForIntervention(
   interventionId: string,

@@ -13,13 +13,14 @@ export async function generateInterventionTokenAction(input: {
   interventionId: string
   recipientLabel?: string
   note?: string
+  permanent?: boolean
 }): Promise<
-  | { ok: true; token: string; url: string; whatsappText: string }
+  | { ok: true; token: string; url: string; whatsappText: string; permanent: boolean }
   | { ok: false; error: string }
 > {
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager') {
+  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
     return { ok: false, error: 'Accès refusé' }
   }
 
@@ -33,8 +34,10 @@ export async function generateInterventionTokenAction(input: {
 
   if (!intv) return { ok: false, error: 'Intervention introuvable' }
 
-  // Expiration : 48h à partir de maintenant
-  const expiresAt = new Date(Date.now() + 48 * 3600 * 1000).toISOString()
+  // Expiration : 48h à partir de maintenant, ou null si permanent
+  const expiresAt = input.permanent
+    ? null
+    : new Date(Date.now() + 48 * 3600 * 1000).toISOString()
 
   const pickOne = <T>(v: T | T[] | null): T | null => {
     if (!v) return null
@@ -70,6 +73,10 @@ export async function generateInterventionTokenAction(input: {
 
   const greeting = recipientLabel ? `Bonjour ${recipientLabel},` : `Bonjour,`
 
+  const expiryLine = input.permanent
+    ? `Ce lien vous permet de confirmer la réalisation. Pas de date d'expiration.`
+    : `Ce lien vous permet de confirmer la réalisation. Valable 48h.`
+
   const whatsappText = [
     greeting,
     ``,
@@ -78,8 +85,8 @@ export async function generateInterventionTokenAction(input: {
     ``,
     `→ ${url}`,
     ``,
-    `Ce lien vous permet de confirmer la réalisation. Valable 48h.`,
+    expiryLine,
   ].join('\n')
 
-  return { ok: true, token: tok.token, url, whatsappText }
+  return { ok: true, token: tok.token, url, whatsappText, permanent: !!input.permanent }
 }

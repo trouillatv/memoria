@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Link2, MessageCircle, Copy, Check, Loader2, ChevronDown } from 'lucide-react'
+import { Link2, MessageCircle, Copy, Check, Loader2, ChevronDown, Infinity } from 'lucide-react'
 import { generateInterventionTokenAction } from './intervention-token-actions'
 
 interface Props {
@@ -16,7 +16,8 @@ export function GenerateInterventionTokenButton({
   siteName,
 }: Props) {
   const [recipientLabel, setRecipientLabel] = useState('')
-  const [result, setResult] = useState<{ url: string; whatsappText: string } | null>(null)
+  const [permanent, setPermanent] = useState(false)
+  const [result, setResult] = useState<{ url: string; whatsappText: string; permanent: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -27,9 +28,10 @@ export function GenerateInterventionTokenButton({
       const res = await generateInterventionTokenAction({
         interventionId,
         recipientLabel: recipientLabel.trim() || undefined,
+        permanent,
       })
       if (res.ok) {
-        setResult({ url: res.url, whatsappText: res.whatsappText })
+        setResult({ url: res.url, whatsappText: res.whatsappText, permanent: res.permanent })
       } else {
         setError(res.error)
       }
@@ -79,7 +81,14 @@ export function GenerateInterventionTokenButton({
             {result.url}
           </p>
         </details>
-        <p className="text-[10px] text-muted-foreground">Valable 48h · révocable depuis la fiche intervention.</p>
+        {result.permanent ? (
+          <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+            <Infinity className="h-3 w-3" />
+            Permanent · révocable depuis la fiche intervention.
+          </p>
+        ) : (
+          <p className="text-[10px] text-muted-foreground">Valable 48h · révocable depuis la fiche intervention.</p>
+        )}
       </div>
     )
   }
@@ -96,6 +105,18 @@ export function GenerateInterventionTokenButton({
           maxLength={80}
           className="h-7 rounded-md border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring w-44"
         />
+        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={permanent}
+            onChange={(e) => setPermanent(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-muted-foreground accent-foreground"
+          />
+          <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+            <Infinity className="h-3 w-3" />
+            Permanent
+          </span>
+        </label>
         <button
           type="button"
           onClick={generate}

@@ -44,6 +44,7 @@ import {
 } from '@/lib/db/site-cockpit'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { DateNav } from '../../DateNav'
+import { GenerateInterventionTokenButton } from '@/app/(dashboard)/briefing/GenerateInterventionTokenButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -397,6 +398,27 @@ export default async function FieldInterventionPage({
       {/* V5.1 — Bouton photo sticky bas retiré : redondant avec les boutons
           photo de la checklist (1 par item) et avec le FAB Photo libre sur
           /m/site/[id] pour les traces spontanées. */}
+
+      {/* Partager à un externe — chef d'équipe, manager, admin uniquement.
+          Replié par défaut pour ne pas polluer la vue terrain principale. */}
+      {(isAdmin || user.role === 'chef_equipe') && (
+        <details className="mt-4 rounded-lg border bg-card">
+          <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-muted-foreground hover:text-foreground list-none flex items-center justify-between">
+            <span>Partager à un externe</span>
+            <span className="text-[10px] opacity-60">▼</span>
+          </summary>
+          <div className="px-4 pb-4">
+            <p className="text-xs text-muted-foreground italic mb-2">
+              Lien sécurisé pour un sous-traitant ou livreur. Pas de compte nécessaire.
+            </p>
+            <GenerateInterventionTokenButton
+              interventionId={id}
+              missionName={mission?.name ?? 'Intervention'}
+              siteName={site?.name ?? ''}
+            />
+          </div>
+        </details>
+      )}
     </div>
   )
 }

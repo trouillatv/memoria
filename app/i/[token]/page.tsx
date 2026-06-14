@@ -89,7 +89,6 @@ export default async function InterventionTokenPage({ params }: PageProps) {
   const isClosed = ['completed', 'validated', 'skipped'].includes(intervention.status)
   const canValidate =
     !isValidated &&
-    !isClosed &&
     (tok.permissions as string[]).includes('validate')
 
   const dateLabel = formatDateShort(intervention.scheduled_for)
