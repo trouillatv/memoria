@@ -539,11 +539,25 @@ function SiteGroupedList({
                 </span>
               </span>
             </summary>
-            <ul className="space-y-1.5 px-3 pb-3 pt-1 border-t bg-muted/10">
-              {g.items.map((i) => (
-                <InterventionRow key={i.id} item={i} />
-              ))}
-            </ul>
+            <div className="border-t bg-muted/10">
+              {g.missionIds.size === 1 && g.contractId && g.missionId && (
+                <div className="px-3 pt-2 pb-1">
+                  <Link
+                    href={`/contracts/${g.contractId}/missions/${g.missionId}/edit`}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ClipboardList className="h-3 w-3" />
+                    {g.missionName}
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              )}
+              <ul className="space-y-1.5 px-3 pb-3 pt-1">
+                {g.items.map((i) => (
+                  <InterventionRow key={i.id} item={i} />
+                ))}
+              </ul>
+            </div>
           </details>
         )
       })}
@@ -578,10 +592,10 @@ function InterventionRow({ item }: { item: ListItem }) {
             )}
           </div>
           <div className={`text-sm font-medium ${isSkipped ? 'line-through decoration-amber-700/40' : ''}`}>
-            {item.mission?.site?.name ?? '—'}
+            {item.mission?.name ?? '—'}
           </div>
           <div className="text-xs text-muted-foreground">
-            {item.mission?.name ?? '—'}
+            {item.mission?.site?.name ?? '—'}
             {item.mission?.site?.contract?.name && (
               <span> · {item.mission.site.contract.name}</span>
             )}
