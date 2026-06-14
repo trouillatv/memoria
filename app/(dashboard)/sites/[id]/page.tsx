@@ -53,6 +53,8 @@ import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
+import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
+import { CreateClientForSiteButton } from './CreateClientForSiteButton'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -85,6 +87,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     memoryMeta,
     sitePhotos,
     siteDocs,
+    rhythm90,
   ] = await Promise.all([
     getSiteIdentity(id),
     getSiteCurrentState(id),
@@ -100,6 +103,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     getSiteMemoryMeta(id),
     getSiteRecentPhotos(id, 9),
     listDocumentsForTarget('site', id),
+    getSiteRecentRhythm(id, 90),
   ])
 
   // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
@@ -183,6 +187,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <Sparkles className="h-3.5 w-3.5" />
           Atelier mémoire
         </Link>
+        {/* Création client — uniquement si le site n'en a pas encore */}
+        {!identity.clientId && <CreateClientForSiteButton siteId={id} />}
       </div>
 
       {/* Navigation onglets — mobile uniquement */}
@@ -241,6 +247,22 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── ACTIVITÉ — Densité 90 jours (heatmap) ───────────────────────── */}
+      <Card className={cn(tabClass('activite'))}>
+        <CardHeader>
+          <CardTitle>Densité — 90 derniers jours</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <SiteHeatmapCalendar days={rhythm90} />
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Chaque carré = un jour. Une colonne = une semaine (lundi en haut,
+            dimanche en bas). Les semaines avancent de gauche (plus ancien) à droite
+            (cette semaine). Plus la couleur est foncée, plus il y a eu de traces
+            ce jour-là. Aujourd&apos;hui : carré entouré.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* ── ACTIVITÉ — Anomalies ─────────────────────────────────────────── */}
       <Card className={cn(tabClass('activite'))}>
