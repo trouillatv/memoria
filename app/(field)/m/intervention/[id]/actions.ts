@@ -385,6 +385,7 @@ export async function getAvailableSlotsMobileAction(interventionId: string) {
 const completeMobileSchema = z.object({
   id: z.string().uuid(),
   comment: z.string().max(140).optional(),
+  signature_data_url: z.string().max(200_000).optional(), // base64 PNG, ~150KB max
 })
 
 export async function completeInterventionMobileAction(formData: FormData) {
@@ -394,6 +395,7 @@ export async function completeInterventionMobileAction(formData: FormData) {
   const parsed = completeMobileSchema.safeParse({
     id: formData.get('id'),
     comment: formData.get('comment') || undefined,
+    signature_data_url: formData.get('signature_data_url') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
@@ -418,7 +420,15 @@ export async function completeInterventionMobileAction(formData: FormData) {
     } as const
   }
 
-  // Append comment to notes if provided
+  const now = new Date().toISOString()
+  const signatureFields = parsed.data.signature_data_url
+    ? {
+        signature_data_url: parsed.data.signature_data_url,
+        signed_at: now,
+        signed_by: auth.userId,
+      }
+    : {}
+
   if (parsed.data.comment) {
     const { data: current } = await supabase
       .from('interventions')
@@ -433,12 +443,20 @@ export async function completeInterventionMobileAction(formData: FormData) {
       .from('interventions')
       .update({
         status: 'completed',
-        executed_at: new Date().toISOString(),
+        executed_at: now,
         notes: combinedNotes,
+        ...signatureFields,
       })
       .eq('id', parsed.data.id)
   } else {
-    await updateInterventionStatus(parsed.data.id, 'completed', new Date().toISOString())
+    await supabase
+      .from('interventions')
+      .update({
+        status: 'completed',
+        executed_at: now,
+        ...signatureFields,
+      })
+      .eq('id', parsed.data.id)
   }
 
   revalidatePath(`/m/intervention/${parsed.data.id}`)

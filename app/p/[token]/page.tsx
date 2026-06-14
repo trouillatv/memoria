@@ -62,6 +62,7 @@ import { ProofChecklist } from '@/app/(dashboard)/preuves/[id]/ProofChecklist'
 import { ProofValidations } from '@/app/(dashboard)/preuves/[id]/ProofValidations'
 import { ProofAnomalies } from '@/app/(dashboard)/preuves/[id]/ProofAnomalies'
 import { MonthlyReportPublicView } from './MonthlyReportPublicView'
+import { ExternalCommentForm } from './ExternalCommentForm'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { getContractTopReadings } from '@/lib/db/site-cockpit'
 import { getProofPageReading } from '@/lib/ai/site-readings'
@@ -404,6 +405,9 @@ export default async function PublicProofPage({ params }: PageProps) {
           </a>
         </CardContent>
       </Card>
+
+      {/* Commentaire externe — visiteur peut laisser une remarque */}
+      <ExternalCommentForm token={token} />
 
       {/* Footnote expiration — encart léger pour donner du poids visuel
           à l'information sans alarmer le client. */}
