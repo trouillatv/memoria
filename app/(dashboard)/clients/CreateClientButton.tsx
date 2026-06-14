@@ -52,7 +52,7 @@ export function CreateClientButton() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md bg-sky-600 text-white px-3 py-2 text-sm font-medium hover:bg-sky-700 transition-colors"
+        className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium hover:bg-primary/80 transition-colors"
       >
         <Plus className="h-4 w-4" />
         Nouveau client
