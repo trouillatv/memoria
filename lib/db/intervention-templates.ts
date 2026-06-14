@@ -352,21 +352,23 @@ export async function generateInterventionsFromTemplates(params: {
     return { generated: 0, skipped: 0, templatesProcessed: 0 }
   }
 
-  // 4b. Fetch missions' default_team[] (héritage Slice 6.3) — les interventions
-  //    générées héritent du team par défaut de leur mission s'il existe, sinon
-  //    team=[]. Permet à un chef_equipe déjà membre de la team d'une mission
-  //    de voir automatiquement les interventions récurrentes sans intervention
-  //    manuelle (les filtres /m dépendent de `team` contains agent_id).
+  // 4b. Fetch missions' default_team[] + assigned_team_id — les interventions
+  //    générées héritent du team par défaut de leur mission (legacy) et de
+  //    l'assigned_team_id (V2). Sans assigned_team_id sur l'intervention générée,
+  //    listInterventionsVisibleToUser ne la retourne pas pour les chefs d'équipe
+  //    V2 dont la mission utilise assigned_team_id au lieu de default_team.
   const missionIdsForTeam = Array.from(new Set(templates.map((t) => t.mission_id)))
   const teamByMission = new Map<string, string[]>()
+  const assignedTeamByMission = new Map<string, string | null>()
   if (missionIdsForTeam.length > 0) {
     const { data: missionsTeam, error: mtErr } = await supabase
       .from('missions')
-      .select('id, default_team')
+      .select('id, default_team, assigned_team_id')
       .in('id', missionIdsForTeam)
     if (mtErr) throw mtErr
-    for (const m of missionsTeam ?? []) {
+    for (const m of (missionsTeam ?? []) as Array<{ id: string; default_team: unknown; assigned_team_id: string | null }>) {
       teamByMission.set(m.id, Array.isArray(m.default_team) ? m.default_team : [])
+      assignedTeamByMission.set(m.id, m.assigned_team_id ?? null)
     }
   }
 
@@ -381,6 +383,7 @@ export async function generateInterventionsFromTemplates(params: {
     planned_end: string | null
     status: InterventionStatus
     team: string[]
+    assigned_team_id?: string
   }
   const rowsToInsert: Row[] = []
 
@@ -402,6 +405,7 @@ export async function generateInterventionsFromTemplates(params: {
         ? tpl.slots
         : [null]
     const inheritedTeam = teamByMission.get(tpl.mission_id) ?? []
+    const inheritedAssignedTeamId = assignedTeamByMission.get(tpl.mission_id) ?? null
 
     for (const date of dates) {
       if (!matchesFrequency(tpl, date)) continue
@@ -422,6 +426,7 @@ export async function generateInterventionsFromTemplates(params: {
           planned_end: plannedEnd,
           status: 'planned',
           team: inheritedTeam,
+          ...(inheritedAssignedTeamId ? { assigned_team_id: inheritedAssignedTeamId } : {}),
           ...(orgId ? { organization_id: orgId } : {}),
         })
       }

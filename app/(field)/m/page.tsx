@@ -123,6 +123,48 @@ export default async function FieldHomePage({
   // (toutes les dates visibles dans le DateNav). Idempotente : UNIQUE constraint.
   if (agentSiteIds.length > 0) {
     await ensureTodayInterventionsForSites(agentSiteIds, 4)
+
+    // Backfill assigned_team_id sur les interventions générées AVANT le fix V2.
+    // Les templates généraient sans assigned_team_id ; sans ce champ,
+    // listInterventionsVisibleToUser ne les retourne pas. On corrige silencieusement
+    // les interventions planifiées dans la fenêtre visible (±1j→+7j) dont le
+    // assigned_team_id est manquant mais dont la mission l'a.
+    if (chefTeamIds.length > 0) {
+      try {
+        const fromBackfill = addDaysLocal(todayIso, -1)
+        const toBackfill = addDaysLocal(todayIso, 7)
+        // 1. Récupère les missions des sites avec leur assigned_team_id
+        const { data: missionRows } = await supabase
+          .from('missions')
+          .select('id, assigned_team_id')
+          .in('site_id', agentSiteIds)
+          .in('assigned_team_id', chefTeamIds)
+          .is('deleted_at', null)
+        const missionMap = new Map(
+          (missionRows ?? [])
+            .filter((m): m is { id: string; assigned_team_id: string } => !!m.assigned_team_id)
+            .map((m) => [m.id, m.assigned_team_id])
+        )
+        if (missionMap.size > 0) {
+          // 2. Corrige par batch de missions (1 UPDATE par mission pour éviter
+          //    d'écraser les interventions manuellement réaffectées)
+          await Promise.all(
+            Array.from(missionMap.entries()).map(([mId, teamId]) =>
+              supabase
+                .from('interventions')
+                .update({ assigned_team_id: teamId })
+                .eq('mission_id', mId)
+                .is('assigned_team_id', null)
+                .eq('status', 'planned')
+                .gte('scheduled_for', fromBackfill)
+                .lte('scheduled_for', toBackfill)
+            )
+          )
+        }
+      } catch {
+        // Silencieux — le backfill n'est pas critique pour le rendu
+      }
+    }
   }
 
   // Étape 3 — Fetch en parallèle : les records récurrents existent maintenant.
