@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -162,6 +162,31 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <ASavoirManager siteId={id} active={aSavoirActive} />
       )}
 
+      {/* Accès rapide — toujours visible, avant les onglets */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link
+          href={`/sites/${id}/journal`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          Journal
+        </Link>
+        <Link
+          href={`/sites/${id}/qr`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+        >
+          <QrCode className="h-3.5 w-3.5" />
+          QR Code
+        </Link>
+        <Link
+          href={`/memoire/${id}`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Atelier mémoire
+        </Link>
+      </div>
+
       {/* Navigation onglets — mobile uniquement */}
       <SiteTabsNav active={tab} siteId={id} />
 
@@ -297,27 +322,6 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         )}
       </div>
 
-      {/* V5.1 Slice 5 — Liens discrets bas de page */}
-      <div className="pt-2 border-t border-border/40 text-sm flex items-center gap-6">
-        <Link
-          href={`/sites/${id}/journal`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Journal du chantier →
-        </Link>
-        <Link
-          href={`/memoire/${id}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Atelier mémoire →
-        </Link>
-        <Link
-          href={`/sites/${id}/qr`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          QR Code →
-        </Link>
-      </div>
     </div>
   )
 }
