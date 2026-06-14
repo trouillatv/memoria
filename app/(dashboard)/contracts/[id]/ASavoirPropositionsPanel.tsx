@@ -57,11 +57,11 @@ export function ASavoirPropositionsPanel({
       <div>
         <h2 className="text-sm font-semibold inline-flex items-center gap-2 text-sky-900 dark:text-sky-200">
           <Lightbulb className="h-4 w-4" />
-          Mémoire du lieu proposée par l&apos;AO
+          Mémoire du lieu proposée par le dossier
           <span className="text-xs font-normal text-sky-800/70 dark:text-sky-200/60">({propositions.length})</span>
         </h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Savoir opérationnel détecté dans l&apos;AO. Choisissez le site concerné pour le transformer en « à savoir ».
+          Savoir opérationnel détecté dans le dossier. Choisissez le site concerné pour le transformer en « à savoir ».
         </p>
       </div>
 

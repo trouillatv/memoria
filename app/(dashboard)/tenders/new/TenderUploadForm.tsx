@@ -25,12 +25,12 @@ export function TenderUploadForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Nouvel appel d&apos;offres</CardTitle>
+        <CardTitle className="text-base">Nouveau dossier de démarrage</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Titre de l&apos;AO</Label>
+            <Label htmlFor="title">Titre du dossier</Label>
             <Input id="title" name="title" required maxLength={200} placeholder="Ex. Marché nettoyage CHU Toulouse 2026" />
           </div>
           <div className="space-y-2">

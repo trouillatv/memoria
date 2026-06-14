@@ -47,13 +47,13 @@ export function TenderMemoryPanel({ similarTenders }: Props) {
     <aside className="rounded-lg border bg-card p-4">
       <header className="mb-3">
         <h2 className="text-sm font-semibold mb-0.5 flex items-center gap-2">
-          Mémoire des AO similaires
+          Mémoire des dossiers similaires
           <span className="text-xs text-muted-foreground font-normal tabular-nums">
             {similarTenders.length}
           </span>
         </h2>
         <p className="text-xs text-muted-foreground">
-          AO comparables dans l&apos;historique
+          Dossiers comparables dans l&apos;historique
         </p>
       </header>
 

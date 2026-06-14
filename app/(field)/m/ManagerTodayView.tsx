@@ -11,7 +11,7 @@ import {
   Users,
   CheckCircle2,
   Clock,
-  AlertCircle,
+  AlertTriangle,
 } from 'lucide-react'
 import type { OrgTodaySite } from '@/lib/db/field-today'
 
@@ -30,6 +30,10 @@ function StatusPill({ status }: { status: string }) {
       {cfg.label}
     </span>
   )
+}
+
+function interventionActionLabel(status: string): string {
+  return status === 'planned' ? 'Démarrer' : 'Réouvrir'
 }
 
 interface Props {
@@ -74,39 +78,50 @@ export function ManagerTodayView({ sites, todayLabel }: Props) {
             {/* Interventions */}
             <ul className="divide-y divide-border/40">
               {site.interventions.map((intv) => (
-                <li key={intv.id}>
+                <li key={intv.id} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/20 active:bg-muted/30" style={{ minHeight: 72 }}>
+                  {/* Zone mission — lien vers la fiche mission */}
+                  <Link
+                    href={`/missions/${intv.missionId}`}
+                    className="flex-1 min-w-0 space-y-1 block"
+                  >
+                    <p className="font-medium text-sm truncate">{intv.missionName}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <StatusPill status={intv.status} />
+                      {intv.openAnomalyCount > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5"
+                          title={`${intv.openAnomalyCount} anomalie${intv.openAnomalyCount > 1 ? 's' : ''} ouverte${intv.openAnomalyCount > 1 ? 's' : ''}`}
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          {intv.openAnomalyCount}
+                        </span>
+                      )}
+                      {intv.teamName && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="h-3 w-3" />
+                          {intv.teamName}
+                        </span>
+                      )}
+                      {intv.plannedStart && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {new Date(intv.plannedStart).toLocaleTimeString('fr-FR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'Pacific/Noumea',
+                          })}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                  {/* Bouton accès intervention */}
                   <Link
                     href={`/m/intervention/${intv.id}`}
-                    className="flex items-center gap-3 px-4 py-3.5 active:bg-muted/40 transition-colors"
-                    style={{ minHeight: 72 }}
+                    className="shrink-0 flex items-center justify-center rounded-full bg-foreground text-background px-4 py-3 text-sm font-medium gap-1 active:opacity-70"
+                    style={{ minWidth: 80, minHeight: 56 }}
                   >
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <p className="font-medium text-sm truncate">{intv.missionName}</p>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <StatusPill status={intv.status} />
-                        {intv.teamName && (
-                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <Users className="h-3 w-3" />
-                            {intv.teamName}
-                          </span>
-                        )}
-                        {intv.plannedStart && (
-                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            {new Date(intv.plannedStart).toLocaleTimeString('fr-FR', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              timeZone: 'Pacific/Noumea',
-                            })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Gros bouton "Ouvrir" */}
-                    <div className="shrink-0 flex items-center justify-center rounded-full bg-foreground text-background px-4 py-3 text-sm font-medium gap-1" style={{ minWidth: 80, minHeight: 56 }}>
-                      {intv.status === 'in_progress' ? 'Reprendre' : 'Ouvrir'}
-                      <ArrowRight className="h-4 w-4" />
-                    </div>
+                    {interventionActionLabel(intv.status)}
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
                 </li>
               ))}
@@ -140,13 +155,6 @@ export function ManagerTodayView({ sites, todayLabel }: Props) {
         ))}
       </ul>
 
-      {/* Lien tableau de bord si rien à signaler */}
-      <p className="text-xs text-muted-foreground text-center pt-1">
-        Pour planifier et piloter :{' '}
-        <Link href="/dashboard" className="underline underline-offset-2 hover:text-foreground">
-          ouvrir le tableau de bord
-        </Link>
-      </p>
     </div>
   )
 }

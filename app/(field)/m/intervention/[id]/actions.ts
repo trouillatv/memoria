@@ -173,7 +173,17 @@ export async function uploadPhotoMobileAction(formData: FormData) {
 
 const createAnomalyMobileSchema = z.object({
   intervention_id: z.string().uuid(),
-  category: z.enum(['acces_bloque', 'materiel_casse', 'eau_coupee', 'produit_manquant', 'autre']),
+  category: z.enum([
+    'acces_bloque',
+    'eau_coupee',
+    'electricite_coupee',
+    'zone_non_prete',
+    'materiel_casse',
+    'danger_securite',
+    'livraison_probleme',
+    'produit_manquant',
+    'autre',
+  ]),
   category_other: z.string().max(140).optional(),
   description: z.string().max(2000).optional(),
 })
@@ -212,11 +222,20 @@ export async function ignoreAnomalyMobileAction(anomalyId: string): Promise<{ ok
   const auth = await requireFieldAgent()
   if ('error' in auth) return { error: 'Non autorisé' }
   const supabase = createAdminClient()
+
+  const { data: row } = await supabase
+    .from('intervention_anomalies')
+    .select('intervention_id')
+    .eq('id', anomalyId)
+    .maybeSingle()
+
   const { error } = await supabase
     .from('intervention_anomalies')
     .update({ status: 'ignored' })
     .eq('id', anomalyId)
   if (error) return { error: error.message }
+
+  if (row?.intervention_id) revalidatePath(`/m/intervention/${row.intervention_id}`)
   return { ok: true as const }
 }
 

@@ -63,6 +63,78 @@ export const BATISUD_TEAMS: BatiSudTeamSeed[] = [
   { name: 'Finitions structure', color: '#16a34a', icon: 'wrench' },
 ]
 
+export interface BatiSudTeamMemberSeed {
+  email: string
+  fullName: string
+  phone: string
+  teamName: string
+  referent?: boolean
+  commune: string
+  employmentType: 'cdi' | 'cdd' | 'cdi_chantier'
+}
+
+export const BATISUD_TEAM_MEMBERS: BatiSudTeamMemberSeed[] = [
+  {
+    email: BATISUD_CHEF_EMAIL,
+    fullName: 'Fred Martin',
+    phone: '+687701235',
+    teamName: 'Gros œuvre Nord',
+    referent: true,
+    commune: 'Dumbéa',
+    employmentType: 'cdi_chantier',
+  },
+  {
+    email: 'litia.batisud@memoria.nc',
+    fullName: 'Litia Wane',
+    phone: '+687701236',
+    teamName: 'Gros œuvre Nord',
+    commune: 'Païta',
+    employmentType: 'cdi',
+  },
+  {
+    email: 'manu.batisud@memoria.nc',
+    fullName: 'Manu Kotra',
+    phone: '+687701237',
+    teamName: 'Gros œuvre Nord',
+    commune: 'Mont-Dore',
+    employmentType: 'cdd',
+  },
+  {
+    email: 'sarah.batisud@memoria.nc',
+    fullName: 'Sarah Neko',
+    phone: '+687701238',
+    teamName: 'Sécurité & accès',
+    referent: true,
+    commune: 'Nouméa',
+    employmentType: 'cdi',
+  },
+  {
+    email: 'joel.batisud@memoria.nc',
+    fullName: 'Joël Tiaou',
+    phone: '+687701239',
+    teamName: 'Sécurité & accès',
+    commune: 'Dumbéa',
+    employmentType: 'cdi_chantier',
+  },
+  {
+    email: 'noemie.batisud@memoria.nc',
+    fullName: 'Noémie Bearune',
+    phone: '+687701240',
+    teamName: 'Finitions structure',
+    referent: true,
+    commune: 'Nouméa',
+    employmentType: 'cdi',
+  },
+  {
+    email: 'tino.batisud@memoria.nc',
+    fullName: 'Tino Waya',
+    phone: '+687701241',
+    teamName: 'Finitions structure',
+    commune: 'Païta',
+    employmentType: 'cdi_chantier',
+  },
+]
+
 export interface BatiSudMissionSeed {
   name: string
   cadence: MissionCadence
@@ -267,6 +339,17 @@ export function toIsoDate(baseDate: Date, dayOffset: number): string {
   const d = new Date(baseDate)
   d.setDate(d.getDate() + dayOffset)
   return d.toISOString().slice(0, 10)
+}
+
+function truncateForSiteNote(raw: string, maxLength: number): string {
+  const trimmed = raw.trim()
+  if (trimmed.length <= maxLength) return trimmed
+  return `${trimmed.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+}
+
+export function buildBatiSudSiteReturnNote(seed: BatiSudInterventionSeed): string {
+  const prefix = `Retour ${seed.title} : `
+  return `${prefix}${truncateForSiteNote(seed.notes, 140 - prefix.length)}`
 }
 
 export function buildBatiSudInterventionSeeds(baseDate = new Date()): BatiSudInterventionSeed[] {

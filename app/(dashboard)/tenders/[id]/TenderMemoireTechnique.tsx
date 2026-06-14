@@ -14,7 +14,7 @@ export function TenderMemoireTechnique({ tender, analysis }: TenderMemoireTechni
   if (!rawMemo) {
     return (
       <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground text-sm">
-        Aucun mémoire technique généré pour cet appel d&apos;offres.
+        Aucun mémoire technique généré pour ce dossier de démarrage.
       </div>
     )
   }

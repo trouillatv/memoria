@@ -101,6 +101,7 @@ describe('AddSiteNoteButton — soumission', () => {
     })
     // Après succès → form fermé.
     expect(screen.queryByTestId('add-site-note-form')).not.toBeInTheDocument()
+    expect(screen.getByText(/code accès cuisine changé : 4521/i)).toBeInTheDocument()
   })
 
   it('server retourne { ok: false, error } → message d\'erreur affiché, form reste ouvert', async () => {

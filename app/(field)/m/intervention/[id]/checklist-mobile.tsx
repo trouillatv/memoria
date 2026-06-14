@@ -103,7 +103,10 @@ export function ChecklistMobile({
   }
 
   function toggle(item: DbInterventionChecklistItem) {
-    if (!canEdit) return
+    if (!canEdit) {
+      toast.error('Démarrez l’intervention avant de cocher les tâches.')
+      return
+    }
     const currentDone = optimistic[item.id] !== undefined ? optimistic[item.id] : item.done
     const newDone = !currentDone
     // Optimistic UI immediat — bascule instantanee cote utilisateur
@@ -156,8 +159,10 @@ export function ChecklistMobile({
               <button
                 type="button"
                 onClick={() => toggle(item)}
-                disabled={!canEdit}
-                className="w-full flex items-center gap-3 text-left active:bg-muted/50 disabled:opacity-70 -m-1 p-1 rounded-lg"
+                aria-disabled={!canEdit}
+                className={`w-full flex items-center gap-3 text-left active:bg-muted/50 -m-1 p-1 rounded-lg ${
+                  canEdit ? '' : 'opacity-70'
+                }`}
                 style={{ minHeight: 52 }}
               >
                 <span

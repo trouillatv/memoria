@@ -1,18 +1,15 @@
 'use client'
 
 // Bouton feedback flottant — desktop uniquement (Vincent 2026-05-21).
-// Posé dans app/(dashboard)/layout.tsx pour apparaître sur toutes les pages
-// manager/admin. Pas sur mobile chef (/m) par choix explicite.
-//
-// UX :
-//   - Bouton rond fixed bottom-right
-//   - Click → dialog centré avec textarea + compteur + page actuelle
-//   - Submit → POST /api/feedback
-//   - Toast succès / erreur selon la raison
+// Mise à jour 2026-06-14 :
+//   - Capture d'écran : coller avec Ctrl+V dans le dialog
+//   - Pièce jointe : bouton "Joindre une image" (file input, images uniquement)
+//   - Prévisualisation des images avant envoi (max 3, 5 Mo chacune)
+//   - Envoi en FormData pour supporter les fichiers
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { usePathname } from 'next/navigation'
-import { MessageSquare, X } from 'lucide-react'
+import { ImagePlus, MessageSquare, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -25,22 +22,30 @@ import {
 import { Button } from '@/components/ui/button'
 
 const MAX_LENGTH = 2000
+const MAX_ATTACHMENTS = 3
+const MAX_FILE_BYTES = 5 * 1024 * 1024  // 5 Mo
 const HINT_SEEN_KEY = 'memoria.feedbackHintSeen'
+
+interface Attachment {
+  file: File
+  preview: string  // Object URL temporaire pour la miniature
+}
 
 export function FeedbackButton() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [pending, startTransition] = useTransition()
-  // Nudge d'accueil : une seule fois (mémorisé), invite à signaler bug/idée.
   const [showHint, setShowHint] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
       if (localStorage.getItem(HINT_SEEN_KEY)) return
-    } catch { /* localStorage indispo : on montre le nudge quand même */ }
-    const t = setTimeout(() => setShowHint(true), 1500) // laisse la page se poser
+    } catch { /* localStorage indispo */ }
+    const t = setTimeout(() => setShowHint(true), 1500)
     return () => clearTimeout(t)
   }, [])
 
@@ -51,6 +56,45 @@ export function FeedbackButton() {
 
   function reset() {
     setMessage('')
+    setAttachments((prev) => {
+      prev.forEach((a) => URL.revokeObjectURL(a.preview))
+      return []
+    })
+  }
+
+  function addFiles(files: FileList | File[]) {
+    const toAdd = Array.from(files)
+      .filter((f) => f.type.startsWith('image/') && f.size > 0 && f.size <= MAX_FILE_BYTES)
+      .slice(0, MAX_ATTACHMENTS - attachments.length)
+    if (!toAdd.length) {
+      const oversized = Array.from(files).some((f) => f.size > MAX_FILE_BYTES)
+      if (oversized) toast.error('Image trop lourde (max 5 Mo).')
+      return
+    }
+    setAttachments((prev) => [
+      ...prev,
+      ...toAdd.map((f) => ({ file: f, preview: URL.createObjectURL(f) })),
+    ])
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => {
+      URL.revokeObjectURL(prev[index].preview)
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    if (attachments.length >= MAX_ATTACHMENTS) return
+    const images = Array.from(e.clipboardData.items)
+      .filter((item) => item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null)
+    if (images.length > 0) {
+      e.preventDefault()
+      addFiles(images)
+      toast.success('Capture collée.')
+    }
   }
 
   function submit() {
@@ -58,14 +102,12 @@ export function FeedbackButton() {
     if (!trimmed) return
     startTransition(async () => {
       try {
-        const res = await fetch('/api/feedback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: trimmed,
-            page: pathname,
-          }),
-        })
+        const fd = new FormData()
+        fd.set('message', trimmed)
+        fd.set('page', pathname)
+        attachments.forEach((a) => fd.append('files', a.file))
+
+        const res = await fetch('/api/feedback', { method: 'POST', body: fd })
         const data = (await res.json().catch(() => null)) as
           | { ok?: boolean; reason?: string }
           | null
@@ -81,7 +123,7 @@ export function FeedbackButton() {
           } else if (reason === 'empty_message') {
             toast.error('Le message est vide.')
           } else {
-            toast.error('Erreur lors de l’envoi. Réessaie.')
+            toast.error('Erreur lors de l\'envoi. Réessaie.')
           }
           return
         }
@@ -96,7 +138,7 @@ export function FeedbackButton() {
 
   return (
     <>
-      {/* Nudge d'accueil — invite à signaler bug/idée. Une seule fois, desktop. */}
+      {/* Nudge d'accueil — une seule fois */}
       {showHint && !open && (
         <div className="hidden md:block fixed bottom-[5.5rem] right-6 z-40 w-64 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
           <div className="relative rounded-xl border bg-popover text-popover-foreground shadow-xl ring-1 ring-foreground/5">
@@ -118,7 +160,6 @@ export function FeedbackButton() {
                 Dis-le-moi directement ici&nbsp;— je lis tous les retours.
               </p>
             </button>
-            {/* flèche pointant vers la bulle, en bas à droite */}
             <span className="absolute -bottom-1.5 right-6 h-3 w-3 rotate-45 rounded-[2px] border-b border-r bg-popover" />
           </div>
         </div>
@@ -131,7 +172,6 @@ export function FeedbackButton() {
         title="Envoyer un retour"
         className="hidden md:inline-flex fixed bottom-6 right-6 z-40 items-center justify-center h-11 w-11 rounded-full bg-foreground text-background shadow-lg hover:scale-105 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {/* halo doux tant que le nudge est visible, pour attirer l'œil */}
         {showHint && (
           <span className="absolute inset-0 rounded-full bg-foreground/20 motion-safe:animate-ping" aria-hidden />
         )}
@@ -145,33 +185,89 @@ export function FeedbackButton() {
           if (!next) reset()
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        {/* onPaste sur le DialogContent capture Ctrl+V même hors du textarea */}
+        <DialogContent className="sm:max-w-md" onPaste={handlePaste}>
           <DialogHeader>
             <DialogTitle>Envoyer un retour</DialogTitle>
             <DialogDescription>
-              Un bug, une suggestion, une frustration ? On lit tout. Pas de réponse
-              automatique — l’admin traite manuellement.
+              Un bug, une suggestion, une frustration&nbsp;? On lit tout.
+              Joins une capture d&apos;écran avec <kbd className="font-mono text-[10px] border rounded px-1">Ctrl+V</kbd> ou le bouton ci-dessous.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value.slice(0, MAX_LENGTH))}
               placeholder="Décris ce qui ne va pas ou ce que tu voudrais voir…"
-              rows={6}
+              rows={5}
               disabled={pending}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y min-h-[120px]"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y min-h-[100px]"
               autoFocus
             />
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span className="font-mono truncate">{pathname}</span>
+
+            {/* Miniatures des pièces jointes */}
+            {attachments.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {attachments.map((a, i) => (
+                  <div key={i} className="relative group w-16 h-16 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.preview}
+                      alt={`Pièce jointe ${i + 1}`}
+                      className="w-16 h-16 object-cover rounded border border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Retirer l'image"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Bouton joindre image */}
+                {attachments.length < MAX_ATTACHMENTS && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={pending}
+                    title="Joindre une image — ou colle avec Ctrl+V"
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded border px-2 py-1 shrink-0 transition-colors disabled:opacity-40"
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    {attachments.length === 0
+                      ? 'Joindre une image'
+                      : `+ image (${attachments.length}/${MAX_ATTACHMENTS})`}
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) addFiles(e.target.files)
+                    e.target.value = ''  // reset pour permettre de re-sélectionner le même fichier
+                  }}
+                />
+                <span className="text-[10px] font-mono text-muted-foreground/60 truncate">
+                  {pathname}
+                </span>
+              </div>
               <span
-                className={
+                className={`tabular-nums text-[11px] shrink-0 ${
                   message.length > MAX_LENGTH * 0.9
-                    ? 'text-amber-700 dark:text-amber-300 tabular-nums'
-                    : 'tabular-nums'
-                }
+                    ? 'text-amber-700 dark:text-amber-300'
+                    : 'text-muted-foreground'
+                }`}
               >
                 {message.length} / {MAX_LENGTH}
               </span>

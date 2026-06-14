@@ -52,7 +52,7 @@ export default async function DocumentViewerPage({
   const { from } = await searchParams
   const safeFrom = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : null
   const backHref = safeFrom ?? '/documents'
-  const backLabel = safeFrom?.startsWith('/tenders/') ? "Retour à l'appel d'offres" : 'Bibliothèque documentaire'
+  const backLabel = safeFrom?.startsWith('/tenders/') ? 'Retour au dossier de démarrage' : 'Bibliothèque documentaire'
 
   // Auth + rôle
   const supabase = await createServerClient()
@@ -97,7 +97,7 @@ export default async function DocumentViewerPage({
     team: lTeams.map((t) => ({ id: t.id, label: t.name })),
   }
   const TARGET_LABEL: Record<string, string> = {
-    contract: 'Contrat', site: 'Site', client: 'Client', tender: 'AO', team: 'Équipe',
+    contract: 'Contrat', site: 'Site', client: 'Client', tender: 'Dossier', team: 'Équipe',
   }
   const TIER_LABEL: Record<string, string> = {
     vivante: 'Vivante', consultable: 'Consultable', froide: 'Froide',

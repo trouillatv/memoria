@@ -34,9 +34,14 @@ function fmtDateShort(iso: string | null): string {
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
-  materiel_casse: 'Matériel cassé',
+  materiel_casse: 'Matériel manquant',
   produit_manquant: 'Produit manquant',
-  acces_bloque: 'Accès bloqué',
+  acces_bloque: 'Accès impossible',
+  eau_coupee: 'Eau coupée',
+  electricite_coupee: 'Électricité coupée',
+  zone_non_prete: 'Zone non prête',
+  danger_securite: 'Danger / sécurité',
+  livraison_probleme: 'Livraison problème',
   retard: 'Retard',
   autre: 'Autre',
   // tolère les valeurs hors enum classique sans casser
@@ -49,7 +54,7 @@ const DOC_TYPE_LABEL: Record<string, string> = {
   protocole: 'Protocole',
   plan_acces: 'Plan d’accès',
   securite: 'Sécurité',
-  ao: 'AO',
+  ao: 'Dossier de démarrage',
   memoire_technique: 'Mémoire technique',
   reference: 'Référence',
   facture: 'Facture',

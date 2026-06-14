@@ -53,7 +53,7 @@ export const NAV: NavItem[] = [
   // Intervenants gated ENV INTERVENANTS_PAGE_ENABLED ; le lien reste visible
   // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
   { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
-  { href: '/tenders',    label: "Appels d'offres",        icon: FileText,      roles: ['admin', 'manager'] },
+  { href: '/tenders',    label: 'Dossiers de démarrage',  icon: FileText,      roles: ['admin', 'manager'] },
   // Passages de témoin — inclut désormais le radar « À anticiper » (fins de
   // contrat). Fusion 2026-05-27 de l'ancienne entrée « Continuité » (redondante,
   // source de confusion) ; /continuite redirige ici.

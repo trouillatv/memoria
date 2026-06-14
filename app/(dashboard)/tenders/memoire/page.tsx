@@ -101,16 +101,16 @@ export default async function TenderMemoirePage({ searchParams }: PageProps) {
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-3 w-3" />
-          Retour aux AO en cours
+          Retour aux dossiers en cours
         </Link>
-        <h1 className="text-2xl font-semibold">Mémoire des AO</h1>
+        <h1 className="text-2xl font-semibold">Mémoire des dossiers</h1>
         <p className="text-sm text-muted-foreground">
-          Journal des appels d&apos;offres finalisés. Gagnés, perdus, retirés, sans réponse.
+          Journal des dossiers de démarrage finalisés. Gagnés, perdus, retirés, sans réponse.
         </p>
       </header>
 
       <FiltersBar
-        searchPlaceholder="Rechercher un AO ou un client…"
+        searchPlaceholder="Rechercher un dossier ou un client…"
         hasActiveFilters={hasActiveFilters}
         resetParams={['outcome', 'tag', 'search']}
       >
@@ -134,13 +134,13 @@ export default async function TenderMemoirePage({ searchParams }: PageProps) {
             <EmptyState
               icon={History}
               title={hasActiveFilters
-                ? 'Aucun AO ne correspond'
-                : "Aucun AO finalisé pour l'instant"
+                ? 'Aucun dossier ne correspond'
+                : "Aucun dossier finalisé pour l'instant"
               }
               description={
                 hasActiveFilters
                   ? "Essayez d'autres filtres pour parcourir la mémoire."
-                  : "Les AO clôturés (gagnés, perdus, retirés, sans réponse) apparaîtront ici. La mémoire se construit avec le temps."
+                  : "Les dossiers clôturés (gagnés, perdus, retirés, sans réponse) apparaîtront ici. La mémoire se construit avec le temps."
               }
               primaryAction={
                 hasActiveFilters ? (
@@ -160,7 +160,7 @@ export default async function TenderMemoirePage({ searchParams }: PageProps) {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
-                {total} AO finalisé{total > 1 ? 's' : ''}
+                {total} dossier{total > 1 ? 's' : ''} finalisé{total > 1 ? 's' : ''}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">

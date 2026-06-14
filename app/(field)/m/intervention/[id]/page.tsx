@@ -42,11 +42,20 @@ import {
   getSiteHumanContinuity,
   getSiteTransmissionReadings,
 } from '@/lib/db/site-cockpit'
+import { todayLocalIso } from '@/lib/time/local-date'
+import { DateNav } from '../../DateNav'
 
 export const dynamic = 'force-dynamic'
 
-export default async function FieldInterventionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function FieldInterventionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams?: Promise<{ date?: string }>
+}) {
   const { id } = await params
+  const query = searchParams ? await searchParams : {}
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
@@ -155,6 +164,10 @@ export default async function FieldInterventionPage({ params }: { params: Promis
   // Date civile pure (scheduled_for), JAMAIS scheduled_at (timestamp UTC dérivé
   // du créneau → décale d'un jour en Nouméa pour le créneau "soir").
   const civil = intervention.scheduled_for ?? intervention.scheduled_at.slice(0, 10)
+  const todayIso = todayLocalIso()
+  const selectedDate = query.date && /^\d{4}-\d{2}-\d{2}$/.test(query.date)
+    ? query.date
+    : civil
   const scheduledDate = new Date(civil + 'T00:00:00.000Z')
   const dateLabel = scheduledDate.toLocaleDateString('fr-FR', {
     weekday: 'long',
@@ -209,18 +222,22 @@ export default async function FieldInterventionPage({ params }: { params: Promis
 
   return (
     <div className="space-y-5 max-w-md">
-      <SmartBackLink fallbackHref="/m" label="Retour" size="md" />
+      <DateNav todayIso={todayIso} selectedIso={selectedDate} basePath={`/m/intervention/${id}`} />
+
+      <SmartBackLink fallbackHref={`/m?date=${selectedDate}`} label="Retour" size="md" />
 
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold">{site?.name ?? 'Intervention'}</h1>
+        <h1 className="text-xl font-semibold">
+          {mission?.name ?? site?.name ?? 'Intervention'}
+        </h1>
         {site && (
-          <div className="flex items-start gap-1.5 text-base text-muted-foreground">
-            <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <div className="min-w-0">
-              {mission && <div>{mission.name}</div>}
-              {site.address && <div className="text-sm">{site.address}</div>}
+              <div>{site.name}</div>
+              {site.address && <div>{site.address}</div>}
               {site.notes && (
-                <div className="text-sm italic text-muted-foreground mt-1 whitespace-pre-wrap">
+                <div className="italic mt-1 whitespace-pre-wrap">
                   {site.notes}
                 </div>
               )}
@@ -345,12 +362,12 @@ export default async function FieldInterventionPage({ params }: { params: Promis
         items={checklistItems}
         serverPhotos={photos}
         signedUrls={signedUrls}
-        canEdit={isInProgress || isAdmin}
+        canEdit={isInProgress}
       />
 
       <VoiceNoteList notes={voiceNotesWithUrls} />
 
-      <AnomalyList anomalies={anomalies} />
+      <AnomalyList anomalies={anomalies} canDelete={isInProgress} />
 
       {isInProgress && (
         <div className="space-y-3 mt-6">

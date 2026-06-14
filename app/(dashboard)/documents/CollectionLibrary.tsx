@@ -36,7 +36,7 @@ export interface LibGroup {
 }
 
 const TIER_LABEL: Record<string, string> = { vivante: 'Vivante', consultable: 'Consultable', froide: 'Froide' }
-const TARGET_LABEL: Record<string, string> = { contract: 'Contrat', site: 'Site', client: 'Client', tender: 'AO', team: 'Équipe' }
+const TARGET_LABEL: Record<string, string> = { contract: 'Contrat', site: 'Site', client: 'Client', tender: 'Dossier', team: 'Équipe' }
 
 function fmtAddedDate(iso: string | null): string {
   if (!iso) return '—'

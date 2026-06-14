@@ -1,14 +1,14 @@
 'use client'
 
-// Strip de navigation de date : 7 jours centrés sur "aujourd'hui" (J-3 → J+3).
-// Chaque case = bouton cliquable qui navigue vers `?date=YYYY-MM-DD`.
-// Doctrine mobile : tap-friendly, sobre, calé en haut sous le header.
+// Strip de navigation de date : 7 jours centres sur "aujourd'hui" (J-3 -> J+3).
+// Par defaut, chaque case navigue dans /m. Une page detail peut passer basePath
+// pour conserver sa route quand on change de jour.
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
 const FR_DAYS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.']
-const FR_MONTHS = ['jan.', 'fév.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+const FR_MONTHS = ['jan.', 'fev.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'aout', 'sept.', 'oct.', 'nov.', 'dec.']
 
 function dateUtcOf(iso: string): Date {
   const [y, m, d] = iso.split('-').map(Number)
@@ -22,14 +22,14 @@ function addDaysIso(iso: string, days: number): string {
 }
 
 interface Props {
-  todayIso: string                  // aujourd'hui (zone Nouméa) — depuis le serveur
-  selectedIso: string               // date sélectionnée (= todayIso par défaut)
+  todayIso: string
+  selectedIso: string
+  basePath?: string
 }
 
-export function DateNav({ todayIso, selectedIso }: Props) {
+export function DateNav({ todayIso, selectedIso, basePath = '/m' }: Props) {
   const params = useSearchParams()
 
-  // Construire la liste J-3 → J+3
   const days = [-3, -2, -1, 0, 1, 2, 3].map((offset) => {
     const iso = addDaysIso(todayIso, offset)
     const d = dateUtcOf(iso)
@@ -48,7 +48,7 @@ export function DateNav({ todayIso, selectedIso }: Props) {
     if (iso === todayIso) p.delete('date')
     else p.set('date', iso)
     const q = p.toString()
-    return q ? `/m?${q}` : '/m'
+    return q ? `${basePath}?${q}` : basePath
   }
 
   return (

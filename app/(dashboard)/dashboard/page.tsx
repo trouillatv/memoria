@@ -1,4 +1,4 @@
-// /dashboard — « Collapse » éditorial (Vincent 2026-05-22).
+﻿// /dashboard — « Collapse » éditorial (Vincent 2026-05-22).
 //
 // MemorIA n'est pas un dashboard de supervision : c'est un système de
 // surgissement contextuel. La page « apparaît au bon moment, puis se retire ».
@@ -539,8 +539,8 @@ function Hero({
       tone: 'ao',
       title:
         tendersDueSoon.length === 1
-          ? `Un appel d'offres doit être remis ${relDays(nearest.daysUntilDeadline)}.`
-          : `${tendersDueSoon.length} appels d'offres à rendre cette semaine.`,
+          ? `Un dossier de démarrage doit être remis ${relDays(nearest.daysUntilDeadline)}.`
+          : `${tendersDueSoon.length} dossiers de démarrage à rendre cette semaine.`,
       body:
         tendersDueSoon.length === 1
           ? nearest.client_name
@@ -548,7 +548,7 @@ function Hero({
             : `« ${nearest.title} »`
           : `Le plus proche : « ${nearest.title} » ${relDays(nearest.daysUntilDeadline)}.`,
       href: '/tenders',
-      linkLabel: 'Voir les AO',
+      linkLabel: 'Voir les dossiers',
     })
   }
 
@@ -744,7 +744,7 @@ const FAMILY_META: Record<
     textColor: 'text-foreground',
   },
   ao: {
-    label: 'Appels d’offres',
+    label: 'Dossiers de démarrage',
     icon: FileText,
     box: 'border-violet-200/70 bg-violet-50/25 dark:border-violet-900/30 dark:bg-violet-950/15',
     iconColor: 'text-violet-600',

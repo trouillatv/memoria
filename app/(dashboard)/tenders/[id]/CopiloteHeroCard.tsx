@@ -14,7 +14,7 @@ export const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
   {
     label: 'Risques cachés',
     icon: ShieldAlert,
-    prompt: 'Quels sont les 3 risques cachés de cet AO que je n\'ai peut-être pas vus ?',
+    prompt: 'Quels sont les 3 risques cachés de ce dossier que je n\'ai peut-être pas vus ?',
     agents: ['contradicteur'],
   },
   {
@@ -38,7 +38,7 @@ export const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
   {
     label: 'Synthèse 5 points',
     icon: ListChecks,
-    prompt: 'Donne-moi les 5 points-clés à retenir absolument pour répondre à cet AO.',
+    prompt: 'Donne-moi les 5 points-clés à retenir absolument pour répondre à ce dossier.',
     agents: ['general', 'lecteur_ao'],
   },
   {
@@ -76,7 +76,7 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, agentRea
             <Sparkles className="h-4 w-4 text-amber-700" />
           </div>
           <div className="flex-1 space-y-1">
-            <h3 className="text-sm font-semibold text-amber-900">Aucun expert n&apos;a encore analysé cet AO</h3>
+            <h3 className="text-sm font-semibold text-amber-900">Aucun expert n&apos;a encore analysé ce dossier</h3>
             <p className="text-xs text-amber-800/80">
               Générez les avis depuis le panneau latéral gauche, puis revenez ici pour interroger les experts.
             </p>
@@ -88,7 +88,7 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, agentRea
             <Sparkles className="h-4 w-4 text-blue-700" />
           </div>
           <div className="flex-1 space-y-1">
-            <h3 className="text-sm font-semibold text-blue-900">{agentReadyCount}/{TOTAL_AGENTS} experts ont analysé cet AO</h3>
+            <h3 className="text-sm font-semibold text-blue-900">{agentReadyCount}/{TOTAL_AGENTS} experts ont analysé ce dossier</h3>
             <p className="text-xs text-blue-800/80">
               Analyse partielle disponible. Vous pouvez déjà interroger les experts prêts, ou générer les analyses manquantes depuis le panneau gauche.
             </p>
@@ -100,7 +100,7 @@ export function CopiloteHeroCard({ tenderTitle: _tenderTitle, analysis, agentRea
             <Sparkles className="h-4 w-4 text-emerald-700" />
           </div>
           <div className="flex-1 space-y-1">
-            <h3 className="text-sm font-semibold">Vos {TOTAL_AGENTS} agents IA ont lu cet AO</h3>
+            <h3 className="text-sm font-semibold">Vos {TOTAL_AGENTS} agents IA ont lu ce dossier</h3>
             <p className="text-xs text-muted-foreground">
               Première lecture terminée. Demandez-leur de creuser un point précis ci-dessous, ou posez votre propre question.
             </p>

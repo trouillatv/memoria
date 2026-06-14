@@ -230,7 +230,7 @@ export default async function TenderDetailPage({
                 </p>
                 <p className="text-sm text-rose-800 mt-2">
                   <strong>Solution :</strong> ouvrez le PDF dans Word ou Pages, copiez le texte, recreez un PDF texte, puis re-uploadez via{' '}
-                  <Link href="/tenders/new" className="underline font-medium">Nouveau AO</Link>.
+                  <Link href="/tenders/new" className="underline font-medium">Nouveau dossier</Link>.
                 </p>
               </>
             ) : tender.error_msg === 'analyze_timeout' ? (
@@ -306,7 +306,7 @@ export default async function TenderDetailPage({
         {/* Edge case : ready mais pas d'analyse */}
         {isReady && !analysis && view !== 'atelier' && (
           <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground text-sm">
-            Aucune analyse disponible pour cet appel d&apos;offres.
+            Aucune analyse disponible pour ce dossier de démarrage.
             {canRelaunch && ' Vous pouvez relancer l\'analyse via les actions dans la barre latérale.'}
           </div>
         )}

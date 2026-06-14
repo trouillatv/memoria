@@ -211,7 +211,7 @@ function Step2({
 
       {engagements.length === 0 ? (
         <p className="text-sm text-muted-foreground rounded border-dashed border p-3">
-          Aucun engagement extrait. Vous pouvez continuer et créer le contrat — vous pourrez extraire les engagements plus tard depuis la page de l&apos;AO.
+          Aucun engagement extrait. Vous pouvez continuer et créer le contrat — vous pourrez extraire les engagements plus tard depuis la page du dossier.
         </p>
       ) : (
         <EngagementCurationView engagements={engagements} />

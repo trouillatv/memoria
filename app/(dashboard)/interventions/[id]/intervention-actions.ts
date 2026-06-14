@@ -217,7 +217,17 @@ export async function uploadInterventionPhotoAction(formData: FormData) {
 
 const createAnomalySchema = z.object({
   intervention_id: z.string().uuid(),
-  category: z.enum(['eau_coupee', 'materiel_casse', 'acces_bloque', 'produit_manquant', 'autre']),
+  category: z.enum([
+    'acces_bloque',
+    'eau_coupee',
+    'electricite_coupee',
+    'zone_non_prete',
+    'materiel_casse',
+    'danger_securite',
+    'livraison_probleme',
+    'produit_manquant',
+    'autre',
+  ]),
   category_other: z.string().max(100).optional(),
   description: z.string().max(2000).optional(),
 })

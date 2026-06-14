@@ -1,8 +1,12 @@
 export const ANOMALY_CATEGORY_LABELS: Record<string, string> = {
   acces_bloque: 'Accès impossible',
-  materiel_casse: 'Matériel manquant ou cassé',
   eau_coupee: 'Eau coupée',
-  produit_manquant: 'Zone sale avant intervention',
+  electricite_coupee: 'Électricité coupée',
+  zone_non_prete: 'Zone non prête',
+  materiel_casse: 'Matériel manquant',
+  danger_securite: 'Danger / sécurité',
+  livraison_probleme: 'Livraison problème',
+  produit_manquant: 'Produit manquant',
   autre: 'Autre',
 }
 

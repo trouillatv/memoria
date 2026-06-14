@@ -52,8 +52,8 @@ export function TendersDueSoonAlertWidget({ tenders }: Props) {
           />
           <h3 className="text-sm font-semibold text-red-900 dark:text-red-100">
             {tenders.length === 1
-              ? '1 AO à rendre dans les 7 jours'
-              : `${tenders.length} AO à rendre dans les 7 jours`}
+              ? '1 dossier à rendre dans les 7 jours'
+              : `${tenders.length} dossiers à rendre dans les 7 jours`}
           </h3>
         </div>
         <ul className="space-y-2">

@@ -98,7 +98,7 @@ export async function TerrainMatchingSection({
               Mémoire terrain
             </h2>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Traces de vos missions existantes reliées aux exigences de cet AO — matériaux de réponse, pas des preuves définitives.
+              Traces de vos missions existantes reliées aux exigences de ce dossier — matériaux de réponse, pas des preuves définitives.
             </p>
           </div>
           <span className="text-xs text-muted-foreground shrink-0 ml-2">
@@ -147,7 +147,7 @@ export async function TerrainMatchingSection({
             Mémoire terrain
           </h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
-            Traces de vos missions existantes reliées à cet AO — matériaux de réponse, pas des preuves définitives.
+            Traces de vos missions existantes reliées à ce dossier — matériaux de réponse, pas des preuves définitives.
           </p>
         </div>
         <span className="text-xs text-muted-foreground shrink-0 ml-2">
@@ -172,7 +172,7 @@ function EmptyState() {
   return (
     <section className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
       <p className="text-xs font-semibold uppercase tracking-widest mb-1">Mémoire terrain</p>
-      <p>Aucune trace terrain concordante trouvée pour cet appel d'offres.</p>
+      <p>Aucune trace terrain concordante trouvée pour ce dossier de démarrage.</p>
     </section>
   )
 }

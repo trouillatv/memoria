@@ -28,6 +28,9 @@ interface FeedbackEntry {
   /** Nom complet ou email de l'auteur (chargé via join). */
   author_label: string
   author_role: string
+  attachment_paths: string[]
+  /** Signed URLs générées server-side pour afficher les miniatures (1h TTL). */
+  attachment_urls: string[]
 }
 
 export default async function AdminFeedbackPage({
@@ -57,7 +60,7 @@ export default async function AdminFeedbackPage({
       .eq('status', 'spam'),
     admin
       .from('feedback')
-      .select('id, user_id, message, page, user_agent, status, created_at, author:users(full_name, email, role)')
+      .select('id, user_id, message, page, user_agent, status, created_at, attachment_paths, author:users(full_name, email, role)')
       .eq('status', filter)
       .order('created_at', { ascending: false })
       .limit(500),
@@ -78,6 +81,7 @@ export default async function AdminFeedbackPage({
     user_agent: string | null
     status: FeedbackStatus
     created_at: string
+    attachment_paths: string[] | null
     author: { full_name: string | null; email: string; role: string } | Array<{ full_name: string | null; email: string; role: string }> | null
   }
   const pickOne = <T,>(v: T | T[] | null | undefined): T | null => {
@@ -85,8 +89,21 @@ export default async function AdminFeedbackPage({
     return Array.isArray(v) ? (v[0] as T) ?? null : v
   }
 
+  // Génère les signed URLs pour toutes les pièces jointes (1h TTL, batch)
+  const allPaths = ((listRes.data ?? []) as Row[]).flatMap((r) => r.attachment_paths ?? [])
+  const signedUrlMap = new Map<string, string>()
+  if (allPaths.length > 0) {
+    const { data: signed } = await admin.storage
+      .from('feedback-attachments')
+      .createSignedUrls(allPaths, 3600)
+    ;(signed ?? []).forEach((s) => {
+      if (s.signedUrl && s.path) signedUrlMap.set(s.path, s.signedUrl)
+    })
+  }
+
   const entries: FeedbackEntry[] = ((listRes.data ?? []) as Row[]).map((r) => {
     const author = pickOne(r.author) as { full_name: string | null; email: string; role: string } | null
+    const paths = r.attachment_paths ?? []
     return {
       id: r.id,
       user_id: r.user_id,
@@ -95,6 +112,8 @@ export default async function AdminFeedbackPage({
       user_agent: r.user_agent,
       status: r.status,
       created_at: r.created_at,
+      attachment_paths: paths,
+      attachment_urls: paths.map((p) => signedUrlMap.get(p) ?? '').filter(Boolean),
       author_label: author?.full_name ?? author?.email ?? 'Utilisateur inconnu',
       author_role: author?.role ?? '—',
     }

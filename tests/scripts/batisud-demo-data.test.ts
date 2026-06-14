@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BATISUD_SITES,
+  BATISUD_TEAM_MEMBERS,
+  BATISUD_TEAMS,
   buildBatiSudInterventionSeeds,
+  buildBatiSudSiteReturnNote,
   toIsoDate,
 } from '@/scripts/dev/batisud-demo-data'
 
@@ -38,5 +41,29 @@ describe('BatiSud demo seed data', () => {
     expect(futureDates.every((date) => date <= '2026-06-27')).toBe(true)
     expect(pastDates.every((date) => date >= '2026-05-24')).toBe(true)
     expect(pastDates.every((date) => date <= '2026-06-06')).toBe(true)
+  })
+
+  it('provides named members and one referent for every BatiSud team', () => {
+    const teamNames = new Set(BATISUD_TEAMS.map((team) => team.name))
+    const memberTeamNames = new Set(BATISUD_TEAM_MEMBERS.map((member) => member.teamName))
+
+    expect(memberTeamNames).toEqual(teamNames)
+
+    for (const team of BATISUD_TEAMS) {
+      const members = BATISUD_TEAM_MEMBERS.filter((member) => member.teamName === team.name)
+      expect(members.length).toBeGreaterThanOrEqual(2)
+      expect(members.filter((member) => member.referent)).toHaveLength(1)
+      expect(members.every((member) => member.email.endsWith('@memoria.nc'))).toBe(true)
+    }
+  })
+
+  it('keeps generated return notes compatible with site_notes constraints', () => {
+    const seeds = buildBatiSudInterventionSeeds(baseDate)
+
+    for (const seed of seeds.filter((item) => item.dayOffset < 0)) {
+      const note = buildBatiSudSiteReturnNote(seed)
+      expect(note.length).toBeLessThanOrEqual(140)
+      expect(note).toContain(seed.title)
+    }
   })
 })

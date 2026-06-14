@@ -24,7 +24,7 @@ export function ContractVigilancePanel({ vigilances }: { vigilances: DbEngagemen
     <section className="rounded-lg border border-amber-200 bg-amber-50/30 dark:bg-amber-950/15 p-4 space-y-3">
       <h2 className="text-sm font-semibold inline-flex items-center gap-2 text-amber-900 dark:text-amber-200">
         <ShieldAlert className="h-4 w-4" />
-        Points de vigilance issus de l&apos;AO
+        Points de vigilance issus du dossier
         <span className="text-xs font-normal text-amber-800/70 dark:text-amber-200/60">
           ({vigilances.length})
         </span>

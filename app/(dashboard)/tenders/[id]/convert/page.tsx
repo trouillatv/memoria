@@ -19,15 +19,15 @@ export default async function ConvertPage({ params }: { params: Promise<{ id: st
             Conversion impossible
           </h2>
           <p className="text-sm text-rose-800">
-            Cet AO est en status <strong>{tender.status}</strong>.
-            La conversion en contrat n&apos;est possible que pour les AO finalisés
+            Ce dossier est en status <strong>{tender.status}</strong>.
+            La conversion en contrat n&apos;est possible que pour les dossiers finalisés
             (status <code>ready</code>, <code>submitted</code> ou <code>archived</code>).
           </p>
           <Link
             href={`/tenders/${id}`}
             className="inline-block mt-3 text-sm underline hover:text-rose-900"
           >
-            Retour à l&apos;AO
+            Retour au dossier
           </Link>
         </div>
       </div>

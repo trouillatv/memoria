@@ -25,12 +25,12 @@ async function main() {
 
   // Update users table
   const { error } = await sb.from('users')
-    .update({ role: 'manager', organization_id: CONTRABAT_ORG_ID })
+    .update({ role: 'manager', organization_id: CONTRABAT_ORG_ID, home_preference: 'terrain' })
     .eq('id', user.id)
   if (error) { console.error(error); process.exit(1) }
 
   // Verify
-  const { data: all } = await sb.from('users').select('email, role, organization_id').is('deleted_at', null)
+  const { data: all } = await sb.from('users').select('email, role, organization_id, home_preference').is('deleted_at', null)
   const orgs: Record<string, string> = {
     '3a666557-a84e-4d4b-a7f8-9bb4a48acfec': 'BatiSud',
     '9862b3b2-b564-4f41-8b04-36a753d7442e': 'AGP',
@@ -39,7 +39,7 @@ async function main() {
   console.log('\n=== État des comptes ===')
   for (const u of all ?? []) {
     const org = orgs[u.organization_id] ?? u.organization_id ?? 'NULL'
-    console.log(`  ${u.email} | ${u.role} | ${org}`)
+    console.log(`  ${u.email} | ${u.role} | ${org} | accueil=${u.home_preference}`)
   }
 }
 

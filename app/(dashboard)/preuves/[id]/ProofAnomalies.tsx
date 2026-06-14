@@ -14,8 +14,12 @@ import { ProofPhotoGrid } from './ProofPhotoGrid'
 
 const CATEGORY_LABELS: Record<string, string> = {
   eau_coupee: 'Eau coupée',
-  materiel_casse: 'Matériel cassé',
-  acces_bloque: 'Accès bloqué',
+  electricite_coupee: 'Électricité coupée',
+  materiel_casse: 'Matériel manquant',
+  acces_bloque: 'Accès impossible',
+  zone_non_prete: 'Zone non prête',
+  danger_securite: 'Danger / sécurité',
+  livraison_probleme: 'Livraison problème',
   produit_manquant: 'Produit manquant',
   autre: 'Autre',
 }

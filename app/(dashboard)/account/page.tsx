@@ -1,10 +1,12 @@
 ﻿import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import Link from 'next/link'
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '@/components/ui/card'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types/db'
 import { getProfileConsultationSummary } from '@/lib/db/activity-logs'
 import { AccountProfileForm } from './AccountProfileForm'
-import { AccountPasswordForm } from './AccountPasswordForm'
 import { AccountLogoutSection } from './AccountLogoutSection'
 import { HomePreferenceToggle } from './HomePreferenceToggle'
 
@@ -109,13 +111,18 @@ export default async function AccountPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Mot de passe</CardTitle>
+          <CardTitle className="text-base">Sécurité</CardTitle>
           <CardDescription>
-            Modifiez votre mot de passe. Choisissez un mot de passe d&apos;au moins 8 caractères.
+            Le changement de mot de passe est isolé sur une page dédiée.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AccountPasswordForm />
+          <Link
+            href="/account/password"
+            className={cn(buttonVariants({ variant: 'outline' }), 'w-full sm:w-auto')}
+          >
+            Changer mon mot de passe
+          </Link>
         </CardContent>
       </Card>
 

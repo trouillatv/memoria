@@ -26,6 +26,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/v/') ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/h/') ||
+    pathname.startsWith('/qr/') ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
@@ -63,6 +64,7 @@ export async function proxy(request: NextRequest) {
   const isProtectedPage = !isAuthPage
                        && (pathname.startsWith('/admin')
                         || pathname.startsWith('/dashboard')
+                        || pathname.startsWith('/contracts')
                         || pathname.startsWith('/tenders')
                         || pathname.startsWith('/missions')
                         || pathname.startsWith('/reports')

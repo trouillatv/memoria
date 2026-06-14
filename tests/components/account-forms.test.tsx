@@ -158,6 +158,7 @@ describe('HomePreferenceToggle', () => {
     await waitFor(() => {
       expect(applyHomePreferenceAndLogoutMock).toHaveBeenCalledWith('dashboard')
     })
+    expect(updateHomePreferenceMock).not.toHaveBeenCalled()
   })
 })
 

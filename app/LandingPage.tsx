@@ -44,7 +44,7 @@ const memoryItems = [
     icon: ArrowRightLeft,
   },
   {
-    label: 'References AO',
+    label: 'Références dossiers',
     text: 'Experiences comparables, interventions datees et preuves mobilisables.',
     icon: FileArchive,
   },
@@ -68,7 +68,7 @@ const surfacedSignals = [
   {
     icon: Layers3,
     tone: 'border-blue-200 bg-blue-50 text-blue-700',
-    title: "Appel d'offres - marche de services multi-sites",
+    title: 'Dossier de démarrage - marché de services multi-sites',
     text: 'Le critere tracabilite des passages est exige. MemorIA retrouve des interventions documentees sur des sites comparables.',
     signal: 'References terrain disponibles',
   },
@@ -92,7 +92,7 @@ const gains = [
     icon: ShieldCheck,
   },
   {
-    title: 'Appels d offres mieux argumentes',
+    title: 'Dossiers de démarrage mieux argumentés',
     text: 'Les references terrain datees ressortent au moment ou un marche demande de la tracabilite.',
     icon: BriefcaseBusiness,
   },
@@ -188,7 +188,7 @@ export default function LandingPage() {
             >
               MemorIA conserve les acces, a-savoir, anomalies, preuves et
               passations de chaque site, puis les fait remonter au moment ou une
-              equipe, un contrat ou un appel d&apos;offres en a besoin.
+              equipe, un contrat ou un nouveau dossier en a besoin.
             </p>
             <div
               className="landing-fadeup mt-8 flex flex-wrap gap-3"

@@ -114,7 +114,7 @@ export default function BackfillPage() {
                       errors={state.result.library.errors}
                     />
                     <ResultRow
-                      label="AO gagnés / perdus"
+                      label="Dossiers gagnés / perdus"
                       count={state.result.tenders.processed}
                       errors={state.result.tenders.errors}
                     />

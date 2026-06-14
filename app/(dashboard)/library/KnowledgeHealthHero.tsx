@@ -36,7 +36,7 @@ export function KnowledgeHealthHero({ items, totalTendersWithLibrary, topCitedIt
               <div className="text-xs text-muted-foreground">
                 {totalActive} élément{totalActive > 1 ? 's' : ''} capitalisé{totalActive > 1 ? 's' : ''}
                 {' · '}
-                injecté dans {totalTendersWithLibrary} AO ce mois
+                injecté dans {totalTendersWithLibrary} dossier{totalTendersWithLibrary > 1 ? 's' : ''} ce mois
               </div>
             </div>
           </div>
@@ -113,7 +113,7 @@ export function KnowledgeHealthHero({ items, totalTendersWithLibrary, topCitedIt
             <p>
               <strong>{underAlimented.length} catégorie{underAlimented.length > 1 ? 's' : ''} sous-alimentée{underAlimented.length > 1 ? 's' : ''}</strong>
               {' '}(<span className="font-mono">{underAlimented.map((c) => CATEGORY_LABELS_FULL[c]).join(', ')}</span>)
-              {' '}— l&apos;IA aura moins de matière pour les futurs AO dans ces domaines.
+              {' '}— l&apos;IA aura moins de matière pour les futurs dossiers dans ces domaines.
             </p>
           </div>
         )}

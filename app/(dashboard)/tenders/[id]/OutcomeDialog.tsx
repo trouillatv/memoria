@@ -113,7 +113,7 @@ export function OutcomeDialog({
         data-slot="outcome-dialog"
       >
         <DialogHeader>
-          <DialogTitle>Résultat de l&apos;appel d&apos;offres</DialogTitle>
+          <DialogTitle>Résultat du dossier de démarrage</DialogTitle>
           <DialogDescription>
             En 1 clic. Cette information reste interne.
           </DialogDescription>

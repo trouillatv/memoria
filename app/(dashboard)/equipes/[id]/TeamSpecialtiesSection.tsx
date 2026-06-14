@@ -85,7 +85,7 @@ export function TeamSpecialtiesSection({ teamId, initial }: Props) {
           </div>
         )}
         <p className="text-[11px] text-muted-foreground">
-          Servent au matcher AO. Déclaratif uniquement — jamais inféré, jamais comparatif.
+          Servent au matcher de dossiers. Déclaratif uniquement — jamais inféré, jamais comparatif.
         </p>
       </section>
     )

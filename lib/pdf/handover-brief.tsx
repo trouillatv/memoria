@@ -42,9 +42,14 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
-  materiel_casse: 'Matériel cassé',
+  materiel_casse: 'Matériel manquant',
   produit_manquant: 'Produit manquant',
-  acces_bloque: 'Accès bloqué',
+  acces_bloque: 'Accès impossible',
+  eau_coupee: 'Eau coupée',
+  electricite_coupee: 'Électricité coupée',
+  zone_non_prete: 'Zone non prête',
+  danger_securite: 'Danger / sécurité',
+  livraison_probleme: 'Livraison problème',
   retard: 'Retard',
   autre: 'Autre',
 }

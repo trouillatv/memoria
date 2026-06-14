@@ -327,6 +327,7 @@ type ListItem = {
   assigned_team_id: string | null
   team: { id: string; name: string; color: string | null } | null
   mission?: {
+    id: string
     name: string
     site?: {
       id?: string
@@ -364,18 +365,25 @@ function hexToPale(hex: string | null | undefined): string | undefined {
 }
 
 interface Group {
-  siteKey: string
+  groupKey: string
+  missionId: string | null
+  missionName: string
   siteName: string
   contractName: string | null
+  contractId: string | null
   siteId: string | null
   items: ListItem[]
+  missionIds: Set<string>
 }
 
-function groupBySiteName(items: ListItem[]): Group[] {
+function groupBySite(items: ListItem[]): Group[] {
   const map = new Map<string, Group>()
   for (const item of items) {
+    const missionId = item.mission?.id ?? null
+    const missionName = item.mission?.name ?? 'Mission sans nom'
     const siteName = item.mission?.site?.name ?? 'Sans site'
     const contractName = item.mission?.site?.contract?.name ?? null
+    const contractId = item.mission?.site?.contract?.id ?? null
     const siteId = item.mission?.site?.id ?? null
     // Clé = site + contrat (pour distinguer si un nom de site existe sur 2 contrats)
     const key = `${siteName}|${contractName ?? ''}`
@@ -383,8 +391,21 @@ function groupBySiteName(items: ListItem[]): Group[] {
     if (g) {
       g.items.push(item)
       if (!g.siteId && siteId) g.siteId = siteId
+      if (missionId) g.missionIds.add(missionId)
+      if (!g.missionId && missionId) g.missionId = missionId
+      if (!g.contractId && contractId) g.contractId = contractId
     } else {
-      map.set(key, { siteKey: key, siteName, contractName, siteId, items: [item] })
+      map.set(key, {
+        groupKey: key,
+        missionId,
+        missionName,
+        siteName,
+        contractName,
+        contractId,
+        siteId,
+        items: [item],
+        missionIds: new Set(missionId ? [missionId] : []),
+      })
     }
   }
   // Tri alphabétique fr par site, sub-tri par contrat
@@ -419,7 +440,7 @@ function SiteGroupedList({
   today: string
   forceOpen?: boolean
 }) {
-  const enriched = groupBySiteName(items).map((g) => {
+  const enriched = groupBySite(items).map((g) => {
     const fp = g.siteId ? footprints[g.siteId] : undefined
     const openAnomalies = fp?.openAnomalies ?? 0
     const aSavoir = fp?.aSavoir ?? 0
@@ -450,7 +471,7 @@ function SiteGroupedList({
           openAnomalies > 0 || aSavoir > 0 || hasUnassigned || !!lastDone || !!topSignal
         return (
           <details
-            key={g.siteKey}
+            key={g.groupKey}
             open={forceOpen}
             className={cn('group rounded-lg border bg-card overflow-hidden', accentCls)}
           >
@@ -474,6 +495,12 @@ function SiteGroupedList({
                   )}
                 </div>
                 {/* #1 signal faible (comptes directs) + #2 différenciation. */}
+                <div className="mt-0.5 ml-[1.4rem] flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <ClipboardList className="h-3 w-3 shrink-0" aria-hidden />
+                  <span className="truncate">
+                    {g.missionIds.size === 1 ? g.missionName : `${g.missionIds.size} missions`}
+                  </span>
+                </div>
                 {hasLine && (
                   <div className="mt-1 ml-[1.4rem] flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                     {openAnomalies > 0 && (
@@ -491,15 +518,25 @@ function SiteGroupedList({
                   </div>
                 )}
               </div>
-              <span
-                className={
-                  'text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ' +
-                  (accent === 'emerald'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-muted text-muted-foreground')
-                }
-              >
-                {g.items.length}
+              <span className="flex shrink-0 items-center gap-2">
+                {g.contractId && g.missionId && g.missionIds.size === 1 && (
+                  <Link
+                    href={`/contracts/${g.contractId}/missions/${g.missionId}/edit`}
+                    className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-7 text-xs')}
+                  >
+                    Modifier la mission
+                  </Link>
+                )}
+                <span
+                  className={
+                    'text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ' +
+                    (accent === 'emerald'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'bg-muted text-muted-foreground')
+                  }
+                >
+                  {g.items.length}
+                </span>
               </span>
             </summary>
             <ul className="space-y-1.5 px-3 pb-3 pt-1 border-t bg-muted/10">

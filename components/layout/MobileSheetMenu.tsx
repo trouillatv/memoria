@@ -8,7 +8,7 @@ import type { UserRole } from '@/types/db'
 
 const NAV = [
   { href: '/missions', label: 'Missions',          roles: ['admin', 'manager', 'chef_equipe'] },
-  { href: '/tenders',  label: "Appels d'offres",   roles: ['admin', 'manager'] },
+  { href: '/tenders',  label: 'Dossiers de démarrage', roles: ['admin', 'manager'] },
   // Option C : « Bibliothèque » → expérience documentaire vivante (/documents).
   // /library (savoir curé) reste intacte, hors menu principal.
   { href: '/documents', label: 'Bibliothèque',      roles: ['admin', 'manager'] },

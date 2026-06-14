@@ -14,7 +14,7 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
         <div>
           <h1 className="text-xl font-semibold">Engagements ({engagements.length})</h1>
           <p className="text-xs text-muted-foreground">
-            Engagements extraits depuis l&apos;AO et la mémoire technique. À curer puis activer via le wizard de conversion en contrat.
+            Engagements extraits depuis le dossier et la mémoire technique. À curer puis activer via le wizard de conversion en contrat.
           </p>
         </div>
         {engagements.length === 0 && <ExtractEngagementsButton tenderId={id} />}

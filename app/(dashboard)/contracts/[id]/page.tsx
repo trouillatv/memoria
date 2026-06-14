@@ -167,7 +167,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             {contract.tender_id && (
               <p className="text-xs text-muted-foreground">
                 <Link href={`/tenders/${contract.tender_id}`} className="underline hover:text-foreground">
-                  Voir l&apos;AO d&apos;origine →
+                  Voir le dossier d&apos;origine →
                 </Link>
               </p>
             )}
@@ -223,7 +223,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">AO lié</dt>
+            <dt className="text-xs text-muted-foreground">Dossier lié</dt>
             <dd className="font-medium">
               {contract.tender_id ? (
                 <Link

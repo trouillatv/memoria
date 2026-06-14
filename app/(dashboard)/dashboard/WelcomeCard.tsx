@@ -35,11 +35,11 @@ const STEPS: StepDef[] = [
     key: 'hasImportedTender',
     number: 1,
     icon: Upload,
-    title: 'Importer un appel d’offres',
+    title: 'Importer un dossier de démarrage',
     description:
-      'Déposez votre premier AO. Le copilote en extraira les engagements et rédigera la mémoire technique.',
+      'Déposez votre premier dossier. Le copilote en extraira les engagements et rédigera la mémoire technique.',
     href: '/tenders',
-    cta: 'Aller aux AO',
+    cta: 'Aller aux dossiers',
   },
   {
     key: 'hasCuratedEngagement',
@@ -47,9 +47,9 @@ const STEPS: StepDef[] = [
     icon: ListChecks,
     title: 'Valider les promesses',
     description:
-      'Relisez et validez les engagements extraits par l’IA. Vous gardez la main sur ce qui vous engage.',
+      "Relisez et validez les engagements extraits par l'IA. Vous gardez la main sur ce qui vous engage.",
     href: '/tenders',
-    cta: 'Voir les AO',
+    cta: 'Voir les dossiers',
   },
   {
     key: 'hasActiveContract',
@@ -57,9 +57,9 @@ const STEPS: StepDef[] = [
     icon: FileCheck,
     title: 'Convertir en contrat actif',
     description:
-      'Une fois l’AO gagné, convertissez-le en contrat opérationnel. Les engagements deviennent vos promesses à tenir.',
+      "Une fois le dossier gagné, convertissez-le en contrat opérationnel. Les engagements deviennent vos promesses à tenir.",
     href: '/tenders',
-    cta: 'Voir les AO',
+    cta: 'Voir les dossiers',
   },
   {
     key: 'hasMission',
@@ -67,7 +67,7 @@ const STEPS: StepDef[] = [
     icon: ClipboardList,
     title: 'Créer missions et récurrences',
     description:
-      'Ajoutez les sites, les missions à exécuter, et leurs récurrences. La preuve commence à s’accumuler.',
+      "Ajoutez les sites, les missions à exécuter, et leurs récurrences. La preuve commence à s'accumuler.",
     href: '/contracts',
     cta: 'Voir les contrats',
   },
@@ -84,7 +84,7 @@ export function WelcomeCard({ progress }: { progress: OnboardingProgress }) {
         <CardTitle className="text-lg">Démarrer avec MemorIA</CardTitle>
         <CardDescription>
           {completedCount === 0
-            ? 'Quatre étapes pour transformer un AO en preuves accumulées.'
+            ? 'Quatre étapes pour transformer un dossier en preuves accumulées.'
             : `${completedCount} / ${STEPS.length} étapes franchies. Plus que ${STEPS.length - completedCount} pour activer la boucle de preuve.`}
         </CardDescription>
       </CardHeader>

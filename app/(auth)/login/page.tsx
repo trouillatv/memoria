@@ -17,7 +17,7 @@ export default async function LoginPage({
           className="mx-auto mb-3 h-14 w-14 rounded-2xl object-cover ring-1 ring-black/5 shadow-sm"
         />
         <h1 className="text-xl font-semibold text-gray-900">MemorIA</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Gestion terrain · Appels d'offres</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Gestion terrain · Dossiers de démarrage</p>
       </div>
 
       {/* Card connexion */}

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export interface OrgTodayIntervention {
   id: string
+  missionId: string
   missionName: string
   siteId: string
   siteName: string
@@ -12,6 +13,7 @@ export interface OrgTodayIntervention {
   status: string
   slot: string | null
   plannedStart: string | null
+  openAnomalyCount: number
 }
 
 export interface OrgTodaySite {
@@ -67,7 +69,21 @@ export async function listOrgTodayInterventions(
     .limit(100)
   if (!interventions || interventions.length === 0) return []
 
-  // 4. Noms des équipes
+  const interventionIds = interventions.map((i) => i.id as string)
+
+  // 4. Anomalies ouvertes par intervention (batch)
+  const { data: anomalyRows } = await sb
+    .from('intervention_anomalies')
+    .select('intervention_id')
+    .in('intervention_id', interventionIds)
+    .eq('status', 'open')
+  const anomalyCountById = new Map<string, number>()
+  for (const row of anomalyRows ?? []) {
+    const iid = row.intervention_id as string
+    anomalyCountById.set(iid, (anomalyCountById.get(iid) ?? 0) + 1)
+  }
+
+  // 5. Noms des équipes
   const teamIds = Array.from(
     new Set(
       interventions
@@ -80,15 +96,17 @@ export async function listOrgTodayInterventions(
     : { data: [] }
   const teamNameById = new Map((teams ?? []).map((t) => [t.id as string, t.name as string]))
 
-  // 5. Grouper par site
+  // 6. Grouper par site
   const bySite = new Map<string, OrgTodayIntervention[]>()
   for (const i of interventions) {
     const mission = missionById.get(i.mission_id as string)
     if (!mission) continue
     const siteId = mission.siteId
+    const iid = i.id as string
     if (!bySite.has(siteId)) bySite.set(siteId, [])
     bySite.get(siteId)!.push({
-      id: i.id as string,
+      id: iid,
+      missionId: i.mission_id as string,
       missionName: mission.name,
       siteId,
       siteName: siteNameById.get(siteId) ?? '',
@@ -98,6 +116,7 @@ export async function listOrgTodayInterventions(
       status: i.status as string,
       slot: i.slot as string | null,
       plannedStart: i.planned_start as string | null,
+      openAnomalyCount: anomalyCountById.get(iid) ?? 0,
     })
   }
 

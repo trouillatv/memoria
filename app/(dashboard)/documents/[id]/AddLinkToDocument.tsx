@@ -14,7 +14,7 @@ type LinkOption = { id: string; label: string }
 type LinkTargets = Record<string, LinkOption[]>
 
 const TARGET_LABEL: Record<string, string> = {
-  contract: 'Contrat', site: 'Site', client: 'Client', tender: 'AO', team: 'Équipe',
+  contract: 'Contrat', site: 'Site', client: 'Client', tender: 'Dossier', team: 'Équipe',
 }
 const selectCls = 'rounded-md border bg-background px-2 py-1.5 text-sm'
 

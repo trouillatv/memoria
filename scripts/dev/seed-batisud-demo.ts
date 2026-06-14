@@ -37,6 +37,7 @@ import {
   createHandoverBrief,
   shareHandoverBrief,
 } from '@/lib/db/handover'
+import { generateQrToken } from '@/lib/db/site-qr'
 import type { ChecklistTemplateItem, DbHandoverBrief, InterventionStatus } from '@/types/db'
 import {
   BATISUD_ADRIEN_EMAIL,
@@ -48,9 +49,12 @@ import {
   BATISUD_MISSIONS,
   BATISUD_SITE_NOTES,
   BATISUD_SITES,
+  BATISUD_TEAM_MEMBERS,
   BATISUD_TEAMS,
   buildBatiSudInterventionSeeds,
+  buildBatiSudSiteReturnNote,
   toIsoDate,
+  type BatiSudTeamMemberSeed,
   type BatiSudInterventionCompany,
 } from './batisud-demo-data'
 
@@ -61,6 +65,8 @@ interface SeedSummary {
   contractId: string
   sitesCreated: number
   teamsCreated: number
+  membersCreated: number
+  membershipsCreated: number
   missionsCreated: number
   interventionsCreated: number
   interventionsUpdated: number
@@ -70,6 +76,7 @@ interface SeedSummary {
   documentsCreated: number
   handoversCreated: number
   companiesCreated: number
+  qrTokensEnsured: number
   sharedToken: string | null
 }
 
@@ -263,6 +270,8 @@ async function ensureDemoUser(
   role: 'manager' | 'chef_equipe',
   phone: string,
   homePreference: 'dashboard' | 'terrain' = 'dashboard',
+  organizationId: string | null = null,
+  profile?: Pick<BatiSudTeamMemberSeed, 'commune' | 'employmentType'>,
 ): Promise<{ id: string; created: boolean }> {
   const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
   if (listErr) throw listErr
@@ -275,7 +284,17 @@ async function ensureDemoUser(
     if (authErr) throw authErr
     const { error: userErr } = await supabase
       .from('users')
-      .update({ email, full_name: fullName, role, phone, deleted_at: null, home_preference: homePreference })
+      .update({
+        email,
+        full_name: fullName,
+        role,
+        phone,
+        deleted_at: null,
+        home_preference: homePreference,
+        ...(organizationId ? { organization_id: organizationId } : {}),
+        ...(profile?.commune ? { commune: profile.commune } : {}),
+        ...(profile?.employmentType ? { employment_type: profile.employmentType } : {}),
+      })
       .eq('id', existing.id)
     if (userErr) throw userErr
     return { id: existing.id, created: false }
@@ -302,6 +321,9 @@ async function ensureDemoUser(
       must_change_password: true,
       deleted_at: null,
       home_preference: homePreference,
+      ...(organizationId ? { organization_id: organizationId } : {}),
+      ...(profile?.commune ? { commune: profile.commune } : {}),
+      ...(profile?.employmentType ? { employment_type: profile.employmentType } : {}),
     })
   if (upsertErr) throw upsertErr
   return { id: created.user.id, created: true }
@@ -311,6 +333,7 @@ async function ensureMembership(
   supabase: SupabaseAdmin,
   teamId: string,
   userId: string,
+  organizationId: string | null,
 ): Promise<boolean> {
   const { data: existing, error: fetchErr } = await supabase
     .from('team_members')
@@ -320,9 +343,22 @@ async function ensureMembership(
     .is('left_at', null)
     .maybeSingle()
   if (fetchErr) throw fetchErr
-  if (existing) return false
+  if (existing) {
+    if (organizationId) {
+      const { error } = await supabase
+        .from('team_members')
+        .update({ organization_id: organizationId })
+        .eq('id', existing.id)
+      if (error) throw error
+    }
+    return false
+  }
 
-  const { error } = await supabase.from('team_members').insert({ team_id: teamId, user_id: userId })
+  const { error } = await supabase.from('team_members').insert({
+    team_id: teamId,
+    user_id: userId,
+    ...(organizationId ? { organization_id: organizationId } : {}),
+  })
   if (error) throw error
   return true
 }
@@ -382,11 +418,23 @@ async function ensureChecklistItems(
 ): Promise<void> {
   const { data: existing, error } = await supabase
     .from('intervention_checklist_items')
-    .select('id')
+    .select('id, position')
     .eq('intervention_id', interventionId)
-    .limit(1)
+    .order('position', { ascending: true })
   if (error) throw error
-  if (existing && existing.length > 0) return
+  if (existing && existing.length > 0) {
+    if (doneBy) {
+      const ids = existing
+        .slice(0, Math.max(1, existing.length - 1))
+        .map((item) => item.id as string)
+      const { error: updateErr } = await supabase
+        .from('intervention_checklist_items')
+        .update({ done: true, done_at: new Date().toISOString(), done_by: doneBy })
+        .in('id', ids)
+      if (updateErr) throw updateErr
+    }
+    return
+  }
 
   const items = await bulkInsertChecklistItems(
     labels.map((label, index) => ({
@@ -424,6 +472,8 @@ async function ensureIntervention(
     teamId: string
     chefId: string
     adminId: string
+    teamUserIds: string[]
+    doneBy: string
   },
 ): Promise<{ id: string; created: boolean }> {
   const { data: existing, error: fetchErr } = await supabase
@@ -449,7 +499,7 @@ async function ensureIntervention(
         status: input.status,
         executed_at: executedAt,
         assigned_team_id: input.teamId,
-        team: [input.chefId],
+        team: input.teamUserIds,
         notes,
       })
       .eq('id', existing.id)
@@ -458,7 +508,7 @@ async function ensureIntervention(
       supabase,
       existing.id as string,
       input.missionChecklist,
-      input.status === 'planned' ? null : input.chefId,
+      input.status === 'planned' ? null : input.doneBy,
     )
     return { id: existing.id as string, created: false }
   }
@@ -469,7 +519,7 @@ async function ensureIntervention(
     slot: input.slot,
     planned_start_hhmm: input.plannedStart,
     planned_end_hhmm: input.plannedEnd,
-    team: [input.chefId],
+    team: input.teamUserIds,
     created_by: input.adminId,
   })
   const { error } = await supabase
@@ -486,9 +536,57 @@ async function ensureIntervention(
     supabase,
     id,
     input.missionChecklist,
-    input.status === 'planned' ? null : input.chefId,
+    input.status === 'planned' ? null : input.doneBy,
   )
   return { id, created: true }
+}
+
+async function ensureInterventionParticipants(
+  supabase: SupabaseAdmin,
+  input: {
+    interventionId: string
+    userIds: string[]
+    referentId: string
+    createdBy: string
+  },
+): Promise<void> {
+  if (input.userIds.length === 0) return
+  const { data: intervention, error: statusErr } = await supabase
+    .from('interventions')
+    .select('status')
+    .eq('id', input.interventionId)
+    .single()
+  if (statusErr) throw statusErr
+  const frozenStatus = ['completed', 'validated'].includes(intervention.status)
+    ? intervention.status as InterventionStatus
+    : null
+  if (frozenStatus) {
+    const { error } = await supabase
+      .from('interventions')
+      .update({ status: 'in_progress' })
+      .eq('id', input.interventionId)
+    if (error) throw error
+  }
+  try {
+    const rows = input.userIds.map((userId) => ({
+      intervention_id: input.interventionId,
+      user_id: userId,
+      role: userId === input.referentId ? 'referent' : 'participant',
+      created_by: input.createdBy,
+    }))
+    const { error } = await supabase
+      .from('intervention_participants')
+      .upsert(rows, { onConflict: 'intervention_id,user_id' })
+    if (error) throw error
+  } finally {
+    if (frozenStatus) {
+      const { error: restoreErr } = await supabase
+        .from('interventions')
+        .update({ status: frozenStatus })
+        .eq('id', input.interventionId)
+      if (restoreErr) throw restoreErr
+    }
+  }
 }
 
 async function ensureAnomaly(
@@ -511,6 +609,7 @@ async function ensureAnomaly(
       .from('intervention_anomalies')
       .update({
         status: input.anomaly.resolved ? 'resolved' : 'open',
+        reported_by: input.reportedBy,
         resolved_at: input.anomaly.resolved ? new Date().toISOString() : null,
         resolution_note: input.anomaly.resolved ? 'Résolu dans le seed BatiSud.' : null,
       })
@@ -558,7 +657,19 @@ async function ensurePhoto(
     .eq('storage_path', storagePath)
     .maybeSingle()
   if (fetchErr) throw fetchErr
-  if (existing) return false
+  if (existing) {
+    const { error } = await supabase
+      .from('intervention_photos')
+      .update({
+        kind: input.kind,
+        caption: input.label,
+        taken_by: input.takenBy,
+        anomaly_id: input.anomalyId ?? null,
+      })
+      .eq('id', existing.id)
+    if (error) throw error
+    return false
+  }
 
   await insertPhoto({
     intervention_id: input.interventionId,
@@ -907,6 +1018,8 @@ async function main() {
     contractId: '',
     sitesCreated: 0,
     teamsCreated: 0,
+    membersCreated: 0,
+    membershipsCreated: 0,
     missionsCreated: 0,
     interventionsCreated: 0,
     interventionsUpdated: 0,
@@ -916,6 +1029,7 @@ async function main() {
     documentsCreated: 0,
     handoversCreated: 0,
     companiesCreated: 0,
+    qrTokensEnsured: 0,
     sharedToken: null,
   }
 
@@ -943,14 +1057,7 @@ async function main() {
     'manager',
     '+687701234',
     'terrain',
-  )
-  const chef = await ensureDemoUser(
-    supabase,
-    BATISUD_CHEF_EMAIL,
-    'Fred Martin',
-    'chef_equipe',
-    '+687701235',
-    'terrain',
+    organizationId,
   )
 
   const teamIds = new Map<string, string>()
@@ -960,15 +1067,48 @@ async function main() {
     if (team.created) summary.teamsCreated += 1
   }
 
-  const grosOeuvreNordId = teamIds.get('Gros œuvre Nord')
-  if (!grosOeuvreNordId) throw new Error('Équipe Gros œuvre Nord introuvable après seed.')
-  await ensureMembership(supabase, grosOeuvreNordId, chef.id)
+  const memberIdsByTeam = new Map<string, string[]>()
+  const memberIdsByEmail = new Map<string, string>()
+  for (const memberSeed of BATISUD_TEAM_MEMBERS) {
+    const teamId = teamIds.get(memberSeed.teamName)
+    if (!teamId) throw new Error(`Équipe introuvable pour membre : ${memberSeed.fullName}`)
+    const member = await ensureDemoUser(
+      supabase,
+      memberSeed.email,
+      memberSeed.fullName,
+      'chef_equipe',
+      memberSeed.phone,
+      'terrain',
+      organizationId,
+      memberSeed,
+    )
+    if (member.created) summary.membersCreated += 1
+    memberIdsByEmail.set(memberSeed.email, member.id)
+    const membershipCreated = await ensureMembership(supabase, teamId, member.id, organizationId)
+    if (membershipCreated) summary.membershipsCreated += 1
+    const ids = memberIdsByTeam.get(memberSeed.teamName) ?? []
+    ids.push(member.id)
+    memberIdsByTeam.set(memberSeed.teamName, ids)
+    if (memberSeed.referent) {
+      const { error } = await supabase
+        .from('teams')
+        .update({ referent_user_id: member.id })
+        .eq('id', teamId)
+      if (error) throw error
+    }
+  }
+
+  const chefId = memberIdsByEmail.get(BATISUD_CHEF_EMAIL)
+  if (!chefId) throw new Error('Compte chef BatiSud introuvable après seed.')
+  const chef = { id: chefId }
 
   const siteIds = new Map<string, string>()
   for (const siteSeed of BATISUD_SITES) {
     const site = await ensureSite(supabase, summary.clientId, summary.contractId, siteSeed)
     siteIds.set(siteSeed.name, site.id)
     if (site.created) summary.sitesCreated += 1
+    await generateQrToken(site.id, adminId)
+    summary.qrTokensEnsured += 1
   }
 
   const missionIds = new Map<string, { id: string; checklist: string[]; teamId: string }>()
@@ -999,6 +1139,9 @@ async function main() {
     if (!mission) throw new Error(`Mission introuvable : ${seed.siteName} / ${seed.missionName}`)
     const teamId = teamIds.get(seed.teamName)
     if (!teamId) throw new Error(`Équipe introuvable : ${seed.teamName}`)
+    const teamUserIds = memberIdsByTeam.get(seed.teamName) ?? [chef.id]
+    const referentId = teamUserIds[0] ?? chef.id
+    const actorId = teamUserIds[seeds.indexOf(seed) % teamUserIds.length] ?? referentId
     const date = toIsoDate(new Date(), seed.dayOffset)
     const intervention = await ensureIntervention(supabase, {
       missionId: mission.id,
@@ -1013,6 +1156,8 @@ async function main() {
       teamId,
       chefId: chef.id,
       adminId,
+      teamUserIds,
+      doneBy: actorId,
     })
     if (intervention.created) summary.interventionsCreated += 1
     else summary.interventionsUpdated += 1
@@ -1022,7 +1167,7 @@ async function main() {
       const anomaly = await ensureAnomaly(supabase, {
         interventionId: intervention.id,
         anomaly: seed.anomaly,
-        reportedBy: chef.id,
+        reportedBy: actorId,
       })
       anomalyId = anomaly.id
       if (anomaly.created) summary.anomaliesCreated += 1
@@ -1033,10 +1178,31 @@ async function main() {
         interventionId: intervention.id,
         label: photo.label,
         kind: photo.kind,
-        takenBy: chef.id,
+        takenBy: actorId,
         anomalyId: photo.kind === 'anomaly' ? anomalyId : null,
       })
       if (created) summary.photosCreated += 1
+    }
+
+    await ensureInterventionParticipants(supabase, {
+      interventionId: intervention.id,
+      userIds: teamUserIds,
+      referentId,
+      createdBy: adminId,
+    })
+
+    if (seed.dayOffset < 0) {
+      const siteId = siteIds.get(seed.siteName)
+      if (siteId) {
+        const created = await ensureSiteNote(
+          supabase,
+          siteId,
+          buildBatiSudSiteReturnNote(seed),
+          'note',
+          actorId,
+        )
+        if (created) summary.notesCreated += 1
+      }
     }
 
     if (seed.validate) {
@@ -1050,8 +1216,14 @@ async function main() {
         await createValidation({
           intervention_id: intervention.id,
           validated_by: adrien.id,
-          comment: 'Validation manager démo BatiSud.',
+          comment: 'Validation manager démo BatiSud après contrôle photos, notes terrain et réserves.',
         })
+      } else {
+        const { error: validationErr } = await supabase
+          .from('intervention_validations')
+          .update({ comment: 'Validation manager démo BatiSud après contrôle photos, notes terrain et réserves.' })
+          .eq('id', existingValidation.id)
+        if (validationErr) throw validationErr
       }
     }
 

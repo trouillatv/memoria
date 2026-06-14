@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 
 export function ArchiveTenderButton({ tenderId }: { tenderId: string }) {
   async function onClick() {
-    if (!confirm('Archiver cet appel d\'offres ? Il disparaîtra de la liste mais reste en base (soft delete).')) return
+    if (!confirm('Archiver ce dossier de démarrage ? Il disparaîtra de la liste mais reste en base (soft delete).')) return
     const fd = new FormData()
     fd.set('id', tenderId)
     const r = await archiveTenderAction(fd)

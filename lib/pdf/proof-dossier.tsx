@@ -299,10 +299,13 @@ const ROLE_LABELS: Record<string, string> = {
 const ANOMALY_CATEGORY_LABELS: Record<string, string> = {
   eau_coupee: 'Eau coupée',
   electricite_coupee: 'Électricité coupée',
-  acces_bloque: 'Accès bloqué',
-  materiel_casse: 'Matériel cassé',
+  acces_bloque: 'Accès impossible',
+  materiel_casse: 'Matériel manquant',
   materiel_manquant: 'Matériel manquant',
+  zone_non_prete: 'Zone non prête',
   zone_inaccessible: 'Zone inaccessible',
+  danger_securite: 'Danger / sécurité',
+  livraison_probleme: 'Livraison problème',
   produit_manquant: 'Produit manquant',
   autre: 'Autre',
 }

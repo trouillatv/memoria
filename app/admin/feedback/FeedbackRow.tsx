@@ -25,6 +25,8 @@ interface Entry {
   created_at: string
   author_label: string
   author_role: string
+  attachment_paths: string[]
+  attachment_urls: string[]
 }
 
 function formatDateFr(iso: string): string {
@@ -137,6 +139,28 @@ export function FeedbackRow({ entry }: { entry: Entry }) {
       <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
         {entry.message}
       </p>
+
+      {/* Pièces jointes (captures d'écran / photos) */}
+      {entry.attachment_urls.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {entry.attachment_urls.map((url, i) => (
+            <a
+              key={i}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Voir en taille réelle"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={url}
+                alt={`Capture ${i + 1}`}
+                className="w-20 h-20 object-cover rounded border border-border hover:opacity-80 transition-opacity"
+              />
+            </a>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-1">
         {entry.status === 'open' && (

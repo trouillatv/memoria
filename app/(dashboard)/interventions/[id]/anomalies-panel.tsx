@@ -8,11 +8,14 @@ import { createAnomalyAction, resolveAnomalyAction } from './intervention-action
 import type { DbInterventionAnomaly, AnomalyCategory } from '@/types/db'
 
 const CATEGORY_OPTIONS: { value: AnomalyCategory; label: string; icon?: string }[] = [
-  { value: 'eau_coupee',       label: 'Eau coupée',       icon: '🚱' },
-  { value: 'materiel_casse',   label: 'Matériel cassé',   icon: '⚠' },
-  { value: 'acces_bloque',     label: 'Accès bloqué',     icon: '🚪' },
-  { value: 'produit_manquant', label: 'Produit manquant', icon: '🧴' },
-  { value: 'autre',            label: 'Autre',            icon: '❓' },
+  { value: 'acces_bloque',       label: 'Accès impossible',   icon: '🚪' },
+  { value: 'eau_coupee',         label: 'Eau coupée',         icon: '🚱' },
+  { value: 'electricite_coupee', label: 'Électricité coupée', icon: '⚡' },
+  { value: 'zone_non_prete',     label: 'Zone non prête',     icon: '🚧' },
+  { value: 'materiel_casse',     label: 'Matériel manquant',  icon: '🧰' },
+  { value: 'danger_securite',    label: 'Danger / sécurité',  icon: '⚠️' },
+  { value: 'livraison_probleme', label: 'Livraison problème', icon: '📦' },
+  { value: 'autre',              label: 'Autre',              icon: '❓' },
 ]
 
 interface Props {

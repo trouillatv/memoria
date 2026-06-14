@@ -38,7 +38,7 @@ const FEATURE_LABELS: Record<string, string> = {
   embed_trace_intervention_note: 'Embeddings notes intervention',
   embed_trace_photo_caption:    'Embeddings captions photo',
   ocr_pdf:                      'OCR PDF (Vision)',
-  lecteur_ao:                   'Agent — Lecteur AO',
+  lecteur_ao:                   'Agent — Lecteur de dossier',
   memoire_technique:            'Agent — Mémoire technique',
   conformite:                   'Agent — Conformité',
   contradicteur:                'Agent — Contradicteur',
@@ -224,7 +224,7 @@ export async function AIMemorySection({
             counts={health.counts.ocr}
           />
           <HealthRow
-            label="Agents AO"
+            label="Agents dossiers"
             status={health.agentsAO}
             counts={health.counts.agentsAO}
           />

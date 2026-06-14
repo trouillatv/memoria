@@ -90,7 +90,7 @@ export function TenderSidebar({
   ]
 
   async function handleArchive() {
-    if (!confirm('Archiver cet appel d\'offres ? Il disparaîtra de la liste mais reste en base (soft delete).')) return
+    if (!confirm('Archiver ce dossier de démarrage ? Il disparaîtra de la liste mais reste en base (soft delete).')) return
     const fd = new FormData()
     fd.set('id', tenderId)
     const r = await archiveTenderAction(fd)
@@ -278,7 +278,7 @@ export function TenderSidebar({
 
       {/* NAVIGATION */}
       <nav
-        aria-label="Navigation appel d'offres"
+        aria-label="Navigation dossier de démarrage"
         className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible -mx-1 px-1 md:mx-0 md:px-0 scrollbar-hide"
       >
         {NAV.map((item) => {

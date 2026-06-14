@@ -36,6 +36,7 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [body, setBody] = useState('')
+  const [createdNotes, setCreatedNotes] = useState<string[]>([])
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -49,6 +50,7 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
       const fn = action ?? addSiteNoteAction
       const result = await fn({ siteId, body: trimmed })
       if (result.ok) {
+        setCreatedNotes((prev) => [trimmed, ...prev])
         setOpen(false)
         setBody('')
         // Sprint 5 UX-9 — Temps retrouvé : confirmation discrète et factuelle.
@@ -68,15 +70,29 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
 
   if (!open) {
     return (
-      <button
-        type="button"
-        data-testid="add-site-note-trigger"
-        onClick={() => setOpen(true)}
-        className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded border border-dashed hover:bg-muted/30 transition-colors mt-2"
-      >
-        <Plus className="h-3 w-3" />
-        Ajouter une note sur ce site
-      </button>
+      <div className="space-y-2">
+        {createdNotes.length > 0 && (
+          <ul className="space-y-1.5" aria-label="Notes ajoutées sur ce site">
+            {createdNotes.map((note, index) => (
+              <li key={`${note}-${index}`} className="text-sm leading-relaxed">
+                • {note}
+                <span className="text-[10px] text-muted-foreground/60 ml-2">
+                  (à l&apos;instant)
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          data-testid="add-site-note-trigger"
+          onClick={() => setOpen(true)}
+          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded border border-dashed hover:bg-muted/30 transition-colors mt-2"
+        >
+          <Plus className="h-3 w-3" />
+          Ajouter une note sur ce site
+        </button>
+      </div>
     )
   }
 

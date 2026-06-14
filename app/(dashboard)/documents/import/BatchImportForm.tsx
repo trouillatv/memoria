@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // Import par lot — triage humain avant import, puis queue séquentielle bornée
 // (3 par 3) appelant uploadDocumentAction par fichier. Vincent 2026-05-23.
@@ -33,7 +33,7 @@ interface Row {
 }
 
 const TARGET_LABELS: Record<string, string> = {
-  contract: 'Contrat', site: 'Site', tender: 'Appel d’offres', client: 'Client', team: 'Équipe',
+  contract: 'Contrat', site: 'Site', tender: 'Dossier de démarrage', client: 'Client', team: 'Équipe',
 }
 const selectCls = 'rounded-md border bg-background px-2 py-1.5 text-sm'
 

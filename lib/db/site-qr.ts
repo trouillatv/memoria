@@ -3,6 +3,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export type QrEventType = 'generated' | 'scanned' | 'revoked'
+
+export interface QrHistoryEvent {
+  type: QrEventType
+  at: string
+  userAgent?: string | null
+  tokenSuffix: string
+}
+
 export interface SiteAccessToken {
   id: string
   site_id: string
@@ -135,7 +144,7 @@ export async function generateQrToken(siteId: string, createdBy?: string): Promi
   return token
 }
 
-export async function recordQrAccess(token: string): Promise<void> {
+export async function recordQrAccess(token: string, userAgent?: string | null): Promise<void> {
   const sb = createAdminClient()
   const { data } = await sb
     .from('site_access_tokens')
@@ -143,13 +152,66 @@ export async function recordQrAccess(token: string): Promise<void> {
     .eq('token', token)
     .maybeSingle()
   if (!data) return
-  await sb
+  const now = new Date().toISOString()
+  await Promise.all([
+    sb
+      .from('site_access_tokens')
+      .update({
+        access_count: ((data.access_count as number) ?? 0) + 1,
+        last_accessed_at: now,
+      })
+      .eq('token', token),
+    sb.from('qr_access_log').insert({
+      token_id: data.id as string,
+      scanned_at: now,
+      user_agent: userAgent ? userAgent.slice(0, 300) : null,
+    }),
+  ])
+}
+
+export async function getSiteQrHistory(siteId: string): Promise<QrHistoryEvent[]> {
+  const sb = createAdminClient()
+
+  const { data: tokens } = await sb
     .from('site_access_tokens')
-    .update({
-      access_count: ((data.access_count as number) ?? 0) + 1,
-      last_accessed_at: new Date().toISOString(),
+    .select('id, token, created_at, revoked_at')
+    .eq('site_id', siteId)
+    .eq('purpose', 'journal_public')
+    .order('created_at', { ascending: true })
+
+  if (!tokens || tokens.length === 0) return []
+
+  const tokenIds = tokens.map((t) => t.id as string)
+
+  const { data: scans } = await sb
+    .from('qr_access_log')
+    .select('token_id, scanned_at, user_agent')
+    .in('token_id', tokenIds)
+    .order('scanned_at', { ascending: false })
+    .limit(200)
+
+  const events: QrHistoryEvent[] = []
+
+  for (const tok of tokens) {
+    const suffix = (tok.token as string).slice(-6)
+    events.push({ type: 'generated', at: tok.created_at as string, tokenSuffix: suffix })
+    if (tok.revoked_at) {
+      events.push({ type: 'revoked', at: tok.revoked_at as string, tokenSuffix: suffix })
+    }
+  }
+
+  for (const scan of scans ?? []) {
+    const tok = tokens.find((t) => t.id === scan.token_id)
+    events.push({
+      type: 'scanned',
+      at: scan.scanned_at as string,
+      userAgent: scan.user_agent as string | null,
+      tokenSuffix: tok ? (tok.token as string).slice(-6) : '------',
     })
-    .eq('token', token)
+  }
+
+  events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+  return events.slice(0, 60)
 }
 
 export async function revokeQrToken(siteId: string): Promise<void> {

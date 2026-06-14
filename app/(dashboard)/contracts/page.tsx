@@ -187,12 +187,12 @@ export default async function ContractsPage({
               title="Aucun contrat actif"
               description={
                 <>
-                  Convertissez un AO finalisé en contrat depuis la page{' '}
+                  Convertissez un dossier de démarrage finalisé en contrat depuis la page{' '}
                   <Link
                     href="/tenders"
                     className="text-foreground underline underline-offset-4 hover:no-underline"
                   >
-                    Appels d&apos;offres
+                    Dossiers de démarrage
                   </Link>
                   . Le contrat devient le point d&apos;ancrage de vos missions et de la boucle de preuve.
                 </>
@@ -202,7 +202,7 @@ export default async function ContractsPage({
                   href="/tenders"
                   className={cn(buttonVariants({ variant: 'default' }))}
                 >
-                  Voir mes AO
+                  Voir mes dossiers
                 </Link>
               }
             />

@@ -80,21 +80,15 @@ export default async function FieldHomePage({
 
   const supabase = createAdminClient()
 
-  // P1 audit live (2026-05-26) — briefs de passation retrouvables sur le terrain
-  // même si le lien SMS est perdu. Silence positif : ne s'affiche que s'il y en a.
-  const chefTeamIds = await listActiveTeamIdsForUser(user.id)
-  const handoverBriefs = await listSharedHandoverBriefsForChef(user.id, chefTeamIds)
-
-  // Paralléliser : agentInterventions (pour FAB/ensure) + interventions visibles
-  // en même temps. Avant : agentInterventions bloquait en séquentiel.
-  const [agentIntRes, interventions] = await Promise.all([
-    supabase
-      .from('interventions')
-      .select('mission:missions(site_id)')
-      .contains('team', [user.id])
-      .limit(200),
-    listInterventionsVisibleToUser(user.id),
-  ])
+  // Étape 1 — Récupérer les site IDs de l'agent et les team IDs en parallèle.
+  // agentIntRes sert à calculer les siteIds pour ensure ; chefTeamIdsPromise est
+  // lancé immédiatement pour ne pas bloquer l'étape 2.
+  const chefTeamIdsPromise = listActiveTeamIdsForUser(user.id)
+  const agentIntRes = await supabase
+    .from('interventions')
+    .select('mission:missions(site_id)')
+    .contains('team', [user.id])
+    .limit(200)
 
   const agentSiteIds = Array.from(
     new Set(
@@ -109,24 +103,32 @@ export default async function FieldHomePage({
     )
   )
 
-  // Génération paresseuse + FAB sites en parallèle
-  const ensurePromise = (isToday && agentSiteIds.length > 0)
-    ? ensureTodayInterventionsForSites(agentSiteIds, 1)
-    : Promise.resolve(null)
+  // Étape 2 — Génération paresseuse AVANT le fetch des interventions.
+  // Obligation séquentielle : ensure doit inscrire les records récurrents en DB
+  // AVANT que listInterventionsVisibleToUser les cherche. Couvre aujourd'hui + J+3
+  // (toutes les dates visibles dans le DateNav). Idempotente : UNIQUE constraint.
+  if (agentSiteIds.length > 0) {
+    await ensureTodayInterventionsForSites(agentSiteIds, 4)
+  }
+
+  // Étape 3 — Fetch en parallèle : les records récurrents existent maintenant.
   const fabSitesPromise = agentSiteIds.length > 0
     ? supabase.from('sites').select('id, name').in('id', agentSiteIds).is('deleted_at', null).order('name')
     : Promise.resolve({ data: [] as Array<{ id: string; name: string }> })
 
-  // Batch unique : toutes les missions + tous les sites en 2 requêtes.
-  // Avant : getMission(id) appelé 3 fois en boucle (1 requête par mission).
-  const allMissionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))
-  const [, fabSitesRes, allMissionsRes] = await Promise.all([
-    ensurePromise,
+  const chefTeamIds = await chefTeamIdsPromise
+  const [interventions, handoverBriefs, fabSitesRes] = await Promise.all([
+    listInterventionsVisibleToUser(user.id),
+    listSharedHandoverBriefsForChef(user.id, chefTeamIds),
     fabSitesPromise,
-    allMissionIds.length === 0
-      ? Promise.resolve({ data: [] as Array<{ id: string; name: string; site_id: string; cadence: string }> })
-      : supabase.from('missions').select('id, name, site_id, cadence').in('id', allMissionIds).is('deleted_at', null),
   ])
+
+  // Batch unique : toutes les missions + tous les sites en 1 requête.
+  // Dépend de interventions.map(mission_id) → 2ème vague de fetch.
+  const allMissionIds = Array.from(new Set(interventions.map((i) => i.mission_id)))
+  const allMissionsRes = allMissionIds.length === 0
+    ? { data: [] as Array<{ id: string; name: string; site_id: string; cadence: string }> }
+    : await supabase.from('missions').select('id, name, site_id, cadence').in('id', allMissionIds).is('deleted_at', null)
 
   const missionById = new Map(
     ((allMissionsRes as { data: Array<{ id: string; name: string; site_id: string; cadence: string }> | null }).data ?? [])
@@ -260,7 +262,8 @@ export default async function FieldHomePage({
 
   if (interventions.length === 0) {
     return (
-      <>
+      <div className="space-y-6 max-w-md pb-32">
+        <DateNav todayIso={todayIso} selectedIso={selectedDate} />
         <div className="rounded-lg border bg-card max-w-md">
           <EmptyState
             icon={CheckCircle2}
@@ -270,7 +273,7 @@ export default async function FieldHomePage({
           />
         </div>
         <FreePhotoFab sites={fabSites} />
-      </>
+      </div>
     )
   }
 
@@ -301,7 +304,7 @@ export default async function FieldHomePage({
               return (
                 <li key={kpi.interventionId}>
                   <Link
-                    href={`/m/intervention/${kpi.interventionId}`}
+                    href={`/m/intervention/${kpi.interventionId}?date=${selectedDate}`}
                     className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50/60 px-3 py-2.5 active:bg-red-100/80 dark:border-red-900/40 dark:bg-red-950/20 dark:active:bg-red-950/40"
                   >
                     <div className="min-w-0">
@@ -329,7 +332,7 @@ export default async function FieldHomePage({
             {incompleteKPIs.map((kpi) => (
               <li key={kpi.interventionId}>
                 <Link
-                  href={`/m/intervention/${kpi.interventionId}`}
+                  href={`/m/intervention/${kpi.interventionId}?date=${selectedDate}`}
                   className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50/60 px-3 py-2.5 active:bg-red-100/80 dark:border-red-900/40 dark:bg-red-950/20 dark:active:bg-red-950/40"
                 >
                   <div className="min-w-0">
@@ -419,12 +422,14 @@ export default async function FieldHomePage({
                   interventionId={i.id}
                   missionName={mission?.name ?? 'Intervention'}
                   siteName={site?.name ?? null}
+                  siteId={mission?.site_id ?? null}
                   scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
                   slot={i.slot ?? null}
                   plannedStart={i.planned_start}
                   plannedEnd={i.planned_end}
                   status={i.status}
                   skippedReason={i.skipped_reason}
+                  selectedDate={selectedDate}
                   primary
                 />
               )
@@ -471,12 +476,14 @@ export default async function FieldHomePage({
                   interventionId={i.id}
                   missionName={mission?.name ?? 'Intervention'}
                   siteName={site?.name ?? null}
+                  siteId={mission?.site_id ?? null}
                   scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
                   slot={i.slot ?? null}
                   plannedStart={i.planned_start}
                   plannedEnd={i.planned_end}
                   status={i.status}
                   skippedReason={i.skipped_reason}
+                  selectedDate={selectedDate}
                   primary={false}
                 />
               )
@@ -493,23 +500,27 @@ function InterventionCard({
   interventionId,
   missionName,
   siteName,
+  siteId,
   scheduledFor,
   slot,
   plannedStart,
   plannedEnd,
   status,
   skippedReason,
+  selectedDate,
   primary,
 }: {
   interventionId: string
   missionName: string
   siteName: string | null
+  siteId: string | null
   scheduledFor: string
   slot: string | null
   plannedStart: string | null
   plannedEnd: string | null
   status: string
   skippedReason: string | null
+  selectedDate: string
   primary: boolean
 }) {
   const { day, isToday } = formatScheduledTime(scheduledFor)
@@ -530,7 +541,7 @@ function InterventionCard({
   return (
     <li>
       <Link
-        href={`/m/intervention/${interventionId}`}
+        href={`/m/intervention/${interventionId}?date=${selectedDate}`}
         className={`block rounded-xl border p-4 transition-colors active:bg-muted/40 ${
           isSkipped
             ? 'bg-muted/30 border-border opacity-70 hover:bg-muted/40'
@@ -583,7 +594,7 @@ function InterventionCard({
           {primary && !isCompleted && !isSkipped && (
             <div className="flex flex-col items-center justify-center shrink-0">
               <div className="rounded-full bg-foreground text-background px-4 py-3 text-sm font-medium flex items-center gap-1" style={{ minHeight: 64, minWidth: 64 }}>
-                {isInProgress ? 'Reprendre' : 'Commencer'}
+                {isInProgress ? 'Réouvrir' : 'Démarrer'}
                 <ArrowRight className="h-4 w-4" />
               </div>
             </div>

@@ -51,9 +51,9 @@ export default async function TendersPage({
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold">Appels d&apos;offres</h1>
+          <h1 className="text-2xl font-semibold">Dossiers de démarrage</h1>
           <p className="text-sm text-muted-foreground">
-            Liste des AO en cours d&apos;analyse, prêts à soumettre, soumis et archivés.
+            Liste des dossiers en cours d&apos;analyse, prêts à soumettre, soumis et archivés.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -78,7 +78,7 @@ export default async function TendersPage({
       </div>
 
       <FiltersBar
-        searchPlaceholder="Rechercher un AO…"
+        searchPlaceholder="Rechercher un dossier…"
         hasActiveFilters={hasActiveFilters}
         resetParams={['status', 'search']}
       >
@@ -93,14 +93,14 @@ export default async function TendersPage({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {total} AO{total > 1 ? 's' : ''}
+            {total} dossier{total > 1 ? 's' : ''}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isEmpty && hasActiveFilters ? (
             <EmptyState
               icon={SearchX}
-              title="Aucun AO ne correspond à votre recherche"
+              title="Aucun dossier ne correspond à votre recherche"
               description="Essayez de modifier ou de retirer vos filtres."
               primaryAction={
                 <Link
@@ -115,15 +115,15 @@ export default async function TendersPage({
           ) : isEmpty ? (
             <EmptyState
               icon={FileText}
-              title="Aucun appel d'offres pour l'instant"
-              description="Importez votre premier AO pour démarrer l'extraction des engagements et la rédaction assistée de la mémoire technique."
+              title="Aucun dossier de démarrage pour l'instant"
+              description="Importez votre premier dossier pour démarrer l'extraction des engagements et la rédaction assistée de la mémoire technique."
               primaryAction={
                 <Link
                   href="/tenders/new"
                   className={cn(buttonVariants({ variant: 'default' }), 'gap-1.5')}
                 >
                   <Plus className="h-4 w-4" />
-                  Importer un AO
+                  Importer un dossier
                 </Link>
               }
             />

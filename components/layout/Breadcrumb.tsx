@@ -15,7 +15,7 @@ const LABELS: Record<string, string> = {
   missions: 'Missions',
   equipes: 'Équipes',
   preuves: 'Dossier de preuves',
-  tenders: "Appels d'offres",
+  tenders: 'Dossiers de démarrage',
   contracts: 'Contrats',
   sites: 'Sites',
   preparation: 'Préparation',

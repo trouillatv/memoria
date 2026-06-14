@@ -30,7 +30,7 @@ export function AOPipelineWidget({ snapshot }: Props) {
         >
           <div className="flex items-center gap-3">
             <Briefcase className="h-4 w-4 text-brand-600 shrink-0" strokeWidth={1.75} />
-            <h3 className="text-sm font-semibold">Pipeline AO</h3>
+            <h3 className="text-sm font-semibold">Pipeline dossiers</h3>
           </div>
           <ArrowRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground transition-colors" />
         </Link>

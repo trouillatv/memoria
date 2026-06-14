@@ -6,6 +6,7 @@
 export const dynamic = 'force-dynamic'
 
 import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import { MapPin, Users, Camera, AlertTriangle, Building2, CheckCircle2, Clock, Briefcase } from 'lucide-react'
 import { getSiteByQrToken, recordQrAccess } from '@/lib/db/site-qr'
 import { getSiteJournal, type JournalEntry, type JournalIntervention } from '@/lib/db/site-journal'
@@ -123,7 +124,9 @@ export default async function QrPublicPage({ params }: PageProps) {
   if (!site) notFound()
 
   // Audit silencieux — ne bloque pas l'affichage si ça échoue.
-  recordQrAccess(token).catch(() => {})
+  const headersList = await headers()
+  const userAgent = headersList.get('user-agent')
+  recordQrAccess(token, userAgent).catch(() => {})
 
   const entries: JournalEntry[] = await getSiteJournal(site.id, { limit: 60 })
 

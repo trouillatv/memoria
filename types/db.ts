@@ -539,7 +539,16 @@ export interface DbInterventionPhoto {
   hash_origin: 'verified' | 'retroactive' | 'unknown'
 }
 
-export type AnomalyCategory = 'eau_coupee' | 'materiel_casse' | 'acces_bloque' | 'produit_manquant' | 'autre'
+export type AnomalyCategory =
+  | 'eau_coupee'
+  | 'electricite_coupee'
+  | 'materiel_casse'
+  | 'acces_bloque'
+  | 'produit_manquant'
+  | 'zone_non_prete'
+  | 'danger_securite'
+  | 'livraison_probleme'
+  | 'autre'
 export type AnomalyStatus = 'open' | 'resolved' | 'ignored'
 
 export interface DbInterventionAnomaly {

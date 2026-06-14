@@ -24,9 +24,9 @@ export function HomePreferenceToggle({ current }: Props) {
     startTransition(async () => {
       const result = await applyHomePreferenceAndLogoutAction(selected)
       if (result.ok) {
-        toast.success('Préférence appliquée. Reconnectez-vous pour ouvrir la vue choisie.')
+        toast.success('Page d’accueil mise à jour. Reconnectez-vous pour ouvrir la vue choisie.')
       } else {
-        toast.error('Impossible de modifier la préférence.')
+        toast.error('Impossible de modifier la page d’accueil.')
       }
     })
   }

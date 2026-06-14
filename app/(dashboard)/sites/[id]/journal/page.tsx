@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, MapPin, Download } from 'lucide-react'
+import { BookOpen, MapPin, Download, QrCode } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteJournal } from '@/lib/db/site-journal'
@@ -55,6 +55,14 @@ export default async function SiteJournalPage({ params }: PageProps) {
             <Download className="h-3.5 w-3.5" />
             PDF
           </a>
+          <Link
+            href={`/sites/${id}/qr`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            title="Afficher ou générer le QR Code chantier"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            QR
+          </Link>
         </div>
         <p className="text-sm text-muted-foreground inline-flex items-center gap-1">
           <MapPin className="h-3.5 w-3.5 shrink-0" />

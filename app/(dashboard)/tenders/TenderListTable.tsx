@@ -20,7 +20,7 @@ export function TenderListTable({ items }: { items: DbTender[] }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-12 text-center">
-        Aucun AO. Cliquez sur &laquo;&nbsp;Nouveau&nbsp;&raquo; pour commencer.
+        Aucun dossier. Cliquez sur &laquo;&nbsp;Nouveau&nbsp;&raquo; pour commencer.
       </p>
     )
   }

@@ -47,7 +47,7 @@ export async function addSiteNoteAction(
   }
 
   try {
-    await createSiteNote({ siteId: parsed.data.siteId, body: parsed.data.body })
+    await createSiteNote({ siteId: parsed.data.siteId, body: parsed.data.body, kind: 'a_savoir' })
   } catch (e) {
     return {
       ok: false,

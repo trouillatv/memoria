@@ -68,7 +68,7 @@ export function StatsBand({ weekPulse, capital, aoPipeline, anomalies }: StatsBa
         <Stat value={capital.totalContractsActive} label="contrats actifs" />
       </StatCard>
 
-      <StatCard icon={FileText} title="AO en cours" testId="stat-ao">
+      <StatCard icon={FileText} title="Dossiers en cours" testId="stat-ao">
         <Stat value={aoPipeline.analyzing} label="en analyse" />
         <Stat value={aoPipeline.ready} label="prêt à soumettre" />
         <Stat value={aoPipeline.submitted} label="soumis" />
