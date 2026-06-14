@@ -8,6 +8,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { anomalyLabel } from '@/lib/anomaly-labels'
 import type { MissionCadence } from '@/types/db'
 
 export interface MissionCockpitRow {
@@ -23,6 +24,7 @@ export interface MissionCockpitRow {
   lastInterventionDate: string | null
   nextInterventionDate: string | null
   openAnomalyCount: number
+  anomalyDetails: Array<{ label: string; date: string }>
 }
 
 export interface MissionCockpitStats {
@@ -139,16 +141,26 @@ export async function listMissionsCockpit(): Promise<{
   for (const r of (inProgressRes.data ?? []) as IntvRow[]) interventionToMission.set(r.id, r.mission_id)
 
   const anomalyCountByMission = new Map<string, number>()
+  const anomalyDetailsByMission = new Map<string, Array<{ label: string; date: string }>>()
   const knownIntvIds = [...interventionToMission.keys()]
   if (knownIntvIds.length > 0) {
     const { data: anomalyRows } = await supabase
       .from('intervention_anomalies')
-      .select('intervention_id')
+      .select('intervention_id, category, category_other, description, created_at')
       .in('intervention_id', knownIntvIds)
       .eq('status', 'open')
-    for (const a of (anomalyRows ?? []) as Array<{ intervention_id: string }>) {
+      .order('created_at', { ascending: false })
+    type AnomalyRow = { intervention_id: string; category: string; category_other: string | null; description: string | null; created_at: string }
+    for (const a of (anomalyRows ?? []) as AnomalyRow[]) {
       const mId = interventionToMission.get(a.intervention_id)
-      if (mId) anomalyCountByMission.set(mId, (anomalyCountByMission.get(mId) ?? 0) + 1)
+      if (!mId) continue
+      anomalyCountByMission.set(mId, (anomalyCountByMission.get(mId) ?? 0) + 1)
+      const details = anomalyDetailsByMission.get(mId) ?? []
+      details.push({
+        label: anomalyLabel(a.description, a.category_other, a.category),
+        date: new Date(a.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+      })
+      anomalyDetailsByMission.set(mId, details)
     }
   }
 
@@ -168,6 +180,7 @@ export async function listMissionsCockpit(): Promise<{
       lastInterventionDate: lastByMission.get(m.id) ?? null,
       nextInterventionDate: nextByMission.get(m.id) ?? null,
       openAnomalyCount: anomalyCountByMission.get(m.id) ?? 0,
+      anomalyDetails: anomalyDetailsByMission.get(m.id) ?? [],
     }
   })
 

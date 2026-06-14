@@ -21,6 +21,8 @@ import { planningSignalsBySite } from '@/lib/memory/signals/surface'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { SIGNAL_REGISTRY, type SignalFamily } from '@/lib/memory/signals/registry'
 import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
+import { AnomalyTooltipBadge, type AnomalyDetail } from '@/components/ui/AnomalyTooltipBadge'
+import { anomalyLabel } from '@/lib/anomaly-labels'
 
 // Plus de pagination — le regroupement collapsé par site rend la liste lisible
 // même longue. Cap dur à 500 par sécurité (un superviseur n'a jamais besoin de
@@ -65,21 +67,30 @@ function relDaysFr(dateIso: string, todayIso: string): string {
 interface SiteFootprint {
   openAnomalies: number
   aSavoir: number
+  anomalyDetails: AnomalyDetail[]
 }
 
 /** Empreinte mémoire directe (sans le moteur) par site : anomalies ouvertes +
  * « à savoir » actifs. Sert au « signal faible » visible immédiatement. */
-async function getSiteFootprints(siteIds: string[]): Promise<Record<string, SiteFootprint>> {
+async function getSiteFootprints(
+  siteIds: string[],
+  interventionIdToSiteId: Map<string, string>,
+): Promise<Record<string, SiteFootprint>> {
   const out: Record<string, SiteFootprint> = {}
   if (siteIds.length === 0) return out
   const supabase = createAdminClient()
-  const ensure = (sid: string) => (out[sid] ??= { openAnomalies: 0, aSavoir: 0 })
+  const ensure = (sid: string) => (out[sid] ??= { openAnomalies: 0, aSavoir: 0, anomalyDetails: [] })
 
+  const interventionIds = [...interventionIdToSiteId.keys()]
   const [anoms, notes] = await Promise.all([
-    supabase
-      .from('intervention_anomalies')
-      .select('id, intervention:interventions!inner(mission:missions!inner(site_id))')
-      .eq('status', 'open'),
+    interventionIds.length > 0
+      ? supabase
+          .from('intervention_anomalies')
+          .select('intervention_id, category, category_other, description, created_at')
+          .in('intervention_id', interventionIds)
+          .eq('status', 'open')
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] as unknown[] }),
     supabase
       .from('site_notes')
       .select('site_id')
@@ -88,12 +99,15 @@ async function getSiteFootprints(siteIds: string[]): Promise<Record<string, Site
       .in('site_id', siteIds),
   ])
 
-  for (const r of (anoms.data ?? []) as Array<{ intervention: unknown }>) {
-    const intv = Array.isArray(r.intervention) ? r.intervention[0] : r.intervention
-    const mission = intv ? (Array.isArray((intv as { mission: unknown }).mission) ? (intv as { mission: { site_id: string }[] }).mission[0] : (intv as { mission: { site_id: string } }).mission) : null
-    const sid = (mission as { site_id?: string } | null)?.site_id
-    if (!sid || !siteIds.includes(sid)) continue
+  type AnomalyRow = { intervention_id: string; category: string; category_other: string | null; description: string | null; created_at: string }
+  for (const a of (anoms.data ?? []) as AnomalyRow[]) {
+    const sid = interventionIdToSiteId.get(a.intervention_id)
+    if (!sid) continue
     ensure(sid).openAnomalies++
+    ensure(sid).anomalyDetails.push({
+      label: anomalyLabel(a.description, a.category_other, a.category),
+      date: new Date(a.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+    })
   }
   for (const r of (notes.data ?? []) as Array<{ site_id: string | null }>) {
     if (r.site_id) ensure(r.site_id).aSavoir++
@@ -207,7 +221,12 @@ export default async function MissionsPage({
   const shownSiteIds = Array.from(
     new Set(items.map((i) => i.mission?.site?.id).filter((x): x is string => !!x)),
   )
-  const footprints = await getSiteFootprints(shownSiteIds)
+  const interventionIdToSiteId = new Map(
+    items
+      .map((i) => [i.id, i.mission?.site?.id ?? ''] as [string, string])
+      .filter(([, sid]) => sid),
+  )
+  const footprints = await getSiteFootprints(shownSiteIds, interventionIdToSiteId)
 
   // Auto-expand des groupes quand on a filtré sur une mission ou un site précis
   // (l'utilisateur a narrow → il veut voir le contenu sans re-cliquer).
@@ -444,6 +463,7 @@ function SiteGroupedList({
     const fp = g.siteId ? footprints[g.siteId] : undefined
     const openAnomalies = fp?.openAnomalies ?? 0
     const aSavoir = fp?.aSavoir ?? 0
+    const anomalyDetails = fp?.anomalyDetails ?? []
     const hasUnassigned = g.items.some((i) => i.status === 'planned' && !i.assigned_team_id)
     // Dernière activité documentée (completed/validated) du groupe.
     let lastDone = ''
@@ -454,14 +474,14 @@ function SiteGroupedList({
     }
     const topSignal = g.siteId ? signalsBySite[g.siteId]?.[0] : undefined
     const attention = openAnomalies > 0 || hasUnassigned
-    return { g, openAnomalies, aSavoir, hasUnassigned, lastDone, topSignal, attention }
+    return { g, openAnomalies, aSavoir, anomalyDetails, hasUnassigned, lastDone, topSignal, attention }
   })
   // #4 (léger) : les lieux qui nécessitent attention remontent en premier.
   enriched.sort((a, b) => (a.attention === b.attention ? 0 : a.attention ? -1 : 1))
 
   return (
     <div className="space-y-1.5">
-      {enriched.map(({ g, openAnomalies, aSavoir, hasUnassigned, lastDone, topSignal, attention }) => {
+      {enriched.map(({ g, openAnomalies, aSavoir, anomalyDetails, hasUnassigned, lastDone, topSignal, attention }) => {
         const accentCls = attention
           ? 'border-l-2 border-l-amber-300'
           : topSignal
@@ -504,10 +524,7 @@ function SiteGroupedList({
                 {hasLine && (
                   <div className="mt-1 ml-[1.4rem] flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                     {openAnomalies > 0 && (
-                      <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
-                        <AlertTriangle className="h-3 w-3" aria-hidden />
-                        {openAnomalies} anomalie{openAnomalies > 1 ? 's' : ''} ouverte{openAnomalies > 1 ? 's' : ''}
-                      </span>
+                      <AnomalyTooltipBadge count={openAnomalies} details={anomalyDetails} />
                     )}
                     {hasUnassigned && (
                       <span className="text-amber-700 dark:text-amber-300">· intervention sans équipe</span>

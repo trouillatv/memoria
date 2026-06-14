@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ClipboardList, MapPin, Users, AlertTriangle, CalendarCheck, CalendarX } from 'lucide-react'
+import { AnomalyTooltipBadge } from '@/components/ui/AnomalyTooltipBadge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { listMissionsCockpit } from '@/lib/db/missions-cockpit'
@@ -210,6 +211,7 @@ function MissionTable({
     lastInterventionDate: string | null
     nextInterventionDate: string | null
     openAnomalyCount: number
+    anomalyDetails: Array<{ label: string; date: string }>
   }>
   muted?: boolean
 }) {
@@ -249,10 +251,7 @@ function MissionTable({
                       {CADENCE_FR[m.cadence] ?? m.cadence}
                     </span>
                     {hasAnomaly && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700">
-                        <AlertTriangle className="h-3 w-3" />
-                        {m.openAnomalyCount}
-                      </span>
+                      <AnomalyTooltipBadge count={m.openAnomalyCount} details={m.anomalyDetails} />
                     )}
                   </div>
                   {m.contractName && (
