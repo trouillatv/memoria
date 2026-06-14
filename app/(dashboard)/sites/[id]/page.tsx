@@ -8,11 +8,15 @@
 // Les RÈGLES PRODUIT restent strictes (descriptif jamais juge, humains nommés
 // jamais qualifiés, pas de KPI humains, pas de scoring agent, pas de
 // reverse-lookup individuel). Seul le STYLE s'aligne sur l'app.
+//
+// Navigation mobile : onglets par ?tab= (search param serveur, 0 JS client).
+// Sur desktop (md+), tous les blocs sont toujours visibles — expérience inchangée.
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { MapPin } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
@@ -48,17 +52,23 @@ import { SiteTeamsKnowledgeSection } from './SiteTeamsKnowledgeSection'
 import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
+import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
 }
 
-export default async function SitePage({ params }: PageProps) {
+export default async function SitePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
+  const { tab: rawTab } = await searchParams
+  const tab: SiteTabKey = (SITE_TAB_KEYS as ReadonlyArray<string>).includes(rawTab ?? '')
+    ? (rawTab as SiteTabKey)
+    : 'apercu'
 
   const [
     identity,
@@ -93,26 +103,36 @@ export default async function SitePage({ params }: PageProps) {
   ])
 
   // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
-  // Distinct de getSiteTeamPresences (30j récent). Sujet = site, jamais classement.
   const teamsKnowledge = await getSiteTeamsKnowledge(id)
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
-  // Vincent 2026-05-15 : "Quand Moana reprend un site, on lui montre les
-  // bribes de mémoire laissées par Anaïs."
   const transmissions = await getSiteTransmissionReadings(id, continuity)
-  // V5.1.4 — Plafond 6 fragments max (Vincent 2026-05-15) :
-  // "L'IA qui parle tout le temps devient du bruit."
   const enrichedReadings = {
     readings: [...transmissions, ...readings.readings].slice(0, 6),
   }
 
   if (!identity) notFound()
 
-  // A4 — documents rattachés au site (consommateur mince). visibility_level
-  // respecté : un document non autorisé pour ce rôle n'apparaît jamais.
   const visibleSiteDocs = siteDocs.filter((d) =>
     canViewDocument(user.role, d.visibility_level),
   )
+
+  // Helpers de visibilité : sur desktop (md+), tout est toujours visible.
+  // Sur mobile, seul l'onglet actif s'affiche.
+  // Utilise hidden/md:block (ou md:grid) pour éviter tout JS client.
+  function tabClass(thisTab: SiteTabKey, displayClass = 'md:block') {
+    return tab !== thisTab ? `hidden ${displayClass}` : ''
+  }
+  function gridTabClass(thisTab: SiteTabKey) {
+    // Wrapper de grille : caché sur mobile si mauvais onglet, grid 2-col sur desktop.
+    if (tab !== thisTab) return 'hidden md:grid md:grid-cols-2 md:gap-4'
+    return 'grid grid-cols-1 md:grid-cols-2 gap-4'
+  }
+  // Pour la grille mixte Rythme|Équipes : visible si activite OU equipe.
+  function mixedGridClass() {
+    if (tab !== 'activite' && tab !== 'equipe') return 'hidden md:grid md:grid-cols-2 md:gap-4'
+    return 'grid grid-cols-1 md:grid-cols-2 gap-4'
+  }
 
   return (
     <div className="space-y-6 w-full">
@@ -142,14 +162,18 @@ export default async function SitePage({ params }: PageProps) {
         <ASavoirManager siteId={id} active={aSavoirActive} />
       )}
 
-      {/* COUCHE 1 — Cockpit opérationnel : 4 stats inline, sans carte. */}
-      {/* Suppression du Card wrapper → les lectures remontent à l'écran.  */}
-      <div className="pb-2 border-b border-border/40">
+      {/* Navigation onglets — mobile uniquement */}
+      <SiteTabsNav active={tab} siteId={id} />
+
+      {/* ── APERÇU ───────────────────────────────────────────────────────── */}
+      {/* COUCHE 1 — Cockpit opérationnel */}
+      <div className={cn('pb-2 border-b border-border/40', tabClass('apercu'))}>
         <CurrentState state={currentState} />
       </div>
 
-      {/* COUCHE 3 — Lectures du lieu (IA perceptive) — toujours visible */}
-      <Card className="bg-[#fafaf7] border-foreground/10">
+      {/* ── MÉMOIRE ──────────────────────────────────────────────────────── */}
+      {/* COUCHE 3 — Lectures du lieu (IA perceptive) */}
+      <Card className={cn('bg-[#fafaf7] border-foreground/10', tabClass('memoire'))}>
         <CardHeader>
           <CardTitle className="text-base font-medium">Lectures du lieu</CardTitle>
         </CardHeader>
@@ -158,8 +182,7 @@ export default async function SitePage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* Mémoire du lieu — remontée */}
-      <Card>
+      <Card className={cn(tabClass('memoire'))}>
         <CardHeader>
           <CardTitle>Mémoire du lieu</CardTitle>
         </CardHeader>
@@ -168,9 +191,11 @@ export default async function SitePage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* COUCHE 2 — Rythme | Équipes & photos (fusionnés) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
+      {/* ── ACTIVITÉ + ÉQUIPE — grille 2-col sur desktop ─────────────────── */}
+      {/* Rythme → onglet activite | Équipes+Photos → onglet equipe          */}
+      {/* Le wrapper lui-même est hidden si ni activite ni equipe (mobile).   */}
+      <div className={mixedGridClass()}>
+        <Card className={cn(tabClass('activite'))}>
           <CardHeader>
             <CardTitle>Rythme du lieu</CardTitle>
           </CardHeader>
@@ -179,7 +204,7 @@ export default async function SitePage({ params }: PageProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={cn(tabClass('equipe'))}>
           <CardHeader>
             <CardTitle>Équipes — 14 derniers jours</CardTitle>
           </CardHeader>
@@ -194,7 +219,8 @@ export default async function SitePage({ params }: PageProps) {
         </Card>
       </div>
 
-      <Card>
+      {/* ── ACTIVITÉ — Anomalies ─────────────────────────────────────────── */}
+      <Card className={cn(tabClass('activite'))}>
         <CardHeader>
           <CardTitle>Anomalies</CardTitle>
         </CardHeader>
@@ -203,12 +229,13 @@ export default async function SitePage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* CT-2 (Vincent 2026-05-21) — équipes qui connaissent ce site, all-time.
-          Vue cumulative complète, distincte de « Équipes — 14 derniers jours »
-          ci-dessus. Sujet = site, pas de classement entre équipes. */}
-      <SiteTeamsKnowledgeSection teams={teamsKnowledge} />
+      {/* ── ÉQUIPE — all-time ────────────────────────────────────────────── */}
+      <div className={tabClass('equipe')}>
+        <SiteTeamsKnowledgeSection teams={teamsKnowledge} />
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ── MÉMOIRE — Continuité humaine | Ce qui revient (grille) ───────── */}
+      <div className={gridTabClass('memoire')}>
         <Card>
           <CardHeader>
             <CardTitle>Continuité humaine</CardTitle>
@@ -230,8 +257,8 @@ export default async function SitePage({ params }: PageProps) {
         )}
       </div>
 
-      {/* Activité récente — bas, compact */}
-      <Card>
+      {/* ── APERÇU — Activité récente ────────────────────────────────────── */}
+      <Card className={cn(tabClass('apercu'))}>
         <CardHeader>
           <CardTitle>Activité récente</CardTitle>
         </CardHeader>
@@ -240,27 +267,37 @@ export default async function SitePage({ params }: PageProps) {
         </CardContent>
       </Card>
 
-      {/* A4 — Documents rattachés (consommateur mince, 0 IA). Masquée si
-          aucun document visible pour ce rôle (visibility_level respecté). */}
-      {visibleSiteDocs.length > 0 && (
-        <Card data-testid="site-documents">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
-            <CardTitle>Documents ({visibleSiteDocs.length})</CardTitle>
+      {/* ── DOCUMENTS ────────────────────────────────────────────────────── */}
+      <div className={tabClass('documents')}>
+        {visibleSiteDocs.length > 0 ? (
+          <Card data-testid="site-documents">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+              <CardTitle>Documents ({visibleSiteDocs.length})</CardTitle>
+              <Link
+                href={`/documents/import?target_type=site&target_id=${id}`}
+                className="text-xs font-normal text-muted-foreground hover:text-foreground hover:underline"
+              >
+                Ajouter un document →
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <LinkedDocumentsList documents={visibleSiteDocs} />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="rounded-lg border border-dashed p-8 text-center space-y-2">
+            <p className="text-sm text-muted-foreground">Aucun document rattaché à ce chantier.</p>
             <Link
               href={`/documents/import?target_type=site&target_id=${id}`}
-              className="text-xs font-normal text-muted-foreground hover:text-foreground hover:underline"
+              className="text-xs text-muted-foreground hover:text-foreground underline"
             >
               Ajouter un document →
             </Link>
-          </CardHeader>
-          <CardContent>
-            <LinkedDocumentsList documents={visibleSiteDocs} />
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+      </div>
 
-      {/* V5.1 Slice 5 — Lien Atelier mémoire / Résonances + Journal.
-          Entrées discrètes, bas de page, pas en hero. */}
+      {/* V5.1 Slice 5 — Liens discrets bas de page */}
       <div className="pt-2 border-t border-border/40 text-sm flex items-center gap-6">
         <Link
           href={`/sites/${id}/journal`}
