@@ -90,6 +90,15 @@ export interface EveningBriefing {
     created_at: string
     age_days: number
   }>
+  /** Équipes actives sans aucune intervention planifiée à la date cible.
+   *  Signal logistique capacité disponible — jamais une mesure de performance.
+   *  `members` = noms affichables des membres actifs de l'équipe. */
+  unassignedTeams: Array<{
+    teamId: string
+    teamName: string
+    teamColor: string | null
+    members: string[]
+  }>
 }
 
 export async function buildEveningBriefing(targetDate: string): Promise<EveningBriefing> {
@@ -405,6 +414,52 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     age_days: Math.floor((Date.now() - new Date(a.created_at).getTime()) / (24 * 3600 * 1000)),
   }))
 
+  // 8) Équipes actives sans affectation — capacité disponible planning.
+  // Signal logistique. Jamais un KPI. Sujet = équipe, jamais individu isolé.
+  let allOrgTeamsQ = supabase
+    .from('teams')
+    .select('id, name, color')
+    .is('deleted_at', null)
+    .order('name')
+  if (orgId) allOrgTeamsQ = allOrgTeamsQ.eq('organization_id', orgId)
+  const { data: allOrgTeams } = await allOrgTeamsQ
+
+  const unassignedTeams: EveningBriefing['unassignedTeams'] = []
+  const freeTeamRows = (
+    (allOrgTeams ?? []) as Array<{ id: string; name: string; color: string | null }>
+  ).filter((t) => !teamIds.has(t.id))
+
+  if (freeTeamRows.length > 0) {
+    const freeTeamIds = freeTeamRows.map((t) => t.id)
+    const { data: availMemberRows } = await supabase
+      .from('team_members')
+      .select('team_id, user:users(full_name, email)')
+      .in('team_id', freeTeamIds)
+      .is('left_at', null)
+
+    type AvailUser = { full_name: string | null; email: string }
+    const membersByTeam = new Map<string, string[]>()
+    for (const m of (availMemberRows ?? []) as Array<{
+      team_id: string
+      user: AvailUser | AvailUser[] | null
+    }>) {
+      const u = pickOne(m.user)
+      if (!u) continue
+      const name = (u.full_name ?? '').trim() || (u.email.split('@')[0] ?? '?')
+      const arr = membersByTeam.get(m.team_id) ?? []
+      arr.push(name)
+      membersByTeam.set(m.team_id, arr)
+    }
+
+    for (const t of freeTeamRows) {
+      const members = (membersByTeam.get(t.id) ?? []).sort((a, b) =>
+        a.localeCompare(b, 'fr', { sensitivity: 'base' }),
+      )
+      if (members.length === 0) continue
+      unassignedTeams.push({ teamId: t.id, teamName: t.name, teamColor: t.color, members })
+    }
+  }
+
   return {
     date: targetDate,
     interventionsCount,
@@ -416,6 +471,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     coverageBySite,
     contractsExpiringSoon,
     oldOpenAnomalies,
+    unassignedTeams,
   }
 }
 

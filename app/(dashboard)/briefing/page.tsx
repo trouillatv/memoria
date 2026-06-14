@@ -234,6 +234,42 @@ export default async function BriefingPage({
         </CardContent>
       </Card>
 
+      {/* Personnes sans affectation — capacité disponible planning */}
+      {briefing.unassignedTeams.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              Personnes sans affectation (
+              {briefing.unassignedTeams.reduce((s, t) => s + t.members.length, 0)})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3 italic">
+              Équipes sans intervention planifiée demain. Capacité disponible si un
+              chantier a besoin de couverture.
+            </p>
+            <ul className="space-y-2 text-sm">
+              {briefing.unassignedTeams.map((t) => (
+                <li key={t.teamId} className="flex items-start gap-2">
+                  <span className="font-medium shrink-0">{t.teamName}</span>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="text-muted-foreground">{t.members.join(', ')}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 pt-3 border-t">
+              <Link
+                href={`/semaine?week=${briefing.date.slice(0, 7)}`}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Affecter une équipe → Voir le planning
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Sites sans couverture (point de vigilance — pas une alarme) */}
       {briefing.sitesWithoutCoverage.length > 0 && (
         <Card className="border-amber-200">
