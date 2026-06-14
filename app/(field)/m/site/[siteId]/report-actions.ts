@@ -306,16 +306,18 @@ export async function listSiteMissionsForReportAction(
   return missions.map((m) => ({ id: m.id, name: m.name }))
 }
 
-/** Contexte de curation : missions, n° de réunion, actions encore ouvertes. */
+/** Contexte de curation : missions, n° de réunion, actions ouvertes, dates des
+ *  comptes-rendus (pour l'âge déterministe « vu sur N comptes-rendus »). */
 export async function getReportCurationContextAction(siteId: string): Promise<{
   missions: Array<{ id: string; name: string }>
   meetingNumber: number
   openActions: import('@/types/db').DbSiteAction[]
+  reportDates: string[]
 }> {
   const auth = await requireFieldAgent()
-  if ('error' in auth) return { missions: [], meetingNumber: 1, openActions: [] }
+  if ('error' in auth) return { missions: [], meetingNumber: 1, openActions: [], reportDates: [] }
   if (!z.string().uuid().safeParse(siteId).success) {
-    return { missions: [], meetingNumber: 1, openActions: [] }
+    return { missions: [], meetingNumber: 1, openActions: [], reportDates: [] }
   }
   const { listMissionsBySite } = await import('@/lib/db/missions')
   const { listReportsBySite } = await import('@/lib/db/site-reports')
@@ -329,6 +331,7 @@ export async function getReportCurationContextAction(siteId: string): Promise<{
     missions: missions.map((m) => ({ id: m.id, name: m.name })),
     meetingNumber: Math.max(1, reports.length),
     openActions,
+    reportDates: reports.map((r) => r.created_at),
   }
 }
 

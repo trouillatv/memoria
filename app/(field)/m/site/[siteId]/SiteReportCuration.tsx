@@ -1,15 +1,15 @@
 'use client'
 
-// Reconstruction de réunion de chantier (pas un résumé).
-// 6 blocs : Présents · Comparaison réunion précédente · Corps d'état ·
-// Décisions (routées) · Risques & dépendances · Échéances.
-// L'humain valide tout : rien n'est créé/clôturé sans clic.
+// État du chantier issu de la réunion (pas un résumé, pas un sapin de Noël).
+// Lecture 30 s, dans l'ordre : Résumé dirigeant → Depuis la dernière réunion →
+// Blocage critique / Attentes → Demain par corps d'état → Décisions → Présents.
+// Tout déterministe ou présentation ; l'humain valide, rien sans clic.
 
 import { useMemo, useState, useTransition } from 'react'
 import {
   Check, X, Loader2, Wrench, AlertTriangle, Eye, BookOpen, Users,
   Building2, CalendarClock, ClipboardList, FileCheck2, ListTodo,
-  CheckCircle2, CircleDot, Sparkle, GitBranch, ShieldAlert,
+  CheckCircle2, CircleDot, Sparkle, GitBranch, ShieldAlert, ChevronDown, Clock,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
@@ -31,6 +31,7 @@ interface Props {
   existingMissions: Mission[]
   meetingNumber: number
   openActions: DbSiteAction[]
+  reportDates: string[]
   participants: SiteReportParticipant[]
   risks: SiteReportRisk[]
   priorUpdates: PriorActionUpdate[]
@@ -48,12 +49,8 @@ const TYPE_META: Record<SiteReportProposalType, { label: string; icon: typeof Wr
   proof_request: { label: 'Preuve',        icon: FileCheck2,    tone: 'text-rose-700 bg-rose-50 border-rose-200' },
 }
 
-const RISK_META: Record<SiteReportRisk['kind'], { label: string; icon: typeof GitBranch; tone: string }> = {
-  dependency:  { label: 'Dépendance', icon: GitBranch,   tone: 'text-purple-700 bg-purple-50 border-purple-200' },
-  preparation: { label: 'Préparation', icon: ShieldAlert, tone: 'text-amber-700 bg-amber-50 border-amber-200' },
-  vigilance:   { label: 'Vigilance',  icon: Eye,         tone: 'text-orange-700 bg-orange-50 border-orange-200' },
-  risk:        { label: 'Risque',     icon: AlertTriangle, tone: 'text-red-700 bg-red-50 border-red-200' },
-}
+// Décisions qui constituent du travail à faire (pour la vue « Demain »).
+const ACTIONABLE: SiteReportProposalType[] = ['action', 'intervention', 'mission', 'anomaly']
 
 interface RowState {
   accepted: boolean
@@ -67,9 +64,14 @@ interface RowState {
   newMissionName: string
 }
 
+function daysSince(iso: string): number {
+  const then = new Date(iso).getTime()
+  return Math.max(0, Math.floor((Date.now() - then) / 86_400_000))
+}
+
 export function SiteReportCuration({
   reportId, siteId, proposals, existingMissions, meetingNumber,
-  openActions, participants, risks, priorUpdates, onDone,
+  openActions, reportDates, participants, risks, priorUpdates, onDone,
 }: Props) {
   const [rows, setRows] = useState<Record<string, RowState>>(() => {
     const init: Record<string, RowState> = {}
@@ -92,6 +94,7 @@ export function SiteReportCuration({
   })
   const [doneActions, setDoneActions] = useState<Set<string>>(new Set())
   const [vigilanceCreated, setVigilanceCreated] = useState<Set<number>>(new Set())
+  const [showParticipants, setShowParticipants] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   function patch(id: string, p: Partial<RowState>) {
@@ -108,14 +111,53 @@ export function SiteReportCuration({
     return Array.from(map.entries())
   }, [proposals, rows])
 
-  // Comparaison réunion : done vs still_open. Les actions ouvertes non couvertes
-  // par l'IA restent "toujours ouvertes".
+  // ── Comparaison réunion ───────────────────────────────────────────────────
   const updatedIds = new Set(priorUpdates.map((u) => u.actionId))
   const doneUpdates = priorUpdates.filter((u) => u.status === 'done')
   const stillOpenFromUpdates = priorUpdates.filter((u) => u.status === 'still_open')
   const stillOpenUntouched = openActions.filter((a) => !updatedIds.has(a.id))
 
+  // Âge déterministe par action ouverte : jours + nb de comptes-rendus depuis création.
+  const ageByActionId = useMemo(() => {
+    const m = new Map<string, { days: number; reports: number }>()
+    for (const a of openActions) {
+      const days = daysSince(a.created_at)
+      const reports = reportDates.filter((d) => d >= a.created_at).length
+      m.set(a.id, { days, reports })
+    }
+    return m
+  }, [openActions, reportDates])
+
+  // ── Dépendances / blocages ────────────────────────────────────────────────
+  const dependencies = risks.filter((r) => r.kind === 'dependency')
+  const otherRisks = risks.filter((r) => r.kind !== 'dependency')
+  const criticalBlocker = dependencies[0] ?? otherRisks.find((r) => r.kind === 'risk') ?? null
+
+  // ── Demain par corps d'état (depuis les décisions actionnables) ───────────
+  const tomorrowGroups = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; label: string; who: string }>>()
+    for (const p of proposals) {
+      if (!ACTIONABLE.includes(p.type)) continue
+      const r = rows[p.id]
+      if (!r.accepted) continue
+      const corps = (r.corps_etat || p.corps_etat || '').trim() || 'Général'
+      if (!map.has(corps)) map.set(corps, [])
+      map.get(corps)!.push({ id: p.id, label: r.short_label, who: r.assigned_to })
+    }
+    return Array.from(map.entries())
+  }, [proposals, rows])
+
+  // ── Résumé dirigeant ──────────────────────────────────────────────────────
+  const stillOpenTotal = stillOpenFromUpdates.length + stillOpenUntouched.length
+  const summary = [
+    { label: `décision${proposals.length > 1 ? 's' : ''} nouvelle${proposals.length > 1 ? 's' : ''}`, value: proposals.length, tone: 'text-sky-700' },
+    { label: `action${doneUpdates.length > 1 ? 's' : ''} clôturée${doneUpdates.length > 1 ? 's' : ''}`, value: doneUpdates.length, tone: 'text-emerald-700' },
+    { label: `encore ouverte${stillOpenTotal > 1 ? 's' : ''}`, value: stillOpenTotal, tone: 'text-amber-700' },
+    { label: `blocage${dependencies.length > 1 ? 's' : ''}`, value: dependencies.length, tone: 'text-red-700' },
+  ]
+
   const acceptedCount = Object.values(rows).filter((r) => r.accepted).length
+  const hasComparison = doneUpdates.length + stillOpenTotal > 0
 
   function markDone(actionId: string) {
     startTransition(async () => {
@@ -124,12 +166,10 @@ export function SiteReportCuration({
       else toast.error(res.error)
     })
   }
-
   function createVigilance(idx: number, label: string) {
     startTransition(async () => {
       const fd = new FormData()
-      fd.set('site_id', siteId)
-      fd.set('label', label)
+      fd.set('site_id', siteId); fd.set('label', label)
       const res = await createVigilanceFromRiskAction(fd)
       if (res.ok) { setVigilanceCreated((s) => new Set(s).add(idx)); toast.success('Point de vigilance créé') }
       else toast.error(res.error)
@@ -168,35 +208,24 @@ export function SiteReportCuration({
     })
   }
 
-  const hasComparison = doneUpdates.length + stillOpenFromUpdates.length + stillOpenUntouched.length > 0
-
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2 text-sm font-semibold">
         <ClipboardList className="h-4 w-4 text-muted-foreground" />
         Réunion chantier #{meetingNumber}
-        <span className="text-xs font-normal text-muted-foreground">— reconstruction</span>
       </div>
 
-      {/* 👥 PRÉSENTS */}
-      {participants.length > 0 && (
-        <section>
-          <SectionTitle icon={Users}>Présents détectés</SectionTitle>
-          <div className="flex flex-wrap gap-1.5">
-            {participants.map((p, i) => (
-              <span key={i} className="inline-flex items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-xs">
-                <span className={`h-1.5 w-1.5 rounded-full ${
-                  p.kind === 'control' ? 'bg-rose-500' : p.kind === 'company' ? 'bg-violet-500' : 'bg-sky-500'
-                }`} />
-                {p.name}
-                {p.role && <span className="text-muted-foreground/70">· {p.role}</span>}
-              </span>
-            ))}
+      {/* ① RÉSUMÉ DIRIGEANT — lecture 3 secondes */}
+      <div className="grid grid-cols-4 gap-2">
+        {summary.map((s, i) => (
+          <div key={i} className="rounded-lg border bg-card px-2 py-2 text-center">
+            <div className={`text-xl font-bold tabular-nums leading-none ${s.value > 0 ? s.tone : 'text-muted-foreground/40'}`}>{s.value}</div>
+            <div className="mt-1 text-[9px] leading-tight text-muted-foreground">{s.label}</div>
           </div>
-        </section>
-      )}
+        ))}
+      </div>
 
-      {/* 🔄 COMPARAISON RÉUNION PRÉCÉDENTE */}
+      {/* ② DEPUIS LA DERNIÈRE RÉUNION */}
       {hasComparison && (
         <section>
           <SectionTitle icon={GitBranch}>Depuis la dernière réunion</SectionTitle>
@@ -212,47 +241,101 @@ export function SiteReportCuration({
                   </span>
                   {!done && (
                     <button type="button" onClick={() => markDone(u.actionId)} disabled={isPending}
-                      className="shrink-0 rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">
-                      Clôturer
-                    </button>
+                      className="shrink-0 rounded border border-emerald-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100">Clôturer</button>
                   )}
                 </div>
               )
             })}
             {[...stillOpenFromUpdates.map((u) => ({ id: u.actionId, title: u.title })),
-              ...stillOpenUntouched.map((a) => ({ id: a.id, title: a.title }))].map((a) => (
-              <div key={a.id} className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/50 px-2.5 py-1.5 text-xs">
-                <CircleDot className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-                <span className="flex-1"><span className="font-medium text-amber-800">Toujours ouvert&nbsp;:</span> {a.title}</span>
-              </div>
-            ))}
+              ...stillOpenUntouched.map((a) => ({ id: a.id, title: a.title }))].map((a) => {
+              const age = ageByActionId.get(a.id)
+              return (
+                <div key={a.id} className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/50 px-2.5 py-1.5 text-xs">
+                  <CircleDot className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                  <span className="flex-1">
+                    <span className="font-medium text-amber-800">Toujours ouvert&nbsp;:</span> {a.title}
+                  </span>
+                  {age && (age.days >= 7 || age.reports >= 2) && (
+                    <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-amber-700/80">
+                      <Clock className="h-3 w-3" />
+                      {age.reports >= 2 ? `vu sur ${age.reports} CR` : `${age.days} j`}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
             <div className="flex items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
               <Sparkle className="h-3.5 w-3.5 shrink-0 text-sky-600" />
-              <span><span className="font-medium text-foreground">{proposals.length} nouvelle{proposals.length > 1 ? 's' : ''} décision{proposals.length > 1 ? 's' : ''}</span> ce {meetingNumber === 1 ? 'compte-rendu' : 'jour'}</span>
+              <span><span className="font-medium text-foreground">{proposals.length} nouvelle{proposals.length > 1 ? 's' : ''} décision{proposals.length > 1 ? 's' : ''}</span></span>
             </div>
           </div>
         </section>
       )}
 
-      {/* 🏗 CORPS D'ÉTAT (résumé) */}
-      {groups.length > 0 && (
+      {/* ③ BLOCAGE CRITIQUE + ATTENTES */}
+      {criticalBlocker && (
+        <div className="rounded-lg border-2 border-red-200 bg-red-50 p-3">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+            <ShieldAlert className="h-3.5 w-3.5" />Blocage critique
+          </div>
+          <p className="mt-1 text-sm font-medium text-red-900">{criticalBlocker.label}</p>
+        </div>
+      )}
+      {dependencies.length > 0 && (
         <section>
-          <SectionTitle icon={Wrench}>Corps d&apos;état concernés</SectionTitle>
-          <div className="flex flex-wrap gap-1.5">
-            {groups.map(([corps, items]) => (
-              <span key={corps} className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs">
-                {corps} <span className="text-muted-foreground/60">({items.length})</span>
-              </span>
+          <SectionTitle icon={GitBranch}>Attentes &amp; dépendances</SectionTitle>
+          <div className="space-y-1.5">
+            {dependencies.map((d, i) => {
+              const idx = risks.indexOf(d)
+              const created = vigilanceCreated.has(idx)
+              return (
+                <div key={i} className="flex items-center gap-2 rounded-md border border-purple-200 bg-purple-50/60 px-2.5 py-1.5 text-xs">
+                  <GitBranch className="h-3.5 w-3.5 shrink-0 text-purple-600" />
+                  <span className="flex-1">
+                    {d.waiting_party && d.awaited ? (
+                      <><span className="font-medium text-purple-900">{d.waiting_party}</span> attend <span className="font-medium text-purple-900">{d.awaited}</span></>
+                    ) : d.label}
+                  </span>
+                  {!created ? (
+                    <button type="button" onClick={() => createVigilance(idx, d.label)} disabled={isPending}
+                      className="shrink-0 rounded border border-purple-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-purple-700 hover:bg-purple-100">+ Vigilance</button>
+                  ) : (
+                    <span className="shrink-0 text-[10px] font-medium text-purple-700 inline-flex items-center gap-0.5"><Check className="h-3 w-3" />Ajouté</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ④ DEMAIN PAR CORPS D'ÉTAT */}
+      {tomorrowGroups.length > 0 && (
+        <section>
+          <SectionTitle icon={CalendarClock}>À faire — par corps d&apos;état</SectionTitle>
+          <div className="space-y-2.5">
+            {tomorrowGroups.map(([corps, items]) => (
+              <div key={corps} className="rounded-lg border bg-card p-2.5">
+                <h4 className="text-[11px] font-bold uppercase tracking-wide text-foreground mb-1">{corps}</h4>
+                <ul className="space-y-1">
+                  {items.map((it) => (
+                    <li key={it.id} className="flex items-start gap-2 text-xs">
+                      <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border border-muted-foreground/40" />
+                      <span className="flex-1">{it.label}</span>
+                      {it.who && <span className="shrink-0 text-[10px] text-muted-foreground">→ {it.who}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* 📋 DÉCISIONS */}
+      {/* ⑤ DÉCISIONS DÉTECTÉES (éditable) */}
       <section>
         <SectionTitle icon={ListTodo}>
-          Décisions détectées
-          <span className="ml-1 text-xs font-normal text-muted-foreground">— décochez ce qui ne doit pas être créé</span>
+          Décisions <span className="ml-1 text-xs font-normal text-muted-foreground normal-case">— décochez ce qui ne doit pas être créé</span>
         </SectionTitle>
         <div className="space-y-4">
           {groups.map(([corps, items]) => (
@@ -279,9 +362,7 @@ export function SiteReportCuration({
                       <textarea value={r.short_label} onChange={(e) => patch(p.id, { short_label: e.target.value })}
                         rows={2} maxLength={140}
                         className="mt-2 w-full rounded-md border bg-background px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" />
-                      {p.rationale && (
-                        <p className="mt-1 text-[10px] italic text-muted-foreground/70 border-l-2 border-muted pl-2">« {p.rationale} »</p>
-                      )}
+                      {p.rationale && <p className="mt-1 text-[10px] italic text-muted-foreground/70 border-l-2 border-muted pl-2">« {p.rationale} »</p>}
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         <input value={r.corps_etat} onChange={(e) => patch(p.id, { corps_etat: e.target.value })}
                           placeholder="Corps d'état" className="rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
@@ -331,38 +412,51 @@ export function SiteReportCuration({
         </div>
       </section>
 
-      {/* ⚠️ RISQUES & DÉPENDANCES */}
-      {risks.length > 0 && (
+      {/* Autres points de vigilance (préparation, vigilance lieu) — discret */}
+      {otherRisks.length > 0 && (
         <section>
-          <SectionTitle icon={AlertTriangle}>Risques &amp; dépendances</SectionTitle>
-          <div className="space-y-2">
-            {risks.map((rk, i) => {
-              const meta = RISK_META[rk.kind]
-              const Icon = meta.icon
-              const created = vigilanceCreated.has(i)
+          <SectionTitle icon={Eye}>Points de vigilance</SectionTitle>
+          <div className="space-y-1.5">
+            {otherRisks.map((rk) => {
+              const idx = risks.indexOf(rk)
+              const created = vigilanceCreated.has(idx)
               return (
-                <div key={i} className={`rounded-lg border p-2.5 ${meta.tone}`}>
-                  <div className="flex items-start gap-2">
-                    <Icon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[10px] font-semibold uppercase tracking-wide">{meta.label}</span>
-                      <p className="text-xs leading-snug">{rk.label}</p>
-                      {rk.rationale && <p className="text-[10px] italic opacity-70 mt-0.5">« {rk.rationale} »</p>}
-                    </div>
-                    {!created ? (
-                      <button type="button" onClick={() => createVigilance(i, rk.label)} disabled={isPending}
-                        className="shrink-0 rounded border bg-white/70 px-1.5 py-0.5 text-[10px] font-medium hover:bg-white">
-                        + Vigilance
-                      </button>
-                    ) : (
-                      <span className="shrink-0 text-[10px] font-medium inline-flex items-center gap-0.5"><Check className="h-3 w-3" />Ajouté</span>
-                    )}
-                  </div>
+                <div key={idx} className="flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50/50 px-2.5 py-1.5 text-xs">
+                  <Eye className="h-3.5 w-3.5 shrink-0 text-orange-600" />
+                  <span className="flex-1">{rk.label}</span>
+                  {!created ? (
+                    <button type="button" onClick={() => createVigilance(idx, rk.label)} disabled={isPending}
+                      className="shrink-0 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-orange-700 hover:bg-orange-100">+ Vigilance</button>
+                  ) : (
+                    <span className="shrink-0 text-[10px] font-medium text-orange-700 inline-flex items-center gap-0.5"><Check className="h-3 w-3" />Ajouté</span>
+                  )}
                 </div>
               )
             })}
           </div>
         </section>
+      )}
+
+      {/* ⑥ PRÉSENTS — secondaire, replié */}
+      {participants.length > 0 && (
+        <div>
+          <button type="button" onClick={() => setShowParticipants((v) => !v)}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Users className="h-3.5 w-3.5" />
+            {participants.length} participant{participants.length > 1 ? 's' : ''} détecté{participants.length > 1 ? 's' : ''}
+            <ChevronDown className={`h-3 w-3 transition-transform ${showParticipants ? 'rotate-180' : ''}`} />
+          </button>
+          {showParticipants && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {participants.map((p, i) => (
+                <span key={i} className="inline-flex items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-xs">
+                  <span className={`h-1.5 w-1.5 rounded-full ${p.kind === 'control' ? 'bg-rose-500' : p.kind === 'company' ? 'bg-violet-500' : 'bg-sky-500'}`} />
+                  {p.name}{p.role && <span className="text-muted-foreground/70">· {p.role}</span>}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       <button type="button" onClick={submit} disabled={isPending || acceptedCount === 0}

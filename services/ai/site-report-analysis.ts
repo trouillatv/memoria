@@ -49,6 +49,9 @@ const analysisSchema = z.object({
       kind: z.enum(['dependency', 'preparation', 'vigilance', 'risk']).catch('risk'),
       label: z.string().max(200).catch(''),
       rationale: z.string().max(600).nullable().catch(null),
+      // Dépendances : qui attend quoi (« Menuiserie attend Électricité »).
+      waiting_party: z.string().max(60).nullable().catch(null),
+      awaited: z.string().max(60).nullable().catch(null),
     }),
   ).catch([]),
   // 🔄 Comparaison : statut des actions ouvertes antérieures (par index)
@@ -139,16 +142,22 @@ const MOCK_FIXTURE: AnalysisParsed = {
       kind: 'dependency',
       label: 'Pose des portes bloquée tant que l\'électricité étage 2 n\'est pas validée',
       rationale: 'finir les portes / réservations électriques A203 mentionnées ensemble',
+      waiting_party: 'Menuiserie',
+      awaited: 'Électricité étage 2',
     },
     {
       kind: 'preparation',
       label: 'Contrôle SOCOTEC jeudi — aucune préparation identifiée',
       rationale: 'SOCOTEC passe jeudi',
+      waiting_party: null,
+      awaited: null,
     },
     {
       kind: 'vigilance',
       label: 'Zone sud toujours humide après fortes pluies',
       rationale: 'attention humidité zone sud',
+      waiting_party: null,
+      awaited: null,
     },
   ],
   // Index dans la liste des actions ouvertes antérieures injectées (mock : 0/1).
@@ -348,7 +357,13 @@ export async function runSiteReportAnalysisAgent(
 
   const risks: SiteReportRisk[] = parsed.risks
     .filter((r) => r.label.trim().length > 0)
-    .map((r) => ({ kind: r.kind, label: r.label.slice(0, 200), rationale: r.rationale }))
+    .map((r) => ({
+      kind: r.kind,
+      label: r.label.slice(0, 200),
+      rationale: r.rationale,
+      waiting_party: r.waiting_party,
+      awaited: r.awaited,
+    }))
 
   // Comparaison : résoudre les index vers les actions ouvertes injectées.
   const priorUpdates: PriorActionUpdate[] = parsed.prior_updates

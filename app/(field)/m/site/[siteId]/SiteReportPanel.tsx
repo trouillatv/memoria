@@ -70,6 +70,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
   const [missions, setMissions] = useState<Array<{ id: string; name: string }>>([])
   const [meetingNumber, setMeetingNumber] = useState(1)
   const [openActions, setOpenActions] = useState<DbSiteAction[]>([])
+  const [reportDates, setReportDates] = useState<string[]>([])
   const [participants, setParticipants] = useState<SiteReportParticipant[]>([])
   const [risks, setRisks] = useState<SiteReportRisk[]>([])
   const [priorUpdates, setPriorUpdates] = useState<PriorActionUpdate[]>([])
@@ -220,6 +221,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       setMissions(ctx.missions)
       setMeetingNumber(ctx.meetingNumber)
       setOpenActions(ctx.openActions)
+      setReportDates(ctx.reportDates)
       setStep('curation')
     })
   }
@@ -374,6 +376,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
           existingMissions={missions}
           meetingNumber={meetingNumber}
           openActions={openActions}
+          reportDates={reportDates}
           participants={participants}
           risks={risks}
           priorUpdates={priorUpdates}

@@ -354,10 +354,13 @@ export interface SiteReportParticipant {
 }
 
 // Risque / dépendance proposé par l'IA (conducteur de travaux assistant).
+// Pour les dépendances : waiting_party attend awaited (« Menuiserie attend Électricité »).
 export interface SiteReportRisk {
   kind: 'dependency' | 'preparation' | 'vigilance' | 'risk'
   label: string
   rationale: string | null
+  waiting_party: string | null
+  awaited: string | null
 }
 
 export interface DbSiteReport {
