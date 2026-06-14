@@ -52,6 +52,7 @@ import { ValidationPanel } from './validation-panel'
 import { SkipInterventionTriggerSupervisor } from './skip-trigger'
 import { RescheduleTrigger } from './RescheduleTrigger'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
+import { GenerateInterventionTokenButton } from '@/app/(dashboard)/briefing/GenerateInterventionTokenButton'
 
 export default async function InterventionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -381,6 +382,22 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         status={intervention.status}
         existingValidation={validation}
       />
+
+      {/* Lien externe — générer un accès /i/[token] pour sous-traitant / livreur */}
+      <section className="rounded-lg border bg-card p-4 space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          Lien externe
+        </h2>
+        <p className="text-xs text-muted-foreground italic">
+          Envoyez un lien sécurisé à un sous-traitant, livreur ou bureau de contrôle.
+          Il confirme l&apos;intervention sans compte MemorIA.
+        </p>
+        <GenerateInterventionTokenButton
+          interventionId={intervention.id}
+          missionName={mission?.name ?? 'Intervention'}
+          siteName={site?.name ?? ''}
+        />
+      </section>
 
       {tokenValidations.length > 0 && (
         <section className="rounded-lg border bg-card p-4 space-y-3">
