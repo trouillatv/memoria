@@ -31,6 +31,12 @@ export interface TodayIntervention {
    *  jamais cumulée par agent. */
   planned_start: string | null
   planned_end: string | null
+  /** Partage externe : un lien a été envoyé à un tiers. */
+  share_sent: boolean
+  /** Partage externe : le lien a été consulté (access_count > 0). */
+  share_accessed: boolean
+  /** Partage externe : un commentaire a été laissé par le visiteur externe. */
+  share_commented: boolean
 }
 
 export interface OverdueIntervention {
@@ -154,7 +160,49 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       skipped_reason: r.skipped_reason,
       planned_start: r.planned_start,
       planned_end: r.planned_end,
+      share_sent: false,
+      share_accessed: false,
+      share_commented: false,
     })
+  }
+
+  // Enrichir avec l'état des liens de partage externe (batch, évite N+1)
+  const interventionIds = items.map((i) => i.id)
+  if (interventionIds.length > 0) {
+    const { data: shareRows } = await supabase
+      .from('proof_share_tokens')
+      .select('id, intervention_id, access_count')
+      .in('intervention_id', interventionIds)
+      .is('revoked_at', null)
+
+    type ShareRow = { id: string; intervention_id: string; access_count: number }
+    const byIntervention = new Map<string, { accessed: boolean; tokenIds: string[] }>()
+    for (const t of (shareRows ?? []) as ShareRow[]) {
+      const entry = byIntervention.get(t.intervention_id) ?? { accessed: false, tokenIds: [] }
+      entry.tokenIds.push(t.id)
+      if (t.access_count > 0) entry.accessed = true
+      byIntervention.set(t.intervention_id, entry)
+    }
+
+    const allTokenIds = (shareRows ?? [] as ShareRow[]).map((t) => (t as ShareRow).id)
+    const commentedSet = new Set<string>()
+    if (allTokenIds.length > 0) {
+      const { data: commentRows } = await supabase
+        .from('share_token_comments')
+        .select('token_id')
+        .in('token_id', allTokenIds)
+      for (const c of (commentRows ?? []) as Array<{ token_id: string }>) {
+        commentedSet.add(c.token_id)
+      }
+    }
+
+    for (const item of items) {
+      const info = byIntervention.get(item.id)
+      if (!info) continue
+      item.share_sent = true
+      item.share_accessed = info.accessed
+      item.share_commented = info.tokenIds.some((tid) => commentedSet.has(tid))
+    }
   }
 
   // Stats

@@ -7,17 +7,20 @@
 // Composant server : rendu de la liste + injection de la dialog client
 // CloseDossierDialog pour chaque card.
 
+import { MessageSquare } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import type { ProofShareToken } from '@/lib/db/proof-share'
+import type { ProofShareToken, ShareTokenComment } from '@/lib/db/proof-share'
 import { formatDateLong } from '@/lib/format'
 import { CloseDossierDialog } from './CloseDossierDialog'
 import { closeDossierAction, reopenDossierAction } from './closure-actions'
 
 interface ShareTokensSectionProps {
   tokens: ProofShareToken[]
+  commentsByToken: Map<string, ShareTokenComment[]>
+  commentPhotoUrls: Map<string, string>
 }
 
-export function ShareTokensSection({ tokens }: ShareTokensSectionProps) {
+export function ShareTokensSection({ tokens, commentsByToken, commentPhotoUrls }: ShareTokensSectionProps) {
   if (tokens.length === 0) return null
 
   return (
@@ -32,14 +35,14 @@ export function ShareTokensSection({ tokens }: ShareTokensSectionProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         {tokens.map((t) => (
-          <ShareTokenCard key={t.id} token={t} />
+          <ShareTokenCard key={t.id} token={t} comments={commentsByToken.get(t.id) ?? []} commentPhotoUrls={commentPhotoUrls} />
         ))}
       </CardContent>
     </Card>
   )
 }
 
-function ShareTokenCard({ token }: { token: ProofShareToken }) {
+function ShareTokenCard({ token, comments, commentPhotoUrls }: { token: ProofShareToken; comments: ShareTokenComment[]; commentPhotoUrls: Map<string, string> }) {
   const isExpired = new Date(token.expires_at).getTime() < Date.now()
   return (
     <div
@@ -74,6 +77,40 @@ function ShareTokenCard({ token }: { token: ProofShareToken }) {
       {/* Mini timeline horizontale — format passif, dates uniquement.
           Doctrine V3 : aucune durée calculée, aucune évaluation. */}
       <ShareTokenTimeline token={token} />
+
+      {/* Commentaires reçus du visiteur externe */}
+      {comments.length > 0 && (
+        <div className="border-t border-border/40 pt-2 space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <MessageSquare className="h-3.5 w-3.5" />
+            {comments.length} commentaire{comments.length > 1 ? 's' : ''} reçu{comments.length > 1 ? 's' : ''}
+          </div>
+          {comments.map((c) => (
+            <div key={c.id} className="rounded-md bg-muted/40 border border-border/60 px-3 py-2 space-y-1">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{c.visitor_label || 'Visiteur externe'}</span>
+                <span>·</span>
+                <span>{new Date(c.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <p className="text-sm whitespace-pre-wrap break-words">{c.comment}</p>
+              {c.photo_paths && c.photo_paths.length > 0 && (
+                <div className="flex gap-2 flex-wrap pt-1">
+                  {c.photo_paths.map((path) => {
+                    const url = commentPhotoUrls.get(path)
+                    if (!url) return null
+                    return (
+                      <a key={path} href={url} target="_blank" rel="noopener noreferrer" className="block shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="w-16 h-16 rounded object-cover border border-border/40 hover:opacity-80 transition-opacity" />
+                      </a>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

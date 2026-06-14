@@ -18,6 +18,9 @@ import {
   ListChecks,
   ArrowRight,
   Clock,
+  Link2,
+  Eye,
+  MessageSquare,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -347,6 +350,32 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
               ? Non-affecté
             </span>
           )}
+          {/* Badges partage externe — silencieux si aucun lien envoyé */}
+          {item.share_commented ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+              title="Commentaire reçu du client externe"
+            >
+              <MessageSquare className="h-2.5 w-2.5" />
+              Commenté
+            </span>
+          ) : item.share_accessed ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700"
+              title="Lien consulté par l'externe"
+            >
+              <Eye className="h-2.5 w-2.5" />
+              Consulté
+            </span>
+          ) : item.share_sent ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
+              title="Lien de partage envoyé"
+            >
+              <Link2 className="h-2.5 w-2.5" />
+              Envoyé
+            </span>
+          ) : null}
           {item.status === 'planned' ? (
             <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
               Aujourd&apos;hui

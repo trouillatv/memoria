@@ -18,7 +18,7 @@ import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInterventionTimeLabel, extractHHMM } from '@/lib/time/prestation-slot'
 import { listTeamConflictsForSlot } from '@/lib/scheduling/team-conflict'
-import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
+import { getSignedPhotoUrlsThumb, getSignedPhotoUrlsMedium } from '@/lib/storage/intervention-photos'
 import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
 import { listValidatedVoiceNotesByIntervention } from '@/lib/db/intervention-voice-notes'
 import { VoiceNotesSection } from './VoiceNotesSection'
@@ -49,6 +49,7 @@ import {
   getSiteRequiresAccessHandover,
 } from '@/lib/db/intervention-access-events'
 import { ValidationPanel } from './validation-panel'
+import { listShareTokensForIntervention, listShareCommentsForToken } from '@/lib/db/proof-share'
 import { SkipInterventionTriggerSupervisor } from './skip-trigger'
 import { RescheduleTrigger } from './RescheduleTrigger'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
@@ -218,6 +219,19 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     intervention.status === 'skipped' || intervention.skipped_at !== null
   const isPlanned = intervention.status === 'planned'
 
+  // Partage externe — tokens actifs + commentaires reçus pour ce bloc rapide.
+  const shareTokens = await listShareTokensForIntervention(id)
+  const shareCommentEntries = await Promise.all(
+    shareTokens.map(async (t) => [t.id, await listShareCommentsForToken(t.id)] as const)
+  )
+  const commentsByToken = new Map(shareCommentEntries)
+  const totalComments = [...commentsByToken.values()].reduce((s, arr) => s + arr.length, 0)
+  const anyAccessed = shareTokens.some((t) => t.access_count > 0)
+
+  // URLs signées pour les photos jointes aux commentaires externes.
+  const allCommentPhotoPaths = [...commentsByToken.values()].flat().flatMap((c) => c.photo_paths ?? [])
+  const commentPhotoUrls = await getSignedPhotoUrlsMedium(allCommentPhotoPaths)
+
   // Slice B.5 — Raccourci vers le Dossier de preuves. Sobre, à droite du header.
   // On le propose dès que la preuve a un intérêt : exécutée/validée/sautée,
   // OU une trace existe déjà (photo, anomalie, validation).
@@ -313,6 +327,19 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         siteName={site?.name ?? ''}
         tokens={allTokens}
       />
+
+      {/* Retours externes — lien partagé + activité du destinataire.
+          Silence si aucun lien envoyé. Un clic vers le dossier complet. */}
+      {shareTokens.length > 0 && (
+        <ExternalActivityCard
+          shareTokens={shareTokens}
+          totalComments={totalComments}
+          anyAccessed={anyAccessed}
+          commentsByToken={commentsByToken}
+          commentPhotoUrls={commentPhotoUrls}
+          interventionId={id}
+        />
+      )}
 
       {/* Lecture du lieu — signal mnémonique (absence, résonance, persistance).
           Jamais de verdict, jamais de recommandation. Visible uniquement si signal. */}
@@ -417,5 +444,102 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         </div>
       )}
     </div>
+  )
+}
+
+// ---- Bloc retours externes ------------------------------------------------
+
+import { Eye, MessageSquare, Link2 } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import type { ProofShareToken, ShareTokenComment } from '@/lib/db/proof-share'
+
+function ExternalActivityCard({
+  shareTokens,
+  totalComments,
+  anyAccessed,
+  commentsByToken,
+  commentPhotoUrls,
+  interventionId,
+}: {
+  shareTokens: ProofShareToken[]
+  totalComments: number
+  anyAccessed: boolean
+  commentsByToken: Map<string, ShareTokenComment[]>
+  commentPhotoUrls: Map<string, string>
+  interventionId: string
+}) {
+  const statusIcon = totalComments > 0
+    ? <MessageSquare className="h-4 w-4 text-emerald-600" />
+    : anyAccessed
+      ? <Eye className="h-4 w-4 text-sky-600" />
+      : <Link2 className="h-4 w-4 text-violet-600" />
+
+  const statusLabel = totalComments > 0
+    ? `${totalComments} commentaire${totalComments > 1 ? 's' : ''} reçu${totalComments > 1 ? 's' : ''}`
+    : anyAccessed
+      ? 'Lien consulté'
+      : 'Lien envoyé — pas encore consulté'
+
+  const allComments = [...commentsByToken.values()].flat()
+
+  return (
+    <Card className="border-border">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm inline-flex items-center gap-2">
+          {statusIcon}
+          Retours externes
+          <span className="font-normal text-muted-foreground">— {statusLabel}</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 pt-0">
+        {allComments.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">
+            {anyAccessed
+              ? 'Le lien a été consulté — aucun commentaire laissé pour le moment.'
+              : 'En attente de consultation par le destinataire.'}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {allComments.map((c) => (
+              <li key={c.id} className="rounded-md bg-muted/40 border border-border/60 px-3 py-2 space-y-1">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {c.visitor_label || 'Visiteur externe'}
+                  </span>
+                  <span>·</span>
+                  <span>
+                    {new Date(c.created_at).toLocaleString('fr-FR', {
+                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+                <p className="text-sm whitespace-pre-wrap break-words">{c.comment}</p>
+                {c.photo_paths && c.photo_paths.length > 0 && (
+                  <div className="flex gap-2 flex-wrap pt-1">
+                    {c.photo_paths.map((path) => {
+                      const url = commentPhotoUrls.get(path)
+                      if (!url) return null
+                      return (
+                        <a key={path} href={url} target="_blank" rel="noopener noreferrer" className="block shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" className="w-16 h-16 rounded object-cover border border-border/40 hover:opacity-80 transition-opacity" />
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link
+          href={`/preuves/${interventionId}`}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <FileSearch className="h-3 w-3" />
+          Voir le dossier de preuves complet
+        </Link>
+      </CardContent>
+    </Card>
   )
 }

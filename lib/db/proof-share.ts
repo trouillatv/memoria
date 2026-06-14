@@ -520,6 +520,56 @@ export async function reopenProofShareToken(tokenId: string): Promise<void> {
   if (error) throw error
 }
 
+// ----------------------------------------------------------------------------
+// Commentaires externes (migration 091)
+// ----------------------------------------------------------------------------
+
+export interface ShareTokenComment {
+  id: string
+  token_id: string
+  visitor_label: string | null
+  comment: string
+  created_at: string
+  photo_paths: string[] | null
+}
+
+/**
+ * Liste les commentaires reçus pour un token donné.
+ * Ordre antéchronologique (plus récent en premier).
+ */
+export async function listShareCommentsForToken(
+  tokenId: string,
+): Promise<ShareTokenComment[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('share_token_comments')
+    .select('id, token_id, visitor_label, comment, created_at, photo_paths')
+    .eq('token_id', tokenId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as ShareTokenComment[]
+}
+
+/**
+ * Compte les commentaires reçus pour un ensemble de tokens.
+ * Retourne un Map token_id → count.
+ */
+export async function countShareCommentsByTokenIds(
+  tokenIds: string[],
+): Promise<Map<string, number>> {
+  if (tokenIds.length === 0) return new Map()
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('share_token_comments')
+    .select('token_id')
+    .in('token_id', tokenIds)
+  const counts = new Map<string, number>()
+  for (const row of (data ?? []) as Array<{ token_id: string }>) {
+    counts.set(row.token_id, (counts.get(row.token_id) ?? 0) + 1)
+  }
+  return counts
+}
+
 /**
  * Compte les dossiers clôturés depuis le 1er du mois courant (UTC).
  *

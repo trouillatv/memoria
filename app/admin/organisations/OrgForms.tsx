@@ -7,12 +7,88 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { createOrgAction, createUserInOrgAction, assignUserToOrgAction } from './actions'
+import { createOrgAction, createUserInOrgAction, assignUserToOrgAction, createOrgWithUserAction } from './actions'
 import { toast } from 'sonner'
 
 function Submit({ label, pendingLabel }: { label: string; pendingLabel: string }) {
   const { pending } = useFormStatus()
   return <Button type="submit" size="sm" disabled={pending}>{pending ? pendingLabel : label}</Button>
+}
+
+export function CreateOrgWithUserForm() {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <Button onClick={() => setOpen(true)}>
+        + Nouvelle entreprise avec compte
+      </Button>
+    )
+  }
+  return (
+    <Card className="border-primary/30">
+      <CardHeader>
+        <CardTitle className="text-base">Nouvelle entreprise + compte</CardTitle>
+        <p className="text-xs text-muted-foreground">Crée l&apos;espace isolé et le premier utilisateur en une seule action.</p>
+      </CardHeader>
+      <CardContent>
+        <form
+          action={async (fd) => {
+            const r = await createOrgWithUserAction(fd)
+            if (r?.error) toast.error(r.error)
+            else { toast.success('Entreprise et compte créés'); setOpen(false) }
+          }}
+          className="space-y-4"
+        >
+          <div className="p-3 bg-muted/30 rounded-lg border space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Entreprise</p>
+            <div>
+              <Label htmlFor="owu-org-name" className="text-xs">Nom de l&apos;entreprise</Label>
+              <Input id="owu-org-name" name="org_name" required placeholder="Ex : ContraBat" />
+            </div>
+          </div>
+
+          <div className="p-3 bg-muted/30 rounded-lg border space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Compte</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label htmlFor="owu-email" className="text-xs">Email</Label>
+                <Input id="owu-email" name="email" type="email" required />
+              </div>
+              <div>
+                <Label htmlFor="owu-full-name" className="text-xs">Nom complet</Label>
+                <Input id="owu-full-name" name="full_name" required />
+              </div>
+              <div>
+                <Label className="text-xs">Rôle</Label>
+                <Select name="role" defaultValue="manager">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="chef_equipe">Chef d&apos;équipe</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Mode de connexion</Label>
+                <Select name="mode" defaultValue="temp_password">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="temp_password">Mdp temporaire (memoria2026)</SelectItem>
+                    <SelectItem value="invite">Invitation par email</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Annuler</Button>
+            <Submit label="Créer l'entreprise et le compte" pendingLabel="Création…" />
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function CreateOrgForm() {
