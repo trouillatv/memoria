@@ -13,7 +13,6 @@ import { headers } from 'next/headers'
 import {
   MapPin,
   Clock,
-  Clipboard,
   CheckCircle2,
   ShieldOff,
   AlertCircle,
@@ -136,52 +135,6 @@ export default async function InterventionTokenPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* Checklist — lecture seule pour MVP */}
-        {intervention.checklistItems.length > 0 && (
-          <section className="space-y-2.5">
-            <h2 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider inline-flex items-center gap-1.5">
-              <Clipboard className="h-3 w-3" />
-              Checklist
-            </h2>
-            <ul className="space-y-2">
-              {intervention.checklistItems.map((item) => (
-                <li key={item.id} className="flex items-start gap-2.5 text-sm">
-                  <span
-                    className={`mt-0.5 h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center ${
-                      item.done
-                        ? 'border-emerald-500 bg-emerald-500'
-                        : 'border-muted-foreground/30'
-                    }`}
-                  >
-                    {item.done && (
-                      <svg
-                        className="h-2.5 w-2.5 text-white"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                        aria-hidden
-                      >
-                        <path
-                          d="M2 5l2.5 2.5L8 3"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                  </span>
-                  <span className={item.done ? 'text-muted-foreground line-through' : ''}>
-                    {item.label}
-                    {item.required && !item.done && (
-                      <span className="text-amber-600 ml-1 text-[10px]">*</span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {/* Déjà validé */}
         {isValidated && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
@@ -209,8 +162,13 @@ export default async function InterventionTokenPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* Formulaire de validation */}
-        {canValidate && <ValidateInterventionForm token={token} />}
+        {/* Checklist interactive + validation */}
+        {canValidate && (
+          <ValidateInterventionForm
+            token={token}
+            checklistItems={intervention.checklistItems}
+          />
+        )}
       </div>
 
       <div className="border-t px-4 py-4 text-center">
