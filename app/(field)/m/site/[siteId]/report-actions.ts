@@ -52,7 +52,7 @@ import type {
 } from '@/types/db'
 
 const BUCKET = 'site-reports'
-const MAX_AUDIO_BYTES = 15 * 1024 * 1024 // 15 MB
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024 // 25 MB — couvre l'import d'un audio de réunion (~25 min)
 const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB (PDF, image, plan…)
 
 /** Tronque proprement à 140 (limite stricte de createSiteNote). */

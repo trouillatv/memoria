@@ -57,7 +57,9 @@ async function transcribeWithGemini(rawBuffer: ArrayBuffer, mimeType: string): P
             { text: 'Transcris cet audio en français. Retourne uniquement la transcription brute, sans explication ni ponctuation ajoutée.' },
           ],
         }],
-        generationConfig: { temperature: 0, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
+        // maxOutputTokens élevé : un audio importé peut être une réunion longue
+        // (note vocale courte OU compte-rendu de 20 min) — ne pas tronquer.
+        generationConfig: { temperature: 0, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } },
       }),
     },
   )

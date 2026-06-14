@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Mic, Square, Camera, Paperclip, Loader2, X, FileText, Image as ImageIcon,
-  Sparkles, CheckCircle2, CalendarClock,
+  Sparkles, CheckCircle2, CalendarClock, FileAudio,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
@@ -59,6 +59,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
   const [elapsed, setElapsed] = useState(0)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioMime, setAudioMime] = useState<string>('audio/webm')
+  const [audioName, setAudioName] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<LocalAttachment[]>([])
 
@@ -111,6 +112,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       }
       mr.start(250)
       setRecording(true)
+      setAudioName(null)
       setElapsed(0)
       timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000)
     } catch {
@@ -122,6 +124,30 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
     if (timerRef.current) clearInterval(timerRef.current)
     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop()
     setRecording(false)
+  }
+
+  // Importer un fichier audio existant → traité comme une note dictée
+  // (uploadé + transcrit par l'IA, exactement comme un enregistrement).
+  function importAudio(file: File | null) {
+    if (!file) return
+    if (!file.type.startsWith('audio/')) { toast.error('Fichier audio attendu (mp3, m4a, wav…)'); return }
+    if (recording) stopRecording()
+    setAudioBlob(file)
+    setAudioMime(file.type || 'audio/mpeg')
+    setAudioName(file.name)
+    setElapsed(0)
+    try {
+      const url = URL.createObjectURL(file)
+      const probe = new Audio()
+      probe.preload = 'metadata'
+      probe.onloadedmetadata = () => {
+        const d = Number.isFinite(probe.duration) ? Math.min(600, Math.round(probe.duration)) : 0
+        setElapsed(d)
+        URL.revokeObjectURL(url)
+      }
+      probe.onerror = () => URL.revokeObjectURL(url)
+      probe.src = url
+    } catch { /* durée optionnelle */ }
   }
 
   function addFiles(files: FileList | null, kind: 'photo' | 'file') {
@@ -262,13 +288,23 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
                 <Square className="h-6 w-6" />
               </button>
             )}
-            <p className="text-xs text-muted-foreground tabular-nums">
+            <p className="text-xs text-muted-foreground tabular-nums text-center">
               {recording
                 ? `Enregistrement… ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
+                : audioName
+                ? `Audio importé : ${audioName}`
                 : audioBlob
                 ? `Note enregistrée (${elapsed}s) — réenregistrer ?`
                 : 'Dicter le compte-rendu'}
             </p>
+            {!recording && (
+              <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                <FileAudio className="h-3.5 w-3.5" />
+                {audioName ? 'Changer le fichier audio' : 'Importer un fichier audio'}
+                <input type="file" accept="audio/*" className="sr-only"
+                  onChange={(e) => { importAudio(e.target.files?.[0] ?? null); e.target.value = '' }} />
+              </label>
+            )}
           </div>
 
           {/* Texte */}
