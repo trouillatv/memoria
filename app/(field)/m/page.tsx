@@ -80,19 +80,33 @@ export default async function FieldHomePage({
 
   const supabase = createAdminClient()
 
-  // Étape 1 — Récupérer les site IDs de l'agent et les team IDs en parallèle.
-  // agentIntRes sert à calculer les siteIds pour ensure ; chefTeamIdsPromise est
-  // lancé immédiatement pour ne pas bloquer l'étape 2.
-  const chefTeamIdsPromise = listActiveTeamIdsForUser(user.id)
-  const agentIntRes = await supabase
-    .from('interventions')
-    .select('mission:missions(site_id)')
-    .contains('team', [user.id])
-    .limit(200)
+  // Étape 1 — Team IDs de l'agent (source canonique : assigned_team_id).
+  // Résolution séquentielle voulue : chefTeamIds est requis pour calculer
+  // agentSiteIds via missions.assigned_team_id, ce qui était impossible avec
+  // l'ancien calcul basé sur le legacy team[] (vide pour les V2 interventions).
+  const chefTeamIds = await listActiveTeamIdsForUser(user.id)
 
-  const agentSiteIds = Array.from(
-    new Set(
-      (agentIntRes.data ?? [])
+  // Sites dont une des missions de l'agent est responsable (assigned_team_id).
+  // Fallback legacy : interventions.team[] pour les comptes antérieurs à V2.
+  let agentSiteIds: string[] = []
+  if (chefTeamIds.length > 0) {
+    const { data: missionSiteRows } = await supabase
+      .from('missions')
+      .select('site_id')
+      .in('assigned_team_id', chefTeamIds)
+      .is('deleted_at', null)
+    agentSiteIds = Array.from(new Set(
+      (missionSiteRows ?? []).map((m) => m.site_id).filter((s): s is string => !!s)
+    ))
+  }
+  if (agentSiteIds.length === 0) {
+    const { data: legacyIntRes } = await supabase
+      .from('interventions')
+      .select('mission:missions(site_id)')
+      .contains('team', [user.id])
+      .limit(200)
+    agentSiteIds = Array.from(new Set(
+      (legacyIntRes ?? [])
         .map((r) => {
           const m = r.mission as { site_id?: string } | Array<{ site_id?: string }> | null
           if (!m) return null
@@ -100,8 +114,8 @@ export default async function FieldHomePage({
           return m.site_id ?? null
         })
         .filter((s): s is string => !!s)
-    )
-  )
+    ))
+  }
 
   // Étape 2 — Génération paresseuse AVANT le fetch des interventions.
   // Obligation séquentielle : ensure doit inscrire les records récurrents en DB
@@ -115,8 +129,6 @@ export default async function FieldHomePage({
   const fabSitesPromise = agentSiteIds.length > 0
     ? supabase.from('sites').select('id, name').in('id', agentSiteIds).is('deleted_at', null).order('name')
     : Promise.resolve({ data: [] as Array<{ id: string; name: string }> })
-
-  const chefTeamIds = await chefTeamIdsPromise
   const [interventions, handoverBriefs, fabSitesRes] = await Promise.all([
     listInterventionsVisibleToUser(user.id),
     listSharedHandoverBriefsForChef(user.id, chefTeamIds),
