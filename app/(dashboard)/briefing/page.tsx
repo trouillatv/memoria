@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   FileCheck,
   Clock,
+  Building2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +34,7 @@ import { ANOMALY_CATEGORY_LABELS } from '@/lib/anomaly-labels'
 import { TeamCompositionPopover } from './TeamCompositionPopover'
 import { SiteNotesPopover } from './SiteNotesPopover'
 import { BriefingShareModal } from './BriefingShareModal'
+import { GenerateInterventionTokenButton } from './GenerateInterventionTokenButton'
 import { EnvoisSection } from './EnvoisSection'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
@@ -266,6 +268,58 @@ export default async function BriefingPage({
                 Affecter une équipe → Voir le planning
               </Link>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sous-traitants — générer lien /i/[token] par intervention */}
+      {briefing.interventionsWithCompanies.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              Sous-traitants demain ({briefing.interventionsWithCompanies.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-3 italic">
+              Générez un lien sécurisé par intervention à envoyer via WhatsApp.
+              Le sous-traitant confirme sans compte MemorIA.
+            </p>
+            <ul className="space-y-4">
+              {briefing.interventionsWithCompanies.map((intv) => (
+                <li key={intv.interventionId} className="space-y-1.5">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-sm font-medium">{intv.missionName}</span>
+                    <span className="text-xs text-muted-foreground">{intv.siteName}</span>
+                    {intv.slot && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {SLOT_FR[intv.slot] ?? intv.slot}
+                      </span>
+                    )}
+                  </div>
+                  <ul className="space-y-2 pl-2">
+                    {intv.companies.map((c) => (
+                      <li key={c.id} className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                          <span className="text-xs font-medium">{c.companyName}</span>
+                          {c.roleDescription && (
+                            <span className="text-[10px] text-muted-foreground">· {c.roleDescription}</span>
+                          )}
+                        </div>
+                        <GenerateInterventionTokenButton
+                          interventionId={intv.interventionId}
+                          missionName={intv.missionName}
+                          siteName={intv.siteName}
+                          companyName={c.companyName}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

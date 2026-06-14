@@ -1,0 +1,107 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { Link2, MessageCircle, Copy, Check, Loader2, ChevronDown } from 'lucide-react'
+import { generateInterventionTokenAction } from './intervention-token-actions'
+
+interface Props {
+  interventionId: string
+  missionName: string
+  siteName: string
+  companyName: string
+}
+
+export function GenerateInterventionTokenButton({
+  interventionId,
+  missionName,
+  siteName,
+  companyName,
+}: Props) {
+  const [result, setResult] = useState<{ url: string; whatsappText: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  function generate() {
+    setError(null)
+    startTransition(async () => {
+      const res = await generateInterventionTokenAction({
+        interventionId,
+        companyName,
+        note: `${companyName} — ${missionName} / ${siteName}`,
+      })
+      if (res.ok) {
+        setResult({ url: res.url, whatsappText: res.whatsappText })
+      } else {
+        setError(res.error)
+      }
+    })
+  }
+
+  async function copyUrl() {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result.url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  if (result) {
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(result.whatsappText)}`
+    return (
+      <div className="mt-2 space-y-2 rounded-lg border bg-muted/20 p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href={waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 transition-colors"
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Envoyer WhatsApp
+          </a>
+          <button
+            type="button"
+            onClick={copyUrl}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? 'Copié' : 'Copier le lien'}
+          </button>
+        </div>
+        <details className="group">
+          <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 list-none">
+            <ChevronDown className="h-3 w-3 group-open:rotate-180 transition-transform" />
+            Voir le lien
+          </summary>
+          <p className="mt-1 rounded border bg-background px-2 py-1.5 text-[10px] font-mono break-all text-foreground/70">
+            {result.url}
+          </p>
+        </details>
+        <p className="text-[10px] text-muted-foreground">Valable 48h · révocable depuis la fiche intervention.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-1">
+      {error && <p className="text-xs text-red-600 mb-1">{error}</p>}
+      <button
+        type="button"
+        onClick={generate}
+        disabled={isPending}
+        className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-50"
+      >
+        {isPending ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Link2 className="h-3 w-3" />
+        )}
+        Générer lien
+      </button>
+    </div>
+  )
+}
