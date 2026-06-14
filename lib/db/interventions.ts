@@ -612,6 +612,21 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
     .is('left_at', null)
   const teamIds = (memberships ?? []).map((m) => m.team_id)
 
+  // V5.2 — résoudre les mission_ids affectées aux équipes de l'user.
+  // Filet de sécurité : les interventions générées AVANT le fix V2 ont
+  // assigned_team_id=NULL. On les retrouve via leur mission quand celle-ci
+  // porte assigned_team_id. Ainsi le chef voit ses interventions même si
+  // l'intervention elle-même n'a pas encore été patchée.
+  let missionIds: string[] = []
+  if (teamIds.length > 0) {
+    const { data: missionRows } = await supabase
+      .from('missions')
+      .select('id')
+      .in('assigned_team_id', teamIds)
+      .is('deleted_at', null)
+    missionIds = (missionRows ?? []).map((m) => m.id)
+  }
+
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -625,10 +640,16 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
     .order('scheduled_at', { ascending: true })
 
   if (teamIds.length > 0) {
-    // Combine : user dans le team[] legacy OU assigned_team_id ∈ teams actives
-    q = q.or(
-      `team.cs.{${userId}},assigned_team_id.in.(${teamIds.join(',')})`,
-    )
+    // V5.2 — triple critère :
+    // 1. team[] legacy contient userId (ancien modèle)
+    // 2. assigned_team_id ∈ equipes actives (V2 sur l'intervention)
+    // 3. mission_id ∈ missions des équipes (V2 via mission, filet pour
+    //    les interventions générées avant le fix qui n'ont pas assigned_team_id)
+    const orParts = [`team.cs.{${userId}}`, `assigned_team_id.in.(${teamIds.join(',')})`]
+    if (missionIds.length > 0) {
+      orParts.push(`mission_id.in.(${missionIds.join(',')})`)
+    }
+    q = q.or(orParts.join(','))
   } else {
     // Pas de team active : fallback sur le legacy team[]
     q = q.contains('team', [userId])
