@@ -530,6 +530,7 @@ export interface ShareTokenComment {
   visitor_label: string | null
   comment: string
   created_at: string
+  photo_paths: string[] | null
 }
 
 /**
@@ -542,7 +543,7 @@ export async function listShareCommentsForToken(
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('share_token_comments')
-    .select('id, token_id, visitor_label, comment, created_at')
+    .select('id, token_id, visitor_label, comment, created_at, photo_paths')
     .eq('token_id', tokenId)
     .order('created_at', { ascending: false })
   if (error) throw error

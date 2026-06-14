@@ -17,9 +17,10 @@ import { closeDossierAction, reopenDossierAction } from './closure-actions'
 interface ShareTokensSectionProps {
   tokens: ProofShareToken[]
   commentsByToken: Map<string, ShareTokenComment[]>
+  commentPhotoUrls: Map<string, string>
 }
 
-export function ShareTokensSection({ tokens, commentsByToken }: ShareTokensSectionProps) {
+export function ShareTokensSection({ tokens, commentsByToken, commentPhotoUrls }: ShareTokensSectionProps) {
   if (tokens.length === 0) return null
 
   return (
@@ -34,14 +35,14 @@ export function ShareTokensSection({ tokens, commentsByToken }: ShareTokensSecti
       </CardHeader>
       <CardContent className="space-y-3">
         {tokens.map((t) => (
-          <ShareTokenCard key={t.id} token={t} comments={commentsByToken.get(t.id) ?? []} />
+          <ShareTokenCard key={t.id} token={t} comments={commentsByToken.get(t.id) ?? []} commentPhotoUrls={commentPhotoUrls} />
         ))}
       </CardContent>
     </Card>
   )
 }
 
-function ShareTokenCard({ token, comments }: { token: ProofShareToken; comments: ShareTokenComment[] }) {
+function ShareTokenCard({ token, comments, commentPhotoUrls }: { token: ProofShareToken; comments: ShareTokenComment[]; commentPhotoUrls: Map<string, string> }) {
   const isExpired = new Date(token.expires_at).getTime() < Date.now()
   return (
     <div
@@ -92,6 +93,20 @@ function ShareTokenCard({ token, comments }: { token: ProofShareToken; comments:
                 <span>{new Date(c.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <p className="text-sm whitespace-pre-wrap break-words">{c.comment}</p>
+              {c.photo_paths && c.photo_paths.length > 0 && (
+                <div className="flex gap-2 flex-wrap pt-1">
+                  {c.photo_paths.map((path) => {
+                    const url = commentPhotoUrls.get(path)
+                    if (!url) return null
+                    return (
+                      <a key={path} href={url} target="_blank" rel="noopener noreferrer" className="block shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="w-16 h-16 rounded object-cover border border-border/40 hover:opacity-80 transition-opacity" />
+                      </a>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           ))}
         </div>

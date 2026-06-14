@@ -16,7 +16,7 @@ import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInterventionTimeLabel, extractHHMM } from '@/lib/time/prestation-slot'
 import { listTeamConflictsForSlot } from '@/lib/scheduling/team-conflict'
-import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
+import { getSignedPhotoUrlsThumb, getSignedPhotoUrlsMedium } from '@/lib/storage/intervention-photos'
 import { getSignedVoiceNoteUrls } from '@/lib/storage/intervention-voice-notes'
 import { listValidatedVoiceNotesByIntervention } from '@/lib/db/intervention-voice-notes'
 import { VoiceNotesSection } from './VoiceNotesSection'
@@ -222,6 +222,10 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const totalComments = [...commentsByToken.values()].reduce((s, arr) => s + arr.length, 0)
   const anyAccessed = shareTokens.some((t) => t.access_count > 0)
 
+  // URLs signées pour les photos jointes aux commentaires externes.
+  const allCommentPhotoPaths = [...commentsByToken.values()].flat().flatMap((c) => c.photo_paths ?? [])
+  const commentPhotoUrls = await getSignedPhotoUrlsMedium(allCommentPhotoPaths)
+
   // Slice B.5 — Raccourci vers le Dossier de preuves. Sobre, à droite du header.
   // On le propose dès que la preuve a un intérêt : exécutée/validée/sautée,
   // OU une trace existe déjà (photo, anomalie, validation).
@@ -319,6 +323,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
           totalComments={totalComments}
           anyAccessed={anyAccessed}
           commentsByToken={commentsByToken}
+          commentPhotoUrls={commentPhotoUrls}
           interventionId={id}
         />
       )}
@@ -437,12 +442,14 @@ function ExternalActivityCard({
   totalComments,
   anyAccessed,
   commentsByToken,
+  commentPhotoUrls,
   interventionId,
 }: {
   shareTokens: ProofShareToken[]
   totalComments: number
   anyAccessed: boolean
   commentsByToken: Map<string, ShareTokenComment[]>
+  commentPhotoUrls: Map<string, string>
   interventionId: string
 }) {
   const statusIcon = totalComments > 0
@@ -478,7 +485,7 @@ function ExternalActivityCard({
         ) : (
           <ul className="space-y-2">
             {allComments.map((c) => (
-              <li key={c.id} className="rounded-md bg-muted/40 border border-border/60 px-3 py-2 space-y-0.5">
+              <li key={c.id} className="rounded-md bg-muted/40 border border-border/60 px-3 py-2 space-y-1">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">
                     {c.visitor_label || 'Visiteur externe'}
@@ -491,6 +498,20 @@ function ExternalActivityCard({
                   </span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap break-words">{c.comment}</p>
+                {c.photo_paths && c.photo_paths.length > 0 && (
+                  <div className="flex gap-2 flex-wrap pt-1">
+                    {c.photo_paths.map((path) => {
+                      const url = commentPhotoUrls.get(path)
+                      if (!url) return null
+                      return (
+                        <a key={path} href={url} target="_blank" rel="noopener noreferrer" className="block shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="" className="w-16 h-16 rounded object-cover border border-border/40 hover:opacity-80 transition-opacity" />
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
