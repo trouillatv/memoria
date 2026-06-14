@@ -71,7 +71,7 @@ export function ExternalCommentForm({ token }: Props) {
         const reason = data?.reason
         if (reason === 'rate_limited') setError('Trop de commentaires envoyés. Réessayez dans une heure.')
         else if (reason === 'comment_too_long') setError(`Commentaire trop long (max ${MAX_LENGTH} caractères).`)
-        else setError('Erreur lors de l'envoi. Réessayez.')
+        else setError("Erreur lors de l'envoi. Réessayez.")
         return
       }
       previews.forEach((p) => URL.revokeObjectURL(p.url))
