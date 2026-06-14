@@ -9,7 +9,7 @@ import { useMemo, useState, useTransition } from 'react'
 import {
   Check, X, Loader2, Wrench, AlertTriangle, Eye, BookOpen, Users,
   Building2, CalendarClock, ClipboardList, FileCheck2, ListTodo,
-  CheckCircle2, CircleDot, Sparkle, GitBranch, ShieldAlert, ChevronDown, Clock,
+  CheckCircle2, CircleDot, Sparkle, GitBranch, ShieldAlert, ChevronDown, Clock, MapPin,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
@@ -26,7 +26,8 @@ interface Mission { id: string; name: string }
 
 interface Props {
   reportId: string
-  siteId: string
+  siteId: string | null
+  candidateSites: Array<{ id: string; name: string }>
   proposals: DbSiteReportProposal[]
   existingMissions: Mission[]
   meetingNumber: number
@@ -57,6 +58,7 @@ interface RowState {
   short_label: string
   corps_etat: string
   assigned_to: string
+  siteId: string
   actionOutcome: 'keep' | 'intervention' | 'mission'
   scheduledFor: string
   missionMode: 'new' | 'existing'
@@ -70,9 +72,10 @@ function daysSince(iso: string): number {
 }
 
 export function SiteReportCuration({
-  reportId, siteId, proposals, existingMissions, meetingNumber,
+  reportId, siteId, candidateSites, proposals, existingMissions, meetingNumber,
   openActions, reportDates, participants, risks, priorUpdates, onDone,
 }: Props) {
+  const isContract = candidateSites.length > 0
   const [rows, setRows] = useState<Record<string, RowState>>(() => {
     const init: Record<string, RowState> = {}
     for (const p of proposals) {
@@ -83,6 +86,7 @@ export function SiteReportCuration({
         short_label: p.short_label,
         corps_etat: p.corps_etat ?? '',
         assigned_to: p.assigned_to ?? '',
+        siteId: p.site_id ?? siteId ?? candidateSites[0]?.id ?? '',
         actionOutcome: 'keep',
         scheduledFor: /^\d{4}-\d{2}-\d{2}$/.test(suggested) ? suggested : '',
         missionMode: existingMissions.length > 0 ? 'existing' : 'new',
@@ -167,9 +171,11 @@ export function SiteReportCuration({
     })
   }
   function createVigilance(idx: number, label: string) {
+    const targetSite = siteId ?? candidateSites[0]?.id ?? null
+    if (!targetSite) { toast.error('Aucun site cible pour la vigilance'); return }
     startTransition(async () => {
       const fd = new FormData()
-      fd.set('site_id', siteId); fd.set('label', label)
+      fd.set('site_id', targetSite); fd.set('label', label)
       const res = await createVigilanceFromRiskAction(fd)
       if (res.ok) { setVigilanceCreated((s) => new Set(s).add(idx)); toast.success('Point de vigilance créé') }
       else toast.error(res.error)
@@ -187,6 +193,7 @@ export function SiteReportCuration({
           fd.set('short_label', r.short_label.slice(0, 140))
           fd.set('corps_etat', r.corps_etat)
           fd.set('assigned_to', r.assigned_to)
+          if (isContract && r.siteId) fd.set('site_id', r.siteId)
           const payloadPatch: Record<string, unknown> = {}
           if (p.type === 'action') payloadPatch.action_outcome = r.actionOutcome
           if (r.scheduledFor) payloadPatch.scheduled_for = r.scheduledFor
@@ -369,6 +376,17 @@ export function SiteReportCuration({
                         <input value={r.assigned_to} onChange={(e) => patch(p.id, { assigned_to: e.target.value })}
                           placeholder="Responsable pressenti" className="rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
                       </div>
+                      {/* Réunion contrat : site routé (détecté par l'IA, confirmé ici) */}
+                      {isContract && (
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <select value={r.siteId} onChange={(e) => patch(p.id, { siteId: e.target.value })}
+                            className="flex-1 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
+                            <option value="">— Site à préciser —</option>
+                            {candidateSites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                       {p.type === 'action' && (
                         <div className="mt-2 flex items-center gap-1 text-xs">
                           {(['keep', 'intervention', 'mission'] as const).map((o) => (

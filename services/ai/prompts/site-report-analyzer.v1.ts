@@ -68,6 +68,9 @@ Pour chaque décision, renseigne :
                 new_mission_cadence:"on_demand"|"daily"|"weekly"|"biweekly"|"monthly"|null }.
                 Tu ne connais pas les missions existantes → mode="new" avec un new_mission_name proposé.
 - suggested_date : date ISO (YYYY-MM-DD) si une échéance est mentionnée, sinon null
+- site_index : SI une liste de sites du contrat est fournie, l'index du site concerné
+              par cette décision (ex : « bâtiment B » → l'index de Bâtiment B). -1 si
+              vraiment indéterminé. Ignore ce champ si la réunion est mono-site.
 
 Règles strictes :
 - Le SUJET est toujours le LIEU / le chantier, jamais le jugement d'une personne.

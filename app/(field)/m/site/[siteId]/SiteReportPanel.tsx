@@ -30,8 +30,11 @@ import {
 import { SiteReportCuration } from './SiteReportCuration'
 
 interface Props {
-  siteId: string
-  siteName: string
+  reportType?: 'site' | 'contract'
+  siteId?: string
+  siteName?: string
+  contractId?: string
+  contractName?: string
   onClose: () => void
 }
 
@@ -48,8 +51,11 @@ interface LocalAttachment {
 
 const FR = new Intl.NumberFormat('fr-FR')
 
-export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
+export function SiteReportPanel({
+  reportType = 'site', siteId, siteName, contractId, contractName, onClose,
+}: Props) {
   const router = useRouter()
+  const subjectName = reportType === 'contract' ? (contractName ?? 'Contrat') : (siteName ?? 'Chantier')
   const [step, setStep] = useState<Step>('capture')
   const [working, setWorking] = useState<string>('')
   const [reportId, setReportId] = useState<string | null>(null)
@@ -72,6 +78,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
   const [meetingNumber, setMeetingNumber] = useState(1)
   const [openActions, setOpenActions] = useState<DbSiteAction[]>([])
   const [reportDates, setReportDates] = useState<string[]>([])
+  const [candidateSites, setCandidateSites] = useState<Array<{ id: string; name: string }>>([])
   const [participants, setParticipants] = useState<SiteReportParticipant[]>([])
   const [risks, setRisks] = useState<SiteReportRisk[]>([])
   const [priorUpdates, setPriorUpdates] = useState<PriorActionUpdate[]>([])
@@ -188,7 +195,9 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       // 1. Brouillon (le texte part EN PREMIER)
       setWorking('Enregistrement du compte-rendu…')
       const fd = new FormData()
-      fd.set('site_id', siteId)
+      fd.set('report_type', reportType)
+      if (reportType === 'contract' && contractId) fd.set('contract_id', contractId)
+      else if (siteId) fd.set('site_id', siteId)
       if (text.trim()) fd.set('text_input', text.trim())
       if (audioBlob) {
         fd.set('audio', audioBlob, 'note.webm')
@@ -239,7 +248,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       if (text.trim()) fd.set('text_input', text.trim())
       const res = await analyzeReportAction(fd)
       if (!res.ok) { toast.error(res.error); setStep('review'); return }
-      const ctx = await getReportCurationContextAction(siteId)
+      const ctx = await getReportCurationContextAction(reportId)
       setProposals(res.proposals)
       setParticipants(res.participants)
       setRisks(res.risks)
@@ -248,6 +257,7 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       setMeetingNumber(ctx.meetingNumber)
       setOpenActions(ctx.openActions)
       setReportDates(ctx.reportDates)
+      setCandidateSites(ctx.candidateSites)
       setStep('curation')
     })
   }
@@ -258,8 +268,10 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
     <div className="space-y-4">
       <header className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold">Compte-rendu chantier</h2>
-          <p className="text-xs text-muted-foreground">{siteName}</p>
+          <h2 className="text-base font-semibold">
+            {reportType === 'contract' ? 'Réunion de contrat' : 'Compte-rendu chantier'}
+          </h2>
+          <p className="text-xs text-muted-foreground">{subjectName}</p>
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Fermer">
           <X className="h-5 w-5" />
@@ -407,7 +419,8 @@ export function SiteReportPanel({ siteId, siteName, onClose }: Props) {
       {step === 'curation' && (
         <SiteReportCuration
           reportId={reportId!}
-          siteId={siteId}
+          siteId={siteId ?? null}
+          candidateSites={candidateSites}
           proposals={proposals}
           existingMissions={missions}
           meetingNumber={meetingNumber}

@@ -22,6 +22,7 @@ import { EngagementCompliance } from './engagement-compliance'
 import { ContractVigilancePanel } from './ContractVigilancePanel'
 import { ASavoirPropositionsPanel } from './ASavoirPropositionsPanel'
 import { ContractTabs } from './contract-tabs'
+import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import { DossierConfidenceBadge } from '@/components/ui/dossier-confidence-badge'
 import { getContractSummaries } from '@/lib/db/dashboard'
@@ -172,12 +173,23 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
               </p>
             )}
           </div>
-          <Link href={`/contracts/${id}/rapport-mensuel`} className="shrink-0">
-            <Button variant="outline">
-              <FileBarChart className="h-4 w-4" />
-              Rapport mensuel
-            </Button>
-          </Link>
+          <div className="shrink-0 flex items-center gap-2">
+            {/* Réunion de contrat : 1 réunion → décisions routées vers ses sites */}
+            {contractSites.length > 0 && (
+              <SiteReportLauncher
+                contractId={id}
+                contractName={contract.name}
+                variant="desktop"
+                label="Réunion de contrat"
+              />
+            )}
+            <Link href={`/contracts/${id}/rapport-mensuel`} className="shrink-0">
+              <Button variant="outline">
+                <FileBarChart className="h-4 w-4" />
+                Rapport mensuel
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 

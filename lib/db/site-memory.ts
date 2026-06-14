@@ -393,11 +393,19 @@ export async function getSiteMemoryTimeline(
   }
 
   // Comptes-rendus de chantier (artefact source — visible MÊME en échec IA).
+  // Via report_sites (réunion contrat multi-sites) OU site_id direct (réunion site).
   {
+    const { data: rsLinks } = await sb
+      .from('report_sites')
+      .select('report_id')
+      .eq('site_id', siteId)
+    const linkedReportIds = ((rsLinks ?? []) as Array<{ report_id: string }>).map((l) => l.report_id)
+    const orParts = [`site_id.eq.${siteId}`]
+    if (linkedReportIds.length > 0) orParts.push(`id.in.(${linkedReportIds.join(',')})`)
     let reportQ = sb
       .from('site_reports')
       .select('id, status, transcript_corrected, transcript_raw, text_input, created_at')
-      .eq('site_id', siteId)
+      .or(orParts.join(','))
       .neq('status', 'draft')
     if (since) reportQ = reportQ.gte('created_at', since)
     const { data: reports } = await reportQ

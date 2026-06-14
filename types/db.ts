@@ -363,9 +363,14 @@ export interface SiteReportRisk {
   awaited: string | null
 }
 
+export type SiteReportType = 'contract' | 'site' | 'free'
+
 export interface DbSiteReport {
   id: string
-  site_id: string
+  type: SiteReportType
+  site_id: string | null
+  contract_id: string | null
+  title: string | null
   tenant_id: string
   organization_id: string | null
   status: SiteReportStatus
@@ -425,6 +430,8 @@ export interface DbSiteReportProposal {
   category: string | null
   corps_etat: string | null
   assigned_to: string | null
+  // Réunion contrat : site vers lequel la décision est routée (IA + humain).
+  site_id: string | null
   ai_confidence: number | null
   status: SiteReportProposalStatus
   created_entity_type: string | null

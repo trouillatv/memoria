@@ -74,6 +74,8 @@ const analysisSchema = z.object({
       anomaly_category: z.enum(ANOMALY_CATEGORIES).nullable().catch(null),
       mission_link: missionLinkSchema,
       suggested_date: z.string().max(20).nullable().catch(null),
+      // Réunion contrat : index du site détecté dans la liste fournie (-1/absent si indéterminé).
+      site_index: z.number().int().optional().catch(-1),
     }),
   ).catch([]),
 })
@@ -87,9 +89,16 @@ export interface SiteReportProposal {
   category: string | null
   corps_etat: string | null
   assigned_to: string | null
+  site_id: string | null
   ai_confidence: number | null
   // Champs spécifiques rangés dans payload côté DB
   payload: Record<string, unknown>
+}
+
+/** Site candidat injecté pour le routing d'une réunion contrat. */
+export interface CandidateSite {
+  id: string
+  name: string
 }
 
 /** Mise à jour proposée d'une action ouverte antérieure (comparaison réunion). */
@@ -121,6 +130,10 @@ export interface SiteReportAnalysisInput {
   textInput: string | null
   attachmentNames: string[]
   priorOpenActions: PriorOpenAction[]
+  // Réunion contrat : sites candidats pour router chaque décision. Vide = réunion site.
+  candidateSites: CandidateSite[]
+  // Site par défaut (réunion site) : toutes les décisions y sont routées.
+  defaultSiteId: string | null
   userId: string | null
 }
 
@@ -278,6 +291,9 @@ export async function runSiteReportAnalysisAgent(
             .map((a, i) => `[${i}] ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`)
             .join('\n')
         : '(aucune)'
+      const sitesList = input.candidateSites.length > 0
+        ? input.candidateSites.map((s, i) => `[${i}] ${s.name}`).join('\n')
+        : '(réunion mono-site — ne pas router)'
       userMessage = [
         '=== Transcription corrigée ===',
         input.transcript?.slice(0, 12000) || '(vide)',
@@ -291,8 +307,14 @@ export async function runSiteReportAnalysisAgent(
         '=== Actions ouvertes des réunions précédentes (à comparer, par index) ===',
         priorList,
         '',
+        '=== Sites du contrat (pour router chaque décision, par index) ===',
+        sitesList,
+        input.candidateSites.length > 0
+          ? 'Pour CHAQUE décision, renseigne site_index = l\'index du site concerné (-1 si vraiment indéterminé).'
+          : '',
+        '',
         'Reconstruis la réunion au format JSON :',
-        '{ "participants": [...], "risks": [...], "prior_updates": [{ "index": N, "status": "still_open|done", "note": "..." }], "proposals": [...] }',
+        '{ "participants": [...], "risks": [...], "prior_updates": [...], "proposals": [{ ..., "site_index": N }] }',
       ].join('\n')
     }
 
@@ -336,20 +358,29 @@ export async function runSiteReportAnalysisAgent(
 
   const proposals: SiteReportProposal[] = parsed.proposals
     .filter((p) => p.short_label.trim().length > 0)
-    .map((p) => ({
-      type: p.type,
-      short_label: p.short_label.slice(0, 140),
-      rationale: p.rationale || null,
-      category: p.type === 'anomaly' ? (p.anomaly_category ?? 'autre') : null,
-      corps_etat: p.corps_etat,
-      assigned_to: p.assigned_to,
-      ai_confidence: p.ai_confidence,
-      payload: {
-        mission_link: p.mission_link,
-        suggested_date: p.suggested_date,
-        anomaly_category: p.anomaly_category,
-      },
-    }))
+    .map((p) => {
+      // Routing du site : index détecté dans les candidats, sinon site par défaut.
+      const idx = p.site_index ?? -1
+      const routedSiteId =
+        idx >= 0 && idx < input.candidateSites.length
+          ? input.candidateSites[idx].id
+          : input.defaultSiteId
+      return {
+        type: p.type,
+        short_label: p.short_label.slice(0, 140),
+        rationale: p.rationale || null,
+        category: p.type === 'anomaly' ? (p.anomaly_category ?? 'autre') : null,
+        corps_etat: p.corps_etat,
+        assigned_to: p.assigned_to,
+        site_id: routedSiteId,
+        ai_confidence: p.ai_confidence,
+        payload: {
+          mission_link: p.mission_link,
+          suggested_date: p.suggested_date,
+          anomaly_category: p.anomaly_category,
+        },
+      }
+    })
 
   const participants: SiteReportParticipant[] = parsed.participants
     .filter((p) => p.name.trim().length > 0)

@@ -15,12 +15,16 @@ import type {
   SiteReportRisk,
   SiteReportStatus,
   SiteReportTranscriptStatus,
+  SiteReportType,
 } from '@/types/db'
 
 // ── Création du compte-rendu ────────────────────────────────────────────────
 
 export async function createSiteReport(input: {
-  site_id: string
+  type?: SiteReportType
+  site_id?: string | null
+  contract_id?: string | null
+  title?: string | null
   tenant_id: string
   created_by: string | null
   audio_path?: string | null
@@ -34,7 +38,10 @@ export async function createSiteReport(input: {
   const { data, error } = await supabase
     .from('site_reports')
     .insert({
-      site_id: input.site_id,
+      type: input.type ?? 'site',
+      site_id: input.site_id ?? null,
+      contract_id: input.contract_id ?? null,
+      title: input.title ?? null,
       tenant_id: input.tenant_id,
       organization_id: orgId,
       created_by: input.created_by,
@@ -49,6 +56,18 @@ export async function createSiteReport(input: {
     .single()
   if (error) throw error
   return (data as { id: string }).id
+}
+
+/** Enregistre les sites touchés par un compte-rendu (idempotent). */
+export async function addReportSites(reportId: string, siteIds: string[]): Promise<void> {
+  const unique = Array.from(new Set(siteIds.filter(Boolean)))
+  if (unique.length === 0) return
+  const supabase = createAdminClient()
+  const rows = unique.map((site_id) => ({ report_id: reportId, site_id }))
+  const { error } = await supabase
+    .from('report_sites')
+    .upsert(rows, { onConflict: 'report_id,site_id', ignoreDuplicates: true })
+  if (error) throw error
 }
 
 // ── Pièces jointes ──────────────────────────────────────────────────────────
@@ -117,13 +136,25 @@ export async function listProposals(reportId: string): Promise<DbSiteReportPropo
   return (data as DbSiteReportProposal[]) ?? []
 }
 
-/** Comptes-rendus d'un site pour le journal (exclut les brouillons jamais aboutis). */
+/** Comptes-rendus touchant un site (via report_sites OU site_id direct), pour
+ *  le journal. Couvre les réunions contrat qui ont routé une décision vers ce
+ *  site. Exclut les brouillons jamais aboutis. */
 export async function listReportsBySite(siteId: string): Promise<DbSiteReport[]> {
   const supabase = createAdminClient()
+  const { data: links } = await supabase
+    .from('report_sites')
+    .select('report_id')
+    .eq('site_id', siteId)
+  const linkedIds = ((links ?? []) as Array<{ report_id: string }>).map((l) => l.report_id)
+
+  // OR : site principal direct (réunion site) OU lien report_sites (réunion contrat).
+  const orParts = [`site_id.eq.${siteId}`]
+  if (linkedIds.length > 0) orParts.push(`id.in.(${linkedIds.join(',')})`)
+
   const { data, error } = await supabase
     .from('site_reports')
     .select('*')
-    .eq('site_id', siteId)
+    .or(orParts.join(','))
     .neq('status', 'draft')
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -202,6 +233,7 @@ export async function bulkInsertProposals(input: {
     category: string | null
     corps_etat: string | null
     assigned_to: string | null
+    site_id: string | null
     ai_confidence: number | null
   }>
 }): Promise<DbSiteReportProposal[]> {
@@ -216,6 +248,7 @@ export async function bulkInsertProposals(input: {
     category: p.category,
     corps_etat: p.corps_etat,
     assigned_to: p.assigned_to,
+    site_id: p.site_id,
     ai_confidence: p.ai_confidence,
     status: 'proposed' as const,
   }))
@@ -245,6 +278,7 @@ export async function curateProposal(
     category?: string | null
     corps_etat?: string | null
     assigned_to?: string | null
+    site_id?: string | null
     payload?: Record<string, unknown>
     status?: 'accepted' | 'rejected'
   },
@@ -255,6 +289,7 @@ export async function curateProposal(
   if (patch.category !== undefined) update.category = patch.category
   if (patch.corps_etat !== undefined) update.corps_etat = patch.corps_etat
   if (patch.assigned_to !== undefined) update.assigned_to = patch.assigned_to
+  if (patch.site_id !== undefined) update.site_id = patch.site_id
   if (patch.payload !== undefined) update.payload = patch.payload
   if (patch.status !== undefined) update.status = patch.status
   if (Object.keys(update).length === 0) return

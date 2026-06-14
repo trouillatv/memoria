@@ -29,6 +29,7 @@ import {
   bulkInsertProposals,
   curateProposal,
   markProposalCreated,
+  addReportSites,
 } from '@/lib/db/site-reports'
 import {
   createSiteAction,
@@ -61,22 +62,41 @@ function clip140(s: string): string {
   return t.length <= 140 ? t : t.slice(0, 137).trimEnd() + '…'
 }
 
-async function resolveSiteContext(siteId: string): Promise<{ tenant_id: string } | null> {
+/** Résout le tenant : depuis le site (réunion site) ou le 1er site du contrat
+ *  (réunion contrat). Retourne aussi le contract_id effectif. */
+async function resolveReportTenant(input: {
+  type: 'site' | 'contract'
+  site_id?: string | null
+  contract_id?: string | null
+}): Promise<{ tenant_id: string } | null> {
   const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('sites')
-    .select('id, tenant_id')
-    .eq('id', siteId)
-    .maybeSingle()
-  const row = data as { id: string; tenant_id: string } | null
-  if (!row?.tenant_id) return null
-  return { tenant_id: row.tenant_id }
+  if (input.type === 'site' && input.site_id) {
+    const { data } = await supabase.from('sites').select('tenant_id').eq('id', input.site_id).maybeSingle()
+    const t = (data as { tenant_id: string } | null)?.tenant_id
+    return t ? { tenant_id: t } : null
+  }
+  if (input.type === 'contract' && input.contract_id) {
+    // tenant via le 1er site du contrat (les contrats n'ont pas de tenant direct).
+    const { data } = await supabase
+      .from('sites')
+      .select('tenant_id')
+      .eq('contract_id', input.contract_id)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle()
+    const t = (data as { tenant_id: string } | null)?.tenant_id
+    return t ? { tenant_id: t } : null
+  }
+  return null
 }
 
 // ── 1. Création du brouillon (+ audio optionnel) ────────────────────────────
 
 const draftSchema = z.object({
-  site_id: z.string().uuid(),
+  report_type: z.enum(['site', 'contract']).default('site'),
+  site_id: z.string().uuid().optional(),
+  contract_id: z.string().uuid().optional(),
+  title: z.string().max(200).optional(),
   text_input: z.string().max(5000).optional(),
   audio_mime: z.string().max(80).optional(),
   audio_duration_seconds: z.coerce.number().int().min(0).max(600).optional(),
@@ -89,23 +109,41 @@ export async function createReportDraftAction(formData: FormData): Promise<
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
 
   const parsed = draftSchema.safeParse({
-    site_id: formData.get('site_id'),
+    report_type: formData.get('report_type') ?? undefined,
+    site_id: formData.get('site_id') ?? undefined,
+    contract_id: formData.get('contract_id') ?? undefined,
+    title: formData.get('title') ?? undefined,
     text_input: formData.get('text_input') ?? undefined,
     audio_mime: formData.get('audio_mime') ?? undefined,
     audio_duration_seconds: formData.get('audio_duration_seconds') ?? undefined,
   })
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
 
-  const ctx = await resolveSiteContext(parsed.data.site_id)
-  if (!ctx) return { ok: false, error: 'Site introuvable' }
+  const type = parsed.data.report_type
+  if (type === 'site' && !parsed.data.site_id) return { ok: false, error: 'Site manquant' }
+  if (type === 'contract' && !parsed.data.contract_id) return { ok: false, error: 'Contrat manquant' }
+
+  const ctx = await resolveReportTenant({
+    type,
+    site_id: parsed.data.site_id,
+    contract_id: parsed.data.contract_id,
+  })
+  if (!ctx) return { ok: false, error: type === 'contract' ? 'Contrat sans site' : 'Site introuvable' }
 
   // Le texte saisi est persisté D'ABORD — jamais perdu si l'upload échoue.
   const reportId = await createSiteReport({
-    site_id: parsed.data.site_id,
+    type,
+    site_id: type === 'site' ? parsed.data.site_id : null,
+    contract_id: type === 'contract' ? parsed.data.contract_id : null,
+    title: parsed.data.title ?? null,
     tenant_id: ctx.tenant_id,
     created_by: auth.userId,
     text_input: parsed.data.text_input ?? null,
   })
+  // Réunion site : le site est touché d'office (visible au journal dès le départ).
+  if (type === 'site' && parsed.data.site_id) {
+    await addReportSites(reportId, [parsed.data.site_id])
+  }
 
   // Audio optionnel
   const audioFile = formData.get('audio')
@@ -118,7 +156,7 @@ export async function createReportDraftAction(formData: FormData): Promise<
     const mime = parsed.data.audio_mime || audioFile.type || 'audio/webm'
     const ext = mimeToExt(mime)
     const attId = crypto.randomUUID()
-    const storagePath = `${ctx.tenant_id}/${parsed.data.site_id}/${reportId}/${attId}.${ext}`
+    const storagePath = `${ctx.tenant_id}/${reportId}/${attId}.${ext}`
     const supabase = createAdminClient()
     const bytes = new Uint8Array(await audioFile.arrayBuffer())
     const { error: upErr } = await supabase.storage
@@ -196,7 +234,7 @@ export async function uploadReportAttachmentAction(formData: FormData): Promise<
   const rawExt = (file.name.split('.').pop() ?? (isPdf ? 'pdf' : 'jpg')).toLowerCase().slice(0, 5)
   const safeExt = /^[a-z0-9]+$/.test(rawExt) ? rawExt : isPdf ? 'pdf' : 'jpg'
   const attId = crypto.randomUUID()
-  const storagePath = `${report.tenant_id}/${report.site_id}/${report.id}/${attId}.${safeExt}`
+  const storagePath = `${report.tenant_id}/${report.id}/${attId}.${safeExt}`
 
   const buffer = Buffer.from(await file.arrayBuffer())
   const sha256 = createHash('sha256').update(buffer).digest('hex')
@@ -306,32 +344,66 @@ export async function listSiteMissionsForReportAction(
   return missions.map((m) => ({ id: m.id, name: m.name }))
 }
 
-/** Contexte de curation : missions, n° de réunion, actions ouvertes, dates des
- *  comptes-rendus (pour l'âge déterministe « vu sur N comptes-rendus »). */
-export async function getReportCurationContextAction(siteId: string): Promise<{
+interface CurationContext {
   missions: Array<{ id: string; name: string }>
   meetingNumber: number
   openActions: import('@/types/db').DbSiteAction[]
   reportDates: string[]
-}> {
+  /** Réunion contrat : sites candidats pour router/confirmer chaque décision. */
+  candidateSites: Array<{ id: string; name: string }>
+}
+
+/** Contexte de curation, sensible au type de réunion (site vs contrat). */
+export async function getReportCurationContextAction(reportId: string): Promise<CurationContext> {
+  const empty: CurationContext = { missions: [], meetingNumber: 1, openActions: [], reportDates: [], candidateSites: [] }
   const auth = await requireFieldAgent()
-  if ('error' in auth) return { missions: [], meetingNumber: 1, openActions: [], reportDates: [] }
-  if (!z.string().uuid().safeParse(siteId).success) {
-    return { missions: [], meetingNumber: 1, openActions: [], reportDates: [] }
-  }
+  if ('error' in auth) return empty
+  if (!z.string().uuid().safeParse(reportId).success) return empty
+
+  const report = await getSiteReport(reportId)
+  if (!report) return empty
+
   const { listMissionsBySite } = await import('@/lib/db/missions')
   const { listReportsBySite } = await import('@/lib/db/site-reports')
   const { listSiteActionsBySite } = await import('@/lib/db/site-actions')
+  const { listSitesByContract } = await import('@/lib/db/sites')
+
+  if (report.type === 'contract' && report.contract_id) {
+    const sites = await listSitesByContract(report.contract_id)
+    const siteIds = sites.map((s) => s.id)
+    // Agrégation des actions ouvertes sur tous les sites du contrat.
+    const openLists = await Promise.all(siteIds.map((id) => listSiteActionsBySite(id, { status: 'open' })))
+    const openActions = openLists.flat()
+    // Comptes-rendus du contrat (pour meetingNumber + âge).
+    const supabase = createAdminClient()
+    const { data: crs } = await supabase
+      .from('site_reports')
+      .select('created_at')
+      .eq('contract_id', report.contract_id)
+      .neq('status', 'draft')
+    const reportDates = ((crs ?? []) as Array<{ created_at: string }>).map((r) => r.created_at)
+    return {
+      missions: [], // réunion contrat : interventions créent une mission sur le site routé
+      meetingNumber: Math.max(1, reportDates.length),
+      openActions,
+      reportDates,
+      candidateSites: sites.map((s) => ({ id: s.id, name: s.name })),
+    }
+  }
+
+  // Réunion site
+  if (!report.site_id) return empty
   const [missions, reports, openActions] = await Promise.all([
-    listMissionsBySite(siteId),
-    listReportsBySite(siteId),
-    listSiteActionsBySite(siteId, { status: 'open' }),
+    listMissionsBySite(report.site_id),
+    listReportsBySite(report.site_id),
+    listSiteActionsBySite(report.site_id, { status: 'open' }),
   ])
   return {
     missions: missions.map((m) => ({ id: m.id, name: m.name })),
     meetingNumber: Math.max(1, reports.length),
     openActions,
     reportDates: reports.map((r) => r.created_at),
+    candidateSites: [],
   }
 }
 
@@ -379,9 +451,21 @@ export async function analyzeReportAction(formData: FormData): Promise<
     return { ok: false, error: 'Rien à analyser (transcription et notes vides)' }
   }
 
-  // Comparaison réunion : injecter les actions ouvertes antérieures.
-  const priorOpen = await listSiteActionsBySite(report.site_id, { status: 'open' })
-  const priorOpenActions = priorOpen.map((a) => ({
+  // Sites candidats (réunion contrat) + site par défaut (réunion site).
+  let candidateSites: Array<{ id: string; name: string }> = []
+  let defaultSiteId: string | null = report.site_id
+  let priorSites: string[] = report.site_id ? [report.site_id] : []
+  if (report.type === 'contract' && report.contract_id) {
+    const { listSitesByContract } = await import('@/lib/db/sites')
+    const sites = await listSitesByContract(report.contract_id)
+    candidateSites = sites.map((s) => ({ id: s.id, name: s.name }))
+    defaultSiteId = null
+    priorSites = sites.map((s) => s.id)
+  }
+
+  // Comparaison réunion : actions ouvertes antérieures (agrégées au contrat si besoin).
+  const priorLists = await Promise.all(priorSites.map((id) => listSiteActionsBySite(id, { status: 'open' })))
+  const priorOpenActions = priorLists.flat().map((a) => ({
     id: a.id,
     title: a.title,
     corps_etat: a.corps_etat,
@@ -393,6 +477,8 @@ export async function analyzeReportAction(formData: FormData): Promise<
       textInput,
       attachmentNames,
       priorOpenActions,
+      candidateSites,
+      defaultSiteId,
       userId: auth.userId,
     })
     const inserted = await bulkInsertProposals({
@@ -405,6 +491,7 @@ export async function analyzeReportAction(formData: FormData): Promise<
         category: p.category,
         corps_etat: p.corps_etat,
         assigned_to: p.assigned_to,
+        site_id: p.site_id,
         ai_confidence: p.ai_confidence,
       })),
     })
@@ -430,6 +517,7 @@ const curateSchema = z.object({
   short_label: z.string().max(140).optional(),
   corps_etat: z.string().max(60).nullable().optional(),
   assigned_to: z.string().max(120).nullable().optional(),
+  site_id: z.string().uuid().nullable().optional(), // réunion contrat : site confirmé
   status: z.enum(['accepted', 'rejected']).optional(),
   // Édition légère du payload (action_outcome, mission_choice, scheduled_for…)
   payload_patch: z.string().optional(), // JSON stringifié, fusionné côté serveur
@@ -446,6 +534,7 @@ export async function curateProposalAction(formData: FormData): Promise<
     short_label: formData.get('short_label') ?? undefined,
     corps_etat: formData.get('corps_etat') ?? undefined,
     assigned_to: formData.get('assigned_to') ?? undefined,
+    site_id: formData.get('site_id') ?? undefined,
     status: formData.get('status') ?? undefined,
     payload_patch: formData.get('payload_patch') ?? undefined,
   })
@@ -471,6 +560,7 @@ export async function curateProposalAction(formData: FormData): Promise<
     short_label: parsed.data.short_label,
     corps_etat: parsed.data.corps_etat,
     assigned_to: parsed.data.assigned_to,
+    site_id: parsed.data.site_id,
     status: parsed.data.status,
     payload,
   })
@@ -515,15 +605,19 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
 
   const report = await getSiteReport(reportId)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
-  const siteId = report.site_id
 
   const proposals = (await listProposals(reportId)).filter((p) => p.status === 'accepted')
   const tomorrow = addDaysLocal(todayLocalIso(), 1)
+  const touchedSites = new Set<string>()
   let created = 0
   let skipped = 0
   let hasTomorrowIntervention = false
 
   for (const p of proposals) {
+    // Chaque décision est routée vers SON site (réunion contrat) ou le site de
+    // la réunion (réunion site). Sans site résolu → on saute (Phase A).
+    const siteId = p.site_id ?? report.site_id
+    if (!siteId) { skipped++; continue }
     try {
       const scheduledFor =
         typeof p.payload?.suggested_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.payload.suggested_date)
@@ -650,15 +744,20 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
           skipped++
           continue
       }
+      touchedSites.add(siteId)
       created++
     } catch {
       skipped++
     }
   }
 
+  // Enregistre les sites réellement touchés (le compte-rendu apparaît dans leur journal).
+  await addReportSites(reportId, Array.from(touchedSites))
   await setReportStatus(reportId, 'curated')
-  revalidatePath(`/sites/${siteId}`)
-  revalidatePath(`/m/site/${siteId}`)
+  for (const s of touchedSites) {
+    revalidatePath(`/sites/${s}`)
+    revalidatePath(`/m/site/${s}`)
+  }
 
   return { ok: true, created, skipped, hasTomorrowIntervention }
 }

@@ -963,7 +963,10 @@ Quand vous créez un intervenant en **CDD** ou **CDI Chantier**, MemorIA exige *
 
 ## 26. Le Compte-rendu chantier — raconter, MemorIA distribue
 
-Depuis un chantier (fiche site, ou page mobile `/m/site`), le bouton **« Compte-rendu chantier »** ouvre une capture **multimodale** : vous **dictez** une note vocale, **saisissez/corrigez** du texte, **prenez des photos**, **joignez des fichiers** (PDF, plan, PV, bon de livraison, rapport SOCOTEC…).
+Depuis un chantier (fiche site, ou page mobile `/m/site`), le bouton **« Compte-rendu chantier »** ouvre une capture **multimodale** : vous **dictez** une note vocale (ou **importez un fichier audio**), **saisissez/corrigez** du texte, **prenez des photos**, **joignez des fichiers** (PDF, plan, PV, bon de livraison, rapport SOCOTEC…).
+
+> [!TIP] Réunion de contrat (multi-sites)
+> Une réunion du lundi traite souvent **plusieurs sites d'un même contrat** (Bâtiment A/B/C, Voirie, Parking). Depuis la **fiche contrat**, le bouton **« Réunion de contrat »** ouvre la même capture : l'IA **détecte le site concerné par chaque décision** (« portail bâtiment A », « livraison parking »…) et les **distribue automatiquement** au bon site. Vous confirmez le site par décision à la curation. Une seule réunion → plusieurs sites, sans ressaisie.
 
 **Le cycle :**
 1. Vous capturez (voix + texte + photos + pièces). Le texte saisi est sauvé **en premier** — rien n'est perdu.
