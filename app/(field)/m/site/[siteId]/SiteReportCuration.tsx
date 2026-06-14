@@ -86,7 +86,10 @@ export function SiteReportCuration({
         short_label: p.short_label,
         corps_etat: p.corps_etat ?? '',
         assigned_to: p.assigned_to ?? '',
-        siteId: p.site_id ?? siteId ?? candidateSites[0]?.id ?? '',
+        // Réunion contrat : on garde le site DÉTECTÉ par l'IA, sinon VIDE → l'humain
+        // doit confirmer (jamais de wrong-site silencieux sur le 1er site).
+        // Réunion site : toutes les décisions sur le site de la réunion.
+        siteId: p.site_id ?? (candidateSites.length > 0 ? '' : (siteId ?? '')),
         actionOutcome: 'keep',
         scheduledFor: /^\d{4}-\d{2}-\d{2}$/.test(suggested) ? suggested : '',
         missionMode: existingMissions.length > 0 ? 'existing' : 'new',
@@ -161,6 +164,10 @@ export function SiteReportCuration({
   ]
 
   const acceptedCount = Object.values(rows).filter((r) => r.accepted).length
+  // Réunion contrat : aucune création sans site confirmé (règle stricte).
+  const missingSiteCount = isContract
+    ? proposals.filter((p) => rows[p.id]?.accepted && !rows[p.id]?.siteId).length
+    : 0
   const hasComparison = doneUpdates.length + stillOpenTotal > 0
 
   function markDone(actionId: string) {
@@ -477,7 +484,13 @@ export function SiteReportCuration({
         </div>
       )}
 
-      <button type="button" onClick={submit} disabled={isPending || acceptedCount === 0}
+      {missingSiteCount > 0 && (
+        <p className="flex items-center gap-1.5 text-xs text-amber-700">
+          <MapPin className="h-3.5 w-3.5 shrink-0" />
+          {missingSiteCount} décision{missingSiteCount > 1 ? 's' : ''} sans site — précisez le site ou décochez.
+        </p>
+      )}
+      <button type="button" onClick={submit} disabled={isPending || acceptedCount === 0 || missingSiteCount > 0}
         className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-foreground text-background py-3 text-sm font-medium disabled:opacity-50">
         {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
         Créer les {acceptedCount} élément{acceptedCount > 1 ? 's' : ''} validé{acceptedCount > 1 ? 's' : ''}
