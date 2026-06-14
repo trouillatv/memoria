@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, FileText, Camera, Info, KeyRound } from 'lucide-react'
+import { AlertTriangle, FileText, Camera, Info, KeyRound, ClipboardList } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SiteMemoryEvent } from '@/lib/db/site-memory'
 import type { SiteMemoryMeta } from '@/lib/db/site-cockpit'
@@ -52,6 +52,7 @@ const TYPE_ICON: Record<SiteMemoryEvent['type'], LucideIcon> = {
   note: Info,
   a_savoir: Info,
   access: KeyRound,
+  report: ClipboardList,
 }
 
 const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
@@ -62,6 +63,7 @@ const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
   a_savoir: 'text-muted-foreground',
   // Incident d'accès → amber (saillant) ; routine → neutre. Géré via meta.
   access: 'text-muted-foreground',
+  report: 'text-indigo-600',
 }
 
 // Vincent 2026-05-21 — badge texte explicite pour que l'utilisateur sache
@@ -74,6 +76,7 @@ const TYPE_BADGE_LABEL: Record<SiteMemoryEvent['type'], string> = {
   note: 'Note de site',
   a_savoir: 'À savoir',
   access: 'Accès',
+  report: 'Compte-rendu',
 }
 
 // Palette distincte par type — chaque famille de couleur est franchement
@@ -91,6 +94,8 @@ const TYPE_BADGE_CLASS: Record<SiteMemoryEvent['type'], string> = {
   a_savoir: 'bg-pink-100 text-pink-900 border-pink-300 dark:bg-pink-950/40 dark:text-pink-200 dark:border-pink-800',
   // Vert : accès = preuve d'accès site (passage)
   access: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800',
+  // Indigo : compte-rendu = artefact source multimodal
+  report: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-200 dark:border-indigo-800',
 }
 
 function badgeLabelFor(event: SiteMemoryEvent): string {

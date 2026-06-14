@@ -12,6 +12,7 @@ export type SiteMemoryEventType =
   | 'note'
   | 'a_savoir'
   | 'access'
+  | 'report'
 
 export interface SiteMemoryEvent {
   type: SiteMemoryEventType
@@ -391,11 +392,42 @@ export async function getSiteMemoryTimeline(
     })
   }
 
+  // Comptes-rendus de chantier (artefact source — visible MÊME en échec IA).
+  {
+    let reportQ = sb
+      .from('site_reports')
+      .select('id, status, transcript_corrected, transcript_raw, text_input, created_at')
+      .eq('site_id', siteId)
+      .neq('status', 'draft')
+    if (since) reportQ = reportQ.gte('created_at', since)
+    const { data: reports } = await reportQ
+    for (const r of (reports ?? []) as Array<{
+      id: string
+      status: string
+      transcript_corrected: string | null
+      transcript_raw: string | null
+      text_input: string | null
+      created_at: string
+    }>) {
+      const source = r.transcript_corrected || r.transcript_raw || r.text_input || ''
+      const firstLine = source.split('\n')[0]?.slice(0, 120) || null
+      events.push({
+        type: 'report',
+        id: r.id,
+        occurredAt: r.created_at,
+        title: 'Compte-rendu chantier',
+        detail: r.status === 'failed' ? (firstLine ?? 'Analyse en échec — artefact conservé') : firstLine,
+        status: r.status,
+        meta: { report: true },
+      })
+    }
+  }
+
   // Vincent 2026-05-21 — DEDUP TRANSVERSE GLOBAL.
   // Couvre les cas où le même texte humain apparaît à travers 2 sources
   // différentes (typiquement intervention.notes recopiée dans site_notes, ou
   // anomaly.description recopiée dans une autre intervention.notes du même jour).
-  // Ne touche PAS les events "passifs" (photo, access, groupes anomalies)
+  // Ne touche PAS les events "passifs" (photo, access, groupes anomalies, report)
   // qui ont leur propre sémantique de comptage.
   const dedupedEvents = dedupTransverse(events)
 

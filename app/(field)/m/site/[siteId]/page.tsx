@@ -9,6 +9,7 @@ import {
 } from '@/lib/db/site-cockpit'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
+import { SiteReportLauncher } from './SiteReportLauncher'
 
 /**
  * V5.1 Slice 1 — Page de dépôt photo libre sur un site (hors workflow
@@ -145,6 +146,9 @@ export default async function FieldSitePage({
       {enrichedSiteReadings.readings.length > 0 && (
         <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
       )}
+
+      {/* Compte-rendu multimodal : voix + texte + photos + pièces → décisions */}
+      <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" />
 
       <SpontaneousCapturePanel siteId={siteId} />
     </div>

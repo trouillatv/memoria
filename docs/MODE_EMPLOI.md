@@ -961,6 +961,37 @@ Quand vous créez un intervenant en **CDD** ou **CDI Chantier**, MemorIA exige *
 
 ---
 
+## 26. Le Compte-rendu chantier — raconter, MemorIA distribue
+
+Depuis un chantier (fiche site, ou page mobile `/m/site`), le bouton **« Compte-rendu chantier »** ouvre une capture **multimodale** : vous **dictez** une note vocale, **saisissez/corrigez** du texte, **prenez des photos**, **joignez des fichiers** (PDF, plan, PV, bon de livraison, rapport SOCOTEC…).
+
+**Le cycle :**
+1. Vous capturez (voix + texte + photos + pièces). Le texte saisi est sauvé **en premier** — rien n'est perdu.
+2. MemorIA **transcrit** la voix. Vous **relisez et corrigez** la transcription.
+3. **« Analyser et proposer »** : MemorIA détecte les **décisions** du compte-rendu et les **route** selon leur nature.
+4. **Curation** — les décisions sont regroupées par **corps d'état** (Menuiserie, Électricité, Plomberie, SOCOTEC, Livraison…). Vous **acceptez, éditez ou rejetez** chacune.
+5. **« Créer les éléments validés »** — chaque décision validée devient une vraie ligne, **sans ressaisie**.
+
+**Où va chaque décision :**
+- 🟦 **Action ouverte** — « il faut faire X » (le cas le plus fréquent). Conservée telle quelle, ou **planifiée** en intervention / mission.
+- 🟪 **Intervention / Mission** — une opération datée et claire.
+- 🟧 **Anomalie** — un problème constaté.
+- 🟫 **Vigilance** — un risque récurrent du lieu (« zone sud humide après pluie »).
+- 🟦 **Mémoire client** — un savoir sur le client (« sensible aux retards »).
+- 🟩 **À savoir / Preuve demandée** — info à retenir, preuve attendue.
+
+> [!IMPORTANT] L'IA propose, vous validez
+> MemorIA ne crée **jamais** directement. Vous gardez la main sur tout. Si l'analyse échoue, le **compte-rendu source et ses pièces restent archivés** dans le journal du chantier.
+
+**Réunion chantier #N** : à la curation, MemorIA rappelle les **actions encore ouvertes** des comptes-rendus précédents — vous voyez d'un coup d'œil ce qui reste à traiter.
+
+**Briefing de demain** : si une décision crée une intervention pour le lendemain, elle apparaît **automatiquement** dans le Briefing du soir. Un cycle complet : réunion → compte-rendu → actions → planning → briefing.
+
+> [!TIP] Le moteur d'alimentation
+> Plus besoin de créer manuellement missions, interventions, notes et anomalies une par une. Vous **racontez votre journée ou votre réunion**, et MemorIA distribue l'information au bon endroit. Le sujet reste **le lieu**, jamais le jugement d'une personne.
+
+---
+
 **Le pilote dure 30 jours.** À la fin :
 - Si Guillaume utilise activement /aujourdhui et /semaine
 - Si au moins 50 interventions ont été documentées

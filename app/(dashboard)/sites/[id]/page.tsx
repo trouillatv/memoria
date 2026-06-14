@@ -54,6 +54,7 @@ import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
+import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -186,6 +187,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <Sparkles className="h-3.5 w-3.5" />
           Atelier mémoire
         </Link>
+        {/* Compte-rendu multimodal — voix + texte + photos + pièces → décisions */}
+        <SiteReportLauncher siteId={id} siteName={identity.name} variant="desktop" />
       </div>
 
       {/* Navigation onglets — mobile uniquement */}

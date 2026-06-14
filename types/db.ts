@@ -331,6 +331,110 @@ export interface DbSiteNote {
   deleted_at: string | null
 }
 
+// Compte-rendu multimodal de chantier (migration 099).
+// Le terrain produit (voix+texte+photos+pièces) → l'IA propose → l'humain valide.
+// L'artefact brut n'est jamais supprimé, même si l'IA échoue.
+export type SiteReportStatus =
+  | 'draft'
+  | 'transcribing'
+  | 'ready'
+  | 'analyzing'
+  | 'proposed'
+  | 'curated'
+  | 'archived'
+  | 'failed'
+
+export type SiteReportTranscriptStatus = 'none' | 'pending' | 'done' | 'failed'
+
+export interface DbSiteReport {
+  id: string
+  site_id: string
+  tenant_id: string
+  organization_id: string | null
+  status: SiteReportStatus
+  audio_path: string | null
+  audio_mime: string | null
+  audio_duration_seconds: number | null
+  transcript_raw: string | null
+  transcript_corrected: string | null
+  transcript_status: SiteReportTranscriptStatus
+  text_input: string | null
+  analysis_error: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type SiteReportAttachmentKind = 'audio' | 'photo' | 'file'
+
+export interface DbSiteReportAttachment {
+  id: string
+  report_id: string
+  kind: SiteReportAttachmentKind
+  storage_path: string
+  filename: string | null
+  mime_type: string | null
+  size_bytes: number | null
+  sha256: string | null
+  client_uuid: string | null
+  created_at: string
+}
+
+// Une proposition = une DÉCISION détectée dans le compte-rendu, routée selon
+// sa nature. 'action' = action ouverte (sortie principale). 'client_memory' =
+// savoir sur le client. Ce qui est décidé (action/note/vigilance/client_memory)
+// ≠ ce qui est exécuté (intervention/mission).
+export type SiteReportProposalType =
+  | 'action'
+  | 'intervention'
+  | 'mission'
+  | 'anomaly'
+  | 'vigilance'
+  | 'note'
+  | 'proof_request'
+  | 'client_memory'
+
+export type SiteReportProposalStatus = 'proposed' | 'accepted' | 'rejected'
+
+export interface DbSiteReportProposal {
+  id: string
+  report_id: string
+  type: SiteReportProposalType
+  payload: Record<string, unknown>
+  short_label: string
+  rationale: string | null
+  category: string | null
+  corps_etat: string | null
+  assigned_to: string | null
+  ai_confidence: number | null
+  status: SiteReportProposalStatus
+  created_entity_type: string | null
+  created_entity_id: string | null
+  created_at: string
+}
+
+// Action ouverte (migration 099) — nouvel objet central. Une réunion produit
+// d'abord des actions ouvertes ; seules certaines deviennent des interventions
+// planifiées. open → planned (→ intervention) → done. Regroupée par corps d'état.
+export type SiteActionStatus = 'open' | 'planned' | 'done' | 'cancelled'
+
+export interface DbSiteAction {
+  id: string
+  site_id: string
+  report_id: string | null
+  title: string
+  body: string | null
+  corps_etat: string | null
+  assigned_to: string | null
+  status: SiteActionStatus
+  due_date: string | null
+  converted_to_type: string | null
+  converted_to_id: string | null
+  created_by: string | null
+  created_at: string
+  done_at: string | null
+}
+
 export type MissionCadence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'on_demand'
 
 export interface ChecklistTemplateItem {
