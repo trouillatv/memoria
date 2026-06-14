@@ -22,6 +22,7 @@ export interface InterventionToken {
   created_by: string | null
   created_at: string
   note: string | null
+  recipient_label: string | null
   accessed_at: string | null
   access_count: number
   validated_at: string | null
@@ -155,6 +156,7 @@ export async function createInterventionToken(input: {
   permissions?: string[]
   expiresAt?: string | null
   note?: string | null
+  recipientLabel?: string | null
 }): Promise<InterventionToken> {
   const supabase = createAdminClient()
   const token = crypto.randomBytes(24).toString('base64url')
@@ -168,12 +170,40 @@ export async function createInterventionToken(input: {
       expires_at: input.expiresAt ?? null,
       created_by: input.createdBy,
       note: input.note ?? null,
+      recipient_label: input.recipientLabel ?? null,
     })
     .select('*')
     .single()
 
   if (error) throw error
   return data as InterventionToken
+}
+
+/** Tokens validés pour une intervention — source des "Confirmations externes" dans la fiche. */
+export async function listTokenValidationsForIntervention(
+  interventionId: string,
+): Promise<Array<{
+  id: string
+  recipient_label: string | null
+  validated_at: string
+  validated_by_name: string | null
+  validation_comment: string | null
+}>> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_tokens')
+    .select('id, recipient_label, validated_at, validated_by_name, validation_comment')
+    .eq('intervention_id', interventionId)
+    .not('validated_at', 'is', null)
+    .order('validated_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Array<{
+    id: string
+    recipient_label: string | null
+    validated_at: string
+    validated_by_name: string | null
+    validation_comment: string | null
+  }>
 }
 
 /** Audit silencieux — appel non bloquant depuis la page publique. */

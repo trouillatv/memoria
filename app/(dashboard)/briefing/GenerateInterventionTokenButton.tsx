@@ -8,15 +8,14 @@ interface Props {
   interventionId: string
   missionName: string
   siteName: string
-  companyName: string
 }
 
 export function GenerateInterventionTokenButton({
   interventionId,
   missionName,
   siteName,
-  companyName,
 }: Props) {
+  const [recipientLabel, setRecipientLabel] = useState('')
   const [result, setResult] = useState<{ url: string; whatsappText: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -27,8 +26,7 @@ export function GenerateInterventionTokenButton({
     startTransition(async () => {
       const res = await generateInterventionTokenAction({
         interventionId,
-        companyName,
-        note: `${companyName} — ${missionName} / ${siteName}`,
+        recipientLabel: recipientLabel.trim() || undefined,
       })
       if (res.ok) {
         setResult({ url: res.url, whatsappText: res.whatsappText })
@@ -87,21 +85,31 @@ export function GenerateInterventionTokenButton({
   }
 
   return (
-    <div className="mt-1">
-      {error && <p className="text-xs text-red-600 mb-1">{error}</p>}
-      <button
-        type="button"
-        onClick={generate}
-        disabled={isPending}
-        className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-50"
-      >
-        {isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Link2 className="h-3 w-3" />
-        )}
-        Générer lien
-      </button>
+    <div className="mt-1 space-y-1.5">
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          value={recipientLabel}
+          onChange={(e) => setRecipientLabel(e.target.value)}
+          placeholder="Pour qui ? (optionnel)"
+          maxLength={80}
+          className="h-7 rounded-md border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring w-44"
+        />
+        <button
+          type="button"
+          onClick={generate}
+          disabled={isPending}
+          className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-50"
+        >
+          {isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Link2 className="h-3 w-3" />
+          )}
+          Générer le lien
+        </button>
+      </div>
     </div>
   )
 }

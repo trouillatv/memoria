@@ -20,7 +20,7 @@ import {
   ShieldCheck,
   FileCheck,
   Clock,
-  Building2,
+  Link2 as Link2Icon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -272,23 +272,23 @@ export default async function BriefingPage({
         </Card>
       )}
 
-      {/* Sous-traitants — générer lien /i/[token] par intervention */}
-      {briefing.interventionsWithCompanies.length > 0 && (
+      {/* Liens d'intervention — générer un lien sécurisé /i/[token] pour n'importe quelle intervention */}
+      {briefing.interventionList.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              Sous-traitants demain ({briefing.interventionsWithCompanies.length})
+              <Link2Icon className="h-4 w-4 text-muted-foreground" />
+              Liens d&apos;intervention ({briefing.interventionList.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground mb-3 italic">
-              Générez un lien sécurisé par intervention à envoyer via WhatsApp.
-              Le sous-traitant confirme sans compte MemorIA.
+              Envoyez un lien sécurisé à un acteur externe (sous-traitant, livreur, bureau de contrôle…).
+              Il confirme l&apos;intervention sans compte MemorIA.
             </p>
             <ul className="space-y-4">
-              {briefing.interventionsWithCompanies.map((intv) => (
-                <li key={intv.interventionId} className="space-y-1.5">
+              {briefing.interventionList.map((intv) => (
+                <li key={intv.interventionId} className="space-y-1">
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="text-sm font-medium">{intv.missionName}</span>
                     <span className="text-xs text-muted-foreground">{intv.siteName}</span>
@@ -298,25 +298,11 @@ export default async function BriefingPage({
                       </span>
                     )}
                   </div>
-                  <ul className="space-y-2 pl-2">
-                    {intv.companies.map((c) => (
-                      <li key={c.id} className="space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <Building2 className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-                          <span className="text-xs font-medium">{c.companyName}</span>
-                          {c.roleDescription && (
-                            <span className="text-[10px] text-muted-foreground">· {c.roleDescription}</span>
-                          )}
-                        </div>
-                        <GenerateInterventionTokenButton
-                          interventionId={intv.interventionId}
-                          missionName={intv.missionName}
-                          siteName={intv.siteName}
-                          companyName={c.companyName}
-                        />
-                      </li>
-                    ))}
-                  </ul>
+                  <GenerateInterventionTokenButton
+                    interventionId={intv.interventionId}
+                    missionName={intv.missionName}
+                    siteName={intv.siteName}
+                  />
                 </li>
               ))}
             </ul>

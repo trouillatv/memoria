@@ -11,6 +11,7 @@ import {
 } from '@/lib/db/interventions'
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { listCompaniesForIntervention } from '@/lib/db/intervention-companies'
+import { listTokenValidationsForIntervention } from '@/lib/db/intervention-tokens'
 import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
@@ -57,7 +58,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents, companies] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents, companies, tokenValidations] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
@@ -67,6 +68,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     listValidatedVoiceNotesByIntervention(id),
     listAccessEventsByIntervention(id),
     listCompaniesForIntervention(id).catch(() => []),
+    listTokenValidationsForIntervention(id).catch(() => []),
   ])
 
   const supabase = createAdminClient()
@@ -379,6 +381,40 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         status={intervention.status}
         existingValidation={validation}
       />
+
+      {tokenValidations.length > 0 && (
+        <section className="rounded-lg border bg-card p-4 space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Confirmations externes ({tokenValidations.length})
+          </h2>
+          <ul className="space-y-3">
+            {tokenValidations.map((tv) => (
+              <li key={tv.id} className="rounded-md border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {tv.validated_by_name && (
+                    <span className="text-sm font-medium text-emerald-900">{tv.validated_by_name}</span>
+                  )}
+                  {tv.recipient_label && (
+                    <span className="text-xs text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                      {tv.recipient_label}
+                    </span>
+                  )}
+                  <span className="text-xs text-emerald-700/70 ml-auto">
+                    {new Date(tv.validated_at).toLocaleString('fr-FR', {
+                      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+                {tv.validation_comment && (
+                  <p className="text-xs text-emerald-800/80 italic border-l-2 border-emerald-200 pl-2">
+                    {tv.validation_comment}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <VoiceNotesSection notes={voiceNoteDisplays} />
 

@@ -1,6 +1,6 @@
 'use server'
 
-// Génération de token d'intervention depuis le briefing du soir.
+// Génération de lien d'intervention sécurisé depuis le briefing du soir.
 // Réservé aux managers et admins.
 // Retourne le token + l'URL publique + le texte WhatsApp pré-rempli.
 
@@ -11,7 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function generateInterventionTokenAction(input: {
   interventionId: string
-  companyName: string
+  recipientLabel?: string
   note?: string
 }): Promise<
   | { ok: true; token: string; url: string; whatsappText: string }
@@ -36,25 +36,6 @@ export async function generateInterventionTokenAction(input: {
   // Expiration : 48h à partir de maintenant
   const expiresAt = new Date(Date.now() + 48 * 3600 * 1000).toISOString()
 
-  const note = input.note?.trim() || `Sous-traitant : ${input.companyName}`
-
-  let tok
-  try {
-    tok = await createInterventionToken({
-      interventionId: input.interventionId,
-      createdBy: user.id,
-      expiresAt,
-      note,
-    })
-  } catch {
-    return { ok: false, error: 'Erreur lors de la création du lien' }
-  }
-
-  const h = await headers()
-  const proto = h.get('x-forwarded-proto') ?? 'https'
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3001'
-  const url = `${proto}://${host}/i/${tok.token}`
-
   const pickOne = <T>(v: T | T[] | null): T | null => {
     if (!v) return null
     return Array.isArray(v) ? v[0] ?? null : v
@@ -66,8 +47,31 @@ export async function generateInterventionTokenAction(input: {
   const missionName = mission?.name ?? 'Intervention'
   const siteName = site?.name ?? ''
 
+  const recipientLabel = input.recipientLabel?.trim() || null
+  const note = input.note?.trim() || [recipientLabel, missionName, siteName].filter(Boolean).join(' — ')
+
+  let tok
+  try {
+    tok = await createInterventionToken({
+      interventionId: input.interventionId,
+      createdBy: user.id,
+      expiresAt,
+      note,
+      recipientLabel,
+    })
+  } catch {
+    return { ok: false, error: 'Erreur lors de la création du lien' }
+  }
+
+  const h = await headers()
+  const proto = h.get('x-forwarded-proto') ?? 'https'
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3001'
+  const url = `${proto}://${host}/i/${tok.token}`
+
+  const greeting = recipientLabel ? `Bonjour ${recipientLabel},` : `Bonjour,`
+
   const whatsappText = [
-    `Bonjour,`,
+    greeting,
     ``,
     `Voici votre intervention${siteName ? ` sur ${siteName}` : ''} :`,
     `${missionName}`,

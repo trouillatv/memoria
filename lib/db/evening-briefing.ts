@@ -99,18 +99,14 @@ export interface EveningBriefing {
     teamColor: string | null
     members: string[]
   }>
-  /** Interventions ayant au moins un sous-traitant — source des liens /i/[token].
-   *  Permet au manager de générer un lien par sous-traitant depuis le briefing. */
-  interventionsWithCompanies: Array<{
+  /** Toutes les interventions planifiées — source des liens d'intervention sécurisés /i/[token].
+   *  Le manager peut générer un lien pour n'importe quelle intervention, quel qu'en soit
+   *  le destinataire (sous-traitant, livreur, client, bureau de contrôle…). */
+  interventionList: Array<{
     interventionId: string
     missionName: string
     siteName: string
     slot: string | null
-    companies: Array<{
-      id: string
-      companyName: string
-      roleDescription: string | null
-    }>
   }>
 }
 
@@ -427,49 +423,19 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     age_days: Math.floor((Date.now() - new Date(a.created_at).getTime()) / (24 * 3600 * 1000)),
   }))
 
-  // 8.a) Sous-traitants par intervention — source des liens /i/[token].
-  const allInterventionIds = interventions.map((r) => r.id)
-  const companiesByIntervention = new Map<
-    string,
-    Array<{ id: string; company_name: string; role_description: string | null }>
-  >()
-
-  if (allInterventionIds.length > 0) {
-    const { data: companyRows } = await supabase
-      .from('intervention_companies')
-      .select('id, intervention_id, company_name, role_description')
-      .in('intervention_id', allInterventionIds)
-
-    for (const c of (companyRows ?? []) as Array<{
-      id: string
-      intervention_id: string
-      company_name: string
-      role_description: string | null
-    }>) {
-      const arr = companiesByIntervention.get(c.intervention_id) ?? []
-      arr.push({ id: c.id, company_name: c.company_name, role_description: c.role_description })
-      companiesByIntervention.set(c.intervention_id, arr)
-    }
-  }
-
-  const interventionsWithCompanies: EveningBriefing['interventionsWithCompanies'] = []
+  // 8.a) Liste de toutes les interventions planifiées — source des liens /i/[token].
+  // Générique : pas besoin d'avoir un sous-traitant, n'importe quel acteur externe peut recevoir le lien.
+  const interventionList: EveningBriefing['interventionList'] = []
   for (const r of interventions) {
-    const companies = companiesByIntervention.get(r.id)
-    if (!companies || companies.length === 0) continue
     const mission = pickOne(r.mission)
     if (!mission) continue
     const site = pickOne(mission.site)
     if (!site) continue
-    interventionsWithCompanies.push({
+    interventionList.push({
       interventionId: r.id,
       missionName: mission.name,
       siteName: site.name,
       slot: r.slot,
-      companies: companies.map((c) => ({
-        id: c.id,
-        companyName: c.company_name,
-        roleDescription: c.role_description,
-      })),
     })
   }
 
@@ -531,7 +497,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     contractsExpiringSoon,
     oldOpenAnomalies,
     unassignedTeams,
-    interventionsWithCompanies,
+    interventionList,
   }
 }
 
