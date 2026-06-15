@@ -183,9 +183,9 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/icons/icon-192.png"
+              src="/logo.png"
               alt="MemorIA"
-              className="h-8 w-8 rounded-md object-cover ring-1 ring-slate-900/10"
+              className="h-8 w-8 rounded-md bg-white object-contain ring-1 ring-slate-900/10"
             />
             <span className="text-base font-semibold tracking-tight text-slate-950">
               MemorIA

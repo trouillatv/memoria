@@ -14,9 +14,9 @@ export default async function LoginPage({
       <div className="text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/icons/icon-192.png"
+          src="/logo.png"
           alt="MemorIA"
-          className="mx-auto mb-3.5 h-16 w-16 rounded-2xl object-cover shadow-md shadow-slate-900/20 ring-1 ring-slate-900/10"
+          className="mx-auto mb-3.5 h-16 w-16 rounded-2xl bg-white object-contain shadow-sm ring-1 ring-slate-900/10"
         />
         <h1 className="text-xl font-semibold tracking-tight text-slate-950">MemorIA</h1>
         <p className="mt-1 text-sm text-slate-500">
