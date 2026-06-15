@@ -11,25 +11,12 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import type { JournalEntry } from '@/lib/db/site-journal'
+import { WEATHER_META, weatherLabel, type WeatherCode } from '@/lib/db/site-day-log-meta'
 
-export type WeatherCode =
-  | 'clear' | 'cloudy' | 'rain' | 'heavy_rain' | 'wind' | 'storm' | 'heat' | 'other'
-
-export const WEATHER_META: Record<WeatherCode, { label: string; icon: string }> = {
-  clear:      { label: 'Dégagé',        icon: '☀️' },
-  cloudy:     { label: 'Couvert',       icon: '☁️' },
-  rain:       { label: 'Pluie',         icon: '🌧️' },
-  heavy_rain: { label: 'Forte pluie',   icon: '🌧️' },
-  wind:       { label: 'Vent fort',     icon: '💨' },
-  storm:      { label: 'Orage',         icon: '⛈️' },
-  heat:       { label: 'Forte chaleur', icon: '🔥' },
-  other:      { label: 'Autre',         icon: '•' },
-}
-
-export function weatherLabel(code: WeatherCode | null | undefined): string | null {
-  if (!code) return null
-  return WEATHER_META[code]?.label ?? null
-}
+// Présentation météo : définie dans site-day-log-meta.ts (client-safe).
+// Re-exportée ici pour la rétro-compat des importateurs serveur existants.
+export { WEATHER_META, weatherLabel }
+export type { WeatherCode }
 
 export interface SiteDayWeather {
   logDate: string // yyyy-mm-dd

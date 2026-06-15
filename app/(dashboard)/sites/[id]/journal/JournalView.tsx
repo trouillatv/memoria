@@ -8,7 +8,7 @@ import {
   FileText,
 } from 'lucide-react'
 import type { JournalEntry, JournalIntervention } from '@/lib/db/site-journal'
-import { WEATHER_META } from '@/lib/db/site-day-log'
+import { WEATHER_META } from '@/lib/db/site-day-log-meta'
 
 // ---------------------------------------------------------------------------
 // Formatage des dates

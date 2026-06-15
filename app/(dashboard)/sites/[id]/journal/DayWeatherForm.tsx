@@ -9,7 +9,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CloudRain } from 'lucide-react'
 import { toast } from 'sonner'
-import { WEATHER_META, type WeatherCode } from '@/lib/db/site-day-log'
+import { WEATHER_META, type WeatherCode } from '@/lib/db/site-day-log-meta'
 import { recordDayWeatherAction } from './actions'
 
 const WEATHER_ORDER: WeatherCode[] = [
