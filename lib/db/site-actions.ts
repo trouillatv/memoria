@@ -8,7 +8,13 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { actionHealth, type ActionHealth } from '@/lib/actions/health'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
+
+// Re-export pour compat : la fonction pure vit dans lib/actions/health (sans
+// dépendance serveur, importable côté client).
+export { actionHealth }
+export type { ActionHealth }
 
 export async function createSiteAction(input: {
   site_id: string
@@ -197,16 +203,6 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
     }
   })
-}
-
-// Santé d'une action ouverte = ancienneté (déterministe, anti-pointage).
-// 🔴 critique ≥ 14 j · 🟠 à surveiller 7–13 j · 🟢 en rythme < 7 j.
-export type ActionHealth = 'critique' | 'surveiller' | 'rythme'
-export function actionHealth(createdAtIso: string, nowMs: number = Date.now()): ActionHealth {
-  const days = Math.floor((nowMs - new Date(createdAtIso).getTime()) / 86_400_000)
-  if (days >= 14) return 'critique'
-  if (days >= 7) return 'surveiller'
-  return 'rythme'
 }
 
 export interface OpenActionsHealth {

@@ -10,7 +10,8 @@ import { useRouter } from 'next/navigation'
 import { Check, MapPin, Mic, HardHat, User, Loader2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { markActionDoneAction } from '@/app/(dashboard)/actions/actions'
-import { actionHealth, type SiteActionRow } from '@/lib/db/site-actions'
+import { actionHealth } from '@/lib/actions/health'
+import type { SiteActionRow } from '@/lib/db/site-actions'
 
 function ageDays(iso: string): number {
   const ms = Date.now() - new Date(iso).getTime()
