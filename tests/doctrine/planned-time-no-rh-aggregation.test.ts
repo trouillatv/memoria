@@ -160,16 +160,18 @@ describe('V6.1 — helpers de saisie heure précise', () => {
       planned_end: '2026-05-20T08:00:00.000Z',
       slot: 'morning',
     })).toBe('6h30 – 8h (1h30)')
-    // Ancrage canonique → fallback slot label long
+    // Pas d'heure précise → fallback sur l'ancrage HORAIRE du créneau (7h / 14h
+    // / 19h). Décision Vincent 2026-06-15 : on ne dit JAMAIS « Matin / Après-midi
+    // / Soir » côté UI — on reste sur des créneaux horaires.
     expect(formatInterventionTimeLabel({
       planned_start: '2026-05-20T07:00:00.000Z',
       planned_end: null,
       slot: 'morning',
-    })).toBe('Matin')
+    })).toBe('7h')
     expect(formatInterventionTimeLabel({
       planned_start: null,
       planned_end: null,
       slot: 'afternoon',
-    })).toBe('Après-midi')
+    })).toBe('14h')
   })
 })

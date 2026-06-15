@@ -35,6 +35,13 @@ const baseProps = {
   onClose: vi.fn(),
 }
 
+// Les heures (créneaux horaires) sont requises pour valider le submit depuis
+// que Matin/Après-midi/Soir a été retiré (décision 2026-06-15).
+function fillValidTimes(start = '07:00', end = '09:00') {
+  fireEvent.change(screen.getByLabelText('Début'), { target: { value: start } })
+  fireEvent.change(screen.getByLabelText('Fin'), { target: { value: end } })
+}
+
 describe('RecurrenceModal — initial render', () => {
   beforeEach(() => {
     createRecurrenceMock.mockClear()
@@ -58,11 +65,14 @@ describe('RecurrenceModal — initial render', () => {
     expect(screen.getByLabelText(/une fois par mois/i)).toBeInTheDocument()
   })
 
-  it('renders Q3 chips Matin / Après-midi / Soir', () => {
+  it('renders Q3 créneaux horaires (Début / Fin) — plus de chips Matin/Après-midi/Soir', () => {
     render(<RecurrenceModal {...baseProps} />)
-    expect(screen.getByTestId('slot-chip-morning')).toBeInTheDocument()
-    expect(screen.getByTestId('slot-chip-afternoon')).toBeInTheDocument()
-    expect(screen.getByTestId('slot-chip-evening')).toBeInTheDocument()
+    expect(screen.getByTestId('q-time')).toBeInTheDocument()
+    expect(screen.getByLabelText('Début')).toBeInTheDocument()
+    expect(screen.getByLabelText('Fin')).toBeInTheDocument()
+    // Les anciens chips de créneau nommé n'existent plus.
+    expect(screen.queryByTestId('slot-chip-morning')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Matin$/)).not.toBeInTheDocument()
   })
 
   it('renders Q4 date input "À partir de quand ?"', () => {
@@ -103,25 +113,24 @@ describe('RecurrenceModal — conditional fields', () => {
   })
 })
 
-describe('RecurrenceModal — slots multi-select', () => {
+describe('RecurrenceModal — créneaux horaires', () => {
   beforeEach(() => {
     createRecurrenceMock.mockClear()
   })
 
-  it('toggles aria-pressed when clicking a slot chip', () => {
+  it('garde le submit désactivé tant que les heures sont absentes ou incohérentes', () => {
     render(<RecurrenceModal {...baseProps} />)
-    const chip = screen.getByTestId('slot-chip-morning')
-    expect(chip).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(chip)
-    expect(chip).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(chip)
-    expect(chip).toHaveAttribute('aria-pressed', 'false')
+    const submit = screen.getByTestId('recurrence-submit') as HTMLButtonElement
+    expect(submit.disabled).toBe(true) // aucune heure saisie
+    fillValidTimes('09:00', '08:00') // fin avant début
+    expect(submit.disabled).toBe(true)
+    fillValidTimes('08:00', '10:00')
+    expect(submit.disabled).toBe(false)
   })
 
-  it('passes selected slots to the server action on submit', async () => {
+  it('passe les heures précises (planned_start/end) à l’action, slots vides', async () => {
     render(<RecurrenceModal {...baseProps} />)
-    fireEvent.click(screen.getByTestId('slot-chip-morning'))
-    fireEvent.click(screen.getByTestId('slot-chip-evening'))
+    fillValidTimes('06:30', '08:00')
     fireEvent.click(screen.getByTestId('recurrence-submit'))
 
     await waitFor(() => {
@@ -131,10 +140,14 @@ describe('RecurrenceModal — slots multi-select', () => {
       slots: string[]
       frequency: string
       mission_id: string
+      planned_start_hhmm: string
+      planned_end_hhmm: string
     }
     expect(arg.frequency).toBe('daily')
     expect(arg.mission_id).toBe(baseProps.missionId)
-    expect(arg.slots.sort()).toEqual(['evening', 'morning'])
+    expect(arg.planned_start_hhmm).toBe('06:30')
+    expect(arg.planned_end_hhmm).toBe('08:00')
+    expect(arg.slots).toEqual([])
   })
 })
 
@@ -153,6 +166,7 @@ describe('RecurrenceModal — submit validation', () => {
   it('enables submit once day_of_week is chosen for weekly', () => {
     render(<RecurrenceModal {...baseProps} />)
     fireEvent.click(screen.getByLabelText(/une fois par semaine/i))
+    fillValidTimes()
     const select = screen.getByTestId('q-day-of-week').querySelector('select')!
     fireEvent.change(select, { target: { value: '2' } })
     const submit = screen.getByTestId('recurrence-submit') as HTMLButtonElement
@@ -162,6 +176,7 @@ describe('RecurrenceModal — submit validation', () => {
   it('disables submit for monthly until day_of_month is provided', () => {
     render(<RecurrenceModal {...baseProps} />)
     fireEvent.click(screen.getByLabelText(/une fois par mois/i))
+    fillValidTimes()
     const submit = screen.getByTestId('recurrence-submit') as HTMLButtonElement
     expect(submit.disabled).toBe(true)
     const input = screen.getByTestId('q-day-of-month').querySelector('input')!
@@ -188,8 +203,8 @@ const baseTemplate: DbInterventionTemplate = {
   slots: ['morning', 'evening'],
   day_of_week: 2,
   day_of_month: null,
-  planned_start_hhmm: null,
-  planned_end_hhmm: null,
+  planned_start_hhmm: '07:00',
+  planned_end_hhmm: '09:00',
   starts_on: '2026-05-12',
   ends_on: null,
   active: true,
@@ -210,7 +225,7 @@ describe('RecurrenceModal — mode edition (Slice 6.5)', () => {
     expect(screen.queryByText(/quand cette mission revient-elle/i)).not.toBeInTheDocument()
   })
 
-  it('preremplit frequency, day_of_week, slots, starts_on depuis le template', () => {
+  it('preremplit frequency, day_of_week, heures, starts_on depuis le template', () => {
     render(<RecurrenceModal {...baseProps} template={baseTemplate} />)
     // frequency=weekly → radio weekly coche + selecteur day_of_week visible
     const weeklyRadio = screen.getByLabelText(/une fois par semaine/i) as HTMLInputElement
@@ -219,10 +234,9 @@ describe('RecurrenceModal — mode edition (Slice 6.5)', () => {
     const select = screen.getByTestId('q-day-of-week').querySelector('select') as HTMLSelectElement
     expect(select.value).toBe('2')
 
-    // slots : morning + evening selectionnes (aria-pressed=true)
-    expect(screen.getByTestId('slot-chip-morning')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('slot-chip-afternoon')).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByTestId('slot-chip-evening')).toHaveAttribute('aria-pressed', 'true')
+    // créneaux horaires prereremplis depuis planned_start/end_hhmm
+    expect((screen.getByLabelText('Début') as HTMLInputElement).value).toBe('07:00')
+    expect((screen.getByLabelText('Fin') as HTMLInputElement).value).toBe('09:00')
 
     // starts_on prerempli
     const dateInput = screen.getByLabelText(/à partir de quand/i) as HTMLInputElement
@@ -249,19 +263,24 @@ describe('RecurrenceModal — mode edition (Slice 6.5)', () => {
       frequency: string
       day_of_week: number | null
       slots: string[]
+      planned_start_hhmm: string
+      planned_end_hhmm: string
       starts_on: string
       contract_id: string
     }
     expect(arg.templateId).toBe(baseTemplate.id)
     expect(arg.frequency).toBe('weekly')
     expect(arg.day_of_week).toBe(2)
-    expect(arg.slots.sort()).toEqual(['evening', 'morning'])
+    expect(arg.slots).toEqual([])
+    expect(arg.planned_start_hhmm).toBe('07:00')
+    expect(arg.planned_end_hhmm).toBe('09:00')
     expect(arg.starts_on).toBe('2026-05-12')
     expect(arg.contract_id).toBe(baseProps.contractId)
   })
 
   it('en mode creation (sans template), submit appelle createRecurrenceAction', async () => {
     render(<RecurrenceModal {...baseProps} />)
+    fillValidTimes()
     fireEvent.click(screen.getByTestId('recurrence-submit'))
 
     await waitFor(() => {

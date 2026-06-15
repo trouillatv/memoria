@@ -5,7 +5,8 @@
 // Modal de creation OU edition d'une recurrence depuis une mission. 4 questions
 // max, francais parle. Doctrine UX :
 //   - Wording "recurrence" (jamais "template", jamais "planning")
-//   - Creneaux nommes (Matin / Apres-midi / Soir), jamais d'horaires precis
+//   - Creneaux HORAIRES (heure de debut / fin), jamais "Matin / Apres-midi /
+//     Soir" cote UI (decision Vincent 2026-06-15 — voir 10_JOURNAL_DECISIONS)
 //   - Pas d'agent, pas de roulement, pas de preview calendrier
 //
 // Mode :
