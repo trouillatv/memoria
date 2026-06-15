@@ -14,6 +14,13 @@ import {
   deleteInterventionPhotoAction,
 } from './intervention-actions'
 import type { DbIntervention, DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind } from '@/types/db'
+import { CHECKLIST_STATUS_META, type ChecklistItemStatus } from '@/lib/checklist-quantity'
+
+const QTY_BADGE: Record<'ok' | 'warn' | 'bad', string> = {
+  ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  warn: 'bg-amber-50 text-amber-700 border-amber-200',
+  bad: 'bg-rose-50 text-rose-700 border-rose-200',
+}
 
 const KIND_LABELS: Record<PhotoKind, string> = {
   before: 'Avant',
@@ -368,6 +375,18 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
                         {item.label}
                         {item.required && <span className="ml-1 text-rose-500">*</span>}
                       </div>
+                      {item.expected_qty != null && (
+                        <div className="mt-0.5 inline-flex items-center gap-1.5 text-[11px]">
+                          <span className="text-muted-foreground">
+                            Livré {item.delivered_qty ?? '—'}/{item.expected_qty}
+                          </span>
+                          {item.item_status && CHECKLIST_STATUS_META[item.item_status as ChecklistItemStatus] && (
+                            <span className={`rounded-full border px-1.5 py-px font-medium ${QTY_BADGE[CHECKLIST_STATUS_META[item.item_status as ChecklistItemStatus].tone]}`}>
+                              {CHECKLIST_STATUS_META[item.item_status as ChecklistItemStatus].label}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {item.executed_by_token_id && executorByToken[item.executed_by_token_id] && (
                         <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] font-medium text-sky-700">
                           <Check className="h-2.5 w-2.5" />

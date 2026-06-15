@@ -408,6 +408,7 @@ export async function bulkInsertChecklistItems(items: Array<{
   label: string
   position: number
   required: boolean
+  expected_qty?: number | null
 }>): Promise<DbInterventionChecklistItem[]> {
   if (items.length === 0) return []
   const supabase = createAdminClient()

@@ -195,11 +195,34 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
                     disabled={pending}
                     className="w-full rounded border p-1.5 text-sm"
                   />
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-3 text-xs flex-wrap">
                     <label className="inline-flex items-center gap-1 cursor-pointer">
                       <input type="checkbox" checked={item.required ?? false} onChange={(e) => updateChecklistItem(idx, { required: e.target.checked })} disabled={pending} />
                       Obligatoire
                     </label>
+                    <label className="inline-flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={item.expected_qty != null}
+                        onChange={(e) => updateChecklistItem(idx, { expected_qty: e.target.checked ? 1 : null })}
+                        disabled={pending}
+                      />
+                      À quantité
+                    </label>
+                    {item.expected_qty != null && (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-muted-foreground">Prévu</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={item.expected_qty}
+                          onChange={(e) => updateChecklistItem(idx, { expected_qty: e.target.value === '' ? 0 : Number(e.target.value) })}
+                          disabled={pending}
+                          className="w-20 rounded border p-1 text-xs"
+                        />
+                      </span>
+                    )}
                     <select
                       value={item.engagement_id ?? ''}
                       onChange={(e) => updateChecklistItem(idx, { engagement_id: e.target.value || undefined })}

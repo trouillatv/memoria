@@ -50,6 +50,10 @@ export interface InterventionTokenData {
     position: number
     required: boolean
     done: boolean
+    // Item « à quantité » (migration 111) : expected_qty non null = saisie d'un
+    // livré attendue. delivered_qty = ce qui a déjà été saisi (prérempli).
+    expected_qty: number | null
+    delivered_qty: number | null
   }>
 }
 
@@ -107,7 +111,7 @@ export async function getInterventionByToken(
 
   const { data: checklistRows } = await supabase
     .from('intervention_checklist_items')
-    .select('id, label, position, required, done')
+    .select('id, label, position, required, done, expected_qty, delivered_qty')
     .eq('intervention_id', tok.intervention_id)
     .order('position', { ascending: true })
 
@@ -116,6 +120,7 @@ export async function getInterventionByToken(
   const perimeter = await listTokenItemIds(tok.id)
   const allItems = ((checklistRows ?? []) as Array<{
     id: string; label: string; position: number; required: boolean; done: boolean
+    expected_qty: number | null; delivered_qty: number | null
   }>)
   const scoped = perimeter.length > 0
     ? allItems.filter((r) => perimeter.includes(r.id))
@@ -139,6 +144,8 @@ export async function getInterventionByToken(
         position: r.position,
         required: r.required,
         done: r.done,
+        expected_qty: r.expected_qty ?? null,
+        delivered_qty: r.delivered_qty ?? null,
       })),
     },
   }
@@ -255,16 +262,35 @@ export async function listTokenItemCounts(tokenIds: string[]): Promise<Map<strin
  *  Pose executed_by_token_id + executed_at + done. */
 export async function markItemsExecutedByToken(
   tokenId: string,
-  itemIds: string[],
+  items: Array<{
+    id: string
+    /** Item binaire complet OU item à quantité « complet » → done=true. */
+    done: boolean
+    /** Item à quantité uniquement. */
+    deliveredQty?: number | null
+    itemStatus?: string | null
+  }>,
 ): Promise<void> {
-  if (itemIds.length === 0) return
+  if (items.length === 0) return
   const supabase = createAdminClient()
   const now = new Date().toISOString()
-  const { error } = await supabase
-    .from('intervention_checklist_items')
-    .update({ executed_by_token_id: tokenId, executed_at: now, done: true, done_at: now })
-    .in('id', itemIds)
-  if (error) throw error
+  // Mise à jour PAR item : chaque item à quantité a son delivered_qty/statut.
+  // Le token est idempotent (validated_at court-circuite), donc une seule passe.
+  for (const it of items) {
+    const patch: Record<string, unknown> = {
+      executed_by_token_id: tokenId,
+      executed_at: now,
+      done: it.done,
+      done_at: it.done ? now : null,
+    }
+    if (it.deliveredQty !== undefined) patch.delivered_qty = it.deliveredQty
+    if (it.itemStatus !== undefined) patch.item_status = it.itemStatus
+    const { error } = await supabase
+      .from('intervention_checklist_items')
+      .update(patch)
+      .eq('id', it.id)
+    if (error) throw error
+  }
 }
 
 /** Tous les tokens d'une intervention (y compris révoqués), triés par date de création desc. */

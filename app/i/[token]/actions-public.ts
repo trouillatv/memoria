@@ -9,6 +9,7 @@ import {
   listTokenItemIds,
   markItemsExecutedByToken,
 } from '@/lib/db/intervention-tokens'
+import { deriveChecklistItemStatus } from '@/lib/checklist-quantity'
 
 const TokenSchema = z.string().min(8).max(200)
 const NameSchema = z.string().trim().min(1, 'Nom requis').max(100)
@@ -157,6 +158,8 @@ export async function checkItemsAndValidateViaToken(
   validatedByName: string,
   comment: string,
   signatureDataUrl: string,
+  // Items « à quantité » : itemId → quantité livrée saisie par l'externe.
+  quantities?: Record<string, number>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const tParsed = TokenSchema.safeParse(token)
   if (!tParsed.success) return { ok: false, error: 'Token invalide' }
@@ -184,18 +187,55 @@ export async function checkItemsAndValidateViaToken(
   // GARDE-FOU : on ne retient QUE les items du périmètre de cette contribution.
   // Tout item hors périmètre est ignoré (le scope affiché n'est jamais décoratif).
   const allowed = await resolveAllowedItemIds(tok.intervention_id, loaded.allowedItemIds)
-  const validItemIds = requestedItemIds.filter((id) => allowed.has(id))
 
-  // Checklist incomplète = relative AU PÉRIMÈTRE (« vos tâches »), pas à toute
-  // l'intervention. Si incomplète → commentaire obligatoire.
+  // On charge expected_qty des items du périmètre pour distinguer binaire vs
+  // quantité, et dériver le statut côté serveur (jamais un dropdown client).
+  const supabaseRead = createAdminClient()
+  const { data: scopeRows } = await supabaseRead
+    .from('intervention_checklist_items')
+    .select('id, expected_qty')
+    .in('id', [...allowed])
+  const expectedById = new Map<string, number | null>(
+    ((scopeRows ?? []) as Array<{ id: string; expected_qty: number | null }>)
+      .map((r) => [r.id, r.expected_qty]),
+  )
+
+  // Items à exécuter : binaires cochés + items à quantité « répondus » (une
+  // quantité livrée saisie, 0 compris = « non livré »).
+  const toExecute: Array<{ id: string; done: boolean; deliveredQty?: number | null; itemStatus?: string | null }> = []
+  let hasPartialOrMissing = false
+
+  for (const id of allowed) {
+    const expected = expectedById.get(id) ?? null
+    if (expected == null) {
+      // Item binaire : exécuté s'il a été coché.
+      if (requestedItemIds.includes(id)) toExecute.push({ id, done: true })
+    } else {
+      // Item à quantité : répondu si une valeur a été fournie (0 compris).
+      const raw = quantities?.[id]
+      if (raw === undefined || raw === null || !Number.isFinite(raw)) continue
+      const delivered = Math.max(0, Math.min(1_000_000, Number(raw)))
+      const status = deriveChecklistItemStatus(expected, delivered)
+      if (status !== 'complet') hasPartialOrMissing = true
+      toExecute.push({ id, done: status === 'complet', deliveredQty: delivered, itemStatus: status })
+    }
+  }
+
+  // Checklist incomplète = relative AU PÉRIMÈTRE (« vos tâches »). Si incomplète
+  // OU si un item à quantité est partiel/non livré → commentaire obligatoire.
   const scopeTotal = allowed.size
-  const incomplete = scopeTotal > 0 && validItemIds.length < scopeTotal
-  if (incomplete && !cParsed.data.trim()) {
-    return { ok: false, error: 'Tâches incomplètes : un commentaire est obligatoire pour expliquer.' }
+  const incomplete = scopeTotal > 0 && toExecute.length < scopeTotal
+  if ((incomplete || hasPartialOrMissing) && !cParsed.data.trim()) {
+    return {
+      ok: false,
+      error: hasPartialOrMissing
+        ? 'Quantité partielle ou non livrée : un commentaire est obligatoire pour expliquer.'
+        : 'Tâches incomplètes : un commentaire est obligatoire pour expliquer.',
+    }
   }
 
   // Cocher + attribuer l'exécution à cette contribution externe (entreprise).
-  await markItemsExecutedByToken(tok.id, validItemIds)
+  await markItemsExecutedByToken(tok.id, toExecute)
 
   const supabase = createAdminClient()
 

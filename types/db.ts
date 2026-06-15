@@ -471,6 +471,9 @@ export interface ChecklistTemplateItem {
   required?: boolean
   engagement_id?: string
   position?: number
+  // Item « à quantité » (migration 111) : non null = on attend un compte (ex.
+  // livrer 12 plaques). null/absent = item binaire classique (coche).
+  expected_qty?: number | null
 }
 
 export interface DbMission {
@@ -652,6 +655,11 @@ export interface DbInterventionChecklistItem {
   // token.recipient_label. NULL = interne / non délégué. Jamais un salarié nommé.
   executed_by_token_id: string | null
   executed_at: string | null
+  // Item « à quantité » (migration 111). expected_qty non null = item à
+  // quantité ; item_status est DÉRIVÉ des chiffres (complet/partiel/non_livre).
+  expected_qty: number | null
+  delivered_qty: number | null
+  item_status: string | null
 }
 
 export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage' | 'access'

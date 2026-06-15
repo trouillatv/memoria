@@ -68,6 +68,7 @@ export async function createInterventionAction(formData: FormData) {
       label: item.label,
       position: item.position ?? idx + 1,
       required: item.required ?? false,
+      expected_qty: item.expected_qty ?? null,
     })))
   }
 

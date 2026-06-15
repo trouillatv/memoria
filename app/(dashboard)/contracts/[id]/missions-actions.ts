@@ -21,6 +21,8 @@ const checklistItemSchema = z.object({
   required: z.boolean().optional(),
   engagement_id: z.string().uuid().nullable().optional(),
   position: z.number().int().min(0).optional(),
+  // Item « à quantité » (migration 111) : non null = on attend un compte.
+  expected_qty: z.number().min(0).max(1_000_000).nullable().optional(),
 })
 
 const createMissionSchema = z.object({
@@ -65,10 +67,11 @@ export async function createMissionAction(formData: FormData) {
     default_team: [],
     engagement_ids: parsed.data.engagement_ids,
     default_checklist: parsed.data.default_checklist.map((it, idx) => ({
-      label: (it as { label: string }).label,
-      required: (it as { required?: boolean }).required ?? false,
-      engagement_id: (it as { engagement_id?: string | null }).engagement_id ?? undefined,
+      label: it.label,
+      required: it.required ?? false,
+      engagement_id: it.engagement_id ?? undefined,
       position: idx + 1,
+      expected_qty: it.expected_qty ?? null,
     })),
     created_by: auth.userId,
   })
@@ -120,6 +123,7 @@ export async function updateMissionAction(formData: FormData) {
       required: it.required ?? false,
       engagement_id: it.engagement_id ?? undefined,
       position: idx + 1,
+      expected_qty: it.expected_qty ?? null,
     }))
   }
   await updateMission(id, patch)

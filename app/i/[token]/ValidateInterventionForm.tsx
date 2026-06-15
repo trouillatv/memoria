@@ -4,12 +4,22 @@ import { useState, useTransition } from 'react'
 import { Loader2, CheckCircle2, Camera, X, PenLine } from 'lucide-react'
 import { SignaturePad } from '@/app/(field)/m/intervention/[id]/SignaturePad'
 import { checkItemsAndValidateViaToken, uploadExternalPhotoViaToken } from './actions-public'
+import { deriveChecklistItemStatus, CHECKLIST_STATUS_META } from '@/lib/checklist-quantity'
+
+const STATUS_BADGE: Record<'ok' | 'warn' | 'bad', string> = {
+  ok: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  warn: 'bg-amber-50 text-amber-700 border border-amber-200',
+  bad: 'bg-rose-50 text-rose-700 border border-rose-200',
+}
 
 interface ChecklistItem {
   id: string
   label: string
   required: boolean
   done: boolean
+  // Item « à quantité » : expected_qty non null → on saisit un livré.
+  expected_qty: number | null
+  delivered_qty: number | null
 }
 
 interface Props {
@@ -23,8 +33,18 @@ interface LocalPhoto {
 }
 
 export function ValidateInterventionForm({ token, checklistItems }: Props) {
+  // Coches : uniquement les items binaires (les items à quantité passent par
+  // une saisie de nombre, pas une coche).
   const [checked, setChecked] = useState<Set<string>>(
-    () => new Set(checklistItems.filter((i) => i.done).map((i) => i.id)),
+    () => new Set(checklistItems.filter((i) => i.done && i.expected_qty == null).map((i) => i.id)),
+  )
+  // Items à quantité : itemId → livré saisi (string pour autoriser le vide).
+  const [quantities, setQuantities] = useState<Record<string, string>>(
+    () => Object.fromEntries(
+      checklistItems
+        .filter((i) => i.expected_qty != null && i.delivered_qty != null)
+        .map((i) => [i.id, String(i.delivered_qty)]),
+    ),
   )
   const [name, setName] = useState('')
   const [comment, setComment] = useState('')
@@ -83,9 +103,24 @@ export function ValidateInterventionForm({ token, checklistItems }: Props) {
     }
   }
 
-  const allChecked = checklistItems.every((i) => checked.has(i.id))
-  const incomplete = hasItems && !allChecked
-  const commentRequired = incomplete
+  // Un item à quantité est « répondu » dès qu'un nombre valide est saisi (0 inclus).
+  const qtyValue = (id: string): number | null => {
+    const raw = quantities[id]
+    if (raw === undefined || raw.trim() === '') return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n >= 0 ? n : null
+  }
+  const isAnswered = (i: ChecklistItem): boolean =>
+    i.expected_qty != null ? qtyValue(i.id) !== null : checked.has(i.id)
+  const allAnswered = checklistItems.every(isAnswered)
+  const incomplete = hasItems && !allAnswered
+  // Au moins un item à quantité partiel / non livré (livré < prévu) ?
+  const anyPartial = checklistItems.some((i) => {
+    if (i.expected_qty == null) return false
+    const v = qtyValue(i.id)
+    return v !== null && v < i.expected_qty
+  })
+  const commentRequired = incomplete || anyPartial
   const canSubmit =
     !isPending && uploadingFor === null && name.trim().length > 0 && !!signature &&
     (!commentRequired || comment.trim().length > 0)
@@ -94,9 +129,21 @@ export function ValidateInterventionForm({ token, checklistItems }: Props) {
     e.preventDefault()
     setError(null)
     if (!signature) { setError('Signature requise.'); return }
-    if (commentRequired && !comment.trim()) { setError('Tâches incomplètes : un commentaire est obligatoire.'); return }
+    if (commentRequired && !comment.trim()) {
+      setError(anyPartial
+        ? 'Quantité partielle ou non livrée : un commentaire est obligatoire.'
+        : 'Tâches incomplètes : un commentaire est obligatoire.')
+      return
+    }
+    // Quantités saisies (items à quantité uniquement) → map itemId → nombre.
+    const qtyPayload: Record<string, number> = {}
+    for (const i of checklistItems) {
+      if (i.expected_qty == null) continue
+      const v = qtyValue(i.id)
+      if (v !== null) qtyPayload[i.id] = v
+    }
     startTransition(async () => {
-      const result = await checkItemsAndValidateViaToken(token, Array.from(checked), name, comment, signature)
+      const result = await checkItemsAndValidateViaToken(token, Array.from(checked), name, comment, signature, qtyPayload)
       if (result.ok) setDone(true)
       else setError(result.error)
     })
@@ -113,8 +160,42 @@ export function ValidateInterventionForm({ token, checklistItems }: Props) {
               const isChecked = checked.has(item.id)
               const itemPhotos = photosByItem[item.id] ?? []
               const isUploading = uploadingFor === item.id
+              const isQuantity = item.expected_qty != null
+              const qtyNum = qtyValue(item.id)
+              const qtyStatus = isQuantity && qtyNum !== null
+                ? deriveChecklistItemStatus(item.expected_qty as number, qtyNum)
+                : null
               return (
                 <div key={item.id} className="px-4 py-3 space-y-2">
+                  {isQuantity ? (
+                    <div className="space-y-2">
+                      <span className="text-sm leading-snug">
+                        {item.label}
+                        {item.required && <span className="text-amber-600 ml-1 text-[10px] font-medium">*</span>}
+                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground">Prévu : {item.expected_qty}</span>
+                        <label className="inline-flex items-center gap-1.5 text-xs">
+                          <span className="text-muted-foreground">Livré</span>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step="any"
+                            value={quantities[item.id] ?? ''}
+                            onChange={(e) => setQuantities((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                            placeholder="—"
+                            className="w-24 rounded-lg border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </label>
+                        {qtyStatus && (
+                          <span className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${STATUS_BADGE[CHECKLIST_STATUS_META[qtyStatus].tone]}`}>
+                            {CHECKLIST_STATUS_META[qtyStatus].label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
                   <label className="flex items-start gap-3 cursor-pointer select-none active:opacity-80 transition-opacity">
                     <span className={`mt-0.5 h-5 w-5 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
                       isChecked ? 'border-emerald-500 bg-emerald-500' : 'border-muted-foreground/30 bg-background'
@@ -131,6 +212,7 @@ export function ValidateInterventionForm({ token, checklistItems }: Props) {
                       {item.required && !isChecked && <span className="text-amber-600 ml-1 text-[10px] font-medium">*</span>}
                     </span>
                   </label>
+                  )}
 
                   {/* Photos de cette tâche */}
                   {itemPhotos.length > 0 && (
