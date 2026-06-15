@@ -16,12 +16,17 @@ export default async function ClientsPage() {
 
   return (
     <div className="space-y-6 w-full">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Vue agrégée par client — contrats, sites et activité.
-          </p>
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600 ring-1 ring-teal-100">
+            <Building2 className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight tracking-tight">Clients</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Vue agrégée par client — contrats, sites et activité.
+            </p>
+          </div>
         </div>
         <CreateClientButton />
       </header>
@@ -37,7 +42,7 @@ export default async function ClientsPage() {
           {clients.map((client) => (
             <li key={client.id}>
               <Link href={`/clients/${client.id}`} className="group block h-full">
-                <Card className="h-full hover:border-foreground/30 transition-colors">
+                <Card className="h-full hover:border-foreground/30 hover:shadow-sm transition-[transform,box-shadow,border-color] active:scale-[0.99]">
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">

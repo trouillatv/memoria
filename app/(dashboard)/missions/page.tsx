@@ -224,19 +224,21 @@ export default async function MissionsPage({
 
   return (
     <div className="space-y-6 w-full">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-            <ClipboardList className="h-5 w-5 text-muted-foreground" />
-            Missions
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Modèles de travail récurrents · Le{' '}
-            <Link href="/planning" className="underline underline-offset-2 hover:text-foreground">
-              planning des interventions
-            </Link>{' '}
-            liste les occurrences datées.
-          </p>
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
+            <ClipboardList className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-semibold leading-tight tracking-tight">Missions</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Modèles de travail récurrents · Le{' '}
+              <Link href="/planning" className="underline underline-offset-2 hover:text-foreground">
+                planning des interventions
+              </Link>{' '}
+              liste les occurrences datées.
+            </p>
+          </div>
         </div>
         <NewMissionDialog sites={sitesForDialog} />
       </header>
