@@ -51,8 +51,14 @@ import {
 
 // ───────────────────────────────────────────────────────────────────────────
 // MODE DOCTRINAL — changer ici = décision doctrinale V7 explicite et tracée.
+// Décision Vincent 2026-06-15 (journal 10_JOURNAL_DECISIONS) : passage en V7.
+// La doctrine sur les noms d'agents était trop sévère ; l'intention réelle est
+// « ne jamais devenir un outil RH », pas « masquer les personnes ». La vue agent
+// autonome (sites connus, contrats, historique, continuité) est donc autorisée.
+// Le cœur RH/surveillance (scoring, ranking, performance, comparaison) reste
+// verrouillé dans les DEUX modes — voir strate A ci-dessus.
 // ───────────────────────────────────────────────────────────────────────────
-const DOCTRINE_AGENT_VIEW: 'V6' | 'V7' = 'V6'
+const DOCTRINE_AGENT_VIEW: 'V6' | 'V7' = 'V7'
 
 const REPO_ROOT = join(__dirname, '..', '..')
 const read = (p: string) => readFileSync(p, 'utf-8')
@@ -131,6 +137,11 @@ const RH_JUDGMENT_VOCAB =
 // A. Générateur IA personne→analyse hors événement.
 const ANALYSIS_GEN_SYMBOL =
   /(?:reprise|handover)[A-Za-z]*(?:brief|analys|synth|report|eval)|(?:brief|analys|synth|report|eval)[A-Za-z]*(?:reprise|handover|person|agent)/i
+// Verbes CONSOMMATEURS (mutation/lecture) : ne génèrent aucune analyse — même
+// famille que la traçabilité opérationnelle de l'ALLOWLIST (`acknowledged_by`,
+// `validated_by`, `done_by`…). Ex : `acknowledgeHandoverBrief(id, userId)` =
+// accusé de réception d'un brief, pas un générateur personne→analyse.
+const CONSUMER_VERB = /^(?:acknowledge|ack|mark|read|dismiss|get|list|fetch|load|delete|archive|restore|share)/i
 const PERSON_PRIMARY_INPUT =
   /\b(user_?id|agent_?id|person_?id|user_?name|agent_?name|full_?name|nom_intervenant|searchPerson|queryPerson)\b/i
 const EVENT_CONTEXT =
@@ -246,6 +257,7 @@ describe('V6.7 cœur RH — interdit dans les deux modes', () => {
       ]
       for (const d of decls) {
         if (!ANALYSIS_GEN_SYMBOL.test(d[1])) continue
+        if (CONSUMER_VERB.test(d[1])) continue // mutation/lecture ≠ génération
         const params = d[2] ?? ''
         if (PERSON_PRIMARY_INPUT.test(params) && !EVENT_CONTEXT.test(params)) {
           violations.push(`${rel} — ${d[1]}(${params.trim()}) : personne→analyse sans événement`)

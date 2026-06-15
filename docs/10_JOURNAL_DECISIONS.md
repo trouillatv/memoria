@@ -4,6 +4,20 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-06-15 — Doctrine vue agent : passage V6 → V7 (la frontière est la RH, pas les noms)
+
+**Décision** : bascule du mode doctrinal `DOCTRINE_AGENT_VIEW` de **V6 → V7** dans `tests/doctrine/v67-brief-reprise.test.ts`. La **vue agent autonome** (`/intervenants/[id]` et assimilées : sites connus, contrats travaillés, interventions passées, continuité terrain) devient **autorisée**.
+
+**Raison** : la doctrine d'anonymisation, forgée pour le nettoyage, était **trop sévère**. L'intention réelle n'a jamais été de masquer les personnes, mais de **ne jamais devenir un outil RH**. Montrer un nom et l'historique opérationnel d'un intervenant ≠ surveillance.
+
+**Ce qui reste verrouillé (strate A, cœur non négociable, V6 ET V7)** : scoring/ranking/performance/productivité/comparaison entre personnes, routes `/<personne>/[id]/(performance|score|ranking|…)`, tables `*_performance`/`*_score`, générateurs IA personne→analyse hors événement, vocabulaire de jugement. Aucune de ces lignes rouges ne bouge.
+
+**Correctif annexe** : faux positif du garde-fou « générateur personne→analyse » sur `acknowledgeHandoverBrief(id, userId)` — c'est un **accusé de réception** (mutation `acknowledged_by`), même famille que la traçabilité opérationnelle de l'ALLOWLIST. Ajout d'une exclusion des verbes consommateurs (`acknowledge|mark|read|get|…`) : une mutation/lecture ne génère pas d'analyse.
+
+**Impact code** : `tests/doctrine/v67-brief-reprise.test.ts` (mode + heuristique). Aucune route n'est ajoutée ni supprimée — `/intervenants/[id]` existait déjà et devient conforme.
+
+---
+
 ## 2026-05-27 — Passages de témoin : date d'effet obligatoire, suppression, audit board Lot A
 
 **Décision** :
