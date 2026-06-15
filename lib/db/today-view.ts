@@ -37,6 +37,13 @@ export interface TodayIntervention {
   share_accessed: boolean
   /** Partage externe : un commentaire a été laissé par le visiteur externe. */
   share_commented: boolean
+  /** Confirmation externe (lien /i/[token] sous-traitant) — DIMENSION SÉPARÉE
+   *  du statut opérationnel. L'externe atteste, il ne clôture jamais. */
+  external: {
+    state: 'none' | 'sent' | 'accessed' | 'confirmed'
+    byName: string | null
+    at: string | null
+  }
 }
 
 export interface OverdueIntervention {
@@ -80,6 +87,14 @@ export interface TodayView {
    *  inclus). Signal critique : pas d'équipe = pas de signature terrain
    *  possible. À régulariser avant ou pendant la journée. */
   unassignedRecent: UnassignedRecent[]
+  /** Agrégat des confirmations externes du jour (sous-traitants). La liste
+   *  notOpenedList = liens envoyés jamais ouverts = « qui appeler ». */
+  externalSummary: {
+    confirmed: number
+    accessed: number
+    notOpened: number
+    notOpenedList: Array<{ id: string; mission_name: string; site_name: string }>
+  }
 }
 
 /** Alias historique — utilise désormais le helper centralisé. */
@@ -163,6 +178,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       share_sent: false,
       share_accessed: false,
       share_commented: false,
+      external: { state: 'none', byName: null, at: null },
     })
   }
 
@@ -203,6 +219,45 @@ export async function buildTodayView(date: string): Promise<TodayView> {
       item.share_accessed = info.accessed
       item.share_commented = info.tokenIds.some((tid) => commentedSet.has(tid))
     }
+
+    // Confirmation externe via les liens d'INTERVENTION (/i/[token], sous-traitant).
+    // Dimension séparée du statut : pas de lien / envoyé non ouvert / consulté / confirmé.
+    const { data: tokenRows } = await supabase
+      .from('intervention_tokens')
+      .select('intervention_id, accessed_at, access_count, validated_at, validated_by_name')
+      .in('intervention_id', interventionIds)
+      .is('revoked_at', null)
+    type TokRow = {
+      intervention_id: string
+      accessed_at: string | null
+      access_count: number
+      validated_at: string | null
+      validated_by_name: string | null
+    }
+    const extByIntervention = new Map<string, TodayIntervention['external']>()
+    for (const t of (tokenRows ?? []) as TokRow[]) {
+      const cur = extByIntervention.get(t.intervention_id) ?? { state: 'sent' as const, byName: null, at: null }
+      // Priorité : confirmé > consulté > envoyé. On garde le plus avancé.
+      if (t.validated_at) {
+        if (cur.state !== 'confirmed' || (cur.at && t.validated_at > cur.at)) {
+          extByIntervention.set(t.intervention_id, { state: 'confirmed', byName: t.validated_by_name, at: t.validated_at })
+        }
+      } else if ((t.access_count ?? 0) > 0 || t.accessed_at) {
+        if (cur.state === 'sent') {
+          extByIntervention.set(t.intervention_id, { state: 'accessed', byName: null, at: t.accessed_at })
+        } else if (cur.state === 'accessed' && t.accessed_at && (!cur.at || t.accessed_at > cur.at)) {
+          extByIntervention.set(t.intervention_id, { state: 'accessed', byName: null, at: t.accessed_at })
+        } else {
+          extByIntervention.set(t.intervention_id, cur)
+        }
+      } else {
+        if (!extByIntervention.has(t.intervention_id)) extByIntervention.set(t.intervention_id, cur)
+      }
+    }
+    for (const item of items) {
+      const ext = extByIntervention.get(item.id)
+      if (ext) item.external = ext
+    }
   }
 
   // Stats
@@ -211,6 +266,16 @@ export async function buildTodayView(date: string): Promise<TodayView> {
     inProgress: items.filter((i) => i.status === 'in_progress').length,
     completed: items.filter((i) => i.status === 'completed' || i.status === 'validated').length,
     atRisk: items.filter((i) => i.status === 'skipped' || (i.status === 'planned' && !i.assigned_team_id)).length,
+  }
+
+  // Agrégat « sous-traitants aujourd'hui » — qui a confirmé / consulté / pas ouvert.
+  const externalSummary = {
+    confirmed: items.filter((i) => i.external.state === 'confirmed').length,
+    accessed: items.filter((i) => i.external.state === 'accessed').length,
+    notOpened: items.filter((i) => i.external.state === 'sent').length,
+    notOpenedList: items
+      .filter((i) => i.external.state === 'sent')
+      .map((i) => ({ id: i.id, mission_name: i.mission_name, site_name: i.site_name })),
   }
 
   // Grouper par créneau, en respectant l'ordre matin → après-midi → soir → sans créneau
@@ -248,7 +313,7 @@ export async function buildTodayView(date: string): Promise<TodayView> {
   // c'est un manque d'affectation, pas un défaut de clôture.
   const unassignedRecent = await getUnassignedRecent(date, 7)
 
-  return { date, stats, bySlot, overdue, unassignedRecent }
+  return { date, stats, bySlot, overdue, unassignedRecent, externalSummary }
 }
 
 async function getUnassignedRecent(

@@ -21,6 +21,7 @@ import {
   Link2,
   Eye,
   MessageSquare,
+  Phone,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -177,6 +178,50 @@ export default async function TodayPage({
                 <ul className="space-y-1.5">
                   {view.overdue.map((i) => (
                     <OverdueLine key={i.id} item={i} />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sous-traitants aujourd'hui — confirmation externe (dimension séparée du
+          statut). L'or : la liste « non ouverts » = qui appeler. */}
+      {(view.externalSummary.confirmed + view.externalSummary.accessed + view.externalSummary.notOpened > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-muted-foreground" />
+              Sous-traitants aujourd&apos;hui
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-5 text-sm flex-wrap">
+              <span className={`inline-flex items-center gap-1.5 ${view.externalSummary.confirmed > 0 ? 'text-emerald-700' : 'text-muted-foreground/50'}`}>
+                <CheckCircle2 className="h-4 w-4" /><span className="font-bold tabular-nums">{view.externalSummary.confirmed}</span> confirmé{view.externalSummary.confirmed > 1 ? 's' : ''}
+              </span>
+              <span className={`inline-flex items-center gap-1.5 ${view.externalSummary.accessed > 0 ? 'text-sky-700' : 'text-muted-foreground/50'}`}>
+                <Eye className="h-4 w-4" /><span className="font-bold tabular-nums">{view.externalSummary.accessed}</span> consulté{view.externalSummary.accessed > 1 ? 's' : ''}
+              </span>
+              <span className={`inline-flex items-center gap-1.5 ${view.externalSummary.notOpened > 0 ? 'text-amber-700' : 'text-muted-foreground/50'}`}>
+                <Link2 className="h-4 w-4" /><span className="font-bold tabular-nums">{view.externalSummary.notOpened}</span> non ouvert{view.externalSummary.notOpened > 1 ? 's' : ''}
+              </span>
+            </div>
+            {view.externalSummary.notOpenedList.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5 mb-1.5">
+                  <Phone className="h-3.5 w-3.5" /> À relancer — lien jamais ouvert
+                </h3>
+                <ul className="space-y-1">
+                  {view.externalSummary.notOpenedList.map((i) => (
+                    <li key={i.id}>
+                      <Link href={`/interventions/${i.id}`} className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity">
+                        <span className="font-medium truncate">{i.mission_name}</span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">· {i.site_name}</span>
+                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 ml-auto shrink-0" />
+                      </Link>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -350,8 +395,34 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
               ? Non-affecté
             </span>
           )}
-          {/* Badges partage externe — silencieux si aucun lien envoyé */}
-          {item.share_commented ? (
+          {/* UN SEUL signal externe par ligne (lisible) — priorité à la
+              confirmation sous-traitant (/i/), sinon partage preuve (/p/).
+              Le détail vit dans le widget « Sous-traitants ». */}
+          {item.external.state === 'confirmed' ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+              title={`Confirmé par ${item.external.byName ?? 'externe'}${item.external.at ? ' · ' + fmtClock(item.external.at) : ''}`}
+            >
+              <CheckCircle2 className="h-2.5 w-2.5" />
+              Confirmé
+            </span>
+          ) : item.external.state === 'sent' ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+              title="Lien envoyé, jamais ouvert — à relancer"
+            >
+              <Link2 className="h-2.5 w-2.5" />
+              Non ouvert
+            </span>
+          ) : item.external.state === 'accessed' ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700"
+              title={`Lien consulté${item.external.at ? ' · ' + fmtClock(item.external.at) : ''} — pas encore confirmé`}
+            >
+              <Eye className="h-2.5 w-2.5" />
+              Consulté
+            </span>
+          ) : item.share_commented ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
               title="Commentaire reçu du client externe"
@@ -362,7 +433,7 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
           ) : item.share_accessed ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700"
-              title="Lien consulté par l'externe"
+              title="Dossier preuve consulté par l'externe"
             >
               <Eye className="h-2.5 w-2.5" />
               Consulté
@@ -370,7 +441,7 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
           ) : item.share_sent ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
-              title="Lien de partage envoyé"
+              title="Lien de partage preuve envoyé"
             >
               <Link2 className="h-2.5 w-2.5" />
               Envoyé
@@ -387,6 +458,14 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
       </Link>
     </li>
   )
+}
+
+function fmtClock(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Pacific/Noumea' })
+  } catch {
+    return ''
+  }
 }
 
 function formatTodayTimeLabel(plannedStart: string | null, plannedEnd: string | null): string {
