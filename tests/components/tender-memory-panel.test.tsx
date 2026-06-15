@@ -40,8 +40,8 @@ describe('TenderMemoryPanel — doctrine V5 MC-2', () => {
     )
 
     // Header + sous-titre
-    expect(getByText('Mémoire des AO similaires')).toBeInTheDocument()
-    expect(getByText(/AO comparables dans l/)).toBeInTheDocument()
+    expect(getByText('Mémoire des dossiers similaires')).toBeInTheDocument()
+    expect(getByText(/Dossiers comparables dans l/)).toBeInTheDocument()
 
     // Badge perdu
     expect(getByText('perdu')).toBeInTheDocument()

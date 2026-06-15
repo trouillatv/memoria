@@ -166,14 +166,16 @@ describe('CreateTeamButton', () => {
     fireEvent.change(screen.getByTestId('team-name-input'), {
       target: { value: 'Beta' },
     })
-    fireEvent.click(screen.getByTestId('team-color-emerald'))
+    // Le color picker libre (Sprint Équipes) expose des swatches hex :
+    // « Émeraude » = #10B981 → test-id team-color-swatch-10b981, valeur #10b981.
+    fireEvent.click(screen.getByTestId('team-color-swatch-10b981'))
     fireEvent.click(screen.getByTestId('create-team-submit'))
 
     await waitFor(() => {
       expect(createTeamMock).toHaveBeenCalledTimes(1)
     })
     const arg = createTeamMock.mock.calls[0]?.[0] as { name: string; color: string | null }
-    expect(arg.color).toBe('emerald')
+    expect(arg.color).toBe('#10b981')
   })
 
   it('affiche un toast d’erreur si l’action échoue', async () => {
