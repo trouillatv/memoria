@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
-import { Calendar, MapPin, FileSearch } from 'lucide-react'
+import { Calendar, MapPin, FileSearch, FileDown } from 'lucide-react'
 import {
   getIntervention,
   listChecklistItemsByIntervention,
@@ -301,7 +301,8 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     intervention.status === 'completed' ||
     intervention.status === 'validated' ||
     isSkipped ||
-    hasAnyTrace
+    hasAnyTrace ||
+    externalValidation !== null // une contribution externe validée = preuve à télécharger
 
   return (
     <div className="space-y-6 w-full">
@@ -351,13 +352,24 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
               variant="inline"
             />
             {showProofLink && (
-              <Link
-                href={`/preuves/${intervention.id}`}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <FileSearch className="h-3.5 w-3.5" />
-                Voir dans Dossier de preuves
-              </Link>
+              <>
+                {/* PDF de preuves on-demand — inclut les contributions externes
+                    (signature + photos + qui a fait quoi). Téléchargement direct. */}
+                <a
+                  href={`/preuves/${intervention.id}/dossier`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-colors"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  PDF de preuves
+                </a>
+                <Link
+                  href={`/preuves/${intervention.id}`}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <FileSearch className="h-3.5 w-3.5" />
+                  Voir dans Dossier de preuves
+                </Link>
+              </>
             )}
           </div>
         </div>

@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CheckCircle2, Clock, ShieldOff, Hourglass, XCircle, Share2, ChevronDown,
-  Eye, ListChecks, Camera, MessageSquare, PenLine,
+  Eye, ListChecks, Camera, MessageSquare, PenLine, FileDown,
 } from 'lucide-react'
 import type { InterventionToken } from '@/lib/db/intervention-tokens'
 import { GenerateInterventionTokenButton } from '@/app/(dashboard)/briefing/GenerateInterventionTokenButton'
@@ -228,6 +228,18 @@ export function TokensPanel({
                 )
               })}
             </ul>
+          )}
+
+          {/* PDF de preuves — quand au moins une contribution est validée
+              (signature + photos), on peut produire le dossier opposable. */}
+          {validations > 0 && (
+            <a
+              href={`/preuves/${interventionId}/dossier`}
+              className="flex items-center justify-center gap-2 rounded-lg border border-foreground/20 bg-foreground text-background px-4 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              <FileDown className="h-4 w-4" />
+              Télécharger le PDF de preuves
+            </a>
           )}
 
           {/* Partager un nouveau lien */}
