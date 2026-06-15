@@ -101,6 +101,9 @@ export default async function AccountPage() {
             <CardDescription>
               Choisissez la surface qui s&apos;ouvre par défaut au login.
               Vous pouvez toujours naviguer vers l&apos;autre surface.
+              <span className="mt-1 block text-xs text-muted-foreground/80">
+                Ce choix ne s&apos;applique que sur téléphone&nbsp;: sur ordinateur, le tableau de bord s&apos;ouvre toujours par défaut.
+              </span>
             </CardDescription>
           </CardHeader>
           <CardContent>
