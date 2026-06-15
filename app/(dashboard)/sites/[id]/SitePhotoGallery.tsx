@@ -46,7 +46,7 @@ export function SitePhotoGallery({ photos }: Props) {
   return (
     <>
       <div className="space-y-2">
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(72px,1fr))]">
           {photos.slice(0, 4).map((p, i) => (
             <button
               key={p.id}
