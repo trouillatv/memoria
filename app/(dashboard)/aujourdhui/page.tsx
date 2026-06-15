@@ -363,11 +363,11 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
     <li>
       <Link
         href={`/interventions/${item.id}`}
-        className={`flex items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors ${
+        className={`flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 rounded-md px-2 py-2 hover:bg-muted/40 transition-colors ${
           isClosed ? 'opacity-60' : ''
         }`}
       >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center gap-3 min-w-0 w-full sm:flex-1">
           <span
             className="whitespace-nowrap text-xs font-mono tabular-nums text-muted-foreground shrink-0 sm:min-w-[10.5rem]"
             title="Horaire de prestation"
@@ -385,7 +385,7 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap pl-[calc(1.75rem)] sm:pl-0">
           {item.team_name ? (
             <TeamBadge name={item.team_name} color={item.team_color} size="sm" />
           ) : (
@@ -401,27 +401,27 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
               Le détail vit dans le widget « Sous-traitants ». */}
           {item.external.state === 'confirmed' ? (
             <span
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
-              title={`Confirmé par ${item.external.byName ?? 'externe'}${item.external.at ? ' · ' + fmtClock(item.external.at) : ''}`}
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 max-w-[10rem]"
+              title={`Réalisé par ${item.external.byName ?? 'un externe'}${item.external.at ? ' · ' + fmtClock(item.external.at) : ''}`}
             >
-              <CheckCircle2 className="h-2.5 w-2.5" />
-              Confirmé
+              <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">Externe&nbsp;: {item.external.byName ?? 'réalisé'}</span>
             </span>
           ) : item.external.state === 'sent' ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800"
-              title="Lien envoyé, jamais ouvert — à relancer"
+              title="Lien externe envoyé, jamais ouvert — à relancer"
             >
               <Link2 className="h-2.5 w-2.5" />
-              Non ouvert
+              Externe&nbsp;: non ouvert
             </span>
           ) : item.external.state === 'accessed' ? (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700"
-              title={`Lien consulté${item.external.at ? ' · ' + fmtClock(item.external.at) : ''} — pas encore confirmé`}
+              title={`Lien externe consulté${item.external.at ? ' · ' + fmtClock(item.external.at) : ''} — pas encore confirmé`}
             >
               <Eye className="h-2.5 w-2.5" />
-              Consulté
+              Externe&nbsp;: consulté
             </span>
           ) : item.share_commented ? (
             <span
