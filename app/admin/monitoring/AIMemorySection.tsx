@@ -46,6 +46,9 @@ const FEATURE_LABELS: Record<string, string> = {
   terrain:                      'Agent — Terrain',
   opportunity_scorer:           'Agent — Opportunité',
   engagement_extraction:        'Extraction engagements',
+  // Réunions / comptes-rendus terrain (reconnaissance vocale).
+  site_report_transcription:    'Réunion — transcription audio (non facturée au token)',
+  site_report_analysis:         'Réunion — analyse IA',
 }
 
 function featureLabel(key: string): string {
