@@ -238,8 +238,9 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
     <div className="space-y-4 rounded-lg border p-4 bg-card">
       <h2 className="text-sm font-semibold">Sites du contrat</h2>
       <p className="text-xs text-muted-foreground">
-        La gestion des sites sera disponible avec le module Field (Phase 2).
-        Pour l&apos;instant, vous pouvez continuer — vous ajouterez les sites quand le module sera disponible.
+        Les sites s&apos;ajoutent <strong>juste après</strong>, depuis la fiche du contrat
+        (onglet <strong>Sites</strong>). On crée d&apos;abord le contrat, puis vous y rattachez
+        ses sites, missions et interventions. Continuez.
       </p>
       <div className="flex justify-between pt-2">
         <button type="button" onClick={onBack} className="px-3 py-1.5 rounded border text-sm">
