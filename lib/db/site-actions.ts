@@ -151,6 +151,54 @@ export async function listOpenSiteActions(opts?: {
   })
 }
 
+/** Actions ouvertes nées de réunions données, enrichies (pour la vue
+ *  « actions ouvertes groupées par réunion » sur /meetings). */
+export async function listOpenSiteActionsByReports(reportIds: string[]): Promise<SiteActionRow[]> {
+  if (reportIds.length === 0) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_actions')
+    .select('*')
+    .in('report_id', reportIds)
+    .eq('status', 'open')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  const rows = (data ?? []) as DbSiteAction[]
+  if (rows.length === 0) return []
+
+  const siteIds = [...new Set(rows.map((a) => a.site_id))]
+  const { data: siteRows } = await supabase.from('sites').select('id, name, contract_id').in('id', siteIds)
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string; contract_id: string | null }>
+  const siteById = new Map(sites.map((s) => [s.id, s]))
+  const contractIds = [...new Set(sites.map((s) => s.contract_id).filter((v): v is string => !!v))]
+  const contractName = new Map<string, string>()
+  if (contractIds.length > 0) {
+    const { data: cs } = await supabase.from('contracts').select('id, name').in('id', contractIds)
+    for (const c of (cs ?? []) as Array<{ id: string; name: string }>) contractName.set(c.id, c.name)
+  }
+
+  return rows.map((a) => {
+    const s = siteById.get(a.site_id)
+    return {
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      corps_etat: a.corps_etat,
+      assigned_to: a.assigned_to,
+      status: a.status,
+      created_at: a.created_at,
+      due_date: a.due_date,
+      report_id: a.report_id,
+      converted_to_type: a.converted_to_type,
+      converted_to_id: a.converted_to_id,
+      site_id: a.site_id,
+      site_name: s?.name ?? '—',
+      contract_id: s?.contract_id ?? null,
+      contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
+    }
+  })
+}
+
 export async function markSiteActionDone(id: string): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase

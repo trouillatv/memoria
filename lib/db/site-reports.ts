@@ -178,6 +178,8 @@ export interface MeetingListRow {
   openActionCount: number
   /** Blocages / dépendances détectés (risks de type dependency|risk). */
   blockerCount: number
+  /** Les blocages eux-mêmes (pour la vue groupée par réunion). */
+  blockers: SiteReportRisk[]
 }
 
 /** Toutes les réunions de l'organisation, enrichies pour la liste /meetings.
@@ -247,7 +249,7 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
 
   return reports.map((r) => {
     const siteSet = sitesByReport.get(r.id) ?? new Set<string>()
-    const blockerCount = (r.risks ?? []).filter((x) => x.kind === 'dependency' || x.kind === 'risk').length
+    const blockers = (r.risks ?? []).filter((x) => x.kind === 'dependency' || x.kind === 'risk')
     return {
       id: r.id,
       type: r.type,
@@ -259,7 +261,8 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
       siteNames: [...siteSet].map((id) => siteName.get(id) ?? '—'),
       decisionCount: decisionCount.get(r.id) ?? 0,
       openActionCount: openActionCount.get(r.id) ?? 0,
-      blockerCount,
+      blockerCount: blockers.length,
+      blockers,
     }
   })
 }

@@ -3,11 +3,20 @@ import { redirect } from 'next/navigation'
 import { Mic, MapPin, Building2, ListTodo, AlertTriangle, FileText, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listMeetings, type MeetingListRow } from '@/lib/db/site-reports'
+import { listOpenSiteActionsByReports, type SiteActionRow } from '@/lib/db/site-actions'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites } from '@/lib/db/sites'
 import { EmptyState } from '@/components/ui/empty-state'
+import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { NewMeetingButton } from './NewMeetingButton'
 import type { SiteReportStatus } from '@/types/db'
+
+function meetingHeading(m: MeetingListRow): string {
+  if (m.title) return m.title
+  return m.type === 'contract'
+    ? `Réunion contrat${m.contractName ? ` — ${m.contractName}` : ''}`
+    : `Réunion site${m.siteNames[0] ? ` — ${m.siteNames[0]}` : ''}`
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +71,17 @@ export default async function MeetingsPage({
   const todayIso = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
   const contractOptions = contracts.map((c) => ({ id: c.id, name: c.name }))
   const siteOptions = sites.map((s) => ({ id: s.id, name: s.name }))
+
+  // Vue « Actions ouvertes » : les actions elles-mêmes, groupées par réunion.
+  const actionsByReport = new Map<string, SiteActionRow[]>()
+  if (quickFilter === 'actions' && filtered.length > 0) {
+    const actions = await listOpenSiteActionsByReports(filtered.map((m) => m.id)).catch(() => [] as SiteActionRow[])
+    for (const a of actions) {
+      if (!a.report_id) continue
+      if (!actionsByReport.has(a.report_id)) actionsByReport.set(a.report_id, [])
+      actionsByReport.get(a.report_id)!.push(a)
+    }
+  }
 
   const chip = (active: boolean) =>
     `inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-transform active:scale-[0.97] ${
@@ -123,8 +143,42 @@ export default async function MeetingsPage({
         />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground italic px-1 py-6 text-center">
-          Aucune réunion ne correspond à ce filtre.
+          {quickFilter === 'actions'
+            ? 'Aucune action ouverte issue d’une réunion.'
+            : quickFilter === 'blocages'
+              ? 'Aucun blocage signalé en réunion.'
+              : 'Aucune réunion ne correspond à ce filtre.'}
         </p>
+      ) : quickFilter === 'actions' ? (
+        // Vue actions : QUE les actions ouvertes, groupées par réunion (date desc).
+        <div className="space-y-5">
+          {filtered.map((m) => (
+            <section key={m.id} className="space-y-2">
+              <MeetingGroupHeader m={m} todayIso={todayIso} count={m.openActionCount} />
+              <OpenActionsList actions={actionsByReport.get(m.id) ?? []} showSite />
+            </section>
+          ))}
+        </div>
+      ) : quickFilter === 'blocages' ? (
+        // Vue blocages : QUE les blocages, groupés par réunion (date desc).
+        <div className="space-y-5">
+          {filtered.map((m) => (
+            <section key={m.id} className="space-y-2">
+              <MeetingGroupHeader m={m} todayIso={todayIso} count={m.blockerCount} />
+              <ul className="space-y-1.5">
+                {m.blockers.map((b, i) => (
+                  <li key={i} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-sm">
+                    <div className="font-medium text-amber-900">{b.label}</div>
+                    {b.waiting_party && b.awaited && (
+                      <div className="text-xs text-amber-800/80 mt-0.5">{b.waiting_party} attend {b.awaited}</div>
+                    )}
+                    {b.rationale && <div className="text-xs text-muted-foreground mt-0.5">{b.rationale}</div>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       ) : (
         <ul className="space-y-2">
           {filtered.map((m) => (
@@ -132,6 +186,22 @@ export default async function MeetingsPage({
           ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+function MeetingGroupHeader({ m, todayIso, count }: { m: MeetingListRow; todayIso: string; count: number }) {
+  const isContract = m.type === 'contract'
+  return (
+    <div className="flex items-center gap-2 px-1">
+      <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${isContract ? 'bg-violet-50 text-violet-600' : 'bg-sky-50 text-sky-600'}`}>
+        {isContract ? <Building2 className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
+      </span>
+      <Link href={`/meetings/${m.id}`} className="text-sm font-semibold hover:underline truncate">
+        {meetingHeading(m)}
+      </Link>
+      <span className="text-xs text-muted-foreground capitalize shrink-0">· {relativeDay(m.createdAt, todayIso)}</span>
+      <span className="ml-auto text-xs text-muted-foreground tabular-nums shrink-0">{count}</span>
     </div>
   )
 }
