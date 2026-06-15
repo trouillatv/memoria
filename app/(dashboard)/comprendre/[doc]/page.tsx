@@ -31,6 +31,8 @@ export default async function ComprendrePage({ params }: { params: Promise<{ doc
   const { doc } = await params
   const cfg = GUIDES[doc]
   if (!cfg) notFound()
+  // « Comprendre l'archi » est technique et détaillé → réservé aux admins.
+  if (doc === 'architecture' && user.role !== 'admin') notFound()
 
   let lastGenerated: string | null = null
   try {

@@ -77,7 +77,7 @@ export const NAV: NavItem[] = [
   // — Guides (les 3 regroupés sous l'en-tête « Guides ») —
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'], groupStart: 'Guides' },
   { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
-  { href: '/comprendre/architecture', label: 'Comprendre l’archi',    icon: Boxes, roles: ['admin', 'manager'] },
+  { href: '/comprendre/architecture', label: 'Comprendre l’archi',    icon: Boxes, roles: ['admin'] },
   // — Admin —
   { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'], groupStart: 'Admin' },
   { href: '/admin/observation', label: 'Observation pilote', icon: Eye,         roles: ['admin'] },

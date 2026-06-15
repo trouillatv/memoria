@@ -16,6 +16,7 @@
 - [Partie 4 — Les garde-fous (sécurité & doctrine)](#partie-4--les-garde-fous)
 - [Partie 5 — Les patterns d'exécution](#partie-5--les-patterns-dexécution)
 - [Partie 6 — Vocabulaire express](#partie-6--vocabulaire-express)
+- [**Partie 7 — Les systèmes métier construits (référence détaillée, admin)**](#partie-7--les-systèmes-métier-construits-référence-détaillée)
 
 ---
 
@@ -537,6 +538,82 @@ PDF déposé
 > Un document de type **litige** est forcé en *non indexé* **côté serveur** — on ne fait pas confiance au client. Un litige n'alimente jamais une lecture ou une résonance automatique.
 
 L'import par lot réutilise **exactement** ce pipeline (même action, mêmes garde-fous), avec une **file bornée** (3 fichiers à la fois, jamais 50 en parallèle) et un **import partiel** (un PDF corrompu n'arrête pas les autres). Aucune nouvelle infra : on **étend** l'existant, on ne le double pas.
+
+# Partie 7 — Les systèmes métier construits (référence détaillée)
+
+> [!NOTE] Page admin
+> Cette partie est **réservée aux admins** : elle décrit le détail technique réel (tables, migrations, fichiers, garde-fous) des grands systèmes ajoutés. C'est la mémoire d'ingénierie de ce qui a été construit.
+
+## 7.1 — Compte-rendu & Réunions (le moteur d'alimentation)
+
+**Idée** : on *raconte* une réunion (voix + texte + photos + pièces) → l'IA **propose** des décisions typées → l'humain **valide** → ça devient de vraies lignes. L'artefact brut n'est jamais perdu, même si l'IA échoue.
+
+**Tables** (migrations 099 → 101) :
+- `site_reports` — le compte-rendu : `type` (`contract`|`site`|`free`), `site_id` (nullable), `contract_id`, `status` (`draft`→`ready`→`analyzing`→`proposed`→`curated`/`failed`), `transcript_raw`/`_corrected`, `text_input`, `participants` (jsonb), `risks` (jsonb), `analysis_error`.
+- `site_report_attachments` — audio/photo/fichier (bucket privé `site-reports`, idempotence par `client_uuid`).
+- `site_report_proposals` — une décision proposée : `type` (action/intervention/mission/anomaly/vigilance/note/client_memory/proof_request), `payload` (jsonb), `short_label`, `corps_etat`, `assigned_to`, `site_id` (routage), `ai_confidence`, `status`, `created_entity_type/id`.
+- `report_sites` — M:N réunion ↔ sites (une réunion contrat distribue ses décisions sur N sites ; pilote la visibilité au journal).
+
+**IA** : `services/ai/site-report-analysis.ts` + prompt `site-report-analyzer.v1.ts`. Reçoit transcript + notes + **noms de pièces** (pas de vision) + sites candidats + actions ouvertes antérieures. Renvoie : présents, risques, comparaison aux actions précédentes, et décisions avec `site_index` (routage multi-sites confirmé par l'humain). `withAITracking` + fixture mock si pas de clé.
+
+**Cycle** (`report-actions.ts`, gate `requireFieldAgent` = admin/manager/chef) : draft (texte d'abord) → upload pièces → transcription (`lib/ai/transcribe.ts`, partagé avec les notes vocales) → analyse → curation → **matérialisation** (route par `type` : `createSiteAction`, `createSiteNote`, `createAnomaly`, `createMission`, `createIntervention`). Échec → `status='failed'`, artefacts conservés.
+
+**Surface** : menu **Réunions** (`/meetings`) — `listMeetings()` (résilient), vues *Actions ouvertes* / *Blocages* groupées par réunion, `NewMeetingButton` (réutilise `SiteReportPanel`). UI de capture/curation : `SiteReportPanel` / `SiteReportCuration` / `SiteReportLauncher`.
+
+## 7.2 — Les Actions ouvertes (`site_actions`)
+
+L'objet « il reste à faire » qui manquait — distinct de mission/intervention/anomalie.
+
+- **Cycle** : `open` → `planned` (converti en intervention) → `done` | `cancelled`. Champs : `site_id`, `report_id` (origine), `title`, `corps_etat`, `assigned_to`, `due_date`, `converted_to_type/id`, et (migration 107) **`completed_comment`** + **`completed_photo_path`**.
+- **Santé** = pure fonction d'ancienneté (`lib/actions/health.ts`, sans dépendance serveur → importable côté client) : 🔴 ≥ 14 j · 🟠 7–13 j · 🟢 < 7 j.
+- **Surfaces** : `/actions` (cockpit global), fiche site, `/m/site` (*À suivre*), `/m/actions`, Briefing. Composant partagé `components/actions/OpenActionsList.tsx`. Compteur de nav calculé dans le layout via `getOpenActionsHealth()`.
+- **Clôture avec trace** : `closeActionAction` (commentaire requis + photo optionnelle → bucket `intervention-photos`) → événement `type:'action'` au journal du site.
+- **Planification** : `planActionAction` (mission existante/nouvelle + date + créneau → `createIntervention` + `markSiteActionPlanned`).
+
+> [!IMPORTANT] Doctrine actions
+> Action ≠ intervention (n'entre au planning que si planifiée). Action **ouverte** = pilotage (jamais embeddée). Action **terminée** = mémoire (journal), mais **hors résonance**. Jamais d'exécutant interne nommé.
+
+## 7.3 — Contributions externes (qui a fait quoi)
+
+Partager une intervention = confier une **contribution** (sous-ensemble de la checklist) à une **entreprise**, sans compte.
+
+- `intervention_tokens` (mig. 097/098) : lien public `/i/[token]`, `permissions`, `recipient_label` (= l'entreprise), `validated_at`/`validated_by_name`/`validation_comment`, **`signature_data_url`/`signed_at`** (mig. 105/103).
+- `intervention_token_items` (mig. 106) : **le périmètre** — quelles tâches ce token peut toucher.
+- `intervention_checklist_items.executed_by_token_id` + `executed_at` (mig. 106) : l'exécutant externe par tâche.
+- `intervention_photos.external_token_id` (mig. 104/105) : photos déposées par l'externe, par tâche (`checklist_item_id`).
+
+> [!WARNING] Garde-fou serveur non négociable
+> `actions-public.ts` filtre **côté serveur** toute action au périmètre du token (`resolveAllowedItemIds`) : cocher/photographier hors périmètre est **refusé**. Le scope affiché n'est jamais décoratif. Une seule signature par contribution. L'externe **ne clôture jamais** : il prouve, le chef contrôle et clôt.
+
+- **Affichage** : badge « Réalisé par {entreprise} » par tâche (desktop `ExecutionPanel`, mobile `ChecklistMobile`). Bilan par contribution dans « Activités externes ».
+- **Preuve** : `getProofDetail` (`lib/db/proofs.ts`) expose `external_contributions[]` + `executed_by_company` par tâche ; le **PDF** (`lib/pdf/proof-dossier.tsx`) rend la section *Contributions externes* avec la **signature manuscrite**. Le nom de l'entreprise est une preuve contractuelle (≠ identité salarié).
+
+## 7.4 — Le journal du site (timeline)
+
+`lib/db/site-memory.ts` — `getSiteMemoryTimeline()` agrège, **sans saisie**, une vue temporelle du lieu. `SiteMemoryEventType` : `intervention` · `photo` · `anomaly` · `note` · `a_savoir` · `access` · `report` · **`action`** (clôturée). Dédup transverse + tri antichronologique. **Embeddé pour les résonances** : seulement `photo_caption` / `anomaly` / `site_note` / `intervention_note` (`lib/ai/embed-trace.ts`). Les actions et contributions n'y entrent jamais.
+
+## 7.5 — Ouverture contextuelle (page d'arrivée + GPS)
+
+- **Page d'arrivée** `/m/site/[id]` : bandeau « Aujourd'hui ici » (interventions du jour + actions ouvertes + anomalies), « Attention » (à-savoir + anomalies), « À suivre », « Dernières preuves ». Atteignable par **QR** (mig. 092, `site_qr_tokens`) ou liste de sites — **sans GPS**.
+- **GPS** (Phases 1-2, à venir) : lecture **foreground one-shot**, opt-in, **jamais stockée**, pas d'historique, pas d'arrière-plan. Réconcilie la doctrine anti-GPS : ce n'est pas du pointage (rien n'est écrit). Garde-fous à coder en dur avec la feature.
+
+## 7.6 — Carte des migrations (092 → 107)
+
+| # | Objet |
+|---|---|
+| 092 | `site_qr_tokens` — QR d'identification sur site |
+| 097 / 098 | `intervention_tokens` (+ `recipient_label`) — partage externe |
+| 099 | `site_reports`, `_attachments`, `_proposals`, **`site_actions`** |
+| 100 | reconstruction réunion — `participants` / `risks` (jsonb) |
+| 101 | réunion contrat multi-sites — `type`/`contract_id`, `report_sites`, `proposals.site_id` |
+| 102 | `share_token_comments` — retours externes (dossier preuve) |
+| 103 | `intervention_signature` |
+| 104 | `share_comment_photos` |
+| 105 | `external_execution_proof` — `signature_data_url`/`signed_at`, `photos.external_token_id` |
+| 106 | `external_contribution_scope` — `intervention_token_items`, `executed_by_token_id` |
+| 107 | `site_action_closure` — `completed_comment`/`completed_photo_path` |
+
+---
 
 ## Le mot de la fin — pourquoi tout ça compte
 
