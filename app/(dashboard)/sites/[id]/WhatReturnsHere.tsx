@@ -1,29 +1,33 @@
-import { Badge } from '@/components/ui/badge'
+import { Repeat2 } from 'lucide-react'
 import type { WhatReturnsHere as TReturns } from '@/lib/db/site-cockpit'
 
 /**
- * V5.1.4 — Mots récurrents, pattern shadcn (Badge variant secondary).
+ * « Le lieu vous rappelle » — lecture NARRATIVE des motifs récurrents (Vincent
+ * 2026-06-15 : « beaucoup plus narratif » que des badges de mots bruts).
  *
- * Doctrine produit (reste valide) :
- *   ❌ pas de tag-cloud avec tailles variables (suggère ranking)
+ * Doctrine produit (conservée) :
  *   ❌ pas de fréquence affichée (quantification → reverse-lookup)
  *   ❌ pas de "AI insights" / ✨ (IA bavarde interdite)
- *   ✅ ordre alphabétique strict (évite ranking visuel)
+ *   ✅ ordre alphabétique strict (data.words) — évite le ranking visuel
+ *   ✅ formulation prudente : "revient régulièrement", jamais une conclusion
  *
- * Si pas de mots, le composant n'est pas rendu (cf. page.tsx qui le wrappe
- * dans Card conditionnellement).
+ * On passe des badges à des phrases, sans exposer le compte ni reclasser par
+ * fréquence — le narratif vient du verbe, pas du chiffre.
  */
 
 export function WhatReturnsHere({ data }: { data: TReturns }) {
   if (data.words.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <ul className="space-y-1.5">
       {data.words.map((word) => (
-        <Badge key={word} variant="secondary" className="font-normal">
-          {word}
-        </Badge>
+        <li key={word} className="text-sm text-foreground/80 flex items-start gap-2">
+          <Repeat2 className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" aria-hidden />
+          <span>
+            <span className="font-medium text-foreground">« {word} »</span> revient régulièrement ici.
+          </span>
+        </li>
       ))}
-    </div>
+    </ul>
   )
 }

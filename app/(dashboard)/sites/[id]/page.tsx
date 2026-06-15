@@ -365,7 +365,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         {whatReturns.words.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Ce qui revient</CardTitle>
+              <CardTitle>Le lieu vous rappelle</CardTitle>
             </CardHeader>
             <CardContent>
               <WhatReturnsHere data={whatReturns} />

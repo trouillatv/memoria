@@ -1086,6 +1086,9 @@ const STOPWORDS_FR_SITE = new Set([
 export interface WhatReturnsHere {
   /** Mots/termes récurrents du site (>=3 occurrences, ordre alphabétique). */
   words: string[]
+  /** Mêmes termes AVEC leur nombre de mentions (tri desc) — pour la lecture
+   *  narrative « X revient régulièrement (N mentions) ». */
+  items: Array<{ word: string; count: number }>
 }
 
 function normalizeWord(w: string): string {
@@ -1124,7 +1127,7 @@ export async function getSiteWhatReturns(siteId: string): Promise<WhatReturnsHer
     .eq('site_id', siteId)
     .is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id)
-  if (missionIds.length === 0) return { words: [] }
+  if (missionIds.length === 0) return { words: [], items: [] }
 
   const { data: interventionsAll } = await supabase
     .from('interventions')
@@ -1163,7 +1166,7 @@ export async function getSiteWhatReturns(siteId: string): Promise<WhatReturnsHer
     if (n.body) corpus.push(n.body)
   }
 
-  if (corpus.length === 0) return { words: [] }
+  if (corpus.length === 0) return { words: [], items: [] }
 
   // Compte des mots
   const counts = new Map<string, number>()
@@ -1179,14 +1182,14 @@ export async function getSiteWhatReturns(siteId: string): Promise<WhatReturnsHer
   // Top mots avec >= 3 occurrences, max 7, ordre alphabétique
   const RETURNS_MIN_COUNT = 3
   const MAX_WORDS = 7
-  const candidates = Array.from(counts.entries())
+  const top = Array.from(counts.entries())
     .filter(([, count]) => count >= RETURNS_MIN_COUNT)
     .sort((a, b) => b[1] - a[1]) // tri desc par fréquence pour top N
     .slice(0, MAX_WORDS)
-    .map(([w]) => w)
-    .sort() // puis alphabétique pour éviter ranking visuel
+  const items = top.map(([word, count]) => ({ word, count }))
+  const candidates = items.map((i) => i.word).sort() // alphabétique pour éviter ranking visuel
 
-  return { words: candidates }
+  return { words: candidates, items }
 }
 
 // =============================================================================
