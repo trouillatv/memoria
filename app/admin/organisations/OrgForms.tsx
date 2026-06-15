@@ -193,7 +193,11 @@ export function MoveUserOrgForm({
       <input type="hidden" name="org_id" value={orgId} />
       <Select value={orgId} onValueChange={(v) => setOrgId(v ?? '')}>
         <SelectTrigger className="h-7 text-xs w-36">
-          <SelectValue placeholder="—" />
+          {/* Base UI rend la valeur brute (uuid) par défaut → on mappe
+              explicitement vers le NOM de l'entreprise. */}
+          <SelectValue placeholder="—">
+            {(value) => orgs.find((o) => o.id === value)?.name ?? '—'}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {orgs.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
