@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { AIProviderName } from './index'
 
 // ============================================================================
@@ -56,7 +57,14 @@ export interface AIUsageEntry {
 export async function logAIUsage(entry: AIUsageEntry): Promise<void> {
   try {
     const supabase = createAdminClient()
-    const { error } = await supabase.from('ai_usage').insert(entry)
+    // Stamp organisation : sinon la ligne reste org=NULL et les vues de coûts
+    // (filtrées par org depuis la mise en multi-entreprises, migration 089)
+    // l'excluent → « Dépenses IA » apparaît vide alors que les appels ont eu
+    // lieu. getOrgId() = org de l'utilisateur courant (null hors requête).
+    const orgId = await getOrgId().catch(() => null)
+    const { error } = await supabase
+      .from('ai_usage')
+      .insert({ ...entry, organization_id: orgId })
     if (error) console.warn('[ai-usage] insert failed:', error.message)
   } catch (e) {
     console.warn('[ai-usage] exception:', e)
