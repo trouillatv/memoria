@@ -38,7 +38,7 @@ interface Props {
   onClose: () => void
 }
 
-type Step = 'capture' | 'working' | 'review' | 'curation' | 'done'
+type Step = 'capture' | 'working' | 'saved' | 'curation' | 'done'
 
 interface LocalAttachment {
   clientUuid: string
@@ -69,8 +69,8 @@ export function SiteReportPanel({
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<LocalAttachment[]>([])
 
-  // Review
-  const [transcript, setTranscript] = useState('')
+  // Écran « sauvegardé » (transcription/analyse indisponible — audio conservé)
+  const [savedNote, setSavedNote] = useState('')
 
   // Curation
   const [proposals, setProposals] = useState<DbSiteReportProposal[]>([])
@@ -186,13 +186,38 @@ export function SiteReportPanel({
     filesRef.current.delete(clientUuid)
   }
 
-  // ── Analyse : crée le brouillon, upload, transcrit, analyse ───────────────
+  // Lance l'analyse IA sur un transcript/texte connus. true si réussie.
+  async function runAnalysis(rid: string, transcriptText: string): Promise<boolean> {
+    setWorking('Analyse en cours — détection des décisions…')
+    const fd = new FormData()
+    fd.set('report_id', rid)
+    if (transcriptText.trim()) fd.set('transcript_corrected', transcriptText.trim())
+    if (text.trim()) fd.set('text_input', text.trim())
+    const res = await analyzeReportAction(fd)
+    if (!res.ok) { toast.error(res.error); return false }
+    const ctx = await getReportCurationContextAction(rid)
+    setProposals(res.proposals)
+    setParticipants(res.participants)
+    setRisks(res.risks)
+    setPriorUpdates(res.priorUpdates)
+    setMissions(ctx.missions)
+    setMeetingNumber(ctx.meetingNumber)
+    setOpenActions(ctx.openActions)
+    setReportDates(ctx.reportDates)
+    setCandidateSites(ctx.candidateSites)
+    return true
+  }
+
+  // ── Analyser : draft (audio sauvé EN PREMIER) → pièces → transcription →
+  //    analyse → curation, d'un seul geste. Si la transcription ou l'analyse
+  //    échoue (ex. clé IA absente en prod), l'audio est DÉJÀ sauvegardé : on
+  //    bascule sur l'écran « sauvegardé » (réessai possible), rien n'est perdu.
   function handleAnalyze() {
     if (recording) stopRecording()
     startTransition(async () => {
       setStep('working')
 
-      // 1. Brouillon (le texte part EN PREMIER)
+      // 1. Brouillon (le texte ET l'audio partent EN PREMIER — persistés).
       setWorking('Enregistrement du compte-rendu…')
       const fd = new FormData()
       fd.set('report_type', reportType)
@@ -229,36 +254,49 @@ export function SiteReportPanel({
         setWorking('Transcription de la note vocale…')
         const tr = await transcribeReportAction(draft.reportId)
         if (tr.ok) transcriptText = tr.transcript
-        else toast.message('Transcription indisponible — saisie manuelle possible.')
       }
-      setTranscript(transcriptText)
-      setStep('review')
+
+      // 4. Rien à analyser (transcription échouée + pas de texte saisi) → on
+      //    s'arrête proprement : l'audio est sauvegardé, on reprendra plus tard.
+      const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
+      if (!hasContent) {
+        setSavedNote(
+          draft.hasAudio
+            ? "Audio enregistré, mais la transcription n'a pas pu se faire (service IA indisponible). Le compte-rendu est sauvegardé — vous pourrez le reprendre plus tard."
+            : 'Compte-rendu sauvegardé.',
+        )
+        setStep('saved')
+        return
+      }
+
+      // 5. Analyse directe → curation (plus d'écran de relecture).
+      const ok = await runAnalysis(draft.reportId, transcriptText)
+      if (!ok) {
+        setSavedNote("Le compte-rendu et l'audio sont sauvegardés, mais l'analyse n'a pas pu se faire. Réessayez dans un moment.")
+        setStep('saved')
+        return
+      }
+      setStep('curation')
     })
   }
 
-  // ── Relecture → lance l'analyse IA ────────────────────────────────────────
-  function handleRunAnalysis() {
+  // Réessayer depuis l'écran « sauvegardé » : re-transcrire (audio en base) puis analyser.
+  function handleRetry() {
     if (!reportId) return
     startTransition(async () => {
       setStep('working')
-      setWorking('Analyse en cours — détection des décisions…')
-      const fd = new FormData()
-      fd.set('report_id', reportId)
-      if (transcript.trim()) fd.set('transcript_corrected', transcript.trim())
-      if (text.trim()) fd.set('text_input', text.trim())
-      const res = await analyzeReportAction(fd)
-      if (!res.ok) { toast.error(res.error); setStep('review'); return }
-      const ctx = await getReportCurationContextAction(reportId)
-      setProposals(res.proposals)
-      setParticipants(res.participants)
-      setRisks(res.risks)
-      setPriorUpdates(res.priorUpdates)
-      setMissions(ctx.missions)
-      setMeetingNumber(ctx.meetingNumber)
-      setOpenActions(ctx.openActions)
-      setReportDates(ctx.reportDates)
-      setCandidateSites(ctx.candidateSites)
-      setStep('curation')
+      let transcriptText = ''
+      setWorking('Nouvelle tentative de transcription…')
+      const tr = await transcribeReportAction(reportId)
+      if (tr.ok) transcriptText = tr.transcript
+      const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
+      if (!hasContent) {
+        setSavedNote("Toujours indisponible. L'audio reste sauvegardé — réessayez plus tard.")
+        setStep('saved')
+        return
+      }
+      const ok = await runAnalysis(reportId, transcriptText)
+      setStep(ok ? 'curation' : 'saved')
     })
   }
 
@@ -404,27 +442,28 @@ export function SiteReportPanel({
       {/* ── WORKING ── */}
       {step === 'working' && <WorkingView message={working} />}
 
-      {/* ── REVIEW transcript ── */}
-      {step === 'review' && (
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Relisez et corrigez la transcription avant l&apos;analyse.
-          </p>
-          <textarea
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            rows={6}
-            placeholder="Transcription… (vide ? saisissez le compte-rendu à la main)"
-            className="w-full rounded-lg border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <button
-            type="button"
-            onClick={handleRunAnalysis}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-foreground text-background py-3 text-sm font-medium"
-          >
-            <Sparkles className="h-4 w-4" />
-            Détecter les décisions
-          </button>
+      {/* ── SAUVEGARDÉ (transcription/analyse indisponible — rien n'est perdu) ── */}
+      {step === 'saved' && (
+        <div className="space-y-4 py-4 text-center">
+          <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
+          <p className="text-sm font-medium">Compte-rendu sauvegardé</p>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">{savedNote}</p>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-foreground/30 px-4 py-2.5 text-sm font-medium hover:bg-muted/40"
+            >
+              <Sparkles className="h-4 w-4" /> Réessayer maintenant
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg bg-foreground text-background py-2.5 text-sm font-medium"
+            >
+              Fermer
+            </button>
+          </div>
         </div>
       )}
 
