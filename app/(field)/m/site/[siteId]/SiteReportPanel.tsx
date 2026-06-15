@@ -214,13 +214,14 @@ export function SiteReportPanel({
   //    bascule sur l'écran « sauvegardé » (réessai possible), rien n'est perdu.
   function handleAnalyze() {
     if (recording) stopRecording()
+    // Feedback INSTANTANÉ : on bascule sur l'écran de chargement avant même le
+    // transition async, pour qu'un clic se voie toujours (jamais « rien »).
+    setWorking('Enregistrement du compte-rendu…')
+    setStep('working')
     startTransition(async () => {
       let createdId: string | null = null
       try {
-        setStep('working')
-
         // 1. Brouillon (le texte ET l'audio partent EN PREMIER — persistés).
-        setWorking('Enregistrement du compte-rendu…')
         const fd = new FormData()
         fd.set('report_type', reportType)
         if (reportType === 'contract' && contractId) fd.set('contract_id', contractId)
