@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createInterventionAction } from '../interventions-actions'
+import { TimeField } from '@/components/ui/time-field'
 import type { DbMission, DbSite } from '@/types/db'
 
 interface Props {
@@ -116,24 +117,20 @@ export function CreateInterventionInline({ contractId: _contractId, missions, si
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <label className="text-xs text-muted-foreground">Heure de début *</label>
-          <input
-            type="time"
-            step={300}
+          <TimeField
+            label="Heure de début"
             value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
+            onChange={setStartTime}
             disabled={pending}
-            className="w-full rounded border p-2 text-sm bg-background"
           />
         </div>
         <div className="space-y-2">
           <label className="text-xs text-muted-foreground">Heure de fin *</label>
-          <input
-            type="time"
-            step={300}
+          <TimeField
+            label="Heure de fin"
             value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
+            onChange={setEndTime}
             disabled={pending}
-            className="w-full rounded border p-2 text-sm bg-background"
           />
         </div>
       </div>

@@ -17,6 +17,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
+import { TimeField } from '@/components/ui/time-field'
 import {
   createRecurrenceAction,
   updateRecurrenceAction,
@@ -306,26 +307,22 @@ export function RecurrenceModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label htmlFor="rec-start" className="text-xs text-muted-foreground">Début</label>
-              <input
+              <TimeField
                 id="rec-start"
-                type="time"
-                step={300}
+                label="Début"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={setStartTime}
                 disabled={pending}
-                className="w-full rounded border p-2 text-sm bg-background"
               />
             </div>
             <div className="space-y-1">
               <label htmlFor="rec-end" className="text-xs text-muted-foreground">Fin</label>
-              <input
+              <TimeField
                 id="rec-end"
-                type="time"
-                step={300}
+                label="Fin"
                 value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                onChange={setEndTime}
                 disabled={pending}
-                className="w-full rounded border p-2 text-sm bg-background"
               />
             </div>
           </div>

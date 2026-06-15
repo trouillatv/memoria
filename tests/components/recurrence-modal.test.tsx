@@ -37,9 +37,15 @@ const baseProps = {
 
 // Les heures (créneaux horaires) sont requises pour valider le submit depuis
 // que Matin/Après-midi/Soir a été retiré (décision 2026-06-15).
+// Le champ horaire est désormais deux <select> (heures / minutes) — voir
+// TimeField, qui remplace le picker natif Android qui débordait du cadre.
 function fillValidTimes(start = '07:00', end = '09:00') {
-  fireEvent.change(screen.getByLabelText('Début'), { target: { value: start } })
-  fireEvent.change(screen.getByLabelText('Fin'), { target: { value: end } })
+  const [sh, sm] = start.split(':')
+  const [eh, em] = end.split(':')
+  fireEvent.change(screen.getByLabelText('Début'), { target: { value: sh } })
+  fireEvent.change(screen.getByLabelText('Début — minutes'), { target: { value: sm } })
+  fireEvent.change(screen.getByLabelText('Fin'), { target: { value: eh } })
+  fireEvent.change(screen.getByLabelText('Fin — minutes'), { target: { value: em } })
 }
 
 describe('RecurrenceModal — initial render', () => {
@@ -235,8 +241,11 @@ describe('RecurrenceModal — mode edition (Slice 6.5)', () => {
     expect(select.value).toBe('2')
 
     // créneaux horaires prereremplis depuis planned_start/end_hhmm
-    expect((screen.getByLabelText('Début') as HTMLInputElement).value).toBe('07:00')
-    expect((screen.getByLabelText('Fin') as HTMLInputElement).value).toBe('09:00')
+    // (deux <select> : heures + minutes)
+    expect((screen.getByLabelText('Début') as HTMLSelectElement).value).toBe('07')
+    expect((screen.getByLabelText('Début — minutes') as HTMLSelectElement).value).toBe('00')
+    expect((screen.getByLabelText('Fin') as HTMLSelectElement).value).toBe('09')
+    expect((screen.getByLabelText('Fin — minutes') as HTMLSelectElement).value).toBe('00')
 
     // starts_on prerempli
     const dateInput = screen.getByLabelText(/à partir de quand/i) as HTMLInputElement

@@ -14,6 +14,7 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog'
+import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
 
@@ -210,29 +211,24 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
                 <label htmlFor="planned-start" className="text-[11px] text-muted-foreground">
                   Début *
                 </label>
-                <input
+                <TimeField
                   id="planned-start"
-                  type="time"
-                  step={300 /* 5 min */}
+                  label="Début"
                   value={plannedStartHHMM}
-                  onChange={(e) => setPlannedStartHHMM(e.target.value)}
+                  onChange={setPlannedStartHHMM}
                   disabled={pending}
-                  required
-                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div className="space-y-1">
                 <label htmlFor="planned-end" className="text-[11px] text-muted-foreground">
                   Fin *
                 </label>
-                <input
+                <TimeField
                   id="planned-end"
-                  type="time"
-                  step={300}
+                  label="Fin"
                   value={plannedEndHHMM}
-                  onChange={(e) => setPlannedEndHHMM(e.target.value)}
+                  onChange={setPlannedEndHHMM}
                   disabled={pending}
-                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             </div>

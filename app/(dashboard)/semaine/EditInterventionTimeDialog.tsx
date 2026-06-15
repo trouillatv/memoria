@@ -14,6 +14,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Clock } from 'lucide-react'
 import { toast } from 'sonner'
+import { TimeField } from '@/components/ui/time-field'
 import {
   Dialog,
   DialogTrigger,
@@ -125,28 +126,24 @@ export function EditInterventionTimeDialog({
               <label htmlFor="edit-start" className="text-xs text-muted-foreground">
                 Début
               </label>
-              <input
+              <TimeField
                 id="edit-start"
-                type="time"
-                step={300}
+                label="Début"
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChange={setStart}
                 disabled={pending}
-                className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
               />
             </div>
             <div className="space-y-1">
               <label htmlFor="edit-end" className="text-xs text-muted-foreground">
                 Fin
               </label>
-              <input
+              <TimeField
                 id="edit-end"
-                type="time"
-                step={300}
+                label="Fin"
                 value={end}
-                onChange={(e) => setEnd(e.target.value)}
+                onChange={setEnd}
                 disabled={pending}
-                className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
               />
             </div>
           </div>
