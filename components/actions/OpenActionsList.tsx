@@ -1,16 +1,17 @@
 'use client'
 
-// Liste d'actions ouvertes (site_actions) — réutilisée sur la fiche site,
-// le mobile site, le briefing, /actions et /m/actions.
-// Clôture AVEC trace : commentaire (requis) + photo optionnelle → journal du site.
-// Pas de planification ici (geste séparé).
+// Liste d'actions ouvertes (site_actions) — fiche site, mobile site, briefing,
+// /actions, /m/actions.
+// Deux gestes : CLÔTURER (commentaire requis + photo optionnelle → journal) ou
+// PLANIFIER en intervention (mission + date + créneau → l'action passe 'planned').
+// La planification n'est proposée qu'en mode bureau (desktop), pas en compact terrain.
 
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X } from 'lucide-react'
+import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, planActionAction, listSiteMissionsForPlanningAction } from '@/app/(dashboard)/actions/actions'
 import { actionHealth } from '@/lib/actions/health'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 
@@ -23,6 +24,11 @@ function ageLabel(iso: string): string {
   if (d === 1) return 'depuis 1 jour'
   return `depuis ${d} jours`
 }
+function tomorrowIso(): string {
+  return new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA')
+}
+
+type Mode = { id: string; kind: 'close' | 'plan' } | null
 
 export function OpenActionsList({
   actions,
@@ -34,10 +40,16 @@ export function OpenActionsList({
   compact?: boolean
 }) {
   const router = useRouter()
-  const [closed, setClosed] = useState<Set<string>>(new Set())
-  const [closingId, setClosingId] = useState<string | null>(null)
+  const [removed, setRemoved] = useState<Set<string>>(new Set())
+  const [mode, setMode] = useState<Mode>(null)
 
-  const visible = actions.filter((a) => !closed.has(a.id))
+  function dropAndRefresh(id: string) {
+    setRemoved((prev) => new Set(prev).add(id))
+    setMode(null)
+    router.refresh()
+  }
+
+  const visible = actions.filter((a) => !removed.has(a.id))
   if (visible.length === 0) {
     return <p className="text-sm text-muted-foreground italic px-1 py-2">Aucune action ouverte.</p>
   }
@@ -50,16 +62,14 @@ export function OpenActionsList({
           health === 'critique' ? 'border-red-300' : health === 'surveiller' ? 'border-amber-200' : 'border-border'
         const ageCls =
           health === 'critique' ? 'text-red-700 font-medium' : health === 'surveiller' ? 'text-amber-700 font-medium' : ''
-        const isClosing = closingId === a.id
+        const isClosing = mode?.id === a.id && mode.kind === 'close'
+        const isPlanning = mode?.id === a.id && mode.kind === 'plan'
         return (
-          <li
-            key={a.id}
-            className={`rounded-lg border bg-card ${compact ? 'p-2.5' : 'p-3'} ${borderCls}`}
-          >
+          <li key={a.id} className={`rounded-lg border bg-card ${compact ? 'p-2.5' : 'p-3'} ${borderCls}`}>
             <div className="flex items-start gap-2.5">
               <button
                 type="button"
-                onClick={() => setClosingId(isClosing ? null : a.id)}
+                onClick={() => setMode(isClosing ? null : { id: a.id, kind: 'close' })}
                 aria-label="Clôturer l'action"
                 aria-expanded={isClosing}
                 className={`mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors active:scale-95 ${
@@ -94,19 +104,21 @@ export function OpenActionsList({
                   </span>
                 </div>
 
-                {/* Formulaire de clôture (commentaire requis + photo optionnelle) */}
                 {isClosing ? (
-                  <CloseForm
-                    action={a}
-                    onCancel={() => setClosingId(null)}
-                    onClosed={() => {
-                      setClosed((prev) => new Set(prev).add(a.id))
-                      setClosingId(null)
-                      router.refresh()
-                    }}
-                  />
+                  <CloseForm action={a} onCancel={() => setMode(null)} onDone={() => dropAndRefresh(a.id)} />
+                ) : isPlanning ? (
+                  <PlanForm action={a} onCancel={() => setMode(null)} onDone={() => dropAndRefresh(a.id)} />
                 ) : (
                   <div className={`mt-1.5 items-center gap-3 text-[11px] ${compact ? 'hidden' : 'flex'}`}>
+                    {!compact && (
+                      <button
+                        type="button"
+                        onClick={() => setMode({ id: a.id, kind: 'plan' })}
+                        className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <CalendarClock className="h-3 w-3" />Planifier
+                      </button>
+                    )}
                     <Link href={`/sites/${a.site_id}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
                       <MapPin className="h-3 w-3" />Voir le site
                     </Link>
@@ -129,11 +141,11 @@ export function OpenActionsList({
 function CloseForm({
   action,
   onCancel,
-  onClosed,
+  onDone,
 }: {
   action: SiteActionRow
   onCancel: () => void
-  onClosed: () => void
+  onDone: () => void
 }) {
   const [comment, setComment] = useState('')
   const [photoName, setPhotoName] = useState<string | null>(null)
@@ -156,7 +168,7 @@ function CloseForm({
       if (!r.ok) toast.error(r.error)
       else {
         toast.success('Action clôturée')
-        onClosed()
+        onDone()
       }
     })
   }
@@ -177,29 +189,141 @@ function CloseForm({
         <label className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground cursor-pointer hover:text-foreground hover:border-foreground/40">
           <Camera className="h-3.5 w-3.5" />
           {photoName ? 'Photo ajoutée' : 'Photo (optionnel)'}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="sr-only"
-            onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? null)}
-          />
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="sr-only"
+            onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? null)} />
         </label>
         <div className="flex items-center gap-2 ml-auto">
           <button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <X className="h-3.5 w-3.5" />Annuler
           </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={pending || !comment.trim()}
-            className="inline-flex items-center gap-1.5 rounded-md border-2 border-emerald-600 bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]"
-          >
+          <button type="button" onClick={submit} disabled={pending || !comment.trim()}
+            className="inline-flex items-center gap-1.5 rounded-md border-2 border-emerald-600 bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]">
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Clôturer
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function PlanForm({
+  action,
+  onCancel,
+  onDone,
+}: {
+  action: SiteActionRow
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [missions, setMissions] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingMissions, setLoadingMissions] = useState(true)
+  // missionChoice : '' (= nouvelle mission ponctuelle) ou un id de mission existante.
+  const [missionChoice, setMissionChoice] = useState<string>('')
+  const [newName, setNewName] = useState(action.title)
+  const [date, setDate] = useState(action.due_date ?? tomorrowIso())
+  const [slot, setSlot] = useState<'morning' | 'afternoon' | 'evening'>('morning')
+  const [pending, startTransition] = useTransition()
+
+  useEffect(() => {
+    let alive = true
+    listSiteMissionsForPlanningAction(action.site_id)
+      .then((ms) => {
+        if (!alive) return
+        setMissions(ms)
+        if (ms.length > 0) setMissionChoice(ms[0].id)
+        setLoadingMissions(false)
+      })
+      .catch(() => setLoadingMissions(false))
+    return () => { alive = false }
+  }, [action.site_id])
+
+  function submit() {
+    const fd = new FormData()
+    fd.set('id', action.id)
+    fd.set('site_id', action.site_id)
+    fd.set('scheduled_for', date)
+    fd.set('slot', slot)
+    if (missionChoice) {
+      fd.set('mission_mode', 'existing')
+      fd.set('mission_id', missionChoice)
+    } else {
+      fd.set('mission_mode', 'new')
+      fd.set('new_mission_name', newName.trim() || action.title)
+    }
+    startTransition(async () => {
+      const r = await planActionAction(fd)
+      if (!r.ok) toast.error(r.error)
+      else {
+        toast.success('Action planifiée en intervention')
+        onDone()
+      }
+    })
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border bg-muted/20 p-2.5 space-y-2">
+      <p className="text-[11px] font-medium text-foreground/80 inline-flex items-center gap-1.5">
+        <CalendarClock className="h-3.5 w-3.5" />Planifier en intervention
+      </p>
+
+      {/* Mission */}
+      <label className="block text-[11px] text-muted-foreground">
+        Mission
+        {loadingMissions ? (
+          <span className="ml-2 inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />…</span>
+        ) : (
+          <select
+            value={missionChoice}
+            onChange={(e) => setMissionChoice(e.target.value)}
+            className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+          >
+            {missions.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+            <option value="">+ Nouvelle mission ponctuelle</option>
+          </select>
+        )}
+      </label>
+      {!loadingMissions && missionChoice === '' && (
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          maxLength={120}
+          placeholder="Nom de la mission"
+          className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+        />
+      )}
+
+      {/* Date + créneau */}
+      <div className="flex items-center gap-2">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="flex-1 rounded-md border bg-background px-2 py-1.5 text-sm"
+        />
+        <select
+          value={slot}
+          onChange={(e) => setSlot(e.target.value as 'morning' | 'afternoon' | 'evening')}
+          className="rounded-md border bg-background px-2 py-1.5 text-sm"
+        >
+          <option value="morning">Matin</option>
+          <option value="afternoon">Après-midi</option>
+          <option value="evening">Soir</option>
+        </select>
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <X className="h-3.5 w-3.5" />Annuler
+        </button>
+        <button type="button" onClick={submit} disabled={pending || loadingMissions}
+          className="inline-flex items-center gap-1.5 rounded-md border-2 border-foreground bg-foreground text-background px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-50 active:scale-[0.98]">
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
+          Planifier
+        </button>
       </div>
     </div>
   )
