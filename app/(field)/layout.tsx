@@ -66,6 +66,15 @@ export default async function FieldLayout({ children }: { children: React.ReactN
         >
           Mon compte
         </Link>
+        {/* Échappatoire bureau : un manager ne doit jamais être coincé sur /m. */}
+        {(user.role === 'admin' || user.role === 'manager') && (
+          <>
+            <span aria-hidden className="text-muted-foreground/60">·</span>
+            <Link href="/dashboard" className="text-xs text-muted-foreground hover:text-foreground">
+              Vue bureau
+            </Link>
+          </>
+        )}
         {/* Thème : sélecteur accessible directement depuis le terrain (mobile).
             Persiste en base + cross-device, comme le toggle desktop. */}
         <div className="ml-auto">

@@ -5,7 +5,9 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'MemorIA',
     short_name: 'MemorIA',
     description: 'Mémoire opérationnelle de vos chantiers',
-    start_url: '/m',
+    // Racine : laisse `/` router selon rôle + home_preference + appareil
+    // (un manager « dashboard » ne doit pas être forcé sur /m à chaque ouverture).
+    start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#0f172a',
