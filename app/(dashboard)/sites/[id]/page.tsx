@@ -170,12 +170,14 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         ← Sites
       </Link>
 
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <MapPin className="h-5 w-5 text-sky-600" />
-          {identity.name}
-        </h1>
-        <IdentityHeader site={identity} />
+      <header className="flex items-start gap-3">
+        <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 ring-1 ring-sky-100">
+          <MapPin className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 space-y-1">
+          <h1 className="text-2xl font-semibold leading-tight tracking-tight">{identity.name}</h1>
+          <IdentityHeader site={identity} />
+        </div>
       </header>
 
       <ASavoirManager siteId={id} active={aSavoirActive} />
@@ -184,21 +186,21 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       <div className="flex items-center gap-2 flex-wrap">
         <Link
           href={`/sites/${id}/journal`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
         >
           <BookOpen className="h-3.5 w-3.5" />
           Journal
         </Link>
         <Link
           href={`/sites/${id}/qr`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
         >
           <QrCode className="h-3.5 w-3.5" />
           QR Code
         </Link>
         <Link
           href={`/memoire/${id}`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
         >
           <Sparkles className="h-3.5 w-3.5" />
           Atelier mémoire
@@ -218,10 +220,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
       {/* Actions ouvertes — issues des réunions, « ce qui reste à faire ». */}
       {openActions.length > 0 && (
-        <Card className={cn(tabClass('apercu'))}>
+        <Card className={cn('border-l-2 border-l-sky-400/60', tabClass('apercu'))}>
           <CardHeader className="pb-2">
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <ListTodo className="h-4 w-4 text-muted-foreground" />
+              <ListTodo className="h-4 w-4 text-sky-600" />
               Actions ouvertes
               <span className="text-sm font-normal text-muted-foreground">({openActions.length})</span>
             </CardTitle>
@@ -234,10 +236,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
       {/* « Si j'envoyais quelqu'un ici demain » — transmission actionnable. */}
       {showSendBlock && (
-        <Card className={cn(tabClass('apercu'))}>
+        <Card className={cn('border-l-2 border-l-violet-400/60', tabClass('apercu'))}>
           <CardHeader className="pb-2">
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+              <ArrowRightLeft className="h-4 w-4 text-violet-600" />
               Si vous envoyez une équipe ici demain
             </CardTitle>
           </CardHeader>
