@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -190,6 +190,20 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         >
           <BookOpen className="h-3.5 w-3.5" />
           Journal
+        </Link>
+        <Link
+          href={`/sites/${id}/livraisons`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
+        >
+          <Truck className="h-3.5 w-3.5" />
+          Livraisons
+        </Link>
+        <Link
+          href={`/sites/${id}/reserves`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
+        >
+          <ClipboardCheck className="h-3.5 w-3.5" />
+          Réserves
         </Link>
         <Link
           href={`/sites/${id}/qr`}
