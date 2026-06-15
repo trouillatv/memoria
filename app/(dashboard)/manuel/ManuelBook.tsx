@@ -107,6 +107,10 @@ export function ManuelBook({
               'prose-strong:text-foreground prose-hr:my-10',
               'prose-a:text-brand-700 dark:prose-a:text-brand-300 prose-a:font-medium prose-a:no-underline hover:prose-a:underline',
               'prose-code:text-[0.8em] prose-code:rounded prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
+              // Blocs de code (```) : conteneur lisible. Reset du <code> interne
+              // (sinon prose-code:bg-muted + texte clair du pre → blanc sur blanc).
+              'prose-pre:bg-muted prose-pre:text-foreground prose-pre:border prose-pre:border-border/60',
+              '[&_pre_code]:bg-transparent [&_pre_code]:text-foreground [&_pre_code]:px-0 [&_pre_code]:py-0',
               'prose-blockquote:border-l-2 prose-blockquote:border-brand-300 prose-blockquote:bg-brand-50/40 dark:prose-blockquote:bg-brand-950/20 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic prose-blockquote:text-foreground/80',
               // Tableaux — légers, espacés, sans grille lourde
               'prose-table:text-sm prose-thead:border-b-2 prose-thead:border-border prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-semibold prose-td:px-3 prose-td:py-2 prose-td:border-t prose-td:border-border/60 prose-td:align-top',
