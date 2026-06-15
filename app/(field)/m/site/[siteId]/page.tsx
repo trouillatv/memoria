@@ -19,6 +19,7 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
+import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -296,6 +297,9 @@ export default async function FieldSitePage({
           </div>
         </section>
       )}
+
+      {/* Capture terrain : ➕ Action (intention) · Compte-rendu (riche) · Photo (preuve) */}
+      <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
 
       {/* Compte-rendu multimodal : voix + texte + photos + pièces → décisions */}
       <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" />

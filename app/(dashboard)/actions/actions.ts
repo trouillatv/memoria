@@ -8,9 +8,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { markSiteActionDone, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import { createSiteAction, markSiteActionDone, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 
@@ -166,4 +166,73 @@ export async function cancelActionAction(
   }
   revalidateActionSurfaces(siteId)
   return { ok: true }
+}
+
+const TitleSchema = z.string().trim().min(1, 'Titre requis').max(200)
+const VALID_SOURCES = ['mobile_site', 'desktop_site', 'actions_list'] as const
+
+/**
+ * Création STANDALONE d'une action (capture terrain), SANS compte-rendu ni
+ * réunion. Débloque la boucle Observation → Action, l'événement le plus
+ * fréquent sur un chantier.
+ *
+ * Minimal volontaire : site (obligatoire) + titre. Échéance optionnelle. Aucun
+ * champ ERP (corps d'état, responsable, priorité…) : le terrain capture, le
+ * bureau enrichit ensuite. Sujet = le LIEU, jamais une personne.
+ */
+export async function createQuickActionAction(
+  formData: FormData,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
+    return { ok: false, error: 'Accès refusé' }
+  }
+
+  const siteId = formData.get('site_id')
+  if (typeof siteId !== 'string' || !IdSchema.safeParse(siteId).success) {
+    return { ok: false, error: 'Site requis' }
+  }
+
+  const tParsed = TitleSchema.safeParse(formData.get('title'))
+  if (!tParsed.success) return { ok: false, error: tParsed.error.issues[0]?.message ?? 'Titre requis' }
+
+  // Échéance optionnelle.
+  let dueDate: string | null = null
+  const rawDue = formData.get('due_date')
+  if (typeof rawDue === 'string' && rawDue.trim()) {
+    if (!DateSchema.safeParse(rawDue).success) return { ok: false, error: 'Échéance invalide' }
+    dueDate = rawDue
+  }
+
+  const rawFrom = formData.get('created_from')
+  const createdFrom = typeof rawFrom === 'string' && (VALID_SOURCES as readonly string[]).includes(rawFrom)
+    ? rawFrom
+    : null
+
+  // Garde-fou : le site doit exister et appartenir à l'organisation de l'utilisateur.
+  const supabase = createAdminClient()
+  const orgId = await getOrgId()
+  const { data: site } = await supabase
+    .from('sites')
+    .select('organization_id, deleted_at')
+    .eq('id', siteId)
+    .maybeSingle()
+  const siteRow = site as { organization_id: string | null; deleted_at: string | null } | null
+  if (!siteRow || siteRow.deleted_at) return { ok: false, error: 'Site introuvable' }
+  if (orgId && siteRow.organization_id !== orgId) return { ok: false, error: 'Accès refusé' }
+
+  try {
+    const id = await createSiteAction({
+      site_id: siteId,
+      title: tParsed.data,
+      due_date: dueDate,
+      created_by: user.id,
+      created_from: createdFrom,
+    })
+    revalidateActionSurfaces(siteId)
+    return { ok: true, id }
+  } catch {
+    return { ok: false, error: 'Échec de la création' }
+  }
 }

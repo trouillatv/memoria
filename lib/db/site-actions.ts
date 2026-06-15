@@ -25,6 +25,8 @@ export async function createSiteAction(input: {
   assigned_to?: string | null
   due_date?: string | null
   created_by: string | null
+  /** Provenance (migration 112) : mobile_site / desktop_site / actions_list / report. */
+  created_from?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -38,6 +40,7 @@ export async function createSiteAction(input: {
       assigned_to: input.assigned_to ?? null,
       due_date: input.due_date ?? null,
       created_by: input.created_by,
+      created_from: input.created_from ?? null,
       status: 'open' as SiteActionStatus,
     })
     .select('id')

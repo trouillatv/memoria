@@ -57,6 +57,7 @@ import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
+import { QuickActionButton } from '@/components/actions/QuickActionButton'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -221,6 +222,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         </Link>
         {/* Compte-rendu multimodal — voix + texte + photos + pièces → décisions */}
         <SiteReportLauncher siteId={id} siteName={identity.name} variant="desktop" />
+        {/* ➕ Action standalone — capturer une intention sans compte-rendu */}
+        <QuickActionButton source="desktop_site" siteId={id} variant="desktop" />
       </div>
 
       {/* Navigation onglets — mobile uniquement */}

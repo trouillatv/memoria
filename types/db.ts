@@ -462,6 +462,9 @@ export interface DbSiteAction {
   // Clôture avec trace (migration 107).
   completed_comment: string | null
   completed_photo_path: string | null
+  // Provenance de création (migration 112) : mobile_site / desktop_site /
+  // actions_list / report… NULL = legacy. Observabilité, jamais affiché.
+  created_from: string | null
 }
 
 export type MissionCadence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'on_demand'

@@ -3,8 +3,10 @@ import { redirect } from 'next/navigation'
 import { ListTodo, MapPin, HardHat } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, actionHealth, type ActionHealth, type SiteActionRow } from '@/lib/db/site-actions'
+import { listSites } from '@/lib/db/sites'
 import { EmptyState } from '@/components/ui/empty-state'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
+import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import type { SiteActionStatus } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -39,7 +41,11 @@ export default async function ActionsPage({
     : null
 
   const tab = STATUS_TABS.find((t) => t.key === statusKey)!
-  const all = await listOpenSiteActions({ statuses: tab.statuses })
+  const [all, sites] = await Promise.all([
+    listOpenSiteActions({ statuses: tab.statuses }),
+    listSites(),
+  ])
+  const siteOptions = sites.map((s) => ({ id: s.id, name: s.name }))
 
   // Corps d'état présents (pour les chips).
   const corpsList = [...new Set(all.map((a) => a.corps_etat).filter((v): v is string => !!v))].sort()
@@ -85,15 +91,20 @@ export default async function ActionsPage({
 
   return (
     <div className="space-y-6 w-full">
-      <header>
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <ListTodo className="h-6 w-6 text-muted-foreground" />
-          Actions
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-          Ce qui reste à faire, tous sites confondus — les actions ouvertes issues des réunions.
-          Une action n&apos;est pas une intervention&nbsp;: elle n&apos;entre au planning que si elle est planifiée.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <ListTodo className="h-6 w-6 text-muted-foreground" />
+            Actions
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+            Ce qui reste à faire, tous sites confondus — actions issues des réunions ou créées à la volée.
+            Une action n&apos;est pas une intervention&nbsp;: elle n&apos;entre au planning que si elle est planifiée.
+          </p>
+        </div>
+        <div className="shrink-0">
+          <QuickActionButton source="actions_list" sites={siteOptions} variant="desktop" />
+        </div>
       </header>
 
       {/* Santé des actions ouvertes (ancienneté) — bandeau cliquable. */}
