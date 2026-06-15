@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Mic, MapPin, Building2, ListTodo, AlertTriangle, FileText, ChevronRight } from 'lucide-react'
+import { Mic, MapPin, Building2, ListTodo, AlertTriangle, FileText } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listMeetings, type MeetingListRow } from '@/lib/db/site-reports'
 import { listOpenSiteActionsByReports, type SiteActionRow } from '@/lib/db/site-actions'
@@ -9,6 +9,7 @@ import { listSites } from '@/lib/db/sites'
 import { EmptyState } from '@/components/ui/empty-state'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { NewMeetingButton } from './NewMeetingButton'
+import { DeleteMeetingButton, CleanupDraftMeetingsButton } from './MeetingActions'
 import type { SiteReportStatus } from '@/types/db'
 
 function meetingHeading(m: MeetingListRow): string {
@@ -69,6 +70,7 @@ export default async function MeetingsPage({
   })
 
   const todayIso = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
+  const draftFailedCount = meetings.filter((m) => m.status === 'draft' || m.status === 'failed').length
   const contractOptions = contracts.map((c) => ({ id: c.id, name: c.name }))
   const siteOptions = sites.map((s) => ({ id: s.id, name: s.name }))
 
@@ -112,7 +114,10 @@ export default async function MeetingsPage({
             Le compte-rendu (voix, photos, notes) en est le support brut.
           </p>
         </div>
-        <NewMeetingButton contracts={contractOptions} sites={siteOptions} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <CleanupDraftMeetingsButton count={draftFailedCount} />
+          <NewMeetingButton contracts={contractOptions} sites={siteOptions} />
+        </div>
       </header>
 
       {/* Filtres */}
@@ -223,10 +228,10 @@ function MeetingRow({ m, todayIso }: { m: MeetingListRow; todayIso: string }) {
         : `${m.siteNames.length} sites`
 
   return (
-    <li>
+    <li className="relative">
       <Link
         href={`/meetings/${m.id}`}
-        className="block rounded-lg border bg-card p-3.5 hover:border-foreground/30 hover:bg-muted/20 transition-colors active:scale-[0.997]"
+        className="block rounded-lg border bg-card p-3.5 pr-11 hover:border-foreground/30 hover:bg-muted/20 transition-colors active:scale-[0.997]"
       >
         <div className="flex items-start gap-3">
           <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isContract ? 'bg-violet-50 text-violet-600' : 'bg-sky-50 text-sky-600'}`}>
@@ -263,9 +268,12 @@ function MeetingRow({ m, todayIso }: { m: MeetingListRow; todayIso: string }) {
               )}
             </div>
           </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-1" />
         </div>
       </Link>
+      {/* Corbeille en overlay : surtout pour purger brouillons/échecs de test. */}
+      <div className="absolute right-2 top-2 z-10">
+        <DeleteMeetingButton reportId={m.id} label={heading} />
+      </div>
     </li>
   )
 }
