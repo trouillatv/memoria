@@ -167,6 +167,19 @@ export default async function FieldHomePage({
     }
   }
 
+  // Manager/admin sans équipe : la génération paresseuse ci-dessus ne couvre
+  // que les sites de l'agent. Pour que la vue superviseur d'un jour FUTUR ne soit
+  // pas vide, on s'assure aussi des récurrences de toute l'organisation (idempotent).
+  if (agentSiteIds.length === 0 && (user.role === 'admin' || user.role === 'manager') && user.organization_id) {
+    const { data: orgSites } = await supabase
+      .from('sites')
+      .select('id')
+      .eq('organization_id', user.organization_id)
+      .is('deleted_at', null)
+    const orgSiteIds = (orgSites ?? []).map((s) => s.id as string)
+    if (orgSiteIds.length > 0) await ensureTodayInterventionsForSites(orgSiteIds, 4)
+  }
+
   // Étape 3 — Fetch en parallèle : les records récurrents existent maintenant.
   const fabSitesPromise = agentSiteIds.length > 0
     ? supabase.from('sites').select('id, name').in('id', agentSiteIds).is('deleted_at', null).order('name')
@@ -297,18 +310,20 @@ export default async function FieldHomePage({
     : []
 
   // Vue superviseur : pour les managers/admins sans intervention assignée,
-  // afficher toutes les interventions du jour de l'organisation.
+  // afficher toutes les interventions de l'organisation POUR LA DATE CHOISIE
+  // (pas seulement aujourd'hui — sinon hier/demain restaient vides côté manager).
   const isManager = user.role === 'admin' || user.role === 'manager'
   const orgTodaySites =
-    isManager && isToday && interventions.length === 0 && user.organization_id
-      ? await listOrgTodayInterventions(user.organization_id, todayIso)
+    isManager && interventions.length === 0 && user.organization_id
+      ? await listOrgTodayInterventions(user.organization_id, selectedDate)
       : []
+  const selectedDayLabel = formatScheduledTime(selectedDate).day.toLowerCase()
 
   if (interventions.length === 0 && orgTodaySites.length > 0) {
     return (
       <div className="space-y-6 max-w-md pb-32">
         <DateNav todayIso={todayIso} selectedIso={selectedDate} />
-        <ManagerTodayView sites={orgTodaySites} todayLabel="aujourd'hui" />
+        <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
         <FreePhotoFab sites={fabSites} />
       </div>
     )
