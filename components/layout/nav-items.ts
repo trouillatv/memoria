@@ -20,6 +20,7 @@ import {
   Boxes,
   Search,
   Building2,
+  Mic,
 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
@@ -50,6 +51,9 @@ export const NAV: NavItem[] = [
   { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },
   { href: '/missions',   label: 'Missions',               icon: ClipboardList, roles: ['admin', 'manager'] },
   { href: '/planning',   label: 'Planning',               icon: CalendarDays,  roles: ['admin', 'manager', 'chef_equipe'] },
+  // Réunions = objet métier central (réunion chantier/contrat → décisions →
+  // actions → interventions → briefing). Le compte-rendu n'est que le support brut.
+  { href: '/meetings',   label: 'Réunions',               icon: Mic,           roles: ['admin', 'manager'] },
   { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'] },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },

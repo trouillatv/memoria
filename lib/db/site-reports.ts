@@ -161,6 +161,109 @@ export async function listReportsBySite(siteId: string): Promise<DbSiteReport[]>
   return (data as DbSiteReport[]) ?? []
 }
 
+// ── Listing « Réunions » (cockpit dédié) ────────────────────────────────────
+
+export interface MeetingListRow {
+  id: string
+  type: SiteReportType
+  title: string | null
+  status: SiteReportStatus
+  createdAt: string
+  contractId: string | null
+  contractName: string | null
+  siteNames: string[]
+  /** Décisions détectées (propositions, tous statuts). */
+  decisionCount: number
+  /** Actions encore ouvertes nées de cette réunion. */
+  openActionCount: number
+  /** Blocages / dépendances détectés (risks de type dependency|risk). */
+  blockerCount: number
+}
+
+/** Toutes les réunions de l'organisation, enrichies pour la liste /meetings.
+ *  Résilient : si le socle compte-rendu n'est pas encore migré, renvoie []. */
+export async function listMeetings(): Promise<MeetingListRow[]> {
+  const supabase = createAdminClient()
+  const orgId = await getOrgId()
+
+  let q = supabase.from('site_reports').select('*').order('created_at', { ascending: false })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
+  if (error) return [] // socle non migré → cockpit vide plutôt que crash
+  const reports = (data ?? []) as DbSiteReport[]
+  if (reports.length === 0) return []
+  const reportIds = reports.map((r) => r.id)
+
+  // Contrats
+  const contractIds = [...new Set(reports.map((r) => r.contract_id).filter((v): v is string => !!v))]
+  const contractName = new Map<string, string>()
+  if (contractIds.length > 0) {
+    const { data: cs } = await supabase.from('contracts').select('id, name').in('id', contractIds)
+    for (const c of (cs ?? []) as Array<{ id: string; name: string }>) contractName.set(c.id, c.name)
+  }
+
+  // Sites touchés : report_sites (M:N) + site_id direct
+  const { data: linkRows } = await supabase
+    .from('report_sites')
+    .select('report_id, site_id')
+    .in('report_id', reportIds)
+  const links = (linkRows ?? []) as Array<{ report_id: string; site_id: string }>
+  const sitesByReport = new Map<string, Set<string>>()
+  for (const r of reports) {
+    const set = new Set<string>()
+    if (r.site_id) set.add(r.site_id)
+    sitesByReport.set(r.id, set)
+  }
+  for (const l of links) sitesByReport.get(l.report_id)?.add(l.site_id)
+
+  const allSiteIds = [...new Set([...sitesByReport.values()].flatMap((s) => [...s]))]
+  const siteName = new Map<string, string>()
+  if (allSiteIds.length > 0) {
+    const { data: ss } = await supabase.from('sites').select('id, name').in('id', allSiteIds)
+    for (const s of (ss ?? []) as Array<{ id: string; name: string }>) siteName.set(s.id, s.name)
+  }
+
+  // Décisions (propositions) par réunion
+  const { data: propRows } = await supabase
+    .from('site_report_proposals')
+    .select('report_id')
+    .in('report_id', reportIds)
+  const decisionCount = new Map<string, number>()
+  for (const p of (propRows ?? []) as Array<{ report_id: string }>) {
+    decisionCount.set(p.report_id, (decisionCount.get(p.report_id) ?? 0) + 1)
+  }
+
+  // Actions ouvertes par réunion
+  const { data: actRows } = await supabase
+    .from('site_actions')
+    .select('report_id, status')
+    .in('report_id', reportIds)
+  const openActionCount = new Map<string, number>()
+  for (const a of (actRows ?? []) as Array<{ report_id: string | null; status: string }>) {
+    if (a.report_id && a.status === 'open') {
+      openActionCount.set(a.report_id, (openActionCount.get(a.report_id) ?? 0) + 1)
+    }
+  }
+
+  return reports.map((r) => {
+    const siteSet = sitesByReport.get(r.id) ?? new Set<string>()
+    const blockerCount = (r.risks ?? []).filter((x) => x.kind === 'dependency' || x.kind === 'risk').length
+    return {
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      status: r.status,
+      createdAt: r.created_at,
+      contractId: r.contract_id,
+      contractName: r.contract_id ? contractName.get(r.contract_id) ?? null : null,
+      siteNames: [...siteSet].map((id) => siteName.get(id) ?? '—'),
+      decisionCount: decisionCount.get(r.id) ?? 0,
+      openActionCount: openActionCount.get(r.id) ?? 0,
+      blockerCount,
+    }
+  })
+}
+
 // ── Transitions d'état ──────────────────────────────────────────────────────
 
 export async function setTranscript(
