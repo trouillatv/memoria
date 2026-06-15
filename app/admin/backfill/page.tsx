@@ -38,7 +38,7 @@ export default function BackfillPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Backfill mémoire IA</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Génère les chunks sémantiques pour les items bibliothèque et les AO gagnés/perdus
+          Génère les chunks sémantiques pour les items bibliothèque et les dossiers gagnés/perdus
           existants. À lancer une seule fois après l'activation des embeddings.
           Les nouveaux items sont embeddés automatiquement à la création.
         </p>
@@ -59,7 +59,7 @@ export default function BackfillPage() {
           </li>
           <li className="flex gap-2">
             <span className="text-emerald-600 font-bold">→</span>
-            Fait la même chose pour tous les AO marqués gagné ou perdu qui ont un document PDF extrait
+            Fait la même chose pour tous les dossiers marqués gagné ou perdu qui ont un document PDF extrait
           </li>
           <li className="flex gap-2">
             <span className="text-emerald-600 font-bold">→</span>
@@ -138,7 +138,7 @@ export default function BackfillPage() {
 
               {state.result.library.processed === 0 && state.result.tenders.processed === 0 && (
                 <p className="text-sm text-amber-700">
-                  Aucun item traité — vérifiez que des items bibliothèque existent et que des AO sont marqués gagné ou perdu.
+                  Aucun item traité — vérifiez que des items bibliothèque existent et que des dossiers sont marqués gagné ou perdu.
                 </p>
               )}
             </div>

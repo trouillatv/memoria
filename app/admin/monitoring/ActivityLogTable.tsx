@@ -13,7 +13,7 @@ function formatRelative(iso: string): string {
 }
 
 const ACTION_LABEL: Record<string, string> = {
-  analysis_relaunched:    'Analyse AO relancée',
+  analysis_relaunched:    'Analyse dossier relancée',
   status_changed:         'Changement de statut',
   closed:                 'Mission clôturée',
   soft_deleted:           'Suppression',

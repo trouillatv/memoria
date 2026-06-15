@@ -37,16 +37,16 @@ export async function extractEngagementsAction(formData: FormData) {
   if (!parsed.success) return { error: 'Invalid input' }
 
   const existing = await listEngagementsByTender(parsed.data.tender_id)
-  if (existing.length > 0) return { error: 'Engagements déjà extraits pour cet AO' }
+  if (existing.length > 0) return { error: 'Engagements déjà extraits pour ce dossier' }
 
   const tender = await getTender(parsed.data.tender_id)
-  if (!tender) return { error: 'AO introuvable' }
+  if (!tender) return { error: 'Dossier introuvable' }
 
   const [doc, analysis] = await Promise.all([
     getTenderDocument(parsed.data.tender_id),
     getLatestTenderAnalysis(parsed.data.tender_id),
   ])
-  if (!doc?.extracted_text) return { error: 'Pas de texte extrait sur le document AO' }
+  if (!doc?.extracted_text) return { error: 'Pas de texte extrait sur le document du dossier' }
 
   const result = await runEngagementExtractionAgent({
     aoText: doc.extracted_text,

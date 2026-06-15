@@ -32,7 +32,7 @@ import { usdToXpf, fmtXpf, fmtUsd } from '@/lib/currency/xpf'
 const FEATURE_LABELS: Record<string, string> = {
   embed_chunks_document:        'Embeddings documents',
   embed_chunks_library:         'Embeddings bibliothèque',
-  embed_chunks_tender_history:  'Embeddings historique AO',
+  embed_chunks_tender_history:  'Embeddings historique dossiers',
   embed_trace_site_note:        'Embeddings notes site',
   embed_trace_anomaly:          'Embeddings anomalies',
   embed_trace_intervention_note: 'Embeddings notes intervention',

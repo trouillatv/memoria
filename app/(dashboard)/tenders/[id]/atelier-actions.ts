@@ -287,7 +287,7 @@ export async function sendChatMessageAction(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
   const tender = await getTender(parsed.data.tender_id)
-  if (!tender) return { error: 'AO introuvable' }
+  if (!tender) return { error: 'Dossier introuvable' }
 
   // Rôle appelant : filtre le recall documentaire par visibility_level.
   const role = await getUserRoleById(userId)

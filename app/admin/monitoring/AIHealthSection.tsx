@@ -77,7 +77,7 @@ export async function AIHealthSection() {
             }`}
           >
             {health.status === 'no_key'
-              ? 'Les résonances, persistances et le matching AO fonctionnent en mode V1 (token overlap uniquement). Définissez GOOGLE_GENAI_API_KEY dans les variables d\'environnement pour activer les embeddings.'
+              ? 'Les résonances, persistances et le matching dossiers fonctionnent en mode V1 (token overlap uniquement). Définissez GOOGLE_GENAI_API_KEY dans les variables d\'environnement pour activer les embeddings.'
               : health.errorMsg}
           </div>
         </div>

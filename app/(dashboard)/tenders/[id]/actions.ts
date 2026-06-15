@@ -30,7 +30,7 @@ export async function relaunchAnalysisAction(formData: FormData) {
   if (!parsed.success) return { error: 'Invalid id' }
 
   const tender = await getTender(parsed.data.id)
-  if (!tender) return { error: 'AO introuvable' }
+  if (!tender) return { error: 'Dossier introuvable' }
 
   const doc = await getTenderDocument(parsed.data.id)
   if (!doc || !doc.extracted_text) return { error: 'Pas de texte extrait — re-uploader le PDF' }
@@ -161,7 +161,7 @@ export async function insertEvidenceIntoMemoire({
     .maybeSingle()
 
   if (fetchErr || !analysis) {
-    return { ok: false, error: "Analyse de l'AO introuvable" }
+    return { ok: false, error: "Analyse du dossier introuvable" }
   }
 
   const currentMemo = analysis.technical_memo ?? ''
