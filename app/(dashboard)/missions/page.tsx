@@ -138,8 +138,11 @@ export default async function MissionsPage() {
   const critical = active
     .filter((m) => healthBy.get(m.id)!.level === 'red')
     .sort((a, b) => severity(healthBy.get(b.id)!, b.openAnomalyCount) - severity(healthBy.get(a.id)!, a.openAnomalyCount))
-  const topCritical = critical.slice(0, 3)
-  const moreCritical = critical.slice(3)
+  // Priorité n°1 = la mission la plus critique (« si je ne fais qu'une chose »).
+  const priority = critical[0] ?? null
+  const restCritical = critical.slice(1)
+  const topRest = restCritical.slice(0, 3)
+  const moreRest = restCritical.slice(3)
 
   // « À actionner » — compteurs (rouge rare : retard + anomalies ; orange : manques).
   const counts = {
@@ -222,24 +225,52 @@ export default async function MissionsPage() {
             <ActionStat tone="orange" icon={<Users className="h-3.5 w-3.5" />} value={counts.sansEquipe} label="sans équipe" />
           </>
         )}
-        <Link
-          href="/planning"
-          className="ml-auto inline-flex items-center gap-1 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
-        >
-          Planifier <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+        {counts.sansProchaine > 0 ? (
+          <Link
+            href="/planning"
+            className="ml-auto inline-flex items-center gap-1 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
+          >
+            Planifier les {counts.sansProchaine} sans prochaine <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        ) : (
+          <Link
+            href="/planning"
+            className="ml-auto inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Planning <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        )}
       </div>
 
-      {/* ── A. SANTÉ DU PORTEFEUILLE — l'état global en une barre ───────────── */}
+      {/* ── PRIORITÉ N°1 — « si je ne fais qu'une chose aujourd'hui » ───────── */}
+      {priority && (() => {
+        const h = healthBy.get(priority.id)!
+        return (
+          <Link href={missionHref(priority)}
+            className="group flex items-start gap-3 rounded-xl border-2 border-red-300 bg-red-50 p-4 hover:border-red-400 transition-colors">
+            <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">#1</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-red-700">Priorité du jour</div>
+              <div className="text-base font-semibold leading-tight mt-0.5">{priority.name}</div>
+              <div className="text-xs text-muted-foreground">{priority.siteName}</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {h.chips.filter((c) => c.tone === 'red').map((c, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">{c.label}</span>
+                ))}
+              </div>
+            </div>
+            <span className="shrink-0 self-center inline-flex items-center gap-1 rounded-md bg-red-600 text-white px-3 py-1.5 text-xs font-medium group-hover:bg-red-700">
+              Voir <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          </Link>
+        )
+      })()}
+
+      {/* ── SANTÉ DU PORTEFEUILLE — donut compact (état global, glanceable) ── */}
       {active.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-            {portfolio.green > 0 && <div className="bg-emerald-500" style={{ width: `${(portfolio.green / active.length) * 100}%` }} />}
-            {portfolio.orange > 0 && <div className="bg-amber-500" style={{ width: `${(portfolio.orange / active.length) * 100}%` }} />}
-            {portfolio.red > 0 && <div className="bg-red-500" style={{ width: `${(portfolio.red / active.length) * 100}%` }} />}
-          </div>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-            <span className="font-medium text-foreground">{active.length} mission{active.length > 1 ? 's' : ''}</span>
+        <div className="inline-flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
+          <HealthDonut green={portfolio.green} orange={portfolio.orange} red={portfolio.red} total={active.length} />
+          <div className="space-y-1 text-xs">
             <LegendDot tone="green" label="en rythme" value={portfolio.green} />
             <LegendDot tone="orange" label="à surveiller" value={portfolio.orange} />
             <LegendDot tone="red" label="critique" value={portfolio.red} />
@@ -247,14 +278,14 @@ export default async function MissionsPage() {
         </div>
       )}
 
-      {/* ── CRITIQUE — spotlight, grosses cartes (max 3) ───────────────────── */}
-      {topCritical.length > 0 && (
+      {/* ── AUTRES CRITIQUES (hors priorité n°1) ───────────────────────────── */}
+      {topRest.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-red-700 inline-flex items-center gap-1.5">
-            <AlertTriangle className="h-3.5 w-3.5" /> Critique ({critical.length})
+            <AlertTriangle className="h-3.5 w-3.5" /> Autres critiques ({restCritical.length})
           </h2>
           <div className="grid gap-3 sm:grid-cols-3">
-            {topCritical.map((m) => {
+            {topRest.map((m) => {
               const h = healthBy.get(m.id)!
               return (
                 <Link key={m.id} href={missionHref(m)}
@@ -275,14 +306,14 @@ export default async function MissionsPage() {
               )
             })}
           </div>
-          {moreCritical.length > 0 && (
+          {moreRest.length > 0 && (
             <details className="group">
               <summary className="cursor-pointer text-xs text-red-700 hover:underline list-none inline-flex items-center gap-1">
                 <ChevronRight className="h-3.5 w-3.5 group-open:rotate-90 transition-transform" />
-                Voir les {moreCritical.length} autres critiques
+                Voir les {moreRest.length} autres
               </summary>
               <ul className="mt-1.5 divide-y rounded-lg border">
-                {moreCritical.map((m) => {
+                {moreRest.map((m) => {
                   const h = healthBy.get(m.id)!
                   return (
                     <li key={m.id}>
@@ -304,7 +335,8 @@ export default async function MissionsPage() {
       {(teamLoad.length > 0 || sansEquipeCount > 0) && (
         <section className="space-y-2">
           <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5" /> Charge par équipe
+            <Users className="h-3.5 w-3.5" /> Missions par équipe
+            <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— les plus sollicitées</span>
           </h2>
           <div className="space-y-1.5">
             {teamLoad.map((t) => {
@@ -397,6 +429,37 @@ function ActionStat({ tone, icon, value, label }: { tone: Tone; icon: React.Reac
       <span className="font-bold tabular-nums">{value}</span>
       <span className={dim ? '' : 'text-muted-foreground'}>{label}</span>
     </span>
+  )
+}
+
+function HealthDonut({ green, orange, red, total }: { green: number; orange: number; red: number; total: number }) {
+  const size = 76
+  const stroke = 9
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const segs = [
+    { v: green, color: '#10b981' },
+    { v: orange, color: '#f59e0b' },
+    { v: red, color: '#ef4444' },
+  ].filter((s) => s.v > 0)
+  let acc = 0
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
+      {segs.map((s, i) => {
+        const frac = total > 0 ? s.v / total : 0
+        const dash = frac * c
+        const offset = -acc * c
+        acc += frac
+        return (
+          <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={s.color} strokeWidth={stroke}
+            strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        )
+      })}
+      <text x={size / 2} y={size / 2 - 1} textAnchor="middle" className="fill-foreground" fontSize="18" fontWeight="700">{total}</text>
+      <text x={size / 2} y={size / 2 + 11} textAnchor="middle" className="fill-muted-foreground" fontSize="7.5">missions</text>
+    </svg>
   )
 }
 
