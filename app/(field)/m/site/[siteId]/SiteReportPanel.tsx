@@ -215,68 +215,81 @@ export function SiteReportPanel({
   function handleAnalyze() {
     if (recording) stopRecording()
     startTransition(async () => {
-      setStep('working')
+      let createdId: string | null = null
+      try {
+        setStep('working')
 
-      // 1. Brouillon (le texte ET l'audio partent EN PREMIER — persistés).
-      setWorking('Enregistrement du compte-rendu…')
-      const fd = new FormData()
-      fd.set('report_type', reportType)
-      if (reportType === 'contract' && contractId) fd.set('contract_id', contractId)
-      else if (siteId) fd.set('site_id', siteId)
-      if (text.trim()) fd.set('text_input', text.trim())
-      if (audioBlob) {
-        fd.set('audio', audioBlob, 'note.webm')
-        fd.set('audio_mime', audioMime)
-        fd.set('audio_duration_seconds', String(elapsed))
-      }
-      const draft = await createReportDraftAction(fd)
-      if (!draft.ok) { toast.error(draft.error); setStep('capture'); return }
-      setReportId(draft.reportId)
+        // 1. Brouillon (le texte ET l'audio partent EN PREMIER — persistés).
+        setWorking('Enregistrement du compte-rendu…')
+        const fd = new FormData()
+        fd.set('report_type', reportType)
+        if (reportType === 'contract' && contractId) fd.set('contract_id', contractId)
+        else if (siteId) fd.set('site_id', siteId)
+        if (text.trim()) fd.set('text_input', text.trim())
+        if (audioBlob) {
+          fd.set('audio', audioBlob, 'note.webm')
+          fd.set('audio_mime', audioMime)
+          fd.set('audio_duration_seconds', String(elapsed))
+        }
+        const draft = await createReportDraftAction(fd)
+        if (!draft.ok) { toast.error(draft.error); setStep('capture'); return }
+        createdId = draft.reportId
+        setReportId(draft.reportId)
 
-      // 2. Upload des pièces
-      if (attachments.length > 0) {
-        setWorking(`Envoi des pièces (${attachments.length})…`)
-        for (const a of attachments) {
-          const file = filesRef.current.get(a.clientUuid)
-          if (!file) continue
-          const afd = new FormData()
-          afd.set('report_id', draft.reportId)
-          afd.set('kind', a.kind)
-          afd.set('client_uuid', a.clientUuid)
-          afd.set('file', file)
-          await uploadReportAttachmentAction(afd)
+        // 2. Upload des pièces
+        if (attachments.length > 0) {
+          setWorking(`Envoi des pièces (${attachments.length})…`)
+          for (const a of attachments) {
+            const file = filesRef.current.get(a.clientUuid)
+            if (!file) continue
+            const afd = new FormData()
+            afd.set('report_id', draft.reportId)
+            afd.set('kind', a.kind)
+            afd.set('client_uuid', a.clientUuid)
+            afd.set('file', file)
+            await uploadReportAttachmentAction(afd)
+          }
+        }
+
+        // 3. Transcription (si audio)
+        let transcriptText = ''
+        if (draft.hasAudio) {
+          setWorking('Transcription de la note vocale…')
+          const tr = await transcribeReportAction(draft.reportId)
+          if (tr.ok) transcriptText = tr.transcript
+        }
+
+        // 4. Rien à analyser (transcription échouée + pas de texte saisi) → on
+        //    s'arrête proprement : l'audio est sauvegardé, on reprendra plus tard.
+        const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
+        if (!hasContent) {
+          setSavedNote(
+            draft.hasAudio
+              ? "Audio enregistré, mais la transcription n'a pas pu se faire (service IA indisponible). Le compte-rendu est sauvegardé — vous pourrez le reprendre plus tard."
+              : 'Compte-rendu sauvegardé.',
+          )
+          setStep('saved')
+          return
+        }
+
+        // 5. Analyse directe → curation (plus d'écran de relecture).
+        const ok = await runAnalysis(draft.reportId, transcriptText)
+        if (!ok) {
+          setSavedNote("Le compte-rendu et l'audio sont sauvegardés, mais l'analyse n'a pas pu se faire. Réessayez dans un moment.")
+          setStep('saved')
+          return
+        }
+        setStep('curation')
+      } catch (e) {
+        // Filet ultime : aucune erreur ne doit laisser le bouton « sans réponse ».
+        toast.error(e instanceof Error ? e.message : 'Une erreur est survenue')
+        if (createdId) {
+          setSavedNote("Une erreur est survenue, mais le compte-rendu (et l'audio) est sauvegardé. Réessayez dans un moment.")
+          setStep('saved')
+        } else {
+          setStep('capture')
         }
       }
-
-      // 3. Transcription (si audio)
-      let transcriptText = ''
-      if (draft.hasAudio) {
-        setWorking('Transcription de la note vocale…')
-        const tr = await transcribeReportAction(draft.reportId)
-        if (tr.ok) transcriptText = tr.transcript
-      }
-
-      // 4. Rien à analyser (transcription échouée + pas de texte saisi) → on
-      //    s'arrête proprement : l'audio est sauvegardé, on reprendra plus tard.
-      const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
-      if (!hasContent) {
-        setSavedNote(
-          draft.hasAudio
-            ? "Audio enregistré, mais la transcription n'a pas pu se faire (service IA indisponible). Le compte-rendu est sauvegardé — vous pourrez le reprendre plus tard."
-            : 'Compte-rendu sauvegardé.',
-        )
-        setStep('saved')
-        return
-      }
-
-      // 5. Analyse directe → curation (plus d'écran de relecture).
-      const ok = await runAnalysis(draft.reportId, transcriptText)
-      if (!ok) {
-        setSavedNote("Le compte-rendu et l'audio sont sauvegardés, mais l'analyse n'a pas pu se faire. Réessayez dans un moment.")
-        setStep('saved')
-        return
-      }
-      setStep('curation')
     })
   }
 
@@ -284,19 +297,25 @@ export function SiteReportPanel({
   function handleRetry() {
     if (!reportId) return
     startTransition(async () => {
-      setStep('working')
-      let transcriptText = ''
-      setWorking('Nouvelle tentative de transcription…')
-      const tr = await transcribeReportAction(reportId)
-      if (tr.ok) transcriptText = tr.transcript
-      const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
-      if (!hasContent) {
-        setSavedNote("Toujours indisponible. L'audio reste sauvegardé — réessayez plus tard.")
+      try {
+        setStep('working')
+        let transcriptText = ''
+        setWorking('Nouvelle tentative de transcription…')
+        const tr = await transcribeReportAction(reportId)
+        if (tr.ok) transcriptText = tr.transcript
+        const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
+        if (!hasContent) {
+          setSavedNote("Toujours indisponible. L'audio reste sauvegardé — réessayez plus tard.")
+          setStep('saved')
+          return
+        }
+        const ok = await runAnalysis(reportId, transcriptText)
+        setStep(ok ? 'curation' : 'saved')
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Une erreur est survenue')
+        setSavedNote("Une erreur est survenue. L'audio reste sauvegardé — réessayez plus tard.")
         setStep('saved')
-        return
       }
-      const ok = await runAnalysis(reportId, transcriptText)
-      setStep(ok ? 'curation' : 'saved')
     })
   }
 
