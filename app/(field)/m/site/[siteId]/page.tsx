@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteResumeContext } from '@/lib/db/interventions'
+import { listSiteASavoirActive } from '@/lib/db/sites'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getSiteReadings,
@@ -135,11 +136,13 @@ export default async function FieldSitePage({
         .eq('scheduled_for', todayIso)
         .neq('status', 'skipped')
         .order('planned_start', { ascending: true })).data) ?? []) as TodayIntv[]
-  const [siteAnomalies, recentPhotos] = await Promise.all([
+  const [siteAnomalies, recentPhotos, aSavoir] = await Promise.all([
     getSiteAnomalies(siteId).catch(() => []),
     getSiteRecentPhotos(siteId, 6).catch(() => []),
+    listSiteASavoirActive(siteId).catch(() => []),
   ])
-  const openAnomaliesCount = siteAnomalies.filter((a) => a.status === 'open').length
+  const openAnomalies = siteAnomalies.filter((a) => a.status === 'open')
+  const openAnomaliesCount = openAnomalies.length
 
   // V5.1.4 — Mémoire IA périphérique (Vincent 2026-05-15)
   const siteTransmissions = await getSiteTransmissionReadings(siteId, siteContinuity)
@@ -223,6 +226,30 @@ export default async function FieldSitePage({
           <p className="text-sm text-muted-foreground italic">Aucune intervention prévue ici aujourd&apos;hui.</p>
         )}
       </section>
+
+      {/* ATTENTION — vigilances persistantes (à savoir) + anomalies ouvertes.
+          Niveau 1 (ce qui doit alerter à l'arrivée), distinct de la mémoire en bas. */}
+      {(aSavoir.length > 0 || openAnomalies.length > 0) && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5">
+            <AlertTriangle className="h-4 w-4" /> Attention
+          </h2>
+          <ul className="space-y-1.5">
+            {aSavoir.slice(0, 4).map((n) => (
+              <li key={n.id} className="text-sm text-amber-900 flex gap-1.5">
+                <span aria-hidden>⚠</span>
+                <span className="min-w-0">{n.body}</span>
+              </li>
+            ))}
+            {openAnomalies.slice(0, 3).map((a) => (
+              <li key={a.id} className="text-sm text-amber-900 flex gap-1.5">
+                <span aria-hidden>⚠</span>
+                <span className="min-w-0">{a.description}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {lastNotable && (
         <p className="text-[13px] italic text-muted-foreground leading-relaxed">

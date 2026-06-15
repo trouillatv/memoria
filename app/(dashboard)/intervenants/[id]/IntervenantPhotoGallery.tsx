@@ -51,7 +51,7 @@ export function IntervenantPhotoGallery({ photos }: Props) {
     <>
       <div className="space-y-2">
         <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(72px,1fr))]">
-          {photos.slice(0, 12).map((p, i) => (
+          {photos.slice(0, 4).map((p, i) => (
             <button
               key={p.id}
               onClick={() => {
@@ -70,10 +70,14 @@ export function IntervenantPhotoGallery({ photos }: Props) {
             </button>
           ))}
         </div>
-        {photos.length > 12 && (
-          <p className="text-[10px] text-muted-foreground">
-            {photos.length} photos déposées ({photos.length - 12} de plus dans l’historique)
-          </p>
+        {photos.length > 4 && (
+          <button
+            type="button"
+            onClick={() => { setIndex(4); setOpen(true) }}
+            className="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+          >
+            +{photos.length - 4} autre{photos.length - 4 > 1 ? 's' : ''}
+          </button>
         )}
       </div>
 

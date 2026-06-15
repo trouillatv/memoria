@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, QrCode, Sparkles, ListTodo } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -113,6 +113,17 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
   const teamsKnowledge = await getSiteTeamsKnowledge(id)
+
+  // « Si j'envoyais quelqu'un ici demain » — transmission actionnable. Recompose
+  // à savoir + équipes qui connaissent + dernier intervenant (données déjà chargées).
+  const transmitItems = aSavoirActive.slice(0, 3).map((n) => n.body)
+  const knownTeams = teamsKnowledge
+    .filter((t) => t.interventionsDocumentedCount > 0)
+    .slice(0, 4)
+    .map((t) => t.team_name)
+  const lastIntervenant = [...continuity.predecessors]
+    .sort((a, b) => (a.lastSeenAt < b.lastSeenAt ? 1 : -1))[0]?.firstName ?? null
+  const showSendBlock = transmitItems.length > 0 || knownTeams.length > 0 || !!lastIntervenant
 
   // Transmission (IA de continuité) — dépend de la continuity déjà chargée.
   const transmissions = await getSiteTransmissionReadings(id, continuity)
@@ -217,6 +228,46 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           </CardHeader>
           <CardContent className="pt-0">
             <OpenActionsList actions={openActions} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* « Si j'envoyais quelqu'un ici demain » — transmission actionnable. */}
+      {showSendBlock && (
+        <Card className={cn(tabClass('apercu'))}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+              Si vous envoyez une équipe ici demain
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3 text-sm">
+            {transmitItems.length > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">À transmettre</div>
+                <ul className="space-y-0.5">
+                  {transmitItems.map((t, i) => (
+                    <li key={i} className="flex gap-1.5"><span className="text-amber-600" aria-hidden>⚠</span><span className="min-w-0">{t}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {knownTeams.length > 0 && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Équipes qui connaissent déjà le site</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {knownTeams.map((name) => (
+                    <span key={name} className="inline-flex items-center rounded-full border bg-card px-2.5 py-0.5 text-xs">{name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {lastIntervenant && (
+              <div>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier intervenant</span>
+                <span className="ml-2">{lastIntervenant}</span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
