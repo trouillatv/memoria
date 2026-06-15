@@ -32,6 +32,10 @@
 23. [Le tableau de bord vivant](#23-le-tableau-de-bord-vivant)
 24. [Importer par lot & tri d'ingestion](#24-importer-par-lot--tri-dingestion)
 25. [Continuité des contrats (CDD, prolongation)](#25-continuité-des-contrats-cdd-prolongation)
+26. [Le Compte-rendu chantier — raconter, MemorIA distribue](#26-le-compte-rendu-chantier--raconter-memoria-distribue)
+27. [**Les Réunions — le cockpit des décisions**](#27-les-réunions--le-cockpit-des-décisions)
+28. [**Les Actions — ce qui reste à faire**](#28-les-actions--ce-qui-reste-à-faire)
+29. [**Contributions externes — qui a fait quoi**](#29-contributions-externes--qui-a-fait-quoi)
 
 ---
 
@@ -998,6 +1002,70 @@ Depuis un chantier (fiche site, ou page mobile `/m/site`), le bouton **« Compte
 
 > [!TIP] Le moteur d'alimentation
 > Plus besoin de créer manuellement missions, interventions, notes et anomalies une par une. Vous **racontez votre journée ou votre réunion**, et MemorIA distribue l'information au bon endroit. Le sujet reste **le lieu**, jamais le jugement d'une personne.
+
+---
+
+## 27. Les Réunions — le cockpit des décisions
+
+URL : `/meetings` · libellé du menu : **Réunions**
+
+Le **compte-rendu** (ch.26) est le *support brut* : voix, photos, notes. La **réunion** est l'*objet vivant* qui en sort — celui qui produit décisions, actions et blocages. Le menu **Réunions** est la porte d'entrée dédiée : un cockpit de toutes vos réunions, plutôt qu'un bouton caché dans une fiche.
+
+**La liste** affiche, par réunion (la plus récente en haut) :
+- le **type** — *Réunion contrat* (multi-sites) ou *Réunion site* ;
+- le **contrat** et le(s) **site(s)** concernés ;
+- la **date**, le nombre de **décisions**, d'**actions ouvertes**, de **blocages** ;
+- le **statut** : *Brouillon* / *Analysé* / *Validé*.
+
+**Les filtres** ne se contentent pas de réduire la liste : les chips **« Actions ouvertes »** et **« Blocages »** basculent vers une **vue groupée par réunion** — vous voyez *uniquement* les actions ouvertes (cochables sur place) ou les blocages de chaque réunion, en date décroissante.
+
+**Nouvelle réunion** : le bouton propose **Réunion de contrat** (vous choisissez un contrat → l'IA route chaque décision vers le bon site, vous confirmez) ou **Réunion de site**. Vous retombez ensuite sur le moteur de capture du chapitre 26.
+
+> [!TIP] L'invariant
+> Une réunion peut englober plusieurs sites, mais **chaque décision validée reste rattachée à son site**. La réunion est l'origine ; la mémoire vit sur le lieu.
+
+---
+
+## 28. Les Actions — ce qui reste à faire
+
+URL : `/actions` · libellé du menu : **Actions**
+
+Une **action ouverte** = « il faut faire X » (relancer SudÉlec, appeler le SOCOTEC, confirmer une livraison…). Ce n'est ni une intervention, ni une mission, ni une anomalie : c'est ce qu'on note en sortant d'une réunion. C'est devenu un **pilier à part entière** :
+
+| Surface | Répond à |
+|---|---|
+| **Missions** | quels modèles de travail ? |
+| **Planning** | quelles interventions datées ? |
+| **Réunions** | quelles décisions prises ? |
+| **Actions** | qu'est-ce qui reste à faire, tous sites confondus ? |
+
+**Le cockpit `/actions`** liste les actions ouvertes groupées par site, avec leur **santé** (par ancienneté, déterministe) : 🔴 **critique** (≥ 14 j) · 🟠 **à surveiller** (7–13 j) · 🟢 **en rythme** (< 7 j). Filtres par statut, corps d'état, et un bandeau santé cliquable. Un **compteur** apparaît sur l'entrée *Actions* de la navigation (pastille rouge s'il y a du critique) — *le danger n'est pas d'oublier de créer les actions, c'est de ne plus les regarder.*
+
+**On les voit partout** : sur la fiche site (« Actions ouvertes »), sur le mobile (`/m/site` → *À suivre*, et `/m/actions`), et dans le **Briefing du soir** (« Actions ouvertes à ne pas oublier », distinctes des interventions planifiées).
+
+**Clôturer une action** ne se fait pas d'une simple case : on **clôture avec une trace** — un **commentaire** (obligatoire) et une **photo** (optionnelle). L'action terminée devient alors un **événement au journal du site** (« Action clôturée : … »). L'ouverte *pilote* ; la terminée *raconte l'histoire du chantier*.
+
+**Planifier une action** (mode bureau) : le bouton **« Planifier »** la transforme en **intervention datée** — vous choisissez une mission (existante ou nouvelle), une date et un créneau. L'action passe alors en *planifiée* et apparaît dans le planning.
+
+> [!IMPORTANT] Doctrine
+> Une action **n'est pas** une intervention : elle n'entre au planning **que si vous la planifiez**. Et l'exécutant interne **n'est jamais nommé** (pas de pointage). La santé mesure l'**âge de l'action**, jamais une personne.
+
+---
+
+## 29. Contributions externes — qui a fait quoi
+
+Quand vous **partagez une intervention** à un externe (sous-traitant, livreur, bureau de contrôle), vous ne lui exposez plus toute l'intervention : vous lui confiez une **contribution** — *une partie de la checklist*, au nom d'une **entreprise**.
+
+**Au partage** (bouton *Partager à un externe*), vous indiquez l'entreprise et **cochez les tâches** que vous lui confiez. Une tâche déjà confiée à un autre externe est grisée (un seul exécutant externe par tâche).
+
+**Côté externe** (lien `/i/…`, sans compte) : il ne voit **que ses tâches** (« Vos tâches »), peut **photographier** chaque tâche, laisser un **commentaire**, et **signer une fois** (la signature vaut pour toute sa contribution).
+
+**Côté entreprise**, sur l'intervention : chaque tâche réalisée porte un badge **« Réalisé par {entreprise} · {date} »**, avec ses photos juste en dessous. La checklist devient un **registre « qui a fait quoi »**.
+
+> [!IMPORTANT] L'externe ne clôture jamais
+> Une validation externe est une **preuve d'exécution**, pas une clôture. Quand un externe a validé, l'écran ne dit plus « Démarrer » mais **« Réalisée par l'externe → Contrôler et clôturer »** : vous gardez le dernier mot (contrôle, réserves, clôture).
+
+**Le PDF de preuves** (Dossier de preuves, ch.16) reprend tout : par contribution, l'**entreprise**, le nombre de tâches, les photos, le **commentaire** et la **signature manuscrite** — *visuel pour agir dans l'app, PDF pour prouver en litige*. Le nom de l'entreprise y figure (preuve contractuelle), jamais celui d'un salarié interne.
 
 ---
 
