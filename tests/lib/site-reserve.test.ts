@@ -28,12 +28,12 @@ function reserve(over: Partial<SiteReserve> = {}): SiteReserve {
 }
 
 describe('statusLabel — vocabulaire juridique', () => {
-  it('open → "Ouverte"', () => {
-    expect(statusLabel('open')).toBe('Ouverte')
+  it('open → "Ouvert"', () => {
+    expect(statusLabel('open')).toBe('Ouvert')
   })
 
-  it('lifted → "Levée" (jamais "résolu")', () => {
-    expect(statusLabel('lifted')).toBe('Levée')
+  it('lifted → "Levé" (jamais "résolu")', () => {
+    expect(statusLabel('lifted')).toBe('Levé')
   })
 
   it('n’emploie jamais le terme "résolu"', () => {

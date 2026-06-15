@@ -34,8 +34,8 @@ export interface SiteReserve {
 
 // VOCABULAIRE JURIDIQUE : 'lifted' s'affiche "Levée", jamais "résolu".
 export const RESERVE_STATUS_META: Record<ReserveStatus, { label: string }> = {
-  open:   { label: 'Ouverte' },
-  lifted: { label: 'Levée' },
+  open:   { label: 'Ouvert' },
+  lifted: { label: 'Levé' },
 }
 
 export function statusLabel(status: ReserveStatus): string {

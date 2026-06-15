@@ -197,7 +197,7 @@ export function JournalView({ entries }: Props) {
             {/* Météo / intempérie du jour (sobre, jamais rouge) */}
             {entry.intemperie && (
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 shrink-0">
-                🌧️ Intempérie
+                🌧️ Journée empêchée
               </span>
             )}
             {weatherMeta && !entry.intemperie && (

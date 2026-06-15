@@ -77,7 +77,7 @@ export function DeliveryForm({ siteId }: { siteId: string }) {
         <div className="space-y-1">
           <label htmlFor="d-supplier" className="text-xs text-muted-foreground">Fournisseur</label>
           <input id="d-supplier" name="supplier" type="text" maxLength={200} disabled={pending}
-            placeholder="ex. Centrale BPE Numbo" className={inputClass} />
+            placeholder="ex. nom du fournisseur" className={inputClass} />
         </div>
 
         <div className="space-y-1">
@@ -87,28 +87,28 @@ export function DeliveryForm({ siteId }: { siteId: string }) {
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="d-zone" className="text-xs text-muted-foreground">Ouvrage / zone</label>
+          <label htmlFor="d-zone" className="text-xs text-muted-foreground">Zone / local</label>
           <input id="d-zone" name="zone" type="text" maxLength={200} disabled={pending}
-            placeholder="ex. Voile R+1, semelles" className={inputClass} />
+            placeholder="ex. zone ou local concerné" className={inputClass} />
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="d-material" className="text-xs text-muted-foreground">Matériau</label>
+          <label htmlFor="d-material" className="text-xs text-muted-foreground">Produit / matériau</label>
           <input id="d-material" name="material" type="text" maxLength={200} disabled={pending}
-            placeholder="ex. Béton C25/30" className={inputClass} />
+            placeholder="ex. nature du produit livré" className={inputClass} />
         </div>
 
         <div className="space-y-1">
           <label htmlFor="d-quantity" className="text-xs text-muted-foreground">Quantité</label>
           <input id="d-quantity" name="quantity" type="text" maxLength={120} disabled={pending}
-            placeholder="ex. 12 m³, 3 palettes" className={inputClass} />
+            placeholder="ex. 12 unités, 3 palettes" className={inputClass} />
         </div>
       </div>
 
       <div className="space-y-1">
         <label htmlFor="d-note" className="text-xs text-muted-foreground">Note (optionnelle)</label>
         <input id="d-note" name="note" type="text" maxLength={500} disabled={pending}
-          placeholder="ex. Toupie arrivée à 7h15, écart de 0,5 m³ noté sur le bon" className={inputClass} />
+          placeholder="ex. écart constaté noté sur le bon" className={inputClass} />
       </div>
 
       <div className="space-y-1">

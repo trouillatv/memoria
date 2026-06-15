@@ -1,8 +1,8 @@
 'use client'
 
-// Saisie d'une réserve dressée à la réception (OPR) par la MOE.
-// Sobre et descriptif (doctrine : pas d'alerte rouge, pas de gamification).
-// La photo de constat (avant) est la pièce qui documente le défaut.
+// Saisie d'un point à lever (constat à corriger), émis par un tiers (client,
+// contrôleur, maître d'œuvre…). Sobre et descriptif (doctrine : pas d'alerte
+// rouge, pas de gamification). La photo de constat (avant) documente le défaut.
 
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -41,7 +41,7 @@ export function ReserveForm({ siteId }: { siteId: string }) {
         toast.error(r.error)
         return
       }
-      toast.success('Réserve enregistrée')
+      toast.success('Point enregistré')
       formRef.current?.reset()
       setIssuedOn(todayNoumea())
       router.refresh()
@@ -58,11 +58,11 @@ export function ReserveForm({ siteId }: { siteId: string }) {
     >
       <div className="flex items-center gap-2">
         <ClipboardList className="h-4 w-4 text-muted-foreground" aria-hidden />
-        <h2 className="text-sm font-medium">Nouvelle réserve</h2>
+        <h2 className="text-sm font-medium">Nouveau point à lever</h2>
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="r-label" className="text-xs text-muted-foreground">Libellé de la réserve</label>
+        <label htmlFor="r-label" className="text-xs text-muted-foreground">Libellé du point</label>
         <input
           id="r-label"
           name="label"
@@ -70,7 +70,7 @@ export function ReserveForm({ siteId }: { siteId: string }) {
           maxLength={280}
           required
           disabled={pending}
-          placeholder="ex. Fissure mur axe 4"
+          placeholder="ex. point à corriger"
           className={inputClass}
         />
       </div>
@@ -89,7 +89,7 @@ export function ReserveForm({ siteId }: { siteId: string }) {
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="r-location" className="text-xs text-muted-foreground">Ouvrage / zone</label>
+          <label htmlFor="r-location" className="text-xs text-muted-foreground">Zone / local</label>
           <input id="r-location" name="location" type="text" maxLength={140} disabled={pending}
             placeholder="ex. RDC — hall" className={inputClass} />
         </div>
@@ -97,7 +97,7 @@ export function ReserveForm({ siteId }: { siteId: string }) {
         <div className="space-y-1">
           <label htmlFor="r-issued-by" className="text-xs text-muted-foreground">Émetteur</label>
           <input id="r-issued-by" name="issuedBy" type="text" maxLength={140} disabled={pending}
-            placeholder="ex. MOE, architecte" className={inputClass} />
+            placeholder="ex. client, contrôleur" className={inputClass} />
         </div>
       </div>
 
@@ -122,7 +122,7 @@ export function ReserveForm({ siteId }: { siteId: string }) {
           disabled={pending}
           className="rounded-md bg-foreground text-background px-3 py-1.5 text-sm font-medium disabled:opacity-50 transition-transform active:scale-[0.98]"
         >
-          {pending ? 'Enregistrement…' : 'Enregistrer la réserve'}
+          {pending ? 'Enregistrement…' : 'Enregistrer le point'}
         </button>
       </div>
     </form>

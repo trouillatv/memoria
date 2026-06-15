@@ -41,7 +41,7 @@ export default async function SiteReservesPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 w-full">
-      <DynamicCrumb segmentId="reserves" label="Réserves" />
+      <DynamicCrumb segmentId="reserves" label="Points à lever" />
       <BreadcrumbPrefix crumbs={[
         { href: '/sites', label: 'Sites' },
         { href: `/sites/${id}`, label: identity.name },
@@ -58,15 +58,15 @@ export default async function SiteReservesPage({ params }: PageProps) {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
             <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
-            Réserves
+            Points à lever
           </h1>
-          {/* Compteurs sobres — calme, jamais rouge. Amber pour les ouvertes. */}
+          {/* Compteurs sobres — calme, jamais rouge. Amber pour les ouverts. */}
           <div className="flex items-center gap-2 text-xs">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-medium text-amber-900 tabular-nums">
-              {summary.open} ouverte{summary.open > 1 ? 's' : ''}
+              {summary.open} ouvert{summary.open > 1 ? 's' : ''}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-900 tabular-nums">
-              {summary.lifted} levée{summary.lifted > 1 ? 's' : ''}
+              {summary.lifted} levé{summary.lifted > 1 ? 's' : ''}
             </span>
           </div>
         </div>
@@ -76,7 +76,7 @@ export default async function SiteReservesPage({ params }: PageProps) {
           {identity.clientName ? ` · ${identity.clientName}` : ''}
         </p>
         <p className="text-xs text-muted-foreground">
-          Défauts dressés à la réception (OPR) par la maîtrise d&apos;œuvre, à lever un à un — avec preuve photo et date de levée.
+          Points à corriger signalés par un tiers (client, contrôleur, maître d&apos;œuvre), à lever un à un — avec preuve photo et date de levée.
         </p>
       </header>
 

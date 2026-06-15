@@ -59,7 +59,7 @@ export default async function SiteDeliveriesPage({ params }: PageProps) {
           {identity.clientName ? ` · ${identity.clientName}` : ''}
         </p>
         <p className="text-xs text-muted-foreground">
-          Chaque livraison reçue sur le chantier (béton, matériaux), avec photo du bon — datée et opposable.
+          Chaque livraison reçue sur le site, avec photo du bon — datée et opposable.
         </p>
       </header>
 

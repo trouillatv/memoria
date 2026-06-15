@@ -1,8 +1,8 @@
 'use client'
 
-// Liste des réserves d'un chantier, scindée "Ouvertes" / "Levées".
-// Sobre et descriptif (doctrine : pas d'alerte rouge ; amber pour les ouvertes,
-// jamais une mesure d'humain). VOCABULAIRE : on dit "lever" / "levée",
+// Liste des points à lever d'un site, scindée "Ouverts" / "Levés".
+// Sobre et descriptif (doctrine : pas d'alerte rouge ; amber pour les ouverts,
+// jamais une mesure d'humain). VOCABULAIRE : on dit "lever" / "levé",
 // jamais "résolu" (juridiquement dangereux).
 
 import { useRef, useState, useTransition } from 'react'
@@ -79,7 +79,7 @@ function LiftForm({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: str
         toast.error(r.error)
         return
       }
-      toast.success('Réserve levée')
+      toast.success('Point levé')
       formRef.current?.reset()
       setOpen(false)
       router.refresh()
@@ -94,7 +94,7 @@ function LiftForm({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: str
         className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted/40 transition-colors"
       >
         <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-        Lever la réserve
+        Lever le point
       </button>
     )
   }
@@ -169,11 +169,11 @@ function ReserveCard({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: 
         <span className="font-medium text-sm flex-1">{reserve.label}</span>
         {isLifted ? (
           <span className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 shrink-0">
-            Levée
+            Levé
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-900 shrink-0">
-            Ouverte
+            Ouvert
           </span>
         )}
       </div>
@@ -214,7 +214,7 @@ function ReserveCard({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: 
           {liftedAt && (
             <p className="text-xs text-emerald-800 inline-flex items-center gap-1">
               <CheckCircle2 className="h-3 w-3" aria-hidden />
-              Levée le {liftedAt}
+              Levé le {liftedAt}
             </p>
           )}
           {reserve.liftNote && (
@@ -249,7 +249,7 @@ export function ReservesView({ siteId, reserves }: Props) {
   if (reserves.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic py-6 text-center">
-        Aucune réserve enregistrée sur ce chantier pour le moment.
+        Aucun point à lever enregistré sur ce site pour le moment.
       </p>
     )
   }
@@ -261,15 +261,15 @@ export function ReservesView({ siteId, reserves }: Props) {
     <div className="space-y-8">
       <section className="space-y-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-foreground">Ouvertes</h2>
+          <h2 className="text-sm font-semibold text-foreground">Ouverts</h2>
           <div className="flex-1 h-px bg-border/50" aria-hidden />
           <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-            {open.length} réserve{open.length > 1 ? 's' : ''}
+            {open.length} point{open.length > 1 ? 's' : ''}
           </span>
         </div>
         {open.length === 0 ? (
           <p className="text-xs text-muted-foreground/80 italic">
-            Aucune réserve ouverte — toutes les réserves dressées ont été levées.
+            Aucun point ouvert — tout a été levé.
           </p>
         ) : (
           <div className="space-y-2">
@@ -283,10 +283,10 @@ export function ReservesView({ siteId, reserves }: Props) {
       {lifted.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-foreground">Levées</h2>
+            <h2 className="text-sm font-semibold text-foreground">Levés</h2>
             <div className="flex-1 h-px bg-border/50" aria-hidden />
             <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-              {lifted.length} réserve{lifted.length > 1 ? 's' : ''}
+              {lifted.length} point{lifted.length > 1 ? 's' : ''}
             </span>
           </div>
           <div className="space-y-2">

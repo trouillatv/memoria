@@ -100,7 +100,7 @@ export function DayWeatherForm({ siteId }: { siteId: string }) {
             disabled={pending}
             className="h-4 w-4 rounded border"
           />
-          Jour d&apos;intempérie (travaux empêchés)
+          Journée empêchée (intervention non réalisable)
         </label>
       </div>
 
@@ -114,7 +114,7 @@ export function DayWeatherForm({ siteId }: { siteId: string }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           maxLength={280}
-          placeholder="ex. Coulage R+1 reporté — pluie depuis 6h"
+          placeholder="ex. intervention reportée — pluie depuis 6h"
           disabled={pending}
           className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
         />
