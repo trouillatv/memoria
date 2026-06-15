@@ -11,7 +11,7 @@ import {
 } from '@/lib/db/interventions'
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { listCompaniesForIntervention } from '@/lib/db/intervention-companies'
-import { listAllTokensForIntervention, listExternalPhotosByIntervention, listDelegatedItemIds } from '@/lib/db/intervention-tokens'
+import { listAllTokensForIntervention, listExternalPhotosByIntervention, listDelegatedItemIds, listTokenItemCounts } from '@/lib/db/intervention-tokens'
 import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
@@ -123,6 +123,15 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     label: c.label,
     delegated: delegatedSet.has(c.id),
   }))
+
+  // Bilan PAR contribution (et non global) : « 6/7 tâches » de CETTE contribution.
+  const tokenItemCounts = await listTokenItemCounts(allTokens.map((t) => t.id)).catch(() => new Map<string, number>())
+  const perTokenStats: Record<string, { executed: number; total: number }> = {}
+  for (const t of allTokens) {
+    const perimeter = tokenItemCounts.get(t.id) ?? 0
+    const executed = checklistItems.filter((c) => c.executed_by_token_id === t.id).length
+    perTokenStats[t.id] = { executed, total: perimeter > 0 ? perimeter : checklistTotal }
+  }
 
   const supabase = createAdminClient()
   const { data: site } = mission
@@ -381,6 +390,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         checklistTotal={checklistTotal}
         externalPhotosByToken={externalPhotosByToken}
         shareChecklistItems={shareChecklistItems}
+        perTokenStats={perTokenStats}
       />
 
       {/* Retours externes — lien partagé + activité du destinataire.

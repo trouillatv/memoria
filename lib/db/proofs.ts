@@ -419,6 +419,24 @@ export interface ProofChecklistItem {
   completed_at: string | null
   required: boolean
   position: number
+  /** Entreprise externe ayant exécuté cette tâche (contribution), si déléguée. */
+  executed_by_company: string | null
+  executed_at: string | null
+}
+
+/** Contribution externe (sous-traitant / livreur) sur une partie de l'intervention.
+ *  Le nom de l'ENTREPRISE est une preuve contractuelle — affiché même en mode
+ *  anonymisé (≠ identité d'un salarié interne). */
+export interface ProofExternalContribution {
+  id: string
+  company: string
+  validated_at: string | null
+  comment: string | null
+  /** Signature manuscrite (data URL PNG) — preuve d'engagement de l'externe. */
+  signature_url: string | null
+  tasksDone: number
+  tasksTotal: number
+  photosCount: number
 }
 
 export interface ProofDetail {
@@ -446,6 +464,7 @@ export interface ProofDetail {
   photos: ProofPhoto[]
   anomalies: ProofAnomaly[]
   validations: ProofValidation[]
+  external_contributions: ProofExternalContribution[]
 }
 
 export async function getProofDetail(interventionId: string): Promise<ProofDetail | null> {
@@ -518,12 +537,12 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
   const [checklistRes, photosRes, anomaliesRes, validationsRes] = await Promise.all([
     supabase
       .from('intervention_checklist_items')
-      .select('id, label, required, position, done, done_at')
+      .select('id, label, required, position, done, done_at, executed_by_token_id, executed_at')
       .eq('intervention_id', interventionId)
       .order('position', { ascending: true }),
     supabase
       .from('intervention_photos')
-      .select('id, storage_path, caption, taken_at, kind, checklist_item_id, intervention_id')
+      .select('id, storage_path, caption, taken_at, kind, checklist_item_id, intervention_id, external_token_id')
       .eq('intervention_id', interventionId)
       .order('taken_at', { ascending: true }),
     supabase
@@ -559,6 +578,7 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
     kind: string
     checklist_item_id: string | null
     intervention_id: string
+    external_token_id: string | null
   }
   const rawPhotos = (photosRes.data ?? []) as unknown as RawPhoto[]
 
@@ -635,7 +655,41 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
     photos: idx === 0 ? anomalyPhotos : [],
   }))
 
-  // 7. Checklist mapping.
+  // 7. Contributions externes : tokens validés (sous-traitants/livreurs) +
+  //    périmètre + tâches exécutées + photos. L'entreprise est une preuve.
+  const { data: tokenRows } = await supabase
+    .from('intervention_tokens')
+    .select('id, recipient_label, validated_by_name, validation_comment, validated_at, signature_data_url')
+    .eq('intervention_id', interventionId)
+    .not('validated_at', 'is', null)
+    .order('validated_at', { ascending: true })
+  type RawTok = {
+    id: string
+    recipient_label: string | null
+    validated_by_name: string | null
+    validation_comment: string | null
+    validated_at: string
+    signature_data_url: string | null
+  }
+  const validatedToks = (tokenRows ?? []) as RawTok[]
+  const tokenCompany = new Map<string, string>()
+  for (const t of validatedToks) {
+    tokenCompany.set(t.id, t.validated_by_name ?? t.recipient_label ?? 'Intervenant externe')
+  }
+
+  // Périmètre par token (token_items) — fallback toute la checklist si vide.
+  const perimeterByToken = new Map<string, number>()
+  if (validatedToks.length > 0) {
+    const { data: tiRows } = await supabase
+      .from('intervention_token_items')
+      .select('token_id')
+      .in('token_id', validatedToks.map((t) => t.id))
+    for (const ti of (tiRows ?? []) as Array<{ token_id: string }>) {
+      perimeterByToken.set(ti.token_id, (perimeterByToken.get(ti.token_id) ?? 0) + 1)
+    }
+  }
+
+  // 8. Checklist mapping (+ entreprise exécutante par tâche).
   type RawChecklist = {
     id: string
     label: string
@@ -643,6 +697,8 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
     position: number
     done: boolean
     done_at: string | null
+    executed_by_token_id: string | null
+    executed_at: string | null
   }
   const rawChecklist = (checklistRes.data ?? []) as unknown as RawChecklist[]
 
@@ -653,6 +709,28 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
     position: c.position,
     completed: c.done,
     completed_at: c.done_at,
+    executed_by_company: c.executed_by_token_id ? tokenCompany.get(c.executed_by_token_id) ?? null : null,
+    executed_at: c.executed_at,
+  }))
+
+  // Bilan par contribution : tâches exécutées + photos.
+  const executedByToken = new Map<string, number>()
+  for (const c of rawChecklist) {
+    if (c.executed_by_token_id) executedByToken.set(c.executed_by_token_id, (executedByToken.get(c.executed_by_token_id) ?? 0) + 1)
+  }
+  const photosByToken = new Map<string, number>()
+  for (const p of rawPhotos) {
+    if (p.external_token_id) photosByToken.set(p.external_token_id, (photosByToken.get(p.external_token_id) ?? 0) + 1)
+  }
+  const externalContributions: ProofExternalContribution[] = validatedToks.map((t) => ({
+    id: t.id,
+    company: tokenCompany.get(t.id) ?? 'Intervenant externe',
+    validated_at: t.validated_at,
+    comment: t.validation_comment,
+    signature_url: t.signature_data_url,
+    tasksDone: executedByToken.get(t.id) ?? 0,
+    tasksTotal: perimeterByToken.get(t.id) ?? rawChecklist.length,
+    photosCount: photosByToken.get(t.id) ?? 0,
   }))
 
   // 8. Durée : on préfère executed_at - scheduled_at quand les deux sont là.
@@ -693,5 +771,6 @@ export async function getProofDetail(interventionId: string): Promise<ProofDetai
     photos: proofPhotos,
     anomalies,
     validations,
+    external_contributions: externalContributions,
   }
 }

@@ -19,6 +19,8 @@ interface Props {
   checklistTotal: number
   externalPhotosByToken: Record<string, Array<{ thumb: string; full: string }>>
   shareChecklistItems?: Array<{ id: string; label: string; delegated: boolean }>
+  /** Bilan par contribution : token_id → { tâches exécutées, total du périmètre }. */
+  perTokenStats?: Record<string, { executed: number; total: number }>
 }
 
 const FR_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
@@ -63,6 +65,7 @@ function ExternalActivityRow({
 }: {
   token: InterventionToken
   interventionId: string
+  /** Tâches exécutées / total — déjà résolu au niveau de CETTE contribution. */
   checklistDone: number
   checklistTotal: number
   photos: Array<{ thumb: string; full: string }>
@@ -167,7 +170,7 @@ function ExternalActivityRow({
 }
 
 export function TokensPanel({
-  interventionId, missionName, siteName, tokens, checklistDone, checklistTotal, externalPhotosByToken, shareChecklistItems = [],
+  interventionId, missionName, siteName, tokens, checklistDone, checklistTotal, externalPhotosByToken, shareChecklistItems = [], perTokenStats = {},
 }: Props) {
   const [open, setOpen] = useState(false)
 
@@ -211,16 +214,19 @@ export function TokensPanel({
 
           {tokens.length > 0 && (
             <ul className="space-y-2">
-              {tokens.map((t) => (
-                <ExternalActivityRow
-                  key={t.id}
-                  token={t}
-                  interventionId={interventionId}
-                  checklistDone={checklistDone}
-                  checklistTotal={checklistTotal}
-                  photos={externalPhotosByToken[t.id] ?? []}
-                />
-              ))}
+              {tokens.map((t) => {
+                const stats = perTokenStats[t.id]
+                return (
+                  <ExternalActivityRow
+                    key={t.id}
+                    token={t}
+                    interventionId={interventionId}
+                    checklistDone={stats ? stats.executed : checklistDone}
+                    checklistTotal={stats ? stats.total : checklistTotal}
+                    photos={externalPhotosByToken[t.id] ?? []}
+                  />
+                )
+              })}
             </ul>
           )}
 

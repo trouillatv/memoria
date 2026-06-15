@@ -234,6 +234,23 @@ export async function listDelegatedItemIds(interventionId: string): Promise<stri
   return [...new Set(((data ?? []) as Array<{ checklist_item_id: string }>).map((r) => r.checklist_item_id))]
 }
 
+/** Taille du périmètre par token (nb d'items assignés). 0 = pas de périmètre
+ *  explicite (token sur l'intervention entière → fallback côté appelant). */
+export async function listTokenItemCounts(tokenIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (tokenIds.length === 0) return counts
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_token_items')
+    .select('token_id')
+    .in('token_id', tokenIds)
+  if (error) throw error
+  for (const r of (data ?? []) as Array<{ token_id: string }>) {
+    counts.set(r.token_id, (counts.get(r.token_id) ?? 0) + 1)
+  }
+  return counts
+}
+
 /** Marque des items comme exécutés par un token externe (entreprise).
  *  Pose executed_by_token_id + executed_at + done. */
 export async function markItemsExecutedByToken(

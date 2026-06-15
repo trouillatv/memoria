@@ -221,6 +221,30 @@ const styles = StyleSheet.create({
     fontSize: 9,
   },
 
+  // Contributions externes (sous-traitants / livreurs)
+  contribCard: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 4,
+    padding: 8,
+    marginBottom: 8,
+  },
+  contribCompany: { fontSize: 11, fontWeight: 700 },
+  contribMeta: { fontSize: 8, color: COLORS.muted, marginTop: 2 },
+  contribComment: { fontSize: 9, fontStyle: 'italic', marginTop: 4 },
+  signatureLabel: { fontSize: 7, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 6 },
+  signatureImage: {
+    width: 130,
+    height: 50,
+    objectFit: 'contain',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 3,
+    backgroundColor: '#ffffff',
+    marginTop: 2,
+  },
+  checklistExecutor: { color: COLORS.accent },
+
   // Footer fixe
   footer: {
     position: 'absolute',
@@ -508,8 +532,45 @@ export function ProofDossierPdf({
                 </Text>
                 <Text style={{ flex: 1 }}>
                   {item.label}
-                  {item.completed_at ? ` — ${fmtDateTime(item.completed_at)}` : ''}
+                  {item.executed_by_company ? (
+                    <Text style={styles.checklistExecutor}>
+                      {` — ${item.executed_by_company}`}
+                      {item.executed_at ? ` · ${fmtDateTime(item.executed_at)}` : ''}
+                    </Text>
+                  ) : item.completed_at ? (
+                    ` — ${fmtDateTime(item.completed_at)}`
+                  ) : (
+                    ''
+                  )}
                 </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Contributions externes — sous-traitants / livreurs. Le nom de
+            l'ENTREPRISE est une preuve contractuelle (≠ identité salarié). */}
+        {proof.external_contributions.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Contributions externes ({proof.external_contributions.length})
+            </Text>
+            {proof.external_contributions.map((c) => (
+              <View key={c.id} style={styles.contribCard} wrap={false}>
+                <Text style={styles.contribCompany}>{c.company}</Text>
+                <Text style={styles.contribMeta}>
+                  {c.tasksDone}/{c.tasksTotal} tâche{c.tasksTotal > 1 ? 's' : ''} ·{' '}
+                  {c.photosCount} photo{c.photosCount > 1 ? 's' : ''}
+                  {c.validated_at ? ` · validé le ${fmtDateTime(c.validated_at)}` : ''}
+                </Text>
+                {c.comment ? <Text style={styles.contribComment}>« {c.comment} »</Text> : null}
+                {c.signature_url ? (
+                  <>
+                    <Text style={styles.signatureLabel}>Signature</Text>
+                    {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                    <Image src={c.signature_url} style={styles.signatureImage} />
+                  </>
+                ) : null}
               </View>
             ))}
           </View>
