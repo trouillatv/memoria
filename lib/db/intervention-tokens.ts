@@ -30,6 +30,9 @@ export interface InterventionToken {
   validation_comment: string | null
   revoked_at: string | null
   revoked_by: string | null
+  // Preuve d'exécution externe (migration 105)
+  signature_data_url: string | null
+  signed_at: string | null
 }
 
 export interface InterventionTokenData {
@@ -191,6 +194,22 @@ export async function listAllTokensForIntervention(
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as InterventionToken[]
+}
+
+/** Photos déposées par des intervenants externes (via /i/[token]), groupées
+ *  par token. Sert la vue « Activités externes » de la fiche intervention. */
+export async function listExternalPhotosByIntervention(
+  interventionId: string,
+): Promise<Array<{ id: string; storage_path: string; external_token_id: string }>> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_photos')
+    .select('id, storage_path, external_token_id')
+    .eq('intervention_id', interventionId)
+    .not('external_token_id', 'is', null)
+    .order('taken_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as Array<{ id: string; storage_path: string; external_token_id: string }>
 }
 
 /** Tokens validés pour une intervention — source des "Confirmations externes" dans la fiche. */

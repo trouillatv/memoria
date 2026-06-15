@@ -11,7 +11,7 @@ import {
 } from '@/lib/db/interventions'
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { listCompaniesForIntervention } from '@/lib/db/intervention-companies'
-import { listAllTokensForIntervention } from '@/lib/db/intervention-tokens'
+import { listAllTokensForIntervention, listExternalPhotosByIntervention } from '@/lib/db/intervention-tokens'
 import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
@@ -60,7 +60,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
 
-  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents, companies, allTokens] = await Promise.all([
+  const [mission, checklistItems, photos, anomalies, validation, participants, voiceNotes, accessEvents, companies, allTokens, externalPhotos] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
@@ -71,7 +71,19 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
     listAccessEventsByIntervention(id),
     listCompaniesForIntervention(id).catch(() => []),
     listAllTokensForIntervention(id).catch(() => []),
+    listExternalPhotosByIntervention(id).catch(() => []),
   ])
+
+  // Vue « Activités externes » : checklist N/M + photos externes signées par token.
+  const checklistDone = checklistItems.filter((c) => c.done).length
+  const checklistTotal = checklistItems.length
+  const externalThumbMap = await getSignedPhotoUrlsThumb(externalPhotos.map((p) => p.storage_path))
+  const externalPhotosByToken: Record<string, string[]> = {}
+  for (const p of externalPhotos) {
+    const url = externalThumbMap.get(p.storage_path)
+    if (!url) continue
+    ;(externalPhotosByToken[p.external_token_id] ??= []).push(url)
+  }
 
   const supabase = createAdminClient()
   const { data: site } = mission
@@ -326,6 +338,9 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         missionName={mission?.name ?? 'Intervention'}
         siteName={site?.name ?? ''}
         tokens={allTokens}
+        checklistDone={checklistDone}
+        checklistTotal={checklistTotal}
+        externalPhotosByToken={externalPhotosByToken}
       />
 
       {/* Retours externes — lien partagé + activité du destinataire.

@@ -2,7 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Clock, ShieldOff, Hourglass, XCircle, Share2, ChevronDown } from 'lucide-react'
+import {
+  CheckCircle2, Clock, ShieldOff, Hourglass, XCircle, Share2, ChevronDown,
+  Eye, ListChecks, Camera, MessageSquare, PenLine,
+} from 'lucide-react'
 import type { InterventionToken } from '@/lib/db/intervention-tokens'
 import { GenerateInterventionTokenButton } from '@/app/(dashboard)/briefing/GenerateInterventionTokenButton'
 import { revokeTokenAction } from './token-revoke-action'
@@ -12,73 +15,62 @@ interface Props {
   missionName: string
   siteName: string
   tokens: InterventionToken[]
+  checklistDone: number
+  checklistTotal: number
+  externalPhotosByToken: Record<string, string[]>
 }
 
-const FR_MONTHS = [
-  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
-]
+const FR_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
 
 function formatShort(iso: string): string {
   const d = new Date(iso)
-  const day = d.getDate()
-  const month = FR_MONTHS[d.getMonth()] ?? ''
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${day} ${month} ${hh}:${mm}`
+  return `${d.getDate()} ${FR_MONTHS[d.getMonth()] ?? ''} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
-
 function formatDay(iso: string): string {
   const d = new Date(iso)
-  const day = d.getDate()
-  const month = FR_MONTHS[d.getMonth()] ?? ''
-  return `${day} ${month}`
+  return `${d.getDate()} ${FR_MONTHS[d.getMonth()] ?? ''}`
 }
 
-function TokenStatusBadge({ token }: { token: InterventionToken }) {
-  if (token.validated_at) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-        <CheckCircle2 className="h-3 w-3" />
-        Validé
-      </span>
-    )
+type State = 'validated' | 'revoked' | 'expired' | 'accessed' | 'pending'
+function tokenState(t: InterventionToken): State {
+  if (t.validated_at) return 'validated'
+  if (t.revoked_at) return 'revoked'
+  if (t.expires_at && new Date(t.expires_at) < new Date()) return 'expired'
+  if (t.accessed_at || t.access_count > 0) return 'accessed'
+  return 'pending'
+}
+
+function StateBadge({ state }: { state: State }) {
+  const map: Record<State, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
+    validated: { label: 'Validé', cls: 'bg-emerald-100 text-emerald-800', Icon: CheckCircle2 },
+    accessed: { label: 'Consulté', cls: 'bg-sky-100 text-sky-700', Icon: Eye },
+    pending: { label: 'En attente', cls: 'bg-blue-100 text-blue-700', Icon: Clock },
+    expired: { label: 'Expiré', cls: 'bg-muted text-muted-foreground', Icon: Hourglass },
+    revoked: { label: 'Révoqué', cls: 'bg-red-100 text-red-700', Icon: ShieldOff },
   }
-  if (token.revoked_at) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
-        <ShieldOff className="h-3 w-3" />
-        Révoqué
-      </span>
-    )
-  }
-  if (token.expires_at && new Date(token.expires_at) < new Date()) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-        <Hourglass className="h-3 w-3" />
-        Expiré
-      </span>
-    )
-  }
+  const { label, cls, Icon } = map[state]
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-      <Clock className="h-3 w-3" />
-      En attente
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}>
+      <Icon className="h-3 w-3" />{label}
     </span>
   )
 }
 
-function TokenRow({
-  token,
-  interventionId,
+// ── Carte « activité d'un intervenant externe » (vue métier) ────────────────
+function ExternalActivityRow({
+  token, interventionId, checklistDone, checklistTotal, photos,
 }: {
   token: InterventionToken
   interventionId: string
+  checklistDone: number
+  checklistTotal: number
+  photos: string[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-
-  const isRevocable = !token.revoked_at && !token.validated_at
+  const state = tokenState(token)
+  const isRevocable = state === 'pending' || state === 'accessed'
+  const when = token.validated_at ?? token.accessed_at ?? token.created_at
 
   function handleRevoke() {
     startTransition(async () => {
@@ -87,119 +79,159 @@ function TokenRow({
     })
   }
 
-  const isExpired =
-    !token.revoked_at &&
-    !token.validated_at &&
-    !!token.expires_at &&
-    new Date(token.expires_at) < new Date()
-
   return (
-    <li className="rounded-md border bg-card px-3 py-2.5 space-y-1">
+    <li className="rounded-lg border bg-card p-3 space-y-2">
       <div className="flex items-start gap-2 flex-wrap">
-        <TokenStatusBadge token={token} />
+        <StateBadge state={state} />
         <span className="text-sm font-medium">
-          {token.recipient_label ?? 'Lien externe'}
+          {token.validated_by_name ?? token.recipient_label ?? 'Intervenant externe'}
         </span>
-        <span className="text-[10px] text-muted-foreground ml-auto">
-          {formatShort(token.created_at)}
-        </span>
+        {token.recipient_label && token.validated_by_name && (
+          <span className="text-[10px] text-muted-foreground">· {token.recipient_label}</span>
+        )}
+        <span className="text-[10px] text-muted-foreground ml-auto">{formatShort(when)}</span>
       </div>
 
-      {token.accessed_at && (
-        <p className="text-[10px] text-muted-foreground">
-          Ouvert le {formatShort(token.accessed_at)}
-          {token.access_count > 1 ? ` · ${token.access_count}×` : ''}
-        </p>
-      )}
+      {/* Preuves (uniquement si validé) */}
+      {state === 'validated' && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
+            {checklistTotal > 0 && (
+              <span className={`inline-flex items-center gap-1 ${checklistDone >= checklistTotal ? 'text-emerald-700' : 'text-amber-700'}`}>
+                <ListChecks className="h-3.5 w-3.5" />Checklist {checklistDone}/{checklistTotal}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1">
+              <Camera className="h-3.5 w-3.5" />{photos.length} photo{photos.length > 1 ? 's' : ''}
+            </span>
+            {token.signature_data_url && (
+              <span className="inline-flex items-center gap-1 text-emerald-700">
+                <PenLine className="h-3.5 w-3.5" />Signature
+              </span>
+            )}
+          </div>
 
-      {token.validated_at && (
-        <p className="text-[10px] text-emerald-700">
-          ✓ Validé
-          {token.validated_by_name ? ` par ${token.validated_by_name}` : ''}
-          {' '}le {formatShort(token.validated_at)}
-        </p>
-      )}
+          {photos.length > 0 && (
+            <div className="grid grid-cols-6 gap-1.5">
+              {photos.map((url, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={i} src={url} alt="" className="aspect-square w-full rounded object-cover border" />
+              ))}
+            </div>
+          )}
 
-      {token.validation_comment && (
-        <p className="text-[10px] text-foreground/70 italic border-l-2 border-muted pl-2">
-          {token.validation_comment}
-        </p>
-      )}
+          {token.validation_comment && (
+            <p className="text-xs text-foreground/80 italic border-l-2 border-muted pl-2 inline-flex items-start gap-1">
+              <MessageSquare className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground" />
+              « {token.validation_comment} »
+            </p>
+          )}
 
-      {token.expires_at && !token.revoked_at && !isExpired && (
-        <p className="text-[10px] text-muted-foreground">
-          Expire le {formatDay(token.expires_at)}
-        </p>
-      )}
-
-      {isRevocable && (
-        <div className="pt-0.5">
-          <button
-            type="button"
-            onClick={handleRevoke}
-            disabled={isPending}
-            className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
-          >
-            <XCircle className="h-3 w-3" />
-            {isPending ? 'Révocation…' : 'Révoquer'}
-          </button>
+          {token.signature_data_url && (
+            <div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={token.signature_data_url} alt="Signature" className="h-12 rounded border bg-white" />
+            </div>
+          )}
         </div>
       )}
+
+      {state === 'accessed' && (
+        <p className="text-[11px] text-sky-700">Lien consulté — en attente de validation.</p>
+      )}
+
+      {/* Détails techniques — repliés (le token est un mécanisme, pas l'info métier) */}
+      <details className="group">
+        <summary className="cursor-pointer list-none text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+          <ChevronDown className="h-3 w-3 group-open:rotate-180 transition-transform" />
+          Détails techniques
+        </summary>
+        <div className="mt-1.5 space-y-0.5 rounded-md bg-muted/20 p-2 text-[10px] text-muted-foreground">
+          <p>Lien créé le {formatShort(token.created_at)}</p>
+          {token.accessed_at && <p>Ouvert le {formatShort(token.accessed_at)}{token.access_count > 1 ? ` · ${token.access_count}×` : ''}</p>}
+          {token.expires_at && !token.revoked_at && <p>Expire le {formatDay(token.expires_at)}</p>}
+          {token.revoked_at && <p>Révoqué le {formatShort(token.revoked_at)}</p>}
+          {isRevocable && (
+            <button type="button" onClick={handleRevoke} disabled={isPending}
+              className="mt-1 inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100 disabled:opacity-50">
+              <XCircle className="h-3 w-3" />{isPending ? 'Révocation…' : 'Révoquer le lien'}
+            </button>
+          )}
+        </div>
+      </details>
     </li>
   )
 }
 
-export function TokensPanel({ interventionId, missionName, siteName, tokens }: Props) {
+export function TokensPanel({
+  interventionId, missionName, siteName, tokens, checklistDone, checklistTotal, externalPhotosByToken,
+}: Props) {
   const [open, setOpen] = useState(false)
 
-  const activeCount = tokens.filter(
-    (t) => !t.revoked_at && !t.validated_at && (!t.expires_at || new Date(t.expires_at) >= new Date()),
-  ).length
+  const validations = tokens.filter((t) => t.validated_at).length
+  const activeCount = tokens.filter((t) => tokenState(t) === 'pending' || tokenState(t) === 'accessed').length
+  const totalPhotos = Object.values(externalPhotosByToken).reduce((s, arr) => s + arr.length, 0)
+  const totalComments = tokens.filter((t) => t.validation_comment).length
+  const totalSignatures = tokens.filter((t) => t.signature_data_url).length
+  const showAggregate = validations > 1
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      {/* Trigger compact */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/30 transition-colors text-left"
-      >
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/30 transition-colors text-left">
         <Share2 className="h-4 w-4 text-muted-foreground shrink-0" />
-        <span className="font-medium">Partager à un externe</span>
-        {activeCount > 0 && (
+        <span className="font-medium">Activités externes</span>
+        {validations > 0 && (
+          <span className="ml-1 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+            {validations} validé{validations > 1 ? 's' : ''}
+          </span>
+        )}
+        {validations === 0 && activeCount > 0 && (
           <span className="ml-1 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
-            {activeCount} actif{activeCount > 1 ? 's' : ''}
+            {activeCount} en attente
           </span>
         )}
-        {tokens.length > 0 && activeCount === 0 && (
-          <span className="ml-1 text-[10px] text-muted-foreground">
-            {tokens.length} lien{tokens.length > 1 ? 's' : ''}
-          </span>
-        )}
-        <ChevronDown
-          className={`h-4 w-4 text-muted-foreground ml-auto transition-transform ${open ? 'rotate-180' : ''}`}
-        />
+        <ChevronDown className={`h-4 w-4 text-muted-foreground ml-auto transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {/* Contenu déplié */}
       {open && (
         <div className="border-t px-4 py-4 space-y-3">
-          <p className="text-xs text-muted-foreground italic">
-            Envoyez un lien sécurisé à un sous-traitant, livreur ou bureau de contrôle.
-            Il confirme l&apos;intervention sans compte MemorIA.
-          </p>
-          <GenerateInterventionTokenButton
-            interventionId={interventionId}
-            missionName={missionName}
-            siteName={siteName}
-          />
+          {/* Agrégat quand plusieurs intervenants */}
+          {showAggregate && (
+            <div className="flex items-center gap-4 text-xs flex-wrap rounded-lg bg-muted/30 px-3 py-2">
+              <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{validations} validations</span>
+              <span className="inline-flex items-center gap-1"><Camera className="h-3.5 w-3.5" />{totalPhotos} photos</span>
+              <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" />{totalComments} commentaires</span>
+              <span className="inline-flex items-center gap-1"><PenLine className="h-3.5 w-3.5" />{totalSignatures} signatures</span>
+            </div>
+          )}
+
           {tokens.length > 0 && (
-            <ul className="space-y-2 mt-2">
-              {tokens.map((tok) => (
-                <TokenRow key={tok.id} token={tok} interventionId={interventionId} />
+            <ul className="space-y-2">
+              {tokens.map((t) => (
+                <ExternalActivityRow
+                  key={t.id}
+                  token={t}
+                  interventionId={interventionId}
+                  checklistDone={checklistDone}
+                  checklistTotal={checklistTotal}
+                  photos={externalPhotosByToken[t.id] ?? []}
+                />
               ))}
             </ul>
           )}
+
+          {/* Partager un nouveau lien */}
+          <div className="border-t pt-3">
+            <p className="text-xs text-muted-foreground italic mb-1">
+              Déléguer à un sous-traitant, livreur ou bureau de contrôle — il prouve ce qu&apos;il a fait sans compte MemorIA.
+            </p>
+            <GenerateInterventionTokenButton
+              interventionId={interventionId}
+              missionName={missionName}
+              siteName={siteName}
+            />
+          </div>
         </div>
       )}
     </div>
