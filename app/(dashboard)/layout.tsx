@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOpenActionsHealth } from '@/lib/db/site-actions'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { AppTopbar } from '@/components/layout/AppTopbar'
 import { BreadcrumbProvider } from '@/components/layout/BreadcrumbProvider'
@@ -21,6 +22,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (shouldRedirectDashboardRequestToField({ ...user, pathname }, isMobile)) redirect('/m')
 
   const fullName = user.full_name || user.email
+  // Compteur global d'actions ouvertes (le danger n'est pas de les créer, c'est
+  // de ne plus les regarder). Visible managers/admins, dans la nav.
+  const actionsHealth =
+    user.role === 'admin' || user.role === 'manager'
+      ? await getOpenActionsHealth()
+      : { total: 0, critique: 0, surveiller: 0, rythme: 0 }
   return (
     <div className="min-h-screen bg-muted/20">
       {/* Skip-link RGAA — invisible jusqu'au focus clavier */}
@@ -31,7 +38,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         Aller au contenu
       </a>
       <BreadcrumbProvider>
-        <AppSidebar role={user.role} fullName={fullName} />
+        <AppSidebar
+          role={user.role}
+          fullName={fullName}
+          actionsCount={actionsHealth.total}
+          actionsCritical={actionsHealth.critique}
+        />
         <div className="md:pl-60">
           <AppTopbar fullName={fullName} role={user.role} />
           <main

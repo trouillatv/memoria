@@ -16,9 +16,15 @@ import { BrandLegalDialog } from './BrandLegalDialog'
 export function AppSidebar({
   role,
   fullName,
+  actionsCount = 0,
+  actionsCritical = 0,
 }: {
   role: UserRole
   fullName: string
+  /** Compteur d'actions ouvertes (badge sur l'entrée Actions). */
+  actionsCount?: number
+  /** Actions critiques (≥ 14 j) → pastille rouge. */
+  actionsCritical?: number
 }) {
   const pathname = usePathname() ?? ''
   const visible = NAV.filter((n) => n.roles.includes(role))
@@ -48,6 +54,24 @@ export function AppSidebar({
                 )}
               />
               {label}
+              {href === '/actions' && actionsCount > 0 && (
+                <span
+                  className={cn(
+                    'ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                    actionsCritical > 0
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                  title={
+                    actionsCritical > 0
+                      ? `${actionsCount} actions ouvertes · ${actionsCritical} critique${actionsCritical > 1 ? 's' : ''} (≥ 14 j)`
+                      : `${actionsCount} actions ouvertes`
+                  }
+                >
+                  {actionsCritical > 0 && <span className="h-1.5 w-1.5 rounded-full bg-red-500" />}
+                  {actionsCount}
+                </span>
+              )}
             </Link>
           )
           if (!groupStart) return <div key={href}>{link}</div>

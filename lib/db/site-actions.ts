@@ -199,6 +199,53 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
   })
 }
 
+// Santé d'une action ouverte = ancienneté (déterministe, anti-pointage).
+// 🔴 critique ≥ 14 j · 🟠 à surveiller 7–13 j · 🟢 en rythme < 7 j.
+export type ActionHealth = 'critique' | 'surveiller' | 'rythme'
+export function actionHealth(createdAtIso: string, nowMs: number = Date.now()): ActionHealth {
+  const days = Math.floor((nowMs - new Date(createdAtIso).getTime()) / 86_400_000)
+  if (days >= 14) return 'critique'
+  if (days >= 7) return 'surveiller'
+  return 'rythme'
+}
+
+export interface OpenActionsHealth {
+  total: number
+  critique: number
+  surveiller: number
+  rythme: number
+}
+
+/** Compteur santé des actions ouvertes (org) — pour le badge de navigation.
+ *  Léger : ne récupère que created_at. Résilient si le socle n'est pas migré. */
+export async function getOpenActionsHealth(): Promise<OpenActionsHealth> {
+  const empty = { total: 0, critique: 0, surveiller: 0, rythme: 0 }
+  try {
+    const supabase = createAdminClient()
+    const orgId = await getOrgId()
+    let sitesQ = supabase.from('sites').select('id').is('deleted_at', null)
+    if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+    const { data: siteRows } = await sitesQ
+    const siteIds = (siteRows ?? []).map((s) => (s as { id: string }).id)
+    if (siteIds.length === 0) return empty
+    const { data, error } = await supabase
+      .from('site_actions')
+      .select('created_at')
+      .eq('status', 'open')
+      .in('site_id', siteIds)
+    if (error) return empty
+    const now = Date.now()
+    const out = { ...empty }
+    for (const r of (data ?? []) as Array<{ created_at: string }>) {
+      out.total++
+      out[actionHealth(r.created_at, now)]++
+    }
+    return out
+  } catch {
+    return empty
+  }
+}
+
 export async function markSiteActionDone(id: string): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase

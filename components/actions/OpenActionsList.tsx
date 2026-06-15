@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation'
 import { Check, MapPin, Mic, HardHat, User, Loader2, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 import { markActionDoneAction } from '@/app/(dashboard)/actions/actions'
-import type { SiteActionRow } from '@/lib/db/site-actions'
+import { actionHealth, type SiteActionRow } from '@/lib/db/site-actions'
 
 function ageDays(iso: string): number {
   const ms = Date.now() - new Date(iso).getTime()
@@ -64,11 +64,15 @@ export function OpenActionsList({
   return (
     <ul className="space-y-2">
       {visible.map((a) => {
-        const old = ageDays(a.created_at) >= 7
+        const health = actionHealth(a.created_at)
+        const borderCls =
+          health === 'critique' ? 'border-red-300' : health === 'surveiller' ? 'border-amber-200' : 'border-border'
+        const ageCls =
+          health === 'critique' ? 'text-red-700 font-medium' : health === 'surveiller' ? 'text-amber-700 font-medium' : ''
         return (
           <li
             key={a.id}
-            className={`rounded-lg border bg-card ${compact ? 'p-2.5' : 'p-3'} ${old ? 'border-amber-200' : 'border-border'}`}
+            className={`rounded-lg border bg-card ${compact ? 'p-2.5' : 'p-3'} ${borderCls}`}
           >
             <div className="flex items-start gap-2.5">
               <button
@@ -105,7 +109,7 @@ export function OpenActionsList({
                       <User className="h-3 w-3" />{a.assigned_to}
                     </span>
                   )}
-                  <span className={`inline-flex items-center gap-1 ${old ? 'text-amber-700 font-medium' : ''}`}>
+                  <span className={`inline-flex items-center gap-1 ${ageCls}`}>
                     <Clock className="h-3 w-3" />Ouvert {ageLabel(a.created_at)}
                   </span>
                 </div>

@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ListTodo, MapPin, HardHat, AlertTriangle } from 'lucide-react'
+import { ListTodo, MapPin, HardHat } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
+import { listOpenSiteActions, actionHealth, type ActionHealth, type SiteActionRow } from '@/lib/db/site-actions'
 import { EmptyState } from '@/components/ui/empty-state'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import type { SiteActionStatus } from '@/types/db'
@@ -16,14 +16,16 @@ const STATUS_TABS: Array<{ key: string; label: string; statuses: SiteActionStatu
   { key: 'all', label: 'Toutes', statuses: ['open', 'planned', 'done', 'cancelled'] },
 ]
 
-function ageDays(iso: string): number {
-  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000))
+const HEALTH_META: Record<ActionHealth, { dot: string; label: string }> = {
+  critique: { dot: '🔴', label: 'Critique' },
+  surveiller: { dot: '🟠', label: 'À surveiller' },
+  rythme: { dot: '🟢', label: 'En rythme' },
 }
 
 export default async function ActionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ status?: string; corps?: string; old?: string }>
+  searchParams?: Promise<{ status?: string; corps?: string; health?: string }>
 }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
@@ -32,7 +34,9 @@ export default async function ActionsPage({
   const sp = searchParams ? await searchParams : {}
   const statusKey = STATUS_TABS.some((t) => t.key === sp.status) ? sp.status! : 'open'
   const corpsFilter = sp.corps && sp.corps.length > 0 ? sp.corps : null
-  const onlyOld = sp.old === '1'
+  const healthFilter = (['critique', 'surveiller', 'rythme'] as const).includes(sp.health as ActionHealth)
+    ? (sp.health as ActionHealth)
+    : null
 
   const tab = STATUS_TABS.find((t) => t.key === statusKey)!
   const all = await listOpenSiteActions({ statuses: tab.statuses })
@@ -40,9 +44,13 @@ export default async function ActionsPage({
   // Corps d'état présents (pour les chips).
   const corpsList = [...new Set(all.map((a) => a.corps_etat).filter((v): v is string => !!v))].sort()
 
+  // Santé par ancienneté (sur le statut courant).
+  const healthCount = { critique: 0, surveiller: 0, rythme: 0 }
+  for (const a of all) healthCount[actionHealth(a.created_at)]++
+
   const filtered = all.filter((a) => {
     if (corpsFilter && a.corps_etat !== corpsFilter) return false
-    if (onlyOld && ageDays(a.created_at) < 7) return false
+    if (healthFilter && actionHealth(a.created_at) !== healthFilter) return false
     return true
   })
 
@@ -63,19 +71,17 @@ export default async function ActionsPage({
         ? 'bg-foreground text-background border-foreground'
         : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground/30'
     }`
-  const qs = (next: { status?: string; corps?: string | null; old?: string | null }) => {
+  const qs = (next: { status?: string; corps?: string | null; health?: string | null }) => {
     const p = new URLSearchParams()
     const status = next.status ?? statusKey
     if (status && status !== 'open') p.set('status', status)
     const corps = next.corps === undefined ? corpsFilter : next.corps
     if (corps) p.set('corps', corps)
-    const old = next.old === undefined ? (onlyOld ? '1' : null) : next.old
-    if (old) p.set('old', old)
+    const health = next.health === undefined ? healthFilter : next.health
+    if (health) p.set('health', health)
     const s = p.toString()
     return s ? `/actions?${s}` : '/actions'
   }
-
-  const oldCount = all.filter((a) => ageDays(a.created_at) >= 7).length
 
   return (
     <div className="space-y-6 w-full">
@@ -90,6 +96,29 @@ export default async function ActionsPage({
         </p>
       </header>
 
+      {/* Santé des actions ouvertes (ancienneté) — bandeau cliquable. */}
+      {statusKey === 'open' && all.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['critique', 'surveiller', 'rythme'] as ActionHealth[]).map((h) => {
+            if (healthCount[h] === 0) return null
+            const active = healthFilter === h
+            return (
+              <Link
+                key={h}
+                href={qs({ health: active ? null : h })}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-transform active:scale-[0.97] ${
+                  active ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                }`}
+              >
+                <span className="text-[10px] leading-none">{HEALTH_META[h].dot}</span>
+                {HEALTH_META[h].label}
+                <span className="tabular-nums opacity-70">{healthCount[h]}</span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+
       {/* Filtres */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -98,14 +127,6 @@ export default async function ActionsPage({
               {t.label}
             </Link>
           ))}
-          {oldCount > 0 && (
-            <>
-              <span className="mx-1 h-4 w-px bg-border" />
-              <Link href={qs({ old: onlyOld ? null : '1' })} className={chip(onlyOld)}>
-                <AlertTriangle className="h-3 w-3" /> &gt; 7 jours ({oldCount})
-              </Link>
-            </>
-          )}
         </div>
         {corpsList.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
