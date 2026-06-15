@@ -112,24 +112,37 @@ export function SiteReportPanel({
       setAudioMime(mime)
       const mr = new MediaRecorder(stream, { mimeType: mime })
       mediaRecorderRef.current = mr
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = () => {
-        setAudioBlob(new Blob(chunksRef.current, { type: mime }))
         streamRef.current?.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(chunksRef.current, { type: mime })
+        if (blob.size === 0) {
+          // Enregistrement vide (micro muet, ou MediaRecorder mobile capricieux).
+          // On le dit clairement + on laisse les fallbacks : importer un audio / texte.
+          setAudioBlob(null)
+          toast.error('Enregistrement vide. Vérifiez le micro (autorisation), ou importez un fichier audio / saisissez le texte.')
+          return
+        }
+        setAudioBlob(blob)
       }
-      mr.start(250)
+      // Sans timeslice : plus fiable sur iOS/Safari (les chunks arrivent au stop).
+      mr.start()
       setRecording(true)
       setAudioName(null)
       setElapsed(0)
       timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000)
     } catch {
-      toast.error('Micro inaccessible. Vérifiez les permissions.')
+      toast.error('Micro inaccessible — autorisez le microphone, ou importez un fichier audio / saisissez le texte.')
     }
   }
 
   function stopRecording() {
     if (timerRef.current) clearInterval(timerRef.current)
-    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop()
+    const mr = mediaRecorderRef.current
+    if (mr?.state === 'recording') {
+      try { mr.requestData() } catch { /* certains navigateurs n'exposent pas requestData */ }
+      mr.stop()
+    }
     setRecording(false)
   }
 
@@ -445,6 +458,13 @@ export function SiteReportPanel({
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Pourquoi le bouton est inactif : il faut du contenu à analyser. */}
+          {!canAnalyze && !recording && (
+            <p className="text-[11px] text-center text-muted-foreground">
+              Pour analyser : enregistrez une note vocale (autorisez le micro), <span className="font-medium">importez un fichier audio</span>, ou saisissez du texte.
+            </p>
           )}
 
           <button
