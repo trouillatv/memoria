@@ -13,6 +13,7 @@ import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { NewMissionDialog } from './NewMissionDialog'
+import { MissionFilters } from './MissionFilters'
 import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
@@ -111,10 +112,20 @@ const TONE_TEXT: Record<Tone, string> = {
   red: 'text-red-700', orange: 'text-amber-700', green: 'text-emerald-700',
 }
 
-export default async function MissionsPage() {
+export default async function MissionsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ health?: string; team?: string }>
+}) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/planning')
+
+  const sp = searchParams ? await searchParams : {}
+  const healthFilter = (['red', 'orange', 'green'] as const).includes(sp.health as 'red')
+    ? (sp.health as 'red' | 'orange' | 'green')
+    : 'all'
+  const teamFilter = sp.team && sp.team.length > 0 ? sp.team : 'all'
 
   const [{ missions }, sitesForDialog, teams] = await Promise.all([
     listMissionsCockpit(),
@@ -183,6 +194,20 @@ export default async function MissionsPage() {
   const maxTeamCount = Math.max(1, sansEquipeCount, ...teamLoad.map((t) => t.count))
   const activeCounts = teamLoad.map((t) => t.count).filter((n) => n > 0)
   const avgLoad = activeCounts.length > 0 ? activeCounts.reduce((s, n) => s + n, 0) / activeCounts.length : 0
+
+  // Filtres (santé + équipe) appliqués à la liste « Toutes les missions ».
+  // Server-side via ?health= / ?team= ; le cockpit du haut reste la vue globale.
+  const teamsForFilter = teamLoad.filter((t) => t.count > 0).map((t) => ({ id: t.id, name: t.name }))
+  const filteredActive = active.filter((m) => {
+    if (healthFilter !== 'all' && healthBy.get(m.id)?.level !== healthFilter) return false
+    if (teamFilter !== 'all') {
+      if (teamFilter === 'none') {
+        if (m.assignedTeam) return false
+      } else if (m.assignedTeam?.id !== teamFilter) return false
+    }
+    return true
+  })
+  const isFiltered = healthFilter !== 'all' || teamFilter !== 'all'
 
   const groupBySite = (list: typeof missions) => {
     const order: string[] = []
@@ -402,18 +427,33 @@ export default async function MissionsPage() {
         <>
           {active.length > 0 && (
             <section className="space-y-4">
-              <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Toutes les missions ({active.length})
-              </h2>
-              {groupBySite(active).map((group) => (
-                <div key={group.siteId} className="space-y-1">
-                  <div className="flex items-center gap-1.5 px-1">
-                    <MapPin className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-                    <span className="text-xs font-medium text-muted-foreground">{group.siteName}</span>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Toutes les missions ({isFiltered ? `${filteredActive.length}/${active.length}` : active.length})
+                </h2>
+                <MissionFilters
+                  health={healthFilter}
+                  team={teamFilter}
+                  teams={teamsForFilter}
+                  hasSansEquipe={sansEquipeCount > 0}
+                  counts={portfolio}
+                />
+              </div>
+              {filteredActive.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic px-1 py-6 text-center">
+                  Aucune mission ne correspond à ce filtre.
+                </p>
+              ) : (
+                groupBySite(filteredActive).map((group) => (
+                  <div key={group.siteId} className="space-y-1">
+                    <div className="flex items-center gap-1.5 px-1">
+                      <MapPin className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                      <span className="text-xs font-medium text-muted-foreground">{group.siteName}</span>
+                    </div>
+                    <MissionTable missions={group.missions} healthBy={healthBy} />
                   </div>
-                  <MissionTable missions={group.missions} healthBy={healthBy} />
-                </div>
-              ))}
+                ))
+              )}
             </section>
           )}
 
@@ -493,6 +533,7 @@ function MissionTable({
     assignedTeam: { id: string; name: string; color: string | null } | null
     lastInterventionDate: string | null
     nextInterventionDate: string | null
+    firstInterventionDate: string | null
     executedCount: number
     openAnomalyCount: number
     anomalyDetails: Array<{ label: string; date: string }>
@@ -534,14 +575,14 @@ function MissionTable({
                       <AnomalyTooltipBadge count={m.openAnomalyCount} details={m.anomalyDetails} />
                     )}
                   </div>
-                  {/* Dernière intervention + temps passé (effort cumulé) */}
+                  {/* Dernière intervention + temps passé (active depuis N j) */}
                   <p className="text-[11px] text-muted-foreground/80 mt-0.5 flex items-center gap-1.5 flex-wrap">
                     <CalendarCheck className="h-3 w-3 shrink-0 text-emerald-500/70" />
                     {m.lastInterventionDate
                       ? <>Dernière&nbsp;: {fmtDM(m.lastInterventionDate)}</>
                       : <span className="italic">Jamais réalisée</span>}
-                    {m.executedCount > 0 && (
-                      <span className="text-muted-foreground/60">· réalisée {m.executedCount}×</span>
+                    {m.firstInterventionDate && (
+                      <span className="text-muted-foreground/60">· active depuis {daysBetweenIso(m.firstInterventionDate, todayLocalIso())} j</span>
                     )}
                   </p>
                   {m.contractName && (
