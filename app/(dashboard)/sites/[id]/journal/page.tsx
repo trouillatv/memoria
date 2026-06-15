@@ -4,8 +4,10 @@ import { BookOpen, MapPin, Download, QrCode } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteJournal } from '@/lib/db/site-journal'
+import { getSiteDayLogs, mergeWeatherIntoJournal } from '@/lib/db/site-day-log'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { JournalView } from './JournalView'
+import { DayWeatherForm } from './DayWeatherForm'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -17,12 +19,16 @@ export default async function SiteJournalPage({ params }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, entries] = await Promise.all([
+  const [identity, rawEntries, dayLogs] = await Promise.all([
     getSiteIdentity(id),
     getSiteJournal(id),
+    getSiteDayLogs(id),
   ])
 
   if (!identity) notFound()
+
+  // Attache la météo aux jours + injecte les jours d'intempérie sans intervention.
+  const entries = mergeWeatherIntoJournal(rawEntries, dayLogs)
 
   return (
     <div className="space-y-6 w-full">
@@ -73,6 +79,8 @@ export default async function SiteJournalPage({ params }: PageProps) {
           Historique complet des interventions — qui était là, ce qui s&apos;est passé, quelles entreprises étaient présentes.
         </p>
       </header>
+
+      <DayWeatherForm siteId={id} />
 
       <JournalView entries={entries} />
     </div>

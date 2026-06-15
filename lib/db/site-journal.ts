@@ -16,6 +16,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export interface JournalEntry {
   date: string // yyyy-mm-dd (fuseau Pacific/Noumea)
   interventions: JournalIntervention[]
+  // Météo / intempérie du jour (site_day_log) — attachée par
+  // mergeWeatherIntoJournal. Optionnel : absent si aucune entrée météo.
+  weather?: import('@/lib/db/site-day-log').WeatherCode | null
+  intemperie?: boolean
+  weatherNote?: string | null
 }
 
 export interface JournalIntervention {

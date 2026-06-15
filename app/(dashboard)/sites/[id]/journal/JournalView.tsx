@@ -8,6 +8,7 @@ import {
   FileText,
 } from 'lucide-react'
 import type { JournalEntry, JournalIntervention } from '@/lib/db/site-journal'
+import { WEATHER_META } from '@/lib/db/site-day-log'
 
 // ---------------------------------------------------------------------------
 // Formatage des dates
@@ -183,7 +184,9 @@ export function JournalView({ entries }: Props) {
 
   return (
     <div className="space-y-8">
-      {entries.map((entry) => (
+      {entries.map((entry) => {
+        const weatherMeta = entry.weather ? WEATHER_META[entry.weather] : null
+        return (
         <div key={entry.date} className="space-y-3">
           {/* En-tête de jour */}
           <div className="flex items-center gap-3">
@@ -191,19 +194,42 @@ export function JournalView({ entries }: Props) {
               {formatDayHeading(entry.date)}
             </h2>
             <div className="flex-1 h-px bg-border/50" aria-hidden />
+            {/* Météo / intempérie du jour (sobre, jamais rouge) */}
+            {entry.intemperie && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 shrink-0">
+                🌧️ Intempérie
+              </span>
+            )}
+            {weatherMeta && !entry.intemperie && (
+              <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground shrink-0">
+                <span aria-hidden>{weatherMeta.icon}</span> {weatherMeta.label}
+              </span>
+            )}
             <span className="text-xs text-muted-foreground tabular-nums shrink-0">
               {entry.interventions.length} intervention{entry.interventions.length > 1 ? 's' : ''}
             </span>
           </div>
 
-          {/* Cartes interventions */}
-          <div className="space-y-2">
-            {entry.interventions.map((intv) => (
-              <InterventionCard key={intv.id} entry={intv} />
-            ))}
-          </div>
+          {/* Note météo du jour */}
+          {entry.weatherNote && (
+            <p className="text-xs italic text-muted-foreground">{entry.weatherNote}</p>
+          )}
+
+          {/* Cartes interventions, ou mention si journée sans intervention */}
+          {entry.interventions.length === 0 ? (
+            <p className="text-xs text-muted-foreground/80 italic">
+              Aucune intervention ce jour.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {entry.interventions.map((intv) => (
+                <InterventionCard key={intv.id} entry={intv} />
+              ))}
+            </div>
+          )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
