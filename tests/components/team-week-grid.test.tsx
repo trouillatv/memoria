@@ -239,21 +239,21 @@ describe('TeamWeekGridCell', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('rend une ligne "Abrev m" pour une mission', () => {
+  it('rend une ligne "Abrev + heure" pour une mission', () => {
     renderInTable(
       <TeamWeekGridCell
         date="2026-05-11"
         teamId="t-alpha"
         teamName="Alpha"
-        cells={[makeCell({ site_name: 'CHU Régional', slot: 'morning' })]}
+        cells={[makeCell({ site_name: 'CHU Régional', slot: 'morning', planned_start: '2026-05-11T06:30:00.000Z' })]}
       />,
     )
     const btn = screen.getByTestId('team-week-cell-t-alpha-2026-05-11')
     expect(within(btn).getByText('CHU')).toBeInTheDocument()
-    expect(within(btn).getByText('m')).toBeInTheDocument()
+    expect(within(btn).getByText('6h30')).toBeInTheDocument()
   })
 
-  it('regroupe par site avec slots compactés', () => {
+  it('regroupe par site avec heure de la 1re mission (créneaux horaires)', () => {
     renderInTable(
       <TeamWeekGridCell
         date="2026-05-11"
@@ -265,32 +265,36 @@ describe('TeamWeekGridCell', () => {
             site_id: 'site-chu',
             site_name: 'CHU Régional',
             slot: 'morning',
+            planned_start: '2026-05-11T06:30:00.000Z',
           }),
           makeCell({
             id: 'b',
             site_id: 'site-chu',
             site_name: 'CHU Régional',
             slot: 'evening',
+            planned_start: '2026-05-11T17:00:00.000Z',
           }),
           makeCell({
             id: 'c',
             site_id: 'site-banq',
             site_name: 'Banque Centrale',
             slot: 'evening',
+            planned_start: '2026-05-11T18:00:00.000Z',
           }),
         ]}
       />,
     )
     const btn = screen.getByTestId('team-week-cell-t-alpha-2026-05-11')
     expect(within(btn).getByText('CHU')).toBeInTheDocument()
-    expect(within(btn).getByText('m+s')).toBeInTheDocument()
+    // CHU : 2 missions → heure de la 1re + nombre de suivantes.
+    expect(within(btn).getByText('6h30+1')).toBeInTheDocument()
     expect(within(btn).getByText('Banq')).toBeInTheDocument()
   })
 
   it('n’affiche JAMAIS de nom d’agent (régression doctrine V2)', () => {
     // On simule des cellules où "assigned_team_name" pourrait fuiter ou
     // mission_name contiendrait un nom — on vérifie qu'aucune trace d'agent
-    // n'apparaît dans la cellule. Seul le site abrégé et les slots compactés.
+    // n'apparaît dans la cellule. Seul le site abrégé et l'heure de la mission.
     const { container } = renderInTable(
       <TeamWeekGridCell
         date="2026-05-11"
@@ -302,6 +306,7 @@ describe('TeamWeekGridCell', () => {
             site_name: 'CHU Régional',
             assigned_team_name: 'Alpha',
             slot: 'morning',
+            planned_start: '2026-05-11T07:00:00.000Z',
           }),
         ]}
       />,
@@ -311,25 +316,28 @@ describe('TeamWeekGridCell', () => {
     expect(text).not.toMatch(/Mehdi|Sarah|Karim|Yann/i)
     // Le nom mission ne devrait pas non plus être affiché en cellule compacte
     expect(text).not.toContain('Nettoyage hall')
-    // L'abréviation site ET le slot doivent apparaître
+    // L'abréviation site ET l'heure doivent apparaître
     expect(text).toContain('CHU')
-    expect(text).toContain('m')
+    expect(text).toContain('7h')
   })
 
-  it('n’affiche jamais d’heure précise dans la cellule (régression doctrine)', () => {
+  it('affiche l’heure de la 1re mission dans la cellule (créneaux horaires)', () => {
+    // Décision Vincent 2026-06-15 : la vue d'ensemble équipe affiche désormais
+    // l'heure (créneaux horaires), comme partout. Le cœur anti-RH reste : aucune
+    // mesure/agrégat par personne, juste l'ancrage horaire de la prestation.
     const { container } = renderInTable(
       <TeamWeekGridCell
         date="2026-05-11"
         teamId="t-alpha"
         teamName="Alpha"
         cells={[
-          makeCell({ slot: 'morning' }),
-          makeCell({ slot: 'evening' }),
+          makeCell({ slot: 'morning', planned_start: '2026-05-11T06:30:00.000Z' }),
+          makeCell({ slot: 'evening', planned_start: '2026-05-11T17:00:00.000Z' }),
         ]}
       />,
     )
     const text = container.textContent ?? ''
-    expect(text).not.toMatch(/\d{1,2}\s*[:h]\s*\d{0,2}/)
+    expect(text).toMatch(/6h30/)
   })
 
   it('expose un aria-label lisible', () => {

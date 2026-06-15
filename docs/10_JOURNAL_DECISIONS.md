@@ -4,6 +4,18 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-06-15 — Créneaux horaires partout : suppression de « Matin / Après-midi / Soir » côté UI
+
+**Décision** : l'UI ne dit plus jamais « Matin / Après-midi / Soir ». On reste sur des **créneaux horaires** (heure de début/fin, ou ancrage `7h`/`14h`/`19h` à défaut). S'applique aussi à la **vue d'ensemble équipe × semaine**, qui affiche désormais l'heure de la 1re mission par site (ex. `CHU 6h30`, `Banq 18h`).
+
+**Raison** : la granularité matin/après-midi ne reflète pas le métier (déjà acté V6.1 côté affichage et saisie ; la modale de récurrence et les grilles n'avaient pas suivi). Le contexte pilote BTP (Contrabat) confirme le besoin d'horaires dans le planning hebdo.
+
+**Doctrine assouplie (tracée)** : l'ancien garde-fou anti-surveillance « la cellule vue équipe n'affiche jamais d'heure précise » est levé pour cette vue. Le cœur reste verrouillé : **aucune mesure ni agrégat par personne** — l'heure est un ancrage de prestation (site/contrat), jamais un pointage (`planned_*` jamais agrégé par `user_id`, cf. `planned-time-no-rh-aggregation`).
+
+**Impact** : `tests/doctrine/planned-time-no-rh-aggregation.test.ts`, `tests/components/recurrence-modal.test.tsx`, `tests/components/team-week-grid.test.tsx`, commentaire `RecurrenceModal.tsx`. Le code produit affichait déjà des heures ; ce sont surtout les tests/commentaires qui rattrapent la décision.
+
+---
+
 ## 2026-06-15 — Doctrine vue agent : passage V6 → V7 (la frontière est la RH, pas les noms)
 
 **Décision** : bascule du mode doctrinal `DOCTRINE_AGENT_VIEW` de **V6 → V7** dans `tests/doctrine/v67-brief-reprise.test.ts`. La **vue agent autonome** (`/intervenants/[id]` et assimilées : sites connus, contrats travaillés, interventions passées, continuité terrain) devient **autorisée**.
