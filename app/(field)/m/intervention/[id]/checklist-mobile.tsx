@@ -190,6 +190,11 @@ export function ChecklistMobile({
                     <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-700">
                       <Check className="h-3 w-3" />
                       Réalisé par {executorByToken[item.executed_by_token_id]}
+                      {item.executed_at && (
+                        <span className="text-sky-600/70 font-normal">
+                          · {new Date(item.executed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
