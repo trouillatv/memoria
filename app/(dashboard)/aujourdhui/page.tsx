@@ -358,7 +358,7 @@ function OverdueLine({ item }: { item: OverdueIntervention }) {
 
 function InterventionLine({ item }: { item: TodayIntervention }) {
   const isClosed = item.status === 'completed' || item.status === 'validated' || item.status === 'skipped'
-  const timeLabel = formatTodayTimeLabel(item.planned_start, item.planned_end)
+  const time = formatTodayTime(item.planned_start, item.planned_end)
   return (
     <li>
       <Link
@@ -369,10 +369,11 @@ function InterventionLine({ item }: { item: TodayIntervention }) {
       >
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <span
-            className="min-w-[10.5rem] whitespace-nowrap text-xs font-mono tabular-nums text-muted-foreground shrink-0"
+            className="whitespace-nowrap text-xs font-mono tabular-nums text-muted-foreground shrink-0 sm:min-w-[10.5rem]"
             title="Horaire de prestation"
           >
-            {timeLabel}
+            {time.range}
+            {time.duration && <span className="hidden text-muted-foreground/70 sm:inline"> ({time.duration})</span>}
           </span>
           <div className="min-w-0 flex-1">
             <div className={`text-sm font-medium truncate ${item.status === 'skipped' ? 'line-through decoration-amber-700/50' : ''}`}>
@@ -468,14 +469,17 @@ function fmtClock(iso: string): string {
   }
 }
 
-function formatTodayTimeLabel(plannedStart: string | null, plannedEnd: string | null): string {
+function formatTodayTime(
+  plannedStart: string | null,
+  plannedEnd: string | null,
+): { range: string; duration: string | null } {
   const start = extractHHMM(plannedStart)
-  if (!start) return '—'
-  if (!plannedEnd) return start
+  if (!start) return { range: '—', duration: null }
+  if (!plannedEnd) return { range: start, duration: null }
   const end = extractHHMM(plannedEnd)
-  if (!end) return start
-  const duration = fmtDurationFr(plannedStart!, plannedEnd!)
-  return duration ? `${start} - ${end} (${duration.replace('h', ' h')})` : `${start} - ${end}`
+  if (!end) return { range: start, duration: null }
+  const d = fmtDurationFr(plannedStart!, plannedEnd!)
+  return { range: `${start} - ${end}`, duration: d ? d.replace('h', ' h') : null }
 }
 function DayStat({
   icon: Icon,

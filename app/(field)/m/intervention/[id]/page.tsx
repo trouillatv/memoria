@@ -47,6 +47,7 @@ import {
 import { todayLocalIso } from '@/lib/time/local-date'
 import { DateNav } from '../../DateNav'
 import { ShareExternalButton } from './ShareExternalButton'
+import { ExternalShareStatusMobile } from './ExternalShareStatusMobile'
 
 export const dynamic = 'force-dynamic'
 
@@ -294,12 +295,14 @@ export default async function FieldInterventionPage({
 
         {/* Partage externe — uniquement chef_equipe, manager, admin */}
         {(isAdmin || user.role === 'chef_equipe') && (
-          <div className="pt-1">
+          <div className="pt-1 space-y-2">
             <ShareExternalButton
               interventionId={id}
               missionName={mission?.name ?? 'Intervention'}
               siteName={site?.name ?? ''}
             />
+            {/* Statut : est-ce déjà partagé ? envoyé / consulté / confirmé */}
+            <ExternalShareStatusMobile tokens={allTokens} />
           </div>
         )}
       </header>
