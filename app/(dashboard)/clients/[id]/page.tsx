@@ -10,11 +10,19 @@ import {
   AlertTriangle,
   Layers,
   BookOpen,
+  Clock,
+  Users,
+  EyeOff,
+  ListTodo,
+  CheckCircle2,
+  CalendarClock,
+  ChevronRight,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { StatusValue } from '@/components/ui/status-badge'
-import { getClientDetail, getClientRecentRhythm } from '@/lib/db/clients'
+import { getClientDetail, getClientRecentRhythm, getClientCockpit } from '@/lib/db/clients'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
 import { SiteRhythm } from '@/app/(dashboard)/sites/[id]/SiteRhythm'
@@ -46,14 +54,18 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const siteCount = client.sites.length
   const hasNotes = !!client.notes?.trim()
 
-  // Rythme + densité agrégés sur tous les sites du client (même indicateurs
-  // que la fiche site, mais consolidés au niveau client).
-  const [rhythm14, rhythm90] = siteCount > 0
-    ? await Promise.all([
-        getClientRecentRhythm(id, 14),
-        getClientRecentRhythm(id, 90),
-      ])
-    : [[], []]
+  const todayIso = todayLocalIso()
+
+  // Cockpit : signaux d'attention (risques + à faire), pas d'historique.
+  const cockpit = await getClientCockpit(id, todayIso)
+  // Rythme + densité agrégés (consolidés sous l'historique, plus bas).
+  const rhythm14 = siteCount > 0 ? await getClientRecentRhythm(id, 14) : []
+  const rhythm90 = siteCount > 0 ? await getClientRecentRhythm(id, 90) : []
+
+  const { risks, thisWeek } = cockpit
+  const hasRisks =
+    risks.openAnomalies > 0 || risks.sitesNotVisited.length > 0 ||
+    risks.missionsWithoutTeam > 0 || risks.staleOpenActions > 0
 
   return (
     <div className="space-y-6 w-full">
@@ -67,23 +79,85 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
           <h1 className="text-2xl font-semibold leading-tight">{client.name}</h1>
         </div>
-        {client.contact_name && (
-          <p className="text-sm text-muted-foreground pl-7">{client.contact_name}</p>
-        )}
+        <div className="pl-7 flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+          {client.contact_name && <span>{client.contact_name}</span>}
+          <span className="inline-flex items-center gap-1"><FileCheck className="h-3.5 w-3.5" />{contractCount} contrat{contractCount > 1 ? 's' : ''}</span>
+          <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{siteCount} site{siteCount > 1 ? 's' : ''}</span>
+        </div>
       </header>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label="Contrats" value={contractCount} icon={<FileCheck className="h-4 w-4" />} />
-        <KpiCard label="Sites" value={siteCount} icon={<MapPin className="h-4 w-4" />} />
-        <KpiCard label="Interventions" value={client.totalInterventionCount} icon={<Calendar className="h-4 w-4" />} />
-        <KpiCard
-          label="Anomalies ouvertes"
-          value={client.openAnomalyCount}
-          icon={<AlertTriangle className="h-4 w-4" />}
-          highlight={client.openAnomalyCount > 0}
-        />
-      </div>
+      {/* ── RISQUES EN COURS — ce qui menace, pas l'historique ─────────────── */}
+      <section className={`rounded-lg border p-4 ${hasRisks ? 'border-amber-200 bg-amber-50/30' : 'border-emerald-200 bg-emerald-50/30'}`}>
+        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5 mb-2">
+          <AlertTriangle className="h-3.5 w-3.5" /> Risques en cours
+        </h2>
+        {!hasRisks ? (
+          <p className="text-sm text-emerald-700 inline-flex items-center gap-1.5">
+            <CheckCircle2 className="h-4 w-4" /> Aucun risque en cours.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {risks.openAnomalies > 0 && (
+              <RiskRow
+                tone={risks.criticalAnomalies > 0 ? 'red' : 'orange'}
+                icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                count={risks.openAnomalies}
+                label={`anomalie${risks.openAnomalies > 1 ? 's' : ''} ouverte${risks.openAnomalies > 1 ? 's' : ''}`}
+                detail={risks.criticalAnomalies > 0 ? `dont ${risks.criticalAnomalies} critique${risks.criticalAnomalies > 1 ? 's' : ''}` : null}
+              />
+            )}
+            {risks.sitesNotVisited.length > 0 && (
+              <RiskRow
+                tone="orange"
+                icon={<EyeOff className="h-3.5 w-3.5" />}
+                count={risks.sitesNotVisited.length}
+                label={`site${risks.sitesNotVisited.length > 1 ? 's' : ''} non vu${risks.sitesNotVisited.length > 1 ? 's' : ''} depuis 21 j`}
+                detail={risks.sitesNotVisited.slice(0, 3).map((s) => `${s.siteName} (${s.days === null ? 'jamais' : `${s.days} j`})`).join(' · ')}
+              />
+            )}
+            {risks.staleOpenActions > 0 && (
+              <RiskRow
+                tone="orange"
+                icon={<ListTodo className="h-3.5 w-3.5" />}
+                count={risks.staleOpenActions}
+                label={`action${risks.staleOpenActions > 1 ? 's' : ''} ouverte${risks.staleOpenActions > 1 ? 's' : ''} depuis +7 j`}
+                detail={null}
+              />
+            )}
+            {risks.missionsWithoutTeam > 0 && (
+              <RiskRow
+                tone="orange"
+                icon={<Users className="h-3.5 w-3.5" />}
+                count={risks.missionsWithoutTeam}
+                label={`mission${risks.missionsWithoutTeam > 1 ? 's' : ''} sans équipe`}
+                detail={null}
+              />
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* ── À FAIRE CETTE SEMAINE — prospectif ─────────────────────────────── */}
+      {thisWeek.length > 0 && (
+        <section>
+          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5 mb-2">
+            <CalendarClock className="h-3.5 w-3.5" /> À faire cette semaine
+          </h2>
+          <ul className="rounded-lg border divide-y">
+            {thisWeek.map((t) => (
+              <li key={t.interventionId}>
+                <Link href={`/interventions/${t.interventionId}`} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/20 transition-colors">
+                  <span className="text-xs font-medium text-sky-700 shrink-0 w-16">{formatDateShort(t.scheduled_for)}</span>
+                  <span className="text-sm truncate">{t.missionName}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">· {t.siteName}</span>
+                  {t.slot && <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0">{SLOT_FR[t.slot] ?? t.slot}</span>}
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 ml-auto shrink-0" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Colonne gauche : contact + mémoire */}
@@ -317,30 +391,24 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
 // ── Composant KPI ─────────────────────────────────────────────────────────
 
-function KpiCard({
-  label,
-  value,
-  icon,
-  highlight = false,
+function RiskRow({
+  tone, icon, count, label, detail,
 }: {
-  label: string
-  value: number
+  tone: 'red' | 'orange'
   icon: React.ReactNode
-  highlight?: boolean
+  count: number
+  label: string
+  detail: string | null
 }) {
+  const toneText = tone === 'red' ? 'text-red-700' : 'text-amber-700'
   return (
-    <div
-      className={`rounded-lg border p-4 space-y-1 ${
-        highlight && value > 0 ? 'border-amber-200 bg-amber-50/60' : 'bg-card'
-      }`}
-    >
-      <div className={`${highlight && value > 0 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+    <div className="flex items-baseline gap-2 text-sm">
+      <span className={`inline-flex items-center gap-1.5 ${toneText} shrink-0`}>
         {icon}
-      </div>
-      <div className={`text-2xl font-bold tabular-nums ${highlight && value > 0 ? 'text-amber-800' : ''}`}>
-        {value}
-      </div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+        <span className="font-bold tabular-nums">{count}</span>
+      </span>
+      <span className="text-foreground/90">{label}</span>
+      {detail && <span className="text-xs text-muted-foreground truncate">— {detail}</span>}
     </div>
   )
 }

@@ -314,3 +314,151 @@ export async function getClientDetail(id: string): Promise<ClientDetail | null> 
     totalInterventionCount: totalRes.count ?? 0,
   }
 }
+
+// ── Cockpit client : signaux d'attention, pas d'historique ─────────────────
+// Doctrine (Vincent) : pas de score % inventé — des SIGNAUX concrets et
+// déterministes. « Risques en cours » + « À faire cette semaine ».
+
+const CRITICAL_ANOMALY_CATEGORIES = new Set([
+  'danger_securite', 'electricite_coupee', 'eau_coupee',
+])
+const SITE_STALE_DAYS = 21
+
+export interface ClientCockpit {
+  risks: {
+    openAnomalies: number
+    criticalAnomalies: number
+    missionsWithoutTeam: number
+    staleOpenActions: number // actions ouvertes > 7 jours
+    sitesNotVisited: Array<{ siteId: string; siteName: string; days: number | null }>
+  }
+  thisWeek: Array<{
+    interventionId: string
+    siteName: string
+    missionName: string
+    scheduled_for: string
+    slot: string | null
+  }>
+}
+
+function daysSinceUtc(iso: string, todayIso: string): number {
+  const a = new Date(iso.slice(0, 10) + 'T00:00:00Z').getTime()
+  const b = new Date(todayIso + 'T00:00:00Z').getTime()
+  return Math.max(0, Math.round((b - a) / 86_400_000))
+}
+
+export async function getClientCockpit(clientId: string, todayIso: string): Promise<ClientCockpit> {
+  const supabase = createAdminClient()
+  const empty: ClientCockpit = {
+    risks: { openAnomalies: 0, criticalAnomalies: 0, missionsWithoutTeam: 0, staleOpenActions: 0, sitesNotVisited: [] },
+    thisWeek: [],
+  }
+
+  // Sites du client
+  const { data: siteRows } = await supabase
+    .from('sites')
+    .select('id, name')
+    .eq('client_id', clientId)
+    .is('deleted_at', null)
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string }>
+  if (sites.length === 0) return empty
+  const siteIds = sites.map((s) => s.id)
+  const siteNameById = new Map(sites.map((s) => [s.id, s.name]))
+
+  // Missions du client (sans équipe = assigned_team_id null)
+  const { data: missionRows } = await supabase
+    .from('missions')
+    .select('id, name, site_id, assigned_team_id')
+    .in('site_id', siteIds)
+    .is('deleted_at', null)
+  const missions = (missionRows ?? []) as Array<{ id: string; name: string; site_id: string; assigned_team_id: string | null }>
+  const missionIds = missions.map((m) => m.id)
+  const missionsWithoutTeam = missions.filter((m) => !m.assigned_team_id).length
+  const missionMeta = new Map(missions.map((m) => [m.id, { name: m.name, site_id: m.site_id }]))
+
+  // Actions ouvertes > 7 jours
+  const { data: actionRows } = await supabase
+    .from('site_actions')
+    .select('id, created_at')
+    .in('site_id', siteIds)
+    .eq('status', 'open')
+  const staleOpenActions = ((actionRows ?? []) as Array<{ id: string; created_at: string }>)
+    .filter((a) => daysSinceUtc(a.created_at, todayIso) > 7).length
+
+  if (missionIds.length === 0) {
+    return {
+      risks: {
+        openAnomalies: 0, criticalAnomalies: 0, missionsWithoutTeam, staleOpenActions,
+        sitesNotVisited: sites.map((s) => ({ siteId: s.id, siteName: s.name, days: null })),
+      },
+      thisWeek: [],
+    }
+  }
+
+  // Interventions du client (pour dernière visite/site + à faire cette semaine + anomalies)
+  const { data: interventionRows } = await supabase
+    .from('interventions')
+    .select('id, mission_id, scheduled_for, slot, status, executed_at')
+    .in('mission_id', missionIds)
+  const interventions = (interventionRows ?? []) as Array<{
+    id: string; mission_id: string; scheduled_for: string | null; slot: string | null
+    status: string; executed_at: string | null
+  }>
+  const interventionIds = interventions.map((i) => i.id)
+
+  // Dernière visite par site (max executed_at)
+  const lastVisitBySite = new Map<string, string>()
+  for (const iv of interventions) {
+    if (!iv.executed_at) continue
+    const siteId = missionMeta.get(iv.mission_id)?.site_id
+    if (!siteId) continue
+    const cur = lastVisitBySite.get(siteId)
+    if (!cur || iv.executed_at > cur) lastVisitBySite.set(siteId, iv.executed_at)
+  }
+  const sitesNotVisited = sites
+    .map((s) => {
+      const last = lastVisitBySite.get(s.id)
+      const days = last ? daysSinceUtc(last, todayIso) : null
+      return { siteId: s.id, siteName: s.name, days }
+    })
+    .filter((s) => s.days === null || s.days > SITE_STALE_DAYS)
+    .sort((a, b) => (b.days ?? 9999) - (a.days ?? 9999))
+
+  // À faire cette semaine : interventions planifiées dans les 7 prochains jours
+  const weekEnd = new Date(todayIso + 'T00:00:00Z')
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
+  const weekEndIso = weekEnd.toISOString().slice(0, 10)
+  const thisWeek = interventions
+    .filter((iv) => iv.status === 'planned' && iv.scheduled_for && iv.scheduled_for >= todayIso && iv.scheduled_for <= weekEndIso)
+    .sort((a, b) => (a.scheduled_for! < b.scheduled_for! ? -1 : 1))
+    .slice(0, 12)
+    .map((iv) => {
+      const meta = missionMeta.get(iv.mission_id)
+      return {
+        interventionId: iv.id,
+        siteName: meta ? (siteNameById.get(meta.site_id) ?? '—') : '—',
+        missionName: meta?.name ?? '—',
+        scheduled_for: iv.scheduled_for!,
+        slot: iv.slot,
+      }
+    })
+
+  // Anomalies ouvertes (+ critiques) sur les interventions du client
+  let openAnomalies = 0
+  let criticalAnomalies = 0
+  if (interventionIds.length > 0) {
+    const { data: anomalyRows } = await supabase
+      .from('intervention_anomalies')
+      .select('category')
+      .eq('status', 'open')
+      .in('intervention_id', interventionIds)
+    const anomalies = (anomalyRows ?? []) as Array<{ category: string }>
+    openAnomalies = anomalies.length
+    criticalAnomalies = anomalies.filter((a) => CRITICAL_ANOMALY_CATEGORIES.has(a.category)).length
+  }
+
+  return {
+    risks: { openAnomalies, criticalAnomalies, missionsWithoutTeam, staleOpenActions, sitesNotVisited },
+    thisWeek,
+  }
+}
