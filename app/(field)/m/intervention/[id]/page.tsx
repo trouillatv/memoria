@@ -12,7 +12,9 @@ import { getMission } from '@/lib/db/missions'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
+import { listAllTokensForIntervention, listExternalPhotosByIntervention } from '@/lib/db/intervention-tokens'
+import { getSignedPhotoUrlsThumb, getSignedPhotoUrlsMedium } from '@/lib/storage/intervention-photos'
+import { ExternalDoneCardMobile } from './ExternalDoneCardMobile'
 import { formatRelativeShort } from '@/lib/format'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { AnomalyList } from './AnomalyList'
@@ -92,13 +94,45 @@ export default async function FieldInterventionPage({
     )
   }
 
-  const [mission, checklistItems, photos, voiceNotes, anomalies] = await Promise.all([
+  const [mission, checklistItems, photos, voiceNotes, anomalies, allTokens, externalPhotos] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
     listVoiceNotesByIntervention(id),
     listAnomaliesByIntervention(id),
+    listAllTokensForIntervention(id).catch(() => []),
+    listExternalPhotosByIntervention(id).catch(() => []),
   ])
+
+  // Signal métier : un externe a-t-il validé via /i/[token] ? Si oui, sur mobile
+  // aussi on remplace « Commencer » par « Réalisée par l'externe » + contrôle.
+  const validatedTokens = allTokens
+    .filter((t) => t.validated_at)
+    .sort((a, b) => (b.validated_at! < a.validated_at! ? -1 : 1))
+  const latestValidated = validatedTokens[0] ?? null
+  const externalPaths = externalPhotos.map((p) => p.storage_path)
+  const [extThumbMap, extFullMap] = await Promise.all([
+    getSignedPhotoUrlsThumb(externalPaths),
+    getSignedPhotoUrlsMedium(externalPaths),
+  ])
+  const extPhotosByToken: Record<string, Array<{ thumb: string; full: string }>> = {}
+  for (const p of externalPhotos) {
+    const thumb = extThumbMap.get(p.storage_path)
+    if (!thumb) continue
+    ;(extPhotosByToken[p.external_token_id] ??= []).push({ thumb, full: extFullMap.get(p.storage_path) ?? thumb })
+  }
+  const externalValidation = latestValidated
+    ? {
+        name: latestValidated.validated_by_name ?? latestValidated.recipient_label ?? 'Intervenant externe',
+        validatedAt: latestValidated.validated_at!,
+        comment: latestValidated.validation_comment ?? null,
+        signatureDataUrl: latestValidated.signature_data_url ?? null,
+        validatorCount: validatedTokens.length,
+        photos: validatedTokens.flatMap((t) => extPhotosByToken[t.id] ?? []),
+        checklistDone: checklistItems.filter((c) => c.done).length,
+        checklistTotal: checklistItems.length,
+      }
+    : null
 
   // Sign storage URLs (1h TTL) — variante thumb 400×400 pour la liste mobile.
   const signedUrlsMap = await getSignedPhotoUrlsThumb(photos.map((p) => p.storage_path))
@@ -295,7 +329,10 @@ export default async function FieldInterventionPage({
         </div>
       )}
 
-      {!isSkipped && isPlanned && <StartInterventionButton interventionId={id} />}
+      {!isSkipped && isPlanned && externalValidation && (
+        <ExternalDoneCardMobile interventionId={id} summary={externalValidation} />
+      )}
+      {!isSkipped && isPlanned && !externalValidation && <StartInterventionButton interventionId={id} />}
 
       {isCompleted && (
         <div className="rounded-lg border border-border bg-muted/30 p-4 text-base text-foreground flex items-center gap-2">

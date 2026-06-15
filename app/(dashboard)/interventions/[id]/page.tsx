@@ -75,15 +75,40 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
   ])
 
   // Vue « Activités externes » : checklist N/M + photos externes signées par token.
+  // On garde thumb (affichage) + full (clic → voir la photo en grand).
   const checklistDone = checklistItems.filter((c) => c.done).length
   const checklistTotal = checklistItems.length
-  const externalThumbMap = await getSignedPhotoUrlsThumb(externalPhotos.map((p) => p.storage_path))
-  const externalPhotosByToken: Record<string, string[]> = {}
+  const externalPaths = externalPhotos.map((p) => p.storage_path)
+  const [externalThumbMap, externalFullMap] = await Promise.all([
+    getSignedPhotoUrlsThumb(externalPaths),
+    getSignedPhotoUrlsMedium(externalPaths),
+  ])
+  const externalPhotosByToken: Record<string, Array<{ thumb: string; full: string }>> = {}
   for (const p of externalPhotos) {
-    const url = externalThumbMap.get(p.storage_path)
-    if (!url) continue
-    ;(externalPhotosByToken[p.external_token_id] ??= []).push(url)
+    const thumb = externalThumbMap.get(p.storage_path)
+    if (!thumb) continue
+    ;(externalPhotosByToken[p.external_token_id] ??= []).push({ thumb, full: externalFullMap.get(p.storage_path) ?? thumb })
   }
+
+  // Signal métier : un externe a-t-il VALIDÉ via /i/[token] ? L'intervention reste
+  // « planned » (l'externe ne clôture jamais — doctrine). Mais l'UI doit le refléter :
+  // « Réalisée par l'externe » + « Contrôler et clôturer » plutôt que « Démarrer ».
+  const validatedTokens = allTokens
+    .filter((t) => t.validated_at)
+    .sort((a, b) => (b.validated_at! < a.validated_at! ? -1 : 1))
+  const latestValidated = validatedTokens[0] ?? null
+  const externalValidation = latestValidated
+    ? {
+        name: latestValidated.validated_by_name ?? latestValidated.recipient_label ?? 'Intervenant externe',
+        validatedAt: latestValidated.validated_at!,
+        comment: latestValidated.validation_comment ?? null,
+        signatureDataUrl: latestValidated.signature_data_url ?? null,
+        validatorCount: validatedTokens.length,
+        photos: validatedTokens.flatMap((t) => externalPhotosByToken[t.id] ?? []),
+        checklistDone,
+        checklistTotal,
+      }
+    : null
 
   const supabase = createAdminClient()
   const { data: site } = mission
@@ -410,6 +435,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         checklistItems={checklistItems}
         photos={photos}
         signedUrls={Object.fromEntries(signedUrls)}
+        externalValidation={externalValidation}
       />
 
       <AnomaliesPanel

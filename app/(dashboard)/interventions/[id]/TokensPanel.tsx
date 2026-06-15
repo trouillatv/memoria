@@ -17,7 +17,7 @@ interface Props {
   tokens: InterventionToken[]
   checklistDone: number
   checklistTotal: number
-  externalPhotosByToken: Record<string, string[]>
+  externalPhotosByToken: Record<string, Array<{ thumb: string; full: string }>>
 }
 
 const FR_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
@@ -64,7 +64,7 @@ function ExternalActivityRow({
   interventionId: string
   checklistDone: number
   checklistTotal: number
-  photos: string[]
+  photos: Array<{ thumb: string; full: string }>
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -113,9 +113,11 @@ function ExternalActivityRow({
 
           {photos.length > 0 && (
             <div className="grid grid-cols-6 gap-1.5">
-              {photos.map((url, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={i} src={url} alt="" className="aspect-square w-full rounded object-cover border" />
+              {photos.map((p, i) => (
+                <a key={i} href={p.full} target="_blank" rel="noopener noreferrer" className="block rounded overflow-hidden border bg-muted hover:opacity-90 transition-opacity">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.thumb} alt={`Photo externe ${i + 1}`} className="aspect-square w-full object-cover" />
+                </a>
               ))}
             </div>
           )}

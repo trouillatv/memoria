@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock, ScanSearch, X } from 'lucide-react'
+import { Camera, Check, Play, CheckCircle2, UnlockKeyhole, Lock, ScanSearch, X, Hourglass, ClipboardCheck, ListChecks, PenLine, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   startInterventionAction,
@@ -33,14 +33,32 @@ const KIND_COLORS: Record<PhotoKind, string> = {
   access: 'bg-slate-50 border-slate-200 text-slate-600', // 070 — sobre (pas une preuve de propreté)
 }
 
+export interface ExternalValidationSummary {
+  name: string
+  validatedAt: string
+  comment: string | null
+  signatureDataUrl: string | null
+  validatorCount: number
+  photos: Array<{ thumb: string; full: string }>
+  checklistDone: number
+  checklistTotal: number
+}
+
 interface Props {
   intervention: DbIntervention
   checklistItems: DbInterventionChecklistItem[]
   photos: DbInterventionPhoto[]
   signedUrls: Record<string, string>
+  externalValidation?: ExternalValidationSummary | null
 }
 
-export function ExecutionPanel({ intervention, checklistItems, photos, signedUrls }: Props) {
+function formatFullDateTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+    + ' à ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
+}
+
+export function ExecutionPanel({ intervention, checklistItems, photos, signedUrls, externalValidation }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [uploadingForItem, setUploadingForItem] = useState<string | 'free' | null>(null)
@@ -188,20 +206,115 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
 
   return (
     <>
-      {/* Status actions */}
-      {canStart && (
+      {/* Status actions — cas 1 : un externe a déjà validé (réalisé par sous-traitant /
+          livreur). On ne dit plus « Démarrer » (incohérent) : on montre ce qui a été
+          fait et on propose de contrôler puis clôturer. L'externe ne clôture jamais. */}
+      {canStart && externalValidation && (
+        <section className="rounded-lg border-2 border-sky-300 bg-sky-50/60 p-5 space-y-4">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-7 w-7 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="text-base font-bold text-sky-950">Réalisée par l&apos;externe</div>
+              <div className="text-sm text-sky-800/80 mt-0.5">
+                Validée par <span className="font-medium text-sky-900">{externalValidation.name}</span>
+                {' '}le {formatFullDateTime(externalValidation.validatedAt)}
+                {externalValidation.validatorCount > 1 && (
+                  <span className="text-sky-700/70"> · {externalValidation.validatorCount} intervenants</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Preuves laissées par l'externe */}
+          <div className="flex items-center gap-3 text-xs flex-wrap">
+            {externalValidation.checklistTotal > 0 && (
+              <span className={`inline-flex items-center gap-1 ${externalValidation.checklistDone >= externalValidation.checklistTotal ? 'text-emerald-700' : 'text-amber-700'}`}>
+                <ListChecks className="h-3.5 w-3.5" />
+                Checklist {externalValidation.checklistDone}/{externalValidation.checklistTotal}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 text-sky-800">
+              <Camera className="h-3.5 w-3.5" />
+              {externalValidation.photos.length} photo{externalValidation.photos.length > 1 ? 's' : ''}
+            </span>
+            {externalValidation.signatureDataUrl && (
+              <span className="inline-flex items-center gap-1 text-emerald-700">
+                <PenLine className="h-3.5 w-3.5" />Signature
+              </span>
+            )}
+          </div>
+
+          {externalValidation.photos.length > 0 && (
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+              {externalValidation.photos.map((p, i) => (
+                <a key={i} href={p.full} target="_blank" rel="noopener noreferrer" className="block rounded overflow-hidden border bg-muted hover:opacity-90 transition-opacity">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.thumb} alt={`Photo externe ${i + 1}`} className="aspect-square w-full object-cover" />
+                </a>
+              ))}
+            </div>
+          )}
+
+          {externalValidation.comment && (
+            <p className="text-sm text-sky-900/80 italic border-l-2 border-sky-200 pl-2 inline-flex items-start gap-1">
+              <MessageSquare className="h-3.5 w-3.5 mt-0.5 shrink-0 text-sky-600" />
+              « {externalValidation.comment} »
+            </p>
+          )}
+
+          {externalValidation.signatureDataUrl && (
+            <div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={externalValidation.signatureDataUrl} alt="Signature de l'externe" className="h-14 rounded border bg-white" />
+            </div>
+          )}
+
+          {/* Attente de validation interne + CTA de contrôle */}
+          <div className="flex items-center justify-between gap-3 flex-wrap border-t border-sky-200 pt-3">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700">
+              <Hourglass className="h-4 w-4" /> Validation interne requise
+            </span>
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={pending}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-foreground bg-foreground text-background text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-transform active:scale-[0.98]"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              {pending ? 'Ouverture…' : 'Contrôler et clôturer'}
+            </button>
+          </div>
+          <p className="text-[11px] text-sky-800/60">
+            L&apos;externe ne clôture pas l&apos;intervention. Vous gardez le dernier mot&nbsp;: contrôlez le travail, ajoutez d&apos;éventuelles réserves, puis terminez.
+          </p>
+        </section>
+      )}
+
+      {/* Status actions — cas standard : aucune validation externe → démarrage classique. */}
+      {canStart && !externalValidation && (
         <section className="rounded-lg border bg-card p-4">
           <button
             type="button"
             onClick={handleStart}
             disabled={pending}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded border bg-foreground text-background text-sm hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded border bg-foreground text-background text-sm hover:opacity-90 disabled:opacity-50 transition-transform active:scale-[0.98]"
           >
             <Play className="h-4 w-4" />
             {pending ? 'Démarrage...' : "Démarrer l'intervention"}
           </button>
           <p className="text-[11px] text-muted-foreground mt-2">
             Une fois démarrée, vous pourrez cocher les tâches et ajouter des photos preuves.
+          </p>
+        </section>
+      )}
+
+      {/* Contrôle en cours d'une réalisation externe — rappel sobre du contexte. */}
+      {canExecute && externalValidation && (
+        <section className="rounded-lg border border-sky-200 bg-sky-50/50 px-4 py-3 flex items-start gap-2.5">
+          <ClipboardCheck className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-sky-900/80">
+            Vous contrôlez une intervention <span className="font-medium">réalisée par {externalValidation.name}</span>.
+            Vérifiez les tâches, ajoutez d&apos;éventuelles réserves, puis terminez pour clôturer.
           </p>
         </section>
       )}
