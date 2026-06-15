@@ -26,6 +26,14 @@ export default function manifest(): MetadataRoute.Manifest {
         type: 'image/png',
         purpose: 'any',
       },
+      // Icône « maskable » : remplit tout le cadre (pas de logo minuscule perdu
+      // dans du blanc) sur Android/iOS, tout en respectant la zone de sécurité.
+      {
+        src: '/icons/icon-512-maskable.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
       {
         src: '/icons/apple-touch-icon.png',
         sizes: '180x180',
