@@ -37,6 +37,8 @@ function makeItem(overrides: Partial<DbInterventionChecklistItem> = {}): DbInter
     done: false,
     done_at: null,
     done_by: null,
+    executed_by_token_id: null,
+    executed_at: null,
     ...overrides,
   }
 }

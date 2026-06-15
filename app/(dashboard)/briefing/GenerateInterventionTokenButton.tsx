@@ -4,23 +4,42 @@ import { useState, useTransition } from 'react'
 import { Link2, MessageCircle, Copy, Check, Loader2, ChevronDown, Infinity } from 'lucide-react'
 import { generateInterventionTokenAction } from './intervention-token-actions'
 
+interface ShareChecklistItem {
+  id: string
+  label: string
+  delegated: boolean
+}
+
 interface Props {
   interventionId: string
   missionName: string
   siteName: string
+  checklistItems?: ShareChecklistItem[]
 }
 
 export function GenerateInterventionTokenButton({
   interventionId,
   missionName,
   siteName,
+  checklistItems = [],
 }: Props) {
+  const assignable = checklistItems.filter((c) => !c.delegated)
   const [recipientLabel, setRecipientLabel] = useState('')
   const [permanent, setPermanent] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(assignable.map((c) => c.id)))
   const [result, setResult] = useState<{ url: string; whatsappText: string; permanent: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  function toggleItem(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   function generate() {
     setError(null)
@@ -29,6 +48,12 @@ export function GenerateInterventionTokenButton({
         interventionId,
         recipientLabel: recipientLabel.trim() || undefined,
         permanent,
+        checklistItemIds:
+          assignable.length > 0 && selected.size > 0 && selected.size < assignable.length
+            ? Array.from(selected)
+            : assignable.length > 0 && selected.size > 0 && checklistItems.some((c) => c.delegated)
+              ? Array.from(selected)
+              : undefined,
       })
       if (res.ok) {
         setResult({ url: res.url, whatsappText: res.whatsappText, permanent: res.permanent })
@@ -96,6 +121,35 @@ export function GenerateInterventionTokenButton({
   return (
     <div className="mt-1 space-y-1.5">
       {error && <p className="text-xs text-red-600">{error}</p>}
+      {checklistItems.length > 0 && (
+        <div className="space-y-1 rounded-md border bg-background p-2">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Tâches confiées</p>
+          <div className="max-h-40 overflow-y-auto space-y-0.5">
+            {checklistItems.map((c) => (
+              <label key={c.id} className={`flex items-start gap-2 text-xs ${c.delegated ? 'opacity-50' : 'cursor-pointer'}`}>
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.id)}
+                  disabled={c.delegated}
+                  onChange={() => toggleItem(c.id)}
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-muted-foreground accent-foreground shrink-0"
+                />
+                <span className="leading-snug">
+                  {c.label}
+                  {c.delegated && <span className="text-muted-foreground"> · déjà confiée</span>}
+                </span>
+              </label>
+            ))}
+          </div>
+          {assignable.length > 0 && (
+            <p className="text-[10px] text-muted-foreground/70">
+              {selected.size === assignable.length && !checklistItems.some((c) => c.delegated)
+                ? 'Intervention entière'
+                : `${selected.size} tâche${selected.size > 1 ? 's' : ''} confiée${selected.size > 1 ? 's' : ''}`}
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         <input
           type="text"
@@ -120,7 +174,7 @@ export function GenerateInterventionTokenButton({
         <button
           type="button"
           onClick={generate}
-          disabled={isPending}
+          disabled={isPending || (assignable.length > 0 && selected.size === 0)}
           className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-50"
         >
           {isPending ? (

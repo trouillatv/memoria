@@ -4,7 +4,11 @@ import { z } from 'zod'
 import { createHash } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { validateInterventionToken } from '@/lib/db/intervention-tokens'
+import {
+  validateInterventionToken,
+  listTokenItemIds,
+  markItemsExecutedByToken,
+} from '@/lib/db/intervention-tokens'
 
 const TokenSchema = z.string().min(8).max(200)
 const NameSchema = z.string().trim().min(1, 'Nom requis').max(100)
@@ -23,10 +27,15 @@ interface LoadedToken {
   validated_at: string | null
 }
 
-/** Charge + valide un token pour une action externe. */
+/** Charge + valide un token pour une action externe.
+ *  `allowedItemIds` = périmètre autorisé de la contribution. `null` = pas de
+ *  périmètre (token sur l'intervention entière → tous les items autorisés). */
 async function loadValidToken(
   token: string,
-): Promise<{ ok: true; tok: LoadedToken } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; tok: LoadedToken; allowedItemIds: string[] | null }
+  | { ok: false; error: string }
+> {
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('intervention_tokens')
@@ -38,7 +47,23 @@ async function loadValidToken(
   if (tok.revoked_at) return { ok: false, error: 'Ce lien a été révoqué' }
   if (tok.expires_at && new Date(tok.expires_at) < new Date()) return { ok: false, error: 'Ce lien a expiré' }
   if (!(tok.permissions ?? []).includes('validate')) return { ok: false, error: 'Action non autorisée sur ce lien' }
-  return { ok: true, tok }
+  const perimeter = await listTokenItemIds(tok.id)
+  return { ok: true, tok, allowedItemIds: perimeter.length > 0 ? perimeter : null }
+}
+
+/** Résout le périmètre effectif (IDs d'items que ce token peut toucher).
+ *  Si pas de périmètre explicite → tous les items de l'intervention. */
+async function resolveAllowedItemIds(
+  interventionId: string,
+  allowedItemIds: string[] | null,
+): Promise<Set<string>> {
+  if (allowedItemIds) return new Set(allowedItemIds)
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('intervention_checklist_items')
+    .select('id')
+    .eq('intervention_id', interventionId)
+  return new Set(((data ?? []) as Array<{ id: string }>).map((r) => r.id))
 }
 
 /**
@@ -61,6 +86,16 @@ export async function uploadExternalPhotoViaToken(
   if (!loaded.ok) return { ok: false, error: loaded.error }
   const { tok } = loaded
 
+  // Garde-fou : une photo rattachée à un item DOIT être dans le périmètre.
+  const rawItemId = formData.get('checklist_item_id')
+  let checklistItemId: string | null = null
+  if (typeof rawItemId === 'string' && rawItemId.length > 0) {
+    if (!ItemIdSchema.safeParse(rawItemId).success) return { ok: false, error: 'Tâche invalide' }
+    const allowed = await resolveAllowedItemIds(tok.intervention_id, loaded.allowedItemIds)
+    if (!allowed.has(rawItemId)) return { ok: false, error: 'Cette tâche ne fait pas partie de votre périmètre' }
+    checklistItemId = rawItemId
+  }
+
   const supabase = createAdminClient()
   const rawExt = (file.name.split('.').pop() ?? 'jpg').toLowerCase().slice(0, 5)
   const safeExt = /^[a-z0-9]+$/.test(rawExt) ? rawExt : 'jpg'
@@ -78,7 +113,7 @@ export async function uploadExternalPhotoViaToken(
     .from('intervention_photos')
     .insert({
       intervention_id: tok.intervention_id,
-      checklist_item_id: null,
+      checklist_item_id: checklistItemId,
       storage_path: storagePath,
       kind: 'proof',
       caption: null,
@@ -137,9 +172,8 @@ export async function checkItemsAndValidateViaToken(
     return { ok: false, error: 'Signature requise' }
   }
 
-  const validItemIds = checkedItemIds.filter((id) => ItemIdSchema.safeParse(id).success)
+  const requestedItemIds = checkedItemIds.filter((id) => ItemIdSchema.safeParse(id).success)
 
-  const supabase = createAdminClient()
   const loaded = await loadValidToken(tParsed.data)
   if (!loaded.ok) return { ok: false, error: loaded.error }
   const { tok } = loaded
@@ -147,25 +181,23 @@ export async function checkItemsAndValidateViaToken(
   // Idempotent : déjà validé → ok sans erreur
   if (tok.validated_at) return { ok: true }
 
-  // Checklist incomplète → commentaire obligatoire
-  const { data: allItems } = await supabase
-    .from('intervention_checklist_items')
-    .select('id')
-    .eq('intervention_id', tok.intervention_id)
-  const total = (allItems ?? []).length
-  const incomplete = total > 0 && validItemIds.length < total
+  // GARDE-FOU : on ne retient QUE les items du périmètre de cette contribution.
+  // Tout item hors périmètre est ignoré (le scope affiché n'est jamais décoratif).
+  const allowed = await resolveAllowedItemIds(tok.intervention_id, loaded.allowedItemIds)
+  const validItemIds = requestedItemIds.filter((id) => allowed.has(id))
+
+  // Checklist incomplète = relative AU PÉRIMÈTRE (« vos tâches »), pas à toute
+  // l'intervention. Si incomplète → commentaire obligatoire.
+  const scopeTotal = allowed.size
+  const incomplete = scopeTotal > 0 && validItemIds.length < scopeTotal
   if (incomplete && !cParsed.data.trim()) {
-    return { ok: false, error: 'Checklist incomplète : un commentaire est obligatoire pour expliquer.' }
+    return { ok: false, error: 'Tâches incomplètes : un commentaire est obligatoire pour expliquer.' }
   }
 
-  // Cocher les items confirmés par l'acteur externe
-  if (validItemIds.length > 0) {
-    await supabase
-      .from('intervention_checklist_items')
-      .update({ done: true })
-      .eq('intervention_id', tok.intervention_id)
-      .in('id', validItemIds)
-  }
+  // Cocher + attribuer l'exécution à cette contribution externe (entreprise).
+  await markItemsExecutedByToken(tok.id, validItemIds)
+
+  const supabase = createAdminClient()
 
   // Signature sur le token (preuve, jamais clôture).
   await supabase

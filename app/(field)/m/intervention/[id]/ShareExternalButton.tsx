@@ -13,10 +13,17 @@ import {
 } from 'lucide-react'
 import { generateInterventionTokenAction } from '@/app/(dashboard)/briefing/intervention-token-actions'
 
+interface ShareChecklistItem {
+  id: string
+  label: string
+  delegated: boolean
+}
+
 interface Props {
   interventionId: string
   missionName: string
   siteName: string
+  checklistItems?: ShareChecklistItem[]
 }
 
 type GeneratedResult = {
@@ -25,10 +32,13 @@ type GeneratedResult = {
   permanent: boolean
 }
 
-export function ShareExternalButton({ interventionId, missionName, siteName }: Props) {
+export function ShareExternalButton({ interventionId, missionName, siteName, checklistItems = [] }: Props) {
+  const assignable = checklistItems.filter((c) => !c.delegated)
   const [open, setOpen] = useState(false)
   const [recipientLabel, setRecipientLabel] = useState('')
   const [permanent, setPermanent] = useState(false)
+  // Périmètre : par défaut, toutes les tâches encore libres sont confiées.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(assignable.map((c) => c.id)))
   const [result, setResult] = useState<GeneratedResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -51,6 +61,15 @@ export function ShareExternalButton({ interventionId, missionName, siteName }: P
     setOpen((v) => !v)
   }
 
+  function toggleItem(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   function generate() {
     setError(null)
     startTransition(async () => {
@@ -58,6 +77,14 @@ export function ShareExternalButton({ interventionId, missionName, siteName }: P
         interventionId,
         recipientLabel: recipientLabel.trim() || undefined,
         permanent,
+        // Périmètre : si toutes les tâches assignables sont cochées, on laisse
+        // vide = intervention entière (fallback). Sinon, on envoie le sous-ensemble.
+        checklistItemIds:
+          assignable.length > 0 && selected.size > 0 && selected.size < assignable.length
+            ? Array.from(selected)
+            : assignable.length > 0 && selected.size > 0 && selected.size === assignable.length && checklistItems.some((c) => c.delegated)
+              ? Array.from(selected) // certaines déjà déléguées → on scope explicitement le reste
+              : undefined,
       })
       if (res.ok) {
         setResult({ url: res.url, whatsappText: res.whatsappText, permanent: res.permanent })
@@ -158,6 +185,45 @@ export function ShareExternalButton({ interventionId, missionName, siteName }: P
                 </span>
               </label>
 
+              {/* Périmètre : quelles tâches on confie à cet externe */}
+              {checklistItems.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">Tâches confiées</p>
+                  <div className="rounded-lg border divide-y max-h-48 overflow-y-auto">
+                    {checklistItems.map((c) => {
+                      const isSel = selected.has(c.id)
+                      return (
+                        <label
+                          key={c.id}
+                          className={`flex items-start gap-2 px-3 py-2 text-sm ${c.delegated ? 'opacity-50' : 'cursor-pointer active:bg-muted/30'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSel}
+                            disabled={c.delegated}
+                            onChange={() => toggleItem(c.id)}
+                            className="mt-0.5 h-4 w-4 rounded border-muted-foreground accent-foreground shrink-0"
+                          />
+                          <span className="leading-snug">
+                            {c.label}
+                            {c.delegated && <span className="block text-[10px] text-muted-foreground">déjà confiée à un autre externe</span>}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {assignable.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground/70">
+                      {selected.size === 0
+                        ? 'Aucune tâche sélectionnée — sélectionnez au moins une tâche.'
+                        : selected.size === assignable.length && !checklistItems.some((c) => c.delegated)
+                          ? 'Toutes les tâches — l’externe voit l’intervention entière.'
+                          : `${selected.size} tâche${selected.size > 1 ? 's' : ''} — l’externe ne verra que celles-ci.`}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {!permanent && (
                 <p className="text-[11px] text-muted-foreground/70">
                   Par défaut : valable 48h, révocable depuis la fiche intervention.
@@ -170,7 +236,7 @@ export function ShareExternalButton({ interventionId, missionName, siteName }: P
               <button
                 type="button"
                 onClick={generate}
-                disabled={isPending}
+                disabled={isPending || (assignable.length > 0 && selected.size === 0)}
                 className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-foreground text-background py-2.5 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 active:scale-[0.98]"
               >
                 {isPending ? (

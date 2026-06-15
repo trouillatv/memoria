@@ -645,6 +645,10 @@ export interface DbInterventionChecklistItem {
   done: boolean
   done_at: string | null
   done_by: string | null
+  // Contribution externe (migration 106) : exécutant externe = entreprise via
+  // token.recipient_label. NULL = interne / non délégué. Jamais un salarié nommé.
+  executed_by_token_id: string | null
+  executed_at: string | null
 }
 
 export type PhotoKind = 'before' | 'after' | 'anomaly' | 'proof' | 'passage' | 'access'

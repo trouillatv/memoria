@@ -11,7 +11,7 @@ import {
 } from '@/lib/db/interventions'
 import { listParticipantsForIntervention } from '@/lib/db/intervention-participants'
 import { listCompaniesForIntervention } from '@/lib/db/intervention-companies'
-import { listAllTokensForIntervention, listExternalPhotosByIntervention } from '@/lib/db/intervention-tokens'
+import { listAllTokensForIntervention, listExternalPhotosByIntervention, listDelegatedItemIds } from '@/lib/db/intervention-tokens'
 import { getMission } from '@/lib/db/missions'
 import { listTeams } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
@@ -109,6 +109,20 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         checklistTotal,
       }
     : null
+
+  // Map token → libellé entreprise (badges « Réalisé par … » sur la checklist).
+  const executorByToken: Record<string, string> = {}
+  for (const t of allTokens) {
+    executorByToken[t.id] = t.validated_by_name ?? t.recipient_label ?? 'Externe'
+  }
+  // Tâches déjà déléguées à un externe actif (exclues du sélecteur de partage).
+  const delegatedItemIds = await listDelegatedItemIds(id).catch(() => [])
+  const delegatedSet = new Set(delegatedItemIds)
+  const shareChecklistItems = checklistItems.map((c) => ({
+    id: c.id,
+    label: c.label,
+    delegated: delegatedSet.has(c.id),
+  }))
 
   const supabase = createAdminClient()
   const { data: site } = mission
@@ -366,6 +380,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         checklistDone={checklistDone}
         checklistTotal={checklistTotal}
         externalPhotosByToken={externalPhotosByToken}
+        shareChecklistItems={shareChecklistItems}
       />
 
       {/* Retours externes — lien partagé + activité du destinataire.
@@ -436,6 +451,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
         photos={photos}
         signedUrls={Object.fromEntries(signedUrls)}
         externalValidation={externalValidation}
+        executorByToken={executorByToken}
       />
 
       <AnomaliesPanel

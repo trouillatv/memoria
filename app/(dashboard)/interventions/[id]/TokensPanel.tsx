@@ -18,6 +18,7 @@ interface Props {
   checklistDone: number
   checklistTotal: number
   externalPhotosByToken: Record<string, Array<{ thumb: string; full: string }>>
+  shareChecklistItems?: Array<{ id: string; label: string; delegated: boolean }>
 }
 
 const FR_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
@@ -166,7 +167,7 @@ function ExternalActivityRow({
 }
 
 export function TokensPanel({
-  interventionId, missionName, siteName, tokens, checklistDone, checklistTotal, externalPhotosByToken,
+  interventionId, missionName, siteName, tokens, checklistDone, checklistTotal, externalPhotosByToken, shareChecklistItems = [],
 }: Props) {
   const [open, setOpen] = useState(false)
 
@@ -232,6 +233,7 @@ export function TokensPanel({
               interventionId={interventionId}
               missionName={missionName}
               siteName={siteName}
+              checklistItems={shareChecklistItems}
             />
           </div>
         </div>

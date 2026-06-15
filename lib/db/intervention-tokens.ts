@@ -111,6 +111,16 @@ export async function getInterventionByToken(
     .eq('intervention_id', tok.intervention_id)
     .order('position', { ascending: true })
 
+  // Périmètre de la contribution : si le token a des items assignés, on NE
+  // montre QUE ceux-là (« vos tâches »). Sinon, fallback = toute la checklist.
+  const perimeter = await listTokenItemIds(tok.id)
+  const allItems = ((checklistRows ?? []) as Array<{
+    id: string; label: string; position: number; required: boolean; done: boolean
+  }>)
+  const scoped = perimeter.length > 0
+    ? allItems.filter((r) => perimeter.includes(r.id))
+    : allItems
+
   return {
     state: 'active',
     token: tok as InterventionToken,
@@ -123,9 +133,7 @@ export async function getInterventionByToken(
       missionName: mission?.name ?? '—',
       siteName: site?.name ?? '—',
       siteAddress: site?.address ?? null,
-      checklistItems: ((checklistRows ?? []) as Array<{
-        id: string; label: string; position: number; required: boolean; done: boolean
-      }>).map((r) => ({
+      checklistItems: scoped.map((r) => ({
         id: r.id,
         label: r.label,
         position: r.position,
@@ -160,6 +168,9 @@ export async function createInterventionToken(input: {
   expiresAt?: string | null
   note?: string | null
   recipientLabel?: string | null
+  /** Périmètre de la contribution externe : items de checklist autorisés.
+   *  Vide / absent = contribution sur l'intervention entière (fallback). */
+  checklistItemIds?: string[]
 }): Promise<InterventionToken> {
   const supabase = createAdminClient()
   const token = crypto.randomBytes(24).toString('base64url')
@@ -179,7 +190,64 @@ export async function createInterventionToken(input: {
     .single()
 
   if (error) throw error
-  return data as InterventionToken
+  const tok = data as InterventionToken
+
+  const itemIds = Array.from(new Set((input.checklistItemIds ?? []).filter(Boolean)))
+  if (itemIds.length > 0) {
+    const rows = itemIds.map((checklist_item_id) => ({ token_id: tok.id, checklist_item_id }))
+    const { error: itemErr } = await supabase.from('intervention_token_items').insert(rows)
+    if (itemErr) throw itemErr
+  }
+
+  return tok
+}
+
+/** IDs des items de checklist du périmètre d'un token (contribution externe).
+ *  Vide = pas de périmètre → l'externe agit sur toute l'intervention (fallback). */
+export async function listTokenItemIds(tokenId: string): Promise<string[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_token_items')
+    .select('checklist_item_id')
+    .eq('token_id', tokenId)
+  if (error) throw error
+  return ((data ?? []) as Array<{ checklist_item_id: string }>).map((r) => r.checklist_item_id)
+}
+
+/** IDs des items déjà délégués à un token ACTIF (non révoqué) d'une intervention.
+ *  Sert la règle « 0 ou 1 exécutant externe par tâche » : on exclut ces items
+ *  du sélecteur de partage. */
+export async function listDelegatedItemIds(interventionId: string): Promise<string[]> {
+  const supabase = createAdminClient()
+  const { data: tokens } = await supabase
+    .from('intervention_tokens')
+    .select('id')
+    .eq('intervention_id', interventionId)
+    .is('revoked_at', null)
+  const tokenIds = ((tokens ?? []) as Array<{ id: string }>).map((t) => t.id)
+  if (tokenIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('intervention_token_items')
+    .select('checklist_item_id')
+    .in('token_id', tokenIds)
+  if (error) throw error
+  return [...new Set(((data ?? []) as Array<{ checklist_item_id: string }>).map((r) => r.checklist_item_id))]
+}
+
+/** Marque des items comme exécutés par un token externe (entreprise).
+ *  Pose executed_by_token_id + executed_at + done. */
+export async function markItemsExecutedByToken(
+  tokenId: string,
+  itemIds: string[],
+): Promise<void> {
+  if (itemIds.length === 0) return
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('intervention_checklist_items')
+    .update({ executed_by_token_id: tokenId, executed_at: now, done: true, done_at: now })
+    .in('id', itemIds)
+  if (error) throw error
 }
 
 /** Tous les tokens d'une intervention (y compris révoqués), triés par date de création desc. */

@@ -18,6 +18,8 @@ interface Props {
   serverPhotos: DbInterventionPhoto[]
   signedUrls: Record<string, string>
   canEdit: boolean
+  /** token_id → libellé entreprise, pour le badge « Réalisé par … ». */
+  executorByToken?: Record<string, string>
 }
 
 interface ThumbForItem {
@@ -35,6 +37,7 @@ export function ChecklistMobile({
   serverPhotos,
   signedUrls,
   canEdit,
+  executorByToken = {},
 }: Props) {
   const [optimistic, setOptimistic] = useState<Record<string, boolean>>({})
   // keyed by checklistItemId or 'free'
@@ -183,6 +186,12 @@ export function ChecklistMobile({
                   >
                     {item.label}
                   </div>
+                  {item.executed_by_token_id && executorByToken[item.executed_by_token_id] && (
+                    <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                      <Check className="h-3 w-3" />
+                      Réalisé par {executorByToken[item.executed_by_token_id]}
+                    </div>
+                  )}
                 </div>
               </button>
 

@@ -50,6 +50,8 @@ interface Props {
   photos: DbInterventionPhoto[]
   signedUrls: Record<string, string>
   externalValidation?: ExternalValidationSummary | null
+  /** token_id → libellé entreprise, pour le badge « Réalisé par … » par tâche. */
+  executorByToken?: Record<string, string>
 }
 
 function formatFullDateTime(iso: string): string {
@@ -58,7 +60,7 @@ function formatFullDateTime(iso: string): string {
     + ' à ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')
 }
 
-export function ExecutionPanel({ intervention, checklistItems, photos, signedUrls, externalValidation }: Props) {
+export function ExecutionPanel({ intervention, checklistItems, photos, signedUrls, externalValidation, executorByToken = {} }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [uploadingForItem, setUploadingForItem] = useState<string | 'free' | null>(null)
@@ -366,6 +368,13 @@ export function ExecutionPanel({ intervention, checklistItems, photos, signedUrl
                         {item.label}
                         {item.required && <span className="ml-1 text-rose-500">*</span>}
                       </div>
+                      {item.executed_by_token_id && executorByToken[item.executed_by_token_id] && (
+                        <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                          <Check className="h-2.5 w-2.5" />
+                          Réalisé par {executorByToken[item.executed_by_token_id]}
+                          {item.executed_at && <span className="text-sky-600/70">· {new Date(item.executed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>}
+                        </div>
+                      )}
                       {item.done && item.done_at && (
                         <div className="text-[10px] text-muted-foreground">
                           ✓ {new Date(item.done_at).toLocaleString('fr-FR')}

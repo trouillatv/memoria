@@ -5,7 +5,7 @@
 // Retourne le token + l'URL publique + le texte WhatsApp pré-rempli.
 
 import { headers } from 'next/headers'
-import { createInterventionToken } from '@/lib/db/intervention-tokens'
+import { createInterventionToken, listDelegatedItemIds } from '@/lib/db/intervention-tokens'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -14,6 +14,8 @@ export async function generateInterventionTokenAction(input: {
   recipientLabel?: string
   note?: string
   permanent?: boolean
+  /** Périmètre : items de checklist confiés à l'externe. Vide = intervention entière. */
+  checklistItemIds?: string[]
 }): Promise<
   | { ok: true; token: string; url: string; whatsappText: string; permanent: boolean }
   | { ok: false; error: string }
@@ -53,6 +55,25 @@ export async function generateInterventionTokenAction(input: {
   const recipientLabel = input.recipientLabel?.trim() || null
   const note = input.note?.trim() || [recipientLabel, missionName, siteName].filter(Boolean).join(' — ')
 
+  // Périmètre : valider que les items appartiennent à l'intervention et ne sont
+  // pas déjà confiés à un autre externe actif (règle 0/1 exécutant par tâche).
+  const requestedItems = Array.from(new Set((input.checklistItemIds ?? []).filter(Boolean)))
+  if (requestedItems.length > 0) {
+    const { data: ownItems } = await supabase
+      .from('intervention_checklist_items')
+      .select('id')
+      .eq('intervention_id', input.interventionId)
+      .in('id', requestedItems)
+    const ownSet = new Set(((ownItems ?? []) as Array<{ id: string }>).map((r) => r.id))
+    if (requestedItems.some((id) => !ownSet.has(id))) {
+      return { ok: false, error: 'Tâche invalide pour cette intervention' }
+    }
+    const alreadyDelegated = new Set(await listDelegatedItemIds(input.interventionId))
+    if (requestedItems.some((id) => alreadyDelegated.has(id))) {
+      return { ok: false, error: 'Une de ces tâches est déjà confiée à un autre externe' }
+    }
+  }
+
   let tok
   try {
     tok = await createInterventionToken({
@@ -61,6 +82,7 @@ export async function generateInterventionTokenAction(input: {
       expiresAt,
       note,
       recipientLabel,
+      checklistItemIds: requestedItems,
     })
   } catch {
     return { ok: false, error: 'Erreur lors de la création du lien' }

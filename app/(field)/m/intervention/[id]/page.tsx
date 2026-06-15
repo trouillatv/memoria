@@ -12,7 +12,7 @@ import { getMission } from '@/lib/db/missions'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listAllTokensForIntervention, listExternalPhotosByIntervention } from '@/lib/db/intervention-tokens'
+import { listAllTokensForIntervention, listExternalPhotosByIntervention, listDelegatedItemIds } from '@/lib/db/intervention-tokens'
 import { getSignedPhotoUrlsThumb, getSignedPhotoUrlsMedium } from '@/lib/storage/intervention-photos'
 import { ExternalDoneCardMobile } from './ExternalDoneCardMobile'
 import { formatRelativeShort } from '@/lib/format'
@@ -95,7 +95,7 @@ export default async function FieldInterventionPage({
     )
   }
 
-  const [mission, checklistItems, photos, voiceNotes, anomalies, allTokens, externalPhotos] = await Promise.all([
+  const [mission, checklistItems, photos, voiceNotes, anomalies, allTokens, externalPhotos, delegatedItemIds] = await Promise.all([
     getMission(intervention.mission_id),
     listChecklistItemsByIntervention(id),
     listPhotosByIntervention(id),
@@ -103,7 +103,20 @@ export default async function FieldInterventionPage({
     listAnomaliesByIntervention(id),
     listAllTokensForIntervention(id).catch(() => []),
     listExternalPhotosByIntervention(id).catch(() => []),
+    listDelegatedItemIds(id).catch(() => []),
   ])
+
+  // Map token → libellé entreprise (pour les badges « Réalisé par … » et le partage).
+  const tokenLabel = new Map<string, string>()
+  for (const t of allTokens) {
+    tokenLabel.set(t.id, t.validated_by_name ?? t.recipient_label ?? 'Externe')
+  }
+  const delegatedSet = new Set(delegatedItemIds)
+  const shareChecklistItems = checklistItems.map((c) => ({
+    id: c.id,
+    label: c.label,
+    delegated: delegatedSet.has(c.id),
+  }))
 
   // Signal métier : un externe a-t-il validé via /i/[token] ? Si oui, sur mobile
   // aussi on remplace « Commencer » par « Réalisée par l'externe » + contrôle.
@@ -300,6 +313,7 @@ export default async function FieldInterventionPage({
               interventionId={id}
               missionName={mission?.name ?? 'Intervention'}
               siteName={site?.name ?? ''}
+              checklistItems={shareChecklistItems}
             />
             {/* Statut : est-ce déjà partagé ? envoyé / consulté / confirmé */}
             <ExternalShareStatusMobile tokens={allTokens} />
@@ -416,6 +430,7 @@ export default async function FieldInterventionPage({
         serverPhotos={photos}
         signedUrls={signedUrls}
         canEdit={isInProgress}
+        executorByToken={Object.fromEntries(tokenLabel)}
       />
 
       <VoiceNoteList notes={voiceNotesWithUrls} />
