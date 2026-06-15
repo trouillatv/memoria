@@ -35,7 +35,9 @@ describe('SkipInterventionTrigger — rendu initial', () => {
   it('affiche le bouton "Pas aujourd\'hui"', () => {
     const action = mkOk()
     render(<SkipInterventionTrigger interventionId={INTERVENTION_ID} action={action} />)
-    expect(screen.getByTestId('skip-trigger')).toHaveTextContent(/pas aujourd'hui/i)
+    expect(screen.getByTestId('skip-trigger')).toHaveTextContent(
+      /annuler l'opération de ce jour/i,
+    )
   })
 
   it('ne rend pas la modale au mount', () => {
@@ -56,7 +58,9 @@ describe('SkipInterventionTrigger — ouverture & validation', () => {
     render(<SkipInterventionTrigger interventionId={INTERVENTION_ID} action={action} />)
     fireEvent.click(screen.getByTestId('skip-trigger'))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText(/pas aujourd'hui\s*\?/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/annuler l'opération de ce jour\s*\?/i),
+    ).toBeInTheDocument()
   })
 
   it('textarea vide → Confirmer disabled', () => {

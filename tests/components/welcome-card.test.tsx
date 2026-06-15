@@ -28,7 +28,7 @@ describe('WelcomeCard', () => {
 
     // Description shows the 0-progress copy
     expect(
-      screen.getByText(/Quatre étapes pour transformer un AO/i),
+      screen.getByText(/Quatre étapes pour transformer un dossier/i),
     ).toBeInTheDocument()
 
     // Step 1 is the "next" one
@@ -56,7 +56,7 @@ describe('WelcomeCard', () => {
     const ctas = container.querySelectorAll('a[href]')
     expect(ctas).toHaveLength(1)
     expect(ctas[0].getAttribute('href')).toBe('/tenders')
-    expect(ctas[0].textContent).toContain('Aller aux AO')
+    expect(ctas[0].textContent).toContain('Aller aux dossiers')
   })
 
   it('marks step 1 done when hasImportedTender=true and highlights step 2 as next', () => {
@@ -155,7 +155,7 @@ describe('WelcomeCard', () => {
       'li[data-step="hasCuratedEngagement"]',
     )
     expect(nextStep?.querySelector('a[href]')).not.toBeNull()
-    expect(nextStep?.querySelector('a[href]')?.textContent).toContain('Voir les AO')
+    expect(nextStep?.querySelector('a[href]')?.textContent).toContain('Voir les dossiers')
 
     // Future steps: no CTA link
     expect(
@@ -173,7 +173,7 @@ describe('WelcomeCard', () => {
   it('description copy changes between zero progress and partial progress', () => {
     const { rerender } = render(<WelcomeCard progress={makeProgress()} />)
     expect(
-      screen.getByText(/Quatre étapes pour transformer un AO/i),
+      screen.getByText(/Quatre étapes pour transformer un dossier/i),
     ).toBeInTheDocument()
 
     rerender(

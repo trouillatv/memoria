@@ -3,6 +3,11 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentPanel } from '@/app/(dashboard)/tenders/[id]/AgentPanel'
 import type { DbAgentAnalysis } from '@/types/db'
 
+// next/navigation is referenced via useRouter().refresh()
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}))
+
 const TENDER_ID = '00000000-0000-0000-0000-000000000001'
 
 function makeAnalysis(overrides: Partial<DbAgentAnalysis>): DbAgentAnalysis {
@@ -29,7 +34,7 @@ describe('AgentPanel — expanded mode', () => {
     render(<AgentPanel tenderId={TENDER_ID} analyses={[]} onView={noop} expanded={true} onToggleExpanded={noop} />)
     expect(screen.getByText('Contradicteur')).toBeInTheDocument()
     expect(screen.getByText('Financier')).toBeInTheDocument()
-    expect(screen.getByText('Lecteur AO')).toBeInTheDocument()
+    expect(screen.getByText('Lecteur de dossier')).toBeInTheDocument()
     expect(screen.getByText('Quels risques ai-je oubliés ?')).toBeInTheDocument()
     expect(screen.getByText('Cette réponse est-elle rentable ?')).toBeInTheDocument()
   })

@@ -17,7 +17,7 @@ describe('AgentSelectorPopover', () => {
     expect(screen.getByText('Terrain')).toBeInTheDocument()
     expect(screen.getByText('Conformité')).toBeInTheDocument()
     expect(screen.getByText('Mémoire technique')).toBeInTheDocument()
-    expect(screen.getByText('Lecteur AO')).toBeInTheDocument()
+    expect(screen.getByText('Lecteur de dossier')).toBeInTheDocument()
     expect(screen.getByText('Général')).toBeInTheDocument()
   })
 
