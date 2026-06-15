@@ -6,6 +6,7 @@ import {
 import { AnomalyTooltipBadge } from '@/components/ui/AnomalyTooltipBadge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TeamBadge } from '@/components/ui/team-badge'
+import { HealthRing } from '@/components/ui/health-ring'
 import { listMissionsCockpit } from '@/lib/db/missions-cockpit'
 import { listTeams } from '@/lib/db/teams'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
@@ -247,7 +248,7 @@ export default async function MissionsPage() {
         const h = healthBy.get(priority.id)!
         return (
           <Link href={missionHref(priority)}
-            className="group flex items-start gap-3 rounded-xl border-2 border-red-300 bg-red-50 p-4 hover:border-red-400 transition-colors">
+            className="group flex items-start gap-3 rounded-xl border-2 border-red-300 bg-red-50 p-4 hover:border-red-400 active:scale-[0.99] transition-[transform,border-color] duration-150 ease-out">
             <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">#1</span>
             <div className="min-w-0 flex-1">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-red-700">Priorité du jour</div>
@@ -266,14 +267,66 @@ export default async function MissionsPage() {
         )
       })()}
 
-      {/* ── SANTÉ DU PORTEFEUILLE — donut compact (état global, glanceable) ── */}
+      {/* ── VUE D'ENSEMBLE — anneau santé + charge équipe côte à côte ──────── */}
       {active.length > 0 && (
-        <div className="inline-flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
-          <HealthDonut green={portfolio.green} orange={portfolio.orange} red={portfolio.red} total={active.length} />
-          <div className="space-y-1 text-xs">
-            <LegendDot tone="green" label="en rythme" value={portfolio.green} />
-            <LegendDot tone="orange" label="à surveiller" value={portfolio.orange} />
-            <LegendDot tone="red" label="critique" value={portfolio.red} />
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Santé du portefeuille — anneau */}
+          <div className="rounded-xl border bg-card p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">
+              Santé du portefeuille
+            </h2>
+            <div className="flex items-center gap-6">
+              <HealthRing green={portfolio.green} orange={portfolio.orange} red={portfolio.red} total={active.length} unit="missions" />
+              <div className="space-y-2 text-sm">
+                <LegendDot tone="green" label="en rythme" value={portfolio.green} />
+                <LegendDot tone="orange" label="à surveiller" value={portfolio.orange} />
+                <LegendDot tone="red" label="critique" value={portfolio.red} />
+              </div>
+            </div>
+          </div>
+
+          {/* Missions par équipe — barres */}
+          <div className="rounded-xl border bg-card p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4 flex items-baseline gap-1.5">
+              Missions par équipe
+              <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— les plus sollicitées</span>
+            </h2>
+            {(teamLoad.length > 0 || sansEquipeCount > 0) ? (
+              <div className="space-y-2.5">
+                {teamLoad.slice(0, 6).map((t) => {
+                  const elevated = t.count > 0 && avgLoad > 0 && t.count >= 4 && t.count > avgLoad * 1.5
+                  const idle = t.count === 0
+                  return (
+                    <div key={t.id} className="flex items-center gap-3">
+                      <span className="w-32 shrink-0 truncate text-xs font-medium" style={{ color: t.color ?? undefined }}>{t.name}</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        {t.count > 0 && (
+                          <div className="h-full rounded-full" style={{ width: `${Math.max(6, (t.count / maxTeamCount) * 100)}%`, backgroundColor: t.color ?? '#64748b' }} />
+                        )}
+                      </div>
+                      <span className="w-5 shrink-0 text-right text-xs tabular-nums font-semibold">{t.count}</span>
+                      <span className="w-[4.5rem] shrink-0 text-right text-[10px]">
+                        {elevated ? <span className="text-red-700">élevée</span>
+                          : idle ? <span className="text-amber-700">inutilisée</span>
+                          : <span className="text-muted-foreground/50">·</span>}
+                      </span>
+                    </div>
+                  )
+                })}
+                {sansEquipeCount > 0 && (
+                  <div className="flex items-center gap-3 pt-1 border-t">
+                    <span className="w-32 shrink-0 truncate text-xs italic text-amber-700">Sans équipe</span>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-amber-400" style={{ width: `${Math.max(6, (sansEquipeCount / maxTeamCount) * 100)}%` }} />
+                    </div>
+                    <span className="w-5 shrink-0 text-right text-xs tabular-nums font-semibold">{sansEquipeCount}</span>
+                    <span className="w-[4.5rem] shrink-0 text-right text-[10px] text-amber-700">à affecter</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">Aucune équipe affectée.</p>
+            )}
           </div>
         </div>
       )}
@@ -289,7 +342,7 @@ export default async function MissionsPage() {
               const h = healthBy.get(m.id)!
               return (
                 <Link key={m.id} href={missionHref(m)}
-                  className="group rounded-xl border-2 border-red-200 bg-red-50/50 p-3.5 hover:border-red-300 transition-colors block">
+                  className="group rounded-xl border-2 border-red-200 bg-red-50/50 p-3.5 hover:border-red-300 active:scale-[0.99] transition-[transform,border-color] duration-150 ease-out block">
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-sm font-semibold leading-snug">{m.name}</span>
                     <ChevronRight className="h-4 w-4 text-red-300 group-hover:text-red-500 shrink-0 mt-0.5" />
@@ -328,46 +381,6 @@ export default async function MissionsPage() {
               </ul>
             </details>
           )}
-        </section>
-      )}
-
-      {/* ── B. CHARGE PAR ÉQUIPE — qui est surchargé / sous-utilisé ────────── */}
-      {(teamLoad.length > 0 || sansEquipeCount > 0) && (
-        <section className="space-y-2">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5" /> Missions par équipe
-            <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— les plus sollicitées</span>
-          </h2>
-          <div className="space-y-1.5">
-            {teamLoad.map((t) => {
-              const elevated = t.count > 0 && avgLoad > 0 && t.count >= 4 && t.count > avgLoad * 1.5
-              const idle = t.count === 0
-              return (
-                <div key={t.id} className="flex items-center gap-2">
-                  <span className="w-36 shrink-0 truncate text-xs" style={{ color: t.color ?? undefined }}>{t.name}</span>
-                  <div className="flex-1 h-3 rounded bg-muted overflow-hidden">
-                    <div className="h-full rounded" style={{ width: `${(t.count / maxTeamCount) * 100}%`, backgroundColor: idle ? 'transparent' : (t.color ?? '#64748b') }} />
-                  </div>
-                  <span className="w-6 shrink-0 text-right text-xs tabular-nums font-medium">{t.count}</span>
-                  <span className="w-20 shrink-0 text-[10px]">
-                    {elevated ? <span className="text-red-700">charge élevée</span>
-                      : idle ? <span className="text-amber-700">inutilisée</span>
-                      : <span className="text-emerald-700">ok</span>}
-                  </span>
-                </div>
-              )
-            })}
-            {sansEquipeCount > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-36 shrink-0 truncate text-xs italic text-amber-700">Sans équipe</span>
-                <div className="flex-1 h-3 rounded bg-muted overflow-hidden">
-                  <div className="h-full rounded bg-amber-400" style={{ width: `${(sansEquipeCount / maxTeamCount) * 100}%` }} />
-                </div>
-                <span className="w-6 shrink-0 text-right text-xs tabular-nums font-medium">{sansEquipeCount}</span>
-                <span className="w-20 shrink-0 text-[10px] text-amber-700">à affecter</span>
-              </div>
-            )}
-          </div>
         </section>
       )}
 
@@ -429,37 +442,6 @@ function ActionStat({ tone, icon, value, label }: { tone: Tone; icon: React.Reac
       <span className="font-bold tabular-nums">{value}</span>
       <span className={dim ? '' : 'text-muted-foreground'}>{label}</span>
     </span>
-  )
-}
-
-function HealthDonut({ green, orange, red, total }: { green: number; orange: number; red: number; total: number }) {
-  const size = 76
-  const stroke = 9
-  const r = (size - stroke) / 2
-  const c = 2 * Math.PI * r
-  const segs = [
-    { v: green, color: '#10b981' },
-    { v: orange, color: '#f59e0b' },
-    { v: red, color: '#ef4444' },
-  ].filter((s) => s.v > 0)
-  let acc = 0
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={stroke} />
-      {segs.map((s, i) => {
-        const frac = total > 0 ? s.v / total : 0
-        const dash = frac * c
-        const offset = -acc * c
-        acc += frac
-        return (
-          <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={s.color} strokeWidth={stroke}
-            strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={offset}
-            transform={`rotate(-90 ${size / 2} ${size / 2})`} />
-        )
-      })}
-      <text x={size / 2} y={size / 2 - 1} textAnchor="middle" className="fill-foreground" fontSize="18" fontWeight="700">{total}</text>
-      <text x={size / 2} y={size / 2 + 11} textAnchor="middle" className="fill-muted-foreground" fontSize="7.5">missions</text>
-    </svg>
   )
 }
 

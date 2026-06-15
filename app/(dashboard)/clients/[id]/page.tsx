@@ -24,6 +24,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import type { StatusValue } from '@/components/ui/status-badge'
 import { getClientDetail, getClientCockpit } from '@/lib/db/clients'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { HealthRing } from '@/components/ui/health-ring'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
 
@@ -207,6 +208,71 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         </section>
       )}
 
+      {/* ── SANTÉ DES SITES + CHARGE PAR SITE — côte à côte ────────────────── */}
+      {cockpit.sites.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Santé des sites — anneau (proportion) + liste actionnable */}
+          <div className="rounded-xl border bg-card p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-1.5">
+              <MapPin className="h-3.5 w-3.5" /> Santé des sites
+            </h2>
+            <div className="flex items-start gap-6">
+              <HealthRing
+                green={cockpit.today.sitesGreen}
+                orange={cockpit.today.sitesOrange}
+                red={cockpit.today.sitesRed}
+                total={cockpit.sites.length}
+                unit="sites"
+                size={88}
+              />
+              <ul className="flex-1 min-w-0 divide-y -my-1.5">
+                {[...cockpit.sites]
+                  .sort((a, b) => SITE_LEVEL_RANK[a.level] - SITE_LEVEL_RANK[b.level])
+                  .slice(0, 6)
+                  .map((s) => (
+                    <li key={s.siteId}>
+                      <Link href={`/sites/${s.siteId}`} className="flex items-center gap-2 py-1.5 hover:opacity-80 transition-opacity">
+                        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${SITE_LEVEL_DOT[s.level]}`} />
+                        <span className="text-sm truncate">{s.siteName}</span>
+                        <span className="ml-auto text-[11px] text-muted-foreground shrink-0">{s.reason}</span>
+                      </Link>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* Charge par site — où se concentre l'activité */}
+          <div className="rounded-xl border bg-card p-5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5" /> Charge par site
+            </h2>
+            {cockpit.sites.some((s) => s.interventionCount > 0) ? (
+              (() => {
+                const maxIv = Math.max(1, ...cockpit.sites.map((s) => s.interventionCount))
+                return (
+                  <div className="space-y-2.5">
+                    {cockpit.sites.filter((s) => s.interventionCount > 0).slice(0, 6).map((s) => (
+                      <div key={s.siteId} className="flex items-center gap-3">
+                        <span className="w-32 shrink-0 truncate text-xs font-medium">{s.siteName}</span>
+                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.max(6, (s.interventionCount / maxIv) * 100)}%` }} />
+                        </div>
+                        <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                          {s.interventionCount} int.
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()
+            ) : (
+              <p className="text-sm text-muted-foreground italic">Pas encore d&apos;activité.</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Colonne gauche : contact + mémoire */}
         <div className="lg:col-span-1 space-y-4">
@@ -297,65 +363,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
         {/* Colonne droite : contrats + activité */}
         <div className="lg:col-span-2 space-y-4">
-
-          {/* Santé des sites — 🟢🟠🔴 + raison (remplace la heatmap) */}
-          {cockpit.sites.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
-                  <MapPin className="h-3.5 w-3.5" />
-                  Santé des sites
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="divide-y">
-                  {[...cockpit.sites]
-                    .sort((a, b) => SITE_LEVEL_RANK[a.level] - SITE_LEVEL_RANK[b.level])
-                    .map((s) => (
-                      <li key={s.siteId}>
-                        <Link href={`/sites/${s.siteId}`} className="flex items-center gap-2 py-2 hover:opacity-80 transition-opacity">
-                          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${SITE_LEVEL_DOT[s.level]}`} />
-                          <span className="text-sm truncate">{s.siteName}</span>
-                          <span className="ml-auto text-[11px] text-muted-foreground shrink-0">{s.reason}</span>
-                        </Link>
-                      </li>
-                    ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Charge par site — où se concentre l'activité */}
-          {cockpit.sites.some((s) => s.interventionCount > 0) && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
-                  <Layers className="h-3.5 w-3.5" />
-                  Charge par site
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {(() => {
-                  const maxIv = Math.max(1, ...cockpit.sites.map((s) => s.interventionCount))
-                  return (
-                    <div className="space-y-2">
-                      {cockpit.sites.filter((s) => s.interventionCount > 0).map((s) => (
-                        <div key={s.siteId} className="flex items-center gap-2">
-                          <span className="w-40 shrink-0 truncate text-xs">{s.siteName}</span>
-                          <div className="flex-1 h-3 rounded bg-muted overflow-hidden">
-                            <div className="h-full rounded bg-sky-500" style={{ width: `${(s.interventionCount / maxIv) * 100}%` }} />
-                          </div>
-                          <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                            {s.interventionCount} interv.
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })()}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Contrats */}
           {contractCount > 0 && (
