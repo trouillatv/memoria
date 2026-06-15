@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Mic, Square, Camera, Paperclip, Loader2, X, FileText, Image as ImageIcon,
-  Sparkles, CheckCircle2, CalendarClock, FileAudio,
+  Sparkles, CheckCircle2, CalendarClock, FileAudio, Lightbulb,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type {
@@ -317,6 +317,24 @@ export function SiteReportPanel({
                   onChange={(e) => { importAudio(e.target.files?.[0] ?? null); e.target.value = '' }} />
               </label>
             )}
+
+            {/* Aide-mémoire : ce qu'il faut penser à dire pour une bonne mémoire.
+                Affiché tant qu'on n'a pas encore d'audio (sinon on libère la place). */}
+            {!recording && !audioBlob && (
+              <div className="mt-1 w-full rounded-lg bg-muted/30 px-3 py-2 text-left">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground/70">
+                  <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
+                  Pensez à dire, en parlant naturellement&nbsp;:
+                </div>
+                <ul className="mt-1 space-y-0.5 text-[11px] leading-snug text-muted-foreground">
+                  <li>• La <span className="text-foreground/70">date</span> et qui était <span className="text-foreground/70">présent (ou absent)</span></li>
+                  <li>• Les <span className="text-foreground/70">{reportType === 'contract' ? 'bâtiments / sites' : 'zones'}</span> concernés</li>
+                  <li>• Les <span className="text-foreground/70">problèmes et blocages</span> (qui attend quoi)</li>
+                  <li>• Les <span className="text-foreground/70">décisions</span> et ce qu&apos;il <span className="text-foreground/70">reste à faire</span></li>
+                  <li>• Les <span className="text-foreground/70">livraisons</span> et <span className="text-foreground/70">contrôles</span> prévus (dates)</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Texte */}
@@ -384,12 +402,7 @@ export function SiteReportPanel({
       )}
 
       {/* ── WORKING ── */}
-      {step === 'working' && (
-        <div className="flex flex-col items-center gap-3 py-10">
-          <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">{working}</p>
-        </div>
-      )}
+      {step === 'working' && <WorkingView message={working} />}
 
       {/* ── REVIEW transcript ── */}
       {step === 'review' && (
@@ -461,6 +474,65 @@ export function SiteReportPanel({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Vue d'attente avec barre de progression : l'IA peut mettre plusieurs secondes.
+// La barre « monte » de façon temporelle (jamais un vrai % — on ne ment pas) et
+// se cale sur la phase courante. Pendant l'analyse, on déroule les sous-étapes
+// que l'IA traverse pour que l'utilisateur voie ce qui se passe.
+const ANALYSIS_SUBSTEPS = [
+  'Lecture du compte-rendu…',
+  'Identification des présents…',
+  'Détection des décisions…',
+  'Routage par bâtiment / site…',
+  'Repérage des blocages et dépendances…',
+  'Comparaison avec la réunion précédente…',
+]
+
+function WorkingView({ message }: { message: string }) {
+  const isAnalysis = message.toLowerCase().startsWith('analyse')
+  const [pct, setPct] = useState(8)
+  const [subIdx, setSubIdx] = useState(0)
+
+  // Progression temporelle qui s'approche de ~92 % puis attend la fin réelle.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPct((p) => (p < 92 ? p + Math.max(0.4, (92 - p) * 0.05) : p))
+    }, 200)
+    return () => clearInterval(id)
+  }, [])
+
+  // Défilement des sous-étapes pendant l'analyse IA.
+  useEffect(() => {
+    if (!isAnalysis) return
+    const id = setInterval(() => setSubIdx((i) => (i + 1) % ANALYSIS_SUBSTEPS.length), 2200)
+    return () => clearInterval(id)
+  }, [isAnalysis])
+
+  return (
+    <div className="flex flex-col items-center gap-3 py-10">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <p className="text-sm font-medium text-foreground">{message}</p>
+
+      <div className="w-full max-w-xs">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-foreground transition-[width] duration-300 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {isAnalysis && (
+        <p className="text-xs text-muted-foreground text-center min-h-4 transition-opacity">
+          {ANALYSIS_SUBSTEPS[subIdx]}
+        </p>
+      )}
+      <p className="text-[11px] text-muted-foreground/70 text-center max-w-xs">
+        Quelques secondes — ne fermez pas la fenêtre.
+      </p>
     </div>
   )
 }
