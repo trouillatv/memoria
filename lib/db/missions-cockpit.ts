@@ -23,6 +23,8 @@ export interface MissionCockpitRow {
   assignedTeam: { id: string; name: string; color: string | null } | null
   lastInterventionDate: string | null
   nextInterventionDate: string | null
+  /** Nombre d'interventions réalisées (effort cumulé sur la mission). */
+  executedCount: number
   openAnomalyCount: number
   anomalyDetails: Array<{ label: string; date: string }>
 }
@@ -122,10 +124,12 @@ export async function listMissionsCockpit(): Promise<{
 
   type IntvRow = { id: string; mission_id: string; scheduled_for?: string }
   const lastByMission = new Map<string, string>()
+  const executedCountByMission = new Map<string, number>()
   for (const r of (lastRes.data ?? []) as IntvRow[]) {
     if (r.scheduled_for && !lastByMission.has(r.mission_id)) {
       lastByMission.set(r.mission_id, r.scheduled_for)
     }
+    executedCountByMission.set(r.mission_id, (executedCountByMission.get(r.mission_id) ?? 0) + 1)
   }
   const nextByMission = new Map<string, string>()
   for (const r of (nextRes.data ?? []) as IntvRow[]) {
@@ -179,6 +183,7 @@ export async function listMissionsCockpit(): Promise<{
       assignedTeam: m.assigned_team_id ? (teamById.get(m.assigned_team_id) ?? null) : null,
       lastInterventionDate: lastByMission.get(m.id) ?? null,
       nextInterventionDate: nextByMission.get(m.id) ?? null,
+      executedCount: executedCountByMission.get(m.id) ?? 0,
       openAnomalyCount: anomalyCountByMission.get(m.id) ?? 0,
       anomalyDetails: anomalyDetailsByMission.get(m.id) ?? [],
     }

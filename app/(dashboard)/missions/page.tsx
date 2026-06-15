@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import {
   ClipboardList, MapPin, AlertTriangle, CircleSlash, Clock, CheckCircle2,
-  Users, CalendarX, ArrowRight, ChevronRight,
+  Users, CalendarX, ArrowRight, ChevronRight, CalendarCheck,
 } from 'lucide-react'
 import { AnomalyTooltipBadge } from '@/components/ui/AnomalyTooltipBadge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -35,6 +35,13 @@ function daysBetweenIso(fromIso: string, toIso: string): number {
   const a = new Date(fromIso + 'T00:00:00Z').getTime()
   const b = new Date(toIso + 'T00:00:00Z').getTime()
   return Math.round((b - a) / 86_400_000)
+}
+
+const FR_MONTHS_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+function fmtDM(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  return `${d} ${FR_MONTHS_SHORT[m - 1] ?? ''}`
 }
 
 // ── Modèle « Santé » d'une mission ──────────────────────────────────────────
@@ -486,6 +493,7 @@ function MissionTable({
     assignedTeam: { id: string; name: string; color: string | null } | null
     lastInterventionDate: string | null
     nextInterventionDate: string | null
+    executedCount: number
     openAnomalyCount: number
     anomalyDetails: Array<{ label: string; date: string }>
   }>
@@ -526,8 +534,18 @@ function MissionTable({
                       <AnomalyTooltipBadge count={m.openAnomalyCount} details={m.anomalyDetails} />
                     )}
                   </div>
+                  {/* Dernière intervention + temps passé (effort cumulé) */}
+                  <p className="text-[11px] text-muted-foreground/80 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <CalendarCheck className="h-3 w-3 shrink-0 text-emerald-500/70" />
+                    {m.lastInterventionDate
+                      ? <>Dernière&nbsp;: {fmtDM(m.lastInterventionDate)}</>
+                      : <span className="italic">Jamais réalisée</span>}
+                    {m.executedCount > 0 && (
+                      <span className="text-muted-foreground/60">· réalisée {m.executedCount}×</span>
+                    )}
+                  </p>
                   {m.contractName && (
-                    <p className="text-xs text-muted-foreground/60 mt-0.5">{m.contractName}</p>
+                    <p className="text-xs text-muted-foreground/50 mt-0.5">{m.contractName}</p>
                   )}
                 </div>
 
