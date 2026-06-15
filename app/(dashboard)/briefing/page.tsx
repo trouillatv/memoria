@@ -21,6 +21,7 @@ import {
   FileCheck,
   Clock,
   Link2 as Link2Icon,
+  ListTodo,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -35,6 +36,8 @@ import { TeamCompositionPopover } from './TeamCompositionPopover'
 import { SiteNotesPopover } from './SiteNotesPopover'
 import { BriefingShareModal } from './BriefingShareModal'
 import { GenerateInterventionTokenButton } from './GenerateInterventionTokenButton'
+import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
+import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { EnvoisSection } from './EnvoisSection'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
@@ -78,10 +81,23 @@ export default async function BriefingPage({
     ? params.date
     : tomorrowUtcIso()
 
-  const [briefing, preparations] = await Promise.all([
+  const [briefing, preparations, openActions] = await Promise.all([
     buildEveningBriefing(target),
     generateChefEquipePreparations(target),
+    listOpenSiteActions().catch(() => [] as SiteActionRow[]),
   ])
+
+  // Actions ouvertes groupées par site (puis corps d'état) — à ne pas oublier.
+  // Séparées des interventions planifiées : ce n'est pas la même nature.
+  const actionsBySite = new Map<string, { name: string; actions: SiteActionRow[] }>()
+  for (const a of openActions) {
+    if (!actionsBySite.has(a.site_id)) actionsBySite.set(a.site_id, { name: a.site_name, actions: [] })
+    actionsBySite.get(a.site_id)!.actions.push(a)
+  }
+  for (const g of actionsBySite.values()) {
+    g.actions.sort((x, y) => (x.corps_etat ?? '').localeCompare(y.corps_etat ?? '') || (x.created_at < y.created_at ? -1 : 1))
+  }
+  const actionSiteGroups = [...actionsBySite.entries()]
 
   const tomorrowSiteContext = briefing.coverageBySite.map((s) => ({
     siteId: s.site_id,
@@ -187,6 +203,33 @@ export default async function BriefingPage({
             docNames={briefingDocNames}
           />
         </div>
+      )}
+
+      {/* Actions ouvertes à ne pas oublier — distinctes des interventions. */}
+      {openActions.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <ListTodo className="h-4 w-4 text-muted-foreground" />
+              Actions ouvertes à ne pas oublier ({openActions.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground -mt-1">
+              Issues des réunions. Ce ne sont pas des interventions planifiées — elles n&apos;entrent au planning que si vous les planifiez.
+            </p>
+            {actionSiteGroups.map(([siteId, g]) => (
+              <div key={siteId} className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                  <Link href={`/sites/${siteId}`} className="text-sm font-medium hover:underline">{g.name}</Link>
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">{g.actions.length}</span>
+                </div>
+                <OpenActionsList actions={g.actions} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {/* Couverture par site (positif) */}

@@ -10,6 +10,9 @@ import {
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { SiteReportLauncher } from './SiteReportLauncher'
+import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { OpenActionsList } from '@/components/actions/OpenActionsList'
+import { ListTodo } from 'lucide-react'
 
 /**
  * V5.1 Slice 1 — Page de dépôt photo libre sur un site (hors workflow
@@ -97,6 +100,9 @@ export default async function FieldSitePage({
   ])
   const nthPassage = pastVisitDays + 1
 
+  // Actions ouvertes du site — « à suivre » côté terrain.
+  const openActions = await listOpenSiteActions({ siteIds: [siteId] }).catch(() => [])
+
   // V5.1.4 — Mémoire IA périphérique (Vincent 2026-05-15)
   const siteTransmissions = await getSiteTransmissionReadings(siteId, siteContinuity)
   const enrichedSiteReadings = {
@@ -145,6 +151,16 @@ export default async function FieldSitePage({
           discrète, 2 fragments max, gris léger. Joseph peut l'ignorer. */}
       {enrichedSiteReadings.readings.length > 0 && (
         <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
+      )}
+
+      {/* À suivre — actions ouvertes du site (issues des réunions). */}
+      {openActions.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
+            <ListTodo className="h-4 w-4" /> À suivre ({openActions.length})
+          </h2>
+          <OpenActionsList actions={openActions} compact />
+        </section>
       )}
 
       {/* Compte-rendu multimodal : voix + texte + photos + pièces → décisions */}

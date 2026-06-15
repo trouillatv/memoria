@@ -7,6 +7,7 @@
 // "Réunion chantier #N" = une vue sur ces actions (ouvertes vs clôturées).
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 
 export async function createSiteAction(input: {
@@ -66,6 +67,88 @@ export async function listSiteActionsByReport(reportId: string): Promise<DbSiteA
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data as DbSiteAction[]) ?? []
+}
+
+/** Action enrichie pour les cockpits (fiche site, briefing, /actions). */
+export interface SiteActionRow {
+  id: string
+  title: string
+  body: string | null
+  corps_etat: string | null
+  assigned_to: string | null
+  status: SiteActionStatus
+  created_at: string
+  due_date: string | null
+  report_id: string | null
+  converted_to_type: string | null
+  converted_to_id: string | null
+  site_id: string
+  site_name: string
+  contract_id: string | null
+  contract_name: string | null
+}
+
+/**
+ * Actions d'un (ou tous les) site(s), enrichies du nom de site + contrat.
+ * Sert les surfaces transverses : briefing, /actions, et la fiche site.
+ * Par défaut : statut 'open', toute l'organisation, plus ancienne d'abord
+ * (« ce qui traîne » remonte en premier).
+ */
+export async function listOpenSiteActions(opts?: {
+  statuses?: SiteActionStatus[]
+  /** Restreindre à ces sites (sinon : tous les sites de l'organisation). */
+  siteIds?: string[]
+}): Promise<SiteActionRow[]> {
+  const supabase = createAdminClient()
+  const statuses = opts?.statuses ?? ['open']
+
+  // Résoudre les sites (scope organisation) + leurs métadonnées.
+  let siteIds = opts?.siteIds ?? null
+  let sitesQ = supabase.from('sites').select('id, name, contract_id').is('deleted_at', null)
+  const orgId = await getOrgId()
+  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+  if (siteIds) sitesQ = sitesQ.in('id', siteIds)
+  const { data: siteRows } = await sitesQ
+  const sites = (siteRows ?? []) as Array<{ id: string; name: string; contract_id: string | null }>
+  if (sites.length === 0) return []
+  siteIds = sites.map((s) => s.id)
+
+  const siteById = new Map(sites.map((s) => [s.id, s]))
+  const contractIds = [...new Set(sites.map((s) => s.contract_id).filter((v): v is string => !!v))]
+  const contractName = new Map<string, string>()
+  if (contractIds.length > 0) {
+    const { data: cs } = await supabase.from('contracts').select('id, name').in('id', contractIds)
+    for (const c of (cs ?? []) as Array<{ id: string; name: string }>) contractName.set(c.id, c.name)
+  }
+
+  const { data, error } = await supabase
+    .from('site_actions')
+    .select('*')
+    .in('site_id', siteIds)
+    .in('status', statuses)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+
+  return ((data ?? []) as DbSiteAction[]).map((a) => {
+    const s = siteById.get(a.site_id)
+    return {
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      corps_etat: a.corps_etat,
+      assigned_to: a.assigned_to,
+      status: a.status,
+      created_at: a.created_at,
+      due_date: a.due_date,
+      report_id: a.report_id,
+      converted_to_type: a.converted_to_type,
+      converted_to_id: a.converted_to_id,
+      site_id: a.site_id,
+      site_name: s?.name ?? '—',
+      contract_id: s?.contract_id ?? null,
+      contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
+    }
+  })
 }
 
 export async function markSiteActionDone(id: string): Promise<void> {

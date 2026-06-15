@@ -14,11 +14,13 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, QrCode, Sparkles } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles, ListTodo } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listSiteASavoirActive } from '@/lib/db/sites'
+import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
@@ -105,6 +107,9 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     listDocumentsForTarget('site', id),
     getSiteRecentRhythm(id, 90),
   ])
+
+  // Actions ouvertes du site (issues des réunions) — « ce qui reste à faire ».
+  const openActions = await listOpenSiteActions({ siteIds: [id] }).catch(() => [])
 
   // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
   const teamsKnowledge = await getSiteTeamsKnowledge(id)
@@ -199,6 +204,22 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       <div className={cn('pb-2 border-b border-border/40', tabClass('apercu'))}>
         <CurrentState state={currentState} />
       </div>
+
+      {/* Actions ouvertes — issues des réunions, « ce qui reste à faire ». */}
+      {openActions.length > 0 && (
+        <Card className={cn(tabClass('apercu'))}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <ListTodo className="h-4 w-4 text-muted-foreground" />
+              Actions ouvertes
+              <span className="text-sm font-normal text-muted-foreground">({openActions.length})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <OpenActionsList actions={openActions} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── MÉMOIRE ──────────────────────────────────────────────────────── */}
       {/* COUCHE 3 — Lectures du lieu (IA perceptive) */}
