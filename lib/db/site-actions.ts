@@ -242,11 +242,19 @@ export async function getOpenActionsHealth(): Promise<OpenActionsHealth> {
   }
 }
 
-export async function markSiteActionDone(id: string): Promise<void> {
+export async function markSiteActionDone(
+  id: string,
+  closure?: { comment?: string | null; photoPath?: string | null },
+): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('site_actions')
-    .update({ status: 'done', done_at: new Date().toISOString() })
+    .update({
+      status: 'done',
+      done_at: new Date().toISOString(),
+      completed_comment: closure?.comment ?? null,
+      completed_photo_path: closure?.photoPath ?? null,
+    })
     .eq('id', id)
   if (error) throw error
 }

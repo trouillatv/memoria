@@ -459,6 +459,9 @@ export interface DbSiteAction {
   created_by: string | null
   created_at: string
   done_at: string | null
+  // Clôture avec trace (migration 107).
+  completed_comment: string | null
+  completed_photo_path: string | null
 }
 
 export type MissionCadence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'on_demand'

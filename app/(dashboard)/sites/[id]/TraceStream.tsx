@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, FileText, Camera, Info, KeyRound, ClipboardList } from 'lucide-react'
+import { AlertTriangle, FileText, Camera, Info, KeyRound, ClipboardList, CheckCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SiteMemoryEvent } from '@/lib/db/site-memory'
 import type { SiteMemoryMeta } from '@/lib/db/site-cockpit'
@@ -53,6 +53,7 @@ const TYPE_ICON: Record<SiteMemoryEvent['type'], LucideIcon> = {
   a_savoir: Info,
   access: KeyRound,
   report: ClipboardList,
+  action: CheckCircle2,
 }
 
 const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
@@ -64,6 +65,7 @@ const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
   // Incident d'accès → amber (saillant) ; routine → neutre. Géré via meta.
   access: 'text-muted-foreground',
   report: 'text-indigo-600',
+  action: 'text-emerald-600',
 }
 
 // Vincent 2026-05-21 — badge texte explicite pour que l'utilisateur sache
@@ -77,6 +79,7 @@ const TYPE_BADGE_LABEL: Record<SiteMemoryEvent['type'], string> = {
   a_savoir: 'À savoir',
   access: 'Accès',
   report: 'Compte-rendu',
+  action: 'Action clôturée',
 }
 
 // Palette distincte par type — chaque famille de couleur est franchement
@@ -96,6 +99,8 @@ const TYPE_BADGE_CLASS: Record<SiteMemoryEvent['type'], string> = {
   access: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800',
   // Indigo : compte-rendu = artefact source multimodal
   report: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-200 dark:border-indigo-800',
+  // Vert émeraude : action clôturée = fait accompli (mémoire du chantier)
+  action: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800',
 }
 
 function badgeLabelFor(event: SiteMemoryEvent): string {
@@ -312,13 +317,20 @@ function TraceLine({ event, opacity, ageDays }: TraceLineProps) {
           <span className="text-muted-foreground/70 ml-1.5">· {event.detail}</span>
         )}
       </span>
+      {event.type === 'action' && typeof event.meta?.photoUrl === 'string' && (
+        <Camera className="h-2.5 w-2.5 shrink-0 text-emerald-600" aria-label="Photo de clôture jointe" />
+      )}
       <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
         {dateLabel}
       </span>
     </div>
   )
 
-  const href = event.interventionId ? `/interventions/${event.interventionId}` : null
+  const href = event.interventionId
+    ? `/interventions/${event.interventionId}`
+    : event.type === 'action' && typeof event.meta?.reportId === 'string'
+      ? `/meetings/${event.meta.reportId}`
+      : null
   if (href) {
     return (
       <Link href={href} className="block hover:bg-muted/30 rounded transition-colors">

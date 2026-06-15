@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import { ListTodo } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getOpenActionsHealth } from '@/lib/db/site-actions'
 import { LogoutButton } from './m/logout-button'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
@@ -22,6 +24,10 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   const baseName = user.full_name ?? user.email
   const firstName = baseName.split(' ')[0] ?? baseName
 
+  // Compteur d'actions ouvertes — visible sur tout le terrain (ne pas oublier
+  // ce qui reste à faire). Résilient si le socle n'est pas migré.
+  const actionsHealth = await getOpenActionsHealth()
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
@@ -29,7 +35,22 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           <div className="text-sm">
             Bonjour <span className="font-semibold">{firstName}</span>
           </div>
-          <SyncIndicator />
+          <div className="flex items-center gap-3">
+            {actionsHealth.total > 0 && (
+              <Link
+                href="/m/actions"
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  actionsHealth.critique > 0
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : 'border-border bg-card text-muted-foreground'
+                }`}
+              >
+                <ListTodo className="h-3.5 w-3.5" />
+                {actionsHealth.total}
+              </Link>
+            )}
+            <SyncIndicator />
+          </div>
         </div>
       </header>
       <main className="max-w-md mx-auto px-4 py-4">{children}</main>

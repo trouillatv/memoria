@@ -4,6 +4,7 @@
 // Le site devient un objet temporel : on lit son histoire, on ne configure rien.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 
 export type SiteMemoryEventType =
   | 'intervention'
@@ -13,6 +14,9 @@ export type SiteMemoryEventType =
   | 'a_savoir'
   | 'access'
   | 'report'
+  // Action TERMINÉE uniquement : l'action ouverte pilote (hors mémoire), l'action
+  // close raconte le fait accompli. Jamais embeddée (pas de résonance pour un TODO).
+  | 'action'
 
 export interface SiteMemoryEvent {
   type: SiteMemoryEventType
@@ -427,6 +431,49 @@ export async function getSiteMemoryTimeline(
         detail: r.status === 'failed' ? (firstLine ?? 'Analyse en échec — artefact conservé') : firstLine,
         status: r.status,
         meta: { report: true },
+      })
+    }
+  }
+
+  // Actions TERMINÉES — fait accompli → mémoire du lieu. JAMAIS les ouvertes
+  // (TODO opérationnel) ni d'embedding/résonance. Trace = commentaire de clôture.
+  {
+    const { data: doneActions } = await sb
+      .from('site_actions')
+      .select('id, title, corps_etat, assigned_to, report_id, done_at, created_at, completed_comment, completed_photo_path')
+      .eq('site_id', siteId)
+      .eq('status', 'done')
+    type DoneActionRow = {
+      id: string
+      title: string
+      corps_etat: string | null
+      assigned_to: string | null
+      report_id: string | null
+      done_at: string | null
+      created_at: string
+      completed_comment: string | null
+      completed_photo_path: string | null
+    }
+    const rows = (doneActions ?? []) as DoneActionRow[]
+    const photoPaths = rows.map((r) => r.completed_photo_path).filter((v): v is string => !!v)
+    const thumbMap = photoPaths.length > 0 ? await getSignedPhotoUrlsThumb(photoPaths) : new Map<string, string>()
+    for (const a of rows) {
+      const when = a.done_at ?? a.created_at
+      if (since && when < since) continue
+      const photoUrl = a.completed_photo_path ? thumbMap.get(a.completed_photo_path) ?? null : null
+      events.push({
+        type: 'action',
+        id: `action-${a.id}`,
+        occurredAt: when,
+        title: `Action terminée : ${a.title}`,
+        detail: a.completed_comment,
+        status: 'done',
+        meta: {
+          ...(a.corps_etat ? { corpsEtat: a.corps_etat } : {}),
+          ...(a.assigned_to ? { assignedTo: a.assigned_to } : {}),
+          ...(a.report_id ? { reportId: a.report_id } : {}),
+          ...(photoUrl ? { photoUrl } : {}),
+        },
       })
     }
   }
