@@ -324,14 +324,36 @@ const CRITICAL_ANOMALY_CATEGORIES = new Set([
 ])
 const SITE_STALE_DAYS = 21
 
+export type SiteHealthLevel = 'green' | 'orange' | 'red'
+
+export interface ClientSiteHealth {
+  siteId: string
+  siteName: string
+  level: SiteHealthLevel
+  reason: string
+  interventionCount: number
+}
+
 export interface ClientCockpit {
+  /** Résumé « client aujourd'hui » — lecture 4 s. */
+  today: {
+    sitesGreen: number
+    sitesOrange: number
+    sitesRed: number
+    criticalAnomalies: number
+    proofCount: number
+    next: { siteName: string; missionName: string; scheduled_for: string; slot: string | null } | null
+  }
   risks: {
     openAnomalies: number
     criticalAnomalies: number
     missionsWithoutTeam: number
     staleOpenActions: number // actions ouvertes > 7 jours
     sitesNotVisited: Array<{ siteId: string; siteName: string; days: number | null }>
+    criticalAnomalySites: string[] // sites portant une anomalie critique
   }
+  /** Santé + charge par site (remplace la heatmap). */
+  sites: ClientSiteHealth[]
   thisWeek: Array<{
     interventionId: string
     siteName: string
@@ -350,7 +372,9 @@ function daysSinceUtc(iso: string, todayIso: string): number {
 export async function getClientCockpit(clientId: string, todayIso: string): Promise<ClientCockpit> {
   const supabase = createAdminClient()
   const empty: ClientCockpit = {
-    risks: { openAnomalies: 0, criticalAnomalies: 0, missionsWithoutTeam: 0, staleOpenActions: 0, sitesNotVisited: [] },
+    today: { sitesGreen: 0, sitesOrange: 0, sitesRed: 0, criticalAnomalies: 0, proofCount: 0, next: null },
+    risks: { openAnomalies: 0, criticalAnomalies: 0, missionsWithoutTeam: 0, staleOpenActions: 0, sitesNotVisited: [], criticalAnomalySites: [] },
+    sites: [],
     thisWeek: [],
   }
 
@@ -386,11 +410,17 @@ export async function getClientCockpit(clientId: string, todayIso: string): Prom
     .filter((a) => daysSinceUtc(a.created_at, todayIso) > 7).length
 
   if (missionIds.length === 0) {
+    const sitesHealth: ClientSiteHealth[] = sites.map((s) => ({
+      siteId: s.id, siteName: s.name, level: 'green', reason: 'pas d\'activité', interventionCount: 0,
+    }))
     return {
+      today: { sitesGreen: sites.length, sitesOrange: 0, sitesRed: 0, criticalAnomalies: 0, proofCount: 0, next: null },
       risks: {
         openAnomalies: 0, criticalAnomalies: 0, missionsWithoutTeam, staleOpenActions,
         sitesNotVisited: sites.map((s) => ({ siteId: s.id, siteName: s.name, days: null })),
+        criticalAnomalySites: [],
       },
+      sites: sitesHealth,
       thisWeek: [],
     }
   }
@@ -443,22 +473,81 @@ export async function getClientCockpit(clientId: string, todayIso: string): Prom
       }
     })
 
-  // Anomalies ouvertes (+ critiques) sur les interventions du client
+  // Charge par site (nombre d'interventions) + map intervention → site
+  const interventionCountBySite = new Map<string, number>()
+  const siteByIntervention = new Map<string, string>()
+  for (const iv of interventions) {
+    const siteId = missionMeta.get(iv.mission_id)?.site_id
+    if (!siteId) continue
+    siteByIntervention.set(iv.id, siteId)
+    interventionCountBySite.set(siteId, (interventionCountBySite.get(siteId) ?? 0) + 1)
+  }
+
+  // Anomalies ouvertes (+ critiques) — comptées globalement ET par site
   let openAnomalies = 0
   let criticalAnomalies = 0
+  const anomaliesBySite = new Map<string, number>()
+  const criticalBySite = new Map<string, number>()
   if (interventionIds.length > 0) {
     const { data: anomalyRows } = await supabase
       .from('intervention_anomalies')
-      .select('category')
+      .select('category, intervention_id')
       .eq('status', 'open')
       .in('intervention_id', interventionIds)
-    const anomalies = (anomalyRows ?? []) as Array<{ category: string }>
+    const anomalies = (anomalyRows ?? []) as Array<{ category: string; intervention_id: string }>
     openAnomalies = anomalies.length
-    criticalAnomalies = anomalies.filter((a) => CRITICAL_ANOMALY_CATEGORIES.has(a.category)).length
+    for (const a of anomalies) {
+      const isCritical = CRITICAL_ANOMALY_CATEGORIES.has(a.category)
+      if (isCritical) criticalAnomalies++
+      const siteId = siteByIntervention.get(a.intervention_id)
+      if (!siteId) continue
+      anomaliesBySite.set(siteId, (anomaliesBySite.get(siteId) ?? 0) + 1)
+      if (isCritical) criticalBySite.set(siteId, (criticalBySite.get(siteId) ?? 0) + 1)
+    }
   }
 
+  // Preuves enregistrées (photos) sur les interventions du client
+  let proofCount = 0
+  if (interventionIds.length > 0) {
+    const { count } = await supabase
+      .from('intervention_photos')
+      .select('id', { count: 'exact', head: true })
+      .in('intervention_id', interventionIds)
+    proofCount = count ?? 0
+  }
+
+  // Santé par site (déterministe) : red = anomalie critique ; orange = anomalies
+  // OU non vu > 21j ; green sinon.
+  const sitesHealth: ClientSiteHealth[] = sites.map((s) => {
+    const last = lastVisitBySite.get(s.id)
+    const days = last ? daysSinceUtc(last, todayIso) : null
+    const crit = criticalBySite.get(s.id) ?? 0
+    const anoms = anomaliesBySite.get(s.id) ?? 0
+    let level: SiteHealthLevel = 'green'
+    let reason = 'en rythme'
+    if (crit > 0) { level = 'red'; reason = `${crit} anomalie${crit > 1 ? 's' : ''} critique${crit > 1 ? 's' : ''}` }
+    else if (anoms > 0) { level = 'orange'; reason = `${anoms} anomalie${anoms > 1 ? 's' : ''} ouverte${anoms > 1 ? 's' : ''}` }
+    else if (days !== null && days > SITE_STALE_DAYS) { level = 'orange'; reason = `non vu depuis ${days} j` }
+    else if (days === null && (interventionCountBySite.get(s.id) ?? 0) === 0) { reason = 'pas encore d\'activité' }
+    return { siteId: s.id, siteName: s.name, level, reason, interventionCount: interventionCountBySite.get(s.id) ?? 0 }
+  }).sort((a, b) => b.interventionCount - a.interventionCount)
+
+  const criticalAnomalySites = sites.filter((s) => (criticalBySite.get(s.id) ?? 0) > 0).map((s) => s.name)
+  const next = thisWeek[0]
+    ? { siteName: thisWeek[0].siteName, missionName: thisWeek[0].missionName, scheduled_for: thisWeek[0].scheduled_for, slot: thisWeek[0].slot }
+    : null
+
   return {
-    risks: { openAnomalies, criticalAnomalies, missionsWithoutTeam, staleOpenActions, sitesNotVisited },
+    today: {
+      sitesGreen: sitesHealth.filter((s) => s.level === 'green').length,
+      sitesOrange: sitesHealth.filter((s) => s.level === 'orange').length,
+      sitesRed: sitesHealth.filter((s) => s.level === 'red').length,
+      criticalAnomalies,
+      proofCount,
+      next,
+    },
+    risks: { openAnomalies, criticalAnomalies, missionsWithoutTeam, staleOpenActions, sitesNotVisited, criticalAnomalySites },
+    sites: sitesHealth,
     thisWeek,
   }
 }

@@ -17,16 +17,15 @@ import {
   CheckCircle2,
   CalendarClock,
   ChevronRight,
+  Camera,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { StatusValue } from '@/components/ui/status-badge'
-import { getClientDetail, getClientRecentRhythm, getClientCockpit } from '@/lib/db/clients'
+import { getClientDetail, getClientCockpit } from '@/lib/db/clients'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
-import { SiteRhythm } from '@/app/(dashboard)/sites/[id]/SiteRhythm'
-import { SiteHeatmapCalendar } from '@/app/(dashboard)/sites/[id]/SiteHeatmapCalendar'
 
 const SLOT_FR: Record<string, string> = {
   morning: 'Matin',
@@ -45,6 +44,28 @@ function formatDateShort(iso: string | null): string {
   return `${FR_DAYS[utc.getUTCDay()]} ${d} ${FR_MONTHS[m - 1]}`
 }
 
+const SITE_LEVEL_RANK: Record<'green' | 'orange' | 'red', number> = { red: 0, orange: 1, green: 2 }
+const SITE_LEVEL_DOT: Record<'green' | 'orange' | 'red', string> = {
+  green: 'bg-emerald-500', orange: 'bg-amber-500', red: 'bg-red-500',
+}
+
+function TodaySignal({ tone, label, dot, icon }: {
+  tone: 'green' | 'orange' | 'red' | 'muted'
+  label: string
+  dot?: boolean
+  icon?: React.ReactNode
+}) {
+  const text = tone === 'green' ? 'text-emerald-700' : tone === 'orange' ? 'text-amber-700' : tone === 'red' ? 'text-red-700' : 'text-muted-foreground'
+  const dotCls = tone === 'green' ? 'bg-emerald-500' : tone === 'orange' ? 'bg-amber-500' : tone === 'red' ? 'bg-red-500' : 'bg-muted-foreground'
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${text}`}>
+      {dot && <span className={`h-2 w-2 rounded-full ${dotCls}`} />}
+      {icon}
+      {label}
+    </span>
+  )
+}
+
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const client = await getClientDetail(id)
@@ -56,12 +77,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   const todayIso = todayLocalIso()
 
-  // Cockpit : signaux d'attention (risques + à faire), pas d'historique.
+  // Cockpit : signaux d'attention (risques + à faire + santé sites), pas d'historique.
   const cockpit = await getClientCockpit(id, todayIso)
-  // Rythme + densité agrégés (consolidés sous l'historique, plus bas).
-  const rhythm14 = siteCount > 0 ? await getClientRecentRhythm(id, 14) : []
-  const rhythm90 = siteCount > 0 ? await getClientRecentRhythm(id, 90) : []
-
   const { risks, thisWeek } = cockpit
   const hasRisks =
     risks.openAnomalies > 0 || risks.sitesNotVisited.length > 0 ||
@@ -86,10 +103,32 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         </div>
       </header>
 
-      {/* ── RISQUES EN COURS — ce qui menace, pas l'historique ─────────────── */}
+      {/* ── {CLIENT} AUJOURD'HUI — lecture 4 s ─────────────────────────────── */}
+      <section className="rounded-lg border bg-card px-4 py-3">
+        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+          {client.name} aujourd&apos;hui
+        </h2>
+        <div className="flex items-center gap-x-5 gap-y-2 flex-wrap text-sm">
+          <TodaySignal tone="green" dot label={`${cockpit.today.sitesGreen} site${cockpit.today.sitesGreen > 1 ? 's' : ''} en rythme`} />
+          {cockpit.today.sitesOrange > 0 && <TodaySignal tone="orange" dot label={`${cockpit.today.sitesOrange} à surveiller`} />}
+          {cockpit.today.sitesRed > 0 && <TodaySignal tone="red" dot label={`${cockpit.today.sitesRed} site${cockpit.today.sitesRed > 1 ? 's' : ''} critique${cockpit.today.sitesRed > 1 ? 's' : ''}`} />}
+          {cockpit.today.criticalAnomalies > 0 && (
+            <TodaySignal tone="red" icon={<AlertTriangle className="h-3.5 w-3.5" />} label={`${cockpit.today.criticalAnomalies} anomalie${cockpit.today.criticalAnomalies > 1 ? 's' : ''} critique${cockpit.today.criticalAnomalies > 1 ? 's' : ''}`} />
+          )}
+          <TodaySignal tone="muted" icon={<Camera className="h-3.5 w-3.5" />} label={`${cockpit.today.proofCount} preuve${cockpit.today.proofCount > 1 ? 's' : ''}`} />
+          {cockpit.today.next && (
+            <span className="inline-flex items-center gap-1.5 text-sky-700">
+              <CalendarClock className="h-3.5 w-3.5" />
+              Prochaine : {formatDateShort(cockpit.today.next.scheduled_for)} · {cockpit.today.next.siteName}
+            </span>
+          )}
+        </div>
+      </section>
+
+      {/* ── RISQUES EN COURS — actionnable, items nommés ───────────────────── */}
       <section className={`rounded-lg border p-4 ${hasRisks ? 'border-amber-200 bg-amber-50/30' : 'border-emerald-200 bg-emerald-50/30'}`}>
         <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5 mb-2">
-          <AlertTriangle className="h-3.5 w-3.5" /> Risques en cours
+          <AlertTriangle className="h-3.5 w-3.5" /> {hasRisks ? `${client.name} nécessite votre attention` : 'Risques en cours'}
         </h2>
         {!hasRisks ? (
           <p className="text-sm text-emerald-700 inline-flex items-center gap-1.5">
@@ -97,13 +136,22 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           </p>
         ) : (
           <div className="space-y-1.5">
-            {risks.openAnomalies > 0 && (
+            {risks.criticalAnomalies > 0 && (
               <RiskRow
-                tone={risks.criticalAnomalies > 0 ? 'red' : 'orange'}
+                tone="red"
                 icon={<AlertTriangle className="h-3.5 w-3.5" />}
-                count={risks.openAnomalies}
-                label={`anomalie${risks.openAnomalies > 1 ? 's' : ''} ouverte${risks.openAnomalies > 1 ? 's' : ''}`}
-                detail={risks.criticalAnomalies > 0 ? `dont ${risks.criticalAnomalies} critique${risks.criticalAnomalies > 1 ? 's' : ''}` : null}
+                count={risks.criticalAnomalies}
+                label={`anomalie${risks.criticalAnomalies > 1 ? 's' : ''} critique${risks.criticalAnomalies > 1 ? 's' : ''}`}
+                detail={risks.criticalAnomalySites.length > 0 ? `à ${risks.criticalAnomalySites.slice(0, 3).join(', ')}` : null}
+              />
+            )}
+            {risks.openAnomalies - risks.criticalAnomalies > 0 && (
+              <RiskRow
+                tone="orange"
+                icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                count={risks.openAnomalies - risks.criticalAnomalies}
+                label={`autre${risks.openAnomalies - risks.criticalAnomalies > 1 ? 's' : ''} anomalie${risks.openAnomalies - risks.criticalAnomalies > 1 ? 's' : ''} ouverte${risks.openAnomalies - risks.criticalAnomalies > 1 ? 's' : ''}`}
+                detail={null}
               />
             )}
             {risks.sitesNotVisited.length > 0 && (
@@ -163,46 +211,38 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         {/* Colonne gauche : contact + mémoire */}
         <div className="lg:col-span-1 space-y-4">
 
-          {/* Contact */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                Contact
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2.5">
-              {client.contact_name && (
-                <div className="text-sm font-medium">{client.contact_name}</div>
-              )}
-              {client.contact_phone && (
-                <a
-                  href={`tel:${client.contact_phone}`}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Phone className="h-3.5 w-3.5 shrink-0" />
-                  {client.contact_phone}
-                </a>
-              )}
-              {client.contact_email && (
-                <a
-                  href={`mailto:${client.contact_email}`}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  <span className="break-all">{client.contact_email}</span>
-                </a>
-              )}
-              {client.address && (
-                <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span className="whitespace-pre-wrap">{client.address}</span>
-                </div>
-              )}
-              {!client.contact_name && !client.contact_phone && !client.contact_email && !client.address && (
-                <p className="text-sm text-muted-foreground italic">Aucune information de contact.</p>
-              )}
-            </CardContent>
-          </Card>
+          {/* Contact — réduit à un lien si vide (pas de grande carte morte) */}
+          {(client.contact_name || client.contact_phone || client.contact_email || client.address) ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                  Contact
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {client.contact_name && <div className="text-sm font-medium">{client.contact_name}</div>}
+                {client.contact_phone && (
+                  <a href={`tel:${client.contact_phone}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    <Phone className="h-3.5 w-3.5 shrink-0" />{client.contact_phone}
+                  </a>
+                )}
+                {client.contact_email && (
+                  <a href={`mailto:${client.contact_email}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    <Mail className="h-3.5 w-3.5 shrink-0" /><span className="break-all">{client.contact_email}</span>
+                  </a>
+                )}
+                {client.address && (
+                  <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" /><span className="whitespace-pre-wrap">{client.address}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <button type="button" className="w-full inline-flex items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors">
+              <Phone className="h-3.5 w-3.5" /> Ajouter un contact principal
+            </button>
+          )}
 
           {/* Mémoire client */}
           {hasNotes && (
@@ -258,37 +298,61 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         {/* Colonne droite : contrats + activité */}
         <div className="lg:col-span-2 space-y-4">
 
-          {/* Rythme 14 jours — agrégé tous sites du client */}
-          {siteCount > 0 && (
+          {/* Santé des sites — 🟢🟠🔴 + raison (remplace la heatmap) */}
+          {cockpit.sites.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5" />
-                  Rythme — 14 derniers jours
+                  <MapPin className="h-3.5 w-3.5" />
+                  Santé des sites
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <SiteRhythm days={rhythm14} />
+                <ul className="divide-y">
+                  {[...cockpit.sites]
+                    .sort((a, b) => SITE_LEVEL_RANK[a.level] - SITE_LEVEL_RANK[b.level])
+                    .map((s) => (
+                      <li key={s.siteId}>
+                        <Link href={`/sites/${s.siteId}`} className="flex items-center gap-2 py-2 hover:opacity-80 transition-opacity">
+                          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${SITE_LEVEL_DOT[s.level]}`} />
+                          <span className="text-sm truncate">{s.siteName}</span>
+                          <span className="ml-auto text-[11px] text-muted-foreground shrink-0">{s.reason}</span>
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
               </CardContent>
             </Card>
           )}
 
-          {/* Densité 90 jours — heatmap agrégée tous sites du client */}
-          {siteCount > 0 && (
+          {/* Charge par site — où se concentre l'activité */}
+          {cockpit.sites.some((s) => s.interventionCount > 0) && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5" />
-                  Densité — 90 derniers jours
+                  Charge par site
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <SiteHeatmapCalendar days={rhythm90} />
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Toutes les traces des sites de ce client. Chaque carré = un jour ;
-                  plus la couleur est foncée, plus il y a eu d&apos;activité.
-                  Aujourd&apos;hui : carré entouré.
-                </p>
+              <CardContent>
+                {(() => {
+                  const maxIv = Math.max(1, ...cockpit.sites.map((s) => s.interventionCount))
+                  return (
+                    <div className="space-y-2">
+                      {cockpit.sites.filter((s) => s.interventionCount > 0).map((s) => (
+                        <div key={s.siteId} className="flex items-center gap-2">
+                          <span className="w-40 shrink-0 truncate text-xs">{s.siteName}</span>
+                          <div className="flex-1 h-3 rounded bg-muted overflow-hidden">
+                            <div className="h-full rounded bg-sky-500" style={{ width: `${(s.interventionCount / maxIv) * 100}%` }} />
+                          </div>
+                          <span className="w-24 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                            {s.interventionCount} interv.
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           )}
