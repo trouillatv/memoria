@@ -79,12 +79,25 @@ Exemple — ces trois phrases :
 | **résonance** | Un **pont** entre une trace terrain et un chunk documentaire | « Cette note fait écho au protocole d'accès du CCTP » |
 | **mémoire AO** | L'historique des AO passés + leurs résultats | « AO bio-nettoyage 2025, perdu sur le prix » |
 | **analyse IA** | Le travail des 6 agents sur un AO | Le rapport du Contradicteur |
+| **réunion / compte-rendu** | La capture multimodale d'une réunion + ses décisions routées | « Réunion lundi — Lycée de Païta » |
+| **action ouverte** | Un « il reste à faire » issu d'une réunion — **pilotage**, pas mémoire | « Relancer SudÉlec » |
+| **contribution externe** | La preuve d'exécution d'une entreprise sur une partie d'une intervention | « Plomberie Martin · 2/2 tâches · signé » |
 
 **La distinction clé** :
 - **trace terrain** = mémoire **vécue** (notes, photos, anomalies), attachée à **un site**
 - **knowledge_chunk** = mémoire **documentaire** (CCTP, protocoles, AO), attachée à **l'entreprise**
 
 Ces deux mémoires vivent dans des **silos séparés** (sécurité, contrôle d'accès). La **résonance** est le pont qui les fait dialoguer.
+
+### Ce qui entre dans la mémoire sémantique — et ce qui n'y entre pas
+
+Tout n'a pas vocation à **résonner**. Seules **quatre sources** sont embeddées (donc susceptibles de créer une résonance) : les **légendes de photos**, les **anomalies**, les **notes de site** (« à savoir »), les **notes d'intervention**. Le reste est de l'**état opérationnel**, pas de la mémoire du lieu :
+
+- Une **action ouverte** (« relancer SudÉlec ») est un TODO **transitoire** : jamais embeddée, jamais de résonance — sinon on polluerait l'IA avec des to-do qui changent tous les jours.
+- Une **action terminée** est un **fait accompli** : elle devient un **événement du journal du site** (« Action clôturée : … », avec le commentaire de clôture), mais reste **hors résonance**. L'ouverte *pilote*, la terminée *raconte l'histoire*.
+- Une **contribution externe** est une **preuve** (qui a fait quoi, signature) : elle vit sur l'intervention et dans le dossier de preuves, pas dans la mémoire sémantique.
+
+> Règle simple : **l'opérationnel pilote, la mémoire raconte.** On n'embedde que ce qui aide à *comprendre le lieu* dans la durée — jamais une tâche en cours.
 
 ---
 
@@ -229,6 +242,13 @@ L'IA générative (chère, faillible) est **confinée** à un seul endroit : l'A
 5. **Composition** — passation, AO, continuité recomposent ces mémoires au bon moment
 6. **Discipline** — l'oubli, le silence positif, les filtres empêchent le bruit
 7. **Génération** — l'IA générative, confinée à l'Atelier AO, produit du livrable sur demande
+
+**Les 3 niveaux de lecture (côté utilisateur)** — au-delà de la mécanique, MemorIA présente l'information selon **trois questions**, du plus urgent au plus profond :
+1. **Pilotage** — *Que dois-je faire ?* (interventions du jour, actions ouvertes, anomalies)
+2. **Mémoire** — *Que sait-on ?* (journal, à savoir, lectures du lieu, documents)
+3. **Intelligence** — *Qu'est-ce que je risque d'oublier ?* (ce qui revient, continuité humaine, résonances)
+
+C'est la grammaire d'une page de chantier : l'**opérationnel d'abord**, la **mémoire ensuite**, l'**anticipation en dessous**. Quand on arrive sur un site, on doit voir « ce qui me concerne maintenant » avant l'histoire du lieu.
 
 **MemorIA vs un chatbot** : un chatbot **génère** une réponse à chaque question (cher, faillible, sans mémoire durable). MemorIA **se souvient** et **fait résonner** — il ne génère presque jamais. Il **contextualise**, il ne fabrique pas.
 
