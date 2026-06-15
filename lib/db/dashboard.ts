@@ -147,7 +147,7 @@ export async function getCapitalPreuves(): Promise<CapitalPreuves> {
 
   const [photosRes, interventionsRes, contractsRes] = await Promise.all([
     (() => {
-      let q = supabase.from('intervention_photos').select('id', { count: 'exact', head: true })
+      const q = supabase.from('intervention_photos').select('id', { count: 'exact', head: true })
       // intervention_photos n'a pas org_id — filtré indirectement via interventions
       return q
     })(),
@@ -713,7 +713,7 @@ export async function getRecentActivity(limit = RECENT_DEFAULT_LIMIT): Promise<R
     }
   }
 
-  let anomQ = supabase.from('intervention_anomalies')
+  const anomQ = supabase.from('intervention_anomalies')
     .select('id, resolved_at, category, intervention_id')
     .not('resolved_at', 'is', null).gte('resolved_at', cutoffIso)
     .order('resolved_at', { ascending: false }).limit(fetchLimit)

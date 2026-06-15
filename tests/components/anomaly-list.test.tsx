@@ -4,7 +4,7 @@ import { AnomalyList } from '@/app/(field)/m/intervention/[id]/AnomalyList'
 import type { DbInterventionAnomaly } from '@/types/db'
 
 const { ignoreAnomalyMobileActionMock } = vi.hoisted(() => ({
-  ignoreAnomalyMobileActionMock: vi.fn(async () => ({ ok: true as const })),
+  ignoreAnomalyMobileActionMock: vi.fn(async (_id: string) => ({ ok: true as const })),
 }))
 
 vi.mock('@/app/(field)/m/intervention/[id]/actions', () => ({

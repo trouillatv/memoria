@@ -55,7 +55,7 @@ Détail complet : [`docs/superpowers/doctrines/planning-doctrine.md`](docs/super
    INITIAL_ADMIN_PASSWORD=memoria2026
    ```
 
-3. **Appliquer les migrations** (22 migrations `supabase/migrations/*.sql`) :
+3. **Appliquer les migrations** (105 migrations `supabase/migrations/*.sql`) :
    ```bash
    npm run db:push
    ```
@@ -84,7 +84,7 @@ Détail complet : [`docs/superpowers/doctrines/planning-doctrine.md`](docs/super
 ```bash
 npm run typecheck     # 0 erreur attendu
 npm run lint
-npm test              # vitest run — 337 tests (41 files passed, 1 skipped)
+npm test              # vitest run — ~1100 tests (les tests d'intégration lib/db exigent un .env.local valide)
 npm run build && npm start  # mode prod (plus rapide qu'en dev pour la démo)
 
 # Smoke tests programmatiques (DB réelle, .env.local requis)
