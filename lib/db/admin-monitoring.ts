@@ -439,6 +439,141 @@ export async function getUsersActivitySummary(): Promise<Record<string, UserActi
   return out
 }
 
+// ─── Dernière activité PAR ENTREPRISE (remplace la carte Guillaume) ───────────
+
+export interface OrgActivityRow {
+  id: string
+  name: string
+  member_count: number
+  last_activity_at: string | null
+  status: 'active' | 'dormant' | 'inactive'
+}
+
+/**
+ * Dernière activité par entreprise = MAX de la dernière présence de ses
+ * membres. Remplace l'ancienne carte « dernière activité de Guillaume »
+ * (mono-pilote) par une vue multi-entreprises.
+ */
+export async function getOrgActivitySummary(): Promise<OrgActivityRow[]> {
+  const sb = createAdminClient()
+  const [{ data: orgs }, { data: users }, activity] = await Promise.all([
+    sb.from('organizations').select('id, name').order('name'),
+    sb.from('users').select('id, organization_id').is('deleted_at', null),
+    getUsersActivitySummary(),
+  ])
+
+  const membersByOrg = new Map<string, string[]>()
+  for (const u of users ?? []) {
+    const oid = (u as { organization_id: string | null }).organization_id
+    if (!oid) continue
+    const arr = membersByOrg.get(oid) ?? []
+    arr.push(u.id)
+    membersByOrg.set(oid, arr)
+  }
+
+  const now = Date.now()
+  const MS_7D = 7 * 24 * 60 * 60 * 1000
+  const MS_30D = 30 * 24 * 60 * 60 * 1000
+
+  const rows: OrgActivityRow[] = (orgs ?? []).map((o) => {
+    const memberIds = membersByOrg.get(o.id) ?? []
+    let last: string | null = null
+    for (const id of memberIds) {
+      const a = activity[id]?.last_activity_at
+      if (a && (!last || a > last)) last = a
+    }
+    let status: OrgActivityRow['status']
+    if (!last) status = 'inactive'
+    else {
+      const elapsed = now - new Date(last).getTime()
+      status = elapsed < MS_7D ? 'active' : elapsed < MS_30D ? 'dormant' : 'inactive'
+    }
+    return { id: o.id, name: o.name, member_count: memberIds.length, last_activity_at: last, status }
+  })
+
+  rows.sort((a, b) => {
+    if (!a.last_activity_at && !b.last_activity_at) return 0
+    if (!a.last_activity_at) return 1
+    if (!b.last_activity_at) return -1
+    return b.last_activity_at.localeCompare(a.last_activity_at)
+  })
+  return rows
+}
+
+// ─── Compteurs d'objets (sites, contrats, interventions, intervenants) ────────
+
+export interface EntityCounts {
+  sitesCreated: number
+  sitesTotal: number
+  contractsCreated: number
+  contractsTotal: number
+  interventionsCreated: number
+  intervenants: number
+}
+
+export async function getEntityCounts(period: PeriodDays): Promise<EntityCounts> {
+  const sb = createAdminClient()
+  const since = cutoff(period)
+  const head = { count: 'exact' as const, head: true }
+  const [sitesC, sitesT, contractsC, contractsT, intC, interv] = await Promise.all([
+    sb.from('sites').select('id', head).is('deleted_at', null).gte('created_at', since),
+    sb.from('sites').select('id', head).is('deleted_at', null),
+    sb.from('contracts').select('id', head).is('deleted_at', null).gte('created_at', since),
+    sb.from('contracts').select('id', head).is('deleted_at', null),
+    sb.from('interventions').select('id', head).gte('created_at', since),
+    sb.from('users').select('id', head).is('deleted_at', null).eq('role', 'chef_equipe'),
+  ])
+  return {
+    sitesCreated: sitesC.count ?? 0,
+    sitesTotal: sitesT.count ?? 0,
+    contractsCreated: contractsC.count ?? 0,
+    contractsTotal: contractsT.count ?? 0,
+    interventionsCreated: intC.count ?? 0,
+    intervenants: interv.count ?? 0,
+  }
+}
+
+// ─── Usage par jour (graphe de visites) ───────────────────────────────────────
+
+export interface DailyUsagePoint {
+  date: string // YYYY-MM-DD
+  count: number
+}
+
+/**
+ * Visites de page par jour sur la période — alimente le graphe d'usage.
+ * Tous les jours de la fenêtre sont représentés (0 inclus) pour un graphe
+ * continu. Bucket par date UTC.
+ */
+export async function getDailyUsage(period: PeriodDays): Promise<DailyUsagePoint[]> {
+  const sb = createAdminClient()
+  const since = cutoff(period)
+  const { data } = await sb
+    .from('activity_logs')
+    .select('created_at')
+    .eq('entity_type', 'page')
+    .eq('action', 'view')
+    .gte('created_at', since)
+    .limit(50000)
+
+  const counts = new Map<string, number>()
+  for (const row of data ?? []) {
+    const day = String((row as { created_at: string }).created_at).slice(0, 10)
+    counts.set(day, (counts.get(day) ?? 0) + 1)
+  }
+
+  // Génère la liste continue des jours (du plus ancien au plus récent).
+  const out: DailyUsagePoint[] = []
+  const start = new Date(since)
+  start.setUTCHours(0, 0, 0, 0)
+  const today = new Date()
+  for (let d = new Date(start); d <= today; d.setUTCDate(d.getUTCDate() + 1)) {
+    const key = d.toISOString().slice(0, 10)
+    out.push({ date: key, count: counts.get(key) ?? 0 })
+  }
+  return out
+}
+
 // ─── Santé opérationnelle ─────────────────────────────────────────────────────
 
 export interface OperationalKPIs {

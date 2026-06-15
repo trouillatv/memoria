@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { AdoptionStats, ActivityEntry, PilotHealth, UserAdoptionRow } from '@/lib/db/admin-monitoring'
+import type { AdoptionStats, ActivityEntry, UserAdoptionRow } from '@/lib/db/admin-monitoring'
 
 const STATUS_LABEL: Record<UserAdoptionRow['status'], string> = {
   active: 'Actif',
@@ -13,12 +13,6 @@ const STATUS_CLASS: Record<UserAdoptionRow['status'], string> = {
   active: 'bg-emerald-100 text-emerald-700',
   dormant: 'bg-amber-100 text-amber-700',
   inactive: 'bg-slate-100 text-slate-500',
-}
-
-const PILOT_HEALTH_CLASS: Record<PilotHealth['tone'], string> = {
-  red: 'border-red-200 bg-red-50 text-red-800 dark:bg-red-950/20 dark:text-red-200',
-  amber: 'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-200',
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200',
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -88,29 +82,6 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
 
   return (
     <div className="space-y-8">
-      <section className="grid gap-3 md:grid-cols-[1.2fr_1fr]">
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2.5">
-            Dernière activité de Guillaume
-          </h2>
-          <div className="text-3xl font-semibold tracking-tight">
-            {formatDate(stats.guillaumeLastActivityAt)}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Signal principal du pilote : est-ce que MemorIA est rouvert sans relance.
-          </p>
-        </div>
-        <div className={`rounded-lg border p-4 ${PILOT_HEALTH_CLASS[stats.pilotHealth.tone]}`}>
-          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.16em] opacity-75 mb-2.5">
-            Santé du pilote
-          </h2>
-          <div className="text-2xl font-semibold">{stats.pilotHealth.label}</div>
-          <p className="mt-1 text-xs opacity-80">
-            {stats.pilotHealth.activeDays} jour{stats.pilotHealth.activeDays > 1 ? 's' : ''} actif{stats.pilotHealth.activeDays > 1 ? 's' : ''} sur 30 jours.
-          </p>
-        </div>
-      </section>
-
       {/* Feed activité — LE cœur : qui a fait quoi · qui a vu quoi */}
       <section>
         <div className="flex items-center justify-between mb-3">

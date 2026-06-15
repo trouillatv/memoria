@@ -8,12 +8,16 @@
 
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { MessageSquare, Smartphone, Monitor, ArrowRight } from 'lucide-react'
+import { MessageSquare, Smartphone, Monitor, ArrowRight, MapPin, FileText, Hammer, Users } from 'lucide-react'
 import {
   getAdoptionStats,
   getActivityFeed,
   getUsageBreakdown,
+  getEntityCounts,
+  getDailyUsage,
+  getOrgActivitySummary,
   type PeriodDays,
+  type OrgActivityRow,
 } from '@/lib/db/admin-monitoring'
 import { getAuditActivitySummary } from '@/lib/db/activity-logs'
 import { getAuditFailureStats } from '@/lib/audit/log'
@@ -161,6 +165,114 @@ function UsageBlock({
   )
 }
 
+function EntityKpis({ counts }: { counts: Awaited<ReturnType<typeof getEntityCounts>> }) {
+  const cards = [
+    { label: 'Sites créés', value: counts.sitesCreated, sub: `${counts.sitesTotal} au total`, icon: MapPin, tone: 'text-sky-600 bg-sky-50' },
+    { label: 'Contrats créés', value: counts.contractsCreated, sub: `${counts.contractsTotal} au total`, icon: FileText, tone: 'text-violet-600 bg-violet-50' },
+    { label: 'Interventions', value: counts.interventionsCreated, sub: 'sur la période', icon: Hammer, tone: 'text-amber-600 bg-amber-50' },
+    { label: 'Intervenants', value: counts.intervenants, sub: "chefs d'équipe", icon: Users, tone: 'text-emerald-600 bg-emerald-50' },
+  ]
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {cards.map((c) => {
+        const Icon = c.icon
+        return (
+          <div key={c.label} className="rounded-lg border bg-card p-4">
+            <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${c.tone}`}>
+              <Icon className="h-4 w-4" />
+            </span>
+            <div className="mt-2 text-2xl font-semibold tabular-nums">{c.value}</div>
+            <div className="text-xs font-medium">{c.label}</div>
+            <div className="text-[11px] text-muted-foreground">{c.sub}</div>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+function DailyUsageChart({ points }: { points: Awaited<ReturnType<typeof getDailyUsage>> }) {
+  const max = Math.max(1, ...points.map((p) => p.count))
+  const total = points.reduce((s, p) => s + p.count, 0)
+  // N'étiquète que quelques jours pour ne pas surcharger l'axe.
+  const labelEvery = Math.ceil(points.length / 8)
+  return (
+    <section className="space-y-3">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Usage par jour</h2>
+        <span className="text-xs text-muted-foreground">{total} visite{total > 1 ? 's' : ''} · pic {max}/j</span>
+      </div>
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex h-32 items-end gap-1">
+          {points.map((p, i) => (
+            <div key={p.date} className="group relative flex flex-1 flex-col items-center justify-end">
+              <div
+                className="w-full rounded-t bg-sky-500/80 transition-colors hover:bg-sky-600"
+                style={{ height: `${Math.max(2, (p.count / max) * 100)}%` }}
+                title={`${p.date} — ${p.count} visite${p.count > 1 ? 's' : ''}`}
+              />
+              {i % labelEvery === 0 && (
+                <span className="mt-1 text-[9px] text-muted-foreground whitespace-nowrap">{p.date.slice(8, 10)}/{p.date.slice(5, 7)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function OrgActivityTable({ rows }: { rows: OrgActivityRow[] }) {
+  const STATUS: Record<OrgActivityRow['status'], { label: string; cls: string }> = {
+    active: { label: 'Active', cls: 'bg-emerald-100 text-emerald-700' },
+    dormant: { label: 'Dormante', cls: 'bg-amber-100 text-amber-700' },
+    inactive: { label: 'Inactive', cls: 'bg-slate-100 text-slate-500' },
+  }
+  const fmt = (iso: string | null) => {
+    if (!iso) return 'Jamais'
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+    if (m < 60) return `il y a ${Math.max(1, m)} min`
+    const h = Math.round(m / 60)
+    if (h < 24) return `il y a ${h} h`
+    const d = Math.round(h / 24)
+    if (d < 7) return `il y a ${d} j`
+    return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+  }
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Dernière activité par entreprise</h2>
+      <div className="overflow-hidden rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 text-left">Entreprise</th>
+              <th className="px-3 py-2 text-right">Personnes</th>
+              <th className="px-3 py-2 text-left">Dernière activité</th>
+              <th className="px-3 py-2 text-left">État</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.length === 0 ? (
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-xs text-muted-foreground">Aucune entreprise.</td></tr>
+            ) : rows.map((o) => (
+              <tr key={o.id} className="hover:bg-muted/20">
+                <td className="px-3 py-2 font-medium">{o.name}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">{o.member_count}</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{fmt(o.last_activity_at)}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS[o.status].cls}`}>
+                    {STATUS[o.status].label}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 export default async function AdminActivitePage({
   searchParams,
 }: {
@@ -169,11 +281,14 @@ export default async function AdminActivitePage({
   const { period: periodRaw } = await searchParams
   const period = parsePeriod(periodRaw)
 
-  const [stats, feed, usage, openFeedback] = await Promise.all([
+  const [stats, feed, usage, openFeedback, counts, daily, orgActivity] = await Promise.all([
     getAdoptionStats(period),
     getActivityFeed(period),
     getUsageBreakdown(period),
     getOpenFeedbackCount(),
+    getEntityCounts(period),
+    getDailyUsage(period),
+    getOrgActivitySummary(),
   ])
 
   return (
@@ -189,6 +304,12 @@ export default async function AdminActivitePage({
       <Suspense fallback={null}>
         <AuditHealthCard />
       </Suspense>
+
+      <EntityKpis counts={counts} />
+
+      <DailyUsageChart points={daily} />
+
+      <OrgActivityTable rows={orgActivity} />
 
       <UsageBlock usage={usage} />
 
