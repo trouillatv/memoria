@@ -627,7 +627,9 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
     missionIds = (missionRows ?? []).map((m) => m.id)
   }
 
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Fenêtre alignée sur le DateNav de /m (J-3 → J+3) avec marge fuseau Nouméa :
+  // borne basse à -4 j (sinon J-2/J-3 du sélecteur de date restaient vides).
+  const yesterday = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
   const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
   // V5.1 — join missions pour filtrer les missions système ("Traces libres
