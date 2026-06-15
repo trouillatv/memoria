@@ -1,5 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Active les classes `prose` (Tailwind v4) — utilisées par les pages de doc/
+   manuel (ManuelBook, /comprendre…). Sans ce plugin, les `prose-*` sont inertes
+   et le contenu long s'affiche en pavé brut. */
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *, .petrole *, .monolithe *));
 
