@@ -7,6 +7,7 @@ import { AnomalyTooltipBadge } from '@/components/ui/AnomalyTooltipBadge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { listMissionsCockpit } from '@/lib/db/missions-cockpit'
+import { listTeams } from '@/lib/db/teams'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -107,7 +108,7 @@ export default async function MissionsPage() {
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/planning')
 
-  const [{ missions }, sitesForDialog] = await Promise.all([
+  const [{ missions }, sitesForDialog, teams] = await Promise.all([
     listMissionsCockpit(),
     (async () => {
       const supabase = createAdminClient()
@@ -125,6 +126,7 @@ export default async function MissionsPage() {
         return { id: s.id, name: s.name, contractName: contract?.name ?? null }
       })
     })(),
+    listTeams(),
   ])
 
   const todayIso = todayLocalIso()
@@ -147,6 +149,29 @@ export default async function MissionsPage() {
     sansEquipe: active.filter((m) => healthBy.get(m.id)!.sansEquipe).length,
   }
   const nothingToAction = counts.overdue + counts.anomalies + counts.sansProchaine + counts.sansEquipe === 0
+
+  // A. Santé du portefeuille (répartition par niveau).
+  const portfolio = {
+    green: active.filter((m) => healthBy.get(m.id)!.level === 'green').length,
+    orange: active.filter((m) => healthBy.get(m.id)!.level === 'orange').length,
+    red: active.filter((m) => healthBy.get(m.id)!.level === 'red').length,
+  }
+
+  // B. Charge par équipe (nombre de missions actives par équipe). Déterministe,
+  // pas le lot roster/planning. « inutilisée » = 0 ; « élevée » = nettement
+  // au-dessus de la moyenne des équipes actives.
+  const missionsByTeam = new Map<string, number>()
+  let sansEquipeCount = 0
+  for (const m of active) {
+    if (m.assignedTeam) missionsByTeam.set(m.assignedTeam.id, (missionsByTeam.get(m.assignedTeam.id) ?? 0) + 1)
+    else sansEquipeCount++
+  }
+  const teamLoad = teams
+    .map((t) => ({ id: t.id, name: t.name, color: t.color, count: missionsByTeam.get(t.id) ?? 0 }))
+    .sort((a, b) => b.count - a.count)
+  const maxTeamCount = Math.max(1, sansEquipeCount, ...teamLoad.map((t) => t.count))
+  const activeCounts = teamLoad.map((t) => t.count).filter((n) => n > 0)
+  const avgLoad = activeCounts.length > 0 ? activeCounts.reduce((s, n) => s + n, 0) / activeCounts.length : 0
 
   const groupBySite = (list: typeof missions) => {
     const order: string[] = []
@@ -205,6 +230,23 @@ export default async function MissionsPage() {
         </Link>
       </div>
 
+      {/* ── A. SANTÉ DU PORTEFEUILLE — l'état global en une barre ───────────── */}
+      {active.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+            {portfolio.green > 0 && <div className="bg-emerald-500" style={{ width: `${(portfolio.green / active.length) * 100}%` }} />}
+            {portfolio.orange > 0 && <div className="bg-amber-500" style={{ width: `${(portfolio.orange / active.length) * 100}%` }} />}
+            {portfolio.red > 0 && <div className="bg-red-500" style={{ width: `${(portfolio.red / active.length) * 100}%` }} />}
+          </div>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+            <span className="font-medium text-foreground">{active.length} mission{active.length > 1 ? 's' : ''}</span>
+            <LegendDot tone="green" label="en rythme" value={portfolio.green} />
+            <LegendDot tone="orange" label="à surveiller" value={portfolio.orange} />
+            <LegendDot tone="red" label="critique" value={portfolio.red} />
+          </div>
+        </div>
+      )}
+
       {/* ── CRITIQUE — spotlight, grosses cartes (max 3) ───────────────────── */}
       {topCritical.length > 0 && (
         <section className="space-y-2">
@@ -255,6 +297,45 @@ export default async function MissionsPage() {
               </ul>
             </details>
           )}
+        </section>
+      )}
+
+      {/* ── B. CHARGE PAR ÉQUIPE — qui est surchargé / sous-utilisé ────────── */}
+      {(teamLoad.length > 0 || sansEquipeCount > 0) && (
+        <section className="space-y-2">
+          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5" /> Charge par équipe
+          </h2>
+          <div className="space-y-1.5">
+            {teamLoad.map((t) => {
+              const elevated = t.count > 0 && avgLoad > 0 && t.count >= 4 && t.count > avgLoad * 1.5
+              const idle = t.count === 0
+              return (
+                <div key={t.id} className="flex items-center gap-2">
+                  <span className="w-36 shrink-0 truncate text-xs" style={{ color: t.color ?? undefined }}>{t.name}</span>
+                  <div className="flex-1 h-3 rounded bg-muted overflow-hidden">
+                    <div className="h-full rounded" style={{ width: `${(t.count / maxTeamCount) * 100}%`, backgroundColor: idle ? 'transparent' : (t.color ?? '#64748b') }} />
+                  </div>
+                  <span className="w-6 shrink-0 text-right text-xs tabular-nums font-medium">{t.count}</span>
+                  <span className="w-20 shrink-0 text-[10px]">
+                    {elevated ? <span className="text-red-700">charge élevée</span>
+                      : idle ? <span className="text-amber-700">inutilisée</span>
+                      : <span className="text-emerald-700">ok</span>}
+                  </span>
+                </div>
+              )
+            })}
+            {sansEquipeCount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="w-36 shrink-0 truncate text-xs italic text-amber-700">Sans équipe</span>
+                <div className="flex-1 h-3 rounded bg-muted overflow-hidden">
+                  <div className="h-full rounded bg-amber-400" style={{ width: `${(sansEquipeCount / maxTeamCount) * 100}%` }} />
+                </div>
+                <span className="w-6 shrink-0 text-right text-xs tabular-nums font-medium">{sansEquipeCount}</span>
+                <span className="w-20 shrink-0 text-[10px] text-amber-700">à affecter</span>
+              </div>
+            )}
+          </div>
         </section>
       )}
 
@@ -315,6 +396,17 @@ function ActionStat({ tone, icon, value, label }: { tone: Tone; icon: React.Reac
       {icon}
       <span className="font-bold tabular-nums">{value}</span>
       <span className={dim ? '' : 'text-muted-foreground'}>{label}</span>
+    </span>
+  )
+}
+
+function LegendDot({ tone, label, value }: { tone: Tone; label: string; value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-2 w-2 rounded-full ${TONE_DOT[tone]}`} />
+      <span className={value > 0 ? TONE_TEXT[tone] : 'text-muted-foreground/50'}>
+        <span className="font-semibold tabular-nums">{value}</span> {label}
+      </span>
     </span>
   )
 }
