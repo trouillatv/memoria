@@ -67,7 +67,7 @@ describe('ChefEquipeCard', () => {
     expect(disabledBtn).toBeDisabled()
     const link = screen.getByTestId('missing-phone-link') as HTMLAnchorElement
     expect(link).toBeInTheDocument()
-    expect(link.getAttribute('href')).toBe('/admin/users')
+    expect(link.getAttribute('href')).toBe('/admin/personnes')
     // Badge "Numéro manquant" présent (plusieurs occurrences possibles, on cible l'un d'eux)
     expect(screen.getAllByText(/numéro manquant/i).length).toBeGreaterThanOrEqual(1)
     // Aucun lien wa.me actif

@@ -79,8 +79,8 @@ export const NAV: NavItem[] = [
   { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
   { href: '/comprendre/architecture', label: 'Comprendre l’archi',    icon: Boxes, roles: ['admin'] },
   // — Admin —
-  { href: '/admin',      label: 'Administration',         icon: ShieldAlert,   roles: ['admin'], groupStart: 'Admin' },
-  { href: '/admin/observation', label: 'Observation pilote', icon: Eye,         roles: ['admin'] },
+  { href: '/admin',          label: 'Administration', icon: ShieldAlert, roles: ['admin'], groupStart: 'Admin' },
+  { href: '/admin/depenses-ia', label: 'Dépenses IA', icon: Eye,         roles: ['admin'] },
 ]
 
 export function isActive(pathname: string, href: string): boolean {

@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import type { DeviceKind } from '@/lib/navigation/device'
 
 // Monitoring admin — exception doctrinale assumée.
 //
@@ -340,6 +341,102 @@ export async function getActivityFeed(period: PeriodDays, roleFilter?: string): 
   }
 
   return entries
+}
+
+// ─── Usage : terrain vs bureau + appareil ─────────────────────────────────────
+
+export interface UsageBreakdown {
+  total: number
+  terrain: number // pages /m… (PWA terrain)
+  bureau: number // tout le reste (dashboard)
+  byDevice: Record<DeviceKind, number>
+}
+
+/**
+ * Répartition des visites de page sur la période : terrain (routes /m) vs
+ * bureau, et par catégorie d'appareil. Le SEUL graphe d'usage que l'admin
+ * veut vraiment (mobile/tel vs ordinateur). Lit `activity_logs` (page views).
+ * Les logs antérieurs à la capture d'appareil tombent en `other`.
+ */
+export async function getUsageBreakdown(period: PeriodDays): Promise<UsageBreakdown> {
+  const sb = createAdminClient()
+  const since = cutoff(period)
+  const { data } = await sb
+    .from('activity_logs')
+    .select('metadata, user_id')
+    .eq('entity_type', 'page')
+    .eq('action', 'view')
+    .gte('created_at', since)
+    .not('user_id', 'is', null)
+    .limit(20000)
+
+  const byDevice: Record<DeviceKind, number> = { ios: 0, android: 0, desktop: 0, other: 0 }
+  let terrain = 0
+  let bureau = 0
+  let total = 0
+  for (const row of data ?? []) {
+    const meta = (row as { metadata: Record<string, unknown> | null }).metadata ?? {}
+    const route = typeof meta.route === 'string' ? meta.route : ''
+    if (!route) continue
+    total += 1
+    if (route === '/m' || route.startsWith('/m/')) terrain += 1
+    else bureau += 1
+    // `device` peut manquer (logs anciens) → on retombe sur 'other'.
+    const device = (meta.device as DeviceKind | undefined) ?? 'other'
+    byDevice[device === 'ios' || device === 'android' || device === 'desktop' ? device : 'other'] += 1
+  }
+  return { total, terrain, bureau, byDevice }
+}
+
+// ─── Dernière présence de TOUS les utilisateurs (page Personnes) ──────────────
+
+export interface UserActivity {
+  last_activity_at: string | null
+  status: 'active' | 'dormant' | 'inactive'
+}
+
+/**
+ * Dernière présence par utilisateur — TOUS rôles inclus (admins compris,
+ * contrairement à getAdoptionStats). Sert la colonne « Dernière connexion »
+ * de la page Personnes. MAX(activity_logs.created_at, auth.last_sign_in_at).
+ */
+export async function getUsersActivitySummary(): Promise<Record<string, UserActivity>> {
+  const sb = createAdminClient()
+  const [latestLogsRes, authData] = await Promise.all([
+    sb.from('activity_logs').select('user_id, created_at')
+      .not('user_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(20000),
+    sb.auth.admin.listUsers({ perPage: 1000 }),
+  ])
+
+  const lastFromLogs = new Map<string, string>()
+  for (const log of latestLogsRes.data ?? []) {
+    if (log.user_id && !lastFromLogs.has(log.user_id)) lastFromLogs.set(log.user_id, log.created_at)
+  }
+  const lastFromAuth = new Map<string, string>()
+  for (const u of authData.data?.users ?? []) {
+    if (u.last_sign_in_at) lastFromAuth.set(u.id, u.last_sign_in_at)
+  }
+
+  const now = Date.now()
+  const MS_7D = 7 * 24 * 60 * 60 * 1000
+  const MS_30D = 30 * 24 * 60 * 60 * 1000
+  const ids = new Set([...lastFromLogs.keys(), ...lastFromAuth.keys()])
+  const out: Record<string, UserActivity> = {}
+  for (const id of ids) {
+    const a = lastFromLogs.get(id)
+    const b = lastFromAuth.get(id)
+    const lastAt = !a ? (b ?? null) : !b ? a : a > b ? a : b
+    let status: UserActivity['status']
+    if (!lastAt) status = 'inactive'
+    else {
+      const elapsed = now - new Date(lastAt).getTime()
+      status = elapsed < MS_7D ? 'active' : elapsed < MS_30D ? 'dormant' : 'inactive'
+    }
+    out[id] = { last_activity_at: lastAt, status }
+  }
+  return out
 }
 
 // ─── Santé opérationnelle ─────────────────────────────────────────────────────

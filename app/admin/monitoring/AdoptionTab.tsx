@@ -54,6 +54,16 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
 }
 
+// « Qui a fait quoi · qui a vu quoi » : transforme un log brut en phrase lisible.
+// Une visite de page (entity_type='page', action='view') = une CONSULTATION.
+function describeEntry(e: ActivityEntry): { verb: string; target: string; consult: boolean } {
+  if (e.entity_type === 'page' && e.action === 'view') {
+    const route = typeof e.metadata?.route === 'string' ? e.metadata.route : '—'
+    return { verb: 'a consulté', target: route, consult: true }
+  }
+  return { verb: ACTION_LABEL[e.action] ?? e.action, target: e.entity_type, consult: false }
+}
+
 export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: ActivityEntry[] }) {
   const [roleFilter, setRoleFilter] = useState<string>('')
   // Filtres dédiés au tableau utilisateurs (indépendants du filtre feed).
@@ -101,41 +111,55 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
         </div>
       </section>
 
+      {/* Feed activité — LE cœur : qui a fait quoi · qui a vu quoi */}
       <section>
-        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">
-          Moments mémoriels créés ce mois
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {[
-            { label: 'Total', value: stats.memoryMoments.total },
-            { label: 'Notes', value: stats.memoryMoments.notes },
-            { label: 'Passations', value: stats.memoryMoments.briefs },
-            { label: 'Documents', value: stats.memoryMoments.documents },
-            { label: 'Anomalies', value: stats.memoryMoments.anomalies },
-          ].map(item => (
-            <div key={item.label} className="rounded-lg border bg-card p-4 text-center">
-              <div className="text-2xl font-bold tabular-nums">{item.value}</div>
-              <div className="text-xs text-muted-foreground mt-1">{item.label}</div>
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Qui a fait quoi · qui a vu quoi</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Actions et consultations récentes, par personne.</p>
+          </div>
+          <select
+            value={roleFilter}
+            onChange={e => setRoleFilter(e.target.value)}
+            className="rounded border px-2 py-1 text-xs bg-background"
+          >
+            {/* Admin volontairement absent : feed adoption filtré côté serveur. */}
+            <option value="">Tous les rôles</option>
+            <option value="manager">Manager</option>
+            <option value="chef_equipe">Chef équipe</option>
+          </select>
         </div>
-      </section>
-      {/* Répartition des actions */}
-      <section>
-        <h2 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Actions sur la période</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {[
-            { label: 'Interventions créées', value: stats.breakdown.interventions_created },
-            { label: 'Photos uploadées', value: stats.breakdown.photos_uploaded },
-            { label: 'Anomalies signalées', value: stats.breakdown.anomalies_reported },
-            { label: 'Validations', value: stats.breakdown.validations_done },
-            { label: 'Resets MdP', value: stats.breakdown.password_resets },
-          ].map(item => (
-            <div key={item.label} className="rounded-lg border bg-card p-4 text-center">
-              <div className="text-2xl font-bold tabular-nums">{item.value}</div>
-              <div className="text-xs text-muted-foreground mt-1">{item.label}</div>
-            </div>
-          ))}
+        <div className="rounded-lg border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left px-3 py-2">Quand</th>
+                <th className="text-left px-3 py-2">Personne</th>
+                <th className="text-left px-3 py-2">Action</th>
+                <th className="text-left px-3 py-2">Sur</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {filteredFeed.map(e => {
+                const d = describeEntry(e)
+                return (
+                  <tr key={e.id} className="hover:bg-muted/20">
+                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(e.created_at)}</td>
+                    <td className="px-3 py-2 text-xs font-medium">{e.user_name ?? '—'}</td>
+                    <td className="px-3 py-2 text-xs">
+                      <span className={d.consult ? 'text-sky-700' : ''}>{d.verb}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-xs font-mono bg-muted/30">{d.target}</span>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filteredFeed.length === 0 && (
+                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">Aucune activité sur la période</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -242,49 +266,53 @@ export function AdoptionTab({ stats, feed }: { stats: AdoptionStats; feed: Activ
         </div>
       </section>
 
-      {/* Feed activité */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Activité récente</h2>
-          <select
-            value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
-            className="rounded border px-2 py-1 text-xs bg-background"
-          >
-            {/* Admin volontairement absent : feed adoption filtré côté serveur. */}
-            <option value="">Tous les rôles</option>
-            <option value="manager">Manager</option>
-            <option value="chef_equipe">Chef équipe</option>
-          </select>
-        </div>
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left px-3 py-2">Quand</th>
-                <th className="text-left px-3 py-2">Utilisateur</th>
-                <th className="text-left px-3 py-2">Entité</th>
-                <th className="text-left px-3 py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filteredFeed.map(e => (
-                <tr key={e.id} className="hover:bg-muted/20">
-                  <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{formatDate(e.created_at)}</td>
-                  <td className="px-3 py-2 text-xs">{e.user_name ?? '—'}</td>
-                  <td className="px-3 py-2">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded border text-xs font-mono bg-muted/30">{e.entity_type}</span>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{ACTION_LABEL[e.action] ?? e.action}</td>
-                </tr>
+      {/* Détails avancés — instrumentation produit, repliée par défaut. */}
+      <details className="group rounded-lg border bg-card">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-muted-foreground marker:content-none">
+          <span className="inline-flex items-center gap-2">
+            <span className="transition-transform group-open:rotate-90">▸</span>
+            Détails avancés — production mémoire
+          </span>
+        </summary>
+        <div className="space-y-6 border-t p-4">
+          <section>
+            <h3 className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wider">
+              Moments mémoriels créés ce mois
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {[
+                { label: 'Total', value: stats.memoryMoments.total },
+                { label: 'Notes', value: stats.memoryMoments.notes },
+                { label: 'Passations', value: stats.memoryMoments.briefs },
+                { label: 'Documents', value: stats.memoryMoments.documents },
+                { label: 'Anomalies', value: stats.memoryMoments.anomalies },
+              ].map(item => (
+                <div key={item.label} className="rounded-lg border bg-background p-4 text-center">
+                  <div className="text-2xl font-bold tabular-nums">{item.value}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{item.label}</div>
+                </div>
               ))}
-              {filteredFeed.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-8 text-center text-sm text-muted-foreground">Aucune activité sur la période</td></tr>
-              )}
-            </tbody>
-          </table>
+            </div>
+          </section>
+          <section>
+            <h3 className="text-xs font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Actions sur la période</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              {[
+                { label: 'Interventions créées', value: stats.breakdown.interventions_created },
+                { label: 'Photos uploadées', value: stats.breakdown.photos_uploaded },
+                { label: 'Anomalies signalées', value: stats.breakdown.anomalies_reported },
+                { label: 'Validations', value: stats.breakdown.validations_done },
+                { label: 'Resets MdP', value: stats.breakdown.password_resets },
+              ].map(item => (
+                <div key={item.label} className="rounded-lg border bg-background p-4 text-center">
+                  <div className="text-2xl font-bold tabular-nums">{item.value}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{item.label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
-      </section>
+      </details>
     </div>
   )
 }

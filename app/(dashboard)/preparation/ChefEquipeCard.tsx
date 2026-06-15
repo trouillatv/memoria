@@ -366,7 +366,7 @@ export function ChefEquipeCard({
                 Envoyer dans WhatsApp
               </Button>
               <Link
-                href="/admin/users"
+                href="/admin/personnes"
                 className="inline-flex items-center text-xs text-amber-700 hover:underline"
                 data-testid="missing-phone-link"
               >
