@@ -174,7 +174,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
 
       {/* ── Header hero — avatar initiales + nom + identité opérationnelle */}
       <header className="flex items-start gap-4 flex-wrap">
-        <div className="shrink-0 h-16 w-16 rounded-full bg-brand-50 dark:bg-brand-600/10 border border-brand-200 dark:border-brand-700/40 flex items-center justify-center text-lg font-semibold text-brand-700 dark:text-brand-300">
+        <div className="shrink-0 h-16 w-16 rounded-full bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-600/10 dark:to-brand-600/20 ring-1 ring-brand-200 dark:ring-brand-700/40 shadow-sm flex items-center justify-center text-lg font-semibold text-brand-700 dark:text-brand-300">
           {initials}
         </div>
         <div className="min-w-0 flex-1 space-y-2">
@@ -316,7 +316,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <Camera className="h-4 w-4" />
+              <Camera className="h-4 w-4 text-sky-600" />
               Photos déposées ({photos.length})
             </CardTitle>
           </CardHeader>
@@ -367,7 +367,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <MapPin className="h-4 w-4" />
+              <MapPin className="h-4 w-4 text-sky-600" />
               Sites connus ({sites.length})
             </CardTitle>
           </CardHeader>
@@ -380,7 +380,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
                   <li key={s.site_id} className="px-6 py-2.5">
                     <Link
                       href={`/sites/${s.site_id}`}
-                      className="flex items-start gap-2 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                      className="flex items-start gap-2 hover:bg-muted/30 active:bg-muted/50 -mx-6 px-6 py-1 -my-1 transition-colors group"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{s.site_name}</div>
@@ -419,7 +419,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <FileSignature className="h-4 w-4" />
+              <FileSignature className="h-4 w-4 text-violet-600" />
               Contrats ({contracts.length})
             </CardTitle>
           </CardHeader>
@@ -432,7 +432,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
                   <li key={c.contract_id} className="px-6 py-2.5">
                     <Link
                       href={`/contracts/${c.contract_id}`}
-                      className="flex items-start gap-2 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                      className="flex items-start gap-2 hover:bg-muted/30 active:bg-muted/50 -mx-6 px-6 py-1 -my-1 transition-colors group"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{c.contract_name}</div>
@@ -469,7 +469,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <History className="h-4 w-4" />
+              <History className="h-4 w-4 text-indigo-600" />
               Équipes fréquentées (2 ans) — {teamsHistory.length}
             </CardTitle>
           </CardHeader>
@@ -513,7 +513,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
-              <UsersIcon className="h-4 w-4" />
+              <UsersIcon className="h-4 w-4 text-teal-600" />
               A travaillé avec ({collaborators.length})
             </CardTitle>
           </CardHeader>
@@ -525,7 +525,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
                   <li key={c.user_id} className="px-6 py-2.5">
                     <Link
                       href={`/intervenants/${c.user_id}`}
-                      className="flex items-center gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                      className="flex items-center gap-3 hover:bg-muted/30 active:bg-muted/50 -mx-6 px-6 py-1 -my-1 transition-colors group"
                     >
                       <div className="shrink-0 h-8 w-8 rounded-full bg-muted border flex items-center justify-center text-[10px] font-semibold text-muted-foreground">
                         {initialsOf(name)}
@@ -574,7 +574,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
                 <li key={i.anomaly_id} className="px-6 py-2.5">
                   <Link
                     href={`/interventions/${i.intervention_id}`}
-                    className="flex items-start gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                    className="flex items-start gap-3 hover:bg-muted/30 active:bg-muted/50 -mx-6 px-6 py-1 -my-1 transition-colors group"
                   >
                     <AlertTriangle className="h-3.5 w-3.5 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
                     <div className="min-w-0 flex-1">
@@ -627,7 +627,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
                   <li key={i.intervention_id} className="px-6 py-2.5">
                     <Link
                       href={`/interventions/${i.intervention_id}`}
-                      className="flex items-center gap-3 hover:bg-muted/30 -mx-6 px-6 py-1 -my-1 transition-colors group"
+                      className="flex items-center gap-3 hover:bg-muted/30 active:bg-muted/50 -mx-6 px-6 py-1 -my-1 transition-colors group"
                     >
                       {/* Heure à gauche, largeur fixe pour alignement */}
                       <span
