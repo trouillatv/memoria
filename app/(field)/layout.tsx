@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ListTodo } from 'lucide-react'
+import { ListTodo, Building2 } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
@@ -21,9 +21,6 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   const allowedRoles = ['chef_equipe', 'admin', 'manager']
   if (!allowedRoles.includes(user.role)) redirect('/login')
 
-  const baseName = user.full_name ?? user.email
-  const firstName = baseName.split(' ')[0] ?? baseName
-
   // Compteur d'actions ouvertes — visible sur tout le terrain (ne pas oublier
   // ce qui reste à faire). Résilient si le socle n'est pas migré.
   const actionsHealth = await getOpenActionsHealth()
@@ -32,10 +29,21 @@ export default async function FieldLayout({ children }: { children: React.ReactN
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
         <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
-          <div className="text-sm">
-            Bonjour <span className="font-semibold">{firstName}</span>
-          </div>
-          <div className="flex items-center gap-3">
+          {/* Retour accueil + identité produit (remplace le « Bonjour <prénom> »
+              redondant : le prénom est déjà repris en grand dans le corps de /m). */}
+          <Link href="/m" className="text-sm font-semibold tracking-tight">
+            MemorIA
+          </Link>
+          <div className="flex items-center gap-2">
+            {/* Raccourci annuaire chantiers — atteindre un site sans QR ni intervention. */}
+            <Link
+              href="/m/sites"
+              aria-label="Mes chantiers"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]"
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Sites
+            </Link>
             {/* Toujours visible : porte d'entrée vers les actions ouvertes. */}
             <Link
               href="/m/actions"
