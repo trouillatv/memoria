@@ -27,6 +27,8 @@ import {
   CalendarClock,
   BellRing,
   Flag,
+  History,
+  Check,
 } from 'lucide-react'
 import { getSiteBriefAction, type SiteBrief } from './site-brief-actions'
 
@@ -188,11 +190,13 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
     meetings,
     openReserves,
     lastReport,
+    changeSinceLastReport,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
 
   const hasAnyDetail =
+    changeSinceLastReport != null ||
     vigilance.length > 0 ||
     openReserves.length > 0 ||
     (lastReport?.actionTitles.length ?? 0) > 0 ||
@@ -390,6 +394,55 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
 
   return (
     <div className="space-y-5">
+      {/* V2a — Ce qui a changé depuis la dernière réunion (déterministe, zéro LLM) */}
+      {changeSinceLastReport && (
+        <section className="space-y-2.5 rounded-xl border bg-muted/30 p-3">
+          <SectionTitle icon={<History className="h-3.5 w-3.5" />}>
+            Depuis la dernière réunion
+            {formatDate(changeSinceLastReport.sinceDate) ? ` · ${formatDate(changeSinceLastReport.sinceDate)}` : ''}
+          </SectionTitle>
+          {changeSinceLastReport.resolved.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Résolu</p>
+              <ul className="space-y-0.5">
+                {changeSinceLastReport.resolved.map((t, i) => (
+                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="min-w-0">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {changeSinceLastReport.stillOpen.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Toujours ouvert</p>
+              <ul className="space-y-0.5">
+                {changeSinceLastReport.stillOpen.map((t, i) => (
+                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span className="min-w-0">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {changeSinceLastReport.newItems.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Nouveaux</p>
+              <ul className="space-y-0.5">
+                {changeSinceLastReport.newItems.map((t, i) => (
+                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                    <BellRing className="h-3.5 w-3.5 text-rose-600 shrink-0 mt-0.5" />
+                    <span className="min-w-0">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Situation — chips de synthèse (toujours en tête) */}
       <section className="space-y-2">
         <SectionTitle icon={<Info className="h-3.5 w-3.5" />}>En un coup d&apos;œil</SectionTitle>

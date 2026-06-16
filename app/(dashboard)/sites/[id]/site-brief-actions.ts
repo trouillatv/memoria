@@ -111,6 +111,21 @@ export interface SiteBriefLastReport {
   actionTitles: string[]
 }
 
+/**
+ * V2a — « Ce qui a changé depuis la dernière réunion ». DÉTERMINISTE, ZÉRO LLM :
+ * pure comparaison de dates contre la date du dernier compte-rendu. L'IA ne doit
+ * pas inventer ici, juste comparer — donc on ne met pas d'IA du tout.
+ */
+export interface SiteBriefChange {
+  sinceDate: string
+  /** Clôturé/levé/résolu APRÈS le dernier CR. */
+  resolved: string[]
+  /** Apparu APRÈS le dernier CR. */
+  newItems: string[]
+  /** Ouvert AVANT le dernier CR et toujours pendant. */
+  stillOpen: string[]
+}
+
 export interface SiteBrief {
   siteName: string
   contractName: string | null
@@ -128,6 +143,8 @@ export interface SiteBrief {
   // Blocs orientés « préparer ma réunion » (utiles aussi avant une visite).
   openReserves: SiteBriefReserve[]
   lastReport: SiteBriefLastReport | null
+  // V2a — diff déterministe depuis la dernière réunion (null si aucun CR).
+  changeSinceLastReport: SiteBriefChange | null
 }
 
 export type SiteBriefResult =
@@ -276,6 +293,42 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     }
   }
 
+  // V2a — « Ce qui a changé depuis la dernière réunion » : comparaison de dates
+  // contre la date du dernier CR. Zéro LLM (l'IA ne compare pas mieux qu'une
+  // date). On exclut les actions ISSUES du dernier CR (montrées à part).
+  let changeSinceLastReport: SiteBriefChange | null = null
+  if (lastReport) {
+    const since = new Date(lastReport.createdAt).getTime()
+    const reportId = lastReport.id
+    const after = (iso: string | null) => !!iso && new Date(iso).getTime() > since
+    const beforeOrAt = (iso: string | null) => !!iso && new Date(iso).getTime() <= since
+
+    const diffOpenActions = openActionRows.filter((a) => a.report_id !== reportId)
+    const resolved = [
+      ...doneActionRows.filter((a) => a.report_id !== reportId && after(a.done_at)).map((a) => a.title),
+      ...reserves.filter((r) => r.status === 'lifted' && after(r.liftedAt)).map((r) => r.label),
+      ...anomalies.filter((a) => a.status === 'resolved' && after(a.resolvedAt)).map((a) => a.description),
+    ]
+    const newItems = [
+      ...diffOpenActions.filter((a) => after(a.created_at)).map((a) => a.title),
+      ...reserves.filter((r) => r.status === 'open' && after(r.createdAt)).map((r) => r.label),
+      ...anomalies.filter((a) => a.status === 'open' && after(a.createdAt)).map((a) => a.description),
+    ]
+    const stillOpen = [
+      ...diffOpenActions.filter((a) => beforeOrAt(a.created_at)).map((a) => a.title),
+      ...reserves.filter((r) => r.status === 'open' && beforeOrAt(r.createdAt)).map((r) => r.label),
+      ...anomalies.filter((a) => a.status === 'open' && beforeOrAt(a.createdAt)).map((a) => a.description),
+    ]
+    if (resolved.length || newItems.length || stillOpen.length) {
+      changeSinceLastReport = {
+        sinceDate: lastReport.createdAt,
+        resolved: resolved.slice(0, 6),
+        newItems: newItems.slice(0, 6),
+        stillOpen: stillOpen.slice(0, 6),
+      }
+    }
+  }
+
   return {
     ok: true,
     brief: {
@@ -294,6 +347,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       meetings: briefMeetings,
       openReserves,
       lastReport,
+      changeSinceLastReport,
     },
   }
 }
