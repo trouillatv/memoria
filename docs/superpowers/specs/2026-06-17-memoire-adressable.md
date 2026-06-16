@@ -1,9 +1,15 @@
 # Architecture d'adressage de la mémoire — MemorIA
 
-> **Doc de cadrage à VALIDER avant Sprint 2-B. Aucun code tant que non validé.**
-> Objectif : figer l'ossature longue durée — l'adressage hiérarchique de la mémoire —
-> qui rend les réponses de plus en plus précises **sans augmenter le coût IA**
+> **Architecture cible v1 — validée 2026-06-17 (Vincent, 9/10).** Suffisant pour lancer
+> Sprint 2-B. Objectif : figer l'ossature longue durée — l'adressage hiérarchique de la
+> mémoire — qui rend les réponses de plus en plus précises **sans augmenter le coût IA**
 > (le scope est un filtre déterministe appliqué AVANT l'IA).
+>
+> ⚠️ **Point de vigilance pendant TOUTE l'implémentation** : ne JAMAIS transformer un
+> thème (« infiltration », « retard », « humidité », « SOCOTEC ») en scope. Les scopes =
+> des contextes adressables du **monde réel**. Les thèmes = la couche mémoire/retrieval
+> **au-dessus** de l'arbre (cf. §2). C'est cette séparation qui garde MemorIA simple tout
+> en le rendant puissant.
 
 ---
 
@@ -88,6 +94,23 @@ Organisation
 - **Non destructif** : le contenu existant garde son rattachement actuel (site /
   intervention) ; `scope_id` est une **précision optionnelle** ajoutée par-dessus.
 
+### Scope ≠ Thème — TROIS couches, pas deux
+
+> **ATTENTION**
+> Un **scope** représente une CHOSE sur laquelle on souhaite capitaliser de la mémoire.
+> Un scope ne représente **PAS** un sujet, un thème ou un mot-clé.
+> **Les thèmes émergent du contenu. Les scopes structurent le contexte.**
+
+- **Scope** = la **structure / le contexte** (VRD, Réseau EP, Regard EP-17) → un arbre.
+- **Contenu** = les **sources** (photos, anomalies, réserves, docs…) attachées aux nœuds.
+- **Thème** = le **sémantique** (infiltration, humidité, retard, SOCOTEC) → **émerge du
+  contenu**, vit dans la couche mémoire / retrieval / clusters **AU-DESSUS** de l'arbre,
+  jamais DANS l'arbre.
+
+Test : *« VRD »* = **un endroit où on travaille** (container réel) → scope. *« infiltration »*
+= **ce qui s'y passe** (sujet récurrent) → thème. *« Que sait-on sur les infiltrations ? »*
+se répond par le **contenu** (anomalies / actions / docs / réserves), pas par l'arbre.
+
 ---
 
 ## 3. La règle de question
@@ -113,6 +136,10 @@ Que sait-on sur le Regard EP-17 ?   → ce nœud
   sites confondus → *« que sait-on sur **les** VRD »*, *« nos Réseaux EP partout »*.
   Débloque l'expertise (« qui connaît l'étanchéité ? ») gratuitement.
 
+> ⚠️ L'axe TYPE est **STRUCTUREL** (« les VRD », « les CTA » = des types de *contextes
+> réels*). Il ne couvre **pas** le sémantique (« les infiltrations ») : ça, c'est la
+> couche **thème** (§2), répondue par le contenu / retrieval, jamais par `scope_type`.
+
 ---
 
 ## 4. L'attribution sans friction (LE verrou)
@@ -128,6 +155,23 @@ au plus souple :
 5. **Défaut** : le nœud le plus précis connu du contexte ; sinon le **Site**.
 
 > **Jamais** de tag obligatoire à 4 niveaux. Rester au Site est toujours valide.
+
+---
+
+## 4bis. Qui crée les nœuds ? (création ÉMERGENTE, jamais théorique)
+
+> **Un nœud naît d'un besoin métier RÉEL, jamais d'une modélisation théorique.**
+
+- ❌ « On crée tous les regards du chantier » (modélisation a priori → arbre ingérable).
+- ✅ « On crée *Regard EP-17* parce qu'on commence à accumuler de la mémoire dessus ».
+
+- **Création paresseuse** : un nœud apparaît au moment où on lui **attache du contenu**
+  (via QR collé, ou en le **nommant** pendant un CR / un dépôt photo). Jamais d'arbre
+  pré-rempli, jamais d'import massif de structure.
+- **Sources de création = sources d'attribution** (§4) : QR > mission > nommage humain.
+- Un arbre **vide** ne sert à rien ; un arbre **trop détaillé** devient inutilisable. La
+  règle §0bis (valeur d'interrogation) + la création émergente gardent l'arbre au juste
+  niveau, tout seul.
 
 ---
 
