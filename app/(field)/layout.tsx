@@ -35,15 +35,19 @@ export default async function FieldLayout({ children }: { children: React.ReactN
             MemorIA
           </Link>
           <div className="flex items-center gap-2">
-            {/* Raccourci annuaire chantiers — atteindre un site sans QR ni intervention. */}
-            <Link
-              href="/m/sites"
-              aria-label="Mes chantiers"
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]"
-            >
-              <Building2 className="h-3.5 w-3.5" />
-              Sites
-            </Link>
+            {/* Raccourci vers la LISTE D'ORIGINE des chantiers (/sites → fiche
+                à onglets /sites/[id]). Réservé admin/manager, comme « Vue bureau » :
+                un chef d'équipe atteint un site via ses interventions ou le QR. */}
+            {(user.role === 'admin' || user.role === 'manager') && (
+              <Link
+                href="/sites"
+                aria-label="Chantiers"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]"
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                Sites
+              </Link>
+            )}
             {/* Toujours visible : porte d'entrée vers les actions ouvertes. */}
             <Link
               href="/m/actions"
