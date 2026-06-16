@@ -170,3 +170,48 @@ export async function findSimilarTraces(params: {
     similarity: number
   }>
 }
+
+/**
+ * Variante CROSS-SITE (org/tenant) de findSimilarTraces — la généralisation de
+ * la recherche sémantique au niveau entreprise. Wrappe la RPC
+ * `find_similar_traces_for_tenant` (la même que `searchTenant` dans
+ * match-ao-terrain), scopée à un tenant_id plutôt qu'à un seul site.
+ *
+ * Renvoie `site_id` sur chaque match (attribution par site, clé du moteur
+ * org-level) + un excerpt texte. Source types : anomaly / site_note /
+ * intervention_note (PAS photo_caption côté RPC tenant).
+ */
+export async function findSimilarTracesForTenant(params: {
+  tenantId: string
+  queryEmbedding: number[]
+  limit?: number
+  threshold?: number
+}): Promise<Array<{
+  source_type: 'anomaly' | 'site_note' | 'intervention_note'
+  source_id: string
+  site_id: string
+  text_excerpt: string
+  similarity: number
+}>> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('find_similar_traces_for_tenant', {
+    p_tenant_id: params.tenantId,
+    p_embedding: `[${params.queryEmbedding.join(',')}]`,
+    p_source_types: ['anomaly', 'site_note', 'intervention_note'],
+    p_limit: params.limit ?? 30,
+    p_threshold: params.threshold ?? 0.45,
+  })
+
+  if (error) {
+    console.error('[embed-trace] find_similar_traces_for_tenant failed', JSON.stringify(error))
+    return []
+  }
+
+  return (data ?? []) as Array<{
+    source_type: 'anomaly' | 'site_note' | 'intervention_note'
+    source_id: string
+    site_id: string
+    text_excerpt: string
+    similarity: number
+  }>
+}

@@ -62,6 +62,9 @@ export const NAV: NavItem[] = [
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
   // — Mémoire & continuité —
+  // Interroger l'entreprise = moteur de mémoire cross-site (P7) : une question →
+  // traces de TOUS les chantiers, attribuées à leur site + synthèse à la demande.
+  { href: '/memoire',      label: 'Interroger l’entreprise', icon: Brain,       roles: ['admin', 'manager'], groupStart: 'Mémoire & continuité' },
   // Intervenants gated ENV INTERVENANTS_PAGE_ENABLED ; le lien reste visible
   // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
   { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
