@@ -7,6 +7,20 @@
 
 ---
 
+## Ce que devient MemorIA — la définition
+
+MemorIA n'est plus « photos + anomalies + réunions + IA ». MemorIA devient :
+
+> **un système qui permet de poser des questions à n'importe quel niveau de mémoire
+> d'une organisation.**
+
+Conséquence : photos, réunions, comptes-rendus, documents, contrats, équipements
+deviennent des **sources**. Le produit n'est plus aucune de ces choses — le produit est
+**l'adressage et l'exploitation de la mémoire accumulée**. Toute feature future se juge
+à : *« ajoute-t-elle une source, ou un niveau d'interrogation ? »*
+
+---
+
 ## 0. Principe directeur — LA PROFONDEUR EST OPTIONNELLE
 
 Le modèle doit accepter les deux extrêmes **sans friction** :
@@ -22,6 +36,21 @@ PEUT rester au niveau Site ; l'affiner est un **bonus**, pas un prérequis.
 
 ---
 
+## 0bis. Règle d'existence d'un nœud (anti-explosion)
+
+> **Un nœud n'existe que s'il apporte une valeur d'INTERROGATION.**
+
+Sans cette règle, on explose : 50 sites × 100 sous-périmètres × 300 objets = 15 000 nœuds
+ingérables. Le filtre :
+- ❌ pas de nœud par vis, par ampoule, par tâche ;
+- ✅ un nœud **parce qu'un humain dira un jour** *« que sait-on sur cet élément ? »*.
+
+Conséquence UX : on ne crée **jamais** de nœuds en masse ni automatiquement en profondeur.
+Un nœud apparaît quand quelqu'un **nomme** une chose qui mérite d'être interrogée. Couplé
+au §0, la majorité du contenu reste au Site ; les nœuds émergent à la demande.
+
+---
+
 ## 1. Le modèle récursif des scopes
 
 Pas de niveaux fixes (sinon on se cogne au 6ᵉ niveau). Un **arbre récursif** :
@@ -34,11 +63,18 @@ Organisation
                  └─ … profondeur arbitraire
 ```
 
-- Un **scope** = un nœud adressable : `scope(id, organization_id, site_id, parent_scope_id?, kind, label, …)`.
+- Un **scope** = un nœud adressable :
+  ```
+  scope(id, organization_id, site_id, parent_scope_id?, scope_type_id, label, …)
+  scope_types(id, key, label, industry_template)
+  ```
 - Récursion via `parent_scope_id`. Organisation et Site sont les ancrages ; les
   « sous-périmètres / objets » sont les nœuds enfants.
 - `Médipôle → VRD → Réseau EP → Regard EP-17` = 4 nœuds parent→enfant, **pas 4 tables**.
 - On n'« ajoute jamais un niveau » : l'arbre est déjà infiniment profond.
+- **`scope_type_id` n'est pas que du vocabulaire — c'est la clé de l'agrégation
+  TRANSVERSALE.** Un type « VRD » existe sur Médipôle, l'Aéroport, le Port. Le type
+  permet de retrouver TOUS les nœuds VRD, tous sites confondus (cf. §3, axe TYPE).
 
 ---
 
@@ -70,8 +106,12 @@ Que sait-on sur le Regard EP-17 ?   → ce nœud
 - **Même moteur** (retrieval + briefs + recherche + résonances) ; seul le **scope** change.
 - **Précision↑ sans coût IA↑** : le scope réduit le corpus *avant* l'IA → meilleure
   réponse + moins de tokens. Lève aussi les surfaces sans IA (FTS, « ce qui revient »).
-- **Remontée** : agréger un **type de nœud cross-sites** (« nos Réseaux EP, partout »)
-  → débloque l'expertise (« qui connaît l'étanchéité ? ») gratuitement.
+**Deux axes d'agrégation orthogonaux — même moteur :**
+- **Axe SOUS-ARBRE** (vertical) : tout ce qui est sous un nœud → *« que sait-on sur le
+  Réseau EP **de Médipôle** »*.
+- **Axe TYPE** (transversal, via `scope_type_id`) : tous les nœuds d'un même type, tous
+  sites confondus → *« que sait-on sur **les** VRD »*, *« nos Réseaux EP partout »*.
+  Débloque l'expertise (« qui connaît l'étanchéité ? ») gratuitement.
 
 ---
 
@@ -111,9 +151,10 @@ AB-123-CD → événements. Même arbre, contenu = **actifs** (vs **opérations*
 - `organizations.industry_template` ∈ { cleaning, construction, maintenance,
   facility_management, industrial, **generic** }.
 - `org_catalog(kind, key, label, description, icon, color, sort_order, active, metadata jsonb)`
-  définit les **TYPES de nœuds** par métier : `kind='corps_etat'`, `kind='objet'`,
-  `kind='zone'`…
-- **L'arbre porte les INSTANCES** : un nœud = un `kind` (key du catalogue) + un label.
+  porte le vocabulaire. Les entrées de `kind ∈ {corps_etat, objet, zone}` **SONT** les
+  `scope_types` (à fusionner ou relier — à trancher à l'impl ; `industry_template` les seede).
+- **L'arbre porte les INSTANCES** : `scope.scope_type_id` → un type ; `scope.label` → le nom.
+- C'est `scope_type_id` qui rend l'**axe TYPE** (§3) possible : agrégation transversale.
 
 > Catalogue = **vocabulaire / types** (métier-aware). Arbre = **réalité / instances**.
 > Le catalogue rend l'arbre adapté au métier ; il ne porte pas la hiérarchie elle-même.
