@@ -70,6 +70,9 @@ export interface SiteMemorySummary {
   last30dCount: number
   /** Étalement temporel (jours) entre la plus ancienne et la plus récente. */
   spanDays: number | null
+  /** Au moins une trace contient VRAIMENT le terme (match mot-clé). Sinon on n'a
+   *  que du « sémantiquement proche » — signal faible, à annoncer comme tel. */
+  keywordGrounded: boolean
 }
 
 function computeSummary(hits: SiteMemoryHit[]): SiteMemorySummary | null {
@@ -81,21 +84,22 @@ function computeSummary(hits: SiteMemoryHit[]): SiteMemorySummary | null {
   const now = Date.now()
   const last30dCount = times.filter((t) => now - t <= 30 * 86_400_000).length
   const spanDays = times.length ? Math.round((Math.max(...times) - Math.min(...times)) / 86_400_000) : null
-  const sims = hits.map((h) => h.similarity).filter((s): s is number => s != null)
-  const topSim = sims.length ? Math.max(...sims) : 0
-  const strongSem = sims.filter((s) => s >= 0.72).length     // correspondances sémantiques fortes
   const ftsCount = hits.filter((h) => h.similarity === null).length // matches mot-clé EXACTS
   const count = hits.length
-  // Confiance = FORCE des correspondances, jamais juste le nombre. Plein de
-  // matches sémantiques faibles ≠ confiance forte (sinon « réponse magique »).
+  // ANCRAGE LEXICAL : au moins une trace contient VRAIMENT le terme cherché.
+  // Sans lui, on n'a que du « sémantiquement proche ». Or sur du jargon chantier
+  // court, les vecteurs se ressemblent tous (« béton » ≈ « humidité » ≈ « marche
+  // pas » à ~0.7) : la sémantique seule produit du bruit CONFIANT. Doctrine
+  // précision >> rappel : pas d'ancrage mot-clé ⇒ confiance FAIBLE, sans exception.
+  const keywordGrounded = ftsCount >= 1
   let confidence: 'forte' | 'moyenne' | 'faible'
-  if (ftsCount >= 3 || strongSem >= 3) confidence = 'forte'
-  else if (ftsCount >= 1 || strongSem >= 1 || count >= 4) confidence = 'moyenne'
-  else confidence = 'faible'
-  // Récurrent : seulement si les correspondances sont au moins décentes (sinon
-  // « 8 traces vaguement liées » s'afficherait à tort « sujet récurrent »).
-  const recurring = count >= 6 && (ftsCount >= 2 || topSim >= 0.62)
-  return { count, distinctDays: days.size, confidence, recurring, last30dCount, spanDays }
+  if (ftsCount >= 3) confidence = 'forte'       // le mot revient dans ≥3 traces réelles
+  else if (ftsCount >= 1) confidence = 'moyenne' // au moins un vrai match mot-clé
+  else confidence = 'faible'                     // sémantique seul → faible, point
+  // « Sujet récurrent » = le MÊME mot-clé revient. Le clustering sémantique du
+  // jargon ne compte pas (sinon « 8 traces vaguement liées » = faux récurrent).
+  const recurring = ftsCount >= 4
+  return { count, distinctDays: days.size, confidence, recurring, last30dCount, spanDays, keywordGrounded }
 }
 
 export async function askSiteMemoryAction(

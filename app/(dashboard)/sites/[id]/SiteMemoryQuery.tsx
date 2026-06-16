@@ -153,6 +153,14 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           </p>
         ) : (
           <div>
+            {/* Avertissement honnête : aucun match mot-clé = résultats seulement
+                « proches » sémantiquement, à vérifier (pas des réponses). */}
+            {summary && !summary.keywordGrounded && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 text-xs text-amber-900">
+                Aucune trace ne contient exactement «&nbsp;{searched}&nbsp;». Voici des traces{' '}
+                <span className="font-medium">sémantiquement proches</span> — à vérifier, ce ne sont pas forcément des réponses.
+              </div>
+            )}
             {/* Phase 2B — Synthèse encadrée (LLM) : Réponse en tête, sources dessous */}
             <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -226,12 +234,12 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
                     <Flame className="h-2.5 w-2.5" /> Sujet récurrent
                   </span>
                 )}
-                {!summary.recurring && summary.last30dCount >= 3 && (
+                {summary.keywordGrounded && !summary.recurring && summary.last30dCount >= 3 && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
                     <Activity className="h-2.5 w-2.5" /> Sujet actif · {summary.last30dCount} sur 30 j
                   </span>
                 )}
-                {summary.spanDays !== null && summary.spanDays > 365 && (
+                {summary.keywordGrounded && summary.spanDays !== null && summary.spanDays > 365 && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
                     <Archive className="h-2.5 w-2.5" /> Historique · sur {Math.round(summary.spanDays / 365)} an{summary.spanDays > 730 ? 's' : ''}
                   </span>
