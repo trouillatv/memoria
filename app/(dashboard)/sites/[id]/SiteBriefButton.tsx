@@ -26,13 +26,21 @@ import {
   MessagesSquare,
   CalendarClock,
   BellRing,
+  Flag,
 } from 'lucide-react'
 import { getSiteBriefAction, type SiteBrief } from './site-brief-actions'
 
 interface Props {
   siteId: string
   variant?: 'mobile' | 'desktop'
+  /** 'visit' = avant d'aller sur site · 'meeting' = avant une réunion chantier. */
+  mode?: 'visit' | 'meeting'
 }
+
+const MODE_META = {
+  visit:   { label: 'Préparer ma visite',  panel: "À savoir avant d'y aller", Icon: Brain },
+  meeting: { label: 'Préparer ma réunion', panel: 'À aborder en réunion',     Icon: MessagesSquare },
+} as const
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null
@@ -50,10 +58,12 @@ function ageDaysLabel(iso: string | null): string | null {
   return `il y a ${days} j`
 }
 
-export function SiteBriefButton({ siteId, variant = 'desktop' }: Props) {
+export function SiteBriefButton({ siteId, variant = 'desktop', mode = 'visit' }: Props) {
   const [open, setOpen] = useState(false)
   const [brief, setBrief] = useState<SiteBrief | null>(null)
   const [pending, startTransition] = useTransition()
+  const meta = MODE_META[mode]
+  const MetaIcon = meta.Icon
 
   function load() {
     setOpen(true)
@@ -80,8 +90,8 @@ export function SiteBriefButton({ siteId, variant = 'desktop' }: Props) {
             : 'inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90 transition-[transform,opacity] active:scale-[0.97]'
         }
       >
-        <Brain className={variant === 'mobile' ? 'h-5 w-5' : 'h-4 w-4'} />
-        Préparer ma visite
+        <MetaIcon className={variant === 'mobile' ? 'h-5 w-5' : 'h-4 w-4'} />
+        {meta.label}
       </button>
 
       {open && (
@@ -95,14 +105,14 @@ export function SiteBriefButton({ siteId, variant = 'desktop' }: Props) {
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label="À savoir avant d'y aller"
+            aria-label={meta.panel}
           >
             {/* En-tête collant */}
             <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-card px-4 py-3">
               <div className="min-w-0">
                 <h2 className="text-base font-semibold leading-tight inline-flex items-center gap-2">
-                  <Brain className="h-4 w-4 text-muted-foreground shrink-0" />
-                  À savoir avant d&apos;y aller
+                  <MetaIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  {meta.panel}
                 </h2>
                 {brief && (
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -171,12 +181,16 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
     missionNames,
     recentPhotosCount,
     meetings,
+    openReserves,
+    lastReport,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
 
   const hasAnyDetail =
     vigilance.length > 0 ||
+    openReserves.length > 0 ||
+    (lastReport?.actionTitles.length ?? 0) > 0 ||
     openActions.length > 0 ||
     recentDoneActions.length > 0 ||
     anomaliesOpen.length > 0 ||
@@ -269,6 +283,46 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* Réserves non levées — points à lever restant dus */}
+      {openReserves.length > 0 && (
+        <section className="space-y-2">
+          <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-rose-600" />} count={openReserves.length}>
+            Réserves non levées
+          </SectionTitle>
+          <ul className="space-y-1.5">
+            {openReserves.map((r) => (
+              <li key={r.id} className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+                <span className="text-sm min-w-0">
+                  {r.label}
+                  {r.location && <span className="text-muted-foreground"> · {r.location}</span>}
+                </span>
+                <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">depuis {r.ageDays} j</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Décisions / actions du dernier compte-rendu */}
+      {lastReport && lastReport.actionTitles.length > 0 && (
+        <section className="space-y-2">
+          <SectionTitle icon={<MessagesSquare className="h-3.5 w-3.5" />}>
+            Issu du dernier compte-rendu
+          </SectionTitle>
+          <ul className="space-y-1">
+            {lastReport.actionTitles.map((t, i) => (
+              <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                <span aria-hidden className="text-muted-foreground/50">›</span>
+                <span className="min-w-0">{t}</span>
+              </li>
+            ))}
+          </ul>
+          {formatDate(lastReport.createdAt) && (
+            <p className="text-[10px] text-muted-foreground/70">{lastReport.title ?? 'Compte-rendu'} · {formatDate(lastReport.createdAt)}</p>
+          )}
         </section>
       )}
 

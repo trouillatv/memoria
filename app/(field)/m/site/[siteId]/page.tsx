@@ -186,6 +186,7 @@ export default async function FieldSitePage({
 
       {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM). */}
       <SiteBriefButton siteId={siteId} variant="mobile" />
+      <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
 
       {/* « Aujourd'hui ici » — page d'arrivée : ce qui me concerne maintenant. */}
       <section className="rounded-2xl border bg-card p-4 space-y-3">

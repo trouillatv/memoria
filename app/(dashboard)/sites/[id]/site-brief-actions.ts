@@ -19,7 +19,8 @@
 
 import { z } from 'zod'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listOpenSiteActions, listSiteActionsBySite } from '@/lib/db/site-actions'
+import { listOpenSiteActions, listSiteActionsBySite, listSiteActionsByReport } from '@/lib/db/site-actions'
+import { getSiteReserves } from '@/lib/db/site-reserve'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import {
   getSiteAnomalies,
@@ -94,6 +95,22 @@ export interface SiteBriefMeeting {
   createdAt: string
 }
 
+/** Réserve non levée (point à lever) — preuve d'exécution restant due. */
+export interface SiteBriefReserve {
+  id: string
+  label: string
+  location: string | null
+  ageDays: number
+}
+
+/** Décisions / actions issues du dernier compte-rendu — pour la prépa réunion. */
+export interface SiteBriefLastReport {
+  id: string
+  title: string | null
+  createdAt: string
+  actionTitles: string[]
+}
+
 export interface SiteBrief {
   siteName: string
   contractName: string | null
@@ -108,6 +125,9 @@ export interface SiteBrief {
   missionNames: string[]
   recentPhotosCount: number
   meetings: SiteBriefMeeting[]
+  // Blocs orientés « préparer ma réunion » (utiles aussi avant une visite).
+  openReserves: SiteBriefReserve[]
+  lastReport: SiteBriefLastReport | null
 }
 
 export type SiteBriefResult =
@@ -147,6 +167,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     missions,
     photos,
     meetings,
+    reserves,
   ] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteCurrentState(siteId).catch(() => null),
@@ -159,6 +180,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     listMissionsBySite(siteId).catch(() => []),
     getSiteRecentPhotos(siteId, 12).catch(() => []),
     listReportsBySite(siteId).catch(() => []),
+    getSiteReserves(siteId).catch(() => []),
   ])
 
   const openAnomalies = anomalies.filter((a) => a.status === 'open')
@@ -224,10 +246,35 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     .slice(0, 8)
     .map((m) => m.name)
 
-  // Réunions / comptes-rendus récents touchant ce site.
-  const briefMeetings: SiteBriefMeeting[] = meetings
+  // Réunions / comptes-rendus récents touchant ce site (plus récent d'abord).
+  const sortedMeetings = [...meetings].sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+  const briefMeetings: SiteBriefMeeting[] = sortedMeetings
     .slice(0, 4)
     .map((r) => ({ id: r.id, title: r.title, createdAt: r.created_at }))
+
+  // Réserves non levées (points à lever restant dus).
+  const openReserves: SiteBriefReserve[] = reserves
+    .filter((r) => r.status === 'open')
+    .slice(0, 6)
+    .map((r) => ({
+      id: r.id,
+      label: r.label,
+      location: r.location,
+      ageDays: Math.max(0, Math.floor((now - new Date(r.issuedOn ?? r.createdAt).getTime()) / 86_400_000)),
+    }))
+
+  // Décisions / actions issues du DERNIER compte-rendu (prépa réunion).
+  let lastReport: SiteBriefLastReport | null = null
+  const latest = sortedMeetings[0]
+  if (latest) {
+    const reportActions = await listSiteActionsByReport(latest.id).catch(() => [])
+    lastReport = {
+      id: latest.id,
+      title: latest.title,
+      createdAt: latest.created_at,
+      actionTitles: reportActions.slice(0, 5).map((a) => a.title),
+    }
+  }
 
   return {
     ok: true,
@@ -245,6 +292,8 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       missionNames,
       recentPhotosCount: photos.length,
       meetings: briefMeetings,
+      openReserves,
+      lastReport,
     },
   }
 }

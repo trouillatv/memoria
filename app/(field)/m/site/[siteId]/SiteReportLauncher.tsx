@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { ClipboardList } from 'lucide-react'
 import { SiteReportPanel } from './SiteReportPanel'
+import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 
 interface Props {
   // Réunion site
@@ -38,6 +39,12 @@ export function SiteReportLauncher({ siteId, siteName, contractId, contractName,
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3 sm:p-6">
           <div className="w-full max-w-lg rounded-xl border bg-card p-4 shadow-lg my-2">
+            {/* Préparer la réunion AVANT de saisir le compte-rendu (site only). */}
+            {reportType === 'site' && siteId && (
+              <div className="mb-3">
+                <SiteBriefButton siteId={siteId} mode="meeting" variant={variant} />
+              </div>
+            )}
             <SiteReportPanel
               reportType={reportType}
               siteId={siteId}
