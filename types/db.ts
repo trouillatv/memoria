@@ -465,6 +465,9 @@ export interface DbSiteAction {
   // Provenance de création (migration 112) : mobile_site / desktop_site /
   // actions_list / report… NULL = legacy. Observabilité, jamais affiché.
   created_from: string | null
+  // Rattachement à un nœud de mémoire / sous-périmètre (migration 117, Sprint 3).
+  // NULL = contenu au niveau du site. Précision en plus, jamais obligatoire.
+  scope_id: string | null
 }
 
 export type MissionCadence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'on_demand'

@@ -56,6 +56,9 @@ import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { FoldableSection } from './FoldableSection'
+import { SiteScopesSection } from './SiteScopesSection'
+import { listSiteScopes } from '@/lib/db/memory-scopes'
+import { listOrgCatalog } from '@/lib/db/org-catalog'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
@@ -115,6 +118,14 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Actions ouvertes du site (issues des réunions) — « ce qui reste à faire ».
   const openActions = await listOpenSiteActions({ siteIds: [id] }).catch(() => [])
+
+  // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
+  const orgId = user.organization_id
+  const [siteScopes, scopeTypeCatalog] = await Promise.all([
+    orgId ? listSiteScopes(id, orgId).catch(() => []) : Promise.resolve([]),
+    listOrgCatalog(orgId, 'corps_etat').catch(() => []),
+  ])
+  const scopeTypeOptions = scopeTypeCatalog.map((c) => ({ key: c.key, label: c.label }))
 
   // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
   const teamsKnowledge = await getSiteTeamsKnowledge(id)
@@ -304,6 +315,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* COUCHE 2 — Structure : sous-périmètres interrogeables (Sprint 3) */}
+      <Card className={cn(tabClass('memoire'))}>
+        <CardContent className="pt-6">
+          <SiteScopesSection siteId={id} scopes={siteScopes} typeOptions={scopeTypeOptions} />
+        </CardContent>
+      </Card>
 
       <Card className={cn(tabClass('memoire'))}>
         <CardContent className="pt-6">
