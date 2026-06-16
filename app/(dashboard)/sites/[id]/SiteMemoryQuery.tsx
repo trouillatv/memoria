@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteMemoryTermsAction,
@@ -103,6 +103,26 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     })
   }
 
+  // Ligne de résultat réutilisée par les deux sections (exactes / proches).
+  const renderHit = (h: SiteMemoryHit) => {
+    const meta = TYPE_META[h.type]
+    const Icon = meta.Icon
+    return (
+      <li key={`${h.type}-${h.id}`}>
+        <Link href={siteHref} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+              <Icon className="h-2.5 w-2.5" /> {meta.label}
+            </span>
+            {h.occurredAt && <span className="text-[10px] text-muted-foreground tabular-nums">{fmtDate(h.occurredAt)}</span>}
+            {h.title && <span className="text-xs font-medium truncate">{h.title}</span>}
+          </div>
+          {h.snippet && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{h.snippet}</p>}
+        </Link>
+      </li>
+    )
+  }
+
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div>
@@ -176,15 +196,10 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           </p>
         ) : (
           <div>
-            {/* Avertissement honnête : aucun match mot-clé = résultats seulement
-                « proches » sémantiquement, à vérifier (pas des réponses). */}
-            {summary && !summary.keywordGrounded && (
-              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 text-xs text-amber-900">
-                Aucune trace ne contient exactement «&nbsp;{searched}&nbsp;». Voici des traces{' '}
-                <span className="font-medium">sémantiquement proches</span> — à vérifier, ce ne sont pas forcément des réponses.
-              </div>
-            )}
-            {/* Phase 2B — Synthèse encadrée (LLM) : Réponse en tête, sources dessous */}
+            {/* Phase 2B — Synthèse encadrée (LLM). Offerte UNIQUEMENT s'il existe au
+                moins une correspondance exacte : ne pas inviter à « synthétiser »
+                du bruit quand la requête n'a aucun ancrage mot-clé. */}
+            {summary?.keywordGrounded && (
             <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
@@ -242,9 +257,12 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
                 </p>
               )}
             </div>
+            )}
 
-            {/* Confiance + Importance — signal déterministe, zéro LLM */}
-            {summary && (
+            {/* Confiance + Importance — signal déterministe, zéro LLM.
+                Affiché seulement quand c'est ANCRÉ (au moins un match exact) ;
+                sinon la section « Concepts proches » porte déjà le message. */}
+            {summary && summary.keywordGrounded && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px]">
                 <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium ${CONFIDENCE_META[summary.confidence].cls}`}>
                   <ShieldCheck className="h-2.5 w-2.5" /> {CONFIDENCE_META[summary.confidence].label}
@@ -269,29 +287,29 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
                 )}
               </div>
             )}
-            <ul className="space-y-1.5">
-              {hits.map((h) => {
-                const meta = TYPE_META[h.type]
-                const Icon = meta.Icon
-                return (
-                  <li key={`${h.type}-${h.id}`}>
-                    <Link href={siteHref} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
-                          <Icon className="h-2.5 w-2.5" /> {meta.label}
-                        </span>
-                        {h.occurredAt && <span className="text-[10px] text-muted-foreground tabular-nums">{fmtDate(h.occurredAt)}</span>}
-                        {h.similarity !== null && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700"><Sparkles className="h-2.5 w-2.5" />proche</span>
-                        )}
-                        {h.title && <span className="text-xs font-medium truncate">{h.title}</span>}
-                      </div>
-                      {h.snippet && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{h.snippet}</p>}
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
+            {/* Séparation honnête : correspondances EXACTES (le mot est là) vs
+                CONCEPTS PROCHES (sémantique seulement = sujets voisins). Bien plus
+                naturel qu'un « confiance faible » seul : l'utilisateur comprend que
+                ça ne parle pas du mot mais d'un sujet voisin. */}
+            {hits.some((h) => h.keyword) && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold inline-flex items-center gap-1 text-emerald-700">
+                  <Check className="h-3 w-3" /> Correspondances exactes
+                </p>
+                <ul className="space-y-1.5">{hits.filter((h) => h.keyword).map(renderHit)}</ul>
+              </div>
+            )}
+            {hits.some((h) => !h.keyword) && (
+              <div className={`space-y-1.5 ${hits.some((h) => h.keyword) ? 'mt-3' : ''}`}>
+                <p className="text-[11px] font-semibold inline-flex items-center gap-1 text-muted-foreground">
+                  <span aria-hidden className="text-sm leading-none">≈</span> Concepts proches
+                </p>
+                <p className="text-[10px] text-muted-foreground/80">
+                  Ne parlent pas de «&nbsp;{searched}&nbsp;» mais de sujets voisins — à vérifier.
+                </p>
+                <ul className="space-y-1.5">{hits.filter((h) => !h.keyword).map(renderHit)}</ul>
+              </div>
+            )}
           </div>
         )
       )}

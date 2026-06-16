@@ -55,6 +55,9 @@ export interface SiteMemoryHit {
   occurredAt: string
   /** Match sémantique (0..1) ou null si trouvé seulement en plein-texte. */
   similarity: number | null
+  /** Match MOT-CLÉ (plein-texte). Distinct de similarity : un hit peut être à la
+   *  fois mot-clé ET sémantique. Sépare « correspondance exacte » vs « proche ». */
+  keyword: boolean
 }
 
 /** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Aide à juger la
@@ -84,7 +87,7 @@ function computeSummary(hits: SiteMemoryHit[]): SiteMemorySummary | null {
   const now = Date.now()
   const last30dCount = times.filter((t) => now - t <= 30 * 86_400_000).length
   const spanDays = times.length ? Math.round((Math.max(...times) - Math.min(...times)) / 86_400_000) : null
-  const ftsCount = hits.filter((h) => h.similarity === null).length // matches mot-clé EXACTS
+  const ftsCount = hits.filter((h) => h.keyword).length // matches mot-clé EXACTS (FTS)
   const count = hits.length
   // ANCRAGE LEXICAL : au moins une trace contient VRAIMENT le terme cherché.
   // Sans lui, on n'a que du « sémantiquement proche ». Or sur du jargon chantier
@@ -130,7 +133,7 @@ export async function askSiteMemoryAction(
   for (const h of ftsHits) {
     merged.set(`${h.type}:${h.id}`, {
       type: h.type, id: h.id, title: h.title, snippet: h.snippet,
-      occurredAt: h.occurredAt, similarity: null, fts: h.rank,
+      occurredAt: h.occurredAt, similarity: null, keyword: true, fts: h.rank,
     })
   }
   for (const s of semHits) {
@@ -149,7 +152,7 @@ export async function askSiteMemoryAction(
       title: ev?.title ?? '',
       snippet: s.text_excerpt || ev?.detail || '',
       occurredAt: ev?.occurredAt ?? '',
-      similarity: s.similarity, fts: 0,
+      similarity: s.similarity, keyword: false, fts: 0,
     })
   }
 
