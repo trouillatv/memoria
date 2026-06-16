@@ -169,6 +169,48 @@ export async function askSiteMemoryAction(
   return { ok: true, hits, summary: computeSummary(hits) }
 }
 
+// Mots vides FR + bruit générique du domaine (peu informatifs comme suggestion).
+const TERM_STOPWORDS = new Set([
+  'avec', 'dans', 'pour', 'cette', 'sont', 'mais', 'plus', 'tout', 'tous', 'toute',
+  'toutes', 'leur', 'leurs', 'etre', 'avoir', 'fait', 'faire', 'sans', 'sous', 'entre',
+  'vers', 'chez', 'donc', 'alors', 'aussi', 'comme', 'cela', 'celui', 'celle', 'quand',
+  'encore', 'depuis', 'apres', 'avant', 'pendant', 'selon', 'elles', 'nous', 'vous',
+  'elle', 'notre', 'votre', 'aux', 'ont', 'ete', 'par', 'sur', 'qui', 'que', 'dont',
+  'ainsi', 'meme', 'tres', 'bien', 'deja', 'etait', 'etaient', 'sera', 'seront',
+  // bruit générique : peu utile comme piste de recherche
+  'site', 'chantier', 'note', 'intervention', 'photo', 'jour', 'jours', 'semaine', 'test',
+])
+
+/** Termes qui REVIENNENT le plus dans la mémoire du site (déterministe, zéro LLM).
+ *  « Revient » = présent dans ≥2 traces distinctes — on compte une fois par trace,
+ *  pour qu'un mot répété dans 1 seule note ne domine pas. Sert à proposer des
+ *  pistes ANCRÉES (qui existent vraiment), au lieu d'exemples génériques codés. */
+export async function getSiteMemoryTermsAction(
+  siteId: string,
+): Promise<{ ok: true; terms: { term: string; count: number }[] } | { ok: false; error: string }> {
+  if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
+  if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
+
+  const timeline = await getSiteMemoryTimeline(siteId, { limit: 400, periodDays: 3650 }).catch(() => [])
+  const counts = new Map<string, number>()
+  for (const e of timeline) {
+    const text = `${e.title ?? ''} ${e.detail ?? ''}`.toLowerCase()
+    const tokens = text.match(/\p{L}{4,}/gu) ?? []
+    const seenInTrace = new Set<string>()
+    for (const tok of tokens) {
+      if (TERM_STOPWORDS.has(tok) || seenInTrace.has(tok)) continue
+      seenInTrace.add(tok)
+      counts.set(tok, (counts.get(tok) ?? 0) + 1)
+    }
+  }
+  const terms = [...counts.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([term, count]) => ({ term, count }))
+  return { ok: true, terms }
+}
+
 export interface SiteTeamHit {
   teamName: string
   teamColor: string | null

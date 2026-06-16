@@ -5,11 +5,12 @@
 // dédiés : « Qui connaît ce site ? » (équipes) et « Dernières photos ».
 // MemorIA retrouve, il ne répond jamais à la place des preuves.
 
-import { useState, useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
 import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck } from 'lucide-react'
 import {
   askSiteMemoryAction,
+  getSiteMemoryTermsAction,
   getSiteTeamsAction,
   getSiteRecentPhotosAction,
   synthesizeSiteMemoryAction,
@@ -55,6 +56,17 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   const [synthesis, setSynthesis] = useState<MemorySynthesis | null>(null)
   const [synthPending, startSynth] = useTransition()
   const [pending, startTransition] = useTransition()
+  const [terms, setTerms] = useState<{ term: string; count: number }[] | null>(null)
+
+  // Pistes ANCRÉES : les mots qui reviennent vraiment dans la mémoire de ce site
+  // (au lieu d'exemples génériques codés en dur). Chargé à l'ouverture du panneau.
+  useEffect(() => {
+    let alive = true
+    getSiteMemoryTermsAction(siteId)
+      .then((r) => { if (alive && r.ok) setTerms(r.terms) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [siteId])
 
   function synthesize() {
     if (!hits || hits.length === 0) return
@@ -122,21 +134,32 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
         </button>
       </form>
 
-      <div className="flex flex-wrap gap-1.5">
-        {EXAMPLES.map((ex) => (
-          <button key={ex} type="button" onClick={() => { setQ(ex); runSearch(ex) }} disabled={pending}
-            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-            {ex}
+      <div className="space-y-1.5">
+        {terms && terms.length > 0 && (
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Ce qui revient ici
+          </p>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {/* Pistes pilotées par la donnée (mots récurrents du site) ; à défaut,
+              exemples génériques tant que le site n'a pas assez de traces. */}
+          {(terms && terms.length > 0 ? terms : EXAMPLES.map((term) => ({ term, count: 0 }))).map(({ term, count }) => (
+            <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
+              title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+              {term}
+              {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
+            </button>
+          ))}
+          <button type="button" onClick={loadTeams} disabled={pending}
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+            <Users className="h-3 w-3" /> Qui connaît ce site&nbsp;?
           </button>
-        ))}
-        <button type="button" onClick={loadTeams} disabled={pending}
-          className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-          <Users className="h-3 w-3" /> Qui connaît ce site&nbsp;?
-        </button>
-        <button type="button" onClick={loadPhotos} disabled={pending}
-          className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-          <Camera className="h-3 w-3" /> Dernières photos
-        </button>
+          <button type="button" onClick={loadPhotos} disabled={pending}
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+            <Camera className="h-3 w-3" /> Dernières photos
+          </button>
+        </div>
       </div>
 
       {/* ── Résultats ───────────────────────────────────────────────────── */}
