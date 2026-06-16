@@ -232,7 +232,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                 </section>
               )}
 
-              {brief && <BriefBody brief={brief} />}
+              {brief && <BriefBody brief={brief} mode={mode} />}
 
               {needsSitePick && !selectedSite && !pending && (
                 <p className="py-6 text-center text-sm italic text-muted-foreground">
@@ -267,19 +267,31 @@ function SectionTitle({
   )
 }
 
-// Ordre des sections par mode. En réunion, Réserves + Dernier CR remontent tout
-// en haut (les 2 blocs critiques pour parler aux gens).
 // Hiérarchie par paliers (Vincent 2026-06-16) : le cerveau hiérarchise, pas une
 // liste plate. Du plus urgent au contexte. Un palier sans contenu disparaît.
-const TIERS: Array<{ label: string; dot: string; keys: string[] }> = [
+// L'ORDRE dépend du MODE (sinon visite et réunion sont identiques) :
+//  - Visite = « sur place, que dois-je VÉRIFIER ? » → vigilances / anomalies /
+//    réserves en tête (ce qu'on va regarder sur le terrain).
+//  - Réunion = « face aux gens, que dois-je ABORDER / ARBITRER ? » → ce qui a
+//    changé depuis la dernière réunion + réserves + actions (qui doit quoi) en tête.
+type Tier = { label: string; dot: string; keys: string[] }
+const TIERS_VISIT: Tier[] = [
   { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['vigilance', 'anomalies', 'reserves', 'actions'] },
   { label: 'Ce qui a changé',                dot: 'bg-amber-500',   keys: ['change'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
   { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
 ]
+const TIERS_MEETING: Tier[] = [
+  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['change', 'reserves', 'actions'] },
+  { label: 'Points de vigilance',            dot: 'bg-amber-500',   keys: ['vigilance', 'anomalies'] },
+  { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
+  { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
+  { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
+]
+const tiersForMode = (mode: 'visit' | 'meeting'): Tier[] => (mode === 'meeting' ? TIERS_MEETING : TIERS_VISIT)
 
-function BriefBody({ brief }: { brief: SiteBrief }) {
+function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting' }) {
   const {
     situation,
     vigilance,
@@ -565,7 +577,7 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
         </div>
       </section>
 
-      {TIERS.map((tier) => {
+      {tiersForMode(mode).map((tier) => {
         const hasContent = tier.keys.some((k) => sections[k])
         if (!hasContent) return null
         return (
