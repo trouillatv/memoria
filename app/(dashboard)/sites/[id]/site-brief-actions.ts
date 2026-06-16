@@ -392,7 +392,7 @@ export interface DiscussionPoint {
 export async function generateDiscussionPointsAction(
   siteId: string,
   mode: 'visit' | 'meeting' = 'meeting',
-): Promise<{ ok: true; points: DiscussionPoint[]; mock: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; points: DiscussionPoint[]; mock: boolean; hadInput: boolean } | { ok: false; error: string }> {
   if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: 'Non authentifié' }
@@ -419,9 +419,9 @@ export async function generateDiscussionPointsAction(
   if (b.anomaliesOpen.length) lines.push(`Anomalies ouvertes : ${b.anomaliesOpen.map((a) => a.description).join(' ; ')}`)
   if (b.openActions.length) lines.push(`Actions ouvertes : ${b.openActions.map((a) => a.title).join(' ; ')}`)
 
-  if (lines.length === 0) return { ok: true, points: [], mock: false }
-
   const provider = getAIProvider()
+  if (lines.length === 0) return { ok: true, points: [], mock: provider.name === 'mock', hadInput: false }
+
   const COMMON_RULES = [
     'RÈGLES STRICTES :',
     "- Tu ne proposes JAMAIS de décision (jamais « il faut faire X », « changer de fournisseur »).",
@@ -462,7 +462,7 @@ export async function generateDiscussionPointsAction(
         durationMs: r.durationMs,
       }
     })
-    return { ok: true, points, mock: provider.name === 'mock' }
+    return { ok: true, points, mock: provider.name === 'mock', hadInput: true }
   } catch {
     return { ok: false, error: 'Génération indisponible' }
   }

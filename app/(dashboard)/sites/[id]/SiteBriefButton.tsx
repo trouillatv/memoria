@@ -72,6 +72,10 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
   const [pending, startTransition] = useTransition()
   // Priorité C — points à discuter (LLM encadré), généré à la demande.
   const [points, setPoints] = useState<DiscussionPoint[] | null>(null)
+  const [pointsMock, setPointsMock] = useState(false)
+  const [pointsHadInput, setPointsHadInput] = useState(false)
+  // Double-clic : 1er clic = arme + prévient du coût IA ; 2e clic = exécute.
+  const [confirmGen, setConfirmGen] = useState(false)
   const [genPending, startGen] = useTransition()
   const meta = MODE_META[mode]
   const MetaIcon = meta.Icon
@@ -81,8 +85,8 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
     if (!loadedSite) return
     startGen(async () => {
       const r = await generateDiscussionPointsAction(loadedSite, mode)
-      if (r.ok) setPoints(r.points)
-      else { toast.error(r.error); setPoints([]) }
+      if (r.ok) { setPoints(r.points); setPointsMock(r.mock); setPointsHadInput(r.hadInput) }
+      else { toast.error(r.error); setPoints([]); setPointsMock(false) }
     })
   }
 
@@ -111,6 +115,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
     setBrief(null)
     setLoadedSite(null)
     setPoints(null)
+    setConfirmGen(false)
     if (sid) loadBrief(sid)
   }
 
@@ -201,16 +206,44 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                       {mode === 'meeting' ? 'Points à discuter' : 'Objectif de la visite'}
                       <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
                     </h3>
-                    <button
-                      type="button"
-                      onClick={generatePoints}
-                      disabled={genPending}
-                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
-                    >
-                      {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                      {points === null ? 'Générer' : 'Régénérer'}
-                    </button>
+                    {confirmGen ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={generatePoints}
+                          disabled={genPending}
+                          className="inline-flex items-center gap-1 rounded-lg border border-sky-600 bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                        >
+                          {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                          Confirmer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmGen(false)}
+                          disabled={genPending}
+                          className="rounded-lg border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmGen(true)}
+                        disabled={genPending}
+                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
+                      >
+                        {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                        {points === null ? 'Générer' : 'Régénérer'}
+                      </button>
+                    )}
                   </div>
+                  {confirmGen && !genPending && (
+                    <p className="inline-flex items-start gap-1 text-[11px] text-amber-700">
+                      <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                      Cette analyse lance une requête IA — elle consomme un peu de crédit (coût très faible). Confirmer&nbsp;?
+                    </p>
+                  )}
                   {points && points.length > 0 && (
                     <ul className="space-y-1">
                       {points.map((p, i) => (
@@ -222,9 +255,19 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                     </ul>
                   )}
                   {points && points.length === 0 && !genPending && (
-                    <p className="text-xs italic text-muted-foreground">Rien de saillant à discuter pour l&apos;instant.</p>
+                    pointsMock ? (
+                      <p className="text-xs italic text-amber-700">
+                        IA en mode démo sur cet environnement (aucune clé configurée) — les points ne sont pas générés.
+                      </p>
+                    ) : pointsHadInput ? (
+                      <p className="text-xs italic text-amber-700">
+                        L&apos;IA n&apos;a rien renvoyé cette fois — réessaie. Si ça persiste, c&apos;est un souci de configuration IA.
+                      </p>
+                    ) : (
+                      <p className="text-xs italic text-muted-foreground">Rien de saillant à discuter pour l&apos;instant.</p>
+                    )
                   )}
-                  {points !== null && (
+                  {points !== null && points.length > 0 && (
                     <p className="text-[10px] text-muted-foreground/70">
                       Rédigé par l&apos;IA à partir des éléments ci-dessous — vérifiez les sources.
                     </p>
