@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -59,6 +59,7 @@ import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
+import { TogglePanel } from './TogglePanel'
 import { SiteBriefButton } from './SiteBriefButton'
 
 interface PageProps {
@@ -133,6 +134,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   const enrichedReadings = {
     readings: [...transmissions, ...readings.readings].slice(0, 6),
   }
+  // « Lectures du lieu » masqué à la demande de Vincent (2026-06-16) — réactivable.
+  const SHOW_LECTURES_DU_LIEU = false
 
   if (!identity) notFound()
 
@@ -239,77 +242,67 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <CurrentState state={currentState} />
       </div>
 
-      {/* 🔍 Interroger ce site — moteur d'enquête (retrieval-only, zéro LLM) */}
-      <div className={tabClass('apercu')}>
-        <SiteMemoryQuery siteId={id} />
+      {/* Boutons compacts — Rechercher + Actions (avec « Si vous envoyez… »). */}
+      <div className={cn('flex flex-col gap-2', tabClass('apercu'))}>
+        <TogglePanel label="Rechercher sur ce lieu" icon={<Search className="h-4 w-4" />}>
+          <SiteMemoryQuery siteId={id} />
+        </TogglePanel>
+
+        {(openActions.length > 0 || showSendBlock) && (
+          <TogglePanel label="Actions ouvertes" count={openActions.length} icon={<ListTodo className="h-4 w-4" />}>
+            <div className="space-y-3">
+              {openActions.length > 0 && <OpenActionsList actions={openActions} />}
+              {showSendBlock && (
+                <div className="rounded-lg border-l-2 border-l-violet-400/60 bg-card p-3 space-y-3 text-sm">
+                  <div className="text-sm font-medium inline-flex items-center gap-2">
+                    <ArrowRightLeft className="h-4 w-4 text-violet-600" />
+                    Si vous envoyez une équipe ici demain
+                  </div>
+                  {transmitItems.length > 0 && (
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">À transmettre</div>
+                      <ul className="space-y-0.5">
+                        {transmitItems.map((t, i) => (
+                          <li key={i} className="flex gap-1.5"><span className="text-amber-600" aria-hidden>⚠</span><span className="min-w-0">{t}</span></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {knownTeams.length > 0 && (
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Équipes qui connaissent déjà le site</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {knownTeams.map((name) => (
+                          <span key={name} className="inline-flex items-center rounded-full border bg-card px-2.5 py-0.5 text-xs">{name}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {lastIntervenant && (
+                    <div>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier intervenant</span>
+                      <span className="ml-2">{lastIntervenant}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </TogglePanel>
+        )}
       </div>
 
-      {/* Actions ouvertes — issues des réunions, « ce qui reste à faire ». */}
-      {openActions.length > 0 && (
-        <Card className={cn('border-l-2 border-l-sky-400/60', tabClass('apercu'))}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base inline-flex items-center gap-2">
-              <ListTodo className="h-4 w-4 text-sky-600" />
-              Actions ouvertes
-              <span className="text-sm font-normal text-muted-foreground">({openActions.length})</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <OpenActionsList actions={openActions} />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* « Si j'envoyais quelqu'un ici demain » — transmission actionnable. */}
-      {showSendBlock && (
-        <Card className={cn('border-l-2 border-l-violet-400/60', tabClass('apercu'))}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base inline-flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4 text-violet-600" />
-              Si vous envoyez une équipe ici demain
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-3 text-sm">
-            {transmitItems.length > 0 && (
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">À transmettre</div>
-                <ul className="space-y-0.5">
-                  {transmitItems.map((t, i) => (
-                    <li key={i} className="flex gap-1.5"><span className="text-amber-600" aria-hidden>⚠</span><span className="min-w-0">{t}</span></li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {knownTeams.length > 0 && (
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Équipes qui connaissent déjà le site</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {knownTeams.map((name) => (
-                    <span key={name} className="inline-flex items-center rounded-full border bg-card px-2.5 py-0.5 text-xs">{name}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {lastIntervenant && (
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier intervenant</span>
-                <span className="ml-2">{lastIntervenant}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── MÉMOIRE ──────────────────────────────────────────────────────── */}
-      {/* COUCHE 3 — Lectures du lieu (IA perceptive) */}
-      <Card className={cn('bg-[#fafaf7] border-foreground/10', tabClass('memoire'))}>
-        <CardHeader>
-          <CardTitle className="text-base font-medium">Lectures du lieu</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-2 pb-6">
-          <SiteReadingsList data={enrichedReadings} />
-        </CardContent>
-      </Card>
+      {/* COUCHE 3 — Lectures du lieu (IA perceptive) — masqué (réactivable). */}
+      {SHOW_LECTURES_DU_LIEU && (
+        <Card className={cn('bg-[#fafaf7] border-foreground/10', tabClass('memoire'))}>
+          <CardHeader>
+            <CardTitle className="text-base font-medium">Lectures du lieu</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-2 pb-6">
+            <SiteReadingsList data={enrichedReadings} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card className={cn(tabClass('memoire'))}>
         <CardHeader>
