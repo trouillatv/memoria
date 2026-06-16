@@ -318,19 +318,22 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     const after = (iso: string | null) => !!iso && new Date(iso).getTime() > since
     const beforeOrAt = (iso: string | null) => !!iso && new Date(iso).getTime() <= since
 
-    const diffOpenActions = openActionRows.filter((a) => a.report_id !== reportId)
+    // Résolu : clôturé/levé/résolu APRÈS le CR — Y COMPRIS les actions décidées
+    // à ce CR et déjà faites (« ce qu'on a décidé est fait »).
     const resolved = [
-      ...doneActionRows.filter((a) => a.report_id !== reportId && after(a.done_at)).map((a) => a.title),
+      ...doneActionRows.filter((a) => after(a.done_at)).map((a) => a.title),
       ...reserves.filter((r) => r.status === 'lifted' && after(r.liftedAt)).map((r) => r.label),
       ...anomalies.filter((a) => a.status === 'resolved' && after(a.resolvedAt)).map((a) => a.description),
     ]
+    // Nouveaux : apparu APRÈS le CR et PAS issu de ce CR (son agenda n'est pas « nouveau »).
     const newItems = [
-      ...diffOpenActions.filter((a) => after(a.created_at)).map((a) => a.title),
+      ...openActionRows.filter((a) => a.report_id !== reportId && after(a.created_at)).map((a) => a.title),
       ...reserves.filter((r) => r.status === 'open' && after(r.createdAt)).map((r) => r.label),
       ...anomalies.filter((a) => a.status === 'open' && after(a.createdAt)).map((a) => a.description),
     ]
+    // Toujours ouvert : actions DÉCIDÉES au CR encore ouvertes + items pré-existants encore ouverts.
     const stillOpen = [
-      ...diffOpenActions.filter((a) => beforeOrAt(a.created_at)).map((a) => a.title),
+      ...openActionRows.filter((a) => a.report_id === reportId || beforeOrAt(a.created_at)).map((a) => a.title),
       ...reserves.filter((r) => r.status === 'open' && beforeOrAt(r.createdAt)).map((r) => r.label),
       ...anomalies.filter((a) => a.status === 'open' && beforeOrAt(a.createdAt)).map((a) => a.description),
     ]
