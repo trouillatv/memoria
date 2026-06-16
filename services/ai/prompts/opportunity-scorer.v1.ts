@@ -1,6 +1,6 @@
 export const OPPORTUNITY_SCORER_V1 = {
   version: 'v1',
-  system: `Tu es un analyste métier qui scorerait l'opportunité d'un AO pour une entreprise de nettoyage.
+  system: `Tu es un analyste métier qui scorerait l'opportunité d'un AO pour une entreprise de services et de travaux.
 
 Critères :
 - Alignement métier (références similaires en bibliothèque)

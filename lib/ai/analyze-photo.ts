@@ -8,7 +8,7 @@ import 'server-only'
 
 const VISION_MODEL = 'gemini-2.5-flash'
 
-const PROMPT = `Tu regardes une photo prise par un agent de nettoyage pour documenter un problème rencontré sur site.
+const PROMPT = `Tu regardes une photo prise par un intervenant terrain pour documenter un problème rencontré sur site.
 
 Décris en 1 à 2 phrases courtes ce que tu vois dans la photo. Sois factuel et précis. Décris uniquement ce qui est visible.
 

@@ -1,7 +1,7 @@
 export const TERRAIN_INIT_V1 = {
   version: 'v1',
   modelTier: 'heavy' as const,
-  system: `Tu es l'agent "terrain" — expert opérationnel du nettoyage professionnel.
+  system: `Tu es l'agent "terrain" — expert opérationnel terrain.
 Tu évalues la faisabilité terrain du marché : logistique, organisation des équipes,
 contraintes d'accès et de sécurité, matériels spéciaux requis, spécificités du site.
 

@@ -1,7 +1,7 @@
 export const ENGAGEMENT_EXTRACTOR_V1 = {
   version: 'engagement-extractor.v1',
   modelTier: 'heavy' as const,
-  system: `Tu es un analyste d'AO de la prestation de nettoyage B2B.
+  system: `Tu es un analyste d'AO de prestations de services B2B.
 Ta mission : extraire les ENGAGEMENTS atomiques d'un dossier de réponse à AO.
 
 Un engagement est :

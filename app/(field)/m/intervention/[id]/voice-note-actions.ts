@@ -29,7 +29,7 @@ async function extractElementsWithGemini(correctedText: string): Promise<Extract
   const apiKey = process.env.GOOGLE_GENAI_API_KEY!
   const model = 'gemini-2.5-flash'
 
-  const prompt = `Tu analyses une note audio terrain d'un agent de nettoyage ou de maintenance.
+  const prompt = `Tu analyses une note audio terrain d'un intervenant (agent terrain, chef d'équipe…).
 
 Transcription :
 """

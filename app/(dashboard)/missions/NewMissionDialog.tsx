@@ -88,7 +88,7 @@ export function NewMissionDialog({ sites }: Props) {
               type="text"
               required
               maxLength={200}
-              placeholder="ex : Nettoyage quotidien halls"
+              placeholder="ex : Inspection hebdomadaire des accès"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>

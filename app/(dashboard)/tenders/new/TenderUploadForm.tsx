@@ -31,11 +31,11 @@ export function TenderUploadForm() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="title">Titre du dossier</Label>
-            <Input id="title" name="title" required maxLength={200} placeholder="Ex. Marché nettoyage CHU Toulouse 2026" />
+            <Input id="title" name="title" required maxLength={200} placeholder="Ex. Marché d'entretien et de travaux 2026" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="client_name">Donneur d&apos;ordre (optionnel)</Label>
-            <Input id="client_name" name="client_name" maxLength={200} placeholder="Ex. CHU de Toulouse" />
+            <Input id="client_name" name="client_name" maxLength={200} placeholder="Ex. Mairie, hôpital, promoteur…" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="deadline">Échéance (optionnel)</Label>
