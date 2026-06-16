@@ -7,7 +7,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer } from 'lucide-react'
 import {
   askOrgMemoryAction,
   synthesizeOrgMemoryAction,
@@ -30,6 +30,9 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   photo:        { label: 'Photo',        Icon: Camera,        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   document:     { label: 'Document',     Icon: BookOpen,      cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  action:       { label: 'Action',       Icon: ListTodo,      cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+  reserve:      { label: 'Réserve',      Icon: Flag,          cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  mission:      { label: 'Mission',      Icon: Hammer,        cls: 'bg-orange-50 text-orange-700 border-orange-200' },
 }
 
 function fmtDate(iso: string | null): string {

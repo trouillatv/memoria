@@ -43,8 +43,9 @@ const SRC_TO_TYPE: Record<string, MemoryHitType> = {
 }
 
 export interface OrgMemoryHit {
-  /** 'document' = couche Connaissance (bibliothèque / AO passé / document). */
-  type: MemoryHitType | 'document'
+  /** 'document' = couche Connaissance (bibliothèque / AO passé / document).
+   *  'action' | 'reserve' | 'mission' = couche EXÉCUTION (keyword ILIKE org-scopé). */
+  type: MemoryHitType | 'document' | 'action' | 'reserve' | 'mission'
   id: string
   title: string
   snippet: string
@@ -104,6 +105,100 @@ async function getOrgTenantId(orgId: string | null): Promise<string | null> {
   return (data as { tenant_id?: string } | null)?.tenant_id ?? null
 }
 
+// ── Retriever OPÉRATIONS (couche EXÉCUTION) ──────────────────────────────────
+// Recherche KEYWORD (ILIKE, PAS sémantique) scopée aux sites de l'org, sur la
+// donnée d'exécution réelle : actions / réserves / missions. Les interventions
+// NE SONT PAS ré-ajoutées ici — elles remontent déjà via leurs notes dans
+// searchMemory (intervention_note). similarity = null → compte comme du FTS.
+
+/** Échappe une saisie utilisateur destinée à un filtre PostgREST `.or(ilike)`.
+ *  Retire les caractères qui cassent/parsent le filtre ou agissent en wildcard
+ *  (`% _ , ( ) * \`), collapse les espaces. < 2 chars utiles → '' (skip). */
+function sanitizeIlikeTerm(raw: string): string {
+  const cleaned = (raw ?? '')
+    .replace(/[%_,()*\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return cleaned.length >= 2 ? cleaned : ''
+}
+
+type OpsHit = Omit<OrgMemoryHit, 'siteName'> & { fts: number }
+
+export async function searchOperationsForOrg({
+  orgSiteIds,
+  q,
+  limit = 10,
+}: {
+  orgSiteIds: string[]
+  q: string
+  limit?: number
+}): Promise<OpsHit[]> {
+  const term = sanitizeIlikeTerm(q)
+  if (!term || orgSiteIds.length === 0) return []
+
+  const supabase = createAdminClient()
+  const like = `%${term}%`
+  const trunc = (s: string | null, n = 220): string => (s ?? '').slice(0, n)
+
+  const [actions, reserves, missions] = await Promise.all([
+    // site_actions — title, body (DbSiteAction). resultType 'action'.
+    supabase
+      .from('site_actions')
+      .select('id, title, body, created_at, site_id')
+      .in('site_id', orgSiteIds)
+      .or(`title.ilike.${like},body.ilike.${like}`)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+      .then((r) => r.data ?? [], () => []),
+    // site_reserve — label, location, lift_note (migration 110, snake_case).
+    // (pas de colonne « note » brute ; la note de levée est lift_note.)
+    supabase
+      .from('site_reserve')
+      .select('id, label, location, lift_note, created_at, site_id')
+      .in('site_id', orgSiteIds)
+      .or(`label.ilike.${like},location.ilike.${like},lift_note.ilike.${like}`)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+      .then((r) => r.data ?? [], () => []),
+    // missions — name, description (DbMission). Vivantes uniquement.
+    supabase
+      .from('missions')
+      .select('id, name, description, created_at, site_id, deleted_at')
+      .in('site_id', orgSiteIds)
+      .is('deleted_at', null)
+      .or(`name.ilike.${like},description.ilike.${like}`)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+      .then((r) => r.data ?? [], () => []),
+  ])
+
+  const hits: OpsHit[] = []
+
+  for (const a of actions as Array<{ id: string; title: string | null; body: string | null; created_at: string; site_id: string | null }>) {
+    hits.push({
+      type: 'action', id: a.id, title: a.title || 'Action',
+      snippet: trunc(a.body), occurredAt: a.created_at, similarity: null, fts: 1,
+      siteId: a.site_id ?? null, sourceLabel: null, sourceDomain: null,
+    })
+  }
+  for (const r of reserves as Array<{ id: string; label: string | null; location: string | null; lift_note: string | null; created_at: string; site_id: string | null }>) {
+    hits.push({
+      type: 'reserve', id: r.id, title: r.label || 'Réserve',
+      snippet: trunc(r.lift_note || r.location), occurredAt: r.created_at, similarity: null, fts: 1,
+      siteId: r.site_id ?? null, sourceLabel: null, sourceDomain: null,
+    })
+  }
+  for (const m of missions as Array<{ id: string; name: string | null; description: string | null; created_at: string; site_id: string | null }>) {
+    hits.push({
+      type: 'mission', id: m.id, title: m.name || 'Mission',
+      snippet: trunc(m.description), occurredAt: m.created_at, similarity: null, fts: 1,
+      siteId: m.site_id ?? null, sourceLabel: null, sourceDomain: null,
+    })
+  }
+
+  return hits
+}
+
 export async function askOrgMemoryAction(
   question: string,
 ): Promise<{ ok: true; hits: OrgMemoryHit[]; summary: OrgMemorySummary | null } | { ok: false; error: string }> {
@@ -127,12 +222,18 @@ export async function askOrgMemoryAction(
   const resolveSiteName = (siteId: string | null): string =>
     (siteId && siteNameMap.get(siteId)) || 'Site inconnu'
 
-  const [semHits, knowledgeHits] = queryEmbedding && tenantId
-    ? await Promise.all([
-        findSimilarTracesForTenant({ tenantId, queryEmbedding, limit: 30, threshold: SEM_FLOOR }).catch(() => []),
-        searchKnowledgeForOrg({ tenantId, queryEmbedding, role: op.role, limit: 10 }).catch(() => []),
-      ])
-    : [[], []]
+  // Couche EXÉCUTION (actions/réserves/missions) — keyword ILIKE org-scopé, en
+  // parallèle du sémantique. Ne dépend pas de l'embedding.
+  const orgSiteIds = sites.map((s) => s.id)
+  const [opsHits, [semHits, knowledgeHits]] = await Promise.all([
+    searchOperationsForOrg({ orgSiteIds, q, limit: 10 }).catch(() => []),
+    queryEmbedding && tenantId
+      ? Promise.all([
+          findSimilarTracesForTenant({ tenantId, queryEmbedding, limit: 30, threshold: SEM_FLOOR }).catch(() => []),
+          searchKnowledgeForOrg({ tenantId, queryEmbedding, role: op.role, limit: 10 }).catch(() => []),
+        ])
+      : Promise.resolve([[], []] as const),
+  ])
 
   type Merged = OrgMemoryHit & { fts: number }
   const merged = new Map<string, Merged>()
@@ -183,6 +284,17 @@ export async function askOrgMemoryAction(
       similarity: k.similarity, fts: 0,
       siteId: null, siteName: '',
       sourceLabel: k.label, sourceDomain: k.sourceDomain,
+    })
+  }
+
+  // Couche EXÉCUTION — actions / réserves / missions (keyword). Clés
+  // `action:` / `reserve:` / `mission:` : pas de collision avec les traces.
+  for (const o of opsHits) {
+    merged.set(`${o.type}:${o.id}`, {
+      type: o.type, id: o.id, title: o.title, snippet: o.snippet,
+      occurredAt: o.occurredAt, similarity: o.similarity, fts: o.fts,
+      siteId: o.siteId, siteName: resolveSiteName(o.siteId),
+      sourceLabel: o.sourceLabel, sourceDomain: o.sourceDomain,
     })
   }
 
