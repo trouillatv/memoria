@@ -232,7 +232,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                 </section>
               )}
 
-              {brief && <BriefBody brief={brief} mode={mode} />}
+              {brief && <BriefBody brief={brief} />}
 
               {needsSitePick && !selectedSite && !pending && (
                 <p className="py-6 text-center text-sm italic text-muted-foreground">
@@ -269,10 +269,17 @@ function SectionTitle({
 
 // Ordre des sections par mode. En réunion, Réserves + Dernier CR remontent tout
 // en haut (les 2 blocs critiques pour parler aux gens).
-const VISIT_ORDER = ['vigilance', 'aSavoir', 'anomalies', 'reserves', 'actions', 'recentDone', 'recurring', 'missions', 'teams', 'meetings', 'photos'] as const
-const MEETING_ORDER = ['vigilance', 'reserves', 'actions', 'anomalies', 'missions', 'teams', 'photos', 'aSavoir', 'recurring', 'meetings', 'recentDone'] as const
+// Hiérarchie par paliers (Vincent 2026-06-16) : le cerveau hiérarchise, pas une
+// liste plate. Du plus urgent au contexte. Un palier sans contenu disparaît.
+const TIERS: Array<{ label: string; dot: string; keys: string[] }> = [
+  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['vigilance', 'anomalies', 'reserves', 'actions'] },
+  { label: 'Ce qui a changé',                dot: 'bg-amber-500',   keys: ['change'] },
+  { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
+  { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
+  { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
+]
 
-function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting' }) {
+function BriefBody({ brief }: { brief: SiteBrief }) {
   const {
     situation,
     vigilance,
@@ -308,6 +315,66 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
     meetings.length > 0
 
   const sections: Record<string, React.ReactNode> = {
+    change: !changeSinceLastReport ? null : (
+      <section className="space-y-2.5 rounded-xl border bg-muted/30 p-3">
+        <SectionTitle icon={<History className="h-3.5 w-3.5" />}>
+          Depuis la dernière réunion
+          {formatDate(changeSinceLastReport.sinceDate) ? ` · ${formatDate(changeSinceLastReport.sinceDate)}` : ''}
+        </SectionTitle>
+        {lastReport && lastReport.actionTitles.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Décidé alors</p>
+            <ul className="space-y-0.5">
+              {lastReport.actionTitles.map((t, i) => (
+                <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                  <span aria-hidden className="text-muted-foreground/50">›</span>
+                  <span className="min-w-0">{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {changeSinceLastReport.resolved.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Résolu</p>
+            <ul className="space-y-0.5">
+              {changeSinceLastReport.resolved.map((t, i) => (
+                <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="min-w-0">{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {changeSinceLastReport.stillOpen.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Toujours ouvert</p>
+            <ul className="space-y-0.5">
+              {changeSinceLastReport.stillOpen.map((t, i) => (
+                <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="min-w-0">{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {changeSinceLastReport.newItems.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Nouveaux</p>
+            <ul className="space-y-0.5">
+              {changeSinceLastReport.newItems.map((t, i) => (
+                <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                  <BellRing className="h-3.5 w-3.5 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="min-w-0">{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+    ),
     vigilance: vigilance.length === 0 ? null : (
       <section className="space-y-2">
         <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-rose-600" />} count={vigilance.length}>
@@ -471,72 +538,8 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
     ),
   }
 
-  const order = mode === 'meeting' ? MEETING_ORDER : VISIT_ORDER
-
   return (
     <div className="space-y-5">
-      {/* V2a — Ce qui a changé depuis la dernière réunion (déterministe, zéro LLM) */}
-      {changeSinceLastReport && (
-        <section className="space-y-2.5 rounded-xl border bg-muted/30 p-3">
-          <SectionTitle icon={<History className="h-3.5 w-3.5" />}>
-            Depuis la dernière réunion
-            {formatDate(changeSinceLastReport.sinceDate) ? ` · ${formatDate(changeSinceLastReport.sinceDate)}` : ''}
-          </SectionTitle>
-          {lastReport && lastReport.actionTitles.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Décidé alors</p>
-              <ul className="space-y-0.5">
-                {lastReport.actionTitles.map((t, i) => (
-                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
-                    <span aria-hidden className="text-muted-foreground/50">›</span>
-                    <span className="min-w-0">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {changeSinceLastReport.resolved.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Résolu</p>
-              <ul className="space-y-0.5">
-                {changeSinceLastReport.resolved.map((t, i) => (
-                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
-                    <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                    <span className="min-w-0">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {changeSinceLastReport.stillOpen.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Toujours ouvert</p>
-              <ul className="space-y-0.5">
-                {changeSinceLastReport.stillOpen.map((t, i) => (
-                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <span className="min-w-0">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {changeSinceLastReport.newItems.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Nouveaux</p>
-              <ul className="space-y-0.5">
-                {changeSinceLastReport.newItems.map((t, i) => (
-                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
-                    <BellRing className="h-3.5 w-3.5 text-rose-600 shrink-0 mt-0.5" />
-                    <span className="min-w-0">{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-      )}
-
       {/* Situation — chips de synthèse (toujours en tête) */}
       <section className="space-y-2">
         <SectionTitle icon={<Info className="h-3.5 w-3.5" />}>En un coup d&apos;œil</SectionTitle>
@@ -562,7 +565,21 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
         </div>
       </section>
 
-      {order.map((k) => (sections[k] ? <div key={k}>{sections[k]}</div> : null))}
+      {TIERS.map((tier) => {
+        const hasContent = tier.keys.some((k) => sections[k])
+        if (!hasContent) return null
+        return (
+          <div key={tier.label} className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${tier.dot}`} aria-hidden />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{tier.label}</span>
+            </div>
+            <div className="space-y-4 border-l border-border/40 pl-3">
+              {tier.keys.map((k) => (sections[k] ? <div key={k}>{sections[k]}</div> : null))}
+            </div>
+          </div>
+        )
+      })}
 
       {!hasAnyDetail && (
         <p className="text-sm text-muted-foreground italic py-4 text-center">
