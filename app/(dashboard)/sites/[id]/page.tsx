@@ -58,6 +58,7 @@ import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
+import { SiteMemoryQuery } from './SiteMemoryQuery'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -233,6 +234,11 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       {/* COUCHE 1 — Cockpit opérationnel */}
       <div className={cn('pb-2 border-b border-border/40', tabClass('apercu'))}>
         <CurrentState state={currentState} />
+      </div>
+
+      {/* 🔍 Interroger ce site — moteur d'enquête (retrieval-only, zéro LLM) */}
+      <div className={tabClass('apercu')}>
+        <SiteMemoryQuery siteId={id} />
       </div>
 
       {/* Actions ouvertes — issues des réunions, « ce qui reste à faire ». */}
