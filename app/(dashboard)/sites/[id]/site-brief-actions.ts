@@ -427,6 +427,10 @@ export async function generateDiscussionPointsAction(
     "- Tu ne proposes JAMAIS de décision (jamais « il faut faire X », « changer de fournisseur »).",
     "- Tu n'inventes RIEN. Chaque point repose sur un élément fourni. Si un sujet n'est pas dans les données, tu ne le mentionnes pas.",
     "- Phrases courtes, concrètes, en français. Pas d'introduction ni de conclusion.",
+    // Forme JSON EXPLICITE : sans elle, Gemini (mode JSON) invente une structure
+    // qui ne valide pas le schéma `points:[{text}]` → résultat vide. La synthèse,
+    // qui nomme ses champs dans le prompt, ne souffre pas de ce bug.
+    '- Réponds STRICTEMENT en JSON de la forme {"points":[{"text":"…"}]} — entre 3 et 5 entrées, et rien d\'autre.',
   ]
   const systemPrompt = (
     mode === 'visit'
