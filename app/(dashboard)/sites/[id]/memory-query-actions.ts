@@ -17,6 +17,7 @@
 
 import { z } from 'zod'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { logUsageEvent } from '@/lib/db/usage-events'
 import { searchMemory, type MemoryHitType } from '@/lib/db/memory-search'
 import { getEmbedding } from '@/lib/ai/embeddings'
 import { findSimilarTraces } from '@/lib/ai/embed-trace'
@@ -143,6 +144,9 @@ export async function askSiteMemoryAction(
     )
     .slice(0, 30)
     .map(({ fts: _fts, ...h }) => h)
+
+  // Usage produit (best-effort, fire-and-forget — ne retarde pas la réponse).
+  void logUsageEvent({ event: 'memory_search', siteId, query: q })
 
   return { ok: true, hits, summary: computeSummary(hits) }
 }

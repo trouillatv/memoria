@@ -25,6 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin/personnes"   className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Personnes</Link>
             <Link href="/admin/activite"    className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Activité</Link>
             <Link href="/admin/depenses-ia" className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Dépenses IA</Link>
+            <Link href="/admin/usage"       className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Usage</Link>
             <Link href="/missions"          className="col-span-2 md:col-span-1 md:ml-auto text-center md:text-left text-xs text-slate-400 hover:text-white bg-slate-700 md:bg-transparent rounded px-2 py-2 md:p-0">← Retour app</Link>
           </nav>
         </div>

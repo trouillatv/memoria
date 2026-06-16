@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logUsageEvent } from '@/lib/db/usage-events'
 import { createSiteAction, markSiteActionDone, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
@@ -230,6 +231,8 @@ export async function createQuickActionAction(
       created_by: user.id,
       created_from: createdFrom,
     })
+    // Usage produit (best-effort) — sert la corrélation brief → action.
+    void logUsageEvent({ event: 'action_created', siteId })
     revalidateActionSurfaces(siteId)
     return { ok: true, id }
   } catch {

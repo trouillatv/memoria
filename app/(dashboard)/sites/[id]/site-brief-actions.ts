@@ -19,6 +19,7 @@
 
 import { z } from 'zod'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { logUsageEvent } from '@/lib/db/usage-events'
 import { listOpenSiteActions, listSiteActionsBySite, listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { listSiteASavoirActive } from '@/lib/db/sites'
@@ -160,6 +161,20 @@ async function requireOperator(): Promise<{ ok: true } | { ok: false; error: str
     return { ok: false, error: 'Accès refusé' }
   }
   return { ok: true }
+}
+
+/**
+ * Trace l'ouverture d'un brief (usage produit, best-effort). Une seule fois par
+ * ouverture réelle (le client n'appelle pas sur ré-ouverture cachée).
+ */
+export async function logBriefOpenAction(siteId: string, mode: 'visit' | 'meeting'): Promise<void> {
+  if (!IdSchema.safeParse(siteId).success) return
+  const auth = await requireOperator()
+  if (!auth.ok) return
+  await logUsageEvent({
+    event: mode === 'meeting' ? 'prepare_meeting_opened' : 'prepare_visit_opened',
+    siteId,
+  })
 }
 
 /**

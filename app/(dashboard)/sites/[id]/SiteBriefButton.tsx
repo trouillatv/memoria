@@ -30,7 +30,7 @@ import {
   History,
   Check,
 } from 'lucide-react'
-import { getSiteBriefAction, type SiteBrief } from './site-brief-actions'
+import { getSiteBriefAction, logBriefOpenAction, type SiteBrief } from './site-brief-actions'
 
 interface Props {
   siteId: string
@@ -70,6 +70,9 @@ export function SiteBriefButton({ siteId, variant = 'desktop', mode = 'visit' }:
   function load() {
     setOpen(true)
     if (brief) return // déjà chargé pour ce site
+    // Usage produit (best-effort, ne bloque pas l'UX) — seulement sur le vrai
+    // fetch, pas sur une ré-ouverture cachée (le `return` ci-dessus l'évite).
+    void logBriefOpenAction(siteId, mode)
     startTransition(async () => {
       const r = await getSiteBriefAction(siteId)
       if (r.ok) {
