@@ -139,7 +139,7 @@ export function SiteBriefButton({ siteId, variant = 'desktop', mode = 'visit' }:
                 </div>
               )}
 
-              {brief && <BriefBody brief={brief} />}
+              {brief && <BriefBody brief={brief} mode={mode} />}
             </div>
           </div>
         </div>
@@ -168,7 +168,12 @@ function SectionTitle({
   )
 }
 
-function BriefBody({ brief }: { brief: SiteBrief }) {
+// Ordre des sections par mode. En réunion, Réserves + Dernier CR remontent tout
+// en haut (les 2 blocs critiques pour parler aux gens).
+const VISIT_ORDER = ['vigilance', 'aSavoir', 'anomalies', 'reserves', 'lastReport', 'actions', 'recentDone', 'recurring', 'missions', 'teams', 'meetings', 'photos'] as const
+const MEETING_ORDER = ['vigilance', 'reserves', 'lastReport', 'actions', 'anomalies', 'missions', 'teams', 'photos', 'aSavoir', 'recurring', 'meetings', 'recentDone'] as const
+
+function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting' }) {
   const {
     situation,
     vigilance,
@@ -201,9 +206,191 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
     recentPhotosCount > 0 ||
     meetings.length > 0
 
+  const sections: Record<string, React.ReactNode> = {
+    vigilance: vigilance.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-rose-600" />} count={vigilance.length}>
+          À ne pas oublier
+        </SectionTitle>
+        <ul className="space-y-1.5">
+          {vigilance.map((v) => (
+            <li key={v.id} className="flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2">
+              <span className="text-sm min-w-0 text-rose-950">{v.title}</span>
+              <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-rose-700">
+                {v.overdue ? 'en retard' : `depuis ${v.ageDays} j`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ),
+    reserves: openReserves.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-rose-600" />} count={openReserves.length}>
+          Réserves non levées
+        </SectionTitle>
+        <ul className="space-y-1.5">
+          {openReserves.map((r) => (
+            <li key={r.id} className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+              <span className="text-sm min-w-0">
+                {r.label}
+                {r.location && <span className="text-muted-foreground"> · {r.location}</span>}
+              </span>
+              <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">depuis {r.ageDays} j</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ),
+    lastReport: !lastReport || lastReport.actionTitles.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<MessagesSquare className="h-3.5 w-3.5" />}>Issu du dernier compte-rendu</SectionTitle>
+        <ul className="space-y-1">
+          {lastReport.actionTitles.map((t, i) => (
+            <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+              <span aria-hidden className="text-muted-foreground/50">›</span>
+              <span className="min-w-0">{t}</span>
+            </li>
+          ))}
+        </ul>
+        {formatDate(lastReport.createdAt) && (
+          <p className="text-[10px] text-muted-foreground/70">{lastReport.title ?? 'Compte-rendu'} · {formatDate(lastReport.createdAt)}</p>
+        )}
+      </section>
+    ),
+    actions: openActions.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<ListTodo className="h-3.5 w-3.5" />} count={situation.openActions}>
+          Actions à suivre
+        </SectionTitle>
+        <ul className="space-y-1.5">
+          {openActions.map((a) => {
+            const due = formatDate(a.dueDate)
+            const age = ageDaysLabel(a.createdAt)
+            return (
+              <li key={a.id} className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
+                <span className="text-sm min-w-0">{a.title}</span>
+                <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">
+                  {due ? `échéance ${due}` : age ?? ''}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+    ),
+    anomalies: anomaliesOpen.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5" />} count={anomaliesOpen.length}>
+          Anomalies ouvertes
+        </SectionTitle>
+        <ul className="space-y-1.5">
+          {anomaliesOpen.map((a) => (
+            <li key={a.id} className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm text-amber-900">
+              {a.description}
+            </li>
+          ))}
+        </ul>
+      </section>
+    ),
+    aSavoir: aSavoir.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Info className="h-3.5 w-3.5" />} count={aSavoir.length}>À savoir</SectionTitle>
+        <ul className="space-y-1.5">
+          {aSavoir.map((n) => (
+            <li key={n.id} className="flex gap-1.5 text-sm text-amber-900">
+              <span aria-hidden className="text-amber-600">⚠</span>
+              <span className="min-w-0">{n.body}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ),
+    recurring: recurring.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Repeat className="h-3.5 w-3.5" />}>Ce qui revient ici</SectionTitle>
+        <ul className="space-y-1.5">
+          {recurring.map((r, i) => (
+            <li key={i} className="text-sm text-muted-foreground italic leading-relaxed">{r.text}</li>
+          ))}
+        </ul>
+      </section>
+    ),
+    missions: missionNames.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Hammer className="h-3.5 w-3.5" />}>Missions sur le site</SectionTitle>
+        <div className="flex flex-wrap gap-1.5">
+          {missionNames.map((name) => (
+            <span key={name} className="inline-flex items-center rounded-full border bg-card px-2.5 py-0.5 text-xs">{name}</span>
+          ))}
+        </div>
+      </section>
+    ),
+    teams: teams.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Users className="h-3.5 w-3.5" />}>Équipes qui connaissent le site</SectionTitle>
+        <ul className="space-y-1">
+          {teams.map((t) => (
+            <li key={t.name} className="flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate">{t.name}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">
+                {t.passages} passage{t.passages > 1 ? 's' : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ),
+    recentDone: recentDoneActions.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<CheckCircle2 className="h-3.5 w-3.5" />}>Récemment fait</SectionTitle>
+        <ul className="space-y-1.5">
+          {recentDoneActions.map((a) => {
+            const when = ageDaysLabel(a.doneAt)
+            return (
+              <li key={a.id} className="flex items-start justify-between gap-3 text-sm text-muted-foreground">
+                <span className="min-w-0 inline-flex gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span className="min-w-0">{a.title}</span>
+                </span>
+                {when && <span className="shrink-0 text-[11px] whitespace-nowrap">{when}</span>}
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+    ),
+    meetings: meetings.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<MessagesSquare className="h-3.5 w-3.5" />}>Réunions récentes</SectionTitle>
+        <ul className="space-y-1">
+          {meetings.map((m) => {
+            const when = formatDate(m.createdAt)
+            return (
+              <li key={m.id} className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span className="min-w-0 truncate">{m.title ?? 'Compte-rendu'}</span>
+                {when && <span className="shrink-0 text-[11px] whitespace-nowrap">{when}</span>}
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+    ),
+    photos: recentPhotosCount === 0 ? null : (
+      <section>
+        <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+          <Camera className="h-3.5 w-3.5" />
+          {recentPhotosCount} preuve{recentPhotosCount > 1 ? 's' : ''} photo récente{recentPhotosCount > 1 ? 's' : ''}
+        </p>
+      </section>
+    ),
+  }
+
+  const order = mode === 'meeting' ? MEETING_ORDER : VISIT_ORDER
+
   return (
     <div className="space-y-5">
-      {/* Situation — chips de synthèse */}
+      {/* Situation — chips de synthèse (toujours en tête) */}
       <section className="space-y-2">
         <SectionTitle icon={<Info className="h-3.5 w-3.5" />}>En un coup d&apos;œil</SectionTitle>
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -228,223 +415,7 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
         </div>
       </section>
 
-      {/* À ne pas oublier — ce qui traîne / en retard (agrégation, zéro LLM) */}
-      {vigilance.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-rose-600" />} count={vigilance.length}>
-            À ne pas oublier
-          </SectionTitle>
-          <ul className="space-y-1.5">
-            {vigilance.map((v) => (
-              <li
-                key={v.id}
-                className="flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2"
-              >
-                <span className="text-sm min-w-0 text-rose-950">{v.title}</span>
-                <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-rose-700">
-                  {v.overdue ? 'en retard' : `depuis ${v.ageDays} j`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* À savoir — vigilances persistantes */}
-      {aSavoir.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<Info className="h-3.5 w-3.5" />} count={aSavoir.length}>
-            À savoir
-          </SectionTitle>
-          <ul className="space-y-1.5">
-            {aSavoir.map((n) => (
-              <li key={n.id} className="flex gap-1.5 text-sm text-amber-900">
-                <span aria-hidden className="text-amber-600">⚠</span>
-                <span className="min-w-0">{n.body}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Anomalies ouvertes */}
-      {anomaliesOpen.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<AlertTriangle className="h-3.5 w-3.5" />} count={anomaliesOpen.length}>
-            Anomalies ouvertes
-          </SectionTitle>
-          <ul className="space-y-1.5">
-            {anomaliesOpen.map((a) => (
-              <li
-                key={a.id}
-                className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm text-amber-900"
-              >
-                {a.description}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Réserves non levées — points à lever restant dus */}
-      {openReserves.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-rose-600" />} count={openReserves.length}>
-            Réserves non levées
-          </SectionTitle>
-          <ul className="space-y-1.5">
-            {openReserves.map((r) => (
-              <li key={r.id} className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
-                <span className="text-sm min-w-0">
-                  {r.label}
-                  {r.location && <span className="text-muted-foreground"> · {r.location}</span>}
-                </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">depuis {r.ageDays} j</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Décisions / actions du dernier compte-rendu */}
-      {lastReport && lastReport.actionTitles.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<MessagesSquare className="h-3.5 w-3.5" />}>
-            Issu du dernier compte-rendu
-          </SectionTitle>
-          <ul className="space-y-1">
-            {lastReport.actionTitles.map((t, i) => (
-              <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
-                <span aria-hidden className="text-muted-foreground/50">›</span>
-                <span className="min-w-0">{t}</span>
-              </li>
-            ))}
-          </ul>
-          {formatDate(lastReport.createdAt) && (
-            <p className="text-[10px] text-muted-foreground/70">{lastReport.title ?? 'Compte-rendu'} · {formatDate(lastReport.createdAt)}</p>
-          )}
-        </section>
-      )}
-
-      {/* Actions ouvertes */}
-      {openActions.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<ListTodo className="h-3.5 w-3.5" />} count={situation.openActions}>
-            Actions à suivre
-          </SectionTitle>
-          <ul className="space-y-1.5">
-            {openActions.map((a) => {
-              const due = formatDate(a.dueDate)
-              const age = ageDaysLabel(a.createdAt)
-              return (
-                <li
-                  key={a.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2"
-                >
-                  <span className="text-sm min-w-0">{a.title}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">
-                    {due ? `échéance ${due}` : age ?? ''}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Récemment fait */}
-      {recentDoneActions.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<CheckCircle2 className="h-3.5 w-3.5" />}>Récemment fait</SectionTitle>
-          <ul className="space-y-1.5">
-            {recentDoneActions.map((a) => {
-              const when = ageDaysLabel(a.doneAt)
-              return (
-                <li key={a.id} className="flex items-start justify-between gap-3 text-sm text-muted-foreground">
-                  <span className="min-w-0 inline-flex gap-1.5">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <span className="min-w-0">{a.title}</span>
-                  </span>
-                  {when && <span className="shrink-0 text-[11px] whitespace-nowrap">{when}</span>}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Ce qui revient — résonances / lectures du lieu */}
-      {recurring.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<Repeat className="h-3.5 w-3.5" />}>Ce qui revient ici</SectionTitle>
-          <ul className="space-y-1.5">
-            {recurring.map((r, i) => (
-              <li key={i} className="text-sm text-muted-foreground italic leading-relaxed">
-                {r.text}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Missions / contrat */}
-      {missionNames.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<Hammer className="h-3.5 w-3.5" />}>Missions sur le site</SectionTitle>
-          <div className="flex flex-wrap gap-1.5">
-            {missionNames.map((name) => (
-              <span key={name} className="inline-flex items-center rounded-full border bg-card px-2.5 py-0.5 text-xs">
-                {name}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Équipes qui connaissent le site — descriptif, jamais classé */}
-      {teams.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<Users className="h-3.5 w-3.5" />}>Équipes qui connaissent le site</SectionTitle>
-          <ul className="space-y-1">
-            {teams.map((t) => (
-              <li key={t.name} className="flex items-center justify-between gap-3 text-sm">
-                <span className="min-w-0 truncate">{t.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">
-                  {t.passages} passage{t.passages > 1 ? 's' : ''}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Réunions récentes */}
-      {meetings.length > 0 && (
-        <section className="space-y-2">
-          <SectionTitle icon={<MessagesSquare className="h-3.5 w-3.5" />}>Réunions récentes</SectionTitle>
-          <ul className="space-y-1">
-            {meetings.map((m) => {
-              const when = formatDate(m.createdAt)
-              return (
-                <li key={m.id} className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-                  <span className="min-w-0 truncate">{m.title ?? 'Compte-rendu'}</span>
-                  {when && <span className="shrink-0 text-[11px] whitespace-nowrap">{when}</span>}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {/* Preuves récentes */}
-      {recentPhotosCount > 0 && (
-        <section>
-          <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
-            <Camera className="h-3.5 w-3.5" />
-            {recentPhotosCount} preuve{recentPhotosCount > 1 ? 's' : ''} photo récente{recentPhotosCount > 1 ? 's' : ''}
-          </p>
-        </section>
-      )}
+      {order.map((k) => (sections[k] ? <div key={k}>{sections[k]}</div> : null))}
 
       {!hasAnyDetail && (
         <p className="text-sm text-muted-foreground italic py-4 text-center">
