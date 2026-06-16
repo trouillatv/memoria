@@ -83,6 +83,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
 
   function generatePoints() {
     if (!loadedSite) return
+    setConfirmGen(false) // masque aussitôt « Confirmer / Annuler » + la note coût
     startGen(async () => {
       const r = await generateDiscussionPointsAction(loadedSite, mode)
       if (r.ok) { setPoints(r.points); setPointsMock(r.mock); setPointsHadInput(r.hadInput) }

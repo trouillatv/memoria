@@ -418,6 +418,11 @@ export async function generateDiscussionPointsAction(
   if (b.openReserves.length) lines.push(`Réserves non levées : ${b.openReserves.map((r) => r.label).join(' ; ')}`)
   if (b.anomaliesOpen.length) lines.push(`Anomalies ouvertes : ${b.anomaliesOpen.map((a) => a.description).join(' ; ')}`)
   if (b.openActions.length) lines.push(`Actions ouvertes : ${b.openActions.map((a) => a.title).join(' ; ')}`)
+  // Élargi (retour Vincent 2026-06-16) : le LLM doit AUSSI voir le « À savoir »
+  // (notes sensibles du site : nappe d'eau, accès camion…) et les sujets
+  // récurrents — sans eux l'analyse paraît pauvre car elle ignore ces signaux.
+  if (b.aSavoir.length) lines.push(`À savoir (notes du site) : ${b.aSavoir.map((n) => n.body).join(' ; ')}`)
+  if (b.recurring.length) lines.push(`Sujets récurrents (reviennent souvent) : ${b.recurring.map((r) => r.text).join(' ; ')}`)
 
   const provider = getAIProvider()
   if (lines.length === 0) return { ok: true, points: [], mock: provider.name === 'mock', hadInput: false }
@@ -430,17 +435,17 @@ export async function generateDiscussionPointsAction(
     // Forme JSON EXPLICITE : sans elle, Gemini (mode JSON) invente une structure
     // qui ne valide pas le schéma `points:[{text}]` → résultat vide. La synthèse,
     // qui nomme ses champs dans le prompt, ne souffre pas de ce bug.
-    '- Réponds STRICTEMENT en JSON de la forme {"points":[{"text":"…"}]} — entre 3 et 5 entrées, et rien d\'autre.',
+    '- Réponds STRICTEMENT en JSON de la forme {"points":[{"text":"…"}]} — entre 3 et 6 entrées, et rien d\'autre.',
   ]
   const systemPrompt = (
     mode === 'visit'
       ? [
-          "Tu prépares une VISITE de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 5 raisons probables de cette visite — CE QU'IL Y A À FAIRE OU À VÉRIFIER sur place (l'objectif de la visite).",
+          "Tu prépares une VISITE de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 raisons probables de cette visite — CE QU'IL Y A À FAIRE OU À VÉRIFIER sur place (l'objectif de la visite). Couvre les différents sujets présents (sécurité/contrôles, livraisons, fuites/infiltrations, points récurrents), n'en oublie pas.",
           ...COMMON_RULES,
           '- Priorise ce qui est en retard, bloquant, ou une anomalie/réserve ouverte. Formule comme des choses à vérifier/contrôler/confirmer sur site.',
         ]
       : [
-          'Tu es un secrétaire de réunion de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 5 POINTS À DISCUTER ou À ARBITRER en réunion.',
+          'Tu es un secrétaire de réunion de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 POINTS À DISCUTER ou À ARBITRER en réunion. Couvre les différents sujets présents (actions en retard, réserves, livraisons, sujets récurrents), n\'en oublie pas.',
           ...COMMON_RULES,
           '- Formule des points à DISCUTER / ARBITRER / TRANCHER. Priorise ce qui traîne, ce qui bloque, ce qui est nouveau.',
         ]
@@ -455,7 +460,7 @@ export async function generateDiscussionPointsAction(
         userMessage,
         responseSchema: discussionSchema,
         modelTier: 'light',
-        maxOutputTokens: 400,
+        maxOutputTokens: 700,
       })
       const parsed = discussionSchema.safeParse(r.parsed)
       return {
