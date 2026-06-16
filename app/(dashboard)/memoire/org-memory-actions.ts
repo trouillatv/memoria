@@ -60,6 +60,9 @@ export interface OrgMemoryHit {
   /** Couche Connaissance : libellé de la source (titre doc/biblio/AO) + domaine. */
   sourceLabel: string | null
   sourceDomain: string | null
+  /** Match MOT-CLÉ (FTS ou ILIKE opérations). Distinct de similarity : un hit peut
+   *  être à la fois mot-clé ET sémantique. Sépare « correspondance exacte » vs « proche ». */
+  keyword: boolean
 }
 
 /** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Identique au
@@ -71,6 +74,8 @@ export interface OrgMemorySummary {
   recurring: boolean
   last30dCount: number
   spanDays: number | null
+  /** Au moins une trace contient VRAIMENT le terme (match mot-clé / ILIKE). */
+  keywordGrounded: boolean
 }
 
 function computeSummary(hits: OrgMemoryHit[]): OrgMemorySummary | null {
@@ -82,17 +87,19 @@ function computeSummary(hits: OrgMemoryHit[]): OrgMemorySummary | null {
   const now = Date.now()
   const last30dCount = times.filter((t) => now - t <= 30 * 86_400_000).length
   const spanDays = times.length ? Math.round((Math.max(...times) - Math.min(...times)) / 86_400_000) : null
-  const sims = hits.map((h) => h.similarity).filter((s): s is number => s != null)
-  const topSim = sims.length ? Math.max(...sims) : 0
-  const strongSem = sims.filter((s) => s >= 0.72).length
-  const ftsCount = hits.filter((h) => h.similarity === null).length
+  const ftsCount = hits.filter((h) => h.keyword).length // vrais matches mot-clé (FTS / ILIKE)
   const count = hits.length
+  // ANCRAGE LEXICAL (cf. moteur site) : sans au moins un vrai match mot-clé, on
+  // n'a que du « sémantiquement proche ». Sur du jargon chantier court les vecteurs
+  // se ressemblent tous → bruit confiant. Doctrine précision >> rappel : pas
+  // d'ancrage ⇒ confiance FAIBLE, et jamais « sujet récurrent ».
+  const keywordGrounded = ftsCount >= 1
   let confidence: 'forte' | 'moyenne' | 'faible'
-  if (ftsCount >= 3 || strongSem >= 3) confidence = 'forte'
-  else if (ftsCount >= 1 || strongSem >= 1 || count >= 4) confidence = 'moyenne'
+  if (ftsCount >= 3) confidence = 'forte'
+  else if (ftsCount >= 1) confidence = 'moyenne'
   else confidence = 'faible'
-  const recurring = count >= 6 && (ftsCount >= 2 || topSim >= 0.62)
-  return { count, distinctDays: days.size, confidence, recurring, last30dCount, spanDays }
+  const recurring = ftsCount >= 4
+  return { count, distinctDays: days.size, confidence, recurring, last30dCount, spanDays, keywordGrounded }
 }
 
 /** Résout le tenant_id scopé à l'organisation (single-tenant pilote : une seule
@@ -177,21 +184,21 @@ export async function searchOperationsForOrg({
   for (const a of actions as Array<{ id: string; title: string | null; body: string | null; created_at: string; site_id: string | null }>) {
     hits.push({
       type: 'action', id: a.id, title: a.title || 'Action',
-      snippet: trunc(a.body), occurredAt: a.created_at, similarity: null, fts: 1,
+      snippet: trunc(a.body), occurredAt: a.created_at, similarity: null, keyword: true, fts: 1,
       siteId: a.site_id ?? null, sourceLabel: null, sourceDomain: null,
     })
   }
   for (const r of reserves as Array<{ id: string; label: string | null; location: string | null; lift_note: string | null; created_at: string; site_id: string | null }>) {
     hits.push({
       type: 'reserve', id: r.id, title: r.label || 'Réserve',
-      snippet: trunc(r.lift_note || r.location), occurredAt: r.created_at, similarity: null, fts: 1,
+      snippet: trunc(r.lift_note || r.location), occurredAt: r.created_at, similarity: null, keyword: true, fts: 1,
       siteId: r.site_id ?? null, sourceLabel: null, sourceDomain: null,
     })
   }
   for (const m of missions as Array<{ id: string; name: string | null; description: string | null; created_at: string; site_id: string | null }>) {
     hits.push({
       type: 'mission', id: m.id, title: m.name || 'Mission',
-      snippet: trunc(m.description), occurredAt: m.created_at, similarity: null, fts: 1,
+      snippet: trunc(m.description), occurredAt: m.created_at, similarity: null, keyword: true, fts: 1,
       siteId: m.site_id ?? null, sourceLabel: null, sourceDomain: null,
     })
   }
@@ -241,7 +248,7 @@ export async function askOrgMemoryAction(
   for (const h of ftsHits) {
     merged.set(`${h.type}:${h.id}`, {
       type: h.type, id: h.id, title: h.title, snippet: h.snippet,
-      occurredAt: h.occurredAt, similarity: null, fts: h.rank,
+      occurredAt: h.occurredAt, similarity: null, keyword: true, fts: h.rank,
       siteId: h.siteId, siteName: resolveSiteName(h.siteId),
       sourceLabel: null, sourceDomain: null,
     })
@@ -268,7 +275,7 @@ export async function askOrgMemoryAction(
       // trop lourd sur toutes les sites). null acceptable (best-effort).
       snippet: s.text_excerpt || '',
       occurredAt: null,
-      similarity: s.similarity, fts: 0,
+      similarity: s.similarity, keyword: false, fts: 0,
       siteId: s.site_id ?? null,
       siteName: resolveSiteName(s.site_id ?? null),
       sourceLabel: null, sourceDomain: null,
@@ -281,7 +288,7 @@ export async function askOrgMemoryAction(
     merged.set(`knowledge:${k.sourceDomain}:${k.sourceId}`, {
       type: 'document', id: `${k.sourceDomain}:${k.sourceId}`,
       title: k.label, snippet: k.snippet, occurredAt: null,
-      similarity: k.similarity, fts: 0,
+      similarity: k.similarity, keyword: false, fts: 0,
       siteId: null, siteName: '',
       sourceLabel: k.label, sourceDomain: k.sourceDomain,
     })
@@ -292,7 +299,7 @@ export async function askOrgMemoryAction(
   for (const o of opsHits) {
     merged.set(`${o.type}:${o.id}`, {
       type: o.type, id: o.id, title: o.title, snippet: o.snippet,
-      occurredAt: o.occurredAt, similarity: o.similarity, fts: o.fts,
+      occurredAt: o.occurredAt, similarity: o.similarity, keyword: true, fts: o.fts,
       siteId: o.siteId, siteName: resolveSiteName(o.siteId),
       sourceLabel: o.sourceLabel, sourceDomain: o.sourceDomain,
     })

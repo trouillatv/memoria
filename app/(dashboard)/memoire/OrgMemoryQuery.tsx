@@ -7,7 +7,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check } from 'lucide-react'
 import {
   askOrgMemoryAction,
   synthesizeOrgMemoryAction,
@@ -75,6 +75,44 @@ export function OrgMemoryQuery() {
     })
   }
 
+  // Ligne de résultat réutilisée par les deux sections (exactes / proches).
+  const renderHit = (h: OrgMemoryHit) => {
+    const meta = TYPE_META[h.type]
+    const Icon = meta.Icon
+    const inner = (
+      <>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+            <Icon className="h-2.5 w-2.5" /> {meta.label}
+          </span>
+          {h.sourceLabel ? (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-700">
+              <BookOpen className="h-2.5 w-2.5" /> {h.sourceLabel}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-foreground/80">
+              <MapPin className="h-2.5 w-2.5" /> {h.siteName}
+            </span>
+          )}
+          {h.occurredAt && <span className="text-[10px] text-muted-foreground tabular-nums">{fmtDate(h.occurredAt)}</span>}
+          {h.title && <span className="text-xs font-medium truncate">{h.title}</span>}
+        </div>
+        {h.snippet && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{h.snippet}</p>}
+      </>
+    )
+    return (
+      <li key={`${h.type}-${h.id}`}>
+        {h.siteId ? (
+          <Link href={`/sites/${h.siteId}`} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
+            {inner}
+          </Link>
+        ) : (
+          <div className="block rounded-lg border bg-background p-2.5">{inner}</div>
+        )}
+      </li>
+    )
+  }
+
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div>
@@ -129,6 +167,12 @@ export function OrgMemoryQuery() {
           </p>
         ) : (
           <div>
+            {summary && !summary.keywordGrounded && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/70 p-2.5 text-xs text-amber-900">
+                Aucune trace ne contient exactement «&nbsp;{searched}&nbsp;». Voici des traces{' '}
+                <span className="font-medium">sémantiquement proches</span> — à vérifier, ce ne sont pas forcément des réponses.
+              </div>
+            )}
             {/* Synthèse encadrée (LLM) : réponse en tête, sources dessous */}
             <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -236,59 +280,39 @@ export function OrgMemoryQuery() {
                     <Flame className="h-2.5 w-2.5" /> Sujet récurrent
                   </span>
                 )}
-                {!summary.recurring && summary.last30dCount >= 3 && (
+                {summary.keywordGrounded && !summary.recurring && summary.last30dCount >= 3 && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
                     <Activity className="h-2.5 w-2.5" /> Sujet actif · {summary.last30dCount} sur 30 j
                   </span>
                 )}
-                {summary.spanDays !== null && summary.spanDays > 365 && (
+                {summary.keywordGrounded && summary.spanDays !== null && summary.spanDays > 365 && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
                     <Archive className="h-2.5 w-2.5" /> Historique · sur {Math.round(summary.spanDays / 365)} an{summary.spanDays > 730 ? 's' : ''}
                   </span>
                 )}
               </div>
             )}
-            <ul className="space-y-1.5">
-              {hits.map((h) => {
-                const meta = TYPE_META[h.type]
-                const Icon = meta.Icon
-                const inner = (
-                  <>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
-                        <Icon className="h-2.5 w-2.5" /> {meta.label}
-                      </span>
-                      {h.sourceLabel ? (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-700">
-                          <BookOpen className="h-2.5 w-2.5" /> {h.sourceLabel}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-foreground/80">
-                          <MapPin className="h-2.5 w-2.5" /> {h.siteName}
-                        </span>
-                      )}
-                      {h.occurredAt && <span className="text-[10px] text-muted-foreground tabular-nums">{fmtDate(h.occurredAt)}</span>}
-                      {h.similarity !== null && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700"><Sparkles className="h-2.5 w-2.5" />proche</span>
-                      )}
-                      {h.title && <span className="text-xs font-medium truncate">{h.title}</span>}
-                    </div>
-                    {h.snippet && <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{h.snippet}</p>}
-                  </>
-                )
-                return (
-                  <li key={`${h.type}-${h.id}`}>
-                    {h.siteId ? (
-                      <Link href={`/sites/${h.siteId}`} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
-                        {inner}
-                      </Link>
-                    ) : (
-                      <div className="block rounded-lg border bg-background p-2.5">{inner}</div>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+            {/* Séparation honnête : correspondances EXACTES (le mot est là) vs
+                CONCEPTS PROCHES (sémantique seulement = sujets voisins). */}
+            {hits.some((h) => h.keyword) && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold inline-flex items-center gap-1 text-emerald-700">
+                  <Check className="h-3 w-3" /> Correspondances exactes
+                </p>
+                <ul className="space-y-1.5">{hits.filter((h) => h.keyword).map(renderHit)}</ul>
+              </div>
+            )}
+            {hits.some((h) => !h.keyword) && (
+              <div className={`space-y-1.5 ${hits.some((h) => h.keyword) ? 'mt-3' : ''}`}>
+                <p className="text-[11px] font-semibold inline-flex items-center gap-1 text-muted-foreground">
+                  <span aria-hidden className="text-sm leading-none">≈</span> Concepts proches
+                </p>
+                <p className="text-[10px] text-muted-foreground/80">
+                  Ne parlent pas de «&nbsp;{searched}&nbsp;» mais de sujets voisins — à vérifier.
+                </p>
+                <ul className="space-y-1.5">{hits.filter((h) => !h.keyword).map(renderHit)}</ul>
+              </div>
+            )}
           </div>
         )
       )}
