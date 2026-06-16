@@ -53,6 +53,15 @@ export interface SiteBriefAction {
   createdAt: string
 }
 
+/** « À ne pas oublier » — action ouverte EN RETARD ou qui traîne (agrégation
+ *  intelligente, zéro LLM). Sujet = le suivi du lieu, jamais une personne. */
+export interface SiteBriefVigilance {
+  id: string
+  title: string
+  ageDays: number
+  overdue: boolean
+}
+
 export interface SiteBriefDoneAction {
   id: string
   title: string
@@ -89,6 +98,7 @@ export interface SiteBrief {
   siteName: string
   contractName: string | null
   situation: SiteBriefSituation
+  vigilance: SiteBriefVigilance[]
   openActions: SiteBriefAction[]
   recentDoneActions: SiteBriefDoneAction[]
   anomaliesOpen: SiteBriefAnomaly[]
@@ -167,6 +177,20 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     createdAt: a.created_at,
   }))
 
+  // « À ne pas oublier » — actions ouvertes EN RETARD (échéance passée) ou qui
+  // TRAÎNENT (ouvertes depuis ≥ 14 j). Hiérarchise ce qui mérite l'attention.
+  const STALE_DAYS = 14
+  const now = Date.now()
+  const vigilance: SiteBriefVigilance[] = openActionRows
+    .map((a) => {
+      const ageDays = Math.max(0, Math.floor((now - new Date(a.created_at).getTime()) / 86_400_000))
+      const overdue = a.due_date ? new Date(a.due_date).getTime() < now : false
+      return { id: a.id, title: a.title, ageDays, overdue }
+    })
+    .filter((v) => v.overdue || v.ageDays >= STALE_DAYS)
+    .sort((x, y) => Number(y.overdue) - Number(x.overdue) || y.ageDays - x.ageDays)
+    .slice(0, 5)
+
   // Actions récemment clôturées : tri par done_at desc, top 3.
   const recentDoneActions: SiteBriefDoneAction[] = doneActionRows
     .filter((a) => a.done_at)
@@ -211,6 +235,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       siteName: identity?.name ?? 'Site',
       contractName: identity?.contractName ?? null,
       situation,
+      vigilance,
       openActions: briefOpenActions,
       recentDoneActions,
       anomaliesOpen,

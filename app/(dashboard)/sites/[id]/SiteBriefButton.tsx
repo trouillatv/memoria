@@ -25,6 +25,7 @@ import {
   Camera,
   MessagesSquare,
   CalendarClock,
+  BellRing,
 } from 'lucide-react'
 import { getSiteBriefAction, type SiteBrief } from './site-brief-actions'
 
@@ -160,6 +161,7 @@ function SectionTitle({
 function BriefBody({ brief }: { brief: SiteBrief }) {
   const {
     situation,
+    vigilance,
     openActions,
     recentDoneActions,
     anomaliesOpen,
@@ -174,6 +176,7 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
   const nextLabel = formatDate(situation.nextScheduledAt)
 
   const hasAnyDetail =
+    vigilance.length > 0 ||
     openActions.length > 0 ||
     recentDoneActions.length > 0 ||
     anomaliesOpen.length > 0 ||
@@ -210,6 +213,28 @@ function BriefBody({ brief }: { brief: SiteBrief }) {
           )}
         </div>
       </section>
+
+      {/* À ne pas oublier — ce qui traîne / en retard (agrégation, zéro LLM) */}
+      {vigilance.length > 0 && (
+        <section className="space-y-2">
+          <SectionTitle icon={<BellRing className="h-3.5 w-3.5 text-rose-600" />} count={vigilance.length}>
+            À ne pas oublier
+          </SectionTitle>
+          <ul className="space-y-1.5">
+            {vigilance.map((v) => (
+              <li
+                key={v.id}
+                className="flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2"
+              >
+                <span className="text-sm min-w-0 text-rose-950">{v.title}</span>
+                <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-rose-700">
+                  {v.overdue ? 'en retard' : `depuis ${v.ageDays} j`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* À savoir — vigilances persistantes */}
       {aSavoir.length > 0 && (
