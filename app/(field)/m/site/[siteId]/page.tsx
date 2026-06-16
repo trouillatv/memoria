@@ -21,6 +21,7 @@ import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
+import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -182,6 +183,9 @@ export default async function FieldSitePage({
         <h2 className="text-2xl font-bold leading-tight">{site.name}</h2>
         <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
       </section>
+
+      {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM). */}
+      <SiteBriefButton siteId={siteId} variant="mobile" />
 
       {/* « Aujourd'hui ici » — page d'arrivée : ce qui me concerne maintenant. */}
       <section className="rounded-2xl border bg-card p-4 space-y-3">

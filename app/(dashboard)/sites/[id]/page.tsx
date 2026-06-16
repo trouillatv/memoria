@@ -59,6 +59,7 @@ import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
+import { SiteBriefButton } from './SiteBriefButton'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -221,6 +222,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <Sparkles className="h-3.5 w-3.5" />
           Atelier mémoire
         </Link>
+        {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM) */}
+        <SiteBriefButton siteId={id} variant="desktop" />
         {/* Compte-rendu multimodal — voix + texte + photos + pièces → décisions */}
         <SiteReportLauncher siteId={id} siteName={identity.name} variant="desktop" />
         {/* ➕ Action standalone — capturer une intention sans compte-rendu */}
