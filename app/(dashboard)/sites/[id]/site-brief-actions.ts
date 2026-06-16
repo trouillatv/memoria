@@ -34,6 +34,8 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listReportsBySite } from '@/lib/db/site-reports'
 import { isSystemMissionName } from '@/lib/db/system-missions'
+import { getAIProvider } from '@/services/ai/factory'
+import { withAITracking } from '@/services/ai/tracking'
 
 const IdSchema = z.string().uuid()
 
@@ -367,5 +369,101 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       lastReport,
       changeSinceLastReport,
     },
+  }
+}
+
+// ── Priorité C — « Points à discuter » (LLM ENCADRÉ) ────────────────────────
+//
+// Première IA générative de cette surface. RÈGLE D'OR câblée EN CODE, pas
+// confiée au modèle :
+//   - le LLM ne reçoit QUE les éléments DÉJÀ CALCULÉS du brief (contexte fermé) ;
+//   - il ne propose JAMAIS une décision, seulement des points à DISCUTER/ARBITRER ;
+//   - les preuves restent affichées (le brief est juste en dessous) ;
+//   - si rien à présenter ou échec → dégradation propre (liste vide).
+
+const discussionSchema = z.object({
+  points: z.array(z.object({ text: z.string().min(1).max(280) })).max(6),
+})
+
+export interface DiscussionPoint {
+  text: string
+}
+
+export async function generateDiscussionPointsAction(
+  siteId: string,
+  mode: 'visit' | 'meeting' = 'meeting',
+): Promise<{ ok: true; points: DiscussionPoint[]; mock: boolean } | { ok: false; error: string }> {
+  if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
+    return { ok: false, error: 'Accès refusé' }
+  }
+
+  const briefRes = await getSiteBriefAction(siteId)
+  if (!briefRes.ok) return briefRes
+  const b = briefRes.brief
+
+  // Sérialisation BORNÉE des éléments déjà calculés — contexte fermé, zéro nouvelle donnée.
+  const lines: string[] = []
+  const c = b.changeSinceLastReport
+  if (c) {
+    if (c.resolved.length) lines.push(`Résolu depuis le dernier CR : ${c.resolved.join(' ; ')}`)
+    if (c.stillOpen.length) lines.push(`Toujours ouvert : ${c.stillOpen.join(' ; ')}`)
+    if (c.newItems.length) lines.push(`Nouveaux : ${c.newItems.join(' ; ')}`)
+  }
+  if (b.vigilance.length) {
+    lines.push(`À ne pas oublier : ${b.vigilance.map((v) => `${v.title} (${v.overdue ? 'en retard' : `${v.ageDays} j`})`).join(' ; ')}`)
+  }
+  if (b.openReserves.length) lines.push(`Réserves non levées : ${b.openReserves.map((r) => r.label).join(' ; ')}`)
+  if (b.anomaliesOpen.length) lines.push(`Anomalies ouvertes : ${b.anomaliesOpen.map((a) => a.description).join(' ; ')}`)
+  if (b.openActions.length) lines.push(`Actions ouvertes : ${b.openActions.map((a) => a.title).join(' ; ')}`)
+
+  if (lines.length === 0) return { ok: true, points: [], mock: false }
+
+  const provider = getAIProvider()
+  const COMMON_RULES = [
+    'RÈGLES STRICTES :',
+    "- Tu ne proposes JAMAIS de décision (jamais « il faut faire X », « changer de fournisseur »).",
+    "- Tu n'inventes RIEN. Chaque point repose sur un élément fourni. Si un sujet n'est pas dans les données, tu ne le mentionnes pas.",
+    "- Phrases courtes, concrètes, en français. Pas d'introduction ni de conclusion.",
+  ]
+  const systemPrompt = (
+    mode === 'visit'
+      ? [
+          "Tu prépares une VISITE de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 5 raisons probables de cette visite — CE QU'IL Y A À FAIRE OU À VÉRIFIER sur place (l'objectif de la visite).",
+          ...COMMON_RULES,
+          '- Priorise ce qui est en retard, bloquant, ou une anomalie/réserve ouverte. Formule comme des choses à vérifier/contrôler/confirmer sur site.',
+        ]
+      : [
+          'Tu es un secrétaire de réunion de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 5 POINTS À DISCUTER ou À ARBITRER en réunion.',
+          ...COMMON_RULES,
+          '- Formule des points à DISCUTER / ARBITRER / TRANCHER. Priorise ce qui traîne, ce qui bloque, ce qui est nouveau.',
+        ]
+  ).join('\n')
+  const userMessage = `Éléments du chantier (déjà calculés) :\n${lines.join('\n')}`
+
+  try {
+    const feature = mode === 'visit' ? 'brief_visit_objective' : 'brief_discussion_points'
+    const points = await withAITracking(feature, user.id, async () => {
+      const r = await provider.complete({
+        systemPrompt,
+        userMessage,
+        responseSchema: discussionSchema,
+        modelTier: 'light',
+        maxOutputTokens: 400,
+      })
+      const parsed = discussionSchema.safeParse(r.parsed)
+      return {
+        result: parsed.success ? parsed.data.points : [],
+        tokens: r.tokens,
+        model: r.model,
+        provider: provider.name,
+        durationMs: r.durationMs,
+      }
+    })
+    return { ok: true, points, mock: provider.name === 'mock' }
+  } catch {
+    return { ok: false, error: 'Génération indisponible' }
   }
 }

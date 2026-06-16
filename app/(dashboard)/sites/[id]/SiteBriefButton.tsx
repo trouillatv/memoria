@@ -29,8 +29,9 @@ import {
   Flag,
   History,
   Check,
+  Sparkles,
 } from 'lucide-react'
-import { getSiteBriefAction, logBriefOpenAction, type SiteBrief } from './site-brief-actions'
+import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type DiscussionPoint } from './site-brief-actions'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -69,9 +70,21 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
   const [selectedSite, setSelectedSite] = useState('')
   const [loadedSite, setLoadedSite] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  // Priorité C — points à discuter (LLM encadré), généré à la demande.
+  const [points, setPoints] = useState<DiscussionPoint[] | null>(null)
+  const [genPending, startGen] = useTransition()
   const meta = MODE_META[mode]
   const MetaIcon = meta.Icon
   const needsSitePick = !siteId
+
+  function generatePoints() {
+    if (!loadedSite) return
+    startGen(async () => {
+      const r = await generateDiscussionPointsAction(loadedSite, mode)
+      if (r.ok) setPoints(r.points)
+      else { toast.error(r.error); setPoints([]) }
+    })
+  }
 
   function loadBrief(sid: string) {
     if (loadedSite === sid && brief) return // déjà chargé pour ce site
@@ -97,6 +110,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
     setSelectedSite(sid)
     setBrief(null)
     setLoadedSite(null)
+    setPoints(null)
     if (sid) loadBrief(sid)
   }
 
@@ -175,6 +189,47 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Préparation du brief…
                 </div>
+              )}
+
+              {/* Priorité C — LLM encadré (sources affichées dessous). Réunion =
+                  « Points à discuter » · Visite = « Objectif de la visite ». */}
+              {brief && (
+                <section className="rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+                      {mode === 'meeting' ? 'Points à discuter' : 'Objectif de la visite'}
+                      <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={generatePoints}
+                      disabled={genPending}
+                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
+                    >
+                      {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                      {points === null ? 'Générer' : 'Régénérer'}
+                    </button>
+                  </div>
+                  {points && points.length > 0 && (
+                    <ul className="space-y-1">
+                      {points.map((p, i) => (
+                        <li key={i} className="flex gap-1.5 text-sm text-sky-950">
+                          <span aria-hidden className="text-sky-500">•</span>
+                          <span className="min-w-0">{p.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {points && points.length === 0 && !genPending && (
+                    <p className="text-xs italic text-muted-foreground">Rien de saillant à discuter pour l&apos;instant.</p>
+                  )}
+                  {points !== null && (
+                    <p className="text-[10px] text-muted-foreground/70">
+                      Rédigé par l&apos;IA à partir des éléments ci-dessous — vérifiez les sources.
+                    </p>
+                  )}
+                </section>
               )}
 
               {brief && <BriefBody brief={brief} mode={mode} />}
