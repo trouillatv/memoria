@@ -68,10 +68,26 @@ export async function findOrCreateSpontaneousIntervention(
   // 1) S'assurer que la mission système existe sur ce site
   const systemMission = await ensureSystemMission(siteId, userId)
 
-  // 2) Récupérer les teams actives de l'agent — au moins une requise
-  const userTeamIds = await listActiveTeamIdsForUser(userId)
+  // 2) Équipe de rattachement (contrainte 048 : assigned_team_id NOT NULL).
+  //    Cas terrain normal : une team active de l'agent. Repli QA : un compte
+  //    admin/manager qui teste le flow mobile n'a souvent AUCUNE team active →
+  //    on prend alors l'équipe d'une mission du site, sinon la capture échoue à
+  //    chaque tentative et bloque la file (indicateur rouge) sans recours.
+  let userTeamIds = await listActiveTeamIdsForUser(userId)
   if (userTeamIds.length === 0) {
-    throw new NoActiveTeamError(userId)
+    const { data: siteMission } = await supabase
+      .from('missions')
+      .select('assigned_team_id')
+      .eq('site_id', siteId)
+      .not('assigned_team_id', 'is', null)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle()
+    if (siteMission?.assigned_team_id) {
+      userTeamIds = [siteMission.assigned_team_id as string]
+    } else {
+      throw new NoActiveTeamError(userId)
+    }
   }
 
   // 3) Chercher une intervention spontanée récente sur ce site, attachée à
