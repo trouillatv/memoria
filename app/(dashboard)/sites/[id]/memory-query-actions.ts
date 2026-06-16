@@ -33,6 +33,10 @@ async function requireOperator(): Promise<boolean> {
   return user.role === 'admin' || user.role === 'manager' || user.role === 'chef_equipe'
 }
 
+// Seuil de similarité sémantique : sous ce niveau, un match est trop faible pour
+// être « proche » — précision >> rappel (une question vague rend peu, pas du bruit).
+const SEM_FLOOR = 0.45
+
 // source_type de trace_embeddings → type d'affichage mémoire.
 const SRC_TO_TYPE: Record<string, MemoryHitType> = {
   anomaly: 'anomaly',
@@ -77,12 +81,19 @@ function computeSummary(hits: SiteMemoryHit[]): SiteMemorySummary | null {
   const spanDays = times.length ? Math.round((Math.max(...times) - Math.min(...times)) / 86_400_000) : null
   const sims = hits.map((h) => h.similarity).filter((s): s is number => s != null)
   const topSim = sims.length ? Math.max(...sims) : 0
+  const strongSem = sims.filter((s) => s >= 0.72).length     // correspondances sémantiques fortes
+  const ftsCount = hits.filter((h) => h.similarity === null).length // matches mot-clé EXACTS
   const count = hits.length
+  // Confiance = FORCE des correspondances, jamais juste le nombre. Plein de
+  // matches sémantiques faibles ≠ confiance forte (sinon « réponse magique »).
   let confidence: 'forte' | 'moyenne' | 'faible'
-  if (count >= 8 || (count >= 4 && topSim >= 0.72)) confidence = 'forte'
-  else if (count >= 3 || topSim >= 0.6) confidence = 'moyenne'
+  if (ftsCount >= 3 || strongSem >= 3) confidence = 'forte'
+  else if (ftsCount >= 1 || strongSem >= 1 || count >= 4) confidence = 'moyenne'
   else confidence = 'faible'
-  return { count, distinctDays: days.size, confidence, recurring: count >= 6, last30dCount, spanDays }
+  // Récurrent : seulement si les correspondances sont au moins décentes (sinon
+  // « 8 traces vaguement liées » s'afficherait à tort « sujet récurrent »).
+  const recurring = count >= 6 && (ftsCount >= 2 || topSim >= 0.62)
+  return { count, distinctDays: days.size, confidence, recurring, last30dCount, spanDays }
 }
 
 export async function askSiteMemoryAction(
@@ -119,6 +130,7 @@ export async function askSiteMemoryAction(
   for (const s of semHits) {
     const type = SRC_TO_TYPE[s.source_type]
     if (!type) continue
+    if (s.similarity < SEM_FLOOR) continue // écarte le bruit (matches trop faibles)
     const key = `${type}:${s.source_id}`
     const existing = merged.get(key)
     if (existing) {
