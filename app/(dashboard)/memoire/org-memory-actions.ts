@@ -364,6 +364,9 @@ export async function synthesizeOrgMemoryAction(
     '- `themes` : regroupe les traces en 2 à 4 thèmes, avec le nombre de traces par thème (`count` ≤ nombre de traces fournies).',
     "INTERDITS STRICTS : aucune prédiction, aucune opinion personnelle, aucune recommandation de décision (« il faut faire X »). Tu synthétises et tu nommes ; tu ne décides pas. Tu n'inventes AUCUN fait absent des traces.",
     'Français, phrases courtes.',
+    // Forme JSON EXPLICITE : sans elle, Gemini (mode JSON) peut renvoyer une
+    // structure qui ne valide pas le schéma → synthèse vide (« pas de synthèse nette »).
+    'Réponds STRICTEMENT en JSON de cette forme, et rien d\'autre : {"retiens":["…"],"hypothesis":null,"themes":[{"label":"…","count":2}]}.',
   ].join('\n')
   const userMessage = `Question : ${q || '(non précisée)'}\n\nTraces retrouvées (${corpus.length}) :\n${corpus.join('\n')}`
 
@@ -374,7 +377,7 @@ export async function synthesizeOrgMemoryAction(
         userMessage,
         responseSchema: synthesisSchema,
         modelTier: 'light',
-        maxOutputTokens: 500,
+        maxOutputTokens: 800,
       })
       const parsed = synthesisSchema.safeParse(r.parsed)
       const data = parsed.success ? parsed.data : EMPTY

@@ -48,6 +48,7 @@ export function OrgMemoryQuery() {
   const [hits, setHits] = useState<OrgMemoryHit[] | null>(null)
   const [summary, setSummary] = useState<OrgMemorySummary | null>(null)
   const [synthesis, setSynthesis] = useState<MemorySynthesis | null>(null)
+  const [synthMock, setSynthMock] = useState(false)
   const [synthPending, startSynth] = useTransition()
   const [pending, startTransition] = useTransition()
 
@@ -56,6 +57,7 @@ export function OrgMemoryQuery() {
     startSynth(async () => {
       const r = await synthesizeOrgMemoryAction(searched, hits)
       setSynthesis(r.ok ? r.synthesis : { retiens: [], hypothesis: null, themes: [] })
+      setSynthMock(r.ok ? r.mock : false)
     })
   }
 
@@ -174,7 +176,13 @@ export function OrgMemoryQuery() {
                 </div>
               )}
               {synthesis && synthesis.retiens.length === 0 && synthesis.themes.length === 0 && !synthPending && (
-                <p className="text-xs italic text-muted-foreground">Pas de synthèse nette à dégager.</p>
+                synthMock ? (
+                  <p className="text-xs italic text-amber-700">
+                    IA en mode démo sur cet environnement (aucune clé configurée) — la synthèse n&apos;est pas générée.
+                  </p>
+                ) : (
+                  <p className="text-xs italic text-muted-foreground">Pas de synthèse nette à dégager.</p>
+                )
               )}
               {synthesis !== null && (
                 <p className="text-[10px] text-muted-foreground/70">
