@@ -62,6 +62,29 @@ Il transforme vos traces dispersées (notes terrain, photos, signalements, preuv
 >
 > Et tout ce capital sera **réutilisable** dès qu'un nouvel AO du même type arrive.
 
+### Pourquoi MemorIA est unique
+
+La plupart des outils vous aident à **stocker** (un drive) ou à **gérer** (un ERP). MemorIA fait quelque chose qu'aucun des deux ne fait, et qu'un chatbot ne fera jamais : il **empêche votre entreprise de perdre sa mémoire**.
+
+#### Le vrai problème qu'on résout
+Dans une entreprise de terrain, le savoir vit dans les têtes. Quand un chef d'équipe part, qu'un CDD se termine, qu'un contrat change de main — **ce savoir disparaît avec la personne**. On réapprend sur le chantier B ce qu'on savait déjà sur le A. On refait les mêmes erreurs. On cherche « qui connaissait ce site ? » et plus personne ne sait.
+
+> [!WARNING] Le coût invisible
+> Ce n'est pas un manque d'outil de gestion — vous en avez déjà. C'est une **fuite de mémoire** : lente, silencieuse, et chère.
+
+#### Ce qui rend MemorIA différent
+- **Il survit aux ruptures humaines.** Un départ, une fin de contrat, une reprise de site : la mémoire **reste et se transmet**, au lieu de partir avec la personne. C'est le cœur du produit (passages de témoin, continuité anticipée).
+- **Il contextualise, il ne génère pas.** MemorIA ne « rédige pas à votre place ». Il **retrouve la bonne trace au bon moment** et vous la montre — *avec sa source*. Vous décidez ; lui prépare le terrain.
+- **Une seule mémoire, plusieurs surfaces.** La même trace nourrit le brief de visite, la préparation de réunion, la recherche, le dossier de preuves. Vous saisissez **une fois**, ça ressort **là où c'est utile**.
+- **Il apparaît au bon moment — et se tait le reste du temps.** Pas d'alertes permanentes, pas de compteur anxiogène. MemorIA ne parle que quand il a quelque chose d'**utile** à dire.
+- **La preuve, pas seulement la donnée.** Photos horodatées, signatures, contributions externes : de quoi répondre à un client, un contrôle ou un litige — un dossier **exportable en un clic**.
+
+#### Ce qu'on refuse d'être (et c'est un choix)
+MemorIA n'est **ni** un outil de surveillance (pas de GPS, pas de productivité par personne), **ni** un ERP RH, **ni** un chatbot. Ces refus ne sont pas des manques : ce sont eux qui gardent l'outil **utile au terrain et accepté par les équipes**.
+
+> [!SUCCESS] En une phrase
+> MemorIA, c'est la mémoire exploitable de votre entreprise — celle qui **reste** quand les gens passent, et qui **ressort au moment exact** où elle change une décision.
+
 ---
 
 ## 2. Première connexion
@@ -316,6 +339,32 @@ Chaque ligne de la Mémoire du lieu a un **badge texte explicite** pour que vous
 - 🩵 **Photo** (cyan) : passage photo
 - 🟢 **Accès** (émeraude) : passage documenté
 - 🟢 **Prestation** : item de checklist exécuté
+
+### Interroger et préparer — la mémoire qui *répond*
+*(C'est ici que MemorIA cesse d'être un dossier et devient une mémoire.)*
+
+Trois boutons en haut de la fiche transforment tout ce qui précède en aide concrète **au moment où vous en avez besoin** :
+
+#### 🧠 Préparer ma visite / Préparer ma réunion
+Un **briefing automatique** du lieu, prêt en quelques secondes — vous n'avez **rien à chercher**. Tout est agrégé et **hiérarchisé par paliers** :
+- 🔴 **Ce qui nécessite mon attention** : vigilances, anomalies ouvertes, réserves non levées, actions en retard ;
+- 🟠 **Ce qui a changé** depuis la dernière réunion (résolu / toujours ouvert / nouveau) ;
+- 🟢 **Ce qu'il faut savoir** · 🔵 **Qui peut m'aider** · ⚪ **Historique**.
+
+L'ordre **s'adapte à l'intention** : une *visite* met en tête ce qu'il faut **vérifier sur place** (et anticipe l'accès / la logistique) ; une *réunion* met en tête ce qu'il faut **aborder / arbitrer**. Le brief est **déterministe** (aucune IA pour l'essentiel) ; à la demande, un bouton « Générer » formule l'**objectif de visite** / les **points à discuter** (IA encadrée, coût négligeable, sources affichées dessous).
+
+> [!SUCCESS] L'unicité
+> Aucun ERP ne vous fait arriver **préparé** sur un chantier. Ici, la même mémoire que vous nourrissez ressort — au bon moment, sous la forme exacte dont vous avez besoin.
+
+#### 🔍 Interroger ce site
+Posez une question (*« infiltration », « SudÉlec », « accès camion »…*) → MemorIA **retrouve les traces**, il ne répond pas à votre place. Les résultats sont **honnêtes** :
+- les *✓ Correspondances exactes* (le mot est vraiment là) sont **séparées** des *≈ Concepts proches* (sujets voisins, à vérifier) ;
+- la **confiance** n'est « forte » que sur de vrais matches mot-clé — jamais sur du bruit sémantique ;
+- « **Ce qui revient ici** » vous suggère les mots **réellement récurrents** du site.
+
+#### Aller plus loin
+- **Interroger l'entreprise** (`/memoire`, manager/admin) : la même recherche, mais **sur tous les chantiers** — *« a-t-on déjà eu ce problème ailleurs, et comment on l'a réglé ? »*. Prend toute sa valeur avec du volume.
+- **Atelier mémoire** : les **résonances** du site — échos sémantiques avec d'autres moments de la mémoire.
 
 ---
 
