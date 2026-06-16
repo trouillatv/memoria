@@ -21,7 +21,7 @@ export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: st
   return (
     <nav
       aria-label="Onglets de la fiche chantier"
-      className="flex items-center border-b overflow-x-auto md:hidden -mb-px"
+      className="flex items-center border-b overflow-x-auto scrollbar-hide md:hidden -mb-px"
     >
       {SITE_TABS.map((t) => (
         <Link
