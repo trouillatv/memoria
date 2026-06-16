@@ -12,6 +12,7 @@ import {
 } from '@/lib/perception/gaps'
 
 import { localDateOf, todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { FoldableSection } from './FoldableSection'
 
 function formatMonthYear(iso: string): string {
   const d = new Date(iso)
@@ -220,10 +221,12 @@ export function TraceStream({ events, meta }: Props) {
       )}
 
       {/* ── Événements (flux narratif) ─────────────────────────────────── */}
-      <div className="space-y-1">
-        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Événements
-        </h3>
+      <FoldableSection
+        title="Événements"
+        titleClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+        className="space-y-1"
+        bodyClassName="mt-1"
+      >
         <ol className="space-y-0">
         {events.map((event, idx) => {
         const ageDays = ageDaysSince(event.occurredAt, now)
@@ -267,7 +270,7 @@ export function TraceStream({ events, meta }: Props) {
         )
       })}
         </ol>
-      </div>
+      </FoldableSection>
     </div>
   )
 }

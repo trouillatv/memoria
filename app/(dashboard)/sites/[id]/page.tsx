@@ -55,6 +55,7 @@ import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
+import { FoldableSection } from './FoldableSection'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
@@ -305,11 +306,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       )}
 
       <Card className={cn(tabClass('memoire'))}>
-        <CardHeader>
-          <CardTitle>Mémoire du lieu</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TraceStream events={timeline} meta={memoryMeta} />
+        <CardContent className="pt-6">
+          <FoldableSection title="Mémoire du lieu" titleClassName="text-base font-semibold tracking-tight" bodyClassName="mt-4">
+            <TraceStream events={timeline} meta={memoryMeta} />
+          </FoldableSection>
         </CardContent>
       </Card>
 
