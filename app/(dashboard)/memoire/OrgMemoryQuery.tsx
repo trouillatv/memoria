@@ -7,7 +7,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info } from 'lucide-react'
 import {
   askOrgMemoryAction,
   synthesizeOrgMemoryAction,
@@ -49,11 +49,14 @@ export function OrgMemoryQuery() {
   const [summary, setSummary] = useState<OrgMemorySummary | null>(null)
   const [synthesis, setSynthesis] = useState<MemorySynthesis | null>(null)
   const [synthMock, setSynthMock] = useState(false)
+  // Double-clic avant l'IA : 1er clic arme + prévient du coût, 2e exécute.
+  const [confirmSynth, setConfirmSynth] = useState(false)
   const [synthPending, startSynth] = useTransition()
   const [pending, startTransition] = useTransition()
 
   function synthesize() {
     if (!hits || hits.length === 0) return
+    setConfirmSynth(false) // masque aussitôt « Confirmer / Annuler » + la note coût
     startSynth(async () => {
       const r = await synthesizeOrgMemoryAction(searched, hits)
       setSynthesis(r.ok ? r.synthesis : { retiens: [], hypothesis: null, themes: [] })
@@ -133,16 +136,44 @@ export function OrgMemoryQuery() {
                   <Sparkles className="h-3.5 w-3.5 text-sky-600" /> Synthèse
                   <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
                 </h3>
-                <button
-                  type="button"
-                  onClick={synthesize}
-                  disabled={synthPending}
-                  className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
-                >
-                  {synthPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {synthesis === null ? 'Synthétiser' : 'Régénérer'}
-                </button>
+                {confirmSynth ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={synthesize}
+                      disabled={synthPending}
+                      className="inline-flex items-center gap-1 rounded-lg border border-sky-600 bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                    >
+                      {synthPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Confirmer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmSynth(false)}
+                      disabled={synthPending}
+                      className="rounded-lg border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSynth(true)}
+                    disabled={synthPending}
+                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
+                  >
+                    {synthPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {synthesis === null ? 'Synthétiser' : 'Régénérer'}
+                  </button>
+                )}
               </div>
+              {confirmSynth && !synthPending && (
+                <p className="inline-flex items-start gap-1 text-[11px] text-amber-700">
+                  <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                  Cette synthèse lance une requête IA — elle consomme un peu de crédit (coût très faible). Confirmer&nbsp;?
+                </p>
+              )}
               {synthesis && synthesis.retiens.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ce qu&apos;il faut retenir</p>
