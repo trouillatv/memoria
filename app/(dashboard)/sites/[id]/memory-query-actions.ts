@@ -236,7 +236,19 @@ export interface SearchTheme {
   count: number
 }
 
-const themesSchema = z.object({
+/** Phase 2C — synthèse utile à l'action (pas juste descriptive). */
+export interface MemorySynthesis {
+  /** « Ce qu'il faut retenir / surveiller » — 1 à 4 points concrets. */
+  retiens: string[]
+  /** Hypothèse PRUDENTE (questions « pourquoi ») — une lecture plausible, jamais une vérité. */
+  hypothesis: string | null
+  /** Regroupement des traces en thèmes comptés. */
+  themes: SearchTheme[]
+}
+
+const synthesisSchema = z.object({
+  retiens: z.array(z.string().min(1).max(280)).max(4),
+  hypothesis: z.string().max(400).nullable().optional(),
   themes: z.array(z.object({
     label: z.string().min(1).max(80),
     count: z.number().int().min(1),
@@ -247,7 +259,7 @@ export async function synthesizeSiteMemoryAction(
   siteId: string,
   question: string,
   hits: SiteMemoryHit[],
-): Promise<{ ok: true; themes: SearchTheme[]; mock: boolean } | { ok: false; error: string }> {
+): Promise<{ ok: true; synthesis: MemorySynthesis; mock: boolean } | { ok: false; error: string }> {
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false, error: 'Non authentifié' }
   if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
@@ -260,41 +272,43 @@ export async function synthesizeSiteMemoryAction(
     .slice(0, 18)
     .map((h, i) => `${i + 1}. [${h.type}] ${(h.title ? h.title + ' — ' : '') + (h.snippet || '')}`.slice(0, 240))
     .filter((l) => l.length > 6)
-  if (corpus.length === 0) return { ok: true, themes: [], mock: false }
+  const EMPTY: MemorySynthesis = { retiens: [], hypothesis: null, themes: [] }
+  if (corpus.length === 0) return { ok: true, synthesis: EMPTY, mock: false }
 
   const provider = getAIProvider()
   const systemPrompt = [
-    "Tu analyses des TRACES de mémoire d'un chantier, retrouvées pour une question. Ta SEULE tâche : les regrouper en 2 à 4 THÈMES, avec le nombre de traces par thème.",
-    'RÈGLES STRICTES :',
-    '- Tu DÉCRIS ce qui revient, JAMAIS pourquoi. Aucune cause, aucune prédiction, aucune opinion, aucune recommandation.',
-    '- Chaque thème correspond à des traces réellement présentes. `count` = nombre de traces de ce thème ; la somme ne dépasse pas le nombre de traces fournies.',
-    '- Labels courts (2 à 4 mots), factuels, en français. Tu ne reformules pas le contenu, tu nommes le sujet commun.',
+    "Tu es le copilote mémoire d'un chantier. À partir UNIQUEMENT des traces retrouvées pour la question, tu produis une SYNTHÈSE utile pour agir. Tu remplis trois champs :",
+    "- `retiens` : 1 à 4 points concrets — CE QU'IL FAUT RETENIR / SURVEILLER (ce qui traîne, revient, bloque). Factuel, appuyé sur les traces.",
+    "- `hypothesis` : UNIQUEMENT si la question demande un « pourquoi ». Formule UNE hypothèse PRUDENTE, à partir des SEULES traces. Commence par « D'après les traces, » et reste une hypothèse, JAMAIS une vérité affirmée. Sinon laisse null.",
+    '- `themes` : regroupe les traces en 2 à 4 thèmes, avec le nombre de traces par thème (`count` ≤ nombre de traces fournies).',
+    "INTERDITS STRICTS : aucune prédiction, aucune opinion personnelle, aucune recommandation de décision (« il faut faire X »). Tu synthétises et tu nommes ; tu ne décides pas. Tu n'inventes AUCUN fait absent des traces.",
+    'Français, phrases courtes.',
   ].join('\n')
   const userMessage = `Question : ${q || '(non précisée)'}\n\nTraces retrouvées (${corpus.length}) :\n${corpus.join('\n')}`
 
   try {
-    const themes = await withAITracking('search_synthesis', user.id, async () => {
+    const synthesis = await withAITracking('search_synthesis', user.id, async () => {
       const r = await provider.complete({
         systemPrompt,
         userMessage,
-        responseSchema: themesSchema,
+        responseSchema: synthesisSchema,
         modelTier: 'light',
-        maxOutputTokens: 300,
+        maxOutputTokens: 500,
       })
-      const parsed = themesSchema.safeParse(r.parsed)
-      // Garde-fou : un thème ne peut pas compter plus que le nombre de traces.
-      const clean = (parsed.success ? parsed.data.themes : [])
+      const parsed = synthesisSchema.safeParse(r.parsed)
+      const data = parsed.success ? parsed.data : EMPTY
+      const themes = (data.themes ?? [])
         .map((t) => ({ label: t.label, count: Math.min(t.count, corpus.length) }))
         .filter((t) => t.count > 0)
       return {
-        result: clean,
+        result: { retiens: data.retiens ?? [], hypothesis: data.hypothesis ?? null, themes } as MemorySynthesis,
         tokens: r.tokens,
         model: r.model,
         provider: provider.name,
         durationMs: r.durationMs,
       }
     })
-    return { ok: true, themes, mock: provider.name === 'mock' }
+    return { ok: true, synthesis, mock: provider.name === 'mock' }
   } catch {
     return { ok: false, error: 'Synthèse indisponible' }
   }

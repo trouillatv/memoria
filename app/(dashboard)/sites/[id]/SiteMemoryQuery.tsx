@@ -17,7 +17,7 @@ import {
   type SiteMemorySummary,
   type SiteTeamHit,
   type SitePhotoHit,
-  type SearchTheme,
+  type MemorySynthesis,
 } from './memory-query-actions'
 
 const CONFIDENCE_META: Record<SiteMemorySummary['confidence'], { label: string; cls: string }> = {
@@ -52,7 +52,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   const [summary, setSummary] = useState<SiteMemorySummary | null>(null)
   const [teams, setTeams] = useState<SiteTeamHit[] | null>(null)
   const [photos, setPhotos] = useState<SitePhotoHit[] | null>(null)
-  const [themes, setThemes] = useState<SearchTheme[] | null>(null)
+  const [synthesis, setSynthesis] = useState<MemorySynthesis | null>(null)
   const [synthPending, startSynth] = useTransition()
   const [pending, startTransition] = useTransition()
 
@@ -60,7 +60,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     if (!hits || hits.length === 0) return
     startSynth(async () => {
       const r = await synthesizeSiteMemoryAction(siteId, searched, hits)
-      setThemes(r.ok ? r.themes : [])
+      setSynthesis(r.ok ? r.synthesis : { retiens: [], hypothesis: null, themes: [] })
     })
   }
 
@@ -69,7 +69,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   function runSearch(query: string) {
     const text = query.trim()
     if (text.length < 2) return
-    setMode('search'); setSearched(text); setThemes(null)
+    setMode('search'); setSearched(text); setSynthesis(null)
     startTransition(async () => {
       const r = await askSiteMemoryAction(siteId, text)
       setHits(r.ok ? r.hits : [])
@@ -167,24 +167,48 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
                   className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
                 >
                   {synthPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {themes === null ? 'Synthétiser' : 'Régénérer'}
+                  {synthesis === null ? 'Synthétiser' : 'Régénérer'}
                 </button>
               </div>
-              {themes && themes.length > 0 && (
-                <ul className="space-y-1">
-                  {themes.map((t, i) => (
-                    <li key={i} className="flex items-center justify-between gap-2 text-sm text-sky-950">
-                      <span className="min-w-0">{t.label}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{t.count} trace{t.count > 1 ? 's' : ''}</span>
-                    </li>
-                  ))}
-                </ul>
+              {synthesis && synthesis.retiens.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ce qu&apos;il faut retenir</p>
+                  <ul className="space-y-1">
+                    {synthesis.retiens.map((t, i) => (
+                      <li key={i} className="flex gap-1.5 text-sm text-sky-950">
+                        <span aria-hidden className="text-sky-500">•</span>
+                        <span className="min-w-0">{t}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
-              {themes && themes.length === 0 && !synthPending && (
-                <p className="text-xs italic text-muted-foreground">Pas de thème net à dégager.</p>
+              {synthesis?.hypothesis && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Hypothèse · à confirmer</p>
+                  <p className="mt-0.5 text-sm italic text-amber-900">{synthesis.hypothesis}</p>
+                </div>
               )}
-              {themes !== null && (
-                <p className="text-[10px] text-muted-foreground/70">Décrit ce qui revient, jamais pourquoi — vérifiez les sources ci-dessous.</p>
+              {synthesis && synthesis.themes.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Thèmes observés</p>
+                  <ul className="space-y-0.5">
+                    {synthesis.themes.map((t, i) => (
+                      <li key={i} className="flex items-center justify-between gap-2 text-sm text-sky-950">
+                        <span className="min-w-0">{t.label}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{t.count} trace{t.count > 1 ? 's' : ''}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {synthesis && synthesis.retiens.length === 0 && synthesis.themes.length === 0 && !synthPending && (
+                <p className="text-xs italic text-muted-foreground">Pas de synthèse nette à dégager.</p>
+              )}
+              {synthesis !== null && (
+                <p className="text-[10px] text-muted-foreground/70">
+                  Synthèse à partir des traces ci-dessous — vérifiez les sources. Une hypothèse est une lecture plausible, pas une vérité.
+                </p>
               )}
             </div>
 
