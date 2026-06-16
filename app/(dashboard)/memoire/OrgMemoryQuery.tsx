@@ -17,13 +17,17 @@ import {
   type MemorySynthesis,
 } from './org-memory-actions'
 
+// Chips curés (fallback quand la donnée est encore maigre au pilote) : les
+// thèmes cross-chantiers que la mémoire d'ENTREPRISE sait capitaliser — pas des
+// mots au hasard, mais les récurrences à valeur d'expérience partagée en BTP.
+const ORG_EXAMPLE_CHIPS = ['infiltrations', 'fournisseurs', 'SOCOTEC', 'ferraillage', 'réserves', 'livraisons']
+
 const CONFIDENCE_META: Record<OrgMemorySummary['confidence'], { label: string; cls: string }> = {
   forte:   { label: 'Confiance forte',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   moyenne: { label: 'Confiance moyenne', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   faible:  { label: 'Confiance faible',  cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 }
 
-const EXAMPLES = ['fournisseur', 'infiltration', 'SOCOTEC', 'toiture', 'réserve']
 
 const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof StickyNote; cls: string }> = {
   anomaly:      { label: 'Anomalie',     Icon: AlertTriangle, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -156,25 +160,37 @@ export function OrgMemoryQuery() {
         </button>
       </form>
 
-      <div className="space-y-1.5">
-        {terms && terms.length > 0 && (
+      {/* Chips d'entrée. RIEN pendant le chargement (terms === null) : pas de
+          « flash » d'exemples codés. Puis : les vrais thèmes (données) s'il y en a,
+          SINON un jeu curé — questions cross-chantiers que la mémoire d'entreprise
+          sait capitaliser (infiltrations réglées ailleurs, fournisseurs qui
+          reviennent, contrôles, qualité structure). */}
+      {terms && terms.length > 0 ? (
+        <div className="space-y-1.5">
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
             Ce qui revient dans l&apos;entreprise
           </p>
-        )}
+          <div className="flex flex-wrap gap-1.5">
+            {terms.map(({ term, count }) => (
+              <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
+                title={`${count} trace${count > 1 ? 's' : ''}`}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+                {term}
+                <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : terms && terms.length === 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {/* Pistes pilotées par la donnée (mots récurrents cross-chantiers) ; à
-              défaut, exemples génériques tant qu'il y a trop peu de traces. */}
-          {(terms && terms.length > 0 ? terms : EXAMPLES.map((term) => ({ term, count: 0 }))).map(({ term, count }) => (
-            <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
-              title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-              {term}
-              {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
+          {ORG_EXAMPLE_CHIPS.map((ex) => (
+            <button key={ex} type="button" onClick={() => { setQ(ex); runSearch(ex) }} disabled={pending}
+              className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+              {ex}
             </button>
           ))}
         </div>
-      </div>
+      ) : null}
 
       {/* ── Résultats ───────────────────────────────────────────────────── */}
       {pending && (
