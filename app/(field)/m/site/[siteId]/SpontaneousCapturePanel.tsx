@@ -74,21 +74,19 @@ export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
     })
   }
 
-  // État 1 : bouton photo (sticky bottom, pleine largeur, 80px)
+  // État 1 : déclencheur compact, EN FLUX dans la zone « Actions du lieu »
+  // (plus de gros bouton flottant 80px). L'état « photo prise » reste en overlay.
   if (!photo) {
     return (
       <>
-        <div className="fixed inset-x-0 bottom-0 p-4 bg-background border-t safe-bottom">
-          <button
-            type="button"
-            onClick={openCamera}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold text-base active:scale-[0.98] transition-transform shadow-lg"
-            style={{ minHeight: 80 }}
-          >
-            <Camera className="h-6 w-6" />
-            Photo
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={openCamera}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium active:scale-[0.99] transition-transform"
+        >
+          <Camera className="h-4 w-4" />
+          Photo
+        </button>
         <input
           ref={inputRef}
           type="file"

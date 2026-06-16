@@ -78,7 +78,7 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
     )
   }
 
-  return (
+  const formCard = (
     <div className="rounded-xl border bg-card p-3 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium inline-flex items-center gap-1.5">
@@ -168,4 +168,16 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
       </div>
     </div>
   )
+
+  // Mobile : overlay plein écran — permet de placer le déclencheur ➕ Action dans
+  // une grille compacte sans écraser le formulaire. Desktop : inline comme avant.
+  if (variant === 'mobile') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3">
+        <div className="w-full max-w-lg my-2">{formCard}</div>
+      </div>
+    )
+  }
+
+  return formCard
 }

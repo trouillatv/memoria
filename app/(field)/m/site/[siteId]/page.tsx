@@ -22,7 +22,8 @@ import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
-import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
+import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera, Search } from 'lucide-react'
+import { TogglePanel } from '@/app/(dashboard)/sites/[id]/TogglePanel'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
   planned: { label: 'Prévue', cls: 'bg-slate-100 text-slate-700' },
@@ -304,16 +305,30 @@ export default async function FieldSitePage({
         </section>
       )}
 
-      {/* 🔍 Interroger ce site — moteur d'enquête (retrieval-only, zéro LLM) */}
-      <SiteMemoryQuery siteId={siteId} variant="mobile" />
+      {/* Actions du lieu — zone compacte « bouttonifiée » (comme desktop) : la
+          recherche est repliée derrière un bouton et les déclencheurs de capture
+          sont groupés. Les briefs « Préparer ma visite/réunion » restent en haut
+          (moment magique), seul le secondaire est condensé ici. */}
+      <section className="space-y-2 pt-3 border-t border-border/40">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Actions du lieu
+        </h2>
 
-      {/* Capture terrain : ➕ Action (intention) · Compte-rendu (riche) · Photo (preuve) */}
-      <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
+        {/* 🔍 Interroger ce site — replié (au lieu du champ toujours ouvert) */}
+        <TogglePanel label="Rechercher sur ce lieu" icon={<Search className="h-4 w-4" />}>
+          <SiteMemoryQuery siteId={siteId} variant="mobile" />
+        </TogglePanel>
 
-      {/* Compte-rendu multimodal : voix + texte + photos + pièces → décisions */}
-      <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" />
+        {/* Captures rapides côte à côte : ➕ Action (intention) · 📷 Photo (preuve).
+            Les deux ouvrent en overlay → pas d'écrasement dans la grille. */}
+        <div className="grid grid-cols-2 gap-2">
+          <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
+          <SpontaneousCapturePanel siteId={siteId} />
+        </div>
 
-      <SpontaneousCapturePanel siteId={siteId} />
+        {/* Compte-rendu multimodal (riche) : voix + texte + photos + pièces → décisions */}
+        <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
+      </section>
     </div>
   )
 }
