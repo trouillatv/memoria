@@ -9,6 +9,7 @@ import { listSites } from '@/lib/db/sites'
 import { EmptyState } from '@/components/ui/empty-state'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { NewMeetingButton } from './NewMeetingButton'
+import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import { DeleteMeetingButton, CleanupDraftMeetingsButton } from './MeetingActions'
 import type { SiteReportStatus } from '@/types/db'
 
@@ -116,6 +117,7 @@ export default async function MeetingsPage({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <CleanupDraftMeetingsButton count={draftFailedCount} />
+          <SiteBriefButton mode="meeting" sites={siteOptions} variant="desktop" />
           <NewMeetingButton contracts={contractOptions} sites={siteOptions} />
         </div>
       </header>

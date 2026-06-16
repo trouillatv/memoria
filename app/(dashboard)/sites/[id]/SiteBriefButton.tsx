@@ -33,7 +33,10 @@ import {
 import { getSiteBriefAction, logBriefOpenAction, type SiteBrief } from './site-brief-actions'
 
 interface Props {
-  siteId: string
+  /** Site fixé par le contexte (fiche site / mobile site). */
+  siteId?: string
+  /** Sélecteur de site (quand aucun site n'est fixé, ex. page Réunions). */
+  sites?: Array<{ id: string; name: string }>
   variant?: 'mobile' | 'desktop'
   /** 'visit' = avant d'aller sur site · 'meeting' = avant une réunion chantier. */
   mode?: 'visit' | 'meeting'
@@ -60,35 +63,48 @@ function ageDaysLabel(iso: string | null): string | null {
   return `il y a ${days} j`
 }
 
-export function SiteBriefButton({ siteId, variant = 'desktop', mode = 'visit' }: Props) {
+export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit' }: Props) {
   const [open, setOpen] = useState(false)
   const [brief, setBrief] = useState<SiteBrief | null>(null)
+  const [selectedSite, setSelectedSite] = useState('')
+  const [loadedSite, setLoadedSite] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const meta = MODE_META[mode]
   const MetaIcon = meta.Icon
+  const needsSitePick = !siteId
 
-  function load() {
-    setOpen(true)
-    if (brief) return // déjà chargé pour ce site
-    // Usage produit (best-effort, ne bloque pas l'UX) — seulement sur le vrai
-    // fetch, pas sur une ré-ouverture cachée (le `return` ci-dessus l'évite).
-    void logBriefOpenAction(siteId, mode)
+  function loadBrief(sid: string) {
+    if (loadedSite === sid && brief) return // déjà chargé pour ce site
+    void logBriefOpenAction(sid, mode) // usage produit, best-effort
     startTransition(async () => {
-      const r = await getSiteBriefAction(siteId)
+      const r = await getSiteBriefAction(sid)
       if (r.ok) {
         setBrief(r.brief)
+        setLoadedSite(sid)
       } else {
         toast.error(r.error)
-        setOpen(false)
+        if (siteId) setOpen(false)
       }
     })
+  }
+
+  function openPanel() {
+    setOpen(true)
+    if (siteId) loadBrief(siteId) // site fixe → charge direct ; sinon on attend la sélection
+  }
+
+  function pickSite(sid: string) {
+    setSelectedSite(sid)
+    setBrief(null)
+    setLoadedSite(null)
+    if (sid) loadBrief(sid)
   }
 
   return (
     <>
       <button
         type="button"
-        onClick={load}
+        onClick={openPanel}
         className={
           variant === 'mobile'
             ? 'w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3.5 text-base font-semibold text-background active:scale-[0.99] transition-transform'
@@ -137,6 +153,23 @@ export function SiteBriefButton({ siteId, variant = 'desktop', mode = 'visit' }:
             </div>
 
             <div className="px-4 py-4 space-y-5">
+              {needsSitePick && (
+                <div className="space-y-1">
+                  <label htmlFor="brief-site" className="text-xs text-muted-foreground">Site</label>
+                  <select
+                    id="brief-site"
+                    value={selectedSite}
+                    onChange={(e) => pickSite(e.target.value)}
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">— choisir un site —</option>
+                    {(sites ?? []).map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {pending && !brief && (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -145,6 +178,12 @@ export function SiteBriefButton({ siteId, variant = 'desktop', mode = 'visit' }:
               )}
 
               {brief && <BriefBody brief={brief} mode={mode} />}
+
+              {needsSitePick && !selectedSite && !pending && (
+                <p className="py-6 text-center text-sm italic text-muted-foreground">
+                  Choisis un site pour préparer la réunion.
+                </p>
+              )}
             </div>
           </div>
         </div>
