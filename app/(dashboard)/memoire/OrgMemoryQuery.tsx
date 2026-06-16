@@ -7,7 +7,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen } from 'lucide-react'
 import {
   askOrgMemoryAction,
   synthesizeOrgMemoryAction,
@@ -29,6 +29,7 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   site_note:    { label: 'Note',         Icon: StickyNote,    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   photo:        { label: 'Photo',        Icon: Camera,        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  document:     { label: 'Document',     Icon: BookOpen,      cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 }
 
 function fmtDate(iso: string | null): string {
@@ -215,9 +216,15 @@ export function OrgMemoryQuery() {
                       <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
                         <Icon className="h-2.5 w-2.5" /> {meta.label}
                       </span>
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-foreground/80">
-                        <MapPin className="h-2.5 w-2.5" /> {h.siteName}
-                      </span>
+                      {h.sourceLabel ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-700">
+                          <BookOpen className="h-2.5 w-2.5" /> {h.sourceLabel}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-foreground/80">
+                          <MapPin className="h-2.5 w-2.5" /> {h.siteName}
+                        </span>
+                      )}
                       {h.occurredAt && <span className="text-[10px] text-muted-foreground tabular-nums">{fmtDate(h.occurredAt)}</span>}
                       {h.similarity !== null && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700"><Sparkles className="h-2.5 w-2.5" />proche</span>

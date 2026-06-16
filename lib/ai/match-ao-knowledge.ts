@@ -84,6 +84,63 @@ function groupBySource(matches: RawKnowledgeMatch[]): KnowledgeMatchBySource[] {
   }))
 }
 
+export interface OrgKnowledgeHit {
+  sourceDomain: SourceDomain
+  sourceId: string
+  label: string
+  snippet: string
+  similarity: number
+}
+
+/**
+ * P7+ — recherche dans la mémoire DOCUMENTAIRE (bibliothèque + AO passés +
+ * documents) pour « Interroger l'entreprise ». Visibilité des documents
+ * respectée AU RECALL (canViewDocument) ; library / tender_history = savoir
+ * entreprise (non filtré). Dédup par source, meilleure similarité gardée.
+ */
+export async function searchKnowledgeForOrg(params: {
+  tenantId: string
+  queryEmbedding: number[]
+  role: UserRole | null
+  limit?: number
+}): Promise<OrgKnowledgeHit[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('find_similar_knowledge_chunks', {
+    p_tenant_id: params.tenantId,
+    p_embedding: `[${params.queryEmbedding.join(',')}]`,
+    p_source_domains: ['library', 'tender_history', 'document'],
+    p_limit: params.limit ?? 12,
+    p_threshold: 0.55,
+  })
+  if (error) {
+    console.error('[searchKnowledgeForOrg] RPC error', JSON.stringify(error))
+    return []
+  }
+  const visible = ((data ?? []) as RawKnowledgeMatch[]).filter((m) => {
+    if (m.source_domain !== 'document') return true
+    const lvl = (m.metadata?.visibility_level as DocumentVisibility) ?? 'manager'
+    return canViewDocument(params.role, lvl)
+  })
+  const bySource = new Map<string, OrgKnowledgeHit>()
+  for (const m of visible) {
+    const key = `${m.source_domain}:${m.source_id}`
+    const existing = bySource.get(key)
+    if (existing) { existing.similarity = Math.max(existing.similarity, m.similarity); continue }
+    const title = (m.metadata?.title as string | undefined) ?? null
+    const label = m.source_domain === 'library' ? (title ?? 'Bibliothèque')
+      : m.source_domain === 'tender_history' ? (title ?? 'AO passé')
+      : (title ?? 'Document')
+    bySource.set(key, {
+      sourceDomain: m.source_domain as SourceDomain,
+      sourceId: m.source_id,
+      label,
+      snippet: m.chunk_text,
+      similarity: m.similarity,
+    })
+  }
+  return [...bySource.values()].sort((a, b) => b.similarity - a.similarity)
+}
+
 /**
  * Matche un AO contre la mémoire documentaire du tenant : bibliothèque + AO
  * passés + documents (source_domain='document', A2).

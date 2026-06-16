@@ -17,13 +17,16 @@ import { withAITracking } from '@/services/ai/tracking'
 import { searchMemory, type MemoryHitType } from '@/lib/db/memory-search'
 import { getEmbedding } from '@/lib/ai/embeddings'
 import { findSimilarTracesForTenant } from '@/lib/ai/embed-trace'
+import { searchKnowledgeForOrg } from '@/lib/ai/match-ao-knowledge'
 import { listSites } from '@/lib/db/sites'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { UserRole } from '@/types/db'
 
-async function requireOperator(): Promise<boolean> {
+async function requireOperator(): Promise<{ role: UserRole } | null> {
   const user = await getCurrentUserWithProfile()
-  if (!user) return false
-  return user.role === 'admin' || user.role === 'manager'
+  if (!user) return null
+  if (user.role !== 'admin' && user.role !== 'manager') return null
+  return { role: user.role }
 }
 
 // Seuil de similarité sémantique : sous ce niveau, un match est trop faible pour
@@ -40,7 +43,8 @@ const SRC_TO_TYPE: Record<string, MemoryHitType> = {
 }
 
 export interface OrgMemoryHit {
-  type: MemoryHitType
+  /** 'document' = couche Connaissance (bibliothèque / AO passé / document). */
+  type: MemoryHitType | 'document'
   id: string
   title: string
   snippet: string
@@ -48,10 +52,13 @@ export interface OrgMemoryHit {
   occurredAt: string | null
   /** Match sémantique (0..1) ou null si trouvé seulement en plein-texte. */
   similarity: number | null
-  /** Site d'origine — clé du moteur org-level. */
+  /** Site d'origine (traces) — clé du moteur org-level. null pour la connaissance. */
   siteId: string | null
-  /** Nom résolu via listSites ; « Site inconnu » si non résoluble. */
+  /** Nom résolu via listSites ; « Site inconnu » si non résoluble ; '' si knowledge. */
   siteName: string
+  /** Couche Connaissance : libellé de la source (titre doc/biblio/AO) + domaine. */
+  sourceLabel: string | null
+  sourceDomain: string | null
 }
 
 /** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Identique au
@@ -100,7 +107,8 @@ async function getOrgTenantId(orgId: string | null): Promise<string | null> {
 export async function askOrgMemoryAction(
   question: string,
 ): Promise<{ ok: true; hits: OrgMemoryHit[]; summary: OrgMemorySummary | null } | { ok: false; error: string }> {
-  if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
+  const op = await requireOperator()
+  if (!op) return { ok: false, error: 'Accès refusé' }
 
   const q = (question ?? '').trim().slice(0, 200)
   if (q.length < 2) return { ok: true, hits: [], summary: null }
@@ -119,9 +127,12 @@ export async function askOrgMemoryAction(
   const resolveSiteName = (siteId: string | null): string =>
     (siteId && siteNameMap.get(siteId)) || 'Site inconnu'
 
-  const semHits = queryEmbedding && tenantId
-    ? await findSimilarTracesForTenant({ tenantId, queryEmbedding, limit: 30, threshold: SEM_FLOOR }).catch(() => [])
-    : []
+  const [semHits, knowledgeHits] = queryEmbedding && tenantId
+    ? await Promise.all([
+        findSimilarTracesForTenant({ tenantId, queryEmbedding, limit: 30, threshold: SEM_FLOOR }).catch(() => []),
+        searchKnowledgeForOrg({ tenantId, queryEmbedding, role: op.role, limit: 10 }).catch(() => []),
+      ])
+    : [[], []]
 
   type Merged = OrgMemoryHit & { fts: number }
   const merged = new Map<string, Merged>()
@@ -131,6 +142,7 @@ export async function askOrgMemoryAction(
       type: h.type, id: h.id, title: h.title, snippet: h.snippet,
       occurredAt: h.occurredAt, similarity: null, fts: h.rank,
       siteId: h.siteId, siteName: resolveSiteName(h.siteId),
+      sourceLabel: null, sourceDomain: null,
     })
   }
   for (const s of semHits) {
@@ -158,6 +170,19 @@ export async function askOrgMemoryAction(
       similarity: s.similarity, fts: 0,
       siteId: s.site_id ?? null,
       siteName: resolveSiteName(s.site_id ?? null),
+      sourceLabel: null, sourceDomain: null,
+    })
+  }
+
+  // Couche Connaissance (bibliothèque / AO passés / documents) — attribuée à sa
+  // SOURCE documentaire, pas à un site. Visibilité docs déjà filtrée au recall.
+  for (const k of knowledgeHits) {
+    merged.set(`knowledge:${k.sourceDomain}:${k.sourceId}`, {
+      type: 'document', id: `${k.sourceDomain}:${k.sourceId}`,
+      title: k.label, snippet: k.snippet, occurredAt: null,
+      similarity: k.similarity, fts: 0,
+      siteId: null, siteName: '',
+      sourceLabel: k.label, sourceDomain: k.sourceDomain,
     })
   }
 
