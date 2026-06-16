@@ -112,30 +112,28 @@ export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
           className="w-full max-h-40 object-cover"
         />
       </div>
-      <button
-        type="button"
-        onClick={() => deposit('passage')}
-        disabled={pending}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background font-semibold text-base active:scale-[0.98] transition-transform shadow-lg disabled:opacity-60"
-        style={{ minHeight: 80 }}
-      >
-        <Check className="h-6 w-6" />
-        Passage
-      </button>
-      <button
-        type="button"
-        onClick={() => deposit('anomaly')}
-        disabled={pending}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 font-semibold text-base active:scale-[0.98] transition-transform disabled:opacity-60"
-        style={{
-          minHeight: 80,
-          borderColor: '#8a3030', // V5.1 palette --scar (à graver en CSS var dans une slice future)
-          color: '#8a3030',
-        }}
-      >
-        <AlertTriangle className="h-6 w-6" />
-        Anomalie
-      </button>
+      {/* Choix compact (boutons réduits — plus de pavés 80px agressifs). */}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => deposit('passage')}
+          disabled={pending}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 active:scale-[0.99] transition-transform disabled:opacity-60"
+        >
+          <Check className="h-4 w-4" />
+          Passage
+        </button>
+        <button
+          type="button"
+          onClick={() => deposit('anomaly')}
+          disabled={pending}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border font-medium text-sm py-2.5 active:scale-[0.99] transition-transform disabled:opacity-60"
+          style={{ borderColor: '#8a3030', color: '#8a3030' }}
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Anomalie
+        </button>
+      </div>
       <button
         type="button"
         onClick={cancelPhoto}

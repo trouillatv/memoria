@@ -54,7 +54,7 @@ export default async function ContractMissionsPage({
       <ContractTabs contractId={id} active="missions" />
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Missions ({missions.length})
             {filterSite && (
