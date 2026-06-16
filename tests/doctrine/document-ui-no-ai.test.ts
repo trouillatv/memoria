@@ -15,7 +15,11 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf-8')
 const UI_FILES = [
   'app/(dashboard)/documents/page.tsx',
   'app/(dashboard)/documents/NewCollectionForm.tsx',
-  'app/(dashboard)/documents/UploadDocumentForm.tsx',
+  // L'ancien UploadDocumentForm.tsx a été refondu : l'upload vit désormais dans
+  // import/BatchImportForm.tsx ; la bibliothèque dans CollectionLibrary.tsx.
+  'app/(dashboard)/documents/import/BatchImportForm.tsx',
+  'app/(dashboard)/documents/CollectionLibrary.tsx',
+  'app/(dashboard)/documents/DocumentRowActions.tsx',
   'lib/documents/labels.ts',
 ]
 

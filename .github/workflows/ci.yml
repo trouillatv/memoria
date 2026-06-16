@@ -18,7 +18,16 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint --if-present
-      - run: npm test
+      # Tests UNITAIRES seulement (purs, sans base). Les tests d'intégration
+      # touchent une vraie Supabase que le runner n'a pas → joués en local / job
+      # DB dédié (cf. tests/integration-tests.ts). L'env dummy ci-dessous sert
+      # uniquement à laisser charger les modules qui construisent le client admin
+      # au load ; les requêtes réelles sont mockées dans les tests unitaires.
+      - run: npm run test:unit
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon
+          SUPABASE_SERVICE_ROLE_KEY: dummy-service
       - run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
