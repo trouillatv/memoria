@@ -12,6 +12,7 @@ import {
   createScope,
   softDeleteScope,
   setActionScope,
+  setAnomalyScope,
 } from '@/lib/db/memory-scopes'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -111,6 +112,39 @@ export async function setActionScopeAction(input: {
   try {
     await setActionScope({
       actionId: parsed.data.actionId,
+      scopeId: parsed.data.scopeId,
+      orgId,
+    })
+    revalidatePath(`/sites/${parsed.data.siteId}`)
+    if (parsed.data.scopeId) revalidatePath(`/sites/${parsed.data.siteId}/scopes/${parsed.data.scopeId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erreur' }
+  }
+}
+
+const attachAnomalySchema = z.object({
+  anomalyId: z.string().uuid(),
+  scopeId: z.string().uuid().nullable(),
+  siteId: z.string().uuid(),
+})
+
+export async function setAnomalyScopeAction(input: {
+  anomalyId: string
+  scopeId: string | null
+  siteId: string
+}): Promise<Result> {
+  const auth = await requireManagerOrAdmin()
+  if (!auth.ok) return { ok: false, error: auth.error }
+  const orgId = await getOrgId()
+  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
+
+  const parsed = attachAnomalySchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Champs invalides' }
+
+  try {
+    await setAnomalyScope({
+      anomalyId: parsed.data.anomalyId,
       scopeId: parsed.data.scopeId,
       orgId,
     })

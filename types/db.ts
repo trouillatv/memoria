@@ -714,6 +714,8 @@ export interface DbInterventionAnomaly {
   resolution_note: string | null
   created_at: string
   reported_by: string | null
+  // Rattachement à un nœud de mémoire / sous-périmètre (migration 118, Sprint 3).
+  scope_id: string | null
 }
 
 export interface DbInterventionValidation {

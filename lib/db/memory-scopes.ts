@@ -28,8 +28,9 @@ export interface MemoryScope {
 }
 
 export interface ScopeWithCount extends MemoryScope {
-  /** Nombre d'éléments de contenu rattachés (S3 : actions). */
-  contentCount: number
+  /** Contenu rattaché, par type (S3 : actions + anomalies). */
+  actionCount: number
+  anomalyCount: number
 }
 
 export interface ScopeActionRow {
@@ -38,6 +39,16 @@ export interface ScopeActionRow {
   body: string | null
   corpsEtat: string | null
   status: SiteActionStatus
+  createdAt: string
+  scopeId: string | null
+}
+
+export interface ScopeAnomalyRow {
+  id: string
+  category: string
+  categoryOther: string | null
+  description: string | null
+  status: string
   createdAt: string
   scopeId: string | null
 }
@@ -70,18 +81,25 @@ export async function listSiteScopes(siteId: string, orgId: string): Promise<Sco
   if (error) throw error
   const scopes = ((data ?? []) as Record<string, unknown>[]).map(mapScope)
   if (scopes.length === 0) return []
+  const scopeIds = scopes.map((s) => s.id)
 
-  // Comptes de contenu (actions rattachées), en une requête sur le site.
-  const { data: acts } = await supabase
-    .from('site_actions')
-    .select('scope_id')
-    .eq('site_id', siteId)
-    .not('scope_id', 'is', null)
-  const counts = new Map<string, number>()
-  for (const a of (acts ?? []) as { scope_id: string }[]) {
-    counts.set(a.scope_id, (counts.get(a.scope_id) ?? 0) + 1)
+  // Comptes de contenu rattaché PAR scope (scope_id ⇒ déjà borné au site).
+  const [{ data: acts }, { data: anos }] = await Promise.all([
+    supabase.from('site_actions').select('scope_id').in('scope_id', scopeIds),
+    supabase.from('intervention_anomalies').select('scope_id').in('scope_id', scopeIds),
+  ])
+  const tally = (rows: { scope_id: string | null }[] | null) => {
+    const m = new Map<string, number>()
+    for (const r of rows ?? []) if (r.scope_id) m.set(r.scope_id, (m.get(r.scope_id) ?? 0) + 1)
+    return m
   }
-  return scopes.map((s) => ({ ...s, contentCount: counts.get(s.id) ?? 0 }))
+  const actionCounts = tally(acts as { scope_id: string | null }[] | null)
+  const anomalyCounts = tally(anos as { scope_id: string | null }[] | null)
+  return scopes.map((s) => ({
+    ...s,
+    actionCount: actionCounts.get(s.id) ?? 0,
+    anomalyCount: anomalyCounts.get(s.id) ?? 0,
+  }))
 }
 
 /** Un scope précis, vérifié dans l'org. */
@@ -221,5 +239,79 @@ export async function setActionScope(input: {
     .from('site_actions')
     .update({ scope_id: input.scopeId })
     .eq('id', input.actionId)
+  if (error) throw error
+}
+
+// ── Anomalies (migration 118) — même mécanisme que les actions ───────────────
+
+function mapAnomaly(r: Record<string, unknown>): ScopeAnomalyRow {
+  return {
+    id: r.id as string,
+    category: (r.category as string) ?? '',
+    categoryOther: (r.category_other as string | null) ?? null,
+    description: (r.description as string | null) ?? null,
+    status: (r.status as string) ?? 'open',
+    createdAt: r.created_at as string,
+    scopeId: (r.scope_id as string | null) ?? null,
+  }
+}
+
+/** Anomalies rattachées à un scope. */
+export async function listScopeAnomalies(scopeId: string): Promise<ScopeAnomalyRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_anomalies')
+    .select('id, category, category_other, description, status, created_at, scope_id')
+    .eq('scope_id', scopeId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map(mapAnomaly)
+}
+
+/** Anomalies du site (via l'intervention), pour l'écran de rattachement. */
+export async function listSiteAnomaliesForAttach(
+  siteId: string,
+  orgId: string,
+): Promise<ScopeAnomalyRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_anomalies')
+    .select('id, category, category_other, description, status, created_at, scope_id, intervention:interventions!inner(site_id)')
+    .eq('organization_id', orgId)
+    .eq('intervention.site_id', siteId)
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map(mapAnomaly)
+}
+
+/** Rattache (scopeId) ou dé-rattache (null) une anomalie. Vérifie org + site. */
+export async function setAnomalyScope(input: {
+  anomalyId: string
+  scopeId: string | null
+  orgId: string
+}): Promise<void> {
+  const supabase = createAdminClient()
+  // L'anomalie existe, est dans l'org, et on récupère le site de son intervention.
+  const { data: ano } = await supabase
+    .from('intervention_anomalies')
+    .select('id, organization_id, intervention:interventions!inner(site_id)')
+    .eq('id', input.anomalyId)
+    .maybeSingle()
+  if (!ano || (ano as { organization_id: string }).organization_id !== input.orgId) {
+    throw new Error('Anomalie hors de cette organisation')
+  }
+  const rel = (ano as { intervention: { site_id: string } | { site_id: string }[] }).intervention
+  const anomalySiteId = Array.isArray(rel) ? rel[0]?.site_id : rel?.site_id
+  if (input.scopeId) {
+    const scope = await getScope(input.scopeId, input.orgId)
+    if (!scope || scope.siteId !== anomalySiteId) {
+      throw new Error('Sous-périmètre invalide pour ce site')
+    }
+  }
+  const { error } = await supabase
+    .from('intervention_anomalies')
+    .update({ scope_id: input.scopeId })
+    .eq('id', input.anomalyId)
   if (error) throw error
 }

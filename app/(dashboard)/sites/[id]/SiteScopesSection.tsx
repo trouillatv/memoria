@@ -18,7 +18,15 @@ export interface ScopeView {
   label: string
   scopeTypeKey: string | null
   description: string | null
-  contentCount: number
+  actionCount: number
+  anomalyCount: number
+}
+
+function countLabel(s: ScopeView): string {
+  const parts: string[] = []
+  if (s.actionCount > 0) parts.push(`${s.actionCount} action${s.actionCount > 1 ? 's' : ''}`)
+  if (s.anomalyCount > 0) parts.push(`${s.anomalyCount} anomalie${s.anomalyCount > 1 ? 's' : ''}`)
+  return parts.length > 0 ? parts.join(' · ') : 'vide'
 }
 
 interface Props {
@@ -121,9 +129,7 @@ export function SiteScopesSection({ siteId, scopes, typeOptions }: Props) {
                 className="flex-1 min-w-0 inline-flex items-center gap-2"
               >
                 <span className="font-medium truncate">{s.label}</span>
-                <span className="text-[11px] text-muted-foreground shrink-0">
-                  {s.contentCount} élément{s.contentCount > 1 ? 's' : ''}
-                </span>
+                <span className="text-[11px] text-muted-foreground shrink-0">{countLabel(s)}</span>
               </Link>
               <button
                 type="button"

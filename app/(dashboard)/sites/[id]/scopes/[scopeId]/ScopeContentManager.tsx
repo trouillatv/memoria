@@ -1,43 +1,60 @@
 'use client'
 
 // Sprint 3 — rattachement du contenu à un nœud de mémoire.
-// Liste les actions du site ; permet de rattacher / dé-rattacher au scope.
-// Prouve la chaîne : Site → Scope → Contenu. Pas de recherche, pas d'IA.
+// Générique : fonctionne pour les actions ET les anomalies (kind). Prouve la
+// chaîne Site → Scope → Contenu. Pas de recherche, pas d'IA.
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Link2, Unlink, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { setActionScopeAction } from '../../scope-actions'
+import { setActionScopeAction, setAnomalyScopeAction } from '../../scope-actions'
 
-export interface ActionItem {
+export type ContentKind = 'action' | 'anomaly'
+
+export interface AttachItem {
   id: string
-  title: string
-  corpsEtat: string | null
-  status: string
+  label: string
+  sub: string | null
   scopeId: string | null
+}
+
+async function setScopeFor(
+  kind: ContentKind,
+  args: { id: string; scopeId: string | null; siteId: string },
+) {
+  if (kind === 'action') {
+    return setActionScopeAction({ actionId: args.id, scopeId: args.scopeId, siteId: args.siteId })
+  }
+  return setAnomalyScopeAction({ anomalyId: args.id, scopeId: args.scopeId, siteId: args.siteId })
+}
+
+const KIND_LABEL: Record<ContentKind, string> = {
+  action: 'des actions',
+  anomaly: 'des anomalies',
 }
 
 interface Props {
   siteId: string
   scopeId: string
-  /** Toutes les actions « vivantes » du site (open/planned/done). */
-  actions: ActionItem[]
+  kind: ContentKind
+  /** Tous les éléments de ce type pour le site. */
+  items: AttachItem[]
 }
 
-export function ScopeContentManager({ siteId, scopeId, actions }: Props) {
+export function ScopeContentManager({ siteId, scopeId, kind, items }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const others = actions.filter((a) => a.scopeId !== scopeId)
+  const others = items.filter((a) => a.scopeId !== scopeId)
 
-  function setScope(actionId: string, target: string | null) {
+  function attach(id: string) {
     startTransition(async () => {
-      const res = await setActionScopeAction({ actionId, scopeId: target, siteId })
+      const res = await setScopeFor(kind, { id, scopeId, siteId })
       if (res.ok) {
-        toast.success(target ? 'Rattaché' : 'Dé-rattaché')
+        toast.success('Rattaché')
         router.refresh()
       } else {
         toast.error(res.error)
@@ -54,7 +71,7 @@ export function ScopeContentManager({ siteId, scopeId, actions }: Props) {
       >
         <span className="inline-flex items-center gap-2">
           <Link2 className="h-4 w-4 text-brand-600" />
-          Rattacher du contenu
+          Rattacher {KIND_LABEL[kind]}
         </span>
         <ChevronDown className={'h-4 w-4 transition-transform ' + (open ? 'rotate-180' : '')} />
       </button>
@@ -63,27 +80,20 @@ export function ScopeContentManager({ siteId, scopeId, actions }: Props) {
         <div className="border-t px-3 py-3">
           {others.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              Toutes les actions du site sont déjà rattachées ici (ou il n&apos;y a pas encore d&apos;action).
+              Rien à rattacher ici (déjà rattaché, ou aucun élément sur le site).
             </p>
           ) : (
             <ul className="space-y-1.5">
               {others.map((a) => (
                 <li key={a.id} className="flex items-center gap-2 text-sm">
                   <span className="flex-1 min-w-0 truncate">
-                    {a.title}
-                    {a.corpsEtat && (
-                      <span className="ml-1.5 text-[11px] text-muted-foreground">· {a.corpsEtat}</span>
-                    )}
+                    {a.label}
+                    {a.sub && <span className="ml-1.5 text-[11px] text-muted-foreground">· {a.sub}</span>}
                     {a.scopeId && a.scopeId !== scopeId && (
                       <span className="ml-1.5 text-[11px] text-amber-600">(déjà ailleurs)</span>
                     )}
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    onClick={() => setScope(a.id, scopeId)}
-                  >
+                  <Button size="sm" variant="outline" disabled={pending} onClick={() => attach(a.id)}>
                     <Link2 className="h-3.5 w-3.5" />
                     Rattacher
                   </Button>
@@ -97,8 +107,16 @@ export function ScopeContentManager({ siteId, scopeId, actions }: Props) {
   )
 }
 
-/** Bouton de dé-rattachement, affiché à côté de chaque contenu rattaché. */
-export function DetachButton({ siteId, actionId }: { siteId: string; actionId: string }) {
+/** Bouton de dé-rattachement, à côté de chaque contenu rattaché. */
+export function DetachButton({
+  siteId,
+  itemId,
+  kind,
+}: {
+  siteId: string
+  itemId: string
+  kind: ContentKind
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   return (
@@ -107,7 +125,7 @@ export function DetachButton({ siteId, actionId }: { siteId: string; actionId: s
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
-          const res = await setActionScopeAction({ actionId, scopeId: null, siteId })
+          const res = await setScopeFor(kind, { id: itemId, scopeId: null, siteId })
           if (res.ok) {
             toast.success('Dé-rattaché')
             router.refresh()
