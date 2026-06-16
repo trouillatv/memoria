@@ -319,7 +319,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       ...reserves.filter((r) => r.status === 'open' && beforeOrAt(r.createdAt)).map((r) => r.label),
       ...anomalies.filter((a) => a.status === 'open' && beforeOrAt(a.createdAt)).map((a) => a.description),
     ]
-    if (resolved.length || newItems.length || stillOpen.length) {
+    if (resolved.length || newItems.length || stillOpen.length || lastReport.actionTitles.length) {
       changeSinceLastReport = {
         sinceDate: lastReport.createdAt,
         resolved: resolved.slice(0, 6),

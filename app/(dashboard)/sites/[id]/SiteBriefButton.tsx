@@ -172,8 +172,8 @@ function SectionTitle({
 
 // Ordre des sections par mode. En réunion, Réserves + Dernier CR remontent tout
 // en haut (les 2 blocs critiques pour parler aux gens).
-const VISIT_ORDER = ['vigilance', 'aSavoir', 'anomalies', 'reserves', 'lastReport', 'actions', 'recentDone', 'recurring', 'missions', 'teams', 'meetings', 'photos'] as const
-const MEETING_ORDER = ['vigilance', 'reserves', 'lastReport', 'actions', 'anomalies', 'missions', 'teams', 'photos', 'aSavoir', 'recurring', 'meetings', 'recentDone'] as const
+const VISIT_ORDER = ['vigilance', 'aSavoir', 'anomalies', 'reserves', 'actions', 'recentDone', 'recurring', 'missions', 'teams', 'meetings', 'photos'] as const
+const MEETING_ORDER = ['vigilance', 'reserves', 'actions', 'anomalies', 'missions', 'teams', 'photos', 'aSavoir', 'recurring', 'meetings', 'recentDone'] as const
 
 function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting' }) {
   const {
@@ -244,22 +244,6 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
             </li>
           ))}
         </ul>
-      </section>
-    ),
-    lastReport: !lastReport || lastReport.actionTitles.length === 0 ? null : (
-      <section className="space-y-2">
-        <SectionTitle icon={<MessagesSquare className="h-3.5 w-3.5" />}>Issu du dernier compte-rendu</SectionTitle>
-        <ul className="space-y-1">
-          {lastReport.actionTitles.map((t, i) => (
-            <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
-              <span aria-hidden className="text-muted-foreground/50">›</span>
-              <span className="min-w-0">{t}</span>
-            </li>
-          ))}
-        </ul>
-        {formatDate(lastReport.createdAt) && (
-          <p className="text-[10px] text-muted-foreground/70">{lastReport.title ?? 'Compte-rendu'} · {formatDate(lastReport.createdAt)}</p>
-        )}
       </section>
     ),
     actions: openActions.length === 0 ? null : (
@@ -401,6 +385,19 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
             Depuis la dernière réunion
             {formatDate(changeSinceLastReport.sinceDate) ? ` · ${formatDate(changeSinceLastReport.sinceDate)}` : ''}
           </SectionTitle>
+          {lastReport && lastReport.actionTitles.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Décidé alors</p>
+              <ul className="space-y-0.5">
+                {lastReport.actionTitles.map((t, i) => (
+                  <li key={i} className="flex gap-1.5 text-sm text-muted-foreground">
+                    <span aria-hidden className="text-muted-foreground/50">›</span>
+                    <span className="min-w-0">{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {changeSinceLastReport.resolved.length > 0 && (
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Résolu</p>
