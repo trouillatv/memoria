@@ -20,6 +20,7 @@ import { SiteReportLauncher } from './SiteReportLauncher'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
+import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { ListTodo, Hammer, AlertTriangle, ChevronRight, Camera } from 'lucide-react'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -297,6 +298,9 @@ export default async function FieldSitePage({
           </div>
         </section>
       )}
+
+      {/* 🔍 Interroger ce site — moteur d'enquête (retrieval-only, zéro LLM) */}
+      <SiteMemoryQuery siteId={siteId} variant="mobile" />
 
       {/* Capture terrain : ➕ Action (intention) · Compte-rendu (riche) · Photo (preuve) */}
       <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
