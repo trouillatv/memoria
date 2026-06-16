@@ -167,17 +167,37 @@ export default async function FieldHomePage({
     }
   }
 
-  // Manager/admin sans équipe : la génération paresseuse ci-dessus ne couvre
-  // que les sites de l'agent. Pour que la vue superviseur d'un jour FUTUR ne soit
-  // pas vide, on s'assure aussi des récurrences de toute l'organisation (idempotent).
+  // Manager/admin sans équipe : la vue superviseur a besoin que la DATE CHOISIE
+  // soit générée (sinon un jour futur reste vide faute de records).
+  // PERF (régression 67b50f3) : avant, on régénérait TOUTE l'org
+  // (≈3 requêtes × nb sites) à CHAQUE chargement /m manager. Désormais, gate par
+  // un seul COUNT indexé (idx_interventions_org) : si la date affichée a déjà des
+  // interventions, les récurrences existent → on saute la génération coûteuse.
+  // Les interventions générées portent organization_id (cf. generator), donc ce
+  // count les voit dès le 1er passage : les chargements suivants sont gratuits.
   if (agentSiteIds.length === 0 && (user.role === 'admin' || user.role === 'manager') && user.organization_id) {
-    const { data: orgSites } = await supabase
-      .from('sites')
-      .select('id')
+    const { count: existingForDate } = await supabase
+      .from('interventions')
+      .select('id', { count: 'exact', head: true })
       .eq('organization_id', user.organization_id)
-      .is('deleted_at', null)
-    const orgSiteIds = (orgSites ?? []).map((s) => s.id as string)
-    if (orgSiteIds.length > 0) await ensureTodayInterventionsForSites(orgSiteIds, 4)
+      .eq('scheduled_for', selectedDate)
+    if (!existingForDate) {
+      const { data: orgSites } = await supabase
+        .from('sites')
+        .select('id')
+        .eq('organization_id', user.organization_id)
+        .is('deleted_at', null)
+      const orgSiteIds = (orgSites ?? []).map((s) => s.id as string)
+      if (orgSiteIds.length > 0) {
+        // Générer juste assez loin pour couvrir la date affichée (today → selectedDate),
+        // borné à la fenêtre max du générateur. Vue d'aujourd'hui = 1 jour, pas 4.
+        const [sy, sm, sd] = selectedDate.split('-').map(Number)
+        const [ty, tm, td] = todayIso.split('-').map(Number)
+        const dayDiff = Math.round((Date.UTC(sy, sm - 1, sd) - Date.UTC(ty, tm - 1, td)) / 86_400_000)
+        const daysAhead = Math.min(Math.max(dayDiff + 1, 1), 7)
+        await ensureTodayInterventionsForSites(orgSiteIds, daysAhead)
+      }
+    }
   }
 
   // Étape 3 — Fetch en parallèle : les records récurrents existent maintenant.
