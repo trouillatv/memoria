@@ -82,8 +82,9 @@ export const INDUSTRY_TEMPLATES: Record<
       { key: 'materiel_casse', label: 'Matériel', icon: '🧰' },
       { key: 'autre', label: 'Autre', icon: '✏️' },
     ],
+    // Clés en tirets (contrainte chk_teams_specialties_format : ^[a-z0-9-]+$).
     team_specialty: [
-      { key: 'gros_oeuvre', label: 'Gros œuvre' },
+      { key: 'gros-oeuvre', label: 'Gros œuvre' },
       { key: 'vrd', label: 'VRD' },
       { key: 'terrassement', label: 'Terrassement' },
       { key: 'electricite', label: 'Électricité' },
@@ -95,7 +96,7 @@ export const INDUSTRY_TEMPLATES: Record<
     ],
     // Base des futurs scope_types (S3) — corps d'état comme sous-périmètres.
     corps_etat: [
-      { key: 'gros_oeuvre', label: 'Gros œuvre' },
+      { key: 'gros-oeuvre', label: 'Gros œuvre' },
       { key: 'vrd', label: 'VRD' },
       { key: 'electricite', label: 'Électricité' },
       { key: 'plomberie', label: 'Plomberie' },

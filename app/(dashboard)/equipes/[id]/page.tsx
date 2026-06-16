@@ -46,6 +46,7 @@ import { TeamHeatmap } from './TeamHeatmap'
 import { TeamSpecialtiesSection } from './TeamSpecialtiesSection'
 import { CreateTeamTakesSiteButton } from '@/app/(dashboard)/handovers/CreateTeamTakesSiteButton'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listOrgCatalog } from '@/lib/db/org-catalog'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +114,7 @@ export default async function TeamProfilePage({
     recentPhotos,
     members,
     availableSites,
+    specialtyCatalog,
   ] = await Promise.all([
     listTeamFavoriteSites(id, 8),
     listTeamContractsCovered(id),
@@ -140,7 +142,11 @@ export default async function TeamProfilePage({
         return { id: s.id, name: s.name, client_name: client?.name ?? null }
       })
     })(),
+    // Vocabulaire métier de l'org : spécialités / corps d'état (catalogue → fallback template)
+    listOrgCatalog(me.organization_id, 'team_specialty'),
   ])
+
+  const specialtyOptions = specialtyCatalog.map((c) => ({ key: c.key, label: c.label }))
 
   const ageLabel = (() => {
     const days = overview.ageDays
@@ -240,7 +246,7 @@ export default async function TeamProfilePage({
       </div>
 
       {/* ── Spécialités (édition inline) ─────────────────────────────── */}
-      <TeamSpecialtiesSection teamId={overview.id} initial={overview.specialties} />
+      <TeamSpecialtiesSection teamId={overview.id} initial={overview.specialties} options={specialtyOptions} />
 
       {/* ── Rythme 14j + Heatmap 90j ─────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

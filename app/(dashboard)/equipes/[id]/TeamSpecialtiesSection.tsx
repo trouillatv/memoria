@@ -25,10 +25,13 @@ import { setTeamSpecialtiesAction } from '../actions'
 interface Props {
   teamId: string
   initial: string[]
+  /** Spécialités du métier de l'org (org_catalog) ; fallback whitelist côté UI. */
+  options: { key: string; label: string }[]
 }
 
-export function TeamSpecialtiesSection({ teamId, initial }: Props) {
+export function TeamSpecialtiesSection({ teamId, initial, options }: Props) {
   const router = useRouter()
+  const labelOf = (key: string) => options.find((o) => o.key === key)?.label
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<string[]>(initial)
   const [pending, startTransition] = useTransition()
@@ -80,7 +83,7 @@ export function TeamSpecialtiesSection({ teamId, initial }: Props) {
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {initial.map((s) => (
-              <SpecialtyBadge key={s} k={s} size="md" />
+              <SpecialtyBadge key={s} k={s} label={labelOf(s)} size="md" />
             ))}
           </div>
         )}
@@ -121,7 +124,7 @@ export function TeamSpecialtiesSection({ teamId, initial }: Props) {
         </div>
       </div>
 
-      <TeamSpecialtiesEditor value={draft} onChange={setDraft} />
+      <TeamSpecialtiesEditor value={draft} onChange={setDraft} options={options} />
     </section>
   )
 }

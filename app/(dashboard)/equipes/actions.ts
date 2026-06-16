@@ -28,7 +28,7 @@ import {
 import { logAuditEvent } from '@/lib/audit/log'
 import { TEAM_BADGE_COLORS } from '@/components/ui/team-badge'
 import { TEAM_ICON_KEYS } from '@/components/ui/team-icon-picker'
-import { TEAM_SPECIALTY_KEYS, TEAM_SPECIALTY_MAX } from '@/components/ui/team-specialties'
+import { TEAM_SPECIALTY_MAX } from '@/components/ui/team-specialties'
 
 // ----------------------------------------------------------------------------
 // Auth helper
@@ -318,18 +318,27 @@ export async function removeMemberFromTeamAction(input: {
 // ----------------------------------------------------------------------------
 // setTeamSpecialtiesAction — Sprint Équipes B (Vincent 2026-05-21)
 //
-// Spécialités déclarées (whitelist applicative). Doctrine V2 :
+// Spécialités déclarées (catalogue métier de l'org). Doctrine V2 :
 //   - Tags DÉCLARATIFS par le manager
 //   - Jamais inférés, jamais comparatifs
 //   - Max 12 (cf. TEAM_SPECIALTY_MAX + chk_teams_specialties_format)
+//
+// Validation = FORMAT (pas une whitelist figée) : on miroite exactement le
+// CHECK SQL `chk_teams_specialties_format` (^[a-z0-9-]+$, ≤32 car., ≤12). Ça
+// laisse passer les clés de n'importe quel métier (catalogue construction/
+// maintenance), tout en gardant l'invariant de sécurité côté base.
 // ----------------------------------------------------------------------------
 
-const SPECIALTY_VALUES = TEAM_SPECIALTY_KEYS as unknown as readonly string[]
+const SPECIALTY_KEY_RE = /^[a-z0-9-]+$/
 const setSpecialtiesSchema = z.object({
   teamId: z.string().uuid(),
   specialties: z
     .array(
-      z.string().refine((v) => SPECIALTY_VALUES.includes(v), 'Spécialité inconnue'),
+      z
+        .string()
+        .min(1)
+        .max(32)
+        .regex(SPECIALTY_KEY_RE, 'Format de spécialité invalide'),
     )
     .max(TEAM_SPECIALTY_MAX, `Max ${TEAM_SPECIALTY_MAX} spécialités`),
 })

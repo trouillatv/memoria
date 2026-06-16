@@ -45,13 +45,16 @@ interface SpecialtyBadgeProps {
   k: string
   size?: 'sm' | 'md'
   className?: string
+  /** Libellé fourni par le catalogue métier de l'org ; sinon fallback whitelist. */
+  label?: string
 }
 
 /** Petit badge en lecture seule (utilisé sur la fiche équipe). */
-export function SpecialtyBadge({ k, size = 'sm', className }: SpecialtyBadgeProps) {
+export function SpecialtyBadge({ k, size = 'sm', className, label }: SpecialtyBadgeProps) {
   const meta = (TEAM_SPECIALTIES as Record<string, { label: string; short: string }>)[k]
-  if (!meta) {
-    // Tag hors whitelist (legacy ou migration) — affiché brut.
+  const display = label ?? meta?.label
+  if (!display) {
+    // Tag hors catalogue/whitelist (legacy ou migration) — affiché brut.
     return (
       <span className={cn(
         'inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground',
@@ -68,9 +71,9 @@ export function SpecialtyBadge({ k, size = 'sm', className }: SpecialtyBadgeProp
         size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs',
         className,
       )}
-      title={meta.label}
+      title={display}
     >
-      {meta.label}
+      {display}
     </span>
   )
 }
@@ -83,16 +86,22 @@ interface TeamSpecialtiesEditorProps {
   value: string[]
   onChange: (v: string[]) => void
   className?: string
+  /** Options du catalogue métier de l'org ; sinon fallback whitelist (cleaning). */
+  options?: { key: string; label: string }[]
 }
 
 export function TeamSpecialtiesEditor({
   value,
   onChange,
   className,
+  options,
 }: TeamSpecialtiesEditorProps) {
   const set = new Set(value)
+  const opts =
+    options ??
+    TEAM_SPECIALTY_KEYS.map((k) => ({ key: k as string, label: TEAM_SPECIALTIES[k].label }))
 
-  function toggle(k: TeamSpecialtyKey) {
+  function toggle(k: string) {
     if (set.has(k)) {
       onChange(value.filter((v) => v !== k))
     } else {
@@ -106,15 +115,15 @@ export function TeamSpecialtiesEditor({
   return (
     <div className={cn('space-y-2', className)}>
       <div role="group" aria-label="Spécialités déclarées" className="flex flex-wrap gap-1.5">
-        {TEAM_SPECIALTY_KEYS.map((k) => {
-          const active = set.has(k)
+        {opts.map((o) => {
+          const active = set.has(o.key)
           const disabled = !active && value.length >= TEAM_SPECIALTY_MAX
           return (
             <button
-              key={k}
+              key={o.key}
               type="button"
-              data-testid={`team-specialty-${k}`}
-              onClick={() => !disabled && toggle(k)}
+              data-testid={`team-specialty-${o.key}`}
+              onClick={() => !disabled && toggle(o.key)}
               disabled={disabled}
               className={cn(
                 'px-2.5 h-7 rounded-full border text-xs transition-colors',
@@ -124,7 +133,7 @@ export function TeamSpecialtiesEditor({
                 disabled && 'opacity-40 cursor-not-allowed',
               )}
             >
-              {TEAM_SPECIALTIES[k].label}
+              {o.label}
             </button>
           )
         })}
