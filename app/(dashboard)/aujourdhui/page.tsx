@@ -1,4 +1,4 @@
-﻿// Page Â« Interventions du jour Â» â€” pendant Briefing du soir prÃ©pare DEMAIN,
+// Page Â« Interventions du jour Â» â€” pendant Briefing du soir prÃ©pare DEMAIN,
 // cette page suit AUJOURD'HUI en temps rÃ©el.
 //
 // Doctrine V5 + V6.1 (Vincent 2026-05-21 â€” purge crÃ©neau cohÃ©rence avec /semaine) :
