@@ -4,7 +4,13 @@ import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { AnomalyModal } from './anomaly-modal'
 
-export function AnomalyTrigger({ interventionId }: { interventionId: string }) {
+export function AnomalyTrigger({
+  interventionId,
+  categories,
+}: {
+  interventionId: string
+  categories: { key: string; label: string; icon: string | null }[]
+}) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -22,6 +28,7 @@ export function AnomalyTrigger({ interventionId }: { interventionId: string }) {
         interventionId={interventionId}
         open={open}
         onClose={() => setOpen(false)}
+        categories={categories}
       />
     </>
   )

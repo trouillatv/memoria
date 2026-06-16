@@ -515,7 +515,7 @@ export async function listAnomaliesByIntervention(interventionId: string): Promi
 export async function createAnomaly(input: {
   intervention_id: string
   engagement_id?: string | null
-  category: AnomalyCategory
+  category: string // clé de catalogue (org_catalog) — colonne text depuis mig 116
   category_other?: string | null
   description?: string | null
   reported_by: string | null

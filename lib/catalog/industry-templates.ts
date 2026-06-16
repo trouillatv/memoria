@@ -32,27 +32,28 @@ export const INDUSTRY_TEMPLATES: Record<
   // Base neutre : minimal, sert quand une org n'a pas (encore) choisi de métier.
   generic: {
     anomaly_category: [
-      { key: 'danger_securite', label: 'Danger / sécurité', metadata: { severity: 'critique' } },
-      { key: 'materiel_casse', label: 'Matériel / équipement' },
-      { key: 'acces_bloque', label: 'Accès' },
-      { key: 'livraison_probleme', label: 'Livraison / approvisionnement' },
-      { key: 'autre', label: 'Autre' },
+      { key: 'danger_securite', label: 'Danger / sécurité', icon: '⚠️', metadata: { severity: 'critique' } },
+      { key: 'materiel_casse', label: 'Matériel / équipement', icon: '🧰' },
+      { key: 'acces_bloque', label: 'Accès', icon: '🚪' },
+      { key: 'livraison_probleme', label: 'Livraison / approvisionnement', icon: '📦' },
+      { key: 'autre', label: 'Autre', icon: '✏️' },
     ],
     team_specialty: [],
   },
 
   // Reproduit EXACTEMENT les enums historiques (parité existant).
   cleaning: {
+    // Reproduit EXACTEMENT le picker historique (8 entrées, ordre + icônes) →
+    // la création d'anomalie pilotée par le catalogue reste identique en cleaning.
     anomaly_category: [
-      { key: 'acces_bloque', label: 'Accès impossible' },
-      { key: 'eau_coupee', label: 'Eau coupée' },
-      { key: 'electricite_coupee', label: 'Électricité coupée' },
-      { key: 'zone_non_prete', label: 'Zone non prête' },
-      { key: 'materiel_casse', label: 'Matériel manquant' },
-      { key: 'danger_securite', label: 'Danger / sécurité', metadata: { severity: 'critique' } },
-      { key: 'livraison_probleme', label: 'Livraison problème' },
-      { key: 'produit_manquant', label: 'Produit manquant' },
-      { key: 'autre', label: 'Autre' },
+      { key: 'acces_bloque', label: 'Accès impossible', icon: '🚪' },
+      { key: 'eau_coupee', label: 'Eau coupée', icon: '🚱' },
+      { key: 'electricite_coupee', label: 'Électricité coupée', icon: '⚡' },
+      { key: 'zone_non_prete', label: 'Zone non prête', icon: '🚧' },
+      { key: 'materiel_casse', label: 'Matériel manquant', icon: '🧰' },
+      { key: 'danger_securite', label: 'Danger / sécurité', icon: '⚠️', metadata: { severity: 'critique' } },
+      { key: 'livraison_probleme', label: 'Livraison problème', icon: '📦' },
+      { key: 'autre', label: 'Autre', icon: '✏️' },
     ],
     team_specialty: [
       { key: 'bio-nettoyage', label: 'Bio-nettoyage' },
@@ -72,14 +73,14 @@ export const INDUSTRY_TEMPLATES: Record<
 
   construction: {
     anomaly_category: [
-      { key: 'non_conformite', label: 'Malfaçon / non-conformité', metadata: { severity: 'critique' } },
-      { key: 'danger_securite', label: 'Sécurité', metadata: { severity: 'critique' } },
-      { key: 'reserve', label: 'Réserve' },
-      { key: 'acces_bloque', label: 'Accès chantier' },
-      { key: 'livraison_probleme', label: 'Livraison / approvisionnement' },
-      { key: 'reseau_eau', label: 'Eau / réseau' },
-      { key: 'materiel_casse', label: 'Matériel' },
-      { key: 'autre', label: 'Autre' },
+      { key: 'non_conformite', label: 'Malfaçon / non-conformité', icon: '❌', metadata: { severity: 'critique' } },
+      { key: 'danger_securite', label: 'Sécurité', icon: '⚠️', metadata: { severity: 'critique' } },
+      { key: 'reserve', label: 'Réserve', icon: '📋' },
+      { key: 'acces_bloque', label: 'Accès chantier', icon: '🚧' },
+      { key: 'livraison_probleme', label: 'Livraison / approvisionnement', icon: '📦' },
+      { key: 'reseau_eau', label: 'Eau / réseau', icon: '💧' },
+      { key: 'materiel_casse', label: 'Matériel', icon: '🧰' },
+      { key: 'autre', label: 'Autre', icon: '✏️' },
     ],
     team_specialty: [
       { key: 'gros_oeuvre', label: 'Gros œuvre' },
@@ -105,11 +106,11 @@ export const INDUSTRY_TEMPLATES: Record<
 
   maintenance: {
     anomaly_category: [
-      { key: 'panne', label: 'Panne', metadata: { severity: 'critique' } },
-      { key: 'danger_securite', label: 'Sécurité', metadata: { severity: 'critique' } },
-      { key: 'piece_manquante', label: 'Pièce manquante' },
-      { key: 'acces_bloque', label: 'Accès' },
-      { key: 'autre', label: 'Autre' },
+      { key: 'panne', label: 'Panne', icon: '🛠️', metadata: { severity: 'critique' } },
+      { key: 'danger_securite', label: 'Sécurité', icon: '⚠️', metadata: { severity: 'critique' } },
+      { key: 'piece_manquante', label: 'Pièce manquante', icon: '🔩' },
+      { key: 'acces_bloque', label: 'Accès', icon: '🚪' },
+      { key: 'autre', label: 'Autre', icon: '✏️' },
     ],
     team_specialty: [
       { key: 'cvc', label: 'CVC' },

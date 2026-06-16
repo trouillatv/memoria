@@ -25,8 +25,9 @@ export interface CatalogItem {
   metadata: Record<string, unknown>
 }
 
-/** Métier déclaré de l'organisation (défaut 'generic' si absent/inconnu). */
-export async function getOrgIndustryTemplate(orgId: string): Promise<IndustryTemplate> {
+/** Métier déclaré de l'organisation (défaut 'generic' si absent/inconnu/null). */
+export async function getOrgIndustryTemplate(orgId: string | null): Promise<IndustryTemplate> {
+  if (!orgId) return 'generic'
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('organizations')
@@ -51,26 +52,28 @@ function fallbackItems(template: IndustryTemplate, kind: CatalogKind): CatalogIt
 
 /** Entrées de catalogue d'un kind pour une org. Catalogue d'abord, sinon le
  *  template du métier de l'org (fallback non destructif). */
-export async function listOrgCatalog(orgId: string, kind: CatalogKind): Promise<CatalogItem[]> {
-  const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('org_catalog')
-    .select('key, label, icon, color, sort_order, metadata')
-    .eq('organization_id', orgId)
-    .eq('kind', kind)
-    .eq('active', true)
-    .order('sort_order', { ascending: true })
+export async function listOrgCatalog(orgId: string | null, kind: CatalogKind): Promise<CatalogItem[]> {
+  if (orgId) {
+    const supabase = createAdminClient()
+    const { data } = await supabase
+      .from('org_catalog')
+      .select('key, label, icon, color, sort_order, metadata')
+      .eq('organization_id', orgId)
+      .eq('kind', kind)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
 
-  const rows = (data ?? []) as Array<{
-    key: string; label: string; icon: string | null; color: string | null
-    sort_order: number; metadata: Record<string, unknown> | null
-  }>
+    const rows = (data ?? []) as Array<{
+      key: string; label: string; icon: string | null; color: string | null
+      sort_order: number; metadata: Record<string, unknown> | null
+    }>
 
-  if (rows.length > 0) {
-    return rows.map((r) => ({
-      key: r.key, label: r.label, icon: r.icon, color: r.color,
-      sortOrder: r.sort_order, metadata: r.metadata ?? {},
-    }))
+    if (rows.length > 0) {
+      return rows.map((r) => ({
+        key: r.key, label: r.label, icon: r.icon, color: r.color,
+        sortOrder: r.sort_order, metadata: r.metadata ?? {},
+      }))
+    }
   }
   return fallbackItems(await getOrgIndustryTemplate(orgId), kind)
 }

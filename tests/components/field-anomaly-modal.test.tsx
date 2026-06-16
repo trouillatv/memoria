@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AnomalyModal } from '@/app/(field)/m/intervention/[id]/anomaly-modal'
+import { INDUSTRY_TEMPLATES } from '@/lib/catalog/industry-templates'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -20,7 +21,11 @@ vi.mock('sonner', () => ({
 
 describe('AnomalyModal', () => {
   it('shows the chantier incident categories on mobile', () => {
-    render(<AnomalyModal interventionId="int-1" open onClose={() => {}} />)
+    // Catégories pilotées par le catalogue (template cleaning = parité historique).
+    const categories = (INDUSTRY_TEMPLATES.cleaning.anomaly_category ?? []).map((c) => ({
+      key: c.key, label: c.label, icon: c.icon ?? null,
+    }))
+    render(<AnomalyModal interventionId="int-1" open onClose={() => {}} categories={categories} />)
 
     for (const label of [
       'Accès impossible',

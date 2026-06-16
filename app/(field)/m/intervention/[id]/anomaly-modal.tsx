@@ -6,29 +6,19 @@ import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { createAnomalyMobileAction } from './actions'
 import { PhotoCaptureButton } from './photo-capture-button'
-import type { AnomalyCategory } from '@/types/db'
 
 interface Props {
   interventionId: string
   open: boolean
   onClose: () => void
+  /** Catégories d'anomalie du métier de l'org (org_catalog ; fallback template). */
+  categories: { key: string; label: string; icon: string | null }[]
 }
 
-const CATEGORIES: { value: AnomalyCategory; label: string; icon: string }[] = [
-  { value: 'acces_bloque',       label: 'Accès impossible',   icon: '🚪' },
-  { value: 'eau_coupee',         label: 'Eau coupée',         icon: '🚱' },
-  { value: 'electricite_coupee', label: 'Électricité coupée', icon: '⚡' },
-  { value: 'zone_non_prete',     label: 'Zone non prête',     icon: '🚧' },
-  { value: 'materiel_casse',     label: 'Matériel manquant',  icon: '🧰' },
-  { value: 'danger_securite',    label: 'Danger / sécurité',  icon: '⚠️' },
-  { value: 'livraison_probleme', label: 'Livraison problème', icon: '📦' },
-  { value: 'autre',              label: 'Autre',              icon: '✏️' },
-]
-
-export function AnomalyModal({ interventionId, open, onClose }: Props) {
+export function AnomalyModal({ interventionId, open, onClose, categories }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [category, setCategory] = useState<AnomalyCategory | null>(null)
+  const [category, setCategory] = useState<string | null>(null)
   const [categoryOther, setCategoryOther] = useState('')
   const [description, setDescription] = useState('')
   const [createdAnomalyId, setCreatedAnomalyId] = useState<string | null>(null)
@@ -149,20 +139,20 @@ export function AnomalyModal({ interventionId, open, onClose }: Props) {
         <div>
           <h2 className="text-base font-semibold mb-3">Que s&apos;est-il passé&nbsp;?</h2>
           <div className="space-y-2">
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
-                key={cat.value}
+                key={cat.key}
                 type="button"
-                onClick={() => setCategory(cat.value)}
+                onClick={() => setCategory(cat.key)}
                 disabled={pending}
                 className={`w-full flex items-center gap-3 rounded-xl border p-4 text-left active:bg-muted/40 disabled:opacity-50 ${
-                  category === cat.value
+                  category === cat.key
                     ? 'border-foreground bg-muted/40'
                     : 'border-border bg-card'
                 }`}
                 style={{ minHeight: 60 }}
               >
-                <span className="text-2xl shrink-0">{cat.icon}</span>
+                {cat.icon && <span className="text-2xl shrink-0">{cat.icon}</span>}
                 <span className="text-base">{cat.label}</span>
               </button>
             ))}

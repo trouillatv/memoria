@@ -12,6 +12,7 @@ import { getMission } from '@/lib/db/missions'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listOrgCatalog } from '@/lib/db/org-catalog'
 import { listAllTokensForIntervention, listExternalPhotosByIntervention, listDelegatedItemIds } from '@/lib/db/intervention-tokens'
 import { getSignedPhotoUrlsThumb, getSignedPhotoUrlsMedium } from '@/lib/storage/intervention-photos'
 import { ExternalDoneCardMobile } from './ExternalDoneCardMobile'
@@ -62,6 +63,11 @@ export default async function FieldInterventionPage({
   const query = searchParams ? await searchParams : {}
   const user = await getCurrentUserWithProfile()
   if (!user) return null
+
+  // S2-C : catégories d'anomalie pilotées par le catalogue du métier de l'org
+  // (fallback sur le template si le catalogue n'est pas seedé → zéro casse).
+  const anomalyCategories = (await listOrgCatalog(user.organization_id, 'anomaly_category'))
+    .map((c) => ({ key: c.key, label: c.label, icon: c.icon }))
 
   const intervention = await getIntervention(id)
   if (!intervention) notFound()
@@ -439,7 +445,7 @@ export default async function FieldInterventionPage({
 
       {isInProgress && (
         <div className="space-y-3 mt-6">
-          <AnomalyTrigger interventionId={id} />
+          <AnomalyTrigger interventionId={id} categories={anomalyCategories} />
           <VoiceNoteTrigger interventionId={id} />
           <CompleteButton
             interventionId={id}

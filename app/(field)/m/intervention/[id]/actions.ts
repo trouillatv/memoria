@@ -173,17 +173,9 @@ export async function uploadPhotoMobileAction(formData: FormData) {
 
 const createAnomalyMobileSchema = z.object({
   intervention_id: z.string().uuid(),
-  category: z.enum([
-    'acces_bloque',
-    'eau_coupee',
-    'electricite_coupee',
-    'zone_non_prete',
-    'materiel_casse',
-    'danger_securite',
-    'livraison_probleme',
-    'produit_manquant',
-    'autre',
-  ]),
+  // Clé du catalogue de l'org (org_catalog kind='anomaly_category'). Plus d'enum
+  // figé : le catalogue par métier pilote les catégories. 'autre' = texte libre.
+  category: z.string().min(1).max(64),
   category_other: z.string().max(140).optional(),
   description: z.string().max(2000).optional(),
 })
