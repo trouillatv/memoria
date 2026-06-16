@@ -260,21 +260,15 @@ export default async function MissionsPage({
             <ActionStat tone="orange" icon={<Users className="h-3.5 w-3.5" />} value={counts.sansEquipe} label="sans équipe" />
           </>
         )}
-        {counts.sansProchaine > 0 ? (
-          <Link
-            href="/planning"
-            className="ml-auto inline-flex items-center gap-1 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
-          >
-            Planifier les {counts.sansProchaine} sans prochaine <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        ) : (
-          <Link
-            href="/planning"
-            className="ml-auto inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Planning <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
+        {/* CTA « Planifier les N sans prochaine » retiré (Vincent : sans valeur —
+            il ne faisait qu'ouvrir /planning sans rien pré-filtrer). Accès Planning
+            discret conservé. */}
+        <Link
+          href="/planning"
+          className="ml-auto inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Planning <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
       {/* ── PRIORITÉ N°1 — « si je ne fais qu'une chose aujourd'hui » ───────── */}
