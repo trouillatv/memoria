@@ -28,7 +28,7 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
-import { ImageIcon, RotateCw, Clock, CheckCircle2, X } from 'lucide-react'
+import { ImageIcon, RotateCw, Clock, CheckCircle2, X, Check, Trash2 } from 'lucide-react'
 import {
   useQueueEntries,
 } from '@/lib/field/sync-status'
@@ -37,6 +37,7 @@ import {
   isReadyForRetry,
   markAllReadyForRetry,
   nextRetryDelay,
+  removeQueuedPhoto,
   type QueuedPhoto,
 } from '@/lib/field/photo-queue'
 
@@ -93,8 +94,9 @@ const KIND_LABELS: Record<QueuedPhoto['kind'], string> = {
   access: 'Accès', // 070 — photo trousseau/badge
 }
 
-function QueueRow({ entry }: { entry: QueuedPhoto }) {
+function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => void }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -139,9 +141,41 @@ function QueueRow({ entry }: { entry: QueuedPhoto }) {
           <span>capturée {ago}</span>
         </div>
       </div>
-      <div className="flex-shrink-0 text-xs text-muted-foreground tabular-nums">
-        {status}
-      </div>
+      {confirming ? (
+        <div className="flex flex-shrink-0 items-center gap-1">
+          <span className="text-[11px] text-muted-foreground">Supprimer&nbsp;?</span>
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Confirmer la suppression"
+            data-testid="photo-queue-delete-confirm"
+            className="rounded-md border border-rose-300 bg-rose-50 p-1 text-rose-700"
+          >
+            <Check className="h-3.5 w-3.5" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            aria-label="Annuler la suppression"
+            className="rounded-md border p-1 text-muted-foreground"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">{status}</span>
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            aria-label="Supprimer cette photo"
+            data-testid="photo-queue-delete"
+            className="p-1 text-muted-foreground hover:text-rose-600"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      )}
     </li>
   )
 }
@@ -176,6 +210,20 @@ export function PhotoQueueSheet({
       }
     })
   }, [onRetryNow, refresh])
+
+  // Abandon manuel d'une photo (filet de sécurité pour une entry qui ne partira
+  // jamais — ex. cause structurelle). Destructif : la photo est perdue, d'où la
+  // confirmation 2 temps côté ligne. La file ne supprime JAMAIS d'elle-même.
+  const handleDelete = useCallback((tempId: string) => {
+    startTransition(async () => {
+      try {
+        await removeQueuedPhoto(tempId)
+        await refresh()
+      } catch (e) {
+        console.error('[PhotoQueueSheet] delete', e)
+      }
+    })
+  }, [refresh])
 
   const empty = entries.length === 0
   const readyCount = useMemo(
@@ -219,7 +267,11 @@ export function PhotoQueueSheet({
           ) : (
             <ul className="divide-y" data-testid="photo-queue-list">
               {entries.map((entry) => (
-                <QueueRow key={entry.tempId} entry={entry} />
+                <QueueRow
+                  key={entry.tempId}
+                  entry={entry}
+                  onDelete={() => handleDelete(entry.tempId)}
+                />
               ))}
             </ul>
           )}
