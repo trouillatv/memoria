@@ -443,11 +443,13 @@ export async function generateDiscussionPointsAction(
           "Tu prépares une VISITE de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 raisons probables de cette visite — CE QU'IL Y A À FAIRE OU À VÉRIFIER sur place (l'objectif de la visite). Couvre les différents sujets présents (sécurité/contrôles, livraisons, fuites/infiltrations, points récurrents), n'en oublie pas.",
           ...COMMON_RULES,
           '- Priorise ce qui est en retard, bloquant, ou une anomalie/réserve ouverte. Formule comme des choses à vérifier/contrôler/confirmer sur site.',
+          "- Inclus AUSSI les contraintes PRATIQUES et d'ACCÈS à anticiper quand elles figurent dans les éléments (fenêtres/horaires d'accès, circulation, livraisons à coordonner, matériel à prévoir) — une visite se prépare physiquement, pas seulement par les problèmes.",
         ]
       : [
           'Tu es un secrétaire de réunion de chantier. À partir UNIQUEMENT des éléments fournis, tu listes 3 à 6 POINTS À DISCUTER ou À ARBITRER en réunion. Couvre les différents sujets présents (actions en retard, réserves, livraisons, sujets récurrents), n\'en oublie pas.',
           ...COMMON_RULES,
           '- Formule des points à DISCUTER / ARBITRER / TRANCHER. Priorise ce qui traîne, ce qui bloque, ce qui est nouveau.',
+          "- N'inclus PAS la logistique pure ni les contraintes d'accès terrain (horaires, circulation, matériel) : une réunion porte sur les décisions et arbitrages, pas la préparation physique.",
         ]
   ).join('\n')
   const userMessage = `Éléments du chantier (déjà calculés) :\n${lines.join('\n')}`
