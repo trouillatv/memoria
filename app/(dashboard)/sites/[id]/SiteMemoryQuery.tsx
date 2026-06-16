@@ -12,10 +12,12 @@ import {
   askSiteMemoryAction,
   getSiteTeamsAction,
   getSiteRecentPhotosAction,
+  synthesizeSiteMemoryAction,
   type SiteMemoryHit,
   type SiteMemorySummary,
   type SiteTeamHit,
   type SitePhotoHit,
+  type SearchTheme,
 } from './memory-query-actions'
 
 const CONFIDENCE_META: Record<SiteMemorySummary['confidence'], { label: string; cls: string }> = {
@@ -50,14 +52,24 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   const [summary, setSummary] = useState<SiteMemorySummary | null>(null)
   const [teams, setTeams] = useState<SiteTeamHit[] | null>(null)
   const [photos, setPhotos] = useState<SitePhotoHit[] | null>(null)
+  const [themes, setThemes] = useState<SearchTheme[] | null>(null)
+  const [synthPending, startSynth] = useTransition()
   const [pending, startTransition] = useTransition()
+
+  function synthesize() {
+    if (!hits || hits.length === 0) return
+    startSynth(async () => {
+      const r = await synthesizeSiteMemoryAction(siteId, searched, hits)
+      setThemes(r.ok ? r.themes : [])
+    })
+  }
 
   const siteHref = `${variant === 'mobile' ? '/m/site' : '/sites'}/${siteId}`
 
   function runSearch(query: string) {
     const text = query.trim()
     if (text.length < 2) return
-    setMode('search'); setSearched(text)
+    setMode('search'); setSearched(text); setThemes(null)
     startTransition(async () => {
       const r = await askSiteMemoryAction(siteId, text)
       setHits(r.ok ? r.hits : [])
@@ -141,6 +153,41 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           </p>
         ) : (
           <div>
+            {/* Phase 2B — Synthèse encadrée (LLM) : Réponse en tête, sources dessous */}
+            <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-sky-600" /> Synthèse
+                  <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={synthesize}
+                  disabled={synthPending}
+                  className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
+                >
+                  {synthPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {themes === null ? 'Synthétiser' : 'Régénérer'}
+                </button>
+              </div>
+              {themes && themes.length > 0 && (
+                <ul className="space-y-1">
+                  {themes.map((t, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 text-sm text-sky-950">
+                      <span className="min-w-0">{t.label}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{t.count} trace{t.count > 1 ? 's' : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {themes && themes.length === 0 && !synthPending && (
+                <p className="text-xs italic text-muted-foreground">Pas de thème net à dégager.</p>
+              )}
+              {themes !== null && (
+                <p className="text-[10px] text-muted-foreground/70">Décrit ce qui revient, jamais pourquoi — vérifiez les sources ci-dessous.</p>
+              )}
+            </div>
+
             {/* Confiance + Importance — signal déterministe, zéro LLM */}
             {summary && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px]">

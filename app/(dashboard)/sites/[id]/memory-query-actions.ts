@@ -18,6 +18,8 @@
 import { z } from 'zod'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { logUsageEvent } from '@/lib/db/usage-events'
+import { getAIProvider } from '@/services/ai/factory'
+import { withAITracking } from '@/services/ai/tracking'
 import { searchMemory, type MemoryHitType } from '@/lib/db/memory-search'
 import { getEmbedding } from '@/lib/ai/embeddings'
 import { findSimilarTraces } from '@/lib/ai/embed-trace'
@@ -218,5 +220,82 @@ export async function getSiteRecentPhotosAction(
       takenAt: p.takenAt,
       takenByName: p.takenByName,
     })),
+  }
+}
+
+// ── Phase 2B — synthèse encadrée sur question libre (LLM) ────────────────────
+//
+// L'ADN de MemorIA : « je pose une question, la mémoire me répond ». Mais le LLM
+// ne RAISONNE pas — il REGROUPE les traces déjà retrouvées en thèmes comptés.
+// Golden rule câblée : contexte fermé (uniquement les hits), JAMAIS de cause,
+// de prédiction ni d'opinion. Structure imposée par l'UI : Réponse / Confiance /
+// Sources. À la demande (bouton), jamais auto (coût + valeur ciblée).
+
+export interface SearchTheme {
+  label: string
+  count: number
+}
+
+const themesSchema = z.object({
+  themes: z.array(z.object({
+    label: z.string().min(1).max(80),
+    count: z.number().int().min(1),
+  })).max(5),
+})
+
+export async function synthesizeSiteMemoryAction(
+  siteId: string,
+  question: string,
+  hits: SiteMemoryHit[],
+): Promise<{ ok: true; themes: SearchTheme[]; mock: boolean } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
+    return { ok: false, error: 'Accès refusé' }
+  }
+  if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
+
+  const q = (question ?? '').trim().slice(0, 200)
+  const corpus = (hits ?? [])
+    .slice(0, 18)
+    .map((h, i) => `${i + 1}. [${h.type}] ${(h.title ? h.title + ' — ' : '') + (h.snippet || '')}`.slice(0, 240))
+    .filter((l) => l.length > 6)
+  if (corpus.length === 0) return { ok: true, themes: [], mock: false }
+
+  const provider = getAIProvider()
+  const systemPrompt = [
+    "Tu analyses des TRACES de mémoire d'un chantier, retrouvées pour une question. Ta SEULE tâche : les regrouper en 2 à 4 THÈMES, avec le nombre de traces par thème.",
+    'RÈGLES STRICTES :',
+    '- Tu DÉCRIS ce qui revient, JAMAIS pourquoi. Aucune cause, aucune prédiction, aucune opinion, aucune recommandation.',
+    '- Chaque thème correspond à des traces réellement présentes. `count` = nombre de traces de ce thème ; la somme ne dépasse pas le nombre de traces fournies.',
+    '- Labels courts (2 à 4 mots), factuels, en français. Tu ne reformules pas le contenu, tu nommes le sujet commun.',
+  ].join('\n')
+  const userMessage = `Question : ${q || '(non précisée)'}\n\nTraces retrouvées (${corpus.length}) :\n${corpus.join('\n')}`
+
+  try {
+    const themes = await withAITracking('search_synthesis', user.id, async () => {
+      const r = await provider.complete({
+        systemPrompt,
+        userMessage,
+        responseSchema: themesSchema,
+        modelTier: 'light',
+        maxOutputTokens: 300,
+      })
+      const parsed = themesSchema.safeParse(r.parsed)
+      // Garde-fou : un thème ne peut pas compter plus que le nombre de traces.
+      const clean = (parsed.success ? parsed.data.themes : [])
+        .map((t) => ({ label: t.label, count: Math.min(t.count, corpus.length) }))
+        .filter((t) => t.count > 0)
+      return {
+        result: clean,
+        tokens: r.tokens,
+        model: r.model,
+        provider: provider.name,
+        durationMs: r.durationMs,
+      }
+    })
+    return { ok: true, themes, mock: provider.name === 'mock' }
+  } catch {
+    return { ok: false, error: 'Synthèse indisponible' }
   }
 }
