@@ -81,6 +81,9 @@ Organisation
 - **`scope_type_id` n'est pas que du vocabulaire — c'est la clé de l'agrégation
   TRANSVERSALE.** Un type « VRD » existe sur Médipôle, l'Aéroport, le Port. Le type
   permet de retrouver TOUS les nœuds VRD, tous sites confondus (cf. §3, axe TYPE).
+- **« scope » est un mot INTERNE.** L'utilisateur ne le voit JAMAIS : il voit le **label
+  du type** (« lot », « réseau », « zone », « équipement », « bâtiment »…), défini par le
+  catalogue métier. On ne dit jamais « crée un scope » → « crée un lot / un réseau ».
 
 ---
 
@@ -94,7 +97,7 @@ Organisation
 - **Non destructif** : le contenu existant garde son rattachement actuel (site /
   intervention) ; `scope_id` est une **précision optionnelle** ajoutée par-dessus.
 
-### Scope ≠ Thème — TROIS couches, pas deux
+### Scope ≠ Thème — QUATRE couches
 
 > **ATTENTION**
 > Un **scope** représente une CHOSE sur laquelle on souhaite capitaliser de la mémoire.
@@ -104,12 +107,18 @@ Organisation
 - **Scope** = la **structure / le contexte** (VRD, Réseau EP, Regard EP-17) → un arbre.
 - **Contenu** = les **sources** (photos, anomalies, réserves, docs…) attachées aux nœuds.
 - **Thème** = le **sémantique** (infiltration, humidité, retard, SOCOTEC) → **émerge du
-  contenu**, vit dans la couche mémoire / retrieval / clusters **AU-DESSUS** de l'arbre,
-  jamais DANS l'arbre.
+  contenu**, couche retrieval / clusters **AU-DESSUS** de l'arbre, jamais DANS l'arbre.
+- **Expérience** = la **CAPITALISATION** : ce qui a MARCHÉ, agrégé cross-sites / cross-temps.
+  *« Sur 14 chantiers, les infiltrations ont été résolues par : reprise étanchéité 9×,
+  drainage 3×, remplacement EP 2× »*. On n'est plus dans la mémoire — on est dans
+  **« réutiliser l'expérience accumulée »** = la promesse, le niveau le plus défendable.
+  Elle REPOSE sur les trois autres (besoin du scope pour « 14 chantiers », du thème pour
+  « infiltration », du contenu pour compter les résolutions) → vient EN DERNIER (S5) et
+  reste **déterministe + phrasé léger** (compter ce qui a marché, sourcé) → « précision↑ coût↓ ».
 
-Test : *« VRD »* = **un endroit où on travaille** (container réel) → scope. *« infiltration »*
-= **ce qui s'y passe** (sujet récurrent) → thème. *« Que sait-on sur les infiltrations ? »*
-se répond par le **contenu** (anomalies / actions / docs / réserves), pas par l'arbre.
+Test : *« VRD »* = **un endroit où on travaille** → scope. *« infiltration »* = **ce qui s'y
+passe** → thème. *« comment on l'a résolu ailleurs »* → expérience. *« Que sait-on sur les
+infiltrations ? »* se répond par le **contenu**, pas par l'arbre.
 
 ---
 
@@ -172,6 +181,10 @@ au plus souple :
 - Un arbre **vide** ne sert à rien ; un arbre **trop détaillé** devient inutilisable. La
   règle §0bis (valeur d'interrogation) + la création émergente gardent l'arbre au juste
   niveau, tout seul.
+- **Le produit doit donner ENVIE de créer un nœud, jamais l'imposer.** Déclencheur naturel :
+  quand on cherche/dépose et qu'on sent qu'on accumule sur « ce réseau / cette CTA »,
+  proposer *« suivre ça comme un nœud ? »*. L'**arbre vide** est le vrai danger (zéro valeur) ;
+  l'incitation douce au bon moment est la parade.
 
 ---
 
@@ -195,8 +208,11 @@ AB-123-CD → événements. Même arbre, contenu = **actifs** (vs **opérations*
 - `organizations.industry_template` ∈ { cleaning, construction, maintenance,
   facility_management, industrial, **generic** }.
 - `org_catalog(kind, key, label, description, icon, color, sort_order, active, metadata jsonb)`
-  porte le vocabulaire. Les entrées de `kind ∈ {corps_etat, objet, zone}` **SONT** les
-  `scope_types` (à fusionner ou relier — à trancher à l'impl ; `industry_template` les seede).
+  porte le vocabulaire. **DÉCISION V1 (Vincent) : UNE SEULE TABLE** — les `scope_types`
+  SONT les entrées `org_catalog` de `kind ∈ {corps_etat, objet, zone, …}`. Pas de table
+  `scope_types` séparée en V1 (plus simple, plus rapide, aucun cas concret ne justifie
+  encore la séparation ; séparable plus tard si besoin réel). Donc `scope.scope_type_id`
+  → `org_catalog.id` (d'un kind « type de scope »).
 - **L'arbre porte les INSTANCES** : `scope.scope_type_id` → un type ; `scope.label` → le nom.
 - C'est `scope_type_id` qui rend l'**axe TYPE** (§3) possible : agrégation transversale.
 
@@ -227,8 +243,20 @@ compte-rendu ou qu'un prompt Gemini.
 
 ---
 
-## Séquence (rappel)
+## Séquence (validée Vincent)
 
-Sprint 1 RLS (mig 114, à appliquer) → **VALIDER CE DOC** → Sprint 2-B (catalogue) conçu
-*en cohérence avec l'arbre* → puis nœuds de scope + attribution inférée → puis brancher
-les surfaces (briefs / recherche / résonances) sur le scope.
+1. **Sprint 1 — Migration 114** (finir la sécurité RLS). À APPLIQUER.
+2. **Sprint 2 — Catalogue + scope_types** (= « 2-B », UNE table).
+3. **Sprint 3 — Nœuds de mémoire** (VRD, Réseau, CTA, Zone…) + attribution inférée.
+4. **Sprint 4 — Recherche scoped** (questions sur entreprise / site / nœud).
+5. **Sprint 5 — Capitalisation d'expérience** (le vrai différenciateur = 4ᵉ couche).
+
+On NE code PAS (pour l'instant) : Business, Contrats, Garanties, « Où était X ». On reste
+focalisé sur la **mémoire**.
+
+## L'ancre commerciale (la vraie valeur)
+
+La question qui guide tout : *« En 5 min de démo, comment faire comprendre à une dirigeante
+VRD qu'elle pourra poser "Que sait-on sur les réseaux EP de TOUS mes chantiers ?" et obtenir
+immédiatement 5 ans d'expérience accumulée ? »* C'est là qu'est la valeur économique — et
+c'est exactement ce que livrent la **4ᵉ couche (Expérience)** + l'**axe TYPE** (cross-sites).
