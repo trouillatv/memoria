@@ -62,4 +62,12 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/tender-outcome.test.ts',
   'tests/lib/tender-voice-note.test.ts',
   'tests/lib/week-planning.test.ts',
+  // Ajoutés après preuve CI : ils importent lib/db + createAdminClient et
+  // frappent la vraie base, mais avaient un vi.mock PARTIEL (audit/revalidate)
+  // qui les faisait passer pour unitaires dans l'heuristique initiale. Le CI
+  // Linux les a démasqués (« No admin user — seed needed »).
+  'tests/lib/reassign-actions.test.ts',
+  'tests/lib/site-notes.test.ts',
+  'tests/lib/site-resume-context.test.ts',
+  'tests/lib/skip-intervention.test.ts',
 ]
