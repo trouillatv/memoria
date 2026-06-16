@@ -206,6 +206,66 @@ export async function searchOperationsForOrg({
   return hits
 }
 
+// Mots vides FR + bruit générique (peu informatifs comme suggestion).
+const TERM_STOPWORDS = new Set([
+  'avec', 'dans', 'pour', 'cette', 'sont', 'mais', 'plus', 'tout', 'tous', 'toute',
+  'toutes', 'leur', 'leurs', 'etre', 'avoir', 'fait', 'faire', 'sans', 'sous', 'entre',
+  'vers', 'chez', 'donc', 'alors', 'aussi', 'comme', 'cela', 'celui', 'celle', 'quand',
+  'encore', 'depuis', 'apres', 'avant', 'pendant', 'selon', 'elles', 'nous', 'vous',
+  'elle', 'notre', 'votre', 'aux', 'ont', 'ete', 'par', 'sur', 'qui', 'que', 'dont',
+  'ainsi', 'meme', 'tres', 'bien', 'deja', 'etait', 'etaient', 'sera', 'seront',
+  'site', 'chantier', 'note', 'intervention', 'photo', 'jour', 'jours', 'semaine', 'test',
+])
+
+/** Termes qui REVIENNENT le plus dans la mémoire de TOUTE l'entreprise (déterministe,
+ *  zéro LLM). « Revient » = présent dans ≥2 traces — on compte une fois par trace.
+ *  Sources org-scopées : notes de site, actions, réserves, anomalies. Sert à proposer
+ *  des pistes ANCRÉES (qui existent vraiment) au lieu d'exemples génériques codés. */
+export async function getOrgMemoryTermsAction(): Promise<{ ok: true; terms: { term: string; count: number }[] } | { ok: false; error: string }> {
+  if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
+  const orgId = await getOrgId()
+  const supabase = createAdminClient()
+  const sites = await listSites().catch(() => [])
+  const orgSiteIds = sites.map((s) => s.id)
+
+  const [notes, actions, reserves, anomalies] = await Promise.all([
+    orgId
+      ? supabase.from('site_notes').select('body').eq('organization_id', orgId).limit(600).then((r) => r.data ?? [], () => [])
+      : Promise.resolve([] as Array<{ body: string | null }>),
+    orgSiteIds.length
+      ? supabase.from('site_actions').select('title, body').in('site_id', orgSiteIds).limit(600).then((r) => r.data ?? [], () => [])
+      : Promise.resolve([] as Array<{ title: string | null; body: string | null }>),
+    orgSiteIds.length
+      ? supabase.from('site_reserve').select('label, location, lift_note').in('site_id', orgSiteIds).limit(600).then((r) => r.data ?? [], () => [])
+      : Promise.resolve([] as Array<{ label: string | null; location: string | null; lift_note: string | null }>),
+    orgId
+      ? supabase.from('intervention_anomalies').select('description, interventions!inner(organization_id)').eq('interventions.organization_id', orgId).limit(600).then((r) => r.data ?? [], () => [])
+      : Promise.resolve([] as Array<{ description: string | null }>),
+  ])
+
+  const counts = new Map<string, number>()
+  const addText = (text: string) => {
+    const tokens = text.toLowerCase().match(/\p{L}{4,}/gu) ?? []
+    const seen = new Set<string>()
+    for (const tok of tokens) {
+      if (TERM_STOPWORDS.has(tok) || seen.has(tok)) continue
+      seen.add(tok)
+      counts.set(tok, (counts.get(tok) ?? 0) + 1)
+    }
+  }
+  for (const n of notes as Array<{ body: string | null }>) addText(n.body ?? '')
+  for (const a of actions as Array<{ title: string | null; body: string | null }>) addText(`${a.title ?? ''} ${a.body ?? ''}`)
+  for (const r of reserves as Array<{ label: string | null; location: string | null; lift_note: string | null }>) addText(`${r.label ?? ''} ${r.location ?? ''} ${r.lift_note ?? ''}`)
+  for (const a of anomalies as Array<{ description: string | null }>) addText(a.description ?? '')
+
+  const terms = [...counts.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([term, count]) => ({ term, count }))
+  return { ok: true, terms }
+}
+
 export async function askOrgMemoryAction(
   question: string,
 ): Promise<{ ok: true; hits: OrgMemoryHit[]; summary: OrgMemorySummary | null } | { ok: false; error: string }> {

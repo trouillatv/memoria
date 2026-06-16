@@ -5,11 +5,12 @@
 // chaque résultat attribué à SON SITE. MemorIA retrouve, il ne répond jamais à
 // la place des preuves.
 
-import { useState, useTransition } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
 import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check } from 'lucide-react'
 import {
   askOrgMemoryAction,
+  getOrgMemoryTermsAction,
   synthesizeOrgMemoryAction,
   type OrgMemoryHit,
   type OrgMemorySummary,
@@ -53,6 +54,17 @@ export function OrgMemoryQuery() {
   const [confirmSynth, setConfirmSynth] = useState(false)
   const [synthPending, startSynth] = useTransition()
   const [pending, startTransition] = useTransition()
+  const [terms, setTerms] = useState<{ term: string; count: number }[] | null>(null)
+
+  // Pistes ANCRÉES : les mots qui reviennent vraiment dans la mémoire de TOUTE
+  // l'entreprise (au lieu d'exemples génériques codés en dur).
+  useEffect(() => {
+    let alive = true
+    getOrgMemoryTermsAction()
+      .then((r) => { if (alive && r.ok) setTerms(r.terms) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   function synthesize() {
     if (!hits || hits.length === 0) return
@@ -144,13 +156,24 @@ export function OrgMemoryQuery() {
         </button>
       </form>
 
-      <div className="flex flex-wrap gap-1.5">
-        {EXAMPLES.map((ex) => (
-          <button key={ex} type="button" onClick={() => { setQ(ex); runSearch(ex) }} disabled={pending}
-            className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-            {ex}
-          </button>
-        ))}
+      <div className="space-y-1.5">
+        {terms && terms.length > 0 && (
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Ce qui revient dans l&apos;entreprise
+          </p>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {/* Pistes pilotées par la donnée (mots récurrents cross-chantiers) ; à
+              défaut, exemples génériques tant qu'il y a trop peu de traces. */}
+          {(terms && terms.length > 0 ? terms : EXAMPLES.map((term) => ({ term, count: 0 }))).map(({ term, count }) => (
+            <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
+              title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+              {term}
+              {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Résultats ───────────────────────────────────────────────────── */}
