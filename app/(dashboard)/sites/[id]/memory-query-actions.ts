@@ -50,15 +50,49 @@ export interface SiteMemoryHit {
   similarity: number | null
 }
 
+/** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Aide à juger la
+ *  force et la nature de ce qui est retrouvé, sans réponse magique. */
+export interface SiteMemorySummary {
+  count: number
+  /** Dates distinctes = « sources indépendantes » (proxy). */
+  distinctDays: number
+  confidence: 'forte' | 'moyenne' | 'faible'
+  /** ≥ 6 occurrences = sujet récurrent. */
+  recurring: boolean
+  /** Occurrences sur les 30 derniers jours = sujet actif. */
+  last30dCount: number
+  /** Étalement temporel (jours) entre la plus ancienne et la plus récente. */
+  spanDays: number | null
+}
+
+function computeSummary(hits: SiteMemoryHit[]): SiteMemorySummary | null {
+  if (hits.length === 0) return null
+  const days = new Set(hits.map((h) => (h.occurredAt || '').slice(0, 10)).filter(Boolean))
+  const times = hits
+    .map((h) => (h.occurredAt ? new Date(h.occurredAt).getTime() : NaN))
+    .filter((t) => !Number.isNaN(t))
+  const now = Date.now()
+  const last30dCount = times.filter((t) => now - t <= 30 * 86_400_000).length
+  const spanDays = times.length ? Math.round((Math.max(...times) - Math.min(...times)) / 86_400_000) : null
+  const sims = hits.map((h) => h.similarity).filter((s): s is number => s != null)
+  const topSim = sims.length ? Math.max(...sims) : 0
+  const count = hits.length
+  let confidence: 'forte' | 'moyenne' | 'faible'
+  if (count >= 8 || (count >= 4 && topSim >= 0.72)) confidence = 'forte'
+  else if (count >= 3 || topSim >= 0.6) confidence = 'moyenne'
+  else confidence = 'faible'
+  return { count, distinctDays: days.size, confidence, recurring: count >= 6, last30dCount, spanDays }
+}
+
 export async function askSiteMemoryAction(
   siteId: string,
   question: string,
-): Promise<{ ok: true; hits: SiteMemoryHit[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; hits: SiteMemoryHit[]; summary: SiteMemorySummary | null } | { ok: false; error: string }> {
   if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
   if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
 
   const q = (question ?? '').trim().slice(0, 200)
-  if (q.length < 2) return { ok: true, hits: [] }
+  if (q.length < 2) return { ok: true, hits: [], summary: null }
 
   // Sémantique + plein-texte + index d'enrichissement (dates/titres) en parallèle.
   const queryEmbedding = await getEmbedding(q).catch(() => null)
@@ -110,7 +144,7 @@ export async function askSiteMemoryAction(
     .slice(0, 30)
     .map(({ fts: _fts, ...h }) => h)
 
-  return { ok: true, hits }
+  return { ok: true, hits, summary: computeSummary(hits) }
 }
 
 export interface SiteTeamHit {

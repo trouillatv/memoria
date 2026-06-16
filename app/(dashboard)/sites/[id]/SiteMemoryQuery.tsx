@@ -7,15 +7,22 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteTeamsAction,
   getSiteRecentPhotosAction,
   type SiteMemoryHit,
+  type SiteMemorySummary,
   type SiteTeamHit,
   type SitePhotoHit,
 } from './memory-query-actions'
+
+const CONFIDENCE_META: Record<SiteMemorySummary['confidence'], { label: string; cls: string }> = {
+  forte:   { label: 'Confiance forte',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  moyenne: { label: 'Confiance moyenne', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  faible:  { label: 'Confiance faible',  cls: 'bg-slate-50 text-slate-600 border-slate-200' },
+}
 
 const EXAMPLES = ['réservation', 'étanchéité', 'accès', 'reprise', 'béton']
 
@@ -40,6 +47,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   const [q, setQ] = useState('')
   const [searched, setSearched] = useState('')
   const [hits, setHits] = useState<SiteMemoryHit[] | null>(null)
+  const [summary, setSummary] = useState<SiteMemorySummary | null>(null)
   const [teams, setTeams] = useState<SiteTeamHit[] | null>(null)
   const [photos, setPhotos] = useState<SitePhotoHit[] | null>(null)
   const [pending, startTransition] = useTransition()
@@ -53,6 +61,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     startTransition(async () => {
       const r = await askSiteMemoryAction(siteId, text)
       setHits(r.ok ? r.hits : [])
+      setSummary(r.ok ? r.summary : null)
     })
   }
   function loadTeams() {
@@ -132,7 +141,32 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           </p>
         ) : (
           <div>
-            <p className="text-[11px] text-muted-foreground mb-2">{hits.length} trace{hits.length > 1 ? 's' : ''} pour «&nbsp;{searched}&nbsp;»</p>
+            {/* Confiance + Importance — signal déterministe, zéro LLM */}
+            {summary && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium ${CONFIDENCE_META[summary.confidence].cls}`}>
+                  <ShieldCheck className="h-2.5 w-2.5" /> {CONFIDENCE_META[summary.confidence].label}
+                </span>
+                <span className="text-muted-foreground">
+                  {summary.count} trace{summary.count > 1 ? 's' : ''} · {summary.distinctDays} date{summary.distinctDays > 1 ? 's' : ''}
+                </span>
+                {summary.recurring && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 font-medium text-rose-700">
+                    <Flame className="h-2.5 w-2.5" /> Sujet récurrent
+                  </span>
+                )}
+                {!summary.recurring && summary.last30dCount >= 3 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
+                    <Activity className="h-2.5 w-2.5" /> Sujet actif · {summary.last30dCount} sur 30 j
+                  </span>
+                )}
+                {summary.spanDays !== null && summary.spanDays > 365 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600">
+                    <Archive className="h-2.5 w-2.5" /> Historique · sur {Math.round(summary.spanDays / 365)} an{summary.spanDays > 730 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            )}
             <ul className="space-y-1.5">
               {hits.map((h) => {
                 const meta = TYPE_META[h.type]
