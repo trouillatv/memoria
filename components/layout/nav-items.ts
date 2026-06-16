@@ -64,10 +64,14 @@ export const NAV: NavItem[] = [
   // — Mémoire & continuité —
   // Interroger l'entreprise = moteur de mémoire cross-site (P7) : une question →
   // traces de TOUS les chantiers, attribuées à leur site + synthèse à la demande.
-  { href: '/memoire',      label: 'Interroger l’entreprise', icon: Brain,       roles: ['admin', 'manager'], groupStart: 'Mémoire & continuité' },
+  // EN SOMMEIL (2026-06-16, Vincent) — « Interroger l'entreprise » : moteur
+  // cross-sites prématuré au pilote (peu de volume cross-chantiers → résultats
+  // maigres). Page et code CONSERVÉS, juste retirée du menu. Pour réactiver :
+  // décommenter la ligne ci-dessous ET retirer le `groupStart` de '/intervenants'.
+  // { href: '/memoire',      label: 'Interroger l’entreprise', icon: Brain,       roles: ['admin', 'manager'], groupStart: 'Mémoire & continuité' },
   // Intervenants gated ENV INTERVENANTS_PAGE_ENABLED ; le lien reste visible
   // (404 si OFF) pour ne pas faire dépendre la nav d'un process.env côté client.
-  { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'] },
+  { href: '/intervenants', label: 'Intervenants',          icon: UserCog,       roles: ['admin', 'manager'], groupStart: 'Mémoire & continuité' },
   { href: '/tenders',    label: 'Dossiers de démarrage',  icon: FileText,      roles: ['admin', 'manager'] },
   // Passages de témoin — inclut désormais le radar « À anticiper » (fins de
   // contrat). Fusion 2026-05-27 de l'ancienne entrée « Continuité » (redondante,
