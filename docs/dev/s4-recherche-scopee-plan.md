@@ -98,8 +98,18 @@ photos ? »), on étend le rappel au reste de la mémoire du site, filtré par s
 - **Litige jamais source automatique** d'une lecture/résonance. (cf.
   `litige-no-automatic-reading`.)
 
-## Ordre aval inchangé
+## Ordre aval
+
+S3.5 (alimentation assistée des scopes) a été inséré AVANT S4 et **livré** le
+2026-06-17 (mig 119 + moteur de suggestions déterministe + panneau « À
+rattacher »). Raison : sans corpus bien alimenté, S4 donnerait une fausse
+impression (bon sur le seed, pauvre en réel). S3.5 propage `scope_id` aux photos
+et rattache le contenu terrain au bon sous-périmètre, IA propose / humain valide.
 
 ```
-[feu vert S3]  →  S4 V0 (lean)  →  [signal ?]  →  S4 V1 (propagation)  →  Photos  →  S5
+[feu vert S3] → S3.5 alimentation (FAIT) → S4 V0 (lean) → [signal ?] → S4 V1 → Photos → S5
 ```
+
+Conséquence pour S4 V1 : `scope_id` sur `intervention_photos` est **déjà fait**
+(mig 119) — V1 n'aura plus qu'à l'ajouter à `site_notes`, `interventions` et
+`trace_embeddings`.
