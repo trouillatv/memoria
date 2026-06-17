@@ -35,7 +35,32 @@ Médipôle
 
 ---
 
-## Les 4 tests
+## Ce qu'on observe (au-delà des réponses)
+
+Les réponses comptent. Mais deux signaux faibles en disent autant.
+
+### Le vocabulaire spontané
+
+Le mot qu'ils emploient sans qu'on le souffle trahit leur modèle mental.
+
+- ✅ **« un lot », « une zone », « une partie du chantier », « un périmètre »** →
+  ils voient une *partie adressable* du chantier. Très bon signe.
+- ❌ **« un dossier », « un répertoire », « un classeur »** → ils voient un
+  *système de rangement*, pas une mémoire adressable. À noter immédiatement : ce
+  n'est pas un détail, c'est le cœur du concept qui n'est pas passé.
+
+### Le temps avant compréhension
+
+À mesurer mentalement, du moment où on montre l'écran à la première phrase juste.
+
+- **< 30 s** → excellent, le concept est lisible.
+- **30 s – 2 min** → acceptable.
+- **> 2 min** → problème de **présentation** (pas forcément de concept) : la page
+  ne dit pas assez vite ce qu'elle est.
+
+---
+
+## Les 5 tests
 
 ### Test 1 — Compréhension spontanée du concept
 
@@ -80,6 +105,32 @@ VRD »).
 tout de suite**. Si la réponse est non, ni les photos ni S4 ne sauveront le
 concept.
 
+### Test 5 — Le réflexe de navigation (probablement le meilleur test)
+
+Après avoir montré VRD, sans aide :
+
+> **« Si demain tu as un problème sur les réseaux EP, où cliquerais-tu ? »**
+
+✅ **Réponse immédiate : « VRD ».** Le modèle mental est acquis — la personne sait
+*adresser* sa mémoire, pas juste lire une page. C'est le signal le plus fort de
+toute la fiche.
+❌ Elle hésite, cherche un menu, un moteur de recherche global, ou clique au
+hasard. → l'adressage n'est pas encore intuitif.
+
+---
+
+## Le vrai danger à guetter
+
+Le risque principal **n'est pas** qu'ils ne comprennent pas. C'est qu'ils
+comprennent… **mais ne voient pas l'intérêt** :
+
+> « Oui je comprends VRD. » … « Mais pourquoi je créerais ça ? »
+
+C'est là que tout se joue. Comprendre l'**interface** ne suffit pas — il faut
+qu'ils ressentent la **valeur**. Un utilisateur peut décrire correctement ce
+qu'est un scope et rester totalement indifférent. Ce cas-là compte comme un
+**échec**, pas une réussite partielle.
+
 ---
 
 ## Grille de notation
@@ -92,8 +143,20 @@ Une coche = compris **spontanément** (sans qu'on aide).
 | 2. On n'en crée pas partout (Test 3, anti-ERP) | ☐ | ☐ | ☐ |
 | 3. On peut poser une question sur ce scope (Test 2) | ☐ | ☐ | ☐ |
 | 4. Ça aide à transmettre le contexte (Test 4) | ☐ | ☐ | ☐ |
+| 5. Réflexe de navigation : sait où cliquer pour un pb EP (Test 5) | ☐ | ☐ | ☐ |
+| ★ **A vu la VALEUR** (phrase spontanée, cf. go/no-go) | ☐ | ☐ | ☐ |
 
-Verbatims à garder (mots exacts, surtout les hésitations) :
+Par personne, noter aussi : **vocabulaire** employé (lot/zone/périmètre = ✅ ;
+dossier/répertoire = ❌) et **temps avant compréhension** (<30 s / 30 s–2 min /
+>2 min).
+
+| Mesure | P1 | P2 | P3 |
+|---|---|---|---|
+| Mot spontané pour « scope » | | | |
+| Temps avant la 1ʳᵉ phrase juste | | | |
+
+Verbatims à garder (mots exacts, surtout les hésitations **et** la phrase de
+valeur si elle sort) :
 
 - P1 :
 - P2 :
@@ -103,8 +166,19 @@ Verbatims à garder (mots exacts, surtout les hésitations) :
 
 ## Critère go / no-go
 
-**S3 est VALIDÉ si au moins 2 personnes** comprennent spontanément les **4**
-critères ci-dessus.
+**S3 est VALIDÉ si au moins 2 personnes** comprennent spontanément les critères
+ci-dessus **ET voient la valeur**.
+
+Le vrai signal de validation n'est pas une coche : c'est une **phrase de valeur
+spontanée**, du genre :
+
+> « Ah oui, ça évite de chercher dans tout le chantier. »
+> « Ah oui, je peux retrouver tout ce qui concerne le VRD. »
+> « Ah oui, quand quelqu'un part, on garde tout au même endroit. »
+
+À ce moment-là, la personne a compris la **valeur**, pas seulement l'interface.
+Sans cette phrase (même si les 5 tests sont « compris »), considérer S3 comme
+**non validé** : on aura prouvé la lisibilité, pas l'utilité.
 
 - ✅ **Validé** → on passe à **S4 — Recherche scopée** (« Que sait-on sur le VRD
   du Médipôle ? » → réponse ciblée). C'est là que commence le vrai
