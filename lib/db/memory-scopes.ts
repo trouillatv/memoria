@@ -274,11 +274,15 @@ export async function listSiteAnomaliesForAttach(
   orgId: string,
 ): Promise<ScopeAnomalyRow[]> {
   const supabase = createAdminClient()
+  // L'anomalie est reliée au site via son intervention → mission → site
+  // (interventions n'a PAS de site_id ; cf. mig 018 : interventions.mission_id).
   const { data, error } = await supabase
     .from('intervention_anomalies')
-    .select('id, category, category_other, description, status, created_at, scope_id, intervention:interventions!inner(site_id)')
+    .select(
+      'id, category, category_other, description, status, created_at, scope_id, intervention:interventions!inner(mission:missions!inner(site_id))',
+    )
     .eq('organization_id', orgId)
-    .eq('intervention.site_id', siteId)
+    .eq('intervention.mission.site_id', siteId)
     .order('created_at', { ascending: false })
     .limit(100)
   if (error) throw error
@@ -292,17 +296,23 @@ export async function setAnomalyScope(input: {
   orgId: string
 }): Promise<void> {
   const supabase = createAdminClient()
-  // L'anomalie existe, est dans l'org, et on récupère le site de son intervention.
+  // L'anomalie existe, est dans l'org, et on récupère le site de son
+  // intervention via la mission (interventions.mission_id → missions.site_id).
   const { data: ano } = await supabase
     .from('intervention_anomalies')
-    .select('id, organization_id, intervention:interventions!inner(site_id)')
+    .select('id, organization_id, intervention:interventions!inner(mission:missions!inner(site_id))')
     .eq('id', input.anomalyId)
     .maybeSingle()
   if (!ano || (ano as { organization_id: string }).organization_id !== input.orgId) {
     throw new Error('Anomalie hors de cette organisation')
   }
-  const rel = (ano as { intervention: { site_id: string } | { site_id: string }[] }).intervention
-  const anomalySiteId = Array.isArray(rel) ? rel[0]?.site_id : rel?.site_id
+  // PostgREST renvoie l'embed soit en objet, soit en tableau selon la cardinalité.
+  type MissionRel = { site_id: string } | { site_id: string }[]
+  type IntvRel = { mission: MissionRel } | { mission: MissionRel }[]
+  const pick = <T,>(v: T | T[]): T | undefined => (Array.isArray(v) ? v[0] : v)
+  const intv = pick((ano as { intervention: IntvRel }).intervention)
+  const mission = intv ? pick(intv.mission) : undefined
+  const anomalySiteId = mission?.site_id
   if (input.scopeId) {
     const scope = await getScope(input.scopeId, input.orgId)
     if (!scope || scope.siteId !== anomalySiteId) {
