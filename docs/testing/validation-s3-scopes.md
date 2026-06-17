@@ -60,7 +60,7 @@ Le mot qu'ils emploient sans qu'on le souffle trahit leur modèle mental.
 
 ---
 
-## Les 5 tests
+## Les 6 tests
 
 ### Test 1 — Compréhension spontanée du concept
 
@@ -117,19 +117,41 @@ toute la fiche.
 ❌ Elle hésite, cherche un menu, un moteur de recherche global, ou clique au
 hasard. → l'adressage n'est pas encore intuitif.
 
+### Test 6 — Le test de soustraction (à poser après les 5 autres)
+
+La question la plus redoutable. Elle ne mesure pas la compréhension, elle mesure
+la **dépendance** — la douleur réelle si ça disparaît.
+
+> **« Si on retire cette page demain, qu'est-ce que tu perds ? »**
+
+✅ **Très bon signe** (la douleur est réelle) — « je perds du temps », « je ne
+sais plus où chercher », « le remplaçant est perdu », « on repart de zéro ».
+❌ **Mauvais signe** (pas de dépendance) — « pas grand-chose », « je retrouverais
+autrement », « je chercherais dans les photos ».
+
+C'est ce test qui sépare « validé **intellectuellement** » de « validé
+**économiquement** ».
+
 ---
 
 ## Le vrai danger à guetter
 
 Le risque principal **n'est pas** qu'ils ne comprennent pas. C'est qu'ils
-comprennent… **mais ne voient pas l'intérêt** :
+comprennent… **mais ne voient pas l'intérêt** — pire, le scénario le plus subtil :
 
-> « Oui je comprends VRD. » … « Mais pourquoi je créerais ça ? »
+> « Oui, je comprends. Oui, c'est logique. Oui, je cliquerais sur VRD. »
+> … « Mais je ne suis pas sûr que j'en aurais besoin tous les jours. »
 
-C'est là que tout se joue. Comprendre l'**interface** ne suffit pas — il faut
-qu'ils ressentent la **valeur**. Un utilisateur peut décrire correctement ce
-qu'est un scope et rester totalement indifférent. Ce cas-là compte comme un
-**échec**, pas une réussite partielle.
+Ce cas **valide le concept intellectuellement mais pas économiquement**. Comprendre
+l'**interface** ne suffit pas — il faut qu'ils ressentent la **valeur** au point de
+la juger indispensable. Un utilisateur peut décrire parfaitement ce qu'est un scope
+et rester indifférent : **ça compte comme un échec**, pas une réussite partielle.
+
+La vraie inconnue de cette phase n'est donc pas la compréhension (elle viendra
+probablement). C'est : **les utilisateurs ressentent-ils assez la douleur de la
+perte de mémoire pour juger ça indispensable ?** Si oui, MemorIA est bien plus
+défendable qu'un outil de chantier ou un assistant IA — et c'est précisément ce
+qu'on veut savoir **avant** d'investir dans S4.
 
 ---
 
@@ -144,6 +166,7 @@ Une coche = compris **spontanément** (sans qu'on aide).
 | 3. On peut poser une question sur ce scope (Test 2) | ☐ | ☐ | ☐ |
 | 4. Ça aide à transmettre le contexte (Test 4) | ☐ | ☐ | ☐ |
 | 5. Réflexe de navigation : sait où cliquer pour un pb EP (Test 5) | ☐ | ☐ | ☐ |
+| 6. Dépendance : « ce que je perds » est concret (Test 6) | ☐ | ☐ | ☐ |
 | ★ **A vu la VALEUR** (phrase spontanée, cf. go/no-go) | ☐ | ☐ | ☐ |
 
 Par personne, noter aussi : **vocabulaire** employé (lot/zone/périmètre = ✅ ;
@@ -161,6 +184,17 @@ valeur si elle sort) :
 - P1 :
 - P2 :
 - P3 :
+
+**La phrase qu'on espère entendre.** Le meilleur verbatim n'est pas « c'est bien »
+ni « c'est logique » (jugements sur un écran). C'est une phrase où la personne
+bascule et parle d'un **problème métier**, par exemple :
+
+> « Ah, donc tout ce qui concerne le VRD va vivre ici. »
+> « Ah, ça devient la mémoire du VRD. »
+> « Quand quelqu'un part, on ne perd plus tout. »
+
+À cet instant elle ne décrit plus une interface : elle décrit la perte de mémoire
+qu'on lui évite. Si cette bascule se produit chez ≥2 personnes, S3 est validé.
 
 ---
 
