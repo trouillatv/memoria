@@ -325,3 +325,40 @@ export async function setAnomalyScope(input: {
     .eq('id', input.anomalyId)
   if (error) throw error
 }
+
+// ── Photos (migration 119) — même mécanisme, site via intervention → mission ──
+
+/** Rattache (scopeId) ou dé-rattache (null) une photo. Vérifie org + site. */
+export async function setPhotoScope(input: {
+  photoId: string
+  scopeId: string | null
+  orgId: string
+}): Promise<void> {
+  const supabase = createAdminClient()
+  // La photo existe ; on récupère le site via intervention → mission.
+  const { data: photo } = await supabase
+    .from('intervention_photos')
+    .select('id, intervention:interventions!inner(mission:missions!inner(site_id, organization_id))')
+    .eq('id', input.photoId)
+    .maybeSingle()
+  if (!photo) throw new Error('Photo introuvable')
+  type MissionRel = { site_id: string; organization_id: string } | { site_id: string; organization_id: string }[]
+  type IntvRel = { mission: MissionRel } | { mission: MissionRel }[]
+  const pick = <T,>(v: T | T[]): T | undefined => (Array.isArray(v) ? v[0] : v)
+  const intv = pick((photo as { intervention: IntvRel }).intervention)
+  const mission = intv ? pick(intv.mission) : undefined
+  if (!mission || mission.organization_id !== input.orgId) {
+    throw new Error('Photo hors de cette organisation')
+  }
+  if (input.scopeId) {
+    const scope = await getScope(input.scopeId, input.orgId)
+    if (!scope || scope.siteId !== mission.site_id) {
+      throw new Error('Sous-périmètre invalide pour ce site')
+    }
+  }
+  const { error } = await supabase
+    .from('intervention_photos')
+    .update({ scope_id: input.scopeId })
+    .eq('id', input.photoId)
+  if (error) throw error
+}

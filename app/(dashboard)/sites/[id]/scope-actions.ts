@@ -13,6 +13,7 @@ import {
   softDeleteScope,
   setActionScope,
   setAnomalyScope,
+  setPhotoScope,
 } from '@/lib/db/memory-scopes'
 
 type Result = { ok: true } | { ok: false; error: string }
@@ -145,6 +146,39 @@ export async function setAnomalyScopeAction(input: {
   try {
     await setAnomalyScope({
       anomalyId: parsed.data.anomalyId,
+      scopeId: parsed.data.scopeId,
+      orgId,
+    })
+    revalidatePath(`/sites/${parsed.data.siteId}`)
+    if (parsed.data.scopeId) revalidatePath(`/sites/${parsed.data.siteId}/scopes/${parsed.data.scopeId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erreur' }
+  }
+}
+
+const attachPhotoSchema = z.object({
+  photoId: z.string().uuid(),
+  scopeId: z.string().uuid().nullable(),
+  siteId: z.string().uuid(),
+})
+
+export async function setPhotoScopeAction(input: {
+  photoId: string
+  scopeId: string | null
+  siteId: string
+}): Promise<Result> {
+  const auth = await requireManagerOrAdmin()
+  if (!auth.ok) return { ok: false, error: auth.error }
+  const orgId = await getOrgId()
+  if (!orgId) return { ok: false, error: 'Organisation introuvable' }
+
+  const parsed = attachPhotoSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Champs invalides' }
+
+  try {
+    await setPhotoScope({
+      photoId: parsed.data.photoId,
       scopeId: parsed.data.scopeId,
       orgId,
     })

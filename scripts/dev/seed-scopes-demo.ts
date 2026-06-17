@@ -64,7 +64,20 @@ const ANOMALIES: { scope: string; description: string; category: string }[] = [
   { scope: 'gros-oeuvre', description: 'Malfaçon voile béton', category: 'non_conformite' },
 ]
 
-const LABEL_BY_KEY = new Map(SCOPES.map((s) => [s.key, s.label]))
+// S3.5 — contenu déposé « terrain » NON rattaché (scope_id NULL) : c'est ce que
+// le panneau « À rattacher » doit retrouver et proposer au bon sous-périmètre.
+// Les libellés sont choisis pour exercer le moteur déterministe (corps d'état +
+// mots-clés métier → scope).
+const UNATTACHED_ANOMALIES: { description: string; category: string }[] = [
+  { description: 'Eaux pluviales stagnantes près du regard EP', category: 'autre' }, // → VRD
+  { description: 'Coffret électrique du parking porte ouverte', category: 'autre' }, // → Électricité
+  { description: 'Fissure sur voile pignon nord', category: 'autre' },               // → Gros œuvre
+]
+const UNATTACHED_ACTIONS: { title: string; corps_etat: string }[] = [
+  { title: 'Reprise enrobé voirie entrée', corps_etat: 'VRD' }, // → VRD (corps d'état)
+]
+
+const LABEL_BY_KEY = new Map<string, string>(SCOPES.map((s) => [s.key, s.label]))
 
 // Le SEUL compte que ce script a le droit de toucher. Toute la sécurité
 // d'isolation tient à cette constante : l'org cible est dérivée de cet email.
@@ -239,6 +252,41 @@ async function main() {
     )
   }
   console.log(`Anomalies : ${ANOMALIES.length} rattachées`)
+
+  // ── S3.5 — contenu « terrain » NON rattaché (pour le panneau « À rattacher ») ──
+  const fieldInterventionId = await ensureRow(
+    supabase, 'interventions',
+    { mission_id: missionId, notes: 'Relevé terrain démo S3.5 — contenu non trié (à rattacher).' },
+    {
+      mission_id: missionId, scheduled_at: '2026-06-14T00:00:00.000Z',
+      status: 'planned', team: [],
+      notes: 'Relevé terrain démo S3.5 — contenu non trié (à rattacher).',
+      organization_id: orgId, created_by: author,
+    },
+  )
+  for (const an of UNATTACHED_ANOMALIES) {
+    await ensureRow(
+      supabase, 'intervention_anomalies',
+      { intervention_id: fieldInterventionId, description: an.description },
+      {
+        intervention_id: fieldInterventionId, category: an.category, description: an.description,
+        status: 'open', scope_id: null, // NON rattaché : le panneau doit le proposer
+        organization_id: orgId, reported_by: author,
+      },
+    )
+  }
+  for (const a of UNATTACHED_ACTIONS) {
+    await ensureRow(
+      supabase, 'site_actions',
+      { site_id: siteId, title: a.title },
+      {
+        site_id: siteId, title: a.title, status: 'open',
+        corps_etat: a.corps_etat, scope_id: null, // NON rattaché
+        created_by: author, created_from: 'seed_scopes_demo_unattached',
+      },
+    )
+  }
+  console.log(`Non rattachés : ${UNATTACHED_ANOMALIES.length} anomalies + ${UNATTACHED_ACTIONS.length} action`)
 
   console.log('\n✓ Démo S3 prête.')
   console.log(`  Fiche site  : /sites/${siteId}?tab=memoire`)

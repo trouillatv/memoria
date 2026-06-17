@@ -57,7 +57,9 @@ import { SitePhotoGallery } from './SitePhotoGallery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { FoldableSection } from './FoldableSection'
 import { SiteScopesSection } from './SiteScopesSection'
+import { UnattachedContentPanel } from './UnattachedContentPanel'
 import { listSiteScopes } from '@/lib/db/memory-scopes'
+import { listUnattachedContent } from '@/lib/db/scope-suggestions'
 import { listOrgCatalog } from '@/lib/db/org-catalog'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
@@ -121,11 +123,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
   const orgId = user.organization_id
-  const [siteScopes, scopeTypeCatalog] = await Promise.all([
+  const [siteScopes, scopeTypeCatalog, unattached] = await Promise.all([
     orgId ? listSiteScopes(id, orgId).catch(() => []) : Promise.resolve([]),
     listOrgCatalog(orgId, 'corps_etat').catch(() => []),
+    orgId ? listUnattachedContent(id, orgId).catch(() => []) : Promise.resolve([]),
   ])
   const scopeTypeOptions = scopeTypeCatalog.map((c) => ({ key: c.key, label: c.label }))
+  const scopeChoices = siteScopes.map((s) => ({ id: s.id, label: s.label }))
 
   // CT-2 (Vincent 2026-05-21) — équipes all-time qui ont travaillé sur ce site.
   const teamsKnowledge = await getSiteTeamsKnowledge(id)
@@ -322,6 +326,16 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <SiteScopesSection siteId={id} scopes={siteScopes} typeOptions={scopeTypeOptions} />
         </CardContent>
       </Card>
+
+      {/* Sprint 3.5 — alimentation des scopes : rattachement assisté du contenu
+          terrain non encore rangé (le panneau se masque seul si tout est rattaché). */}
+      {unattached.length > 0 && (
+        <Card className={cn(tabClass('memoire'))}>
+          <CardContent className="pt-6">
+            <UnattachedContentPanel siteId={id} items={unattached} scopes={scopeChoices} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card className={cn(tabClass('memoire'))}>
         <CardContent className="pt-6">
