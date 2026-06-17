@@ -12,6 +12,7 @@ import {
   setActionScopeAction,
   setAnomalyScopeAction,
   setPhotoScopeAction,
+  logScopeAttachAction,
 } from './scope-actions'
 
 export interface UnattachedItemView {
@@ -51,11 +52,19 @@ export function UnattachedContentPanel({
 
   function rattacher(item: UnattachedItemView, scopeId: string) {
     if (!scopeId) return
+    // Test B (Vincent) : la suggestion a-t-elle été acceptée telle quelle,
+    // corrigée, ou n'y avait-il pas de suggestion ? (qualité du moteur dans le temps)
+    const outcome: 'accepted' | 'overridden' | 'manual' = !item.suggestion
+      ? 'manual'
+      : item.suggestion.scopeId === scopeId
+        ? 'accepted'
+        : 'overridden'
     setBusyId(item.id)
     startTransition(async () => {
       const res = await attach(item.kind, item.id, scopeId, siteId)
       setBusyId(null)
       if (res.ok) {
+        void logScopeAttachAction(outcome, siteId)
         const sc = scopes.find((s) => s.id === scopeId)
         toast.success(`Rattaché à « ${sc?.label ?? 'sous-périmètre'} »`)
         router.refresh()

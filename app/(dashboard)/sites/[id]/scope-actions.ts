@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireManagerOrAdmin } from '@/lib/auth/require'
 import { getOrgId } from '@/lib/db/users'
+import { logUsageEvent } from '@/lib/db/usage-events'
 import {
   createScope,
   softDeleteScope,
@@ -188,4 +189,16 @@ export async function setPhotoScopeAction(input: {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erreur' }
   }
+}
+
+// Instrumentation S3.5 (Test B Vincent) : rattachement assisté accepté tel quel,
+// corrigé, ou fait à la main. Best-effort, jamais bloquant. Sert à mesurer la
+// QUALITÉ des suggestions (taux d'acceptation sans correction) dans le temps —
+// PAS affiché à l'utilisateur. event = scope_attach:{accepted|overridden|manual}.
+export async function logScopeAttachAction(
+  outcome: 'accepted' | 'overridden' | 'manual',
+  siteId: string,
+): Promise<void> {
+  if (!['accepted', 'overridden', 'manual'].includes(outcome)) return
+  void logUsageEvent({ event: `scope_attach:${outcome}`, siteId })
 }

@@ -220,3 +220,76 @@ export async function listUnattachedContent(siteId: string, orgId: string): Prom
   })
   return items
 }
+
+// ── KPI d'observation (Vincent) : « % de contenus réellement rattachés » ──────
+//
+// LE KPI le plus important de S3 : 5 % ⇒ scopes décoratifs ; 80 % ⇒ ils sont
+// devenus la structure réelle de la mémoire. Mesure d'OBSERVATION (admin/dev),
+// PAS une jauge montrée à l'utilisateur — afficher le % pousserait au
+// sur-rangement (gamification), le risque exact à éviter.
+
+export interface ScopeAttachmentStats {
+  byType: { kind: 'action' | 'anomaly' | 'photo'; total: number; attached: number; pct: number }[]
+  overall: { total: number; attached: number; pct: number }
+  /** Couverture du moteur de suggestion sur ce qui reste non rattaché (Test A). */
+  unattached: { count: number; withSuggestion: number; coveragePct: number }
+}
+
+const pct = (a: number, t: number) => (t > 0 ? Math.round((a / t) * 100) : 0)
+
+/** Taux de rattachement du contenu d'un site, par type + global, + couverture
+ *  des suggestions. Lecture seule, bornée. Pour observer Tests A & C. */
+export async function getScopeAttachmentStats(siteId: string, orgId: string): Promise<ScopeAttachmentStats> {
+  const supabase = createAdminClient()
+
+  const [actRows, anoRows, phoRows, unattached] = await Promise.all([
+    supabase
+      .from('site_actions')
+      .select('scope_id')
+      .eq('site_id', siteId)
+      .in('status', ['open', 'planned', 'done'])
+      .limit(5000),
+    supabase
+      .from('intervention_anomalies')
+      .select(`scope_id, ${SITE_EMBED}`)
+      .eq('organization_id', orgId)
+      .eq('intervention.mission.site_id', siteId)
+      .limit(5000),
+    supabase
+      .from('intervention_photos')
+      .select(`scope_id, ${SITE_EMBED}`)
+      .eq('intervention.mission.site_id', siteId)
+      .eq('intervention.mission.organization_id', orgId)
+      .limit(5000),
+    listUnattachedContent(siteId, orgId),
+  ])
+
+  const tally = (rows: { scope_id: string | null }[] | null) => {
+    const list = (rows ?? []) as { scope_id: string | null }[]
+    const total = list.length
+    const attached = list.filter((r) => r.scope_id).length
+    return { total, attached, pct: pct(attached, total) }
+  }
+
+  const a = tally(actRows.data as { scope_id: string | null }[] | null)
+  const an = tally(anoRows.data as { scope_id: string | null }[] | null)
+  const ph = tally(phoRows.data as { scope_id: string | null }[] | null)
+
+  const totalAll = a.total + an.total + ph.total
+  const attachedAll = a.attached + an.attached + ph.attached
+  const withSuggestion = unattached.filter((u) => u.suggestion).length
+
+  return {
+    byType: [
+      { kind: 'action', ...a },
+      { kind: 'anomaly', ...an },
+      { kind: 'photo', ...ph },
+    ],
+    overall: { total: totalAll, attached: attachedAll, pct: pct(attachedAll, totalAll) },
+    unattached: {
+      count: unattached.length,
+      withSuggestion,
+      coveragePct: pct(withSuggestion, unattached.length),
+    },
+  }
+}
