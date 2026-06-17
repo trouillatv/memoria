@@ -16,6 +16,7 @@
     "db:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
     "db:seed-batisud-demo": "tsx scripts/dev/seed-batisud-demo.ts",
+    "db:seed-scopes-demo": "tsx scripts/dev/seed-scopes-demo.ts",
     "db:reset-and-seed-nc-demo": "tsx scripts/dev/reset-and-seed-nc-demo.ts",
     "db:restore-backup": "tsx scripts/dev/restore-backup.ts",
     "gen:icons": "tsx scripts/gen-icons.ts",
