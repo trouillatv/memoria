@@ -62,16 +62,22 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
   const [plannedStartHHMM, setPlannedStartHHMM] = useState<string>('')
   const [plannedEndHHMM, setPlannedEndHHMM] = useState<string>('')
 
-  // Tri pour le picker : contrat → site → mission (alphabétique, fr).
-  const sortedMissions = useMemo(() => {
-    const fr = (a: string, b: string) =>
-      a.localeCompare(b, 'fr', { sensitivity: 'base' })
-    return [...missions].sort(
-      (a, b) =>
-        fr(a.contractName, b.contractName) ||
-        fr(a.siteName, b.siteName) ||
-        fr(a.name, b.name),
-    )
+  // Picker GROUPÉ PAR SITE (sinon, à plat, on s'y perd dès qu'il y a beaucoup de
+  // missions). optgroup = site ; à l'intérieur, missions triées par nom puis contrat.
+  const fr = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' })
+  const missionsBySite = useMemo(() => {
+    const bySite = new Map<string, MissionOption[]>()
+    for (const m of missions) {
+      if (!bySite.has(m.siteName)) bySite.set(m.siteName, [])
+      bySite.get(m.siteName)!.push(m)
+    }
+    return [...bySite.entries()]
+      .sort((a, b) => fr(a[0], b[0]))
+      .map(([site, ms]) => ({
+        site,
+        missions: ms.sort((a, b) => fr(a.name, b.name) || fr(a.contractName, b.contractName)),
+      }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missions])
 
   const sortedTeams = useMemo(() => {
@@ -160,7 +166,7 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
             <label htmlFor="mission-select" className="text-xs font-medium text-muted-foreground">
               Mission *
             </label>
-            {sortedMissions.length === 0 ? (
+            {missions.length === 0 ? (
               <p className="text-sm text-muted-foreground italic rounded-md border border-dashed bg-muted/30 px-3 py-2">
                 Aucune mission disponible — créez-en une depuis un contrat actif.
               </p>
@@ -175,10 +181,16 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
                 <option value="" disabled>
                   Sélectionner une mission…
                 </option>
-                {sortedMissions.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} · {m.siteName} · {m.contractName}
-                  </option>
+                {/* Groupé par site : le site est l'en-tête d'optgroup, plus besoin
+                    de le répéter sur chaque ligne. */}
+                {missionsBySite.map(({ site, missions: ms }) => (
+                  <optgroup key={site} label={site}>
+                    {ms.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} · {m.contractName}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             )}
@@ -277,7 +289,7 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
           <DialogClose render={<Button variant="outline" disabled={pending} />}>
             Annuler
           </DialogClose>
-          <Button onClick={submit} disabled={!canSubmit || sortedMissions.length === 0}>
+          <Button onClick={submit} disabled={!canSubmit || missions.length === 0}>
             {pending ? 'Planification…' : 'Planifier'}
           </Button>
         </DialogFooter>
