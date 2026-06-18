@@ -22,6 +22,7 @@ import {
   Clock,
   Link2 as Link2Icon,
   ListTodo,
+  CalendarClock,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -88,10 +89,18 @@ export default async function BriefingPage({
     listOpenSiteActions().catch(() => [] as SiteActionRow[]),
   ])
 
+  // Actions dont l'échéance (due_date) tombe le jour cible du briefing : ce sont
+  // les actions « prévues pour demain ». On les sort de la liste générale pour
+  // les mettre en avant — c'est exactement ce que Maeva doit ne pas oublier ce
+  // soir-là. Le reste des actions ouvertes garde la section « à ne pas oublier ».
+  const actionsForTomorrow = openActions.filter((a) => a.due_date === target)
+  const tomorrowActionIds = new Set(actionsForTomorrow.map((a) => a.id))
+  const otherOpenActions = openActions.filter((a) => !tomorrowActionIds.has(a.id))
+
   // Actions ouvertes groupées par site (puis corps d'état) — à ne pas oublier.
   // Séparées des interventions planifiées : ce n'est pas la même nature.
   const actionsBySite = new Map<string, { name: string; actions: SiteActionRow[] }>()
-  for (const a of openActions) {
+  for (const a of otherOpenActions) {
     if (!actionsBySite.has(a.site_id)) actionsBySite.set(a.site_id, { name: a.site_name, actions: [] })
     actionsBySite.get(a.site_id)!.actions.push(a)
   }
@@ -206,13 +215,32 @@ export default async function BriefingPage({
         </div>
       )}
 
+      {/* Actions prévues pour demain — échéance (due_date) = jour cible du
+          briefing. Mises en avant : c'est ce qui est attendu dès demain. */}
+      {actionsForTomorrow.length > 0 && (
+        <Card className="border-brand-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-brand-600" />
+              Actions prévues pour demain ({actionsForTomorrow.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground -mt-1">
+              Actions dont l&apos;échéance tombe le {formatDateLong(briefing.date)}. À traiter ou à planifier dès demain.
+            </p>
+            <OpenActionsList actions={actionsForTomorrow} showSite />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Actions ouvertes à ne pas oublier — distinctes des interventions. */}
-      {openActions.length > 0 && (
+      {otherOpenActions.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base inline-flex items-center gap-2">
               <ListTodo className="h-4 w-4 text-muted-foreground" />
-              Actions ouvertes à ne pas oublier ({openActions.length})
+              Actions ouvertes à ne pas oublier ({otherOpenActions.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
