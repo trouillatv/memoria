@@ -11,7 +11,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction, planActionAction, listSiteMissionsForPlanningAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction } from '@/app/(dashboard)/actions/actions'
 import { actionHealth } from '@/lib/actions/health'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 
@@ -223,15 +223,22 @@ function PlanForm({
   const [newName, setNewName] = useState(action.title)
   const [date, setDate] = useState(action.due_date ?? tomorrowIso())
   const [slot, setSlot] = useState<'morning' | 'afternoon' | 'evening'>('morning')
+  // teamChoice : 'inherit' (équipe par défaut de la mission) | 'unassigned' | uuid.
+  const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([])
+  const [teamChoice, setTeamChoice] = useState<string>('inherit')
   const [pending, startTransition] = useTransition()
 
   useEffect(() => {
     let alive = true
-    listSiteMissionsForPlanningAction(action.site_id)
-      .then((ms) => {
+    Promise.all([
+      listSiteMissionsForPlanningAction(action.site_id),
+      listActiveTeamsForPlanningAction().catch(() => []),
+    ])
+      .then(([ms, ts]) => {
         if (!alive) return
         setMissions(ms)
         if (ms.length > 0) setMissionChoice(ms[0].id)
+        setTeams(ts.map((t) => ({ id: t.id, name: t.name })))
         setLoadingMissions(false)
       })
       .catch(() => setLoadingMissions(false))
@@ -251,6 +258,7 @@ function PlanForm({
       fd.set('mission_mode', 'new')
       fd.set('new_mission_name', newName.trim() || action.title)
     }
+    fd.set('team', teamChoice)
     startTransition(async () => {
       const r = await planActionAction(fd)
       if (!r.ok) toast.error(r.error)
@@ -314,6 +322,27 @@ function PlanForm({
           <option value="evening">Soir</option>
         </select>
       </div>
+
+      {/* Équipe — par défaut héritée de la mission ; sinon Non-affecté ; ou
+          une équipe précise (ex. Gros œuvre). L'intervention naît affectée. */}
+      <label className="block text-[11px] text-muted-foreground">
+        Équipe
+        <select
+          value={teamChoice}
+          onChange={(e) => setTeamChoice(e.target.value)}
+          className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+        >
+          <option value="inherit">Équipe par défaut de la mission</option>
+          <option value="unassigned">Non-affecté (à attribuer plus tard)</option>
+          {teams.length > 0 && (
+            <optgroup label="Équipes">
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </label>
 
       <div className="flex items-center justify-end gap-2">
         <button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">

@@ -97,6 +97,25 @@ export async function listSiteMissionsForPlanningAction(
     .map((m) => ({ id: m.id, name: m.name, cadence: m.cadence }))
 }
 
+/** Équipes actives de l'org — pour attribuer une action planifiée directement. */
+export async function listActiveTeamsForPlanningAction(): Promise<
+  Array<{ id: string; name: string; color: string | null }>
+> {
+  const auth = await requireOperator()
+  if (!auth.ok) return []
+  const orgId = await getOrgId()
+  if (!orgId) return []
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('teams')
+    .select('id, name, color')
+    .eq('organization_id', orgId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('name')
+  return (data ?? []) as Array<{ id: string; name: string; color: string | null }>
+}
+
 const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide')
 const SlotSchema = z.enum(['morning', 'afternoon', 'evening'])
 
@@ -124,6 +143,11 @@ export async function planActionAction(
   const sParsed = SlotSchema.safeParse(formData.get('slot'))
   if (!sParsed.success) return { ok: false, error: 'Créneau invalide' }
 
+  // Équipe : 'inherit' (défaut, hérite de la mission) | 'unassigned' | uuid.
+  const teamRaw = formData.get('team')
+  const teamChoice = typeof teamRaw === 'string' && teamRaw ? teamRaw : 'inherit'
+
+  const supabase = createAdminClient()
   const missionMode = formData.get('mission_mode')
   let missionId: string
   try {
@@ -137,12 +161,45 @@ export async function planActionAction(
       missionId = await createMission({ site_id: siteId, name, cadence: 'on_demand', created_by: user.id })
     }
 
+    // Résolution de l'équipe (même logique que la vue Semaine) :
+    //   'inherit'    → équipe par défaut de la mission (peut être null)
+    //   'unassigned' → null (Non-affecté)
+    //   uuid         → équipe précise, validée active + même org
+    let finalTeamId: string | null = null
+    if (teamChoice === 'unassigned') {
+      finalTeamId = null
+    } else if (teamChoice === 'inherit') {
+      const { data: m } = await supabase
+        .from('missions')
+        .select('assigned_team_id')
+        .eq('id', missionId)
+        .maybeSingle()
+      finalTeamId = (m as { assigned_team_id: string | null } | null)?.assigned_team_id ?? null
+    } else {
+      if (!IdSchema.safeParse(teamChoice).success) return { ok: false, error: 'Équipe invalide' }
+      const { data: t } = await supabase
+        .from('teams')
+        .select('id, active, deleted_at, organization_id')
+        .eq('id', teamChoice)
+        .maybeSingle()
+      const team = t as { active: boolean; deleted_at: string | null; organization_id: string } | null
+      if (!team || team.deleted_at !== null || team.active === false || team.organization_id !== user.organization_id) {
+        return { ok: false, error: 'Équipe inconnue ou archivée' }
+      }
+      finalTeamId = teamChoice
+    }
+
     const interventionId = await createIntervention({
       mission_id: missionId,
       scheduled_for: dParsed.data,
       slot: sParsed.data,
       created_by: user.id,
     })
+    // L'intervention naît directement affectée (assigned_team_id), pas besoin de
+    // passer par le drag & drop de la Semaine.
+    if (finalTeamId) {
+      await supabase.from('interventions').update({ assigned_team_id: finalTeamId }).eq('id', interventionId)
+    }
     await markSiteActionPlanned(id, 'intervention', interventionId)
     revalidateActionSurfaces(siteId)
     revalidatePath('/aujourdhui')
