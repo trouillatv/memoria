@@ -38,6 +38,7 @@ import { BriefingShareModal } from './BriefingShareModal'
 import { GenerateInterventionTokenButton } from './GenerateInterventionTokenButton'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
+import { CollapsibleSiteActions } from './CollapsibleSiteActions'
 import { EnvoisSection } from './EnvoisSection'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
@@ -219,14 +220,9 @@ export default async function BriefingPage({
               Issues des réunions. Ce ne sont pas des interventions planifiées — elles n&apos;entrent au planning que si vous les planifiez.
             </p>
             {actionSiteGroups.map(([siteId, g]) => (
-              <div key={siteId} className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
-                  <Link href={`/sites/${siteId}`} className="text-sm font-medium hover:underline">{g.name}</Link>
-                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">{g.actions.length}</span>
-                </div>
+              <CollapsibleSiteActions key={siteId} siteId={siteId} name={g.name} count={g.actions.length}>
                 <OpenActionsList actions={g.actions} />
-              </div>
+              </CollapsibleSiteActions>
             ))}
           </CardContent>
         </Card>
