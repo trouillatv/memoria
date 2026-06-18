@@ -109,8 +109,8 @@ export function OpenActionsList({
                 ) : isPlanning ? (
                   <PlanForm action={a} onCancel={() => setMode(null)} onDone={() => dropAndRefresh(a.id)} />
                 ) : (
-                  {/* Actions cliquables en BADGES (sinon trop discret). « Planifier »
-                      mis en avant ; les autres en pilules contour. */}
+                  // Actions cliquables en BADGES (sinon trop discret) — « Planifier »
+                  // mise en avant, les autres en pilules contour.
                   <div className={`mt-2 items-center gap-2 ${compact ? 'hidden' : 'flex flex-wrap'}`}>
                     {!compact && (
                       <button
