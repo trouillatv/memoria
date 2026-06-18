@@ -9,9 +9,10 @@
 // Si la migration n'est pas appliquée, la synthèse renvoie des zéros (gracieux).
 
 import { redirect } from 'next/navigation'
-import { Eye, MessagesSquare, Search, ListTodo } from 'lucide-react'
+import { Eye, MessagesSquare, Search, ListTodo, Layers } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { getUsageSummary } from '@/lib/db/usage-events'
+import { getUsageSummary, getScopeAttachStats } from '@/lib/db/usage-events'
+import { getScopeMonitoring } from '@/lib/db/scope-suggestions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,11 @@ export default async function AdminUsagePage() {
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/missions')
 
-  const summary = await getUsageSummary(7)
+  const [summary, scopeMon, attachStats] = await Promise.all([
+    getUsageSummary(7),
+    getScopeMonitoring(),
+    getScopeAttachStats(7),
+  ])
   const totalEvents = summary.visitOpens + summary.meetingOpens + summary.searches + summary.actionsCreated
 
   const counts = [
@@ -113,6 +118,91 @@ export default async function AdminUsagePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Rangement (scopes) — la mémoire se range-t-elle ? Observation admin
+          SEULEMENT : le % n'est jamais montré à l'utilisateur (sur-rangement). */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold inline-flex items-center gap-2">
+            <Layers className="h-4 w-4 text-muted-foreground" /> Rangement (scopes)
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Le contenu terrain se range-t-il dans les sous-périmètres&nbsp;? Repère&nbsp;:
+            &lt;10&nbsp;% = scopes décoratifs · &gt;80&nbsp;% = structure réelle de la mémoire.
+          </p>
+        </div>
+
+        {scopeMon.overall.total === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            Aucun site avec sous-périmètres pour l&apos;instant.
+          </p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* KPI % rattaché + par site */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="inline-flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-muted-foreground" /> % rattaché
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <span className="text-4xl font-semibold tabular-nums">{scopeMon.overall.pct}%</span>
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    {scopeMon.overall.attached}/{scopeMon.overall.total} contenus
+                  </span>
+                </div>
+                <ul className="divide-y">
+                  {scopeMon.sites.map((s) => (
+                    <li key={s.siteId} className="flex items-center justify-between gap-3 py-2 text-sm">
+                      <span className="min-w-0 truncate">{s.name}</span>
+                      <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                        {s.attached}/{s.total} · {s.pct}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-muted-foreground">
+                  Couverture des suggestions&nbsp;: {scopeMon.coverage.withSuggestion}/{scopeMon.coverage.count} non rattachés ont une piste ({scopeMon.coverage.pct}%).
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Qualité des suggestions (Test B) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="inline-flex items-center gap-2">
+                  <ListTodo className="h-4 w-4 text-muted-foreground" /> Suggestions acceptées
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-4xl font-semibold tabular-nums">
+                  {attachStats.acceptRatePct === null ? '—' : `${attachStats.acceptRatePct}%`}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Part des suggestions validées <strong>sans correction</strong> (qualité du moteur). 7 derniers jours.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1 text-xs">
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                    {attachStats.accepted} acceptées
+                  </span>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
+                    {attachStats.overridden} corrigées
+                  </span>
+                  <span className="rounded-full border bg-muted/40 px-2 py-0.5 text-muted-foreground">
+                    {attachStats.manual} manuelles
+                  </span>
+                </div>
+                {attachStats.total === 0 && (
+                  <p className="text-[11px] text-muted-foreground/80 italic">
+                    Aucun rattachement sur 7 jours — se remplit dès que « À rattacher » est utilisé.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

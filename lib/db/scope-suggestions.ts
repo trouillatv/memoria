@@ -293,3 +293,56 @@ export async function getScopeAttachmentStats(siteId: string, orgId: string): Pr
     },
   }
 }
+
+export interface ScopeMonitoring {
+  sites: { siteId: string; name: string; attached: number; total: number; pct: number }[]
+  overall: { attached: number; total: number; pct: number }
+  coverage: { withSuggestion: number; count: number; pct: number }
+}
+
+/** Vue admin (toutes orgs) du rangement : KPI « % rattaché » par site + global +
+ *  couverture des suggestions. Pour /admin/usage. Borné (30 sites scopés max). */
+export async function getScopeMonitoring(): Promise<ScopeMonitoring> {
+  const supabase = createAdminClient()
+  const { data: rows } = await supabase
+    .from('memory_scopes')
+    .select('site_id, organization_id')
+    .is('deleted_at', null)
+    .eq('active', true)
+
+  // Paires (site, org) distinctes — un site n'appartient qu'à une org.
+  const pairs = new Map<string, string>() // site_id → org_id
+  for (const r of (rows ?? []) as { site_id: string; organization_id: string }[]) {
+    if (!pairs.has(r.site_id)) pairs.set(r.site_id, r.organization_id)
+  }
+  const siteIds = [...pairs.keys()].slice(0, 30)
+  if (siteIds.length === 0) {
+    return { sites: [], overall: { attached: 0, total: 0, pct: 0 }, coverage: { withSuggestion: 0, count: 0, pct: 0 } }
+  }
+
+  const { data: siteRows } = await supabase.from('sites').select('id, name').in('id', siteIds)
+  const nameById = new Map((siteRows ?? []).map((s) => [(s as { id: string }).id, (s as { name: string }).name]))
+
+  const perSite = await Promise.all(
+    siteIds.map(async (siteId) => {
+      const stats = await getScopeAttachmentStats(siteId, pairs.get(siteId)!)
+      return { siteId, name: nameById.get(siteId) ?? siteId, stats }
+    }),
+  )
+
+  let attached = 0, total = 0, withSuggestion = 0, unattachedCount = 0
+  const sites = perSite.map((p) => {
+    attached += p.stats.overall.attached
+    total += p.stats.overall.total
+    withSuggestion += p.stats.unattached.withSuggestion
+    unattachedCount += p.stats.unattached.count
+    return { siteId: p.siteId, name: p.name, attached: p.stats.overall.attached, total: p.stats.overall.total, pct: p.stats.overall.pct }
+  })
+  sites.sort((x, y) => y.total - x.total)
+
+  return {
+    sites,
+    overall: { attached, total, pct: pct(attached, total) },
+    coverage: { withSuggestion, count: unattachedCount, pct: pct(withSuggestion, unattachedCount) },
+  }
+}

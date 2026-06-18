@@ -109,6 +109,51 @@ function countBriefToAction(rows: UsageRow[]): number {
   return count
 }
 
+// ── S3.5 — qualité du rangement assisté (Test B Vincent) ─────────────────────
+//
+// Events `scope_attach:{accepted|overridden|manual}` émis à chaque rattachement
+// dans le panneau « À rattacher ». accepted+overridden = cas où une suggestion
+// EXISTAIT ; le taux d'acceptation (accepted parmi ces deux) = qualité du moteur.
+
+export interface ScopeAttachStats {
+  accepted: number
+  overridden: number
+  manual: number
+  total: number
+  /** accepted / (accepted + overridden) — % de suggestions acceptées sans correction. */
+  acceptRatePct: number | null
+}
+
+const EMPTY_ATTACH: ScopeAttachStats = { accepted: 0, overridden: 0, manual: 0, total: 0, acceptRatePct: null }
+
+/** Comptage des rattachements par issue sur `days` jours. Résilient (table absente → 0). */
+export async function getScopeAttachStats(days = 7): Promise<ScopeAttachStats> {
+  try {
+    const supabase = createAdminClient()
+    const since = new Date(Date.now() - days * 86_400_000).toISOString()
+    const { data, error } = await supabase
+      .from('usage_events')
+      .select('event')
+      .gte('created_at', since)
+      .like('event', 'scope_attach:%')
+    if (error) return { ...EMPTY_ATTACH }
+    let accepted = 0, overridden = 0, manual = 0
+    for (const r of (data ?? []) as { event: string }[]) {
+      if (r.event === 'scope_attach:accepted') accepted++
+      else if (r.event === 'scope_attach:overridden') overridden++
+      else if (r.event === 'scope_attach:manual') manual++
+    }
+    const suggested = accepted + overridden
+    return {
+      accepted, overridden, manual,
+      total: accepted + overridden + manual,
+      acceptRatePct: suggested > 0 ? Math.round((accepted / suggested) * 100) : null,
+    }
+  } catch {
+    return { ...EMPTY_ATTACH }
+  }
+}
+
 /**
  * Synthèse d'usage sur les `days` derniers jours. Admin client.
  * Résilient : si la table n'existe pas (migration 113 non appliquée), renvoie 0.
