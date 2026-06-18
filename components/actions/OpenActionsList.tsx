@@ -109,22 +109,30 @@ export function OpenActionsList({
                 ) : isPlanning ? (
                   <PlanForm action={a} onCancel={() => setMode(null)} onDone={() => dropAndRefresh(a.id)} />
                 ) : (
-                  <div className={`mt-1.5 items-center gap-3 text-[11px] ${compact ? 'hidden' : 'flex'}`}>
+                  {/* Actions cliquables en BADGES (sinon trop discret). « Planifier »
+                      mis en avant ; les autres en pilules contour. */}
+                  <div className={`mt-2 items-center gap-2 ${compact ? 'hidden' : 'flex flex-wrap'}`}>
                     {!compact && (
                       <button
                         type="button"
                         onClick={() => setMode({ id: a.id, kind: 'plan' })}
-                        className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-foreground/30 bg-background px-3 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background active:scale-[0.98]"
                       >
-                        <CalendarClock className="h-3 w-3" />Planifier
+                        <CalendarClock className="h-3.5 w-3.5" />Planifier
                       </button>
                     )}
-                    <Link href={`/sites/${a.site_id}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
-                      <MapPin className="h-3 w-3" />Voir le site
+                    <Link
+                      href={`/sites/${a.site_id}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+                    >
+                      <MapPin className="h-3.5 w-3.5" />Voir le site
                     </Link>
                     {a.report_id && (
-                      <Link href={`/meetings/${a.report_id}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground">
-                        <Mic className="h-3 w-3" />Réunion source
+                      <Link
+                        href={`/meetings/${a.report_id}`}
+                        className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+                      >
+                        <Mic className="h-3.5 w-3.5" />Réunion source
                       </Link>
                     )}
                   </div>
