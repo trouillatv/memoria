@@ -21,9 +21,12 @@ export const CRAVACHE_FIXTURE: CrBecib = {
     clientLogoDataUrl: null,
   },
   intervenants: [
-    { groupe: 'MOA', organisme: 'Mairie du MONT-DORE', representant: 'M. KATJAWAN', tel: '43.72.23', mob: '73.53.93', email: 'jocelyn.katjawan@ville-montdore.nc', invite: true, presence: 'AE', diffusion: true },
-    { groupe: 'MOE', organisme: 'BECIB', representant: 'Mme DEVALLEZ', tel: '27 85 78', mob: '75.23.28', email: 'e.devallez@becib.nc', invite: true, presence: 'P', diffusion: true },
-    { groupe: 'ENTREPRISE', organisme: 'ETV', representant: 'M. VERDEGEM', tel: '77.90.22', mob: null, email: 'etv@etv.nc', invite: true, presence: 'P', diffusion: true },
+    // NB : valeurs invite/presence/diffusion = reconstruction du PV04 réel par
+    // Claude (la donnée exacte de la colonne I/présence vient de l'original, pas
+    // inventée par défaut). À corriger depuis le vrai PV si besoin.
+    { groupe: 'MOA', organisme: 'Mairie du MONT-DORE', representant: 'M. KATJAWAN', tel: '43.72.23', mob: '73.53.93', email: 'jocelyn.katjawan@ville-montdore.nc', invite: false, presence: 'AE', diffusion: true },
+    { groupe: 'MOE', organisme: 'BECIB', representant: 'Mme DEVALLEZ', tel: '27 85 78', mob: '75.23.28', email: 'e.devallez@becib.nc', invite: false, presence: 'P', diffusion: true },
+    { groupe: 'ENTREPRISE', organisme: 'ETV', representant: 'M. VERDEGEM', tel: '77.90.22', mob: null, email: 'etv@etv.nc', invite: false, presence: 'P', diffusion: true },
     { groupe: 'ENTREPRISE', organisme: 'ETV', representant: 'M. MERIEL', tel: '76.18.10', mob: null, email: 'Assist.pilote2@etv.nc', invite: false, presence: 'P', diffusion: true },
     { groupe: 'PARTENAIRES', organisme: 'LA CRAVACHE', representant: 'M. VALEE Eric', tel: '93.12.33', mob: null, email: null, invite: false, presence: 'P', diffusion: true },
     { groupe: 'PARTENAIRES', organisme: 'LA CRAVACHE', representant: 'Mme CHUQUET', tel: '53.46.12', mob: null, email: null, invite: false, presence: 'P', diffusion: true },

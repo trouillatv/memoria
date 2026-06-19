@@ -120,10 +120,8 @@ const s = StyleSheet.create({
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   // Une LIGNE PAR PERSONNE (aucune fusion). Hauteur fixe → cases X bien centrées.
   ivPersonRow: { flexDirection: 'row', height: IV_ROW_H, alignItems: 'center' },
-  // Bordure basse UNIQUEMENT sur la dernière personne d'un organisme (pas de
-  // filet entre personnes du même organisme → bloc visuellement uni).
-  ivRowBottom: { borderBottomWidth: 0.5, borderColor: C.grid },
-  ivCellR: { borderRightWidth: 0.5, borderColor: C.grid, paddingHorizontal: 3 },
+  // Grille COMPLÈTE : chaque cellule bordée droite + bas (pas de zone blanche).
+  ivCellR: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingHorizontal: 3 },
   ivOrgCell: { width: 84, fontSize: 6, fontFamily: 'Helvetica-Bold' },
   ivRep: { flex: 1, fontSize: 8 },
   ivTel: { width: 40, fontSize: 7 },
@@ -270,9 +268,8 @@ function IvOrgBlock({ block }: { block: Intervenant[] }) {
   return (
     <>
       {block.map((p, k) => {
-        const last = k === block.length - 1
         return (
-          <View key={k} style={[s.ivPersonRow, last ? s.ivRowBottom : {}]} wrap={false}>
+          <View key={k} style={s.ivPersonRow} wrap={false}>
             <Text style={[s.ivCellR, s.ivOrgCell]}>{k === 0 ? p.organisme : ''}</Text>
             <Text style={[s.ivCellR, s.ivRep]}>{p.representant}</Text>
             <Text style={[s.ivCellR, s.ivTel]}>{p.tel || ''}</Text>
