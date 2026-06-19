@@ -128,6 +128,13 @@ async function main() {
   ;[...rects].sort((a, b) => Math.abs(b.w * b.h) - Math.abs(a.w * a.h)).slice(0, 8).forEach((r) => {
     console.log(`  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}`)
   })
+
+  // Présence du PIED : les cellules de libellé du cartouche (fcVer/fcDate/fcMod,
+  // largeurs ~54/78/104) doivent apparaître 1×/page → 3 occurrences si le pied
+  // est rendu sur les 3 pages (détecte la régression « pied disparu »).
+  console.log(`\n=== Présence pied (cellules cartouche par largeur) ===`)
+  const wCount = (target: number) => rects.filter((r) => Math.abs(Math.abs(r.w) - target) < 1).length
+  for (const w of [54, 78, 104]) console.log(`  largeur ~${w}pt : ${wCount(w)} occurrence(s) (attendu ${pages})`)
   void PAGE_H
 }
 

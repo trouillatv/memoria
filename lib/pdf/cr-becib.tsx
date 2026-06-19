@@ -137,7 +137,10 @@ const s = StyleSheet.create({
 
   // Pied de page (fixed) — cartouche DNS pleine largeur AVEC libellés (le seul
   // cartouche du document ; supprimé du haut). Numéro de page en texte simple.
-  footer: { position: 'absolute', bottom: 14, left: MARGIN, width: CONTENT_W },
+  // HAUTEUR EXPLICITE obligatoire : le footer contient un Text `render` (n° de
+  // page, contenu différé) ; sans hauteur fixe, Yoga ne peut pas mesurer un
+  // élément ancré en bas → le pied s'effondre et disparaît (régression iter-9).
+  footer: { position: 'absolute', bottom: 14, left: MARGIN, width: CONTENT_W, height: 42 },
   fcCont: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
   fcRow: { flexDirection: 'row' },
   fcCell: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6.5 },
@@ -148,7 +151,8 @@ const s = StyleSheet.create({
   fcDate: { width: 78 },
   footBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 },
   footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1, marginRight: 8 },
-  pageNum: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
+  // Largeur explicite : le contenu différé (render) sinon → largeur 0.
+  pageNum: { width: 60, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'right' },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -257,8 +261,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
       ['Fin du délai avec intempéries et prolongations', null],
     ] },
     { label: 'RETARD', color: C.planRetard, rows: [
-      ['Retard prévisionnel (jours calendaires)', pl.retard.previsionnel],
-      ['Retard effectif (jours calendaires)', pl.retard.effectif],
+      // Retard = 0 par défaut (« pas de retard » est une info, pas une absence).
+      ['Retard prévisionnel (jours calendaires)', pl.retard.previsionnel || '0'],
+      ['Retard effectif (jours calendaires)', pl.retard.effectif || '0'],
     ] },
   ]
 
@@ -321,20 +326,24 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
                 <View style={s.tRow}>
                   <Text style={[s.tCell, s.ivGroup, { flex: 1 }]}>{GROUP_LABEL[g]}</Text>
                 </View>
-                {rows.map((i, k) => (
-                  <View key={k} style={s.tRow} wrap={false}>
-                    {/* Organisme affiché une fois par bloc consécutif (regroupement vertical). */}
-                    <Text style={[s.tCell, s.ivOrg]}>{k === 0 || rows[k - 1].organisme !== i.organisme ? i.organisme : ''}</Text>
-                    <Text style={[s.tCell, s.ivRep]}>{i.representant}</Text>
-                    <Text style={[s.tCell, s.ivTel]}>{i.tel || ''}</Text>
-                    <Text style={[s.tCell, s.ivMob]}>{i.mob || ''}</Text>
-                    <Text style={[s.tCell, s.ivMail]}>{i.email || ''}</Text>
-                    {/* Plusieurs X possibles : la colonne de présence ET la colonne D (diffusion). */}
-                    {PRES_COLS.map((c) => (
-                      <Text key={c} style={[s.tCell, s.ivP]}>{i.presence === c || (c === 'D' && i.diffusion) ? 'X' : ''}</Text>
-                    ))}
-                  </View>
-                ))}
+                {rows.map((i, k) => {
+                  // Présence (I/P/AE/AN) cochée UNE FOIS par organisme (1re ligne
+                  // du bloc consécutif) ; D (diffusion) cochée PAR personne.
+                  const firstOfOrg = k === 0 || rows[k - 1].organisme !== i.organisme
+                  return (
+                    <View key={k} style={s.tRow} wrap={false}>
+                      <Text style={[s.tCell, s.ivOrg]}>{firstOfOrg ? i.organisme : ''}</Text>
+                      <Text style={[s.tCell, s.ivRep]}>{i.representant}</Text>
+                      <Text style={[s.tCell, s.ivTel]}>{i.tel || ''}</Text>
+                      <Text style={[s.tCell, s.ivMob]}>{i.mob || ''}</Text>
+                      <Text style={[s.tCell, s.ivMail]}>{i.email || ''}</Text>
+                      {PRES_COLS.map((c) => {
+                        const checked = c === 'D' ? i.diffusion : firstOfOrg && i.presence === c
+                        return <Text key={c} style={[s.tCell, s.ivP]}>{checked ? 'X' : ''}</Text>
+                      })}
+                    </View>
+                  )
+                })}
               </React.Fragment>
             )
           })}
