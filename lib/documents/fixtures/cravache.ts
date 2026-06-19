@@ -25,7 +25,7 @@ export const CRAVACHE_FIXTURE: CrBecib = {
     { groupe: 'MOE', representant: 'BECIB — Mme DEVALLEZ', tel: '27 85 78', mob: '75.23.28', email: 'e.devallez@becib.nc', presence: 'P' },
     { groupe: 'ENTREPRISE', representant: 'ETV — M. VERDEGEM', tel: '77.90.22', mob: null, email: 'etv@etv.nc', presence: 'P' },
     { groupe: 'ENTREPRISE', representant: 'ETV — M. MERIEL', tel: '76.18.10', mob: null, email: 'Assist.pilote2@etv.nc', presence: 'P' },
-    { groupe: 'PARTENAIRES', representant: 'LA CRAVACHE — M. VALEE Eric', tel: '93.12.33', mob: null, email: null, presence: 'AE' },
+    { groupe: 'PARTENAIRES', representant: 'LA CRAVACHE — M. VALEE Eric', tel: '93.12.33', mob: null, email: null, presence: 'P' },
     { groupe: 'PARTENAIRES', representant: 'LA CRAVACHE — Mme CHUQUET', tel: '53.46.12', mob: null, email: null, presence: 'P' },
   ],
   ordreDuJour: ['Suivi des travaux.'],

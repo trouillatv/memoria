@@ -61,16 +61,11 @@ const s = StyleSheet.create({
   breadcrumb: { fontSize: 7.5, color: C.text, flex: 1, marginHorizontal: 8, marginTop: 4 },
   headRule: { borderBottomWidth: 1.5, borderBottomColor: C.marine, marginTop: 5 },
 
-  // Cartouche DNS : table bordée 4 cases (p.1) ou rappel compact 1 ligne (p.2+).
-  // Slot à hauteur EXPLICITE → le render par page ne peut pas partir en runaway.
-  cartoucheSlot: { width: 178, height: 44 },
-  cartouche: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
+  // Cartouche DNS : table bordée 4 cases, sur toutes les pages.
+  cartouche: { width: 178, borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
   cartoucheCell: { flexDirection: 'row', borderBottomWidth: 0.5, borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3 },
   cartoucheLabel: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: C.marine, width: 56 },
   cartoucheVal: { fontSize: 6.5, color: C.text, flex: 1 },
-  cartoucheCompact: { flexDirection: 'row', borderWidth: 0.5, borderColor: C.grid },
-  cartoucheCompactCell: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
-  cartoucheCompactLast: { paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
 
   // Logo / emplacement maître d'ouvrage (p.1, centré).
   clientWrap: { alignItems: 'center', marginBottom: 8 },
@@ -127,12 +122,12 @@ const s = StyleSheet.create({
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2, marginTop: 2 },
 
-  // Avancement
-  subLabel: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: C.marine, marginTop: 3 },
+  // Avancement — sous-titres niveau 3 : petites capitales SOULIGNÉES (original).
+  subLabel: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: C.marine, textDecoration: 'underline', marginTop: 4, marginBottom: 1 },
 
-  // Planning détaillé bordé — matrice verticale (bande catégorie colorée, puis
-  // lignes « Libellé | Valeur », une par champ).
-  planBand: { flex: 1, color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 8, letterSpacing: 0.3 },
+  // Planning détaillé bordé — matrice verticale. Bande de catégorie LÉGÈRE :
+  // texte coloré sur fond teinté discret (pas un aplat plein façon bandeau).
+  planBand: { flex: 1, backgroundColor: '#eef1f8', fontFamily: 'Helvetica-Bold', fontSize: 8.5, letterSpacing: 0.3 },
   planFieldL: { flex: 1, fontSize: 8 },
   planFieldV: { width: 120, fontSize: 8, fontFamily: 'Helvetica-Bold' },
 
@@ -200,6 +195,23 @@ function Bloc({ bloc }: { bloc: CrBecibBloc }) {
   )
 }
 
+// Tableau de points : en-tête (POINTS … | ACTION) gardé avec sa 1re ligne
+// (wrap=false) → l'en-tête ne tombe jamais seul en bas de page.
+function PointsTable({ title, blocs, marginTop }: { title: string; blocs: CrBecibBloc[]; marginTop?: number }) {
+  return (
+    <View style={[s.tCont, marginTop ? { marginTop } : {}]}>
+      <View wrap={false}>
+        <View style={s.tRow}>
+          <Text style={[s.tCell, s.colHeadL]}>{title}</Text>
+          <Text style={[s.tCell, s.colHeadR]}>ACTION</Text>
+        </View>
+        {blocs[0] ? <Bloc bloc={blocs[0]} /> : null}
+      </View>
+      {blocs.slice(1).map((b, i) => <Bloc key={i} bloc={b} />)}
+    </View>
+  )
+}
+
 function Band1({ num, title, first }: { num?: string; title: string; first?: boolean }) {
   return (
     // minPresenceAhead : un bandeau ne reste jamais seul en bas de page.
@@ -237,18 +249,6 @@ function CartoucheFull({ dns, version, modification, date }: { dns: string; vers
           <Text style={s.cartoucheVal}>{v}</Text>
         </View>
       ))}
-    </View>
-  )
-}
-
-// Rappel compact 1 ligne — p.2+ (en-tête plus léger).
-function CartoucheCompact({ dns, version, modification, date }: { dns: string; version: string; modification: string; date: string }) {
-  return (
-    <View style={s.cartoucheCompact}>
-      <Text style={s.cartoucheCompactCell}>{dns || '—'}</Text>
-      <Text style={s.cartoucheCompactCell}>V{version}</Text>
-      <Text style={s.cartoucheCompactCell}>Mod. {modification}</Text>
-      <Text style={s.cartoucheCompactLast}>{date}</Text>
     </View>
   )
 }
@@ -295,16 +295,10 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
             <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
             <Text style={s.breadcrumb}>{breadcrumb}</Text>
-            {/* Slot à hauteur fixe → le render par page ne peut pas runaway.
-                p.1 = cartouche complet ; p.2+ = rappel compact. */}
-            <View
-              style={s.cartoucheSlot}
-              render={({ pageNumber }) =>
-                pageNumber === 1
-                  ? <CartoucheFull dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
-                  : <CartoucheCompact dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
-              }
-            />
+            {/* Cartouche complet 4 cases sur TOUTES les pages. La variante
+                « compacte par page » via render→JSX cassait le rendu (vide /
+                fragment brisé) : render ne doit retourner que du texte. */}
+            <CartoucheFull dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
           </View>
           <View style={s.headRule} />
         </View>
@@ -375,23 +369,10 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         <EmphText text={cr.remarquesCrPrecedent || 'RAS.'} />
         <Text style={s.nota}>{NOTA_48H}</Text>
 
-        {/* 4. POINTS EXAMINÉS — minPresenceAhead : l'en-tête de sous-tableau ne
-            tombe jamais seul en bas de page (il part avec ses 1res lignes). */}
+        {/* 4. POINTS EXAMINÉS — en-tête de sous-tableau gardé avec ses 1res lignes. */}
         <Band1 num="4" title="POINTS EXAMINÉS" />
-        <View style={s.tCont} minPresenceAhead={56}>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.colHeadL]}>POINTS ADMINISTRATIFS</Text>
-            <Text style={[s.tCell, s.colHeadR]}>ACTION</Text>
-          </View>
-          {cr.pointsExamines.administratifs.map((b, i) => <Bloc key={i} bloc={b} />)}
-        </View>
-        <View style={[s.tCont, { marginTop: 6 }]} minPresenceAhead={56}>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.colHeadL]}>POINTS TECHNIQUES</Text>
-            <Text style={[s.tCell, s.colHeadR]}>ACTION</Text>
-          </View>
-          {cr.pointsExamines.techniques.map((b, i) => <Bloc key={i} bloc={b} />)}
-        </View>
+        <PointsTable title="POINTS ADMINISTRATIFS" blocs={cr.pointsExamines.administratifs} />
+        <PointsTable title="POINTS TECHNIQUES" blocs={cr.pointsExamines.techniques} marginTop={6} />
 
         {/* 5. AVANCEMENT, PLANNING */}
         <Band1 num="5" title="AVANCEMENT, PLANNING" />
@@ -404,18 +385,16 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             {cr.avancement.previsions.map((t, i) => <PointLine key={`p${i}`} texte={t} statut={null} />)}
           </>
         )}
-        {cr.intemperiesAleas.length > 0 && (
-          <>
-            <Text style={s.band2}>INTEMPÉRIES, ALÉAS</Text>
-            {cr.intemperiesAleas.map((t, i) => <PointLine key={`i${i}`} texte={t} statut={null} />)}
-          </>
-        )}
-        <Text style={s.band2}>PLANNING</Text>
-        <View style={s.tCont}>
+        {/* Une SEULE bande niveau 2 regroupe Intempéries/Aléas + Planning (original). */}
+        <Text style={s.band2}>INTEMPÉRIES, ALÉAS, PLANNING</Text>
+        {cr.intemperiesAleas.length > 0 && cr.intemperiesAleas.map((t, i) => <PointLine key={`i${i}`} texte={t} statut={null} />)}
+        <Text style={s.subLabel}>PLANNING</Text>
+        {/* Tableau d'un bloc : pas de saut de page au milieu (RETARD orphelin). */}
+        <View style={s.tCont} wrap={false}>
           {planSections.map((sec) => (
-            <View key={sec.label} wrap={false}>
+            <View key={sec.label}>
               <View style={s.tRow}>
-                <Text style={[s.tCell, s.planBand, { backgroundColor: sec.color }]}>{sec.label}</Text>
+                <Text style={[s.tCell, s.planBand, { color: sec.color }]}>{sec.label}</Text>
               </View>
               {sec.rows.map(([label, val]) => (
                 <View key={label} style={s.tRow}>
@@ -473,7 +452,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             <Text style={s.footCellLast}>{dNum}</Text>
           </View>
           <View style={s.pagePillBox}>
-            <Text style={s.pagePill} render={({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}`} />
+            {/* `fixed` OBLIGATOIRE sur le Text : sans lui, render n'est évalué
+                qu'une fois (pageNumber absent) → cercle vide. */}
+            <Text style={s.pagePill} fixed render={({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}`} />
           </View>
         </View>
       </Page>
