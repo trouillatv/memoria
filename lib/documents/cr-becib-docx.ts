@@ -179,8 +179,17 @@ export function buildCrBecibDocx(cr: CrBecib): Document {
 
   const body: (Paragraph | Table)[] = []
 
-  // Maître d'ouvrage (centré)
-  body.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [new TextRun({ text: cr.meta.moa, bold: true, size: 22, color: C.marine })] }))
+  // Maître d'ouvrage (CLIENT, variable) : logo si fourni (data URL PNG), sinon
+  // le nom en texte. Jamais hardcodé — le client change à chaque chantier.
+  if (cr.meta.clientLogoDataUrl && cr.meta.clientLogoDataUrl.startsWith('data:image/png')) {
+    const b = Buffer.from(cr.meta.clientLogoDataUrl.split(',')[1] || '', 'base64')
+    const w = b.length > 24 ? b.readUInt32BE(16) : 200
+    const h = b.length > 24 ? b.readUInt32BE(20) : 80
+    const dw = 130
+    body.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [new ImageRun({ type: 'png', data: b, transformation: { width: dw, height: Math.round((dw * h) / w) } })] }))
+  } else {
+    body.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [new TextRun({ text: cr.meta.moa, bold: true, size: 22, color: C.marine })] }))
+  }
 
   // Bloc-titre encadré
   body.push(new Paragraph({
