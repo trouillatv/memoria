@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { CrBecibPdf } from '@/lib/pdf/cr-becib'
+import { stampPageNumbers } from '@/lib/pdf/stamp-page-numbers'
 import { CRAVACHE_FIXTURE } from '@/lib/documents/fixtures/cravache'
 
 export const dynamic = 'force-dynamic'
@@ -21,6 +22,7 @@ export async function GET() {
   let pdfBuffer: Buffer
   try {
     pdfBuffer = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE }))
+    pdfBuffer = await stampPageNumbers(pdfBuffer) // « Page n / total » (render @react-pdf cassé)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'render error'
     console.error('[dev/cr-becib] render failed:', e)

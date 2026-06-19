@@ -57,7 +57,6 @@ const s = StyleSheet.create({
   // Cadre de page (fixed, répété) — trait fin ARRONDI, sans fond. Le runaway
   // venait de la pastille (Text+render+bg), pas du borderRadius du cadre.
   pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: PAGE_H - 24, borderWidth: 0.75, borderColor: C.marine, borderRadius: 11 },
-  previewStamp: { position: 'absolute', top: 3, left: PAGE_W - MARGIN - 130, width: 130, textAlign: 'right', fontSize: 6, color: '#c00000' },
 
   // En-tête répété — largeur explicite, jamais left+right.
   header: { position: 'absolute', top: 16, left: MARGIN, width: CONTENT_W },
@@ -283,7 +282,7 @@ function IvDataRow({ p }: { p: Intervenant }) {
   )
 }
 
-export function CrBecibPdf({ cr, previewStamp }: { cr: CrBecib; previewStamp?: string }) {
+export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   const dLong = cr.meta.dateIso ? dateLong(cr.meta.dateIso) : ''
   const dNum = cr.meta.dateIso ? dateNum(cr.meta.dateIso) : ''
   const breadcrumb = `${cr.meta.moa} / ${cr.meta.moe} / ${cr.meta.chantier} / CR réunion de chantier`
@@ -319,8 +318,6 @@ export function CrBecibPdf({ cr, previewStamp }: { cr: CrBecib; previewStamp?: s
       <Page size="A4" style={s.page}>
         {/* Cadre de page arrondi (répété, sans fond → ne se remplit pas) */}
         <View style={s.pageFrame} fixed />
-        {/* DEV : horodatage d'aperçu (preuve de fraîcheur ; absent en prod). */}
-        {previewStamp ? <Text style={s.previewStamp} fixed>aperçu {previewStamp}</Text> : null}
 
         {/* En-tête répété : LOGO seul (le fil d'Ariane et le cartouche sont
             désormais uniquement en pied, comme l'original). */}

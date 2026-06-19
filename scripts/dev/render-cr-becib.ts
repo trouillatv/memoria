@@ -11,12 +11,13 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { CrBecibPdf } from '@/lib/pdf/cr-becib'
+import { stampPageNumbers } from '@/lib/pdf/stamp-page-numbers'
 import { CRAVACHE_FIXTURE } from '@/lib/documents/fixtures/cravache'
 
 async function main() {
   const d = new Date()
-  const hms = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-  const buf = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE, previewStamp: hms }))
+  const raw = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE }))
+  const buf = await stampPageNumbers(raw) // « Page n / total »
   const dir = path.join(process.cwd(), '.preview')
   if (!fs.existsSync(dir)) fs.mkdirSync(dir)
   // Nom horodaté → l'URL change à chaque rendu → jamais servi depuis le cache.
