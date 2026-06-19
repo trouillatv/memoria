@@ -87,10 +87,13 @@ export const CR_CHANTIER_VRD_V1: ReportTemplateSpec = {
     },
     {
       key: 'decisions',
-      title: 'Décisions prises',
+      // « proposées », pas « prises » : tant que l'humain n'a pas validé le PV,
+      // ce sont des propositions. Évite qu'une IA transforme une hypothèse en
+      // décision actée (« on pourrait déplacer le regard » → « Décision : … »).
+      title: 'Décisions proposées',
       kind: 'generative',
       source: 'generative',
-      guidance: 'Lister les décisions explicitement prises pendant la réunion, chacune factuelle. Si une décision est évoquée sans être tranchée, la suffixer « (à confirmer) ». Ne JAMAIS inventer une décision.',
+      guidance: 'Ne lister QUE les décisions clairement et explicitement tranchées pendant la réunion. Toute formulation conditionnelle, hypothétique ou non tranchée (« on pourrait », « éventuellement », « à voir ») ne doit PAS devenir une décision : l\'écrire suffixée « (à confirmer) » ou l\'omettre. Ne JAMAIS inventer ni durcir une décision.',
     },
     // Choix A (Vincent) : les actions viennent des actions DÉJÀ curées de la
     // réunion (site_actions), jamais d'une extraction parallèle par l'IA.
