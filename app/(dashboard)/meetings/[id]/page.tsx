@@ -145,7 +145,10 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       />
 
       {/* PV / CR de chantier — génération documentaire (Sprint 1) */}
-      <PvPanel reportId={id} initial={pvDoc} />
+      {/* key = id+statut du PV serveur : force le remount quand le brouillon est
+          créé (null→doc) ou validé (draft→validated). Sinon le useState interne de
+          PvPanel ignore le nouveau prop après router.refresh() → « rien ne s'affiche ». */}
+      <PvPanel key={pvDoc ? `${pvDoc.id}:${pvDoc.status}` : 'none'} reportId={id} initial={pvDoc} />
 
       {/* Participants détectés */}
       {report.participants && report.participants.length > 0 && (
