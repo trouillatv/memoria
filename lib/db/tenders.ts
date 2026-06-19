@@ -149,6 +149,137 @@ export async function failStuckTenders(olderThanMs: number): Promise<string[]> {
   return (data ?? []).map((r) => r.id as string)
 }
 
+export interface TenderAnalyticsSummary {
+  /** Total AO non supprimés (tous statuts confondus). */
+  total: number
+  /** Compteurs par statut. */
+  byStatus: Record<TenderStatus, number>
+  /** Taux de succès = ready / (ready + failed), null si aucun terminé. */
+  successRatePct: number | null
+  /** Temps moyen upload → analyse prête, en secondes (AO `ready` avec analyse). null si aucun. */
+  avgPipelineSeconds: number | null
+  /** AO actuellement en `analyzing`/`extracting` depuis > 10 min (anomalie en cours). */
+  stuckNow: number
+  /** Dernières analyses échouées (les plus récentes d'abord). */
+  recentFailures: { id: string; title: string; error_msg: string | null; at: string | null }[]
+  /** Santé des appels Gemini des agents AO (ai_usage, 30 derniers jours). */
+  gemini: { calls: number; errors: number; avgDurationMs: number | null }
+}
+
+const ALL_TENDER_STATUSES: TenderStatus[] = [
+  'draft', 'extracting', 'analyzing', 'ready', 'failed', 'submitted', 'archived',
+]
+
+/**
+ * Agrégats de fiabilité du pipeline d'analyse AO, pour le monitoring admin.
+ * Scopé au tenant courant (RLS via createServerClient). Pensé pour l'échelle
+ * du test terrain (quelques centaines de lignes max) : on agrège en JS plutôt
+ * que d'ajouter des RPC. Gracieux : renvoie des zéros si tables vides.
+ */
+export async function getTenderAnalyticsSummary(): Promise<TenderAnalyticsSummary> {
+  const supabase = await createServerClient()
+
+  const [{ data: tenders, error: tErr }, { data: analyses, error: aErr }] = await Promise.all([
+    supabase
+      .from('tenders')
+      .select('id, title, status, error_msg, created_at, updated_at')
+      .is('deleted_at', null),
+    supabase
+      .from('tender_analyses')
+      .select('tender_id, created_at'),
+  ])
+  if (tErr) throw tErr
+  if (aErr) throw aErr
+
+  const rows = tenders ?? []
+
+  const byStatus = Object.fromEntries(
+    ALL_TENDER_STATUSES.map((s) => [s, 0]),
+  ) as Record<TenderStatus, number>
+  for (const r of rows) {
+    const s = r.status as TenderStatus
+    if (s in byStatus) byStatus[s] += 1
+  }
+
+  const ready = byStatus.ready + byStatus.submitted + byStatus.archived
+  const failed = byStatus.failed
+  const successRatePct = ready + failed > 0
+    ? Math.round((ready / (ready + failed)) * 100)
+    : null
+
+  // Première analyse par tender → durée pipeline (upload → analyse prête).
+  const firstAnalysisAt = new Map<string, number>()
+  for (const a of analyses ?? []) {
+    const t = new Date(a.created_at as string).getTime()
+    const prev = firstAnalysisAt.get(a.tender_id as string)
+    if (prev === undefined || t < prev) firstAnalysisAt.set(a.tender_id as string, t)
+  }
+  const durations: number[] = []
+  for (const r of rows) {
+    const aAt = firstAnalysisAt.get(r.id as string)
+    if (aAt === undefined) continue
+    const created = new Date(r.created_at as string).getTime()
+    const sec = (aAt - created) / 1000
+    if (sec >= 0 && sec < 30 * 60) durations.push(sec) // borne défensive (ignore valeurs aberrantes)
+  }
+  const avgPipelineSeconds = durations.length
+    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    : null
+
+  // AO coincés en ce moment (même seuil que le cron sweep).
+  const stuckCutoff = Date.now() - 10 * 60 * 1000
+  const stuckNow = rows.filter((r) => {
+    if (r.status !== 'analyzing' && r.status !== 'extracting') return false
+    const ref = (r.updated_at ?? r.created_at) as string
+    return new Date(ref).getTime() < stuckCutoff
+  }).length
+
+  const recentFailures = rows
+    .filter((r) => r.status === 'failed')
+    .sort((a, b) => {
+      const ta = new Date((a.updated_at ?? a.created_at) as string).getTime()
+      const tb = new Date((b.updated_at ?? b.created_at) as string).getTime()
+      return tb - ta
+    })
+    .slice(0, 10)
+    .map((r) => ({
+      id: r.id as string,
+      title: (r.title as string) ?? '(sans titre)',
+      error_msg: (r.error_msg as string | null) ?? null,
+      at: (r.updated_at ?? r.created_at) as string | null,
+    }))
+
+  // Santé Gemini des agents AO (ai_usage, 30 j). Réutilise l'instrumentation
+  // existante (withAITracking) plutôt que d'en créer une nouvelle.
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: usage } = await supabase
+    .from('ai_usage')
+    .select('status, duration_ms')
+    .in('feature', ['lecteur_ao', 'memoire_technique', 'opportunity_scorer'])
+    .gte('created_at', since)
+  const usageRows = usage ?? []
+  const geminiDurations = usageRows
+    .map((u) => u.duration_ms as number | null)
+    .filter((d): d is number => typeof d === 'number')
+  const gemini = {
+    calls: usageRows.length,
+    errors: usageRows.filter((u) => u.status === 'error').length,
+    avgDurationMs: geminiDurations.length
+      ? Math.round(geminiDurations.reduce((a, b) => a + b, 0) / geminiDurations.length)
+      : null,
+  }
+
+  return {
+    total: rows.length,
+    byStatus,
+    successRatePct,
+    avgPipelineSeconds,
+    stuckNow,
+    recentFailures,
+    gemini,
+  }
+}
+
 export async function softDeleteTender(id: string): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
