@@ -1,0 +1,11 @@
+=== VIDÉO 1 · Scène 5 — MemorIA (fin) ===
+Image à produire : public/v1s5.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A clean, organized construction site at sunrise, calm and hopeful, warm golden natural light, tidy and professional. Photorealistic, professional documentary photography, real construction environment, shallow depth of field, cinematic, warm muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+Logo MemorIA + « Quand une personne part, l'expérience reste. »
+
+MOUVEMENT :
+Zoom avant très lent

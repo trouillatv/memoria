@@ -15,9 +15,24 @@ import { CRAVACHE_FIXTURE } from '@/lib/documents/fixtures/cravache'
 
 async function main() {
   const buf = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE }))
-  const out = path.join(process.cwd(), 'cr-becib-preview.pdf')
+  const dir = path.join(process.cwd(), '.preview')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir)
+  // Nom horodaté → l'URL change à chaque rendu → jamais servi depuis le cache.
+  const d = new Date()
+  const stamp = `${d.getHours()}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`
+  const out = path.join(dir, `cr-becib-${stamp}.pdf`)
   fs.writeFileSync(out, buf)
-  console.log(`✓ ${out} (${buf.length} octets)`)
+  // Purge best-effort : on IGNORE les fichiers verrouillés (ouverts dans un
+  // lecteur) — ne JAMAIS faire planter le rendu là-dessus (cause du « toujours
+  // le même » : la purge crashait avant d'imprimer le nouveau lien).
+  for (const f of fs.readdirSync(dir)) {
+    if (f.endsWith('.pdf') && path.join(dir, f) !== out) {
+      try { fs.unlinkSync(path.join(dir, f)) } catch { /* fichier ouvert : on laisse */ }
+    }
+  }
+  const url = 'file:///' + out.replace(/\\/g, '/')
+  console.log(`✓ ${buf.length} octets`)
+  console.log(`OUVRE CE LIEN (neuf, sans cache) :\n${url}`)
 }
 
 main().catch((e) => {

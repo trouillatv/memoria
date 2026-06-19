@@ -1,0 +1,11 @@
+=== VIDÉO 3 · Scène 3 — Le gain ===
+Image à produire : public/v3s3.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A handover moment between two construction managers shaking hands on a busy, organized construction site, positive energy, golden hour natural light, a team working in the background. Photorealistic, professional documentary photography, real construction environment, shallow depth of field, cinematic, warm muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+« Au lieu de 3 jours perdus : » → « 30 minutes pour reprendre. »
+
+MOUVEMENT :
+Zoom avant

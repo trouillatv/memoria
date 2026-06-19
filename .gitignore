@@ -72,3 +72,5 @@ docs/~$*.docx
 docs/AO/extract*
 
 cr-becib-preview.pdf
+
+.preview/

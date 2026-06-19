@@ -1,0 +1,11 @@
+=== VIDÉO 2 · Scène 2 — Déjà traitée 3 fois ===
+Image à produire : public/v2s2.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A patched-up concrete wall showing several different repair attempts over the years, mismatched sealant and waterproofing patches of different colors, documentary feel, harsh daylight. Photorealistic, professional documentary photography, real construction environment, natural light, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+« Déjà traitée 3 fois. » → « Personne ne sait ce qui a été essayé. »
+
+MOUVEMENT :
+Panoramique droite → gauche

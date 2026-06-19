@@ -1,0 +1,11 @@
+=== VIDÉO 3 · Scène 1 — Nouveau sur le site ===
+Image à produire : public/v3s1.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A new site manager arriving confidently at a clean construction site in the morning, hard hat under his arm, bright optimistic natural light, modern building under construction behind. Photorealistic, professional documentary photography, real construction environment, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+« Nouveau sur le Médipôle. »
+
+MOUVEMENT :
+Panoramique gauche → droite

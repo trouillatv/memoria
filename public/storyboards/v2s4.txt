@@ -1,0 +1,11 @@
+=== VIDÉO 2 · Scène 4 — Punchline (fin) ===
+Image à produire : public/v2s4.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A clean modern construction site, a professional holding a tablet showing an organized timeline interface (blurred, unreadable), confident atmosphere, natural light. Photorealistic, professional documentary photography, real construction environment, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+Logo MemorIA + « L'historique complet, en quelques secondes. »
+
+MOUVEMENT :
+Zoom avant

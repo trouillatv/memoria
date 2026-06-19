@@ -118,11 +118,11 @@ const s = StyleSheet.create({
   ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   ivHeadOrg: { width: 84, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
-  // Une LIGNE PAR PERSONNE (aucune fusion). Hauteur fixe → cases X bien centrées.
+  // Tableur PLAT : 1 ligne par personne, AUCUNE fusion, toutes colonnes
+  // identiques à l'en-tête (donc alignées), chaque cellule bordée droite + bas.
   ivPersonRow: { flexDirection: 'row', height: IV_ROW_H, alignItems: 'center' },
-  // Grille COMPLÈTE : chaque cellule bordée droite + bas (pas de zone blanche).
   ivCellR: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingHorizontal: 3 },
-  ivOrgCell: { width: 84, fontSize: 6, fontFamily: 'Helvetica-Bold' },
+  ivOrg: { width: 84, fontSize: 6.5, fontFamily: 'Helvetica-Bold' },
   ivRep: { flex: 1, fontSize: 8 },
   ivTel: { width: 40, fontSize: 7 },
   ivMob: { width: 40, fontSize: 7 },
@@ -161,9 +161,12 @@ const s = StyleSheet.create({
   fcVer: { width: 54 },
   fcMod: { width: 104 },
   fcDate: { width: 78 },
-  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, marginBottom: 2 },
-  // Numéro de page : autonome, ancré en bas à droite, largeur explicite.
-  pageNumAbs: { position: 'absolute', bottom: 4, left: PAGE_W - MARGIN - 91, width: 91, textAlign: 'right', fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
+  // Ligne haute du pied : fil d'Ariane (le n° de page se superpose à droite).
+  footTopRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 2 },
+  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1, marginRight: 90 },
+  // Numéro de page : top-level fixed, ancré dans la BANDE du pied (bottom 47,
+  // sur la ligne du fil d'Ariane), à droite — visible, jamais rogné.
+  pageNumAbs: { position: 'absolute', bottom: 47, left: PAGE_W - MARGIN - 90, width: 90, textAlign: 'right', fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: C.marine },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -261,28 +264,26 @@ function chunkByOrg(rows: Intervenant[]): Intervenant[][] {
   return blocks
 }
 
-// UNE LIGNE PAR PERSONNE (aucune fusion). I/P/AE/AN/D cochés par personne selon
-// la donnée. Organisme affiché sur la 1re ligne du bloc ; bordure basse
-// uniquement sur la DERNIÈRE personne de l'organisme (bloc visuellement uni).
+// Tableur PLAT : une ligne par personne, AUCUNE fusion. Organisme répété sur
+// chaque ligne (cellule normale). Toutes les colonnes identiques à l'en-tête →
+// alignement garanti. Chaque cellule bordée droite + bas → grille complète.
 function IvOrgBlock({ block }: { block: Intervenant[] }) {
   return (
     <>
-      {block.map((p, k) => {
-        return (
-          <View key={k} style={s.ivPersonRow} wrap={false}>
-            <Text style={[s.ivCellR, s.ivOrgCell]}>{k === 0 ? p.organisme : ''}</Text>
-            <Text style={[s.ivCellR, s.ivRep]}>{p.representant}</Text>
-            <Text style={[s.ivCellR, s.ivTel]}>{p.tel || ''}</Text>
-            <Text style={[s.ivCellR, s.ivMob]}>{p.mob || ''}</Text>
-            <Text style={[s.ivCellR, s.ivMail]}>{p.email || ''}</Text>
-            <Text style={[s.ivCellR, s.ivP]}>{p.invite ? 'X' : ''}</Text>
-            <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'P' ? 'X' : ''}</Text>
-            <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AE' ? 'X' : ''}</Text>
-            <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AN' ? 'X' : ''}</Text>
-            <Text style={[s.ivCellR, s.ivP]}>{p.diffusion ? 'X' : ''}</Text>
-          </View>
-        )
-      })}
+      {block.map((p, k) => (
+        <View key={k} style={s.ivPersonRow} wrap={false}>
+          <Text style={[s.ivCellR, s.ivOrg]}>{p.organisme}</Text>
+          <Text style={[s.ivCellR, s.ivRep]}>{p.representant}</Text>
+          <Text style={[s.ivCellR, s.ivTel]}>{p.tel || ''}</Text>
+          <Text style={[s.ivCellR, s.ivMob]}>{p.mob || ''}</Text>
+          <Text style={[s.ivCellR, s.ivMail]}>{p.email || ''}</Text>
+          <Text style={[s.ivCellR, s.ivP]}>{p.invite ? 'X' : ''}</Text>
+          <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'P' ? 'X' : ''}</Text>
+          <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AE' ? 'X' : ''}</Text>
+          <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AN' ? 'X' : ''}</Text>
+          <Text style={[s.ivCellR, s.ivP]}>{p.diffusion ? 'X' : ''}</Text>
+        </View>
+      ))}
     </>
   )
 }
@@ -470,7 +471,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* Pied de page répété : fil d'Ariane italique AU-DESSUS, puis cartouche
             DNS pleine largeur AVEC libellés. */}
         <View style={s.footer} fixed>
-          <Text style={s.footTxt}>{breadcrumb}</Text>
+          <View style={s.footTopRow}>
+            <Text style={s.footTxt}>{breadcrumb}</Text>
+          </View>
           <View style={s.fcCont}>
             <View style={s.fcRow}>
               <Text style={[s.fcLabel, s.fcDns]}>Numéro DNS</Text>
@@ -486,9 +489,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             </View>
           </View>
         </View>
-        {/* Numéro de page : élément `fixed` de PREMIER NIVEAU (render n'injecte
-            pageNumber que là, pas dans un Text imbriqué dans un autre fixed). */}
-        <Text style={s.pageNumAbs} fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
+        {/* Numéro de page : top-level `fixed` (render n'injecte pageNumber QUE
+            là), positionné DANS la zone visible du pied (pas au ras du bord). */}
+        <Text style={s.pageNumAbs} fixed render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`} />
       </Page>
     </Document>
   )

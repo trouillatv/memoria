@@ -1,0 +1,11 @@
+=== VIDÉO 3 · Scène 4 — MemorIA (fin) ===
+Image à produire : public/v3s4.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+Wide establishing shot of a finished modern hospital building at sunrise, clean and calm, warm professional natural light. Photorealistic, professional documentary photography, real hospital exterior, cinematic, warm muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+Logo MemorIA + « Quand une personne arrive, la mémoire l'attend. »
+
+MOUVEMENT :
+Zoom avant

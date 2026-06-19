@@ -1,0 +1,11 @@
+=== VIDÉO 1 · Scène 4 — On recommence à zéro ===
+Image à produire : public/v1s4.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A vast empty unfinished construction site at dusk, grey raw concrete, no people, cold blue light, lonely and overwhelming atmosphere. Photorealistic, professional documentary photography, real construction site, natural light, cinematic, muted cold color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+« On recommence à zéro. »  (plein cadre, centré)
+
+MOUVEMENT :
+Zoom arrière (dézoom)

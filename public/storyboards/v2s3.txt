@@ -1,0 +1,14 @@
+=== VIDÉO 2 · Scène 3 — MemorIA se souvient ===
+Image à produire : public/v2s3.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A project manager on a construction site holding a tablet, looking at it with focus and relief, organized site in the background, soft natural light, modern and professional. Photorealistic, professional documentary photography, real construction environment, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN (frise chronologique en surimpression) :
+2019 — Première infiltration signalée
+2021 — Entreprise A : reprise d'étanchéité
+2022 — Entreprise B : joint refait
+2025 — Solution efficace trouvée  (en vert)
+
+MOUVEMENT :
+Zoom avant très lent

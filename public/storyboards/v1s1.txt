@@ -1,0 +1,11 @@
+=== VIDÉO 1 · Scène 1 — Le dernier vendredi ===
+Image à produire : public/v1s1.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A construction site manager in his 50s, hard hat and hi-vis vest, closing his laptop at a cluttered desk inside a construction site office (Algeco container), warm end-of-day light through the window, printed plans and a hard hat on the desk, contemplative mood. Photorealistic, professional documentary photography, real construction environment, natural light, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+« Vendredi. » → « Jean quitte l'entreprise. » → « 4 ans sur le Médipôle »
+
+MOUVEMENT :
+Zoom avant lent (Ken Burns)

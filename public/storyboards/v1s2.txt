@@ -1,0 +1,11 @@
+=== VIDÉO 1 · Scène 2 — Lundi, le remplaçant ===
+Image à produire : public/v1s2.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+A younger construction site manager arriving at a large construction site at dawn, seen from behind, looking up at an unfinished concrete building, hard hat under his arm, uncertain posture. Photorealistic, professional documentary photography, real construction site, soft morning natural light, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+« Lundi. » → « Son remplaçant arrive. »
+
+MOUVEMENT :
+Panoramique gauche → droite

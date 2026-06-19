@@ -919,7 +919,10 @@ export async function getSiteAnomalies(siteId: string): Promise<SiteAnomalyEntry
       .from('intervention_photos')
       .select('intervention_id, storage_path, taken_at')
       .in('intervention_id', anomalyInterventionIds)
-      .eq('kind', 'anomaly_evidence')
+      // 'anomaly_evidence' = flux intervention ; 'anomaly' = capture spontanée
+      // terrain (/m/site). Sans ce 2e kind, les anomalies prises au téléphone
+      // n'affichaient AUCUNE photo → carte vide « Autre · Signalée ».
+      .in('kind', ['anomaly_evidence', 'anomaly'])
       .order('taken_at', { ascending: false })
     for (const p of (evidencePhotos ?? []) as Array<{
       intervention_id: string
@@ -940,9 +943,13 @@ export async function getSiteAnomalies(siteId: string): Promise<SiteAnomalyEntry
     const refTime = new Date(a.resolved_at ?? a.created_at).getTime()
     const ageDays = Math.max(0, Math.floor((now - refTime) / 86_400_000))
     const path = storagePathByIntervention.get(a.intervention_id)
+    // Anomalie terrain sans description ni précision et catégorie générique :
+    // « Autre » comme titre ne dit rien. On affiche « Anomalie signalée » (la
+    // photo, désormais jointe, porte le contenu réel).
+    const bare = !a.description?.trim() && !a.category_other?.trim() && a.category === 'autre'
     return {
       id: a.id,
-      description: anomalyLabel(a.description, a.category_other, a.category),
+      description: bare ? 'Anomalie signalée' : anomalyLabel(a.description, a.category_other, a.category),
       status: (a.status as SiteAnomalyEntry['status']),
       createdAt: a.created_at,
       resolvedAt: a.resolved_at,

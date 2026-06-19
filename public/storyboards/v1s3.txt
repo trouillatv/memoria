@@ -1,0 +1,13 @@
+=== VIDÉO 1 · Scène 3 — Où est l'information ? ===
+Image à produire : public/v1s3.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+Close-up of a messy desk: a smartphone showing a gallery of jobsite photos, an open laptop with an email inbox, scattered printed plans and sticky notes, dim office light, sense of overwhelm. Photorealistic, professional documentary photography, real office environment, natural light, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN :
+Les photos → dans son téléphone
+Les décisions → dans ses mails
+Les problèmes → dans sa tête
+
+MOUVEMENT :
+Zoom avant (voile plus sombre pour la lisibilité)

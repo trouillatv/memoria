@@ -1,0 +1,14 @@
+=== VIDÉO 3 · Scène 2 — La mémoire l'accueille ===
+Image à produire : public/v3s2.jpg  (16:9)
+
+PROMPT (générateur d'image) :
+Over-the-shoulder shot of a construction professional on site holding a tablet displaying a clean dashboard (blurred, unreadable UI), focused and at ease, organized jobsite, soft daylight. Photorealistic, professional documentary photography, real construction environment, shallow depth of field, cinematic, muted color grade, B2B SaaS ad quality, 16:9, ultra detailed, no text, no logos, no watermark.
+
+TEXTE À L'ÉCRAN (carte) :
+MemorIA · mémoire du site
+✓ 3 sujets encore ouverts
+✓ 5 dernières décisions prises
+✓ Les anomalies à surveiller
+
+MOUVEMENT :
+Zoom avant lent
