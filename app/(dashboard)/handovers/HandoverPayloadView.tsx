@@ -18,6 +18,9 @@ import {
   Users,
   Pin,
   ChevronRight,
+  ClipboardCheck,
+  ListTodo,
+  FileCheck2,
 } from 'lucide-react'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { formatRelativeLong } from '@/lib/format'
@@ -222,6 +225,72 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
                 </div>
               )}
 
+              {/* Réserves ouvertes (état du site à reprendre) */}
+              {s.openReserves.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium flex items-center gap-1.5">
+                    <ClipboardCheck className="h-3 w-3 text-amber-600" />
+                    Réserves ouvertes
+                  </p>
+                  <ul className="space-y-1">
+                    {s.openReserves.map((r) => (
+                      <li key={r.id} className="text-xs rounded-md border border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-1.5">
+                        <span className="font-medium">{r.label}</span>
+                        {r.location && <span className="text-muted-foreground"> · {r.location}</span>}
+                        {r.issuedOn && <span className="text-muted-foreground italic"> · émise le {r.issuedOn}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  {s.openReservesMore > 0 && (
+                    <p className="text-[10px] text-muted-foreground">+{s.openReservesMore} autre{s.openReservesMore > 1 ? 's' : ''} réserve{s.openReservesMore > 1 ? 's' : ''} ouverte{s.openReservesMore > 1 ? 's' : ''}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Actions à suivre — en retard d'abord */}
+              {s.openActions.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium flex items-center gap-1.5">
+                    <ListTodo className="h-3 w-3 text-sky-600" />
+                    Actions à suivre
+                  </p>
+                  <ul className="space-y-1">
+                    {s.openActions.map((a) => (
+                      <li key={a.id} className="text-xs rounded-md border bg-muted/20 px-3 py-1.5">
+                        <span className="font-medium">{a.title}</span>
+                        {a.assignedTo && <span className="text-muted-foreground"> — {a.assignedTo}</span>}
+                        {a.dueDate && (
+                          <span className={a.late ? 'text-rose-700 font-medium' : 'text-muted-foreground'}>
+                            {' '}· échéance {a.dueDate}{a.late ? ' (en retard)' : ''}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {s.openActionsMore > 0 && (
+                    <p className="text-[10px] text-muted-foreground">+{s.openActionsMore} autre{s.openActionsMore > 1 ? 's' : ''} action{s.openActionsMore > 1 ? 's' : ''} à suivre</p>
+                  )}
+                </div>
+              )}
+
+              {/* Décisions récentes validées */}
+              {s.recentDecisions.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium flex items-center gap-1.5">
+                    <FileCheck2 className="h-3 w-3 text-indigo-600" />
+                    Décisions récentes
+                  </p>
+                  <ul className="space-y-1">
+                    {s.recentDecisions.map((d) => (
+                      <li key={d.id} className="text-xs rounded-md border bg-muted/20 px-3 py-1.5">
+                        <span className="font-medium">{d.label}</span>
+                        {d.corpsEtat && <span className="text-muted-foreground"> · {d.corpsEtat}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Documents */}
               {s.documents.length > 0 && (
                 <div className="space-y-1.5">
@@ -285,6 +354,9 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
               {/* État neutre */}
               {s.aSavoir.length === 0 &&
                 s.recentAnomalies.length === 0 &&
+                s.openReserves.length === 0 &&
+                s.openActions.length === 0 &&
+                s.recentDecisions.length === 0 &&
                 s.documents.length === 0 &&
                 s.neighborTeams.length === 0 && (
                   <p className="text-xs italic text-muted-foreground">

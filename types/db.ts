@@ -668,6 +668,15 @@ export interface HandoverPayload {
     }>
     /** Documents rattachés (capped, IDs cliquables). */
     documents: Array<{ id: string; title: string; documentType: string | null }>
+    /** Réserves OUVERTES (capped 5) — état du site, jamais évaluation de personne. */
+    openReserves: Array<{ id: string; label: string; location: string | null; issuedOn: string | null }>
+    /** Réserves ouvertes au-delà du cap (« +N autres »). */
+    openReservesMore: number
+    /** Actions à suivre — EN RETARD d'abord (capped 6). late = due_date < aujourd'hui. */
+    openActions: Array<{ id: string; title: string; assignedTo: string | null; dueDate: string | null; late: boolean }>
+    openActionsMore: number
+    /** Décisions de réunion VALIDÉES récentes (capped 3). */
+    recentDecisions: Array<{ id: string; label: string; corpsEtat: string | null; at: string }>
     /** Équipes voisines qui connaissent ce site (back-up). */
     neighborTeams: Array<{ team_id: string; team_name: string; team_color: string | null }>
     /** Nombre d'interventions documentées sur ce site (descriptif). */

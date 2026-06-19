@@ -302,12 +302,67 @@ async function buildSiteContextEntry(
     if (neighborMap.size >= NEIGHBOR_TEAMS_PER_SITE) break
   }
 
+  // Réserves OUVERTES du site (Passation) — les plus anciennes d'abord. État du
+  // site à reprendre, jamais évaluation d'une personne. Cap 5 + « +N autres ».
+  const { data: reserveRows } = await admin
+    .from('site_reserve')
+    .select('id, label, location, issued_on, status')
+    .eq('site_id', base.site_id)
+    .eq('status', 'open')
+    .order('issued_on', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .limit(50)
+  const allReserves = (reserveRows ?? []) as Array<{ id: string; label: string; location: string | null; issued_on: string | null }>
+  const openReserves = allReserves.slice(0, 5).map((r) => ({
+    id: r.id, label: r.label, location: r.location ?? null, issuedOn: r.issued_on ?? null,
+  }))
+  const openReservesMore = Math.max(0, allReserves.length - openReserves.length)
+
+  // Actions à suivre (open/planned) — EN RETARD d'abord, puis ouvertes. Cap 6.
+  const { data: actionRows } = await admin
+    .from('site_actions')
+    .select('id, title, assigned_to, due_date, status, created_at')
+    .eq('site_id', base.site_id)
+    .in('status', ['open', 'planned'])
+    .limit(100)
+  const actionsAll = ((actionRows ?? []) as Array<{
+    id: string; title: string; assigned_to: string | null; due_date: string | null; created_at: string
+  }>)
+    .map((a) => ({ ...a, late: a.due_date != null && a.due_date < today }))
+    .sort((a, b) => {
+      if (a.late !== b.late) return a.late ? -1 : 1 // en retard d'abord
+      // puis par échéance la plus proche, sinon plus ancienne d'abord
+      const ad = a.due_date ?? '9999-12-31', bd = b.due_date ?? '9999-12-31'
+      return ad.localeCompare(bd) || a.created_at.localeCompare(b.created_at)
+    })
+  const openActions = actionsAll.slice(0, 6).map((a) => ({
+    id: a.id, title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, late: a.late,
+  }))
+  const openActionsMore = Math.max(0, actionsAll.length - openActions.length)
+
+  // Décisions de réunion VALIDÉES récentes (proposals acceptées). Cap 3.
+  const { data: decisionRows } = await admin
+    .from('site_report_proposals')
+    .select('id, short_label, corps_etat, created_at, status, site_id')
+    .eq('site_id', base.site_id)
+    .eq('status', 'accepted')
+    .order('created_at', { ascending: false })
+    .limit(3)
+  const recentDecisions = ((decisionRows ?? []) as Array<{
+    id: string; short_label: string; corps_etat: string | null; created_at: string
+  }>).map((d) => ({ id: d.id, label: d.short_label, corpsEtat: d.corps_etat ?? null, at: d.created_at }))
+
   return {
     site_id: base.site_id,
     site_name: base.site_name,
     contract_id: base.contract_id,
     contract_name: base.contract_name,
     client_name: base.client_name,
+    openReserves,
+    openReservesMore,
+    openActions,
+    openActionsMore,
+    recentDecisions,
     aSavoir: ((aSavoir ?? []) as Array<{
       id: string
       body: string
