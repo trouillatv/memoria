@@ -470,6 +470,41 @@ export interface DbSiteAction {
   scope_id: string | null
 }
 
+// Sprint 1 (migration 120) — document généré depuis une réunion (PV/CR chantier).
+// Couche de génération au-dessus de l'analyse réunion : remplit un template,
+// l'humain édite PAR SECTIONS → valide → PDF → document de mémoire.
+export type ReportDocumentStatus = 'draft' | 'validated' | 'exported'
+
+/** Une section rendue du document. `sections` (jsonb) = source de vérité. */
+export interface ReportDocumentSection {
+  key: string
+  title: string
+  /** generative = rédigée par l'IA ; fixed = texte imposé par le template (clauses). */
+  kind: 'generative' | 'fixed'
+  content: string
+  /** Traçabilité : extraits transcript/notes étayant la section (jamais inventé). */
+  sources?: string[]
+}
+
+export interface DbReportDocument {
+  id: string
+  organization_id: string | null
+  report_id: string
+  site_id: string | null
+  template_key: string
+  sections: ReportDocumentSection[]
+  status: ReportDocumentStatus
+  /** Renseigné au « Valider » : PV figé poussé dans /documents. */
+  document_id: string | null
+  pdf_path: string | null
+  provider: string | null
+  model: string | null
+  prompt_version: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type MissionCadence = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'on_demand'
 
 export interface ChecklistTemplateItem {

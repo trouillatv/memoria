@@ -7,6 +7,8 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
+import { getLatestReportDocument } from '@/lib/db/report-documents'
+import { PvPanel } from './PvPanel'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SiteReportProposalType, SiteReportStatus, DbSiteReportProposal } from '@/types/db'
 
@@ -42,9 +44,10 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const report = await getSiteReport(id)
   if (!report) notFound()
 
-  const [proposals, actions] = await Promise.all([
+  const [proposals, actions, pvDoc] = await Promise.all([
     listProposals(id),
     listSiteActionsByReport(id),
+    getLatestReportDocument(id),
   ])
 
   const supabase = createAdminClient()
@@ -120,6 +123,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           L&apos;analyse a échoué : {report.analysis_error}. Le compte-rendu brut et ses pièces restent conservés.
         </div>
       )}
+
+      {/* PV / CR de chantier — génération documentaire (Sprint 1) */}
+      <PvPanel reportId={id} initial={pvDoc} />
 
       {/* Participants détectés */}
       {report.participants && report.participants.length > 0 && (
