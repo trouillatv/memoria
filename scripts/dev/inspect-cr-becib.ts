@@ -1,0 +1,124 @@
+/**
+ * scripts/dev/inspect-cr-becib.ts
+ *
+ * Outil de DIAGNOSTIC (jetable) : rend la fixture La Cravache via le gabarit
+ * BECIB, décompresse les flux de contenu PDF et liste tous les rectangles
+ * peints avec leur couleur de remplissage courante. Sert à localiser la « bande
+ * navy » pleine hauteur sans deviner.
+ *
+ * Usage : npx tsx scripts/dev/inspect-cr-becib.ts
+ */
+import * as zlib from 'zlib'
+import { renderToBuffer } from '@react-pdf/renderer'
+import { CrBecibPdf } from '@/lib/pdf/cr-becib'
+import { CRAVACHE_FIXTURE } from '@/lib/documents/fixtures/cravache'
+
+function inflateStreams(pdf: Buffer): string {
+  const out: string[] = []
+  const buf = pdf
+  let i = 0
+  const needle = Buffer.from('stream')
+  const end = Buffer.from('endstream')
+  while (i < buf.length) {
+    const s = buf.indexOf(needle, i)
+    if (s === -1) break
+    // skip "stream" + EOL (\r\n or \n)
+    let dataStart = s + needle.length
+    if (buf[dataStart] === 0x0d) dataStart++
+    if (buf[dataStart] === 0x0a) dataStart++
+    const e = buf.indexOf(end, dataStart)
+    if (e === -1) break
+    const raw = buf.subarray(dataStart, e)
+    try {
+      out.push(zlib.inflateSync(raw).toString('latin1'))
+    } catch {
+      // not flate-compressed; keep raw text (may be a content stream in clear)
+      out.push(raw.toString('latin1'))
+    }
+    i = e + end.length
+  }
+  return out.join('\n=== STREAM BREAK ===\n')
+}
+
+type Rect = { x: number; y: number; w: number; h: number; fill: string }
+
+function parseRects(content: string): Rect[] {
+  const tokens = content.split(/\s+/)
+  const rects: Rect[] = []
+  const stack: number[] = []
+  let fill = '(none)'
+  const num = (t: string) => Number(t)
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]
+    if (t === '') continue
+    if (/^-?\d*\.?\d+$/.test(t)) {
+      stack.push(num(t))
+      continue
+    }
+    switch (t) {
+      case 'rg': // r g b set fill (RGB)
+        if (stack.length >= 3) fill = `rgb(${stack.slice(-3).map((v) => v.toFixed(3)).join(',')})`
+        break
+      case 'g': // gray set fill
+        if (stack.length >= 1) fill = `gray(${stack[stack.length - 1].toFixed(3)})`
+        break
+      case 'k': // cmyk
+        if (stack.length >= 4) fill = `cmyk(${stack.slice(-4).map((v) => v.toFixed(2)).join(',')})`
+        break
+      case 're': {
+        if (stack.length >= 4) {
+          const [x, y, w, h] = stack.slice(-4)
+          rects.push({ x, y, w, h, fill })
+        }
+        break
+      }
+      default:
+        break
+    }
+    // operators consume operands
+    if (!/^-?\d*\.?\d+$/.test(t)) stack.length = 0
+  }
+  return rects
+}
+
+const NAVY = { r: 31 / 255, g: 42 / 255, b: 90 / 255 }
+function isNavy(fill: string): boolean {
+  const m = fill.match(/^rgb\(([\d.]+),([\d.]+),([\d.]+)\)$/)
+  if (!m) return false
+  const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  return Math.abs(r - NAVY.r) < 0.05 && Math.abs(g - NAVY.g) < 0.05 && Math.abs(b - NAVY.b) < 0.05
+}
+
+async function main() {
+  const pdf = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE }))
+  console.log(`PDF size: ${pdf.length} bytes`)
+  const content = inflateStreams(Buffer.from(pdf))
+  const rects = parseRects(content)
+  console.log(`Total filled/painted rectangles: ${rects.length}`)
+
+  // A4 = 595.28 x 841.89. Flag "tall" rects (likely the navy bar) and navy-colored ones.
+  const tall = rects.filter((r) => Math.abs(r.h) > 400)
+  console.log(`\n=== TALL rects (|h| > 400pt) — suspects "bande pleine hauteur" ===`)
+  for (const r of tall) {
+    console.log(
+      `  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}${isNavy(r.fill) ? '  <-- NAVY' : ''}`,
+    )
+  }
+
+  console.log(`\n=== NAVY-filled rects (marine #1F2A5A) ===`)
+  for (const r of rects.filter((r) => isNavy(r.fill))) {
+    console.log(`  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}`)
+  }
+
+  console.log(`\n=== ALL rects with w>200 OR h>200 (large boxes) ===`)
+  for (const r of rects.filter((r) => Math.abs(r.w) > 200 || Math.abs(r.h) > 200)) {
+    console.log(
+      `  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}`,
+    )
+  }
+}
+
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

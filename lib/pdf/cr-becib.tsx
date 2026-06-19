@@ -105,11 +105,14 @@ const s = StyleSheet.create({
   // Pied de page (fixed) — largeur explicite, jamais left+right.
   footer: { position: 'absolute', bottom: 16, left: MARGIN, width: CONTENT_W, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: C.border, paddingTop: 4 },
   footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1 },
-  // Pastille de page : le FOND va sur la View (taille bornée), le numéro sur le
-  // Text. NE JAMAIS mettre render + backgroundColor sur le même Text (le fond se
-  // peint alors sur toute la hauteur → bande navy parasite à droite).
-  pagePillBox: { backgroundColor: C.marine, borderRadius: 9, paddingVertical: 2, paddingHorizontal: 6 },
-  pagePill: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold' },
+  // Pastille de page. PIÈGE @react-pdf : un Text avec `render` (contenu différé)
+  // empêche Yoga de mesurer la hauteur → la boîte prend une hauteur runaway
+  // (~10⁷ pt) et son fond peint une BANDE navy pleine hauteur à droite. Le wrap
+  // seul ne suffit pas : il faut une largeur ET une hauteur EXPLICITES sur la
+  // boîte pour que Yoga n'ait rien à mesurer. (Diagnostic : rectangle peint
+  // x≈501 w≈25 h≈10006051 dans le flux PDF.)
+  pagePillBox: { width: 42, height: 13, backgroundColor: C.marine, borderRadius: 6.5, alignItems: 'center', justifyContent: 'center' },
+  pagePill: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', textAlign: 'center' },
 })
 
 function EmphText({ text }: { text: string }) {
