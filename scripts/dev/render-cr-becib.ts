@@ -14,12 +14,13 @@ import { CrBecibPdf } from '@/lib/pdf/cr-becib'
 import { CRAVACHE_FIXTURE } from '@/lib/documents/fixtures/cravache'
 
 async function main() {
-  const buf = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE }))
+  const d = new Date()
+  const hms = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+  const buf = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE, previewStamp: hms }))
   const dir = path.join(process.cwd(), '.preview')
   if (!fs.existsSync(dir)) fs.mkdirSync(dir)
   // Nom horodaté → l'URL change à chaque rendu → jamais servi depuis le cache.
-  const d = new Date()
-  const stamp = `${d.getHours()}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`
+  const stamp = `${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`
   const out = path.join(dir, `cr-becib-${stamp}.pdf`)
   fs.writeFileSync(out, buf)
   // Purge best-effort : on IGNORE les fichiers verrouillés (ouverts dans un

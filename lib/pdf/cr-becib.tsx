@@ -57,6 +57,7 @@ const s = StyleSheet.create({
   // Cadre de page (fixed, répété) — trait fin ARRONDI, sans fond. Le runaway
   // venait de la pastille (Text+render+bg), pas du borderRadius du cadre.
   pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: PAGE_H - 24, borderWidth: 0.75, borderColor: C.marine, borderRadius: 11 },
+  previewStamp: { position: 'absolute', top: 3, left: PAGE_W - MARGIN - 130, width: 130, textAlign: 'right', fontSize: 6, color: '#c00000' },
 
   // En-tête répété — largeur explicite, jamais left+right.
   header: { position: 'absolute', top: 16, left: MARGIN, width: CONTENT_W },
@@ -113,21 +114,32 @@ const s = StyleSheet.create({
 
   // Intervenants — grille. Présence (I/P/AE/AN) FUSIONNÉE verticalement au
   // niveau organisme (cellule haute, centrée) ; D (diffusion) par personne.
-  ivGroup: { fontFamily: 'Helvetica-Bold', fontSize: 8, color: C.marine, backgroundColor: '#eef1f8' },
+  // GRILLE UNIFORME : conteneur tCont (borderTop+Left), chaque cellule = une
+  // <View> avec borderRight+borderBottom IDENTIQUES → grille complète, aucune
+  // demi-bordure, aucun trait fantôme. AUCUNE fusion.
+  ivRow: { flexDirection: 'row' },
+  ivHeadRowH: { height: 14 },
+  ivDataRowH: { height: IV_ROW_H },
+  ivc: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, justifyContent: 'center', paddingHorizontal: 3 },
+  ivcC: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, justifyContent: 'center', alignItems: 'center' },
   ivHeadBg: { backgroundColor: '#e6e6ee' },
-  ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
-  ivHeadOrg: { width: 84, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
-  ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
-  // Tableur PLAT : 1 ligne par personne, AUCUNE fusion, toutes colonnes
-  // identiques à l'en-tête (donc alignées), chaque cellule bordée droite + bas.
-  ivPersonRow: { flexDirection: 'row', height: IV_ROW_H, alignItems: 'center' },
-  ivCellR: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingHorizontal: 3 },
-  ivOrg: { width: 84, fontSize: 6.5, fontFamily: 'Helvetica-Bold' },
-  ivRep: { flex: 1, fontSize: 8 },
-  ivTel: { width: 40, fontSize: 7 },
-  ivMob: { width: 40, fontSize: 7 },
-  ivMail: { width: 100, fontSize: 5.3, color: '#0563C1' }, // e-mails en bleu (style lien), assez large pour ne pas couper
-  ivP: { width: 15, fontSize: 8, textAlign: 'center' },
+  // largeurs de colonnes (en-tête ET données → alignement garanti)
+  ivwOrg: { width: 84 },
+  ivwRep: { flex: 1 },
+  ivwTel: { width: 40 },
+  ivwMob: { width: 40 },
+  ivwMail: { width: 100 },
+  ivwP: { width: 15 },
+  // styles de texte des cellules
+  ivtHead: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
+  ivtHeadC: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
+  ivtOrg: { fontSize: 6.5, fontFamily: 'Helvetica-Bold' },
+  ivtRep: { fontSize: 8 },
+  ivtSm: { fontSize: 7 },
+  ivtMail: { fontSize: 5.3, color: '#0563C1' },
+  ivtX: { fontSize: 8 },
+  ivBandCell: { flex: 1, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, backgroundColor: '#eef1f8', justifyContent: 'center', paddingVertical: 2, paddingHorizontal: 4 },
+  ivtBand: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2, marginTop: 2 },
 
   // Avancement — sous-titres niveau 3 : petites capitales SOULIGNÉES (original).
@@ -152,7 +164,7 @@ const s = StyleSheet.create({
   // HAUTEUR EXPLICITE obligatoire : le footer contient un Text `render` (n° de
   // page, contenu différé) ; sans hauteur fixe, Yoga ne peut pas mesurer un
   // élément ancré en bas → le pied s'effondre et disparaît (régression iter-9).
-  footer: { position: 'absolute', bottom: 14, left: MARGIN, width: CONTENT_W, height: 42 },
+  footer: { position: 'absolute', bottom: 14, left: MARGIN, width: CONTENT_W },
   fcCont: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
   fcRow: { flexDirection: 'row' },
   fcCell: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6.5 },
@@ -163,10 +175,7 @@ const s = StyleSheet.create({
   fcDate: { width: 78 },
   // Ligne haute du pied : fil d'Ariane (le n° de page se superpose à droite).
   footTopRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 2 },
-  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1, marginRight: 90 },
-  // Numéro de page : top-level fixed, ancré dans la BANDE du pied (bottom 47,
-  // sur la ligne du fil d'Ariane), à droite — visible, jamais rogné.
-  pageNumAbs: { position: 'absolute', bottom: 47, left: PAGE_W - MARGIN - 90, width: 90, textAlign: 'right', fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: C.marine },
+  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1 },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -252,43 +261,29 @@ const PRES_COLS = ['I', 'P', 'AE', 'AN', 'D'] as const
 
 type Intervenant = CrBecib['intervenants'][number]
 
-// Regroupe des lignes en blocs d'organismes consécutifs (organisme affiché une
-// fois, pas de filet horizontal entre personnes d'un même organisme).
-function chunkByOrg(rows: Intervenant[]): Intervenant[][] {
-  const blocks: Intervenant[][] = []
-  for (const r of rows) {
-    const last = blocks[blocks.length - 1]
-    if (last && last[0].organisme === r.organisme) last.push(r)
-    else blocks.push([r])
-  }
-  return blocks
-}
-
-// Tableur PLAT : une ligne par personne, AUCUNE fusion. Organisme répété sur
-// chaque ligne (cellule normale). Toutes les colonnes identiques à l'en-tête →
-// alignement garanti. Chaque cellule bordée droite + bas → grille complète.
-function IvOrgBlock({ block }: { block: Intervenant[] }) {
+// Une ligne de données = 1 personne. CHAQUE cellule est une <View> bordée à
+// l'identique (ivc / ivcC). Aucune fusion. Grille uniforme garantie.
+function IvDataRow({ p }: { p: Intervenant }) {
+  const X = ({ on }: { on: boolean }) => (
+    <View style={[s.ivcC, s.ivwP]}><Text style={s.ivtX}>{on ? 'X' : ''}</Text></View>
+  )
   return (
-    <>
-      {block.map((p, k) => (
-        <View key={k} style={s.ivPersonRow} wrap={false}>
-          <Text style={[s.ivCellR, s.ivOrg]}>{p.organisme}</Text>
-          <Text style={[s.ivCellR, s.ivRep]}>{p.representant}</Text>
-          <Text style={[s.ivCellR, s.ivTel]}>{p.tel || ''}</Text>
-          <Text style={[s.ivCellR, s.ivMob]}>{p.mob || ''}</Text>
-          <Text style={[s.ivCellR, s.ivMail]}>{p.email || ''}</Text>
-          <Text style={[s.ivCellR, s.ivP]}>{p.invite ? 'X' : ''}</Text>
-          <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'P' ? 'X' : ''}</Text>
-          <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AE' ? 'X' : ''}</Text>
-          <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AN' ? 'X' : ''}</Text>
-          <Text style={[s.ivCellR, s.ivP]}>{p.diffusion ? 'X' : ''}</Text>
-        </View>
-      ))}
-    </>
+    <View style={[s.ivRow, s.ivDataRowH]} wrap={false}>
+      <View style={[s.ivc, s.ivwOrg]}><Text style={s.ivtOrg}>{p.organisme}</Text></View>
+      <View style={[s.ivc, s.ivwRep]}><Text style={s.ivtRep}>{p.representant}</Text></View>
+      <View style={[s.ivc, s.ivwTel]}><Text style={s.ivtSm}>{p.tel || ''}</Text></View>
+      <View style={[s.ivc, s.ivwMob]}><Text style={s.ivtSm}>{p.mob || ''}</Text></View>
+      <View style={[s.ivc, s.ivwMail]}><Text style={s.ivtMail}>{p.email || ''}</Text></View>
+      <X on={p.invite} />
+      <X on={p.presence === 'P'} />
+      <X on={p.presence === 'AE'} />
+      <X on={p.presence === 'AN'} />
+      <X on={p.diffusion} />
+    </View>
   )
 }
 
-export function CrBecibPdf({ cr }: { cr: CrBecib }) {
+export function CrBecibPdf({ cr, previewStamp }: { cr: CrBecib; previewStamp?: string }) {
   const dLong = cr.meta.dateIso ? dateLong(cr.meta.dateIso) : ''
   const dNum = cr.meta.dateIso ? dateNum(cr.meta.dateIso) : ''
   const breadcrumb = `${cr.meta.moa} / ${cr.meta.moe} / ${cr.meta.chantier} / CR réunion de chantier`
@@ -324,6 +319,8 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
       <Page size="A4" style={s.page}>
         {/* Cadre de page arrondi (répété, sans fond → ne se remplit pas) */}
         <View style={s.pageFrame} fixed />
+        {/* DEV : horodatage d'aperçu (preuve de fraîcheur ; absent en prod). */}
+        {previewStamp ? <Text style={s.previewStamp} fixed>aperçu {previewStamp}</Text> : null}
 
         {/* En-tête répété : LOGO seul (le fil d'Ariane et le cartouche sont
             désormais uniquement en pied, comme l'original). */}
@@ -362,23 +359,23 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         <Band1 num="1" title="INTERVENANTS" first />
         <Text style={s.ivLegend}>(I : Invité · P : Présent · AE : Absent excusé · AN : Absent non excusé · D : diffusion)</Text>
         <View style={s.tCont}>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.ivHeadOrg, s.ivHeadBg]}>Organisme</Text>
-            <Text style={[s.tCell, s.ivHeadRep, s.ivHeadBg]}>Représentant</Text>
-            <Text style={[s.tCell, s.ivTel, s.ivHeadTxt, s.ivHeadBg]}>Tél.</Text>
-            <Text style={[s.tCell, s.ivMob, s.ivHeadTxt, s.ivHeadBg]}>Mob.</Text>
-            <Text style={[s.tCell, s.ivMail, s.ivHeadTxt, s.ivHeadBg]}>Fax / e-mail</Text>
-            {PRES_COLS.map((c) => <Text key={c} style={[s.tCell, s.ivP, s.ivHeadTxt, s.ivHeadBg]}>{c}</Text>)}
+          {/* En-tête : chaque colonne = une <View> bordée (mêmes largeurs que les données). */}
+          <View style={[s.ivRow, s.ivHeadRowH]}>
+            <View style={[s.ivc, s.ivwOrg, s.ivHeadBg]}><Text style={s.ivtHead}>Organisme</Text></View>
+            <View style={[s.ivc, s.ivwRep, s.ivHeadBg]}><Text style={s.ivtHead}>Représentant</Text></View>
+            <View style={[s.ivc, s.ivwTel, s.ivHeadBg]}><Text style={s.ivtHeadC}>Tél.</Text></View>
+            <View style={[s.ivc, s.ivwMob, s.ivHeadBg]}><Text style={s.ivtHeadC}>Mob.</Text></View>
+            <View style={[s.ivc, s.ivwMail, s.ivHeadBg]}><Text style={s.ivtHeadC}>Fax / e-mail</Text></View>
+            {PRES_COLS.map((c) => <View key={c} style={[s.ivcC, s.ivwP, s.ivHeadBg]}><Text style={s.ivtHeadC}>{c}</Text></View>)}
           </View>
           {groups.map((g) => {
             const rows = cr.intervenants.filter((i) => i.groupe === g)
             if (rows.length === 0) return null
             return (
               <React.Fragment key={g}>
-                <View style={s.tRow}>
-                  <Text style={[s.tCell, s.ivGroup, { flex: 1 }]}>{GROUP_LABEL[g]}</Text>
-                </View>
-                {chunkByOrg(rows).map((block, bi) => <IvOrgBlock key={bi} block={block} />)}
+                {/* Bande corps de métier : une cellule pleine largeur, bordée comme les autres. */}
+                <View style={s.ivRow}><View style={s.ivBandCell}><Text style={s.ivtBand}>{GROUP_LABEL[g]}</Text></View></View>
+                {rows.map((p, k) => <IvDataRow key={k} p={p} />)}
               </React.Fragment>
             )
           })}
@@ -489,9 +486,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             </View>
           </View>
         </View>
-        {/* Numéro de page : top-level `fixed` (render n'injecte pageNumber QUE
-            là), positionné DANS la zone visible du pied (pas au ras du bord). */}
-        <Text style={s.pageNumAbs} fixed render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`} />
+        {/* Numéro de page : top-level `fixed` (le SEUL qui injecte pageNumber par
+            page de façon fiable), positionné sur la ligne du fil d'Ariane du
+            pied (bottom 36), à droite, dans le cadre → visible. */}
       </Page>
     </Document>
   )
