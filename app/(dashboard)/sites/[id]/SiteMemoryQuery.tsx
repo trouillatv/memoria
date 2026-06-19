@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteMemoryTermsAction,
@@ -39,6 +39,8 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   meeting_decision: { label: 'Décision',     Icon: FileCheck2, cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   site_reserve:     { label: 'Réserve',      Icon: ShieldCheck, cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   report_document:  { label: 'Compte-rendu', Icon: FileText,   cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+  // S4a-2 — couche Connaissance (CCTP, marché, procédure…). Recall sémantique.
+  document:         { label: 'Document',     Icon: BookOpen,   cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 }
 
 function fmtDate(iso: string | null): string {
@@ -119,7 +121,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     const Icon = meta.Icon
     return (
       <li key={`${h.type}-${h.id}`}>
-        <Link href={siteHref} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
+        <Link href={h.href ?? siteHref} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
               <Icon className="h-2.5 w-2.5" /> {meta.label}
@@ -140,7 +142,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           <Search className="h-4 w-4 text-muted-foreground" /> Interroger ce site
         </h2>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          MemorIA retrouve dans la mémoire du site (anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus).
+          MemorIA retrouve dans la mémoire du site (anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus, documents : CCTP, marché, procédures…).
           Il vous montre les traces&nbsp;: il ne répond pas à votre place.
         </p>
       </div>

@@ -141,6 +141,101 @@ export async function searchKnowledgeForOrg(params: {
   return [...bySource.values()].sort((a, b) => b.similarity - a.similarity)
 }
 
+// ── S4a-2 : recall documentaire SCOPÉ AU SITE ───────────────────────────────
+//
+// Périmètre (b, décision Vincent 2026-06-19) : documents LIÉS au site
+// (document_links target='site') + documents ORG-WIDE de type contractuel /
+// procédure / référence NON rattachés à un site précis (un CCTP-type ou une
+// procédure interne est déterminant même sans lien chantier). Garde-fous durs :
+// visibilité (canViewDocument), litige TOUJOURS exclu, jamais hors tenant.
+// Citation = nom du document (filename) + extrait + lien /documents/<id>.
+const ORG_WIDE_DOC_TYPES = new Set(['contrat', 'procedure', 'protocole', 'reference', 'ao'])
+
+export interface SiteKnowledgeHit {
+  documentId: string
+  filename: string
+  documentType: string
+  snippet: string
+  similarity: number
+  occurredAt: string | null
+}
+
+export async function searchKnowledgeForSite(params: {
+  tenantId: string
+  siteId: string
+  queryEmbedding: number[]
+  role: UserRole | null
+  limit?: number
+}): Promise<SiteKnowledgeHit[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('find_similar_knowledge_chunks', {
+    p_tenant_id: params.tenantId,
+    p_embedding: `[${params.queryEmbedding.join(',')}]`,
+    p_source_domains: ['document'], // S4a-2 : documents uploadés uniquement
+    p_limit: params.limit ?? 12,
+    p_threshold: 0.55,
+  })
+  if (error) {
+    console.error('[searchKnowledgeForSite] RPC error', JSON.stringify(error))
+    return []
+  }
+  const rows = (data ?? []) as RawKnowledgeMatch[]
+  const docIds = [...new Set(rows.map((r) => r.source_id))]
+  if (docIds.length === 0) return []
+
+  // Métadonnées AUTORITATIVES (filename/type/visibilité/date) depuis documents,
+  // pas le metadata du chunk (qui peut ne pas porter le filename).
+  const meta = new Map<string, { filename: string; type: string; vis: DocumentVisibility; date: string | null }>()
+  const linkedThisSite = new Set<string>()
+  const linkedAnySite = new Set<string>()
+
+  const [{ data: docs }, { data: links }] = await Promise.all([
+    supabase
+      .from('documents')
+      .select('id, filename, document_type, visibility_level, effective_date, created_at, deleted_at')
+      .in('id', docIds),
+    supabase
+      .from('document_links')
+      .select('document_id, target_id')
+      .eq('target_type', 'site')
+      .in('document_id', docIds),
+  ])
+
+  for (const d of (docs ?? []) as Array<{
+    id: string; filename: string; document_type: string; visibility_level: DocumentVisibility
+    effective_date: string | null; created_at: string; deleted_at: string | null
+  }>) {
+    if (d.deleted_at) continue
+    meta.set(d.id, { filename: d.filename, type: d.document_type, vis: d.visibility_level, date: d.effective_date ?? d.created_at })
+  }
+  for (const l of (links ?? []) as Array<{ document_id: string; target_id: string }>) {
+    linkedAnySite.add(l.document_id)
+    if (l.target_id === params.siteId) linkedThisSite.add(l.document_id)
+  }
+
+  const bySource = new Map<string, SiteKnowledgeHit>()
+  for (const r of rows) {
+    const m = meta.get(r.source_id)
+    if (!m) continue // supprimé / introuvable
+    if (m.type === 'litige') continue // jamais de lecture auto d'un litige
+    if (!canViewDocument(params.role, m.vis)) continue // visibilité au recall
+    const keep = linkedThisSite.has(r.source_id) || (!linkedAnySite.has(r.source_id) && ORG_WIDE_DOC_TYPES.has(m.type))
+    if (!keep) continue
+    const key = r.source_id
+    const ex = bySource.get(key)
+    if (ex) { ex.similarity = Math.max(ex.similarity, r.similarity); continue }
+    bySource.set(key, {
+      documentId: r.source_id,
+      filename: m.filename,
+      documentType: m.type,
+      snippet: r.chunk_text,
+      similarity: r.similarity,
+      occurredAt: m.date,
+    })
+  }
+  return [...bySource.values()].sort((a, b) => b.similarity - a.similarity).slice(0, params.limit ?? 12)
+}
+
 /**
  * Matche un AO contre la mémoire documentaire du tenant : bibliothèque + AO
  * passés + documents (source_domain='document', A2).

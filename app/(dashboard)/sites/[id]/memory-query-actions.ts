@@ -26,6 +26,8 @@ import { findSimilarTraces } from '@/lib/ai/embed-trace'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
 import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { getSiteRecentPhotos } from '@/lib/db/site-cockpit'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { searchKnowledgeForSite } from '@/lib/ai/match-ao-knowledge'
 
 const IdSchema = z.string().uuid()
 
@@ -39,6 +41,13 @@ async function requireOperator(): Promise<boolean> {
 // être « proche » — précision >> rappel (une question vague rend peu, pas du bruit).
 const SEM_FLOOR = 0.45
 
+/** tenant_id du site (pour le recall documentaire knowledge_chunks). */
+async function getSiteTenantId(siteId: string): Promise<string | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('sites').select('tenant_id').eq('id', siteId).maybeSingle()
+  return (data as { tenant_id?: string } | null)?.tenant_id ?? null
+}
+
 // source_type de trace_embeddings → type d'affichage mémoire.
 const SRC_TO_TYPE: Record<string, MemoryHitType> = {
   anomaly: 'anomaly',
@@ -48,7 +57,9 @@ const SRC_TO_TYPE: Record<string, MemoryHitType> = {
 }
 
 export interface SiteMemoryHit {
-  type: MemoryHitType
+  // 'document' (S4a-2) = couche Connaissance (CCTP, marché, procédure…),
+  // recall SÉMANTIQUE → labellisé « proche », ne gonfle pas la confiance lexicale.
+  type: MemoryHitType | 'document'
   id: string
   title: string
   snippet: string
@@ -58,7 +69,20 @@ export interface SiteMemoryHit {
   /** Match MOT-CLÉ (plein-texte). Distinct de similarity : un hit peut être à la
    *  fois mot-clé ET sémantique. Sépare « correspondance exacte » vs « proche ». */
   keyword: boolean
+  /** Lien direct (documents). Absent pour les traces terrain (→ fiche site). */
+  href?: string
 }
+
+// S4a-2 — poids de source DÉTERMINISTE (dans le moteur, pas en UI). Un document
+// contractuel/procédure prime sur une action à pertinence comparable
+// (« si une action contredit le CCTP, le CCTP gagne »). Modeste : nudge, pas écrasement.
+const SOURCE_WEIGHT: Partial<Record<SiteMemoryHit['type'], number>> = {
+  document: 1.4,
+  report_document: 1.1,
+  site_action: 0.9,
+  photo: 0.7,
+}
+const weightOf = (t: SiteMemoryHit['type']): number => SOURCE_WEIGHT[t] ?? 1.0
 
 /** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Aide à juger la
  *  force et la nature de ce qui est retrouvé, sans réponse magique. */
@@ -109,20 +133,28 @@ export async function askSiteMemoryAction(
   siteId: string,
   question: string,
 ): Promise<{ ok: true; hits: SiteMemoryHit[]; summary: SiteMemorySummary | null } | { ok: false; error: string }> {
-  if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
+  // Rôle réel requis (visibilité documentaire S4a-2 : canViewDocument).
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe')) {
+    return { ok: false, error: 'Accès refusé' }
+  }
   if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
 
   const q = (question ?? '').trim().slice(0, 200)
   if (q.length < 2) return { ok: true, hits: [], summary: null }
 
-  // Sémantique + plein-texte + index d'enrichissement (dates/titres) en parallèle.
+  // Sémantique + plein-texte + index d'enrichissement + DOCUMENTS (S4a-2) en parallèle.
   const queryEmbedding = await getEmbedding(q).catch(() => null)
-  const [ftsHits, semHits, timeline] = await Promise.all([
+  const tenantId = await getSiteTenantId(siteId)
+  const [ftsHits, semHits, timeline, docHits] = await Promise.all([
     searchMemory({ q, siteId, periodDays: 3650, limit: 30 }).catch(() => []),
     queryEmbedding
       ? findSimilarTraces({ siteId, queryEmbedding, limit: 20 }).catch(() => [])
       : Promise.resolve([]),
     getSiteMemoryTimeline(siteId, { limit: 400, periodDays: 3650 }).catch(() => []),
+    queryEmbedding && tenantId
+      ? searchKnowledgeForSite({ tenantId, siteId, queryEmbedding, role: user.role, limit: 12 }).catch(() => [])
+      : Promise.resolve([]),
   ])
 
   const byId = new Map(timeline.map((e) => [e.id, e]))
@@ -156,10 +188,25 @@ export async function askSiteMemoryAction(
     })
   }
 
-  // Rang : pertinence conceptuelle d'abord, puis plein-texte, puis récence.
+  // S4a-2 — DOCUMENTS (CCTP, marché, procédure…). Recall sémantique, labellisé
+  // « proche » (keyword:false → ne gonfle pas la confiance lexicale). Citation =
+  // nom du document + lien direct /documents/[id].
+  for (const d of docHits) {
+    const key = `document:${d.documentId}`
+    if (merged.has(key)) continue
+    merged.set(key, {
+      type: 'document', id: d.documentId, title: d.filename,
+      snippet: d.snippet, occurredAt: d.occurredAt ?? '',
+      similarity: d.similarity, keyword: false, fts: 0,
+      href: `/documents/${d.documentId}`,
+    })
+  }
+
+  // Rang : pertinence conceptuelle PONDÉRÉE par source (S4a-2), puis plein-texte,
+  // puis récence. Le poids fait remonter un doc contractuel à pertinence égale.
   const hits = [...merged.values()]
     .sort((a, b) =>
-      (b.similarity ?? 0) - (a.similarity ?? 0) ||
+      ((b.similarity ?? 0) * weightOf(b.type)) - ((a.similarity ?? 0) * weightOf(a.type)) ||
       b.fts - a.fts ||
       (a.occurredAt < b.occurredAt ? 1 : -1),
     )
