@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, X, AlertTriangle, FileText, Camera, MapPin } from 'lucide-react'
+import { Search, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2, ShieldCheck } from 'lucide-react'
 import { searchMemoryAction } from './search-action'
 import type { MemoryHit, MemoryHitType } from '@/lib/db/memory-search'
 
@@ -17,6 +17,10 @@ const TYPE_LABEL: Record<MemoryHitType, string> = {
   site_note: 'Note de site',
   intervention: 'Intervention',
   photo: 'Photo',
+  site_action: 'Action',
+  meeting_decision: 'Décision',
+  site_reserve: 'Réserve',
+  report_document: 'Compte-rendu',
 }
 
 const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string }>> = {
@@ -24,6 +28,10 @@ const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string 
   site_note: MapPin,
   intervention: FileText,
   photo: Camera,
+  site_action: ListTodo,
+  meeting_decision: FileCheck2,
+  site_reserve: ShieldCheck,
+  report_document: FileText,
 }
 
 function formatDate(iso: string): string {

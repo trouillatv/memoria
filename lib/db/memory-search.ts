@@ -11,7 +11,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 
-export type MemoryHitType = 'anomaly' | 'site_note' | 'intervention' | 'photo'
+export type MemoryHitType =
+  | 'anomaly' | 'site_note' | 'intervention' | 'photo'
+  // S4a-1 — mémoire récente produite par MemorIA (actions, décisions de CR
+  // validées, réserves, PV validés), désormais dans le corpus de recherche.
+  | 'site_action' | 'meeting_decision' | 'site_reserve' | 'report_document'
 
 export interface MemoryHit {
   type: MemoryHitType
@@ -83,6 +87,13 @@ export function memoryHitHref(hit: MemoryHit): string {
       // page site qui agrégera tout.
       return hit.siteId ? `/sites/${hit.siteId}` : '/sites'
     case 'site_note':
+    case 'site_action':
+    case 'meeting_decision':
+    case 'site_reserve':
+    case 'report_document':
+      // Tout pointe vers la fiche site, qui agrège la mémoire (pas de deep-link
+      // par objet au MVP). report_document/meeting_decision : pas de report_id
+      // dans le hit → site.
       return hit.siteId ? `/sites/${hit.siteId}` : '/sites'
     default:
       return '/'
