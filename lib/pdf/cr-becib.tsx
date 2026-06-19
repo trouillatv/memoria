@@ -172,9 +172,6 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   return (
     <Document title={`CR ${cr.meta.numeroCR} — ${cr.meta.chantier}`}>
       <Page size="A4" style={s.page}>
-        {/* Cadre de page fin arrondi (répété) */}
-        <View style={s.pageFrame} fixed />
-
         {/* En-tête répété */}
         <View style={s.header} fixed>
           <View style={s.headRow}>
