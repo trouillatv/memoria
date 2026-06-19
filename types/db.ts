@@ -436,6 +436,8 @@ export interface DbSiteReportProposal {
   status: SiteReportProposalStatus
   created_entity_type: string | null
   created_entity_id: string | null
+  // Rattachement à un sujet vivant (migration 124).
+  subject_id: string | null
   created_at: string
 }
 
@@ -474,6 +476,24 @@ export interface DbSiteAction {
   // Action corrective rattachée à une réserve (migration 123). NULL = action
   // ordinaire. Plusieurs actions peuvent contribuer à la levée d'une réserve.
   reserve_id: string | null
+  // Rattachement à un sujet vivant (migration 124). NULL = action non rattachée.
+  subject_id: string | null
+}
+
+// Sujets vivants (migration 124) — fil persistant qui agrège dans le temps
+// actions/réserves/décisions/documents d'un problème. JAMAIS une personne.
+export type SubjectStatus = 'open' | 'dormant' | 'closed'
+
+export interface DbSubject {
+  id: string
+  organization_id: string | null
+  site_id: string
+  scope_id: string | null
+  name: string
+  status: SubjectStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 // Sprint 1 (migration 120) — document généré depuis une réunion (PV/CR chantier).
@@ -824,6 +844,8 @@ export type DocumentTargetType =
   | 'contract' | 'site' | 'tender' | 'client' | 'intervention' | 'team' | 'tenant'
   // S4 Réserves (migration 123) — un document peut justifier une réserve.
   | 'reserve'
+  // Sujets vivants (migration 124) — un document rattaché à un fil/sujet.
+  | 'subject'
 
 export interface DbDocumentCollection {
   id: string

@@ -27,6 +27,8 @@ export async function createSiteAction(input: {
   due_date_status?: 'explicit' | 'estimated' | null
   /** Action corrective rattachée à une réserve (migration 123). */
   reserve_id?: string | null
+  /** Rattachement à un sujet vivant (migration 124). */
+  subject_id?: string | null
   created_by: string | null
   /** Provenance (migration 112) : mobile_site / desktop_site / actions_list / report. */
   created_from?: string | null
@@ -44,6 +46,7 @@ export async function createSiteAction(input: {
       due_date: input.due_date ?? null,
       due_date_status: input.due_date_status ?? null,
       reserve_id: input.reserve_id ?? null,
+      subject_id: input.subject_id ?? null,
       created_by: input.created_by,
       created_from: input.created_from ?? null,
       status: 'open' as SiteActionStatus,
