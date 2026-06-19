@@ -150,7 +150,9 @@ export const CR_CHANTIER_BECIB_V1: ReportTemplateSpec = {
   label: 'Compte-rendu de réunion de chantier (BECIB)',
   docType: 'pv_chantier',
   layout: 'becib',
-  companyLabel: 'BECIB',
+  // companyLabel volontairement absent : le bandeau porte le NOM RÉEL de l'org
+  // appelante (BatiSud, ContraBat…), jamais « BECIB ». BECIB = trame de
+  // référence, son identité ne se partage pas.
   systemPrompt: BECIB_SYSTEM_PROMPT,
   sections: [
     { key: 'suivi_precedent', title: 'Suivi de la réunion précédente', kind: 'fixed', source: 'followup' },
@@ -203,19 +205,29 @@ const TEMPLATES: Record<string, ReportTemplateSpec> = {
 }
 
 /**
- * Résout le template à utiliser. MVP : toujours le CR par défaut.
- * `companySlug` est prévu pour brancher un template propre à la compagnie
- * (ex. BECIB avec son layout) sans changer les appelants.
+ * Trame de CR de chantier (dérivée BECIB) = défaut pour TOUS : c'est la bonne
+ * structure de CR BTP (numérotée, responsable par point, clause 48h). L'IDENTITÉ
+ * (nom du bandeau) reste celle de l'org appelante — cf. companyLabelForOrg.
+ * Un template plus spécifique pourra être renvoyé selon companySlug plus tard.
  */
 export function resolveReportTemplate(opts?: { companySlug?: string | null }): ReportTemplateSpec {
-  // Compagnie avec une trame fournie → son template ; sinon défaut neutre
-  // (« pour les docs qu'on n'a pas, défaut ; pour ceux qui ont une trame, on
-  // s'adapte » — Vincent). Match souple sur le nom/slug de l'organisation.
-  const slug = (opts?.companySlug ?? '').toLowerCase()
-  if (slug.includes('becib')) return CR_CHANTIER_BECIB_V1
-  return CR_CHANTIER_VRD_V1
+  void opts?.companySlug // réservé pour une future résolution par compagnie
+  return CR_CHANTIER_BECIB_V1
 }
 
 export function getReportTemplate(key: string): ReportTemplateSpec | null {
   return TEMPLATES[key] ?? null
+}
+
+// Orgs « branchées sur BECIB » : leur CR porte l'identité BECIB dans le bandeau
+// (compte démo BatiSud, le temps du test). Les autres orgs portent leur PROPRE
+// nom (l'identité ne se partage pas — doctrine). À retirer quand BatiSud aura
+// sa propre trame.
+const BECIB_BRANDED_ORG_SLUGS = new Set(['batisud'])
+
+/** Libellé MOE du bandeau : « BECIB » pour les orgs branchées, sinon le nom réel. */
+export function companyLabelForOrg(org: { slug?: string | null; name?: string | null } | null): string | null {
+  if (!org) return null
+  if (org.slug && BECIB_BRANDED_ORG_SLUGS.has(org.slug.toLowerCase())) return 'BECIB'
+  return org.name ?? null
 }

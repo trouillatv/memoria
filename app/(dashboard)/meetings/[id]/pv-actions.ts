@@ -2,12 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { renderToBuffer } from '@react-pdf/renderer'
-import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
-import { resolveReportTemplate, getReportTemplate } from '@/lib/documents/templates/cr-chantier'
+import { resolveReportTemplate, getReportTemplate, companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -53,16 +53,7 @@ export async function generatePvAction(reportId: string): Promise<{ ok: true; id
 
   const actions = await listSiteActionsByReport(reportId)
   const followup = await getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at })
-
-  // Template selon la compagnie (org) : trame BECIB si l'org est BECIB, défaut neutre sinon.
-  const orgId = await getOrgId().catch(() => null)
-  let companySlug: string | null = null
-  if (orgId) {
-    const admin = createAdminClient()
-    const { data: org } = await admin.from('organizations').select('name, slug').eq('id', orgId).maybeSingle()
-    companySlug = [(org as { slug?: string } | null)?.slug, (org as { name?: string } | null)?.name].filter(Boolean).join(' ') || null
-  }
-  const template = resolveReportTemplate({ companySlug })
+  const template = resolveReportTemplate()
 
   try {
     const result = await generatePv({
@@ -138,6 +129,12 @@ export async function validatePvAction(
   const identity = report.site_id ? await getSiteIdentity(report.site_id) : null
   const title = report.title || `Compte-rendu — ${identity?.name ?? 'chantier'}`
   const tpl = getReportTemplate(doc.template_key)
+  // Identité du bandeau = nom réel de l'org (ou « BECIB » pour les orgs branchées).
+  const orgAdmin = createAdminClient()
+  const { data: orgRow } = doc.organization_id
+    ? await orgAdmin.from('organizations').select('name, slug').eq('id', doc.organization_id).maybeSingle()
+    : { data: null }
+  const companyLabel = companyLabelForOrg(orgRow as { slug?: string | null; name?: string | null } | null)
 
   try {
     const pdfBuffer = await renderToBuffer(
@@ -148,7 +145,7 @@ export async function validatePvAction(
         dateLabel: meetingDateLabel(report.created_at),
         sections: doc.sections,
         layout: tpl?.layout ?? 'neutral',
-        companyLabel: tpl?.companyLabel ?? null,
+        companyLabel,
       }),
     )
 

@@ -7,7 +7,8 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
-import { getReportTemplate } from '@/lib/documents/templates/cr-chantier'
+import { getReportTemplate, companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { CrChantierPdf } from '@/lib/pdf/cr-chantier'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   })
 
   const tpl = getReportTemplate(doc.template_key)
+  const orgAdmin = createAdminClient()
+  const { data: orgRow } = doc.organization_id
+    ? await orgAdmin.from('organizations').select('name, slug').eq('id', doc.organization_id).maybeSingle()
+    : { data: null }
+  const companyLabel = companyLabelForOrg(orgRow as { slug?: string | null; name?: string | null } | null)
 
   let pdfBuffer: Buffer
   try {
@@ -43,7 +49,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         dateLabel,
         sections: doc.sections,
         layout: tpl?.layout ?? 'neutral',
-        companyLabel: tpl?.companyLabel ?? null,
+        companyLabel,
       }),
     )
   } catch (e) {
