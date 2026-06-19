@@ -48,7 +48,7 @@ function dateNum(iso: string): string {
 }
 
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.text, paddingTop: 78, paddingBottom: 40, paddingLeft: MARGIN, paddingRight: MARGIN, lineHeight: 1.28 },
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.text, paddingTop: 78, paddingBottom: 60, paddingLeft: MARGIN, paddingRight: MARGIN, lineHeight: 1.28 },
 
   // Cadre de page (fixed, répété) — trait fin ARRONDI, sans fond. Le runaway
   // venait de la pastille (Text+render+bg), pas du borderRadius du cadre.
@@ -61,30 +61,24 @@ const s = StyleSheet.create({
   breadcrumb: { fontSize: 7.5, color: C.text, flex: 1, marginHorizontal: 8, marginTop: 4 },
   headRule: { borderBottomWidth: 1.5, borderBottomColor: C.marine, marginTop: 5 },
 
-  // Cartouche DNS : table bordée 4 cases, sur toutes les pages.
-  cartouche: { width: 178, borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
-  cartoucheCell: { flexDirection: 'row', borderBottomWidth: 0.5, borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3 },
-  cartoucheLabel: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: C.marine, width: 56 },
-  cartoucheVal: { fontSize: 6.5, color: C.text, flex: 1 },
-
   // Logo / emplacement maître d'ouvrage (p.1, centré).
-  clientWrap: { alignItems: 'center', marginBottom: 8 },
-  clientLogo: { height: 46, width: 'auto', objectFit: 'contain' },
-  clientPlaceholder: { borderWidth: 0.5, borderColor: C.faint, borderStyle: 'dashed', paddingVertical: 8, paddingHorizontal: 22, alignItems: 'center' },
-  clientPlaceholderCap: { fontSize: 6, color: C.faint, fontFamily: 'Helvetica-Bold', letterSpacing: 0.5 },
-  clientPlaceholderName: { fontSize: 8, color: C.greyText, marginTop: 1 },
+  clientWrap: { alignItems: 'center', marginBottom: 8, marginTop: 2 },
+  clientLogo: { height: 54, width: 'auto', objectFit: 'contain' },
+  clientPlaceholder: { paddingVertical: 4, alignItems: 'center' },
+  clientPlaceholderCap: { fontSize: 7, color: C.greyText, fontFamily: 'Helvetica-Bold', letterSpacing: 0.5 },
+  clientPlaceholderName: { fontSize: 11, color: C.marine, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
-  // Bloc-titre (encadré interne DROIT).
-  titleBox: { borderWidth: 1.5, borderColor: C.marine, padding: 8, marginBottom: 6 },
+  // Bloc-titre (encadré interne DROIT — borderRadius 0 explicite).
+  titleBox: { borderWidth: 1.5, borderColor: C.marine, borderRadius: 0, padding: 8, marginBottom: 6 },
   titleTxt: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   subTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'center', textDecoration: 'underline', marginBottom: 8 },
 
   // Bandeau niveau 1 (marine) + filet rouge dessous + marqueur 4 points.
   // paddingLeft généreux pour que les points soient NETTEMENT dans le cadre.
-  band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 3, paddingLeft: 9, paddingRight: 6 },
+  band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 4.5, paddingLeft: 9, paddingRight: 6 },
   band1Rule: { height: 1.4, backgroundColor: C.red, marginBottom: 4 },
-  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10, marginRight: 6 },
-  band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10, letterSpacing: 0.5, flex: 1 },
+  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 13, marginRight: 7 },
+  band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10.5, letterSpacing: 0.5, flex: 1 },
   band1Dots: { width: 4, marginRight: 7, alignItems: 'center', justifyContent: 'center' },
   band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginVertical: 0.75 },
   band1Top: { marginTop: 8 },
@@ -111,14 +105,16 @@ const s = StyleSheet.create({
   pointTxt: { flex: 1 },
   statut: { fontFamily: 'Helvetica-Bold', color: C.text },
 
-  // Intervenants — grille avec colonnes distinctes.
+  // Intervenants — grille avec colonnes distinctes (Organisme séparé du nom).
   ivGroup: { fontFamily: 'Helvetica-Bold', fontSize: 8, color: C.marine, backgroundColor: '#eef1f8' },
+  ivOrg: { width: 76, fontSize: 7, fontFamily: 'Helvetica-Bold' },
   ivRep: { flex: 1, fontSize: 8 },
-  ivTel: { width: 46, fontSize: 7 },
-  ivMob: { width: 46, fontSize: 7 },
-  ivMail: { width: 118, fontSize: 5.8, color: C.greyText },
+  ivTel: { width: 42, fontSize: 7 },
+  ivMob: { width: 42, fontSize: 7 },
+  ivMail: { width: 96, fontSize: 5.6, color: C.greyText },
   ivP: { width: 15, fontSize: 8, textAlign: 'center' },
   ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
+  ivHeadOrg: { width: 76, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2, marginTop: 2 },
 
@@ -131,25 +127,28 @@ const s = StyleSheet.create({
   planFieldL: { flex: 1, fontSize: 8 },
   planFieldV: { width: 120, fontSize: 8, fontFamily: 'Helvetica-Bold' },
 
-  // Encadré prochaine réunion (interne DROIT).
-  nextBox: { borderWidth: 1.5, borderColor: C.marine, padding: 8, marginTop: 12, alignItems: 'center' },
-  nextTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: C.marine, letterSpacing: 0.5 },
+  // Encadré prochaine réunion (interne DROIT — borderRadius 0 explicite).
+  nextBox: { borderWidth: 1.5, borderColor: C.marine, borderRadius: 0, padding: 8, marginTop: 12, alignItems: 'center' },
+  nextTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: C.marine, letterSpacing: 0.5, textDecoration: 'underline' },
   signature: { textAlign: 'right', fontFamily: 'Helvetica-Bold', marginTop: 10 },
 
   nota: { fontSize: 7.5, fontStyle: 'italic', color: C.greyText, marginTop: 2 },
   empty: { fontSize: 8, color: C.faint, fontStyle: 'italic' },
 
-  // Pied de page (fixed) — cartouche bordé compact + pastille ronde.
-  footer: { position: 'absolute', bottom: 16, left: MARGIN, width: CONTENT_W, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: C.border, paddingTop: 4 },
-  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1, marginRight: 6 },
-  footCartouche: { flexDirection: 'row', borderWidth: 0.5, borderColor: C.grid, marginRight: 8 },
-  footCell: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
-  footCellLast: { paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
-  // Pastille ronde : taille EXPLICITE (sinon Text+render → hauteur runaway).
-  // Le Text porte AUSSI une largeur explicite, sinon le contenu différé (render)
-  // lui donne une largeur 0 dans un parent centré → numéro invisible.
-  pagePillBox: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.marine, alignItems: 'center', justifyContent: 'center' },
-  pagePill: { width: 20, color: '#fff', fontSize: 6.5, fontFamily: 'Helvetica-Bold', textAlign: 'center' },
+  // Pied de page (fixed) — cartouche DNS pleine largeur AVEC libellés (le seul
+  // cartouche du document ; supprimé du haut). Numéro de page en texte simple.
+  footer: { position: 'absolute', bottom: 14, left: MARGIN, width: CONTENT_W },
+  fcCont: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
+  fcRow: { flexDirection: 'row' },
+  fcCell: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6.5 },
+  fcLabel: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 5.5, fontFamily: 'Helvetica-Bold', color: C.marine, backgroundColor: '#f0f2f5' },
+  fcDns: { flex: 1 },
+  fcVer: { width: 54 },
+  fcMod: { width: 104 },
+  fcDate: { width: 78 },
+  footBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 },
+  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1, marginRight: 8 },
+  pageNum: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -233,26 +232,6 @@ const GROUP_LABEL: Record<string, string> = {
 }
 const PRES_COLS = ['I', 'P', 'AE', 'AN', 'D'] as const
 
-// Cartouche DNS bordé complet (4 cases) — p.1.
-function CartoucheFull({ dns, version, modification, date }: { dns: string; version: string; modification: string; date: string }) {
-  const lines: [string, string][] = [
-    ['N° DNS', dns || '—'],
-    ['Version', version],
-    ['Modification', modification],
-    ['Date', date],
-  ]
-  return (
-    <View style={s.cartouche}>
-      {lines.map(([l, v]) => (
-        <View key={l} style={s.cartoucheCell}>
-          <Text style={s.cartoucheLabel}>{l}</Text>
-          <Text style={s.cartoucheVal}>{v}</Text>
-        </View>
-      ))}
-    </View>
-  )
-}
-
 export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   const dLong = cr.meta.dateIso ? dateLong(cr.meta.dateIso) : ''
   const dNum = cr.meta.dateIso ? dateNum(cr.meta.dateIso) : ''
@@ -289,16 +268,13 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* Cadre de page arrondi (répété, sans fond → ne se remplit pas) */}
         <View style={s.pageFrame} fixed />
 
-        {/* En-tête répété */}
+        {/* En-tête répété : logo + fil d'Ariane SEULEMENT. Le cartouche DNS est
+            désormais uniquement en pied (plus de doublon haut/bas). */}
         <View style={s.header} fixed>
           <View style={s.headRow}>
             {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
             <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
             <Text style={s.breadcrumb}>{breadcrumb}</Text>
-            {/* Cartouche complet 4 cases sur TOUTES les pages. La variante
-                « compacte par page » via render→JSX cassait le rendu (vide /
-                fragment brisé) : render ne doit retourner que du texte. */}
-            <CartoucheFull dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
           </View>
           <View style={s.headRule} />
         </View>
@@ -330,6 +306,7 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         <Text style={s.ivLegend}>(I : Invité · P : Présent · AE : Absent excusé · AN : Absent non excusé · D : diffusion)</Text>
         <View style={s.tCont}>
           <View style={s.tRow}>
+            <Text style={[s.tCell, s.ivHeadOrg]}>Organisme</Text>
             <Text style={[s.tCell, s.ivHeadRep]}>Représentant</Text>
             <Text style={[s.tCell, s.ivTel, s.ivHeadTxt]}>Tél.</Text>
             <Text style={[s.tCell, s.ivMob, s.ivHeadTxt]}>Mob.</Text>
@@ -346,11 +323,16 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
                 </View>
                 {rows.map((i, k) => (
                   <View key={k} style={s.tRow} wrap={false}>
+                    {/* Organisme affiché une fois par bloc consécutif (regroupement vertical). */}
+                    <Text style={[s.tCell, s.ivOrg]}>{k === 0 || rows[k - 1].organisme !== i.organisme ? i.organisme : ''}</Text>
                     <Text style={[s.tCell, s.ivRep]}>{i.representant}</Text>
                     <Text style={[s.tCell, s.ivTel]}>{i.tel || ''}</Text>
                     <Text style={[s.tCell, s.ivMob]}>{i.mob || ''}</Text>
                     <Text style={[s.tCell, s.ivMail]}>{i.email || ''}</Text>
-                    {PRES_COLS.map((c) => <Text key={c} style={[s.tCell, s.ivP]}>{i.presence === c ? 'X' : ''}</Text>)}
+                    {/* Plusieurs X possibles : la colonne de présence ET la colonne D (diffusion). */}
+                    {PRES_COLS.map((c) => (
+                      <Text key={c} style={[s.tCell, s.ivP]}>{i.presence === c || (c === 'D' && i.diffusion) ? 'X' : ''}</Text>
+                    ))}
                   </View>
                 ))}
               </React.Fragment>
@@ -399,7 +381,7 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
               {sec.rows.map(([label, val]) => (
                 <View key={label} style={s.tRow}>
                   <Text style={[s.tCell, s.planFieldL]}>{label}</Text>
-                  <Text style={[s.tCell, s.planFieldV]}>{val || '—'}</Text>
+                  <Text style={[s.tCell, s.planFieldV, { color: sec.color }]}>{val || '—'}</Text>
                 </View>
               ))}
             </View>
@@ -442,19 +424,28 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
           <Text style={s.signature}>{cr.signature}</Text>
         </View>
 
-        {/* Pied de page répété */}
+        {/* Pied de page répété : cartouche DNS pleine largeur AVEC libellés,
+            puis fil d'Ariane + numéro de page en texte simple. */}
         <View style={s.footer} fixed>
-          <Text style={s.footTxt}>{breadcrumb}</Text>
-          <View style={s.footCartouche}>
-            <Text style={s.footCell}>{cr.meta.dns || '—'}</Text>
-            <Text style={s.footCell}>V{cr.meta.version}</Text>
-            <Text style={s.footCell}>Mod. {cr.meta.modification}</Text>
-            <Text style={s.footCellLast}>{dNum}</Text>
+          <View style={s.fcCont}>
+            <View style={s.fcRow}>
+              <Text style={[s.fcLabel, s.fcDns]}>Numéro DNS</Text>
+              <Text style={[s.fcLabel, s.fcVer]}>Version</Text>
+              <Text style={[s.fcLabel, s.fcMod]}>Modification : ordre</Text>
+              <Text style={[s.fcLabel, s.fcDate]}>Date</Text>
+            </View>
+            <View style={s.fcRow}>
+              <Text style={[s.fcCell, s.fcDns]}>{cr.meta.dns || '—'}</Text>
+              <Text style={[s.fcCell, s.fcVer]}>{cr.meta.version}</Text>
+              <Text style={[s.fcCell, s.fcMod]}>{cr.meta.modification}</Text>
+              <Text style={[s.fcCell, s.fcDate]}>{dNum}</Text>
+            </View>
           </View>
-          <View style={s.pagePillBox}>
+          <View style={s.footBottom}>
+            <Text style={s.footTxt}>{breadcrumb}</Text>
             {/* `fixed` OBLIGATOIRE sur le Text : sans lui, render n'est évalué
-                qu'une fois (pageNumber absent) → cercle vide. */}
-            <Text style={s.pagePill} fixed render={({ pageNumber, totalPages }) => `${pageNumber}/${totalPages}`} />
+                qu'une fois (pageNumber absent) → numéro vide. */}
+            <Text style={s.pageNum} fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
           </View>
         </View>
       </Page>

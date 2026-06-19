@@ -21,12 +21,12 @@ export const CRAVACHE_FIXTURE: CrBecib = {
     clientLogoDataUrl: null,
   },
   intervenants: [
-    { groupe: 'MOA', representant: 'Mairie du MONT-DORE — M. KATJAWAN', tel: '43.72.23', mob: '73.53.93', email: 'jocelyn.katjawan@ville-montdore.nc', presence: 'AE' },
-    { groupe: 'MOE', representant: 'BECIB — Mme DEVALLEZ', tel: '27 85 78', mob: '75.23.28', email: 'e.devallez@becib.nc', presence: 'P' },
-    { groupe: 'ENTREPRISE', representant: 'ETV — M. VERDEGEM', tel: '77.90.22', mob: null, email: 'etv@etv.nc', presence: 'P' },
-    { groupe: 'ENTREPRISE', representant: 'ETV — M. MERIEL', tel: '76.18.10', mob: null, email: 'Assist.pilote2@etv.nc', presence: 'P' },
-    { groupe: 'PARTENAIRES', representant: 'LA CRAVACHE — M. VALEE Eric', tel: '93.12.33', mob: null, email: null, presence: 'P' },
-    { groupe: 'PARTENAIRES', representant: 'LA CRAVACHE — Mme CHUQUET', tel: '53.46.12', mob: null, email: null, presence: 'P' },
+    { groupe: 'MOA', organisme: 'Mairie du MONT-DORE', representant: 'M. KATJAWAN', tel: '43.72.23', mob: '73.53.93', email: 'jocelyn.katjawan@ville-montdore.nc', presence: 'AE', diffusion: true },
+    { groupe: 'MOE', organisme: 'BECIB', representant: 'Mme DEVALLEZ', tel: '27 85 78', mob: '75.23.28', email: 'e.devallez@becib.nc', presence: 'P', diffusion: true },
+    { groupe: 'ENTREPRISE', organisme: 'ETV', representant: 'M. VERDEGEM', tel: '77.90.22', mob: null, email: 'etv@etv.nc', presence: 'P', diffusion: true },
+    { groupe: 'ENTREPRISE', organisme: 'ETV', representant: 'M. MERIEL', tel: '76.18.10', mob: null, email: 'Assist.pilote2@etv.nc', presence: 'P', diffusion: true },
+    { groupe: 'PARTENAIRES', organisme: 'LA CRAVACHE', representant: 'M. VALEE Eric', tel: '93.12.33', mob: null, email: null, presence: 'P', diffusion: true },
+    { groupe: 'PARTENAIRES', organisme: 'LA CRAVACHE', representant: 'Mme CHUQUET', tel: '53.46.12', mob: null, email: null, presence: 'P', diffusion: true },
   ],
   ordreDuJour: ['Suivi des travaux.'],
   remarquesCrPrecedent:

@@ -35,11 +35,13 @@ const blocSchema = z.object({
 
 const intervenantSchema = z.object({
   groupe: z.enum(INTERVENANT_GROUPES).catch('ENTREPRISE'),
-  representant: z.string().catch(''),
+  organisme: z.string().catch(''), // colonne dédiée (Mairie / BECIB / ETV …)
+  representant: z.string().catch(''), // le nom de la personne, sans l'organisme
   tel: z.string().nullable().catch(null),
   mob: z.string().nullable().catch(null),
   email: z.string().nullable().catch(null),
   presence: z.enum(PRESENCES).catch('P'),
+  diffusion: z.boolean().catch(false), // coche AUSSI la colonne D (CR diffusé)
 })
 
 const planningSchema = z.object({
