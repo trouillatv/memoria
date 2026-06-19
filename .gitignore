@@ -70,3 +70,5 @@ docs/~$*.docx
 
 # AO — scripts d'extraction scratch (PDF d'AO gardés comme fixtures)
 docs/AO/extract*
+
+cr-becib-preview.pdf

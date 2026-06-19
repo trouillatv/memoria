@@ -81,9 +81,9 @@ const s = StyleSheet.create({
   // paddingLeft généreux pour que les points soient NETTEMENT dans le cadre.
   band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 4.5, paddingLeft: 9, paddingRight: 6 },
   band1Rule: { height: 1.4, backgroundColor: C.red, marginBottom: 4 },
-  // lineHeight 1 sur les deux → le centre optique du gros chiffre s'aligne sur
-  // le titre (sinon il descend sous la baseline du titre, plus petit).
-  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 15, lineHeight: 1, marginRight: 8 },
+  // Chiffre et titre : MÊME police, taille, lineHeight, letterSpacing → alignés
+  // sur la même ligne, centrés ensemble (le chiffre ne « flotte » plus).
+  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10.5, lineHeight: 1, letterSpacing: 0.5, marginRight: 6 },
   band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10.5, lineHeight: 1, letterSpacing: 0.5, flex: 1 },
   band1Dots: { width: 4, marginRight: 7, alignItems: 'center', justifyContent: 'center' },
   band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginVertical: 0.75 },
