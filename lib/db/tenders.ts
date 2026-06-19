@@ -125,6 +125,30 @@ export async function updateTenderStatus(
   if (error) throw error
 }
 
+/**
+ * Filet de sécurité ultime contre les AO coincés. Passe en `failed` tous les
+ * tenders restés en `extracting`/`analyzing` depuis plus de `olderThanMs`,
+ * SANS dépendre d'un quelconque polling client (cf. status route, 4 min, qui
+ * ne s'exécute que si quelqu'un poll). Couvre les cas où le after() est tué
+ * net, ou la DB injoignable au moment de marquer `failed`.
+ *
+ * Idempotent : ne touche que les AO encore bloqués ET assez vieux. Renvoie les
+ * id basculés pour permettre au cron de logger.
+ */
+export async function failStuckTenders(olderThanMs: number): Promise<string[]> {
+  const supabase = createAdminClient()
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString()
+  const { data, error } = await supabase
+    .from('tenders')
+    .update({ status: 'failed', error_msg: 'analyze_timeout', updated_at: new Date().toISOString() })
+    .in('status', ['extracting', 'analyzing'])
+    .lt('updated_at', cutoff)
+    .is('deleted_at', null)
+    .select('id')
+  if (error) throw error
+  return (data ?? []).map((r) => r.id as string)
+}
+
 export async function softDeleteTender(id: string): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
