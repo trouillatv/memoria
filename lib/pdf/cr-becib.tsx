@@ -48,24 +48,29 @@ function dateNum(iso: string): string {
 }
 
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.text, paddingTop: 86, paddingBottom: 44, paddingLeft: MARGIN, paddingRight: MARGIN, lineHeight: 1.32 },
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.text, paddingTop: 78, paddingBottom: 40, paddingLeft: MARGIN, paddingRight: MARGIN, lineHeight: 1.28 },
 
   // Cadre de page (fixed, répété) — trait fin ARRONDI, sans fond. Le runaway
   // venait de la pastille (Text+render+bg), pas du borderRadius du cadre.
-  pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: PAGE_H - 24, borderWidth: 0.75, borderColor: C.marine, borderRadius: 8 },
+  pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: PAGE_H - 24, borderWidth: 0.75, borderColor: C.marine, borderRadius: 11 },
 
   // En-tête répété — largeur explicite, jamais left+right.
-  header: { position: 'absolute', top: 18, left: MARGIN, width: CONTENT_W },
+  header: { position: 'absolute', top: 16, left: MARGIN, width: CONTENT_W },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   logo: { width: 70, height: 'auto', objectFit: 'contain' },
   breadcrumb: { fontSize: 7.5, color: C.text, flex: 1, marginHorizontal: 8, marginTop: 4 },
   headRule: { borderBottomWidth: 1.5, borderBottomColor: C.marine, marginTop: 5 },
 
-  // Cartouche DNS en table bordée 4 cases (en-tête ET pied).
-  cartouche: { width: 168, borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
+  // Cartouche DNS : table bordée 4 cases (p.1) ou rappel compact 1 ligne (p.2+).
+  // Slot à hauteur EXPLICITE → le render par page ne peut pas partir en runaway.
+  cartoucheSlot: { width: 178, height: 44 },
+  cartouche: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid },
   cartoucheCell: { flexDirection: 'row', borderBottomWidth: 0.5, borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3 },
-  cartoucheLabel: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: C.marine, width: 52 },
+  cartoucheLabel: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: C.marine, width: 56 },
   cartoucheVal: { fontSize: 6.5, color: C.text, flex: 1 },
+  cartoucheCompact: { flexDirection: 'row', borderWidth: 0.5, borderColor: C.grid },
+  cartoucheCompactCell: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
+  cartoucheCompactLast: { paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
 
   // Logo / emplacement maître d'ouvrage (p.1, centré).
   clientWrap: { alignItems: 'center', marginBottom: 8 },
@@ -80,13 +85,14 @@ const s = StyleSheet.create({
   subTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'center', textDecoration: 'underline', marginBottom: 8 },
 
   // Bandeau niveau 1 (marine) + filet rouge dessous + marqueur 4 points.
-  band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 3, paddingLeft: 4, paddingRight: 6 },
+  // paddingLeft généreux pour que les points soient NETTEMENT dans le cadre.
+  band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 3, paddingLeft: 9, paddingRight: 6 },
   band1Rule: { height: 1.4, backgroundColor: C.red, marginBottom: 4 },
   band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10, marginRight: 6 },
   band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10, letterSpacing: 0.5, flex: 1 },
-  band1Dots: { width: 5, marginRight: 6, justifyContent: 'center' },
-  band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginBottom: 1.5 },
-  band1Top: { marginTop: 10 },
+  band1Dots: { width: 4, marginRight: 7, alignItems: 'center', justifyContent: 'center' },
+  band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginVertical: 0.75 },
+  band1Top: { marginTop: 8 },
 
   // Bandeau niveau 2 (gris).
   band2: { backgroundColor: C.grey, paddingVertical: 2, paddingHorizontal: 6, marginTop: 6, marginBottom: 3, fontSize: 9, fontFamily: 'Helvetica-Bold', color: C.text },
@@ -115,8 +121,8 @@ const s = StyleSheet.create({
   ivRep: { flex: 1, fontSize: 8 },
   ivTel: { width: 46, fontSize: 7 },
   ivMob: { width: 46, fontSize: 7 },
-  ivMail: { width: 96, fontSize: 6.5, color: C.greyText },
-  ivP: { width: 16, fontSize: 8, textAlign: 'center' },
+  ivMail: { width: 118, fontSize: 5.8, color: C.greyText },
+  ivP: { width: 15, fontSize: 8, textAlign: 'center' },
   ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2, marginTop: 2 },
@@ -124,9 +130,11 @@ const s = StyleSheet.create({
   // Avancement
   subLabel: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: C.marine, marginTop: 3 },
 
-  // Planning détaillé bordé
-  planLabel: { width: 92, color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 7.5, justifyContent: 'center' },
-  planCell: { flex: 1, fontSize: 8 },
+  // Planning détaillé bordé — matrice verticale (bande catégorie colorée, puis
+  // lignes « Libellé | Valeur », une par champ).
+  planBand: { flex: 1, color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 8, letterSpacing: 0.3 },
+  planFieldL: { flex: 1, fontSize: 8 },
+  planFieldV: { width: 120, fontSize: 8, fontFamily: 'Helvetica-Bold' },
 
   // Encadré prochaine réunion (interne DROIT).
   nextBox: { borderWidth: 1.5, borderColor: C.marine, padding: 8, marginTop: 12, alignItems: 'center' },
@@ -143,8 +151,10 @@ const s = StyleSheet.create({
   footCell: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
   footCellLast: { paddingVertical: 1, paddingHorizontal: 3, fontSize: 6 },
   // Pastille ronde : taille EXPLICITE (sinon Text+render → hauteur runaway).
-  pagePillBox: { width: 18, height: 18, borderRadius: 9, backgroundColor: C.marine, alignItems: 'center', justifyContent: 'center' },
-  pagePill: { color: '#fff', fontSize: 6, fontFamily: 'Helvetica-Bold', textAlign: 'center' },
+  // Le Text porte AUSSI une largeur explicite, sinon le contenu différé (render)
+  // lui donne une largeur 0 dans un parent centré → numéro invisible.
+  pagePillBox: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.marine, alignItems: 'center', justifyContent: 'center' },
+  pagePill: { width: 20, color: '#fff', fontSize: 6.5, fontFamily: 'Helvetica-Bold', textAlign: 'center' },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -192,7 +202,8 @@ function Bloc({ bloc }: { bloc: CrBecibBloc }) {
 
 function Band1({ num, title, first }: { num?: string; title: string; first?: boolean }) {
   return (
-    <View wrap={false} style={first ? undefined : s.band1Top}>
+    // minPresenceAhead : un bandeau ne reste jamais seul en bas de page.
+    <View wrap={false} minPresenceAhead={48} style={first ? undefined : s.band1Top}>
       <View style={s.band1}>
         <View style={s.band1Dots}>
           <View style={s.band1Dot} /><View style={s.band1Dot} /><View style={s.band1Dot} /><View style={s.band1Dot} />
@@ -210,8 +221,8 @@ const GROUP_LABEL: Record<string, string> = {
 }
 const PRES_COLS = ['I', 'P', 'AE', 'AN', 'D'] as const
 
-// Cartouche DNS bordé (réutilisé en-tête).
-function Cartouche({ dns, version, modification, date }: { dns: string; version: string; modification: string; date: string }) {
+// Cartouche DNS bordé complet (4 cases) — p.1.
+function CartoucheFull({ dns, version, modification, date }: { dns: string; version: string; modification: string; date: string }) {
   const lines: [string, string][] = [
     ['N° DNS', dns || '—'],
     ['Version', version],
@@ -230,12 +241,47 @@ function Cartouche({ dns, version, modification, date }: { dns: string; version:
   )
 }
 
+// Rappel compact 1 ligne — p.2+ (en-tête plus léger).
+function CartoucheCompact({ dns, version, modification, date }: { dns: string; version: string; modification: string; date: string }) {
+  return (
+    <View style={s.cartoucheCompact}>
+      <Text style={s.cartoucheCompactCell}>{dns || '—'}</Text>
+      <Text style={s.cartoucheCompactCell}>V{version}</Text>
+      <Text style={s.cartoucheCompactCell}>Mod. {modification}</Text>
+      <Text style={s.cartoucheCompactLast}>{date}</Text>
+    </View>
+  )
+}
+
 export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   const dLong = cr.meta.dateIso ? dateLong(cr.meta.dateIso) : ''
   const dNum = cr.meta.dateIso ? dateNum(cr.meta.dateIso) : ''
   const breadcrumb = `${cr.meta.moa} / ${cr.meta.moe} / ${cr.meta.chantier} / CR réunion de chantier`
   const groups = ['MOA', 'MOE', 'ENTREPRISE', 'PARTENAIRES'] as const
   const pl = cr.planning
+
+  // Planning en matrice verticale : 4 catégories colorées, une ligne par champ
+  // nommé (le schéma typé fournit chaque valeur ; vide → « — »).
+  const planSections: { label: string; color: string; rows: [string, string | null][] }[] = [
+    { label: 'MARCHÉ', color: C.planMarche, rows: [
+      ['Début période de préparation (OS de démarrage)', pl.marche.osDemarrage],
+      ['Délai contractuel', pl.marche.delai],
+      ['Fin du délai contractuel', pl.marche.finContractuelle],
+    ] },
+    { label: 'INTEMPÉRIES', color: C.planIntemp, rows: [
+      ['Intempéries depuis dernière réunion (jours)', pl.intemperies.depuisDerniereReunion],
+      ['Cumul intempéries (jours ouvrables)', pl.intemperies.cumulOuvrable],
+      ['Fin du délai avec intempéries', pl.intemperies.finAvecIntemperies],
+    ] },
+    { label: 'PROLONGATIONS', color: C.planProl, rows: [
+      ['Prolongations', pl.prolongations],
+      ['Fin du délai avec intempéries et prolongations', null],
+    ] },
+    { label: 'RETARD', color: C.planRetard, rows: [
+      ['Retard prévisionnel (jours calendaires)', pl.retard.previsionnel],
+      ['Retard effectif (jours calendaires)', pl.retard.effectif],
+    ] },
+  ]
 
   return (
     <Document title={`CR ${cr.meta.numeroCR} — ${cr.meta.chantier}`}>
@@ -249,7 +295,16 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
             <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
             <Text style={s.breadcrumb}>{breadcrumb}</Text>
-            <Cartouche dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
+            {/* Slot à hauteur fixe → le render par page ne peut pas runaway.
+                p.1 = cartouche complet ; p.2+ = rappel compact. */}
+            <View
+              style={s.cartoucheSlot}
+              render={({ pageNumber }) =>
+                pageNumber === 1
+                  ? <CartoucheFull dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
+                  : <CartoucheCompact dns={cr.meta.dns || ''} version={cr.meta.version} modification={cr.meta.modification} date={dNum} />
+              }
+            />
           </View>
           <View style={s.headRule} />
         </View>
@@ -261,7 +316,7 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             <Image src={cr.meta.clientLogoDataUrl} style={s.clientLogo} />
           ) : (
             <View style={s.clientPlaceholder}>
-              <Text style={s.clientPlaceholderCap}>MAÎTRE D'OUVRAGE</Text>
+              <Text style={s.clientPlaceholderCap}>MAÎTRISE D'OUVRAGE</Text>
               <Text style={s.clientPlaceholderName}>{cr.meta.moa || '—'}</Text>
             </View>
           )}
@@ -320,16 +375,17 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         <EmphText text={cr.remarquesCrPrecedent || 'RAS.'} />
         <Text style={s.nota}>{NOTA_48H}</Text>
 
-        {/* 4. POINTS EXAMINÉS */}
+        {/* 4. POINTS EXAMINÉS — minPresenceAhead : l'en-tête de sous-tableau ne
+            tombe jamais seul en bas de page (il part avec ses 1res lignes). */}
         <Band1 num="4" title="POINTS EXAMINÉS" />
-        <View style={s.tCont}>
+        <View style={s.tCont} minPresenceAhead={56}>
           <View style={s.tRow}>
             <Text style={[s.tCell, s.colHeadL]}>POINTS ADMINISTRATIFS</Text>
             <Text style={[s.tCell, s.colHeadR]}>ACTION</Text>
           </View>
           {cr.pointsExamines.administratifs.map((b, i) => <Bloc key={i} bloc={b} />)}
         </View>
-        <View style={[s.tCont, { marginTop: 6 }]}>
+        <View style={[s.tCont, { marginTop: 6 }]} minPresenceAhead={56}>
           <View style={s.tRow}>
             <Text style={[s.tCell, s.colHeadL]}>POINTS TECHNIQUES</Text>
             <Text style={[s.tCell, s.colHeadR]}>ACTION</Text>
@@ -355,28 +411,20 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
           </>
         )}
         <Text style={s.band2}>PLANNING</Text>
-        <View style={s.tCont} wrap={false}>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.planLabel, { backgroundColor: C.planMarche }]}>MARCHÉ</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.marche.osDemarrage ? `OS ${pl.marche.osDemarrage}` : '—'}</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.marche.delai ? `délai ${pl.marche.delai}` : '—'}</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.marche.finContractuelle ? `fin ${pl.marche.finContractuelle}` : '—'}</Text>
-          </View>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.planLabel, { backgroundColor: C.planIntemp }]}>INTEMPÉRIES</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.intemperies.depuisDerniereReunion ? `depuis dern. ${pl.intemperies.depuisDerniereReunion}` : '—'}</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.intemperies.cumulOuvrable ? `cumul ${pl.intemperies.cumulOuvrable}` : '—'}</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.intemperies.finAvecIntemperies ? `fin ${pl.intemperies.finAvecIntemperies}` : '—'}</Text>
-          </View>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.planLabel, { backgroundColor: C.planProl }]}>PROLONGATIONS</Text>
-            <Text style={[s.tCell, s.planCell, { flex: 3 }]}>{pl.prolongations || '—'}</Text>
-          </View>
-          <View style={s.tRow}>
-            <Text style={[s.tCell, s.planLabel, { backgroundColor: C.planRetard }]}>RETARD</Text>
-            <Text style={[s.tCell, s.planCell]}>{pl.retard.previsionnel ? `prévisionnel ${pl.retard.previsionnel}` : 'prévisionnel —'}</Text>
-            <Text style={[s.tCell, s.planCell, { flex: 2 }]}>{pl.retard.effectif ? `effectif ${pl.retard.effectif}` : 'effectif —'}</Text>
-          </View>
+        <View style={s.tCont}>
+          {planSections.map((sec) => (
+            <View key={sec.label} wrap={false}>
+              <View style={s.tRow}>
+                <Text style={[s.tCell, s.planBand, { backgroundColor: sec.color }]}>{sec.label}</Text>
+              </View>
+              {sec.rows.map(([label, val]) => (
+                <View key={label} style={s.tRow}>
+                  <Text style={[s.tCell, s.planFieldL]}>{label}</Text>
+                  <Text style={[s.tCell, s.planFieldV]}>{val || '—'}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
         </View>
 
         {/* 6. SÉCURITÉ, ENVIRONNEMENT */}
