@@ -42,9 +42,16 @@ describe('Garde-fou #1 — pas de document `ready` sans collection_id', () => {
 describe('Garde-fou #2 — chunk document → source_domain=document', () => {
   it('embedDocumentChunks upsert avec source_domain:\'document\' et aucun autre', () => {
     const src = read('lib/ai/embed-knowledge-chunks.ts')
-    const fn = src.match(/export async function embedDocumentChunks[\s\S]*?\n}\n/)
-    expect(fn, 'embedDocumentChunks introuvable').toBeTruthy()
-    const body = fn![0]
+    // Extraction ROBUSTE : de la signature jusqu'au prochain `export` top-level
+    // (ou fin de fichier). L'ancienne regex `[\s\S]*?\n}\n` s'arrêtait au 1er
+    // `\n}\n` et tronquait le corps dès qu'une closure interne existait
+    // (cas depuis la parallélisation de embedDocumentChunks).
+    const marker = 'export async function embedDocumentChunks'
+    const start = src.indexOf(marker)
+    expect(start, 'embedDocumentChunks introuvable').toBeGreaterThanOrEqual(0)
+    const after = src.slice(start + marker.length)
+    const nextExport = after.indexOf('\nexport ')
+    const body = nextExport >= 0 ? after.slice(0, nextExport) : after
     expect(/source_domain:\s*'document'/.test(body)).toBe(true)
     // Aucun autre source_domain littéral écrit dans cette fonction.
     const others = body.match(/source_domain:\s*'(?!document')[a-z_]+'/g)
