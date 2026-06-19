@@ -40,8 +40,9 @@ const intervenantSchema = z.object({
   tel: z.string().nullable().catch(null),
   mob: z.string().nullable().catch(null),
   email: z.string().nullable().catch(null),
-  presence: z.enum(PRESENCES).catch('P'),
-  diffusion: z.boolean().catch(false), // coche AUSSI la colonne D (CR diffusé)
+  invite: z.boolean().catch(true), // colonne I (convié) — coché par défaut
+  presence: z.enum(PRESENCES).catch('P'), // statut effectif (P / AE / AN), niveau organisme
+  diffusion: z.boolean().catch(false), // coche AUSSI la colonne D (CR diffusé), par personne
 })
 
 const planningSchema = z.object({

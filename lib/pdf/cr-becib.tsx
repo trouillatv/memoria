@@ -68,8 +68,8 @@ const s = StyleSheet.create({
   clientPlaceholderCap: { fontSize: 7, color: C.greyText, fontFamily: 'Helvetica-Bold', letterSpacing: 0.5 },
   clientPlaceholderName: { fontSize: 11, color: C.marine, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
-  // Bloc-titre (encadré interne DROIT — borderRadius 0 explicite).
-  titleBox: { borderWidth: 1.5, borderColor: C.marine, borderRadius: 0, padding: 8, marginBottom: 6 },
+  // Bloc-titre : FOND GRIS + bordure navy, coins DROITS (borderRadius 0).
+  titleBox: { backgroundColor: '#dcdce2', borderWidth: 1.5, borderColor: C.marine, borderRadius: 0, padding: 8, marginBottom: 6 },
   titleTxt: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   subTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'center', textDecoration: 'underline', marginBottom: 8 },
 
@@ -77,7 +77,7 @@ const s = StyleSheet.create({
   // paddingLeft généreux pour que les points soient NETTEMENT dans le cadre.
   band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 4.5, paddingLeft: 9, paddingRight: 6 },
   band1Rule: { height: 1.4, backgroundColor: C.red, marginBottom: 4 },
-  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 13, marginRight: 7 },
+  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 17, marginRight: 8 },
   band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10.5, letterSpacing: 0.5, flex: 1 },
   band1Dots: { width: 4, marginRight: 7, alignItems: 'center', justifyContent: 'center' },
   band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginVertical: 0.75 },
@@ -105,17 +105,31 @@ const s = StyleSheet.create({
   pointTxt: { flex: 1 },
   statut: { fontFamily: 'Helvetica-Bold', color: C.text },
 
-  // Intervenants — grille avec colonnes distinctes (Organisme séparé du nom).
+  // Intervenants — grille. Présence (I/P/AE/AN) FUSIONNÉE verticalement au
+  // niveau organisme (cellule haute, centrée) ; D (diffusion) par personne.
   ivGroup: { fontFamily: 'Helvetica-Bold', fontSize: 8, color: C.marine, backgroundColor: '#eef1f8' },
-  ivOrg: { width: 76, fontSize: 7, fontFamily: 'Helvetica-Bold' },
-  ivRep: { flex: 1, fontSize: 8 },
-  ivTel: { width: 42, fontSize: 7 },
-  ivMob: { width: 42, fontSize: 7 },
-  ivMail: { width: 96, fontSize: 5.6, color: C.greyText },
-  ivP: { width: 15, fontSize: 8, textAlign: 'center' },
+  ivHeadBg: { backgroundColor: '#e6e6ee' },
   ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   ivHeadOrg: { width: 76, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
+  // Cellule organisme haute (fusionnée sur les lignes du bloc), centrée vert.
+  ivOrgTall: { width: 76, justifyContent: 'center', paddingVertical: 2, paddingHorizontal: 3, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
+  ivOrgTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold' },
+  // Colonne « personnes » (Représentant/Tél/Mob/e-mail), une ligne par personne.
+  ivPersonsCol: { flex: 1 },
+  ivPersonRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: C.grid },
+  ivCellR: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 2, paddingHorizontal: 3 },
+  ivRep: { flex: 1, fontSize: 8 },
+  ivTel: { width: 42, fontSize: 7 },
+  ivMob: { width: 42, fontSize: 7 },
+  ivMail: { width: 96, fontSize: 5.6, color: '#0563C1' }, // e-mails en bleu (style lien)
+  ivP: { width: 15, fontSize: 8, textAlign: 'center' },
+  // Cellule de présence haute (fusionnée) + texte centré.
+  ivPTall: { width: 15, justifyContent: 'center', alignItems: 'center', borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
+  ivPTxt: { fontSize: 8 },
+  // Colonne D (diffusion), une case par personne.
+  ivDCol: { width: 15 },
+  ivDCell: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingVertical: 2, textAlign: 'center', fontSize: 8 },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2, marginTop: 2 },
 
   // Avancement — sous-titres niveau 3 : petites capitales SOULIGNÉES (original).
@@ -149,10 +163,9 @@ const s = StyleSheet.create({
   fcVer: { width: 54 },
   fcMod: { width: 104 },
   fcDate: { width: 78 },
-  footBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 },
-  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1, marginRight: 8 },
-  // Largeur explicite : le contenu différé (render) sinon → largeur 0.
-  pageNum: { width: 60, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'right' },
+  footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, marginBottom: 2 },
+  // Numéro de page : autonome, ancré en bas à droite, largeur explicite.
+  pageNumAbs: { position: 'absolute', bottom: 4, left: PAGE_W - MARGIN - 91, width: 91, textAlign: 'right', fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -172,7 +185,7 @@ function EmphText({ text }: { text: string }) {
 function PointLine({ texte, statut }: { texte: string; statut: CrBecib['pointsExamines']['techniques'][number]['points'][number]['statut'] }) {
   return (
     <View style={s.pointLine} wrap={false}>
-      <Text style={s.chevron}>›</Text>
+      <Text style={s.chevron}>{'>'}</Text>
       <Text style={s.pointTxt}>
         <EmphRuns text={texte} />
         {statut ? <Text style={s.statut}>  {statutLabel(statut)}</Text> : null}
@@ -235,6 +248,51 @@ const GROUP_LABEL: Record<string, string> = {
   MOA: "MAÎTRISE D'OUVRAGE", MOE: "MAÎTRISE D'ŒUVRE", ENTREPRISE: 'ENTREPRISE TITULAIRE', PARTENAIRES: 'PARTENAIRES',
 }
 const PRES_COLS = ['I', 'P', 'AE', 'AN', 'D'] as const
+const PRES_GROUPED = ['I', 'P', 'AE', 'AN'] as const // colonnes fusionnées au niveau organisme
+
+type Intervenant = CrBecib['intervenants'][number]
+
+// Regroupe des lignes en blocs d'organismes consécutifs (pour la fusion verticale).
+function chunkByOrg(rows: Intervenant[]): Intervenant[][] {
+  const blocks: Intervenant[][] = []
+  for (const r of rows) {
+    const last = blocks[blocks.length - 1]
+    if (last && last[0].organisme === r.organisme) last.push(r)
+    else blocks.push([r])
+  }
+  return blocks
+}
+
+// Un bloc-organisme : organisme + présence (I/P/AE/AN) en cellules HAUTES
+// (fusionnées, centrées) ; une ligne par personne pour Représentant/Tél/Mob/
+// e-mail et la colonne D (diffusion, par personne).
+function IvOrgBlock({ block }: { block: Intervenant[] }) {
+  const ref = block[0] // la présence se lit au niveau de l'organisme (1re ligne)
+  return (
+    <View style={s.tRow} wrap={false}>
+      <View style={s.ivOrgTall}><Text style={s.ivOrgTxt}>{ref.organisme}</Text></View>
+      <View style={s.ivPersonsCol}>
+        {block.map((p, k) => (
+          <View key={k} style={s.ivPersonRow}>
+            <Text style={[s.ivCellR, s.ivRep]}>{p.representant}</Text>
+            <Text style={[s.ivCellR, s.ivTel]}>{p.tel || ''}</Text>
+            <Text style={[s.ivCellR, s.ivMob]}>{p.mob || ''}</Text>
+            <Text style={[s.ivCellR, s.ivMail]}>{p.email || ''}</Text>
+          </View>
+        ))}
+      </View>
+      {PRES_GROUPED.map((c) => {
+        const checked = c === 'I' ? ref.invite : ref.presence === c
+        return <View key={c} style={s.ivPTall}><Text style={s.ivPTxt}>{checked ? 'X' : ''}</Text></View>
+      })}
+      <View style={s.ivDCol}>
+        {block.map((p, k) => (
+          <Text key={k} style={s.ivDCell}>{p.diffusion ? 'X' : ''}</Text>
+        ))}
+      </View>
+    </View>
+  )
+}
 
 export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   const dLong = cr.meta.dateIso ? dateLong(cr.meta.dateIso) : ''
@@ -273,13 +331,12 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* Cadre de page arrondi (répété, sans fond → ne se remplit pas) */}
         <View style={s.pageFrame} fixed />
 
-        {/* En-tête répété : logo + fil d'Ariane SEULEMENT. Le cartouche DNS est
-            désormais uniquement en pied (plus de doublon haut/bas). */}
+        {/* En-tête répété : LOGO seul (le fil d'Ariane et le cartouche sont
+            désormais uniquement en pied, comme l'original). */}
         <View style={s.header} fixed>
           <View style={s.headRow}>
             {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
             <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
-            <Text style={s.breadcrumb}>{breadcrumb}</Text>
           </View>
           <View style={s.headRule} />
         </View>
@@ -290,8 +347,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
             <Image src={cr.meta.clientLogoDataUrl} style={s.clientLogo} />
           ) : (
+            // Sans asset logo : nom du MOA centré, SANS libellé (l'original
+            // n'affiche que le logo client). Remplacé par l'image dès fourniture.
             <View style={s.clientPlaceholder}>
-              <Text style={s.clientPlaceholderCap}>MAÎTRISE D'OUVRAGE</Text>
               <Text style={s.clientPlaceholderName}>{cr.meta.moa || '—'}</Text>
             </View>
           )}
@@ -303,7 +361,7 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         </View>
         <Text style={s.subTitle}>
           COMPTE-RENDU N°{cr.meta.numeroCR} DE LA RÉUNION DE CHANTIER{'\n'}
-          Du {dLong}{cr.meta.semaine ? ` — semaine ${cr.meta.semaine}` : ''}
+          Du {dLong}{cr.meta.semaine ? ` - semaine ${cr.meta.semaine}` : ''}
         </Text>
 
         {/* 1. INTERVENANTS */}
@@ -311,12 +369,12 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         <Text style={s.ivLegend}>(I : Invité · P : Présent · AE : Absent excusé · AN : Absent non excusé · D : diffusion)</Text>
         <View style={s.tCont}>
           <View style={s.tRow}>
-            <Text style={[s.tCell, s.ivHeadOrg]}>Organisme</Text>
-            <Text style={[s.tCell, s.ivHeadRep]}>Représentant</Text>
-            <Text style={[s.tCell, s.ivTel, s.ivHeadTxt]}>Tél.</Text>
-            <Text style={[s.tCell, s.ivMob, s.ivHeadTxt]}>Mob.</Text>
-            <Text style={[s.tCell, s.ivMail, s.ivHeadTxt]}>Fax / e-mail</Text>
-            {PRES_COLS.map((c) => <Text key={c} style={[s.tCell, s.ivP, s.ivHeadTxt]}>{c}</Text>)}
+            <Text style={[s.tCell, s.ivHeadOrg, s.ivHeadBg]}>Organisme</Text>
+            <Text style={[s.tCell, s.ivHeadRep, s.ivHeadBg]}>Représentant</Text>
+            <Text style={[s.tCell, s.ivTel, s.ivHeadTxt, s.ivHeadBg]}>Tél.</Text>
+            <Text style={[s.tCell, s.ivMob, s.ivHeadTxt, s.ivHeadBg]}>Mob.</Text>
+            <Text style={[s.tCell, s.ivMail, s.ivHeadTxt, s.ivHeadBg]}>Fax / e-mail</Text>
+            {PRES_COLS.map((c) => <Text key={c} style={[s.tCell, s.ivP, s.ivHeadTxt, s.ivHeadBg]}>{c}</Text>)}
           </View>
           {groups.map((g) => {
             const rows = cr.intervenants.filter((i) => i.groupe === g)
@@ -326,24 +384,7 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
                 <View style={s.tRow}>
                   <Text style={[s.tCell, s.ivGroup, { flex: 1 }]}>{GROUP_LABEL[g]}</Text>
                 </View>
-                {rows.map((i, k) => {
-                  // Présence (I/P/AE/AN) cochée UNE FOIS par organisme (1re ligne
-                  // du bloc consécutif) ; D (diffusion) cochée PAR personne.
-                  const firstOfOrg = k === 0 || rows[k - 1].organisme !== i.organisme
-                  return (
-                    <View key={k} style={s.tRow} wrap={false}>
-                      <Text style={[s.tCell, s.ivOrg]}>{firstOfOrg ? i.organisme : ''}</Text>
-                      <Text style={[s.tCell, s.ivRep]}>{i.representant}</Text>
-                      <Text style={[s.tCell, s.ivTel]}>{i.tel || ''}</Text>
-                      <Text style={[s.tCell, s.ivMob]}>{i.mob || ''}</Text>
-                      <Text style={[s.tCell, s.ivMail]}>{i.email || ''}</Text>
-                      {PRES_COLS.map((c) => {
-                        const checked = c === 'D' ? i.diffusion : firstOfOrg && i.presence === c
-                        return <Text key={c} style={[s.tCell, s.ivP]}>{checked ? 'X' : ''}</Text>
-                      })}
-                    </View>
-                  )
-                })}
+                {chunkByOrg(rows).map((block, bi) => <IvOrgBlock key={bi} block={block} />)}
               </React.Fragment>
             )
           })}
@@ -433,9 +474,10 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
           <Text style={s.signature}>{cr.signature}</Text>
         </View>
 
-        {/* Pied de page répété : cartouche DNS pleine largeur AVEC libellés,
-            puis fil d'Ariane + numéro de page en texte simple. */}
+        {/* Pied de page répété : fil d'Ariane italique AU-DESSUS, puis cartouche
+            DNS pleine largeur AVEC libellés. */}
         <View style={s.footer} fixed>
+          <Text style={s.footTxt}>{breadcrumb}</Text>
           <View style={s.fcCont}>
             <View style={s.fcRow}>
               <Text style={[s.fcLabel, s.fcDns]}>Numéro DNS</Text>
@@ -450,13 +492,10 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
               <Text style={[s.fcCell, s.fcDate]}>{dNum}</Text>
             </View>
           </View>
-          <View style={s.footBottom}>
-            <Text style={s.footTxt}>{breadcrumb}</Text>
-            {/* `fixed` OBLIGATOIRE sur le Text : sans lui, render n'est évalué
-                qu'une fois (pageNumber absent) → numéro vide. */}
-            <Text style={s.pageNum} fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
-          </View>
         </View>
+        {/* Numéro de page : élément `fixed` de PREMIER NIVEAU (render n'injecte
+            pageNumber que là, pas dans un Text imbriqué dans un autre fixed). */}
+        <Text style={s.pageNumAbs} fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
       </Page>
     </Document>
   )
