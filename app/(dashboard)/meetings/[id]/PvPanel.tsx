@@ -177,17 +177,19 @@ export function PvPanel({ reportId, initial }: PvPanelProps) {
                 >
                   <CheckCircle2 className="h-4 w-4" /> Valider le PV
                 </button>
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={pending}
-                  title="Régénère le brouillon (applique la trame de l'entreprise). Remplace le brouillon courant."
-                  className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
-                >
-                  <Sparkles className="h-4 w-4" /> Régénérer
-                </button>
               </>
             )}
+            {/* Toujours disponible, même validé : régénérer crée un nouveau
+                brouillon (applique la trame compagnie à jour). */}
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={pending}
+              title="Régénère un brouillon (applique la trame de l'entreprise). Crée une nouvelle version."
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+            >
+              <Sparkles className="h-4 w-4" /> Régénérer
+            </button>
             <a
               href={`/meetings/${reportId}/pv`}
               target="_blank"
