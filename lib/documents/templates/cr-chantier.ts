@@ -35,6 +35,8 @@ export interface ReportTemplateSpec {
   /** document_type côté /documents quand le PV est validé. */
   docType: string
   layout: TemplateLayout
+  /** Libellé MOE pour le bandeau (ex. « BECIB »). Affiché en layout becib. */
+  companyLabel?: string
   systemPrompt: string
   sections: TemplateSectionSpec[]
 }
@@ -119,8 +121,85 @@ export const CR_CHANTIER_VRD_V1: ReportTemplateSpec = {
   ],
 }
 
+// ---------------------------------------------------------------------------
+// Template BECIB — CR de réunion de chantier (maîtrise d'œuvre).
+// Dérivé de leurs CR réels (docs/Becib : LA CRAVACHE GDE - PV 01→04) +
+// _STYLE_Becib.md. Trame numérotée, style administratif, responsable par point,
+// clause des 48h. Layout 'becib' (bandeau MOA / BECIB / chantier).
+// ---------------------------------------------------------------------------
+
+const BECIB_SYSTEM_PROMPT = [
+  "Tu rédiges un COMPTE-RENDU DE RÉUNION DE CHANTIER au format BECIB (maîtrise d'œuvre, Nouvelle-Calédonie).",
+  'Style administratif, factuel, sobre, orienté traçabilité et responsabilité. On CONSTATE, on ne juge jamais.',
+  'Conventions BECIB à respecter :',
+  "- État de chaque point en fin de ligne, précédé de « = » : « = fait », « = OK », « = en cours », « = à faire », « = à confirmer », « = ATTENTE DECISION ».",
+  '- Chaque point a un RESPONSABLE explicite (code court entre parenthèses) : MOA (maîtrise d\'ouvrage), MOE/BECIB (maîtrise d\'œuvre), le sigle de l\'entreprise titulaire, ou l\'exploitant. Combinaisons possibles (ex. « ETV/MOA »).',
+  '- Regrouper les points techniques par corps d\'état / domaine (Travaux préliminaires, Terrassements, Assainissement, VRD, Divers… selon le contenu).',
+  '- Tournures maison autorisées : « De manière générale, … », « Pour mémoire, … », « Au besoin, … », « Noter que … », « Attention, … ».',
+  '- Une phrase = un fait. Concis.',
+  "RÈGLES D'OR : aucune interprétation, aucun jugement de valeur, aucune flatterie. Ne JAMAIS inventer une présence, une date, une décision ou un état non étayé par le transcript/les notes. Incertain → suffixer « (à confirmer) ».",
+  'Tu rédiges UNIQUEMENT les sections narratives demandées (les participants, actions et réserves sont fournis à part).',
+].join('\n')
+
+const NOTA_48H =
+  "NOTA : En l'absence d'observations sous 48h, le présent CR est considéré comme accepté sans réserve. " +
+  'De manière générale, il ne saurait être apporté de remarque par les intervenants qui ne sont pas ou partiellement présents à la réunion de chantier.'
+
+export const CR_CHANTIER_BECIB_V1: ReportTemplateSpec = {
+  key: 'cr_chantier_becib.v1',
+  label: 'Compte-rendu de réunion de chantier (BECIB)',
+  docType: 'pv_chantier',
+  layout: 'becib',
+  companyLabel: 'BECIB',
+  systemPrompt: BECIB_SYSTEM_PROMPT,
+  sections: [
+    { key: 'suivi_precedent', title: 'Suivi de la réunion précédente', kind: 'fixed', source: 'followup' },
+    { key: 'intervenants', title: '1. Intervenants', kind: 'generative', source: 'participants' },
+    {
+      key: 'ordre_du_jour',
+      title: '2. Ordre du jour',
+      kind: 'generative',
+      source: 'generative',
+      guidance: "Points à l'ordre du jour, en puces courtes. Si non explicite, déduire sobrement du contenu (ex. « Suivi des travaux. »).",
+    },
+    {
+      key: 'remarques_cr_precedent',
+      title: '3. Remarques sur le CR précédent',
+      kind: 'generative',
+      source: 'generative',
+      guidance: 'Remarques/corrections sur le CR précédent si mentionnées, sinon « RAS. ». Ne pas inventer.',
+    },
+    // Clause des 48h — verbatim, rendue telle quelle (jamais reformulée).
+    { key: 'nota_48h', title: 'NOTA', kind: 'fixed', source: 'meta', guidance: NOTA_48H },
+    {
+      key: 'points_examines',
+      title: '4. Points examinés',
+      kind: 'generative',
+      source: 'generative',
+      guidance: 'Cœur du CR. Regrouper par corps d\'état / domaine. Chaque point : fait constaté + état en fin (« = fait / en cours / à faire ») + responsable entre parenthèses (MOA / MOE / sigle entreprise / exploitant). Tournures BECIB. Ne rien inventer.',
+    },
+    {
+      key: 'decisions',
+      title: 'Décisions proposées',
+      kind: 'generative',
+      source: 'generative',
+      guidance: 'Décisions explicitement tranchées en réunion uniquement. Formulation conditionnelle → « (à confirmer) » ou omise. Ne jamais inventer ni durcir.',
+    },
+    { key: 'actions', title: 'Actions à faire', kind: 'generative', source: 'actions' },
+    { key: 'reserves', title: 'Réserves / points bloquants', kind: 'generative', source: 'risks' },
+    {
+      key: 'prochaine_reunion',
+      title: 'Prochaine réunion',
+      kind: 'generative',
+      source: 'generative',
+      guidance: 'Date/heure si mentionnée, sinon « À planifier. ». Ne pas inventer de date.',
+    },
+  ],
+}
+
 const TEMPLATES: Record<string, ReportTemplateSpec> = {
   [CR_CHANTIER_VRD_V1.key]: CR_CHANTIER_VRD_V1,
+  [CR_CHANTIER_BECIB_V1.key]: CR_CHANTIER_BECIB_V1,
 }
 
 /**
@@ -129,9 +208,11 @@ const TEMPLATES: Record<string, ReportTemplateSpec> = {
  * (ex. BECIB avec son layout) sans changer les appelants.
  */
 export function resolveReportTemplate(opts?: { companySlug?: string | null }): ReportTemplateSpec {
-  // TODO(engine) : si un template compagnie existe pour opts.companySlug, le renvoyer
-  // (ex. layout BECIB). MVP : toujours le CR neutre par défaut.
-  void opts?.companySlug
+  // Compagnie avec une trame fournie → son template ; sinon défaut neutre
+  // (« pour les docs qu'on n'a pas, défaut ; pour ceux qui ont une trame, on
+  // s'adapte » — Vincent). Match souple sur le nom/slug de l'organisation.
+  const slug = (opts?.companySlug ?? '').toLowerCase()
+  if (slug.includes('becib')) return CR_CHANTIER_BECIB_V1
   return CR_CHANTIER_VRD_V1
 }
 

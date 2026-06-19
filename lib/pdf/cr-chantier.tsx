@@ -72,6 +72,10 @@ export interface CrChantierPdfProps {
   clientName: string | null
   dateLabel: string
   sections: ReportDocumentSection[]
+  /** Mise en page : 'neutral' (défaut) ou 'becib' (bandeau MOA / MOE / chantier). */
+  layout?: 'neutral' | 'becib'
+  /** Libellé MOE pour le bandeau becib (ex. « BECIB »). */
+  companyLabel?: string | null
 }
 
 function SectionBody({ content }: { content: string }) {
@@ -98,13 +102,23 @@ function SectionBody({ content }: { content: string }) {
   )
 }
 
-export function CrChantierPdf({ title, siteName, clientName, dateLabel, sections }: CrChantierPdfProps) {
+export function CrChantierPdf({ title, siteName, clientName, dateLabel, sections, layout = 'neutral', companyLabel }: CrChantierPdfProps) {
   const subtitleParts = [clientName, siteName].filter(Boolean) as string[]
+  // Bandeau BECIB : MOA / MOE / chantier / type de document (répété en tête).
+  const bandeau = layout === 'becib'
+    ? [clientName, companyLabel, siteName].filter(Boolean).join(' / ') + ' / Compte-rendu de réunion de chantier'
+    : null
   return (
     <Document title={title}>
       <Page size="A4" style={styles.page}>
         <View style={styles.header} fixed>
-          <Text style={styles.kicker}>Compte-rendu de réunion de chantier</Text>
+          {bandeau ? (
+            <Text style={{ fontSize: 8, color: COLORS.muted, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 4, marginBottom: 6 }} fixed>
+              {bandeau}
+            </Text>
+          ) : (
+            <Text style={styles.kicker}>Compte-rendu de réunion de chantier</Text>
+          )}
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.meta}>
             {subtitleParts.length > 0 ? `${subtitleParts.join(' · ')} — ` : ''}{dateLabel}

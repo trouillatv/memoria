@@ -7,6 +7,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
+import { getReportTemplate } from '@/lib/documents/templates/cr-chantier'
 import { CrChantierPdf } from '@/lib/pdf/cr-chantier'
 
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Pacific/Noumea',
   })
 
+  const tpl = getReportTemplate(doc.template_key)
+
   let pdfBuffer: Buffer
   try {
     pdfBuffer = await renderToBuffer(
@@ -39,6 +42,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         clientName: identity?.clientName ?? null,
         dateLabel,
         sections: doc.sections,
+        layout: tpl?.layout ?? 'neutral',
+        companyLabel: tpl?.companyLabel ?? null,
       }),
     )
   } catch (e) {
