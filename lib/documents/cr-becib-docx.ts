@@ -8,7 +8,7 @@ import {
   TabStopType, TabStopPosition, PageBorderDisplay, PageBorderOffsetFrom,
 } from 'docx'
 import type { CrBecib, CrBecibBloc } from './cr-becib-schema'
-import { NOTA_48H, statutLabel, actionLabel } from './cr-becib-schema'
+import { NOTA_48H, statutLabel, actionLabel, parseEmphasis } from './cr-becib-schema'
 import { BECIB_LOGO_DATA_URL } from '@/lib/pdf/becib-logo'
 
 // Logo BECIB (base64 → buffer + dimensions natives lues dans l'en-tête PNG).
@@ -61,8 +61,12 @@ function band2(title: string): Paragraph {
 function subLabel(t: string): Paragraph {
   return new Paragraph({ spacing: { before: 80, after: 0 }, children: [new TextRun({ text: t, bold: true, underline: {}, color: C.marine, size: 16 })] })
 }
+// Convertit un texte (avec **gras**) en runs Word (parse identique au PDF).
+function emphRuns(text: string, size: number): TextRun[] {
+  return parseEmphasis(text).map((r) => new TextRun({ text: r.text, bold: r.bold, size }))
+}
 function chevron(t: string, statut?: string | null): Paragraph {
-  const runs = [new TextRun({ text: '> ', color: C.marine, size: 18 }), new TextRun({ text: t, size: 18 })]
+  const runs = [new TextRun({ text: '> ', color: C.marine, size: 18 }), ...emphRuns(t, 18)]
   if (statut) runs.push(new TextRun({ text: `  ${statutLabel(statut as never)}`, bold: true, size: 18 }))
   return new Paragraph({ spacing: { before: 10, after: 10 }, children: runs })
 }
