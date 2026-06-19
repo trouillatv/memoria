@@ -32,6 +32,10 @@ const PAGE_W = 595.28
 const PAGE_H = 841.89
 const MARGIN = 34
 const CONTENT_W = PAGE_W - MARGIN * 2 // 527.28
+// Hauteur de ligne fixe du tableau intervenants : garantit l'alignement des
+// cellules fusionnées (présence) et des sous-cellules (I/D) quel que soit le
+// contenu (mono ou multi-personne). cellule fusionnée = N × IV_ROW_H.
+const IV_ROW_H = 16
 
 // Mois FR sans dépendance ICU (Vercel) — date en lettres dans le corps.
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -114,26 +118,18 @@ const s = StyleSheet.create({
   ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   ivHeadOrg: { width: 84, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
-  // Cellule organisme haute (fusionnée sur les lignes du bloc), centrée vert.
-  // Police réduite + colonne élargie → tient sur 1 ligne (pas de wrap qui
-  // gonflerait la hauteur du bloc et décalerait les X des orgs mono-personne).
-  ivOrgTall: { width: 84, justifyContent: 'center', paddingVertical: 2, paddingHorizontal: 3, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
-  ivOrgTxt: { fontSize: 6, fontFamily: 'Helvetica-Bold' },
-  // Colonne « personnes » (Représentant/Tél/Mob/e-mail), une ligne par personne.
-  ivPersonsCol: { flex: 1 },
-  ivPersonRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderColor: C.grid },
-  ivCellR: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 2, paddingHorizontal: 3 },
+  // Une LIGNE PAR PERSONNE (aucune fusion). Hauteur fixe → cases X bien centrées.
+  ivPersonRow: { flexDirection: 'row', height: IV_ROW_H, alignItems: 'center' },
+  // Bordure basse UNIQUEMENT sur la dernière personne d'un organisme (pas de
+  // filet entre personnes du même organisme → bloc visuellement uni).
+  ivRowBottom: { borderBottomWidth: 0.5, borderColor: C.grid },
+  ivCellR: { borderRightWidth: 0.5, borderColor: C.grid, paddingHorizontal: 3 },
+  ivOrgCell: { width: 84, fontSize: 6, fontFamily: 'Helvetica-Bold' },
   ivRep: { flex: 1, fontSize: 8 },
   ivTel: { width: 40, fontSize: 7 },
   ivMob: { width: 40, fontSize: 7 },
-  ivMail: { width: 90, fontSize: 5.5, color: '#0563C1' }, // e-mails en bleu (style lien)
+  ivMail: { width: 100, fontSize: 5.3, color: '#0563C1' }, // e-mails en bleu (style lien), assez large pour ne pas couper
   ivP: { width: 15, fontSize: 8, textAlign: 'center' },
-  // Cellule de présence haute (fusionnée) + texte centré.
-  ivPTall: { width: 15, justifyContent: 'center', alignItems: 'center', borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
-  ivPTxt: { fontSize: 8 },
-  // Colonne D (diffusion), une case par personne.
-  ivDCol: { width: 15 },
-  ivDCell: { borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid, paddingVertical: 2, textAlign: 'center', fontSize: 8 },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2, marginTop: 2 },
 
   // Avancement — sous-titres niveau 3 : petites capitales SOULIGNÉES (original).
@@ -252,11 +248,11 @@ const GROUP_LABEL: Record<string, string> = {
   MOA: "MAÎTRISE D'OUVRAGE", MOE: "MAÎTRISE D'ŒUVRE", ENTREPRISE: 'ENTREPRISE TITULAIRE', PARTENAIRES: 'PARTENAIRES',
 }
 const PRES_COLS = ['I', 'P', 'AE', 'AN', 'D'] as const
-const PRES_GROUPED = ['I', 'P', 'AE', 'AN'] as const // colonnes fusionnées au niveau organisme
 
 type Intervenant = CrBecib['intervenants'][number]
 
-// Regroupe des lignes en blocs d'organismes consécutifs (pour la fusion verticale).
+// Regroupe des lignes en blocs d'organismes consécutifs (organisme affiché une
+// fois, pas de filet horizontal entre personnes d'un même organisme).
 function chunkByOrg(rows: Intervenant[]): Intervenant[][] {
   const blocks: Intervenant[][] = []
   for (const r of rows) {
@@ -267,33 +263,30 @@ function chunkByOrg(rows: Intervenant[]): Intervenant[][] {
   return blocks
 }
 
-// Un bloc-organisme : organisme + présence (I/P/AE/AN) en cellules HAUTES
-// (fusionnées, centrées) ; une ligne par personne pour Représentant/Tél/Mob/
-// e-mail et la colonne D (diffusion, par personne).
+// UNE LIGNE PAR PERSONNE (aucune fusion). I/P/AE/AN/D cochés par personne selon
+// la donnée. Organisme affiché sur la 1re ligne du bloc ; bordure basse
+// uniquement sur la DERNIÈRE personne de l'organisme (bloc visuellement uni).
 function IvOrgBlock({ block }: { block: Intervenant[] }) {
-  const ref = block[0] // la présence se lit au niveau de l'organisme (1re ligne)
   return (
-    <View style={s.tRow} wrap={false}>
-      <View style={s.ivOrgTall}><Text style={s.ivOrgTxt}>{ref.organisme}</Text></View>
-      <View style={s.ivPersonsCol}>
-        {block.map((p, k) => (
-          <View key={k} style={s.ivPersonRow}>
+    <>
+      {block.map((p, k) => {
+        const last = k === block.length - 1
+        return (
+          <View key={k} style={[s.ivPersonRow, last ? s.ivRowBottom : {}]} wrap={false}>
+            <Text style={[s.ivCellR, s.ivOrgCell]}>{k === 0 ? p.organisme : ''}</Text>
             <Text style={[s.ivCellR, s.ivRep]}>{p.representant}</Text>
             <Text style={[s.ivCellR, s.ivTel]}>{p.tel || ''}</Text>
             <Text style={[s.ivCellR, s.ivMob]}>{p.mob || ''}</Text>
             <Text style={[s.ivCellR, s.ivMail]}>{p.email || ''}</Text>
+            <Text style={[s.ivCellR, s.ivP]}>{p.invite ? 'X' : ''}</Text>
+            <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'P' ? 'X' : ''}</Text>
+            <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AE' ? 'X' : ''}</Text>
+            <Text style={[s.ivCellR, s.ivP]}>{p.presence === 'AN' ? 'X' : ''}</Text>
+            <Text style={[s.ivCellR, s.ivP]}>{p.diffusion ? 'X' : ''}</Text>
           </View>
-        ))}
-      </View>
-      {PRES_GROUPED.map((c) => (
-        <View key={c} style={s.ivPTall}><Text style={s.ivPTxt}>{ref.presence === c ? 'X' : ''}</Text></View>
-      ))}
-      <View style={s.ivDCol}>
-        {block.map((p, k) => (
-          <Text key={k} style={s.ivDCell}>{p.diffusion ? 'X' : ''}</Text>
-        ))}
-      </View>
-    </View>
+        )
+      })}
+    </>
   )
 }
 

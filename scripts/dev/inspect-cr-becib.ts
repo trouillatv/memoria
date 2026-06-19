@@ -129,6 +129,23 @@ async function main() {
     console.log(`  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}`)
   })
 
+  // Présence du NUMÉRO DE PAGE : Helvetica étant une police standard, le texte
+  // « 1 / 3 » apparaît en clair dans le flux ((...) Tj). On le cherche.
+  console.log(`\n=== Numéro de page (hex glyphes décodé en ASCII) ===`)
+  // La police encode en ASCII (ex. <31332f...> = "13/..."). On décode tous les
+  // <hex> du flux et on cherche le motif « n / n » du numéro de page.
+  const hexes = content.match(/<([0-9a-fA-F]+)>/g) || []
+  const decoded = hexes.map((h) => {
+    const inner = h.slice(1, -1)
+    let str = ''
+    for (let j = 0; j + 1 < inner.length; j += 2) str += String.fromCharCode(parseInt(inner.slice(j, j + 2), 16))
+    return str
+  })
+  const pageLike = decoded.filter((d) => /^\s*\d+\s*\/\s*\d+\s*$/.test(d))
+  console.log(`  fragments décodés ressemblant à « n / n » : ${pageLike.length}`)
+  console.log(`  exemples : ${JSON.stringify(pageLike.slice(0, 6))}`)
+  console.log(`  (contrôle) "INTERVENANTS" présent décodé : ${decoded.some((d) => d.includes('INTERVEN'))}`)
+
   // Présence du PIED : les cellules de libellé du cartouche (fcVer/fcDate/fcMod,
   // largeurs ~54/78/104) doivent apparaître 1×/page → 3 occurrences si le pied
   // est rendu sur les 3 pages (détecte la régression « pied disparu »).

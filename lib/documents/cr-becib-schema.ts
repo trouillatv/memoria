@@ -40,9 +40,9 @@ const intervenantSchema = z.object({
   tel: z.string().nullable().catch(null),
   mob: z.string().nullable().catch(null),
   email: z.string().nullable().catch(null),
-  // Statut UNIQUE et mutuellement exclusif (I/P/AE/AN), au niveau organisme.
-  presence: z.enum(PRESENCES).catch('P'),
-  diffusion: z.boolean().catch(false), // coche AUSSI la colonne D (CR diffusé), par personne
+  invite: z.boolean().catch(false), // colonne I (convié) — PAR PERSONNE, piloté par la donnée
+  presence: z.enum(PRESENCES).catch('P'), // statut P/AE/AN au niveau organisme
+  diffusion: z.boolean().catch(false), // colonne D (CR diffusé) — PAR PERSONNE
 })
 
 const planningSchema = z.object({
