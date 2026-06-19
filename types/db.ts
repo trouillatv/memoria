@@ -471,6 +471,9 @@ export interface DbSiteAction {
   // Rattachement à un nœud de mémoire / sous-périmètre (migration 117, Sprint 3).
   // NULL = contenu au niveau du site. Précision en plus, jamais obligatoire.
   scope_id: string | null
+  // Action corrective rattachée à une réserve (migration 123). NULL = action
+  // ordinaire. Plusieurs actions peuvent contribuer à la levée d'une réserve.
+  reserve_id: string | null
 }
 
 // Sprint 1 (migration 120) — document généré depuis une réunion (PV/CR chantier).
@@ -810,6 +813,8 @@ export type DocumentAnalysisStatus =
 
 export type DocumentTargetType =
   | 'contract' | 'site' | 'tender' | 'client' | 'intervention' | 'team' | 'tenant'
+  // S4 Réserves (migration 123) — un document peut justifier une réserve.
+  | 'reserve'
 
 export interface DbDocumentCollection {
   id: string

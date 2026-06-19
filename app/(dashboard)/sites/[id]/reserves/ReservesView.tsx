@@ -14,14 +14,36 @@ import {
   CalendarDays,
   CheckCircle2,
   StickyNote,
+  ListTodo,
+  FileText,
+  Plus,
+  Link2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { SiteReserve } from '@/lib/db/site-reserve'
-import { liftReserveAction } from './actions'
+import { liftReserveAction, addCorrectiveActionAction, linkDocumentToReserveAction } from './actions'
+
+export interface ReserveLinkedAction {
+  id: string
+  title: string
+  assignedTo: string | null
+  status: string
+  dueDate: string | null
+}
+
+export interface ReserveLinkedDoc { id: string; filename: string }
 
 export interface ReserveWithPhotos extends SiteReserve {
   photoBeforeUrl: string | null
   photoAfterUrl: string | null
+  actions: ReserveLinkedAction[]
+  documents: ReserveLinkedDoc[]
+}
+
+interface SiteDoc { id: string; filename: string }
+
+const ACTION_STATUS_FR: Record<string, string> = {
+  open: 'à faire', planned: 'planifiée', done: 'faite', cancelled: 'annulée',
 }
 
 // ---------------------------------------------------------------------------
@@ -153,11 +175,99 @@ function LiftForm({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: str
 }
 
 // ---------------------------------------------------------------------------
+// Mini-dossier : action corrective + lien document (formulaires inline)
+// ---------------------------------------------------------------------------
+
+function CorrectiveActionForm({ reserveId, siteId }: { reserveId: string; siteId: string }) {
+  const router = useRouter()
+  const [pending, start] = useTransition()
+  const [open, setOpen] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    fd.set('reserveId', reserveId)
+    fd.set('siteId', siteId)
+    start(async () => {
+      const r = await addCorrectiveActionAction(fd)
+      if ('error' in r) { toast.error(r.error); return }
+      toast.success('Action corrective ajoutée')
+      formRef.current?.reset()
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <Plus className="h-3 w-3" /> Action corrective
+      </button>
+    )
+  }
+  return (
+    <form ref={formRef} onSubmit={onSubmit} className="flex flex-wrap items-center gap-1.5">
+      <input name="title" required maxLength={200} placeholder="Action à réaliser"
+        disabled={pending} className="flex-1 min-w-[160px] rounded border bg-background px-2 py-1 text-xs" />
+      <input name="assignedTo" maxLength={120} placeholder="Responsable (option.)"
+        disabled={pending} className="rounded border bg-background px-2 py-1 text-xs" />
+      <button type="submit" disabled={pending}
+        className="rounded bg-foreground text-background px-2 py-1 text-xs font-medium disabled:opacity-50">
+        {pending ? '…' : 'Ajouter'}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted-foreground">Annuler</button>
+    </form>
+  )
+}
+
+function LinkDocumentForm({ reserveId, siteId, siteDocuments, linkedIds }: {
+  reserveId: string; siteId: string; siteDocuments: SiteDoc[]; linkedIds: Set<string>
+}) {
+  const router = useRouter()
+  const [pending, start] = useTransition()
+  const [open, setOpen] = useState(false)
+  const available = siteDocuments.filter((d) => !linkedIds.has(d.id))
+
+  function link(documentId: string) {
+    const fd = new FormData()
+    fd.set('reserveId', reserveId); fd.set('siteId', siteId); fd.set('documentId', documentId)
+    start(async () => {
+      const r = await linkDocumentToReserveAction(fd)
+      if ('error' in r) { toast.error(r.error); return }
+      toast.success('Document lié')
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  if (available.length === 0) return null
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        <Link2 className="h-3 w-3" /> Lier un document
+      </button>
+    )
+  }
+  return (
+    <select disabled={pending} defaultValue=""
+      onChange={(e) => { if (e.target.value) link(e.target.value) }}
+      className="rounded border bg-background px-2 py-1 text-xs max-w-[260px]">
+      <option value="" disabled>Choisir un document du site…</option>
+      {available.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}
+    </select>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Carte d'une réserve
 // ---------------------------------------------------------------------------
 
-function ReserveCard({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: string }) {
+function ReserveCard({ reserve, siteId, siteDocuments }: { reserve: ReserveWithPhotos; siteId: string; siteDocuments: SiteDoc[] }) {
   const isLifted = reserve.status === 'lifted'
+  const linkedIds = new Set(reserve.documents.map((d) => d.id))
   const issuedOn = formatDate(reserve.issuedOn)
   const liftedAt = formatDate(reserve.liftedAt)
 
@@ -208,6 +318,47 @@ function ReserveCard({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: 
         </div>
       )}
 
+      {/* Actions correctives liées (mini-dossier) */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <ListTodo className="h-3 w-3" /> Actions correctives
+        </div>
+        {reserve.actions.length > 0 ? (
+          <ul className="space-y-0.5">
+            {reserve.actions.map((a) => (
+              <li key={a.id} className="text-xs">
+                • {a.title}
+                {a.assignedTo && <span className="text-muted-foreground"> — {a.assignedTo}</span>}
+                {a.dueDate && <span className="text-muted-foreground"> (éch. {a.dueDate})</span>}
+                <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted-foreground/70 italic">Aucune action corrective.</p>
+        )}
+        <CorrectiveActionForm reserveId={reserve.id} siteId={siteId} />
+      </div>
+
+      {/* Documents associés (clauses, fiches, PV…) */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <FileText className="h-3 w-3" /> Documents associés
+        </div>
+        {reserve.documents.length > 0 ? (
+          <ul className="space-y-0.5">
+            {reserve.documents.map((d) => (
+              <li key={d.id} className="text-xs">
+                • <a href={`/documents/${d.id}`} className="hover:underline">{d.filename}</a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted-foreground/70 italic">Aucun document lié.</p>
+        )}
+        <LinkDocumentForm reserveId={reserve.id} siteId={siteId} siteDocuments={siteDocuments} linkedIds={linkedIds} />
+      </div>
+
       {/* Détails de levée */}
       {isLifted && (
         <div className="space-y-1 border-l-2 border-emerald-200 pl-3">
@@ -243,9 +394,11 @@ function ReserveCard({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: 
 interface Props {
   siteId: string
   reserves: ReserveWithPhotos[]
+  /** Documents du site, source du sélecteur « lier un document ». */
+  siteDocuments: SiteDoc[]
 }
 
-export function ReservesView({ siteId, reserves }: Props) {
+export function ReservesView({ siteId, reserves, siteDocuments }: Props) {
   if (reserves.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic py-6 text-center">
@@ -274,7 +427,7 @@ export function ReservesView({ siteId, reserves }: Props) {
         ) : (
           <div className="space-y-2">
             {open.map((r) => (
-              <ReserveCard key={r.id} reserve={r} siteId={siteId} />
+              <ReserveCard key={r.id} reserve={r} siteId={siteId} siteDocuments={siteDocuments} />
             ))}
           </div>
         )}
@@ -291,7 +444,7 @@ export function ReservesView({ siteId, reserves }: Props) {
           </div>
           <div className="space-y-2">
             {lifted.map((r) => (
-              <ReserveCard key={r.id} reserve={r} siteId={siteId} />
+              <ReserveCard key={r.id} reserve={r} siteId={siteId} siteDocuments={siteDocuments} />
             ))}
           </div>
         </section>

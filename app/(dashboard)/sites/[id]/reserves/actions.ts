@@ -9,6 +9,8 @@ import {
   liftReserve,
   setReserveBeforePhoto,
 } from '@/lib/db/site-reserve'
+import { createSiteAction } from '@/lib/db/site-actions'
+import { addDocumentLink } from '@/lib/db/documents'
 
 // Server actions — Réserves / levée de réserves (Tier 1 BTP).
 //
@@ -129,6 +131,65 @@ export async function liftReserveAction(formData: FormData): Promise<ActionResul
     userId: user.id,
   })
 
+  revalidatePath(`/sites/${parsed.data.siteId}/reserves`)
+  return { ok: true }
+}
+
+// ── Réserve = mini-dossier : actions correctives + documents liés ───────────
+
+const correctiveSchema = z.object({
+  siteId: z.string().uuid(),
+  reserveId: z.string().uuid(),
+  title: z.string().trim().min(1, 'Intitulé requis').max(200),
+  assignedTo: z.string().trim().max(120).nullable(),
+})
+
+/** Crée une action corrective rattachée à une réserve (site_actions.reserve_id). */
+export async function addCorrectiveActionAction(formData: FormData): Promise<ActionResult> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { error: 'Non authentifié' }
+  if (user.role === 'chef_equipe') return { error: 'Non autorisé' }
+
+  const parsed = correctiveSchema.safeParse({
+    siteId: formData.get('siteId'),
+    reserveId: formData.get('reserveId'),
+    title: formData.get('title'),
+    assignedTo: ((formData.get('assignedTo') as string | null) ?? '').trim() || null,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+
+  await createSiteAction({
+    site_id: parsed.data.siteId,
+    title: parsed.data.title,
+    assigned_to: parsed.data.assignedTo,
+    reserve_id: parsed.data.reserveId,
+    created_by: user.id,
+    created_from: 'reserve',
+  })
+  revalidatePath(`/sites/${parsed.data.siteId}/reserves`)
+  return { ok: true }
+}
+
+const linkDocSchema = z.object({
+  siteId: z.string().uuid(),
+  reserveId: z.string().uuid(),
+  documentId: z.string().uuid(),
+})
+
+/** Lie un document existant à une réserve (document_links target='reserve'). */
+export async function linkDocumentToReserveAction(formData: FormData): Promise<ActionResult> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { error: 'Non authentifié' }
+  if (user.role === 'chef_equipe') return { error: 'Non autorisé' }
+
+  const parsed = linkDocSchema.safeParse({
+    siteId: formData.get('siteId'),
+    reserveId: formData.get('reserveId'),
+    documentId: formData.get('documentId'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+
+  await addDocumentLink(parsed.data.documentId, 'reserve', parsed.data.reserveId)
   revalidatePath(`/sites/${parsed.data.siteId}/reserves`)
   return { ok: true }
 }

@@ -25,6 +25,8 @@ export async function createSiteAction(input: {
   assigned_to?: string | null
   due_date?: string | null
   due_date_status?: 'explicit' | 'estimated' | null
+  /** Action corrective rattachée à une réserve (migration 123). */
+  reserve_id?: string | null
   created_by: string | null
   /** Provenance (migration 112) : mobile_site / desktop_site / actions_list / report. */
   created_from?: string | null
@@ -41,6 +43,7 @@ export async function createSiteAction(input: {
       assigned_to: input.assigned_to ?? null,
       due_date: input.due_date ?? null,
       due_date_status: input.due_date_status ?? null,
+      reserve_id: input.reserve_id ?? null,
       created_by: input.created_by,
       created_from: input.created_from ?? null,
       status: 'open' as SiteActionStatus,
@@ -104,6 +107,18 @@ export async function listSiteActionsByReport(reportId: string): Promise<DbSiteA
     .from('site_actions')
     .select('*')
     .eq('report_id', reportId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data as DbSiteAction[]) ?? []
+}
+
+/** Actions correctives rattachées à une réserve (migration 123). */
+export async function listSiteActionsByReserve(reserveId: string): Promise<DbSiteAction[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_actions')
+    .select('*')
+    .eq('reserve_id', reserveId)
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data as DbSiteAction[]) ?? []
