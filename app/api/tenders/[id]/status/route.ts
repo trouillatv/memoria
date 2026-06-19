@@ -10,7 +10,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     // Utilise updated_at (horodatage du dernier changement de statut) pas created_at
     const ref = tender.updated_at ?? tender.created_at
     const ageMs = Date.now() - new Date(ref).getTime()
-    if (ageMs > 10 * 60 * 1000) {
+    // Auto-fail à 4 min : un appel IA bloqué (ou une fonction tuée avant la fin
+    // du after()) ne doit jamais laisser l'AO coincé. Le client poll plus
+    // longtemps que ce seuil (cf. TenderAnalysisLoader) → l'auto-fail se
+    // déclenche réellement. Filet de dernier recours : cron sweep (à venir).
+    if (ageMs > 4 * 60 * 1000) {
       await updateTenderStatus(id, 'failed', 'analyze_timeout')
       return NextResponse.json({ status: 'failed', error_msg: 'analyze_timeout', opportunity_score: null })
     }

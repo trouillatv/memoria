@@ -14,9 +14,14 @@ export function TenderAnalysisLoader({ id }: TenderAnalysisLoaderProps) {
   const pollCountRef = useRef(0)
 
   useEffect(() => {
+    // Poll toutes les 3 s pendant 5 min (100 tentatives) — plus long que le
+    // seuil serveur d'auto-fail (4 min, cf. /api/tenders/[id]/status) pour que
+    // l'AO bloqué bascule en `failed` AVANT qu'on arrête de poller. Sinon le
+    // statut resterait `analyzing` indéfiniment côté DB.
+    const MAX_POLLS = 100
     const interval = setInterval(async () => {
       pollCountRef.current += 1
-      if (pollCountRef.current >= 60) {
+      if (pollCountRef.current >= MAX_POLLS) {
         clearInterval(interval)
         setTimedOut(true)
         return
@@ -44,7 +49,7 @@ export function TenderAnalysisLoader({ id }: TenderAnalysisLoaderProps) {
       <p className="text-sm">Analyse en cours… Cela peut prendre quelques secondes.</p>
       {timedOut && (
         <p className="text-sm text-rose-700 text-center max-w-md">
-          Délai dépassé (3 min). L&apos;analyse n&apos;a pas répondu. Contactez l&apos;admin ou rechargez la page pour relancer.
+          Délai dépassé (5 min). L&apos;analyse n&apos;a pas répondu. Rechargez la page : l&apos;analyse devrait apparaître en échec, vous pourrez alors la relancer. Si le problème persiste, contactez l&apos;admin.
         </p>
       )}
     </div>

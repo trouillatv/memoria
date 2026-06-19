@@ -194,9 +194,19 @@ export async function createTenderAction(formData: FormData) {
       })
       await updateTenderStatus(tenderIdForAnalyze, 'ready', null, result.score.score)
     } catch (e) {
+      // Erreur quelconque pendant l'analyse IA, le recall documentaire, la
+      // validation des sources ou l'insertion → l'AO passe en `failed` avec un
+      // message exploitable côté UI. On garde l'écriture du statut dans son
+      // propre try/catch : si même elle échoue (DB injoignable), on log au
+      // moins l'incident — le filet serveur (status route, 4 min) puis le cron
+      // sweep (à venir) rattraperont l'AO resté `analyzing`.
       const msg = e instanceof Error ? e.message : 'unknown'
       console.error('[createTenderAction] analyze failed:', e)
-      await updateTenderStatus(tenderIdForAnalyze, 'failed', msg)
+      try {
+        await updateTenderStatus(tenderIdForAnalyze, 'failed', msg)
+      } catch (statusErr) {
+        console.error('[createTenderAction] could not mark tender failed:', statusErr)
+      }
     }
   })
 
