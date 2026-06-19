@@ -1,7 +1,11 @@
 // Sprint 1 — Accès DB aux documents générés depuis une réunion (table 120).
-// Écritures via service-role (server actions gardées) ; lectures via RLS.
+// Lectures + écritures via service-role (admin client), comme le reste des
+// données site-scoped (réserves, actions, sujets, handover). Les surfaces
+// appelantes sont gardées par rôle (meetings = admin/manager). NB : on ne lit
+// PAS en client RLS ici — sinon un doc fraîchement créé (org stampé à l'insert)
+// peut ne pas être relu si l'org ne matche pas exactement la policy → brouillon
+// invisible après génération.
 
-import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import type { DbReportDocument, ReportDocumentSection } from '@/types/db'
@@ -43,7 +47,7 @@ export async function createReportDocument(input: {
 
 /** Dernier document généré pour une réunion (1 PV par réunion au MVP). */
 export async function getLatestReportDocument(reportId: string): Promise<DbReportDocument | null> {
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('report_documents')
     .select(COLS)
@@ -56,7 +60,7 @@ export async function getLatestReportDocument(reportId: string): Promise<DbRepor
 }
 
 export async function getReportDocument(id: string): Promise<DbReportDocument | null> {
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('report_documents')
     .select(COLS)

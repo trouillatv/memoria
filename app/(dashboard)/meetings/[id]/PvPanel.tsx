@@ -30,11 +30,16 @@ export function PvPanel({ reportId, initial }: PvPanelProps) {
   function handleGenerate() {
     setError(null)
     startTransition(async () => {
-      const res = await generatePvAction(reportId)
-      if (res.ok) {
-        router.refresh()
-      } else {
-        setError(res.error)
+      try {
+        const res = await generatePvAction(reportId)
+        if (res.ok) {
+          router.refresh()
+        } else {
+          setError(res.error)
+        }
+      } catch (e) {
+        // Sinon un throw serveur (auth, DB, rendu) échoue en SILENCE.
+        setError(e instanceof Error ? e.message : 'La génération a échoué (erreur serveur). Réessayez ou contactez l’admin.')
       }
     })
   }
@@ -43,12 +48,16 @@ export function PvPanel({ reportId, initial }: PvPanelProps) {
     if (!doc) return
     setError(null)
     startTransition(async () => {
-      const res = await savePvSectionsAction(reportId, doc.id, sections)
-      if (res.ok) {
-        setDirty(false)
-        setDoc({ ...doc, sections })
-      } else {
-        setError(res.error ?? 'Échec de la sauvegarde')
+      try {
+        const res = await savePvSectionsAction(reportId, doc.id, sections)
+        if (res.ok) {
+          setDirty(false)
+          setDoc({ ...doc, sections })
+        } else {
+          setError(res.error ?? 'Échec de la sauvegarde')
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Échec de la sauvegarde (erreur serveur).')
       }
     })
   }
@@ -57,17 +66,21 @@ export function PvPanel({ reportId, initial }: PvPanelProps) {
     if (!doc) return
     setError(null)
     startTransition(async () => {
-      // Sauver les éventuelles éditions avant de figer.
-      if (dirty) {
-        const save = await savePvSectionsAction(reportId, doc.id, sections)
-        if (!save.ok) { setError(save.error ?? 'Échec de la sauvegarde'); return }
-        setDirty(false)
-      }
-      const res = await validatePvAction(reportId, doc.id)
-      if (res.ok) {
-        router.refresh()
-      } else {
-        setError(res.error ?? 'Échec de la validation')
+      try {
+        // Sauver les éventuelles éditions avant de figer.
+        if (dirty) {
+          const save = await savePvSectionsAction(reportId, doc.id, sections)
+          if (!save.ok) { setError(save.error ?? 'Échec de la sauvegarde'); return }
+          setDirty(false)
+        }
+        const res = await validatePvAction(reportId, doc.id)
+        if (res.ok) {
+          router.refresh()
+        } else {
+          setError(res.error ?? 'Échec de la validation')
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Échec de la validation (erreur serveur).')
       }
     })
   }
