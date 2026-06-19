@@ -99,12 +99,17 @@ const s = StyleSheet.create({
   nota: { fontSize: 7.5, fontStyle: 'italic', color: C.greyText, marginTop: 2 },
   empty: { fontSize: 8, color: C.faint, fontStyle: 'italic' },
 
-  // Cadre de page fin à coins arrondis (fixed, répété) — contenu à l'intérieur.
-  pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: 841.89 - 24, borderWidth: 0.75, borderColor: C.marine, borderRadius: 7 },
+  // Cadre de page fin (fixed, répété) — trait uniforme, SANS borderRadius ni fond
+  // (un border-only ne se remplit pas ; le borderRadius sur grande boîte rebugge).
+  pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: 841.89 - 24, borderWidth: 0.75, borderColor: C.marine },
   // Pied de page (fixed) — largeur explicite, jamais left+right.
   footer: { position: 'absolute', bottom: 16, left: MARGIN, width: CONTENT_W, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: C.border, paddingTop: 4 },
   footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1 },
-  pagePill: { backgroundColor: C.marine, color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', borderRadius: 9, paddingVertical: 2, paddingHorizontal: 6 },
+  // Pastille de page : le FOND va sur la View (taille bornée), le numéro sur le
+  // Text. NE JAMAIS mettre render + backgroundColor sur le même Text (le fond se
+  // peint alors sur toute la hauteur → bande navy parasite à droite).
+  pagePillBox: { backgroundColor: C.marine, borderRadius: 9, paddingVertical: 2, paddingHorizontal: 6 },
+  pagePill: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold' },
 })
 
 function EmphText({ text }: { text: string }) {
@@ -172,6 +177,8 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   return (
     <Document title={`CR ${cr.meta.numeroCR} — ${cr.meta.chantier}`}>
       <Page size="A4" style={s.page}>
+        {/* Cadre de page (trait fin, répété, sans fond ni borderRadius → ne se remplit pas) */}
+        <View style={s.pageFrame} fixed />
         {/* En-tête répété */}
         <View style={s.header} fixed>
           <View style={s.headRow}>
@@ -298,7 +305,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* Pied de page répété */}
         <View style={s.footer} fixed>
           <Text style={s.footTxt}>{breadcrumb}  —  {cartouche}</Text>
-          <Text style={s.pagePill} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
+          <View style={s.pagePillBox}>
+            <Text style={s.pagePill} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />
+          </View>
         </View>
       </Page>
     </Document>
