@@ -7,7 +7,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
-import { getReportTemplate, companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
+import { getReportTemplate, companyLabelForOrg, becibReference } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CrChantierPdf } from '@/lib/pdf/cr-chantier'
 
@@ -39,6 +39,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     : { data: null }
   const companyLabel = companyLabelForOrg(orgRow as { slug?: string | null; name?: string | null } | null)
 
+  // Codification (layout becib) : numéro de réunion = nb de CR du site ≤ celui-ci.
+  let reference: string | null = null
+  if (tpl?.layout === 'becib' && report.site_id) {
+    const { count } = await orgAdmin
+      .from('site_reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', report.site_id)
+      .lte('created_at', report.created_at)
+    reference = becibReference({ dateIso: report.created_at, meetingSeq: count ?? 1, siteId: report.site_id })
+  }
+
   let pdfBuffer: Buffer
   try {
     pdfBuffer = await renderToBuffer(
@@ -50,6 +61,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         sections: doc.sections,
         layout: tpl?.layout ?? 'neutral',
         companyLabel,
+        reference,
       }),
     )
   } catch (e) {

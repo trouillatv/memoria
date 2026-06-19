@@ -231,3 +231,16 @@ export function companyLabelForOrg(org: { slug?: string | null; name?: string | 
   if (org.slug && BECIB_BRANDED_ORG_SLUGS.has(org.slug.toLowerCase())) return 'BECIB'
   return org.name ?? null
 }
+
+/** Ligne de codification façon BECIB : « AAAABECnnn/CRnnn · Version 1 · date ».
+ *  nnn dérivé (stable) du site ; seq = numéro de réunion. Déterministe, sans IA. */
+export function becibReference(opts: { dateIso: string; meetingSeq: number; siteId: string }): string {
+  const d = new Date(opts.dateIso)
+  const year = Number.isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear()
+  let h = 7
+  for (const c of opts.siteId) h = (h * 31 + c.charCodeAt(0)) | 0
+  const siteNum = (Math.abs(h) % 900) + 100 // 100..999, stable par site
+  const seq = String(Math.max(1, opts.meetingSeq)).padStart(3, '0')
+  const dateFr = Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR')
+  return `${year}BEC${siteNum}/CR${seq} · Version 1 · ${dateFr}`
+}

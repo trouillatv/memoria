@@ -7,7 +7,7 @@ import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
-import { resolveReportTemplate, getReportTemplate, companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
+import { resolveReportTemplate, getReportTemplate, companyLabelForOrg, becibReference } from '@/lib/documents/templates/cr-chantier'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -136,6 +136,16 @@ export async function validatePvAction(
     : { data: null }
   const companyLabel = companyLabelForOrg(orgRow as { slug?: string | null; name?: string | null } | null)
 
+  let reference: string | null = null
+  if (tpl?.layout === 'becib' && report.site_id) {
+    const { count } = await orgAdmin
+      .from('site_reports')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', report.site_id)
+      .lte('created_at', report.created_at)
+    reference = becibReference({ dateIso: report.created_at, meetingSeq: count ?? 1, siteId: report.site_id })
+  }
+
   try {
     const pdfBuffer = await renderToBuffer(
       CrChantierPdf({
@@ -146,6 +156,7 @@ export async function validatePvAction(
         sections: doc.sections,
         layout: tpl?.layout ?? 'neutral',
         companyLabel,
+        reference,
       }),
     )
 
