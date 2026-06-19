@@ -4,10 +4,17 @@
 
 import {
   Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType,
-  BorderStyle, ShadingType, PageNumber, Footer, VerticalAlign, TabStopType, TabStopPosition,
+  BorderStyle, ShadingType, PageNumber, Footer, Header, ImageRun, VerticalAlign,
+  TabStopType, TabStopPosition, PageBorderDisplay, PageBorderOffsetFrom,
 } from 'docx'
 import type { CrBecib, CrBecibBloc } from './cr-becib-schema'
 import { NOTA_48H, statutLabel, actionLabel } from './cr-becib-schema'
+import { BECIB_LOGO_DATA_URL } from '@/lib/pdf/becib-logo'
+
+// Logo BECIB (base64 → buffer + dimensions natives lues dans l'en-tête PNG).
+const LOGO_BUF = Buffer.from(BECIB_LOGO_DATA_URL.split(',')[1] || '', 'base64')
+const LOGO_W = LOGO_BUF.length > 24 ? LOGO_BUF.readUInt32BE(16) : 200
+const LOGO_H = LOGO_BUF.length > 24 ? LOGO_BUF.readUInt32BE(20) : 80
 
 const C = {
   marine: '1F2A5A', red: 'E2001A', headGrey: 'E6E6EE', band2Grey: 'D9D9D9', orgBlue: 'EEF1F8',
@@ -233,29 +240,68 @@ export function buildCrBecibDocx(cr: CrBecib): Document {
   }))
   body.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 120 }, children: [new TextRun({ text: cr.signature, bold: true, size: 18 })] }))
 
-  // Pied : fil d'Ariane + cartouche + numéro de page NATIF
+  // Pied : fil d'Ariane (+ n° de page natif à droite), puis cartouche DNS en
+  // VRAIE TABLE bordée (libellés / valeurs), comme le PDF.
+  const cartouche = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({ children: [
+        txtCell('Numéro DNS', { pct: 40, size: 11, bold: true, color: C.marine, fill: 'F0F2F5' }),
+        txtCell('Version', { pct: 14, size: 11, bold: true, color: C.marine, fill: 'F0F2F5' }),
+        txtCell('Modification : ordre', { pct: 26, size: 11, bold: true, color: C.marine, fill: 'F0F2F5' }),
+        txtCell('Date', { pct: 20, size: 11, bold: true, color: C.marine, fill: 'F0F2F5' }),
+      ] }),
+      new TableRow({ children: [
+        txtCell(cr.meta.dns || '—', { pct: 40, size: 13 }),
+        txtCell(cr.meta.version, { pct: 14, size: 13 }),
+        txtCell(cr.meta.modification, { pct: 26, size: 13 }),
+        txtCell(dNum, { pct: 20, size: 13 }),
+      ] }),
+    ],
+  })
   const footer = new Footer({
     children: [
-      new Paragraph({ ...noSpace, children: [new TextRun({ text: breadcrumb, italics: true, size: 13, color: C.greyText })] }),
       new Paragraph({
         ...noSpace,
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
         children: [
-          new TextRun({ text: `N° DNS : ${cr.meta.dns || '—'} · Version ${cr.meta.version} · Modif. ${cr.meta.modification} · ${dNum}`, size: 13, color: C.marine }),
+          new TextRun({ text: breadcrumb, italics: true, size: 13, color: C.greyText }),
           new TextRun({ text: '\tPage ', size: 14, bold: true, color: C.marine }),
           new TextRun({ children: [PageNumber.CURRENT], size: 14, bold: true, color: C.marine }),
           new TextRun({ text: ' / ', size: 14, bold: true, color: C.marine }),
           new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 14, bold: true, color: C.marine }),
         ],
       }),
+      cartouche,
     ],
   })
 
+  // En-tête répété : logo BECIB + filet navy.
+  const logoDispW = 120
+  const logoDispH = Math.round((logoDispW * LOGO_H) / LOGO_W)
+  const header = new Header({
+    children: [
+      new Paragraph({ spacing: { after: 0 }, children: [new ImageRun({ type: 'png', data: LOGO_BUF, transformation: { width: logoDispW, height: logoDispH } })] }),
+      new Paragraph({ ...noSpace, border: { bottom: { style: BorderStyle.SINGLE, size: 16, color: C.marine } }, children: [] }),
+    ],
+  })
+
+  const pageBorderSide = { style: BorderStyle.SINGLE, size: 8, color: C.marine, space: 24 }
   return new Document({
     creator: 'MemorIA', title: `CR ${cr.meta.numeroCR} — ${cr.meta.chantier}`,
     styles: { default: { document: { run: { font: 'Calibri', size: 16 } } } },
     sections: [{
-      properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 720, bottom: 1000, left: 720, right: 720 } } },
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 1500, bottom: 1100, left: 720, right: 720, header: 360, footer: 280 },
+          borders: {
+            pageBorders: { display: PageBorderDisplay.ALL_PAGES, offsetFrom: PageBorderOffsetFrom.PAGE },
+            pageBorderTop: pageBorderSide, pageBorderBottom: pageBorderSide, pageBorderLeft: pageBorderSide, pageBorderRight: pageBorderSide,
+          },
+        },
+      },
+      headers: { default: header },
       footers: { default: footer },
       children: body,
     }],
