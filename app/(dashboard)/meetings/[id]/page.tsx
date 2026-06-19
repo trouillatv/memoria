@@ -8,8 +8,10 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
+import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { PvPanel } from './PvPanel'
 import { ActionsCuration } from './ActionsCuration'
+import { MeetingFollowup } from './MeetingFollowup'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SiteReportProposalType, SiteReportStatus, DbSiteReportProposal } from '@/types/db'
 
@@ -45,10 +47,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const report = await getSiteReport(id)
   if (!report) notFound()
 
-  const [proposals, actions, pvDoc] = await Promise.all([
+  const [proposals, actions, pvDoc, followup] = await Promise.all([
     listProposals(id),
     listSiteActionsByReport(id),
     getLatestReportDocument(id),
+    getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at }),
   ])
 
   const supabase = createAdminClient()
@@ -124,6 +127,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           L&apos;analyse a échoué : {report.analysis_error}. Le compte-rendu brut et ses pièces restent conservés.
         </div>
       )}
+
+      {/* Suivi de la réunion précédente — PV de pilotage (Sprint 3) */}
+      {followup && <MeetingFollowup data={followup} />}
 
       {/* Qui fait quoi, pour quand — curation des actions (Sprint 2) */}
       <ActionsCuration

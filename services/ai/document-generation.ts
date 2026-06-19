@@ -28,6 +28,8 @@ export interface GeneratePvInput {
   actions: DbSiteAction[]
   meetingTitle: string | null
   meetingDateLabel: string
+  /** Bloc « suivi réunion précédente » pré-calculé (déterministe, hors LLM). */
+  followupText?: string | null
   userId: string | null
 }
 
@@ -189,6 +191,9 @@ export async function generatePv(input: GeneratePvInput): Promise<GeneratePvResu
     }
     if (spec.source === 'risks') {
       return { key: spec.key, title: spec.title, kind: spec.kind, content: fmtRisks(input.risks) }
+    }
+    if (spec.source === 'followup') {
+      return { key: spec.key, title: spec.title, kind: spec.kind, content: (input.followupText ?? '').trim() }
     }
     if (spec.source === 'meta' || spec.kind === 'fixed') {
       return { key: spec.key, title: spec.title, kind: spec.kind, content: spec.guidance ?? '' }

@@ -13,7 +13,7 @@
 // sera portée par un template/layout BECIB dédié quand on aura leurs assets.
 
 /** D'où vient le contenu d'une section. */
-export type SectionSource = 'generative' | 'participants' | 'actions' | 'risks' | 'meta'
+export type SectionSource = 'generative' | 'participants' | 'actions' | 'risks' | 'meta' | 'followup'
 
 export interface TemplateSectionSpec {
   key: string
@@ -63,6 +63,9 @@ export const CR_CHANTIER_VRD_V1: ReportTemplateSpec = {
   layout: 'neutral',
   systemPrompt: NEUTRAL_SYSTEM_PROMPT,
   sections: [
+    // Suivi de la réunion précédente (Sprint 3) — données site_actions, zéro LLM.
+    // En tête : PV de pilotage, pas PV statique.
+    { key: 'suivi_precedent', title: 'Suivi de la réunion précédente', kind: 'fixed', source: 'followup' },
     {
       key: 'infos_generales',
       title: 'Informations générales',

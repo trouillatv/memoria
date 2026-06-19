@@ -6,6 +6,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
+import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
 import { resolveReportTemplate } from '@/lib/documents/templates/cr-chantier'
 import { generatePv } from '@/services/ai/document-generation'
 import {
@@ -51,6 +52,7 @@ export async function generatePvAction(reportId: string): Promise<{ ok: true; id
   }
 
   const actions = await listSiteActionsByReport(reportId)
+  const followup = await getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at })
   const template = resolveReportTemplate()
 
   try {
@@ -61,6 +63,7 @@ export async function generatePvAction(reportId: string): Promise<{ ok: true; id
       participants: report.participants ?? [],
       risks: report.risks ?? [],
       actions,
+      followupText: followup ? formatFollowupForPv(followup) : null,
       meetingTitle: report.title,
       meetingDateLabel: meetingDateLabel(report.created_at),
       userId: user.id,
