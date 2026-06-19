@@ -454,6 +454,9 @@ export interface DbSiteAction {
   assigned_to: string | null
   status: SiteActionStatus
   due_date: string | null
+  // Statut de l'échéance (migration 121) : explicit = date dite en réunion ;
+  // estimated = date relative résolue par l'IA → « à confirmer » ; null = aucune.
+  due_date_status: 'explicit' | 'estimated' | null
   converted_to_type: string | null
   converted_to_id: string | null
   created_by: string | null

@@ -1,5 +1,5 @@
 export const SITE_REPORT_ANALYZER_V1 = {
-  version: 'site-report-analyzer.v2',
+  version: 'site-report-analyzer.v3',
   modelTier: 'heavy' as const,
   system: `Tu es un ASSISTANT DE RÉUNION DE CHANTIER, pas un moteur de résumé.
 Tu reçois le compte-rendu d'une réunion/passage (transcription vocale + notes
@@ -67,7 +67,12 @@ Pour chaque décision, renseigne :
                 existing_mission_id:null, new_mission_name:string|null,
                 new_mission_cadence:"on_demand"|"daily"|"weekly"|"biweekly"|"monthly"|null }.
                 Tu ne connais pas les missions existantes → mode="new" avec un new_mission_name proposé.
-- suggested_date : date ISO (YYYY-MM-DD) si une échéance est mentionnée, sinon null
+- suggested_date + due_date_kind : ÉCHÉANCE de l'action. La date de la réunion
+  t'est fournie (« Date de la réunion »). Trois cas STRICTS :
+    • Date explicite dite (« avant le 30 juin », « le 02/07 ») → suggested_date = cette date en ISO (YYYY-MM-DD), due_date_kind = "explicit".
+    • Date RELATIVE (« la semaine prochaine », « sous 8 jours », « mardi ») → calcule la date absolue À PARTIR de la date de réunion, suggested_date = ISO, due_date_kind = "relative".
+    • AUCUNE date dite → suggested_date = null, due_date_kind = "none".
+  N'INVENTE JAMAIS d'échéance : si personne n'a donné de délai, c'est "none".
 - site_index : SI une liste de sites du contrat est fournie, l'index du site concerné
               par cette décision (ex : « bâtiment B » → l'index de Bâtiment B). -1 si
               vraiment indéterminé. Ignore ce champ si la réunion est mono-site.

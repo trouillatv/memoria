@@ -74,7 +74,8 @@ function fmtActions(actions: DbSiteAction[]): string {
     .map((a) => {
       const prefix = a.corps_etat ? `[${a.corps_etat}] ` : ''
       const who = a.assigned_to ? ` — ${a.assigned_to}` : ''
-      const due = a.due_date ? ` (échéance ${a.due_date})` : ''
+      const confirm = a.due_date_status === 'estimated' ? ' à confirmer' : ''
+      const due = a.due_date ? ` (échéance ${a.due_date}${confirm})` : ''
       const state = ` = ${ACTION_STATUS_LABEL[a.status]}`
       return `- ${prefix}${a.title}${who}${due}${state}`
     })

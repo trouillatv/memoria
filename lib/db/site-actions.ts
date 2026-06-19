@@ -24,6 +24,7 @@ export async function createSiteAction(input: {
   corps_etat?: string | null
   assigned_to?: string | null
   due_date?: string | null
+  due_date_status?: 'explicit' | 'estimated' | null
   created_by: string | null
   /** Provenance (migration 112) : mobile_site / desktop_site / actions_list / report. */
   created_from?: string | null
@@ -39,6 +40,7 @@ export async function createSiteAction(input: {
       corps_etat: input.corps_etat ?? null,
       assigned_to: input.assigned_to ?? null,
       due_date: input.due_date ?? null,
+      due_date_status: input.due_date_status ?? null,
       created_by: input.created_by,
       created_from: input.created_from ?? null,
       status: 'open' as SiteActionStatus,
@@ -47,6 +49,35 @@ export async function createSiteAction(input: {
     .single()
   if (error) throw error
   return (data as { id: string }).id
+}
+
+/**
+ * Édition d'une action (curation desktop). Tous les champs optionnels ;
+ * seuls ceux fournis sont modifiés. Mettre `due_date_status` à null retire le
+ * badge « à confirmer » (= l'humain a confirmé/figé l'échéance).
+ */
+export async function updateSiteAction(
+  id: string,
+  patch: {
+    title?: string
+    assigned_to?: string | null
+    corps_etat?: string | null
+    due_date?: string | null
+    due_date_status?: 'explicit' | 'estimated' | null
+    status?: SiteActionStatus
+  },
+): Promise<void> {
+  const supabase = createAdminClient()
+  const update: Record<string, unknown> = {}
+  if (patch.title !== undefined) update.title = patch.title
+  if (patch.assigned_to !== undefined) update.assigned_to = patch.assigned_to
+  if (patch.corps_etat !== undefined) update.corps_etat = patch.corps_etat
+  if (patch.due_date !== undefined) update.due_date = patch.due_date
+  if (patch.due_date_status !== undefined) update.due_date_status = patch.due_date_status
+  if (patch.status !== undefined) update.status = patch.status
+  if (Object.keys(update).length === 0) return
+  const { error } = await supabase.from('site_actions').update(update).eq('id', id)
+  if (error) throw error
 }
 
 export async function listSiteActionsBySite(

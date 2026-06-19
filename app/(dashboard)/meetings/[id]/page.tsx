@@ -9,6 +9,7 @@ import { getSiteReport, listProposals } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { PvPanel } from './PvPanel'
+import { ActionsCuration } from './ActionsCuration'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SiteReportProposalType, SiteReportStatus, DbSiteReportProposal } from '@/types/db'
 
@@ -123,6 +124,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           L&apos;analyse a échoué : {report.analysis_error}. Le compte-rendu brut et ses pièces restent conservés.
         </div>
       )}
+
+      {/* Qui fait quoi, pour quand — curation des actions (Sprint 2) */}
+      <ActionsCuration
+        reportId={id}
+        pendingProposals={proposals.filter((p) => p.type === 'action' && p.status === 'proposed')}
+        actions={actions}
+      />
 
       {/* PV / CR de chantier — génération documentaire (Sprint 1) */}
       <PvPanel reportId={id} initial={pvDoc} />

@@ -479,6 +479,7 @@ export async function analyzeReportAction(formData: FormData): Promise<
       priorOpenActions,
       candidateSites,
       defaultSiteId,
+      meetingDateLabel: report.created_at,
       userId: auth.userId,
     })
     const inserted = await bulkInsertProposals({

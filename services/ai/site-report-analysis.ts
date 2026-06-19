@@ -74,6 +74,7 @@ const analysisSchema = z.object({
       anomaly_category: z.enum(ANOMALY_CATEGORIES).nullable().catch(null),
       mission_link: missionLinkSchema,
       suggested_date: z.string().max(20).nullable().catch(null),
+      due_date_kind: z.enum(['explicit', 'relative', 'none']).catch('none'),
       // Réunion contrat : index du site détecté dans la liste fournie (-1/absent si indéterminé).
       site_index: z.number().int().optional().catch(-1),
     }),
@@ -134,6 +135,9 @@ export interface SiteReportAnalysisInput {
   candidateSites: CandidateSite[]
   // Site par défaut (réunion site) : toutes les décisions y sont routées.
   defaultSiteId: string | null
+  // Date de la réunion (ISO ou libellé) — ancre pour résoudre les échéances
+  // relatives (« la semaine prochaine »). Optionnel : absent → pas d'ancrage.
+  meetingDateLabel?: string | null
   userId: string | null
 }
 
@@ -189,6 +193,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'action',
@@ -200,6 +205,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'action',
@@ -211,6 +217,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'action',
@@ -222,6 +229,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'intervention',
@@ -233,6 +241,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: { mode: 'new', existing_mission_id: null, new_mission_name: 'Contrôle SOCOTEC', new_mission_cadence: 'on_demand' },
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'vigilance',
@@ -244,6 +253,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'client_memory',
@@ -255,6 +265,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
     {
       type: 'proof_request',
@@ -266,6 +277,7 @@ const MOCK_FIXTURE: AnalysisParsed = {
       anomaly_category: null,
       mission_link: null,
       suggested_date: null,
+      due_date_kind: 'none',
     },
   ],
 }
@@ -295,6 +307,8 @@ export async function runSiteReportAnalysisAgent(
         ? input.candidateSites.map((s, i) => `[${i}] ${s.name}`).join('\n')
         : '(réunion mono-site — ne pas router)'
       userMessage = [
+        `Date de la réunion : ${input.meetingDateLabel ?? '(non précisée — ne pas résoudre de date relative)'}`,
+        '',
         '=== Transcription corrigée ===',
         input.transcript?.slice(0, 12000) || '(vide)',
         '',
@@ -377,6 +391,7 @@ export async function runSiteReportAnalysisAgent(
         payload: {
           mission_link: p.mission_link,
           suggested_date: p.suggested_date,
+          due_date_kind: p.due_date_kind,
           anomaly_category: p.anomaly_category,
         },
       }
