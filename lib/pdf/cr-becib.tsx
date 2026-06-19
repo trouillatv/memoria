@@ -22,19 +22,29 @@ const C = {
   planMarche: '#111827', planIntemp: '#0070C0', planProl: '#00B050', planRetard: '#C00000',
 }
 
-const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.text, paddingTop: 78, paddingBottom: 48, paddingHorizontal: 34, lineHeight: 1.35 },
+// A4 = 595.28 × 841.89 pt. Largeur de contenu contrainte explicitement
+// (left + width), car @react-pdf gère mal « left + right » simultanés → c'était
+// la cause du débordement à droite (en-tête/titre/ACTION/signature tronqués +
+// bande parasite).
+const PAGE_W = 595.28
+const MARGIN = 34
+const CONTENT_W = PAGE_W - MARGIN * 2 // 527.28
 
-  // En-tête répété (fixed)
-  header: { position: 'absolute', top: 18, left: 34, right: 34 },
+const s = StyleSheet.create({
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: C.text, paddingTop: 80, paddingBottom: 46, paddingLeft: MARGIN, paddingRight: MARGIN, lineHeight: 1.35 },
+
+  // En-tête répété (fixed) — largeur explicite, jamais left+right.
+  header: { position: 'absolute', top: 18, left: MARGIN, width: CONTENT_W },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  logo: { width: 78, height: 'auto', objectFit: 'contain' },
+  logo: { width: 72, height: 'auto', objectFit: 'contain' },
   breadcrumb: { fontSize: 7.5, color: C.text, flex: 1, marginHorizontal: 8 },
-  cartouche: { fontSize: 6.5, color: C.greyText, textAlign: 'right', maxWidth: 150 },
+  // Cartouche structuré (2 lignes), largeur bornée → plus de run-on ni de coupe.
+  cartouche: { width: 165 },
+  cartoucheLine: { fontSize: 6.5, color: C.greyText, textAlign: 'right' },
   headRule: { borderBottomWidth: 1.5, borderBottomColor: C.marine, marginTop: 4 },
 
   // Bloc-titre
-  titleBox: { borderWidth: 1.5, borderColor: C.marine, padding: 8, marginBottom: 6 },
+  titleBox: { borderWidth: 1.5, borderColor: C.marine, borderRadius: 4, padding: 8, marginBottom: 6 },
   titleTxt: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
   subTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'center', textDecoration: 'underline', marginBottom: 10 },
 
@@ -42,7 +52,9 @@ const s = StyleSheet.create({
   band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 3, paddingHorizontal: 6, marginTop: 10, marginBottom: 4 },
   band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10, marginRight: 6 },
   band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10, letterSpacing: 0.5, flex: 1 },
-  band1Filet: { width: 18, height: 3, backgroundColor: C.red },
+  // Marqueur de section : ~4 points rouges empilés à l'extrême gauche du bandeau.
+  band1Dots: { width: 4, marginRight: 6, justifyContent: 'center' },
+  band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginBottom: 1.5 },
 
   // Sous-titre interne
   sousTitre: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: C.marine, textDecoration: 'underline', marginTop: 5, marginBottom: 2 },
@@ -50,21 +62,25 @@ const s = StyleSheet.create({
   // Colonnes POINTS | ACTION
   colHead: { flexDirection: 'row', backgroundColor: C.grey, paddingVertical: 2, paddingHorizontal: 4, marginTop: 6 },
   colHeadL: { flex: 1, fontFamily: 'Helvetica-Bold', fontSize: 8 },
-  colHeadR: { width: 70, fontFamily: 'Helvetica-Bold', fontSize: 8, textAlign: 'right' },
+  colHeadR: { width: 64, fontFamily: 'Helvetica-Bold', fontSize: 8, textAlign: 'center', paddingLeft: 4 },
   blocRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: C.border, paddingVertical: 2 },
   blocLeft: { flex: 1, paddingRight: 6 },
-  blocAction: { width: 70, textAlign: 'right', color: C.greyText, fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  blocAction: { width: 64, textAlign: 'center', color: C.greyText, fontSize: 8.5, fontFamily: 'Helvetica-Bold', borderLeftWidth: 0.5, borderLeftColor: C.border, paddingLeft: 4 },
   pointLine: { flexDirection: 'row', marginBottom: 1 },
   chevron: { width: 9, color: C.marine },
   pointTxt: { flex: 1 },
-  statut: { fontFamily: 'Helvetica-Bold', color: C.greyText },
+  statut: { fontFamily: 'Helvetica-Bold', color: C.text },
 
   // Intervenants
   ivGroup: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: C.marine, backgroundColor: '#eef1f8', paddingVertical: 1.5, paddingHorizontal: 4, marginTop: 3 },
   ivRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: C.border, paddingVertical: 1.5, alignItems: 'center' },
   ivName: { flex: 1, fontSize: 8 },
-  ivContact: { width: 130, fontSize: 7, color: C.greyText },
-  ivP: { width: 13, fontSize: 8, textAlign: 'center' },
+  ivContact: { width: 120, fontSize: 7, color: C.greyText },
+  ivP: { width: 14, fontSize: 8, textAlign: 'center', borderLeftWidth: 0.5, borderLeftColor: C.border },
+  ivHeadRow: { flexDirection: 'row', alignItems: 'flex-end', borderBottomWidth: 0.5, borderBottomColor: C.marine, marginTop: 2 },
+  ivHeadSpacer: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
+  ivHeadContact: { width: 120 },
+  ivHeadP: { width: 14, fontSize: 7, fontFamily: 'Helvetica-Bold', textAlign: 'center', color: C.marine, borderLeftWidth: 0.5, borderLeftColor: C.border },
   ivLegend: { fontSize: 6.5, color: C.faint, fontStyle: 'italic', marginBottom: 2 },
 
   // Avancement
@@ -76,15 +92,17 @@ const s = StyleSheet.create({
   planVal: { flex: 1, fontSize: 8, paddingLeft: 6, paddingTop: 2 },
 
   // Encadré prochaine réunion
-  nextBox: { borderWidth: 1.5, borderColor: C.marine, padding: 8, marginTop: 12, alignItems: 'center' },
+  nextBox: { borderWidth: 1.5, borderColor: C.marine, borderRadius: 4, padding: 8, marginTop: 12, alignItems: 'center' },
   nextTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: C.marine, letterSpacing: 0.5 },
   signature: { textAlign: 'right', fontFamily: 'Helvetica-Bold', marginTop: 10 },
 
   nota: { fontSize: 7.5, fontStyle: 'italic', color: C.greyText, marginTop: 2 },
   empty: { fontSize: 8, color: C.faint, fontStyle: 'italic' },
 
-  // Pied de page (fixed)
-  footer: { position: 'absolute', bottom: 16, left: 34, right: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: C.border, paddingTop: 4 },
+  // Cadre de page fin à coins arrondis (fixed, répété) — contenu à l'intérieur.
+  pageFrame: { position: 'absolute', top: 12, left: 22, width: PAGE_W - 44, height: 841.89 - 24, borderWidth: 0.75, borderColor: C.marine, borderRadius: 7 },
+  // Pied de page (fixed) — largeur explicite, jamais left+right.
+  footer: { position: 'absolute', bottom: 16, left: MARGIN, width: CONTENT_W, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 0.5, borderTopColor: C.border, paddingTop: 4 },
   footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1 },
   pagePill: { backgroundColor: C.marine, color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', borderRadius: 9, paddingVertical: 2, paddingHorizontal: 6 },
 })
@@ -131,8 +149,10 @@ function Bloc({ bloc }: { bloc: CrBecibBloc }) {
 function Band1({ num, title }: { num?: string; title: string }) {
   return (
     <View style={s.band1} wrap={false}>
-      <View style={s.band1Filet} />
-      {num ? <Text style={[s.band1Num, { marginLeft: 6 }]}>{num}</Text> : null}
+      <View style={s.band1Dots}>
+        <View style={s.band1Dot} /><View style={s.band1Dot} /><View style={s.band1Dot} /><View style={s.band1Dot} />
+      </View>
+      {num ? <Text style={s.band1Num}>{num}</Text> : null}
       <Text style={s.band1Txt}>{title}</Text>
     </View>
   )
@@ -152,13 +172,19 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
   return (
     <Document title={`CR ${cr.meta.numeroCR} — ${cr.meta.chantier}`}>
       <Page size="A4" style={s.page}>
+        {/* Cadre de page fin arrondi (répété) */}
+        <View style={s.pageFrame} fixed />
+
         {/* En-tête répété */}
         <View style={s.header} fixed>
           <View style={s.headRow}>
             {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
             <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
             <Text style={s.breadcrumb}>{breadcrumb}</Text>
-            <Text style={s.cartouche}>{cartouche}</Text>
+            <View style={s.cartouche}>
+              <Text style={s.cartoucheLine}>N° DNS : {cr.meta.dns || '—'}</Text>
+              <Text style={s.cartoucheLine}>Version {cr.meta.version} · Modif. {cr.meta.modification} · {dateFr}</Text>
+            </View>
           </View>
           <View style={s.headRule} />
         </View>
@@ -175,6 +201,11 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* 1. INTERVENANTS */}
         <Band1 num="1" title="INTERVENANTS" />
         <Text style={s.ivLegend}>(I : Invité · P : Présent · AE : Absent excusé · AN : Absent non excusé · D : diffusion)</Text>
+        <View style={s.ivHeadRow}>
+          <Text style={s.ivHeadSpacer}>Représentant</Text>
+          <Text style={s.ivHeadContact}> </Text>
+          {PRES_COLS.map((c) => <Text key={c} style={s.ivHeadP}>{c}</Text>)}
+        </View>
         {groups.map((g) => {
           const rows = cr.intervenants.filter((i) => i.groupe === g)
           if (rows.length === 0) return null
@@ -256,14 +287,16 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
           </>
         )}
 
-        {/* Prochaine réunion + signature */}
-        <View style={s.nextBox} wrap={false}>
-          <Text style={s.nextTitle}>PROCHAINE RÉUNION</Text>
-          <Text style={{ fontSize: 9, marginTop: 2 }}>
-            {[cr.prochaineReunion.date, cr.prochaineReunion.heure, cr.prochaineReunion.lieu].filter(Boolean).join(' · ') || 'À planifier.'}
-          </Text>
+        {/* Prochaine réunion + signature — groupés (jamais d'orphelin en dernière page) */}
+        <View wrap={false} minPresenceAhead={80}>
+          <View style={s.nextBox}>
+            <Text style={s.nextTitle}>PROCHAINE RÉUNION</Text>
+            <Text style={{ fontSize: 9, marginTop: 2 }}>
+              {[cr.prochaineReunion.date, cr.prochaineReunion.heure, cr.prochaineReunion.lieu].filter(Boolean).join(' · ') || 'À planifier.'}
+            </Text>
+          </View>
+          <Text style={s.signature}>{cr.signature}</Text>
         </View>
-        <Text style={s.signature}>{cr.signature}</Text>
 
         {/* Pied de page répété */}
         <View style={s.footer} fixed>
