@@ -40,8 +40,8 @@ const intervenantSchema = z.object({
   tel: z.string().nullable().catch(null),
   mob: z.string().nullable().catch(null),
   email: z.string().nullable().catch(null),
-  invite: z.boolean().catch(true), // colonne I (convié) — coché par défaut
-  presence: z.enum(PRESENCES).catch('P'), // statut effectif (P / AE / AN), niveau organisme
+  // Statut UNIQUE et mutuellement exclusif (I/P/AE/AN), au niveau organisme.
+  presence: z.enum(PRESENCES).catch('P'),
   diffusion: z.boolean().catch(false), // coche AUSSI la colonne D (CR diffusé), par personne
 })
 

@@ -77,8 +77,10 @@ const s = StyleSheet.create({
   // paddingLeft généreux pour que les points soient NETTEMENT dans le cadre.
   band1: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.marine, paddingVertical: 4.5, paddingLeft: 9, paddingRight: 6 },
   band1Rule: { height: 1.4, backgroundColor: C.red, marginBottom: 4 },
-  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 17, marginRight: 8 },
-  band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10.5, letterSpacing: 0.5, flex: 1 },
+  // lineHeight 1 sur les deux → le centre optique du gros chiffre s'aligne sur
+  // le titre (sinon il descend sous la baseline du titre, plus petit).
+  band1Num: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 15, lineHeight: 1, marginRight: 8 },
+  band1Txt: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 10.5, lineHeight: 1, letterSpacing: 0.5, flex: 1 },
   band1Dots: { width: 4, marginRight: 7, alignItems: 'center', justifyContent: 'center' },
   band1Dot: { width: 3, height: 3, backgroundColor: C.red, marginVertical: 0.75 },
   band1Top: { marginTop: 8 },
@@ -110,19 +112,21 @@ const s = StyleSheet.create({
   ivGroup: { fontFamily: 'Helvetica-Bold', fontSize: 8, color: C.marine, backgroundColor: '#eef1f8' },
   ivHeadBg: { backgroundColor: '#e6e6ee' },
   ivHeadTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine, textAlign: 'center' },
-  ivHeadOrg: { width: 76, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
+  ivHeadOrg: { width: 84, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   ivHeadRep: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.marine },
   // Cellule organisme haute (fusionnée sur les lignes du bloc), centrée vert.
-  ivOrgTall: { width: 76, justifyContent: 'center', paddingVertical: 2, paddingHorizontal: 3, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
-  ivOrgTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold' },
+  // Police réduite + colonne élargie → tient sur 1 ligne (pas de wrap qui
+  // gonflerait la hauteur du bloc et décalerait les X des orgs mono-personne).
+  ivOrgTall: { width: 84, justifyContent: 'center', paddingVertical: 2, paddingHorizontal: 3, borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
+  ivOrgTxt: { fontSize: 6, fontFamily: 'Helvetica-Bold' },
   // Colonne « personnes » (Représentant/Tél/Mob/e-mail), une ligne par personne.
   ivPersonsCol: { flex: 1 },
-  ivPersonRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: C.grid },
+  ivPersonRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderColor: C.grid },
   ivCellR: { borderRightWidth: 0.5, borderColor: C.grid, paddingVertical: 2, paddingHorizontal: 3 },
   ivRep: { flex: 1, fontSize: 8 },
-  ivTel: { width: 42, fontSize: 7 },
-  ivMob: { width: 42, fontSize: 7 },
-  ivMail: { width: 96, fontSize: 5.6, color: '#0563C1' }, // e-mails en bleu (style lien)
+  ivTel: { width: 40, fontSize: 7 },
+  ivMob: { width: 40, fontSize: 7 },
+  ivMail: { width: 90, fontSize: 5.5, color: '#0563C1' }, // e-mails en bleu (style lien)
   ivP: { width: 15, fontSize: 8, textAlign: 'center' },
   // Cellule de présence haute (fusionnée) + texte centré.
   ivPTall: { width: 15, justifyContent: 'center', alignItems: 'center', borderRightWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.grid },
@@ -281,10 +285,9 @@ function IvOrgBlock({ block }: { block: Intervenant[] }) {
           </View>
         ))}
       </View>
-      {PRES_GROUPED.map((c) => {
-        const checked = c === 'I' ? ref.invite : ref.presence === c
-        return <View key={c} style={s.ivPTall}><Text style={s.ivPTxt}>{checked ? 'X' : ''}</Text></View>
-      })}
+      {PRES_GROUPED.map((c) => (
+        <View key={c} style={s.ivPTall}><Text style={s.ivPTxt}>{ref.presence === c ? 'X' : ''}</Text></View>
+      ))}
       <View style={s.ivDCol}>
         {block.map((p, k) => (
           <Text key={k} style={s.ivDCell}>{p.diffusion ? 'X' : ''}</Text>
