@@ -10,6 +10,11 @@
 // Déclenché par Vercel Cron (cf. vercel.json). Auth : Bearer CRON_SECRET
 // (même pattern que backup / refresh-memory-readings).
 //
+// Fréquence : 1×/jour (plan Vercel gratuit/Hobby = max 1 cron quotidien). Le
+// filet RAPIDE reste la status route (auto-fail 4 min dès qu'un client poll) ;
+// ce cron est le backstop pour les AO coincés quand PERSONNE ne poll (onglet
+// fermé, after() tué, DB injoignable au moment de marquer `failed`).
+//
 // Seuil : 10 min — volontairement plus large que la status route (4 min) pour
 // ne JAMAIS basculer un AO encore légitimement en cours d'analyse.
 
