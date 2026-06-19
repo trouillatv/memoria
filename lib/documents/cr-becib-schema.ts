@@ -77,6 +77,9 @@ export const crBecibSchema = z.object({
     dns: z.string().nullable().catch(null),
     version: z.string().catch('1'),
     modification: z.string().catch('A'),
+    // Logo du maître d'ouvrage (data URL base64), affiché centré en p.1.
+    // Optionnel : sans asset fourni, le gabarit montre un emplacement discret.
+    clientLogoDataUrl: z.string().nullable().catch(null),
   }),
   intervenants: z.array(intervenantSchema).catch([]),
   ordreDuJour: z.array(z.string()).catch([]),

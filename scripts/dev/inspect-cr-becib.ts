@@ -89,33 +89,46 @@ function isNavy(fill: string): boolean {
   return Math.abs(r - NAVY.r) < 0.05 && Math.abs(g - NAVY.g) < 0.05 && Math.abs(b - NAVY.b) < 0.05
 }
 
+// A4 page box. Le cadre est à left:22 → right:573.28. Tout rect hors [22, 573.28]
+// en X déborde le liseré (cas du marqueur rouge signalé).
+const PAGE_H = 841.89
+const CONTENT_W = 595.28 - 34 * 2 // 527.28
+
 async function main() {
   const pdf = await renderToBuffer(CrBecibPdf({ cr: CRAVACHE_FIXTURE }))
   console.log(`PDF size: ${pdf.length} bytes`)
+  const raw = Buffer.from(pdf).toString('latin1')
+  const pages = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length
+  console.log(`Pages: ${pages}`)
   const content = inflateStreams(Buffer.from(pdf))
   const rects = parseRects(content)
-  console.log(`Total filled/painted rectangles: ${rects.length}`)
+  console.log(`Total painted rectangles: ${rects.length}`)
 
-  // A4 = 595.28 x 841.89. Flag "tall" rects (likely the navy bar) and navy-colored ones.
   const tall = rects.filter((r) => Math.abs(r.h) > 400)
-  console.log(`\n=== TALL rects (|h| > 400pt) — suspects "bande pleine hauteur" ===`)
+  console.log(`\n=== TALL rects (|h| > 400pt) — runaway/bande pleine hauteur ===`)
+  if (tall.length === 0) console.log('  (aucun — OK)')
   for (const r of tall) {
-    console.log(
-      `  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}${isNavy(r.fill) ? '  <-- NAVY' : ''}`,
-    )
+    console.log(`  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}${isNavy(r.fill) ? '  <-- NAVY' : ''}`)
   }
+
+  // NB : coordonnées en repère LOCAL (pdfkit translate chaque élément via `cm`,
+  // non composé ici) → l'absolu n'est pas fiable ; seul le runaway (hauteur
+  // brute aberrante) est détectable sans CTM. La largeur, elle, est fiable.
+  const tooWide = rects.filter((r) => Math.abs(r.w) > CONTENT_W + 1)
+  console.log(`\n=== rects plus larges que la zone de contenu (${CONTENT_W.toFixed(0)}pt) ===`)
+  if (tooWide.length === 0) console.log('  (aucun — rien ne dépasse la largeur de contenu)')
+  for (const r of tooWide) console.log(`  w=${r.w.toFixed(1)} h=${r.h.toFixed(1)} fill=${r.fill}`)
 
   console.log(`\n=== NAVY-filled rects (marine #1F2A5A) ===`)
   for (const r of rects.filter((r) => isNavy(r.fill))) {
     console.log(`  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}`)
   }
 
-  console.log(`\n=== ALL rects with w>200 OR h>200 (large boxes) ===`)
-  for (const r of rects.filter((r) => Math.abs(r.w) > 200 || Math.abs(r.h) > 200)) {
-    console.log(
-      `  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}`,
-    )
-  }
+  console.log(`\n=== Largest rects (top 8 par surface) ===`)
+  ;[...rects].sort((a, b) => Math.abs(b.w * b.h) - Math.abs(a.w * a.h)).slice(0, 8).forEach((r) => {
+    console.log(`  x=${r.x.toFixed(1)} y=${r.y.toFixed(1)} w=${r.w.toFixed(1)} h=${r.h.toFixed(1)}  fill=${r.fill}`)
+  })
+  void PAGE_H
 }
 
 main().catch((e) => {

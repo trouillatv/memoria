@@ -18,9 +18,10 @@ export const CRAVACHE_FIXTURE: CrBecib = {
     dns: '2025BEC010/CR004',
     version: '1',
     modification: 'A',
+    clientLogoDataUrl: null,
   },
   intervenants: [
-    { groupe: 'MOA', representant: 'Mairie du MONT-DORE — M. KATJAWAN', tel: '43.72.23', mob: '73.53.93', email: 'jocelyn.katjawan@ville-montdore.nc', presence: 'P' },
+    { groupe: 'MOA', representant: 'Mairie du MONT-DORE — M. KATJAWAN', tel: '43.72.23', mob: '73.53.93', email: 'jocelyn.katjawan@ville-montdore.nc', presence: 'AE' },
     { groupe: 'MOE', representant: 'BECIB — Mme DEVALLEZ', tel: '27 85 78', mob: '75.23.28', email: 'e.devallez@becib.nc', presence: 'P' },
     { groupe: 'ENTREPRISE', representant: 'ETV — M. VERDEGEM', tel: '77.90.22', mob: null, email: 'etv@etv.nc', presence: 'P' },
     { groupe: 'ENTREPRISE', representant: 'ETV — M. MERIEL', tel: '76.18.10', mob: null, email: 'Assist.pilote2@etv.nc', presence: 'P' },
