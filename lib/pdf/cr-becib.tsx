@@ -93,7 +93,11 @@ const s = StyleSheet.create({
   band2: { backgroundColor: C.grey, paddingVertical: 2, paddingHorizontal: 6, marginTop: 6, marginBottom: 3, fontSize: 9, fontFamily: 'Helvetica-Bold', color: C.text },
 
   // Sous-titre interne (dans les blocs points).
-  sousTitre: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: C.marine, textDecoration: 'underline', marginTop: 3, marginBottom: 2 },
+  // PAS de marge ici : la cellule gauche du sous-titre et la cellule ACTION (droite)
+  // doivent avoir EXACTEMENT la même boîte, sinon la colonne ACTION se décale (la
+  // marge n'existait que sur la gauche → bordures désalignées). L'espacement vient
+  // de la grille + du padding de cellule (tCell), symétrique des deux côtés.
+  sousTitre: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: C.marine, textDecoration: 'underline' },
 
   // --- Grille de table générique (border top+left sur le conteneur, right+bottom sur les cellules → pas de double trait) ---
   tCont: { borderTopWidth: 0.5, borderLeftWidth: 0.5, borderColor: C.grid, marginTop: 4 },
@@ -175,6 +179,8 @@ const s = StyleSheet.create({
   // Ligne haute du pied : fil d'Ariane (le n° de page se superpose à droite).
   footTopRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 2 },
   footTxt: { fontSize: 6.5, fontStyle: 'italic', color: C.faint, flex: 1 },
+  // Numéro de page : top-level `fixed`, bas-droite, sur la ligne du fil d'Ariane.
+  pageNum: { position: 'absolute', bottom: 36, right: MARGIN, fontSize: 6.5, color: C.faint },
 })
 
 function EmphRuns({ text }: { text: string }) {
@@ -505,6 +511,11 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* Numéro de page : top-level `fixed` (le SEUL qui injecte pageNumber par
             page de façon fiable), positionné sur la ligne du fil d'Ariane du
             pied (bottom 36), à droite, dans le cadre → visible. */}
+        <Text
+          fixed
+          style={s.pageNum}
+          render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+        />
       </Page>
     </Document>
   )
