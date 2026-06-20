@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
+import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
@@ -25,7 +26,8 @@ import { PvConfirmCard } from './PvConfirmCard'
 import { PvItemRow } from './PvItemRow'
 import { PvPhotoGrid, type PhotoCard } from './PvPhotoGrid'
 import { PvHumanPoints } from './PvHumanPoints'
-import { PvParticipantRow } from './PvParticipantRow'
+import { PvActionsBlock, type ActionRow } from './PvActionsBlock'
+import { PvParticipantRow, AddParticipant } from './PvParticipantRow'
 import { PvPanel } from '../../PvPanel'
 
 export const dynamic = 'force-dynamic'
@@ -52,6 +54,11 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
     listReportFinalVersions(id),
   ])
   if (!report || !pv) notFound()
+
+  // ACTIONS éditables (Ajouter / Modifier / Supprimer) — l'entité la plus fréquente.
+  const actionRows: ActionRow[] = (await listSiteActionsByReport(id))
+    .filter((a) => a.status !== 'cancelled')
+    .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '' }))
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
@@ -227,6 +234,11 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         </details>
       )}
 
+      {/* Actions — Ajouter / Modifier / Supprimer (l'entité la plus fréquente). */}
+      <div className="border-t pt-5">
+        <PvActionsBlock reportId={id} actions={actionRows} />
+      </div>
+
       {/* Remarques humaines ajoutées (texte libre par section) — injectées dans le CR. */}
       <div className="border-t pt-5">
         <PvHumanPoints reportId={id} points={humanPoints} />
@@ -262,6 +274,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
                     />
                   ))}
                 </ul>
+                <AddParticipant reportId={id} />
               </div>
             )
           }
@@ -276,13 +289,16 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
               </div>
             )
           }
+          // Actions retirées d'ici (gérées dans le bloc Actions éditable au-dessus).
+          const display = section === 'points_examines' ? list.filter((it) => it.type !== 'action') : list
+          if (display.length === 0) return null
           return (
             <div key={section} className="space-y-1.5">
               <h3 className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Icon className="h-3.5 w-3.5" /> {meta.label} ({list.length})
+                <Icon className="h-3.5 w-3.5" /> {meta.label} ({display.length})
               </h3>
               <ul className="space-y-1">
-                {list.map((it) => (
+                {display.map((it) => (
                   <PvItemRow key={it.id} reportId={id} item={it} excludable={excludable} />
                 ))}
               </ul>

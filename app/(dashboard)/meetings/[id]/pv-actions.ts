@@ -5,7 +5,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listSiteActionsByReport } from '@/lib/db/site-actions'
+import { listSiteActionsByReport, createSiteAction, updateSiteAction } from '@/lib/db/site-actions'
 import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
 import { resolveReportTemplate } from '@/lib/documents/templates/cr-chantier'
 import { buildPvValidation } from '@/lib/documents/pv-validation'
@@ -210,6 +210,117 @@ export async function setPhotoCaptionAction(
     const { error } = source === 'intervention'
       ? await sb.from('intervention_photos').update({ caption: v }).eq('id', photoId)
       : await sb.from('site_actions').update({ completed_comment: v }).eq('id', photoId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────────── ACTIONS (Ajouter / Modifier / Supprimer) ─────────
+// L'entité la plus fréquente d'un CR (Vincent : « dans 80 % des cas, Émeline ajoute »).
+// Écrit la SOURCE (site_actions) → ressert partout (briefing, recherche, actions).
+
+export async function addActionAction(
+  reportId: string,
+  input: { title: string; assignedTo?: string; dueDate?: string; corpsEtat?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const title = input.title.trim()
+  if (!title) return { ok: false, error: 'Intitulé vide.' }
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site — action impossible.' }
+  try {
+    await createSiteAction({
+      site_id: report.site_id,
+      report_id: reportId,
+      title,
+      assigned_to: input.assignedTo?.trim() || null,
+      due_date: input.dueDate || null,
+      due_date_status: input.dueDate ? 'explicit' : null,
+      corps_etat: input.corpsEtat?.trim() || null,
+      created_by: user.id,
+      created_from: 'report',
+    })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function editActionAction(
+  reportId: string,
+  actionId: string,
+  input: { title: string; assignedTo?: string; dueDate?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const title = input.title.trim()
+  if (!title) return { ok: false, error: 'Intitulé vide.' }
+  try {
+    await updateSiteAction(actionId, {
+      title,
+      assigned_to: input.assignedTo?.trim() || null,
+      due_date: input.dueDate || null,
+      due_date_status: input.dueDate ? null : null, // date saisie = confirmée (null = figée)
+    })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Supprimer = annuler (soft : status 'cancelled'). L'action sort du CR et des piliers. */
+export async function deleteActionAction(reportId: string, actionId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await updateSiteAction(actionId, { status: 'cancelled' })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────────── PARTICIPANTS (Ajouter / Supprimer) ────────────────
+
+export async function addParticipantAction(
+  reportId: string,
+  name: string,
+  role: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const n = name.trim()
+  if (!n) return { ok: false, error: 'Nom vide.' }
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Réunion introuvable' }
+    const participants = [...(report.participants ?? []), { name: n, role: role.trim() || null }]
+    const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function removeParticipantAction(reportId: string, index: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Réunion introuvable' }
+    const participants = [...(report.participants ?? [])]
+    if (index < 0 || index >= participants.length) return { ok: false, error: 'Participant introuvable.' }
+    participants.splice(index, 1)
+    const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
