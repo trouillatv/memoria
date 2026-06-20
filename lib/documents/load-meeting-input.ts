@@ -12,7 +12,7 @@ import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getContract } from '@/lib/db/contracts'
 import { buildRemarquesCrPrecedent } from '@/lib/db/meeting-followup'
 import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
-import { listSitePhotos } from '@/lib/db/site-photos'
+import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
 import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
 import { getPhotoDataUrlsForCr } from '@/lib/storage/intervention-photos'
@@ -59,8 +59,8 @@ export async function loadMeetingContext(
   // PRÉVISIONS (volet interventions) : anomalies non résolues + interventions à venir.
   const previsions = report.site_id ? await buildPrevisionsFromInterventions(report.site_id) : []
 
-  // PHOTOS : structure mémoire réutilisable (intervention + clôture d'action).
-  const photos = report.site_id ? await listSitePhotos(report.site_id) : []
+  // PHOTOS : scopées à CE CR (fenêtre depuis la réunion précédente), pas tout le site.
+  const photos = await listMeetingScopedPhotos({ id: reportId, site_id: report.site_id, created_at: report.created_at })
 
   // POINTS EXAMINÉS typés (couche 3) : actions de la réunion + risques + anomalies.
   const points = await buildPointsExamines({ id: reportId, site_id: report.site_id, risks: report.risks })

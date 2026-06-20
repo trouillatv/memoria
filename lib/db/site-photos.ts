@@ -25,6 +25,38 @@ export interface SitePhoto {
   source: 'intervention' | 'action'
 }
 
+/**
+ * Photos PERTINENTES POUR CE CR (pas tout le site). Un CR couvre une PÉRIODE :
+ * depuis la réunion précédente jusqu'à celle-ci. On filtre par `takenAt` dans cette
+ * fenêtre (sinon, à 250 photos de chantier, le CR devient ingérable — Vincent
+ * 2026-06-20). 1re réunion = pas de borne basse. Photos non datées : exclues d'une
+ * vue fenêtrée (on ne peut pas les situer), sauf 1re réunion.
+ */
+export async function listMeetingScopedPhotos(report: {
+  id: string
+  site_id: string | null
+  created_at: string
+}): Promise<SitePhoto[]> {
+  if (!report.site_id) return []
+  const all = await listSitePhotos(report.site_id)
+  const sb = createAdminClient()
+  const { data: prev } = await sb
+    .from('site_reports')
+    .select('created_at')
+    .eq('site_id', report.site_id)
+    .lt('created_at', report.created_at)
+    .neq('id', report.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const since = (prev as { created_at: string } | null)?.created_at ?? null
+  const until = report.created_at
+  return all.filter((p) => {
+    if (!p.takenAt) return since === null // non datée : gardée seulement à la 1re réunion
+    return p.takenAt <= until && (since === null || p.takenAt > since)
+  })
+}
+
 /** Toutes les photos rattachées à un site, triées de la plus récente à la plus ancienne. */
 export async function listSitePhotos(siteId: string): Promise<SitePhoto[]> {
   const sb = createAdminClient()
