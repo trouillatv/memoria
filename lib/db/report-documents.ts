@@ -11,7 +11,7 @@ import { getOrgId } from '@/lib/db/users'
 import type { DbReportDocument, ReportDocumentSection } from '@/types/db'
 
 const COLS =
-  'id, organization_id, report_id, site_id, template_key, sections, status, document_id, pdf_path, provider, model, prompt_version, created_by, created_at, updated_at'
+  'id, organization_id, report_id, site_id, template_key, sections, status, document_id, pdf_path, final_document_id, final_path, finalized_at, finalized_by, provider, model, prompt_version, created_by, created_at, updated_at'
 
 export async function createReportDocument(input: {
   report_id: string
@@ -94,6 +94,46 @@ export async function validateReportDocument(
   if (opts.document_id !== undefined) update.document_id = opts.document_id
   if (opts.pdf_path !== undefined) update.pdf_path = opts.pdf_path
   const { error } = await supabase.from('report_documents').update(update).eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * Pose la VERSION FINALE DIFFUSÉE (téléversée par l'humain) sur la ligne de suivi
+ * de la réunion (get-or-create). N'écrase PAS la mémoire ni les sections : on ne
+ * fait que tracer le document final et sa date. Vérité juridique (mig 126).
+ */
+export async function setReportDocumentFinal(input: {
+  report_id: string
+  site_id: string | null
+  final_document_id: string | null
+  final_path: string
+  finalized_by: string | null
+}): Promise<void> {
+  const supabase = createAdminClient()
+  const existing = await getLatestReportDocument(input.report_id)
+  let rowId = existing?.id
+  if (!rowId) {
+    rowId = await createReportDocument({
+      report_id: input.report_id,
+      site_id: input.site_id,
+      template_key: 'cr_chantier_v1',
+      sections: [],
+      provider: null,
+      model: null,
+      prompt_version: null,
+      created_by: input.finalized_by,
+    })
+  }
+  const { error } = await supabase
+    .from('report_documents')
+    .update({
+      final_document_id: input.final_document_id,
+      final_path: input.final_path,
+      finalized_at: new Date().toISOString(),
+      finalized_by: input.finalized_by,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', rowId)
   if (error) throw error
 }
 

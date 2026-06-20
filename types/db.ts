@@ -523,6 +523,11 @@ export interface DbReportDocument {
   /** Renseigné au « Valider » : PV figé poussé dans /documents. */
   document_id: string | null
   pdf_path: string | null
+  /** Version finale DIFFUSÉE téléversée par l'humain (vérité juridique ; mig 126). */
+  final_document_id: string | null
+  final_path: string | null
+  finalized_at: string | null
+  finalized_by: string | null
   provider: string | null
   model: string | null
   prompt_version: string | null
