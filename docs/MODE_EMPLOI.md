@@ -1130,6 +1130,28 @@ Le **compte-rendu** (ch.26) est le *support brut* : voix, photos, notes. La **r�
 > [!TIP] L'invariant
 > Une réunion peut englober plusieurs sites, mais **chaque décision validée reste rattachée à son site**. La réunion est l'origine ; la mémoire vit sur le lieu.
 
+### Points à confirmer avant le PV
+
+Depuis une réunion, le lien **« Points à confirmer avant le PV »** ouvre une vérification avant de produire le compte-rendu. MemorIA ne vous pose **pas** vingt questions : il a compris l'essentiel et ne remonte **que ce qui mérite votre confirmation**, classé par gravité :
+
+- 🔴 **Bloquant** — sans réponse, le PV n'est pas finalisable. Deux familles : **métier** (une action sans responsable — jamais contournable) et **documentaire** (N° DNS, date de prochaine réunion — votre entreprise décide s'ils sont obligatoires).
+- 🟠 **Important** — le PV peut sortir, mais avec un avertissement (échéance, organisme d'un participant, photos sans légende).
+- 🟢 **Suggestion** — confort, aucune obligation.
+
+Sur chaque point, **quatre gestes** :
+
+| Geste | Effet |
+|---|---|
+| **Compléter** | Vous saisissez l'info (ex. le responsable) → MemorIA **corrige la mémoire du chantier**, pas seulement le PV. Le point disparaît partout (briefing, recherche, CR suivants). |
+| **Reporter** | « Je ne sais pas encore. » Le point reste, marqué *Reporté* — il continue de bloquer tant qu'il n'est pas résolu. |
+| **Ignorer** | « On s'en fiche pour ce chantier. » Le point part dans *Traités* et ne bloque plus. |
+| **Faux positif** | « MemorIA s'est trompé » (ex. *FSH* est une abréviation voulue). Le point part dans *Traités*. |
+
+Toutes ces décisions sont **tracées** (qui, quand). En bas, le bloc **« Contenu qui ira dans le PV »** montre, par section, ce que la mémoire a déjà produit (participants, remarques sur le CR précédent, points examinés, prévisions, photos).
+
+> [!IMPORTANT] Compléter corrige la mémoire, pas le document
+> C'est la règle d'or : quand vous complétez un point, vous **réparez le chantier dans MemorIA**, et le PV n'en est que le reflet. On n'écrit jamais une valeur dans le PV sans qu'elle existe dans la mémoire — sinon on recréerait deux vérités.
+
 ---
 
 ## 28. Les Actions — ce qui reste à faire
