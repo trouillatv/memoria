@@ -7,14 +7,15 @@ import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
-import { resolveReportTemplate, getReportTemplate, companyLabelForOrg, becibReference } from '@/lib/documents/templates/cr-chantier'
+import { resolveReportTemplate } from '@/lib/documents/templates/cr-chantier'
 import { buildPvValidation } from '@/lib/documents/pv-validation'
 import { resolvePvSignal } from '@/lib/documents/pv-resolvers'
+import { loadMeetingInput } from '@/lib/documents/load-meeting-input'
+import { mapMeetingToCrBecib } from '@/lib/documents/meeting-to-cr-becib'
 import { upsertPvSignalDecision, clearPvSignalDecision, type PvSignalStatut } from '@/lib/db/pv-signal-decisions'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
-  getReportDocument,
   updateReportDocumentSections,
   validateReportDocument,
 } from '@/lib/db/report-documents'
@@ -25,7 +26,7 @@ import {
   addDocumentLink,
 } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { CrChantierPdf } from '@/lib/pdf/cr-chantier'
+import { CrBecibPdf } from '@/lib/pdf/cr-becib'
 import type { ReportDocumentSection } from '@/types/db'
 
 const CR_COLLECTION_NAME = 'Comptes-rendus de chantier'
@@ -190,56 +191,28 @@ async function getOrCreateCrCollection(): Promise<string> {
 }
 
 /**
- * Fige le PV : rend le PDF, l'archive dans /documents (mémoire interrogeable,
- * cf. S5) et relie le document au site. Doctrine : le PV validé devient un
- * document de mémoire, plus un brouillon.
+ * Fige le PV = LA TRAME UNIQUE (« Template Chantier v1 », identique à /pv), rendue
+ * depuis les DONNÉES validées de la réunion (déterministe). Archive le PDF dans
+ * /documents (mémoire interrogeable) et le relie au site. UN SEUL MOTEUR : plus de
+ * document parallèle allégé (decision Vincent 2026-06-20). On ne réécrit pas le PV
+ * à la main — on corrige la mémoire, le PV la reflète.
  */
-export async function validatePvAction(
-  reportId: string,
-  id: string,
-): Promise<{ ok: boolean; error?: string }> {
+export async function validatePvAction(reportId: string): Promise<{ ok: boolean; error?: string }> {
   const user = await requireManagerOrAdmin()
-  const doc = await getReportDocument(id)
-  if (!doc) return { ok: false, error: 'PV introuvable' }
   const report = await getSiteReport(reportId)
   if (!report) return { ok: false, error: 'Réunion introuvable' }
+  const input = await loadMeetingInput(reportId)
+  if (!input) return { ok: false, error: 'Réunion introuvable' }
 
   const identity = report.site_id ? await getSiteIdentity(report.site_id) : null
   const title = report.title || `Compte-rendu — ${identity?.name ?? 'chantier'}`
-  const tpl = getReportTemplate(doc.template_key)
-  // Identité du bandeau = nom réel de l'org (ou « BECIB » pour les orgs branchées).
-  const orgAdmin = createAdminClient()
-  const { data: orgRow } = doc.organization_id
-    ? await orgAdmin.from('organizations').select('name, slug').eq('id', doc.organization_id).maybeSingle()
-    : { data: null }
-  const companyLabel = companyLabelForOrg(orgRow as { slug?: string | null; name?: string | null } | null)
-
-  let reference: string | null = null
-  if (tpl?.layout === 'becib' && report.site_id) {
-    const { count } = await orgAdmin
-      .from('site_reports')
-      .select('id', { count: 'exact', head: true })
-      .eq('site_id', report.site_id)
-      .lte('created_at', report.created_at)
-    reference = becibReference({ dateIso: report.created_at, meetingSeq: count ?? 1, siteId: report.site_id })
-  }
 
   try {
-    const pdfBuffer = await renderToBuffer(
-      CrChantierPdf({
-        title,
-        siteName: identity?.name ?? null,
-        clientName: identity?.clientName ?? null,
-        dateLabel: meetingDateLabel(report.created_at),
-        sections: doc.sections,
-        layout: tpl?.layout ?? 'neutral',
-        companyLabel,
-        reference,
-      }),
-    )
+    // Même trame que /pv : gabarit haute-fidélité, identité portée par cr.meta.moe.
+    const pdfBuffer = await renderToBuffer(CrBecibPdf({ cr: mapMeetingToCrBecib(input) }))
 
     const supabase = createAdminClient()
-    const storagePath = `pv/${id}/cr-chantier-${Date.now()}.pdf`
+    const storagePath = `pv/${reportId}/cr-chantier-${Date.now()}.pdf`
     const { error: upErr } = await supabase.storage
       .from('documents')
       .upload(storagePath, new Uint8Array(pdfBuffer), { contentType: 'application/pdf', upsert: false })
@@ -266,7 +239,18 @@ export async function validatePvAction(
       }
     }
 
-    await validateReportDocument(id, { document_id: documentId, pdf_path: storagePath })
+    // Trace de validation (1 PV/réunion ; déterministe → pas de sections LLM).
+    const rowId = await createReportDocument({
+      report_id: reportId,
+      site_id: report.site_id,
+      template_key: 'cr_chantier_v1',
+      sections: [],
+      provider: null,
+      model: null,
+      prompt_version: null,
+      created_by: user.id,
+    })
+    await validateReportDocument(rowId, { document_id: documentId, pdf_path: storagePath })
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
   } catch (e) {
