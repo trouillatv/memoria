@@ -198,6 +198,15 @@ export function PvPanel({ reportId, initial }: PvPanelProps) {
             >
               <Download className="h-4 w-4" /> {isValidated ? 'Télécharger le PDF' : 'Aperçu PDF'}
             </a>
+            {/* Sortie secondaire : la même trame, en DOCX éditable. */}
+            <a
+              href={`/meetings/${reportId}/pv?format=docx`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/40"
+            >
+              <Download className="h-4 w-4" /> DOCX éditable
+            </a>
           </div>
         </div>
       )}

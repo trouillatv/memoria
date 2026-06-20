@@ -36,6 +36,9 @@ export type MeetingInput = {
   // riche réutilisable vit dans lib/db/site-photos.ts.
   photos?: { url: string; legende: string }[]
   numeroCR?: string | null
+  // Libellé MOE du bandeau = identité de l'ORG (« BECIB » seulement pour l'org BECIB,
+  // sinon son propre nom). Trame partagée, identité propre. Défaut 'BECIB' (fixtures).
+  moe?: string | null
   prochaineReunion?: { date?: string | null; heure?: string | null; lieu?: string | null }
 }
 
@@ -225,7 +228,7 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       semaine: isoWeek(input.report.createdAt),
       projetTitre: input.contract.name ?? input.site.name ?? TODO,
       moa: input.contract.clientName ?? TODO,
-      moe: 'BECIB',
+      moe: input.moe ?? 'BECIB', // identité de l'org (BECIB réservé à l'org BECIB)
       chantier: input.site.name ?? TODO,
       dns: input.site.dns ?? null, // null → le template affiche « à compléter »
       version: '1',

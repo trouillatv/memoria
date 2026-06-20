@@ -14,6 +14,7 @@ import { buildRemarquesCrPrecedent } from '@/lib/db/meeting-followup'
 import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
 import { listSitePhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
+import { companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
 import type { RemarquesCrPrecedent } from '@/lib/db/meeting-followup'
@@ -66,6 +67,19 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
     numeroCR = count ? String(count) : null
   }
 
+  // IDENTITÉ MOE = l'organisation du chantier (« BECIB » seulement pour l'org BECIB,
+  // sinon son propre nom). Trame BECIB partagée, identité propre à chaque org.
+  let moe: string | null = null
+  if (report.site_id) {
+    const sb = createAdminClient()
+    const { data: site } = await sb.from('sites').select('organization_id').eq('id', report.site_id).maybeSingle()
+    const orgId = (site as { organization_id: string | null } | null)?.organization_id
+    if (orgId) {
+      const { data: org } = await sb.from('organizations').select('name, slug').eq('id', orgId).maybeSingle()
+      moe = companyLabelForOrg(org as { slug?: string | null; name?: string | null } | null)
+    }
+  }
+
   // Actions VALIDÉES (pour l'avancement Fait/Prévisions ; le rendu « actions à
   // suivre » passe désormais par les points examinés typés).
   const liveActions = actions.filter((a) => a.status !== 'cancelled')
@@ -87,6 +101,7 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
     },
     actions: liveActions.map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status })),
     contacts: [], // V1 : pas de jointure contacts → tel/mob/email = trous
+    moe, // identité de l'org (BECIB réservé à l'org BECIB)
     pointsExaminesTyped: points, // couche 3 : actions de la réunion + risques + anomalies
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)

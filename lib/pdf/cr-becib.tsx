@@ -319,12 +319,16 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {/* Cadre de page arrondi (répété, sans fond → ne se remplit pas) */}
         <View style={s.pageFrame} fixed />
 
-        {/* En-tête répété : LOGO seul (le fil d'Ariane et le cartouche sont
-            désormais uniquement en pied, comme l'original). */}
+        {/* En-tête répété : IDENTITÉ de l'org. Logo BECIB réservé à l'org BECIB ;
+            les autres orgs portent leur nom en clair (trame partagée, identité propre). */}
         <View style={s.header} fixed>
           <View style={s.headRow}>
-            {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
-            <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
+            {cr.meta.moe === 'BECIB' ? (
+              // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+              <Image src={BECIB_LOGO_DATA_URL} style={s.logo} />
+            ) : (
+              <Text style={{ fontSize: 13, color: '#1F2A5A' }}>{cr.meta.moe}</Text>
+            )}
           </View>
           <View style={s.headRule} />
         </View>
