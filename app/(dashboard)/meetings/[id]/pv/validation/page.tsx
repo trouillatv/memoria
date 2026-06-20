@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
   ArrowLeft, ShieldAlert, FileWarning, AlertTriangle, Lightbulb, CheckCircle2,
-  Users, History, ClipboardList, CalendarClock, ImageIcon,
+  Users, History, ClipboardList, CalendarClock, ImageIcon, FileText,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
@@ -86,6 +86,9 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   }))
 
   const { readiness, gaps } = pv
+  // Cache-buster de l'aperçu : nouveau à chaque rendu → après un router.refresh (suite
+  // à une modif), l'iframe recharge le vrai PDF, côte-à-côte. « Aperçu vivant ».
+  const previewTs = Date.now()
   const dateLabel = new Date(report.created_at).toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
@@ -130,7 +133,9 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   const minutes = Math.max(1, Math.ceil(actifs.length * 0.5))
 
   return (
-    <div className="space-y-6 w-full max-w-3xl">
+    <div className="w-full max-w-6xl">
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-6">
+        <div className="space-y-6 min-w-0">
       <Link href={`/meetings/${id}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Réunion
       </Link>
@@ -311,6 +316,19 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
       {/* HUB d'actions (Finding A) : on corrige ci-dessus, on prépare/diffuse ici —
           tout au même endroit, plus de va-et-vient vers la réunion. */}
       <PvPanel reportId={id} initial={pvDoc} finalVersions={finalVersions} hideValidationLink />
+        </div>
+
+        {/* Aperçu vivant du CR (côte-à-côte) : le vrai PDF, rechargé à chaque modif. */}
+        <aside className="mt-6 lg:mt-0 lg:sticky lg:top-4">
+          <h2 className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" /> Aperçu du CR
+          </h2>
+          <iframe title="Aperçu du CR" src={`/meetings/${id}/pv?t=${previewTs}`} className="h-[80vh] w-full rounded-lg border bg-white" />
+          <a href={`/meetings/${id}/pv`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-muted-foreground hover:text-foreground">
+            Ouvrir en grand →
+          </a>
+        </aside>
+      </div>
     </div>
   )
 }
