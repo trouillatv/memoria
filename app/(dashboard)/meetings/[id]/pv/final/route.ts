@@ -1,15 +1,15 @@
-// /meetings/[id]/pv/final — VERSION FINALE DIFFUSÉE du CR (Niveau 1, Vincent 2026-06-20).
-//   POST  → téléverse le DOCX/PDF final corrigé à la main → stocke + lie au site +
-//           trace la version finale sur la réunion. N'écrase PAS la mémoire.
-//   GET   → télécharge la dernière version finale diffusée.
-// La version finale = vérité juridique (ce qui a réellement été envoyé). La
-// comparaison des écarts + l'apprentissage = Niveau 2/3 (plus tard).
+// /meetings/[id]/pv/final — VERSIONS de la version finale diffusée (Vincent 2026-06-20).
+//   POST            → téléverse le DOCX/PDF final corrigé → EMPILE une version (v1, v2…)
+//                     + note de diffusion optionnelle. N'écrase pas les versions ni la mémoire.
+//   GET             → télécharge la DERNIÈRE version diffusée.
+//   GET ?v=N        → télécharge la version N (preuve historique).
+// Un document diffusé = vérité juridique : on conserve TOUT l'historique.
 import { NextResponse } from 'next/server'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createDocument, addDocumentLink, listDocumentCollections, createDocumentCollection } from '@/lib/db/documents'
-import { getLatestReportDocument, setReportDocumentFinal } from '@/lib/db/report-documents'
+import { addReportFinalVersion, listReportFinalVersions } from '@/lib/db/report-final-versions'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -34,18 +34,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const form = await req.formData()
   const file = form.get('file')
+  const note = (form.get('note') as string | null)?.trim() || null
   if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: 'Fichier manquant.' }, { status: 400 })
   const lower = (file.name || '').toLowerCase()
-  const ext = lower.endsWith('.pdf') ? 'pdf' : lower.endsWith('.docx') ? 'docx' : null
-  if (!ext) return NextResponse.json({ error: 'Format attendu : PDF ou DOCX.' }, { status: 400 })
+  const format: 'pdf' | 'docx' | null = lower.endsWith('.pdf') ? 'pdf' : lower.endsWith('.docx') ? 'docx' : null
+  if (!format) return NextResponse.json({ error: 'Format attendu : PDF ou DOCX.' }, { status: 400 })
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer())
     const supabase = createAdminClient()
-    const storagePath = `pv/${id}/final-${Date.now()}.${ext}`
+    const storagePath = `pv/${id}/final-${Date.now()}.${format}`
     const { error: upErr } = await supabase.storage
       .from('documents')
-      .upload(storagePath, bytes, { contentType: ext === 'pdf' ? 'application/pdf' : DOCX_MIME, upsert: false })
+      .upload(storagePath, bytes, { contentType: format === 'pdf' ? 'application/pdf' : DOCX_MIME, upsert: false })
     if (upErr) return NextResponse.json({ error: `Upload échoué : ${upErr.message}` }, { status: 500 })
 
     const collectionId = await getOrCreateCrCollection()
@@ -54,7 +55,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       collection_id: collectionId,
       document_type: 'autre',
       storage_path: storagePath,
-      filename: `${title} (version finale).${ext}`.replace(/[/\\]/g, '-'),
+      filename: `${title} (version finale).${format}`.replace(/[/\\]/g, '-'),
       visibility_level: 'manager',
       size_bytes: bytes.length,
       analysis_status: 'pending', // indexé async → la version finale devient cherchable
@@ -63,8 +64,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (report.site_id) {
       try { await addDocumentLink(documentId, 'site', report.site_id) } catch (e) { console.error('[pv/final] link failed:', e) }
     }
-    await setReportDocumentFinal({ report_id: id, site_id: report.site_id, final_document_id: documentId, final_path: storagePath, finalized_by: user.id })
-    return NextResponse.json({ ok: true })
+    const { versionNo } = await addReportFinalVersion({
+      reportId: id, siteId: report.site_id, documentId, path: storagePath, format, note, finalizedBy: user.id,
+    })
+    return NextResponse.json({ ok: true, versionNo })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'unknown'
     console.error('[pv/final] POST failed:', e)
@@ -79,19 +82,22 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     if (user.role !== 'admin' && user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   const { id } = await ctx.params
-  const doc = await getLatestReportDocument(id)
-  if (!doc?.final_path) return NextResponse.json({ error: 'Aucune version finale diffusée.' }, { status: 404 })
+  const versions = await listReportFinalVersions(id)
+  if (versions.length === 0) return NextResponse.json({ error: 'Aucune version finale diffusée.' }, { status: 404 })
+
+  const vParam = new URL(req.url).searchParams.get('v')
+  const target = vParam ? versions.find((v) => String(v.versionNo) === vParam) : versions[versions.length - 1]
+  if (!target) return NextResponse.json({ error: 'Version introuvable.' }, { status: 404 })
 
   const supabase = createAdminClient()
-  const { data, error } = await supabase.storage.from('documents').download(doc.final_path)
+  const { data, error } = await supabase.storage.from('documents').download(target.path)
   if (error || !data) return NextResponse.json({ error: 'Fichier introuvable.' }, { status: 404 })
   const buf = Buffer.from(await data.arrayBuffer())
-  const ext = doc.final_path.endsWith('.pdf') ? 'pdf' : 'docx'
   return new NextResponse(new Uint8Array(buf), {
     status: 200,
     headers: {
-      'Content-Type': ext === 'pdf' ? 'application/pdf' : DOCX_MIME,
-      'Content-Disposition': `inline; filename="CR-final-${id.slice(0, 8)}.${ext}"`,
+      'Content-Type': target.format === 'pdf' ? 'application/pdf' : DOCX_MIME,
+      'Content-Disposition': `inline; filename="CR-final-${id.slice(0, 8)}-v${target.versionNo}.${target.format}"`,
       'Cache-Control': 'no-store',
     },
   })

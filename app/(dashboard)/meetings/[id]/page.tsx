@@ -8,6 +8,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
+import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { getSiteEngagements } from '@/lib/db/site-engagements'
 import { PvPanel } from './PvPanel'
@@ -49,12 +50,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const report = await getSiteReport(id)
   if (!report) notFound()
 
-  const [proposals, actions, pvDoc, followup, engagements] = await Promise.all([
+  const [proposals, actions, pvDoc, followup, engagements, finalVersions] = await Promise.all([
     listProposals(id),
     listSiteActionsByReport(id),
     getLatestReportDocument(id),
     getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at }),
     report.site_id ? getSiteEngagements(report.site_id) : Promise.resolve(null),
+    listReportFinalVersions(id),
   ])
 
   const supabase = createAdminClient()
@@ -159,7 +161,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       {/* key = id+statut du PV serveur : force le remount quand le brouillon est
           créé (null→doc) ou validé (draft→validated). Sinon le useState interne de
           PvPanel ignore le nouveau prop après router.refresh() → « rien ne s'affiche ». */}
-      <PvPanel key={pvDoc ? `${pvDoc.id}:${pvDoc.status}` : 'none'} reportId={id} initial={pvDoc} />
+      <PvPanel key={pvDoc ? `${pvDoc.id}:${pvDoc.status}:${finalVersions.length}` : `none:${finalVersions.length}`} reportId={id} initial={pvDoc} finalVersions={finalVersions} />
 
       {/* Participants détectés */}
       {report.participants && report.participants.length > 0 && (
