@@ -15,6 +15,7 @@ import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
 import { listSitePhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
 import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
+import { getPhotoDataUrlsForCr } from '@/lib/storage/intervention-photos'
 import { companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
@@ -39,8 +40,13 @@ export interface MeetingSources {
 }
 export interface MeetingContext { input: MeetingInput; sources: MeetingSources }
 
-/** Charge une réunion : projection MeetingInput + sources typées riches (un seul accès DB). */
-export async function loadMeetingContext(reportId: string): Promise<MeetingContext | null> {
+/** Charge une réunion : projection MeetingInput + sources typées riches (un seul accès DB).
+ *  `embedPhotos` (chemin de RENDU CR seulement) : embarque les images en base64 ;
+ *  l'écran de validation NE le demande PAS (sinon coût inutile à chaque ouverture). */
+export async function loadMeetingContext(
+  reportId: string,
+  opts?: { embedPhotos?: boolean },
+): Promise<MeetingContext | null> {
   const report = await getSiteReport(reportId)
   if (!report) return null
   const identity = report.site_id ? await getSiteIdentity(report.site_id) : null
@@ -91,6 +97,19 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
   const pointsForCr = points.filter((p) => !excluded.has(p.source))
   const previsionsForCr = previsions.filter((p) => !excluded.has(p.source))
 
+  // PHOTOS du CR : embarquées en base64 UNIQUEMENT au rendu (embedPhotos), hors
+  // photos exclues. @react-pdf charge un data URL de façon fiable (≠ URL signée → 500).
+  let crPhotos: { url: string; legende: string }[] = []
+  if (opts?.embedPhotos) {
+    const visible = photos.filter((p) => !excluded.has(p.id))
+    if (visible.length) {
+      const dataUrls = await getPhotoDataUrlsForCr(visible.map((p) => p.storagePath))
+      crPhotos = visible
+        .map((p) => ({ url: dataUrls.get(p.storagePath) ?? '', legende: p.legende }))
+        .filter((p) => p.url)
+    }
+  }
+
   // Actions VALIDÉES (pour l'avancement Fait/Prévisions ; le rendu « actions à
   // suivre » passe désormais par les points examinés typés).
   const liveActions = actions.filter((a) => a.status !== 'cancelled')
@@ -117,18 +136,17 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
     previsionsInterventions: previsionsForCr.map((p) => p.texte), // anomalies + interventions (hors exclus)
-    // Photos du CR : MASQUÉES dans le PDF pour l'instant (@react-pdf ne charge pas
-    // les URLs signées au rendu → 500). Réactivation = embarquer en base64 sur le
-    // chemin de rendu uniquement (pas sur l'écran de validation). Les photos sont
-    // déjà gérables (vignettes/légende/exclure) dans l'écran de validation.
-    photos: [],
+    photos: crPhotos, // base64 au rendu (embedPhotos) ; [] côté validation
   }
 
   return { input, sources: { remarques, points, previsions, photos } }
 }
 
 /** Projection MeetingInput seule (contrat historique, consommé par generatePvAction). */
-export async function loadMeetingInput(reportId: string): Promise<MeetingInput | null> {
-  const ctx = await loadMeetingContext(reportId)
+export async function loadMeetingInput(
+  reportId: string,
+  opts?: { embedPhotos?: boolean },
+): Promise<MeetingInput | null> {
+  const ctx = await loadMeetingContext(reportId, opts)
   return ctx?.input ?? null
 }

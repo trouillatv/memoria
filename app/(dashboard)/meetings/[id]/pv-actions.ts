@@ -267,7 +267,7 @@ export async function validatePvAction(reportId: string): Promise<{ ok: boolean;
   const user = await requireManagerOrAdmin()
   const report = await getSiteReport(reportId)
   if (!report) return { ok: false, error: 'Réunion introuvable' }
-  const input = await loadMeetingInput(reportId)
+  const input = await loadMeetingInput(reportId, { embedPhotos: true }) // photos base64 dans l'archive
   if (!input) return { ok: false, error: 'Réunion introuvable' }
 
   const identity = report.site_id ? await getSiteIdentity(report.site_id) : null

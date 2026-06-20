@@ -32,7 +32,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const { id } = await ctx.params
-  const input = await loadMeetingInput(id)
+  const input = await loadMeetingInput(id, { embedPhotos: true }) // photos base64 dans le rendu
   if (!input) return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
 
   const cr = mapMeetingToCrBecib(input) // identité de l'org portée par cr.meta.moe

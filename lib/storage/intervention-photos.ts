@@ -82,6 +82,40 @@ export async function getSignedPhotoUrls(
   return map
 }
 
+// Data URLs base64 (pour EMBARQUER les images, ex. @react-pdf qui ne sait pas
+// fetcher une URL signée au rendu). On télécharge la version transformée (légère)
+// côté serveur, puis on encode. Une image qui échoue est simplement omise.
+export async function getPhotoDataUrls(
+  storagePaths: string[],
+  transform?: PhotoTransform,
+): Promise<Map<string, string>> {
+  const signed = await getSignedPhotoUrls(storagePaths, transform)
+  const out = new Map<string, string>()
+  await Promise.all(
+    [...signed.entries()].map(async ([path, url]) => {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) return
+        const ct = res.headers.get('content-type') || 'image/jpeg'
+        // @react-pdf ne rend que du raster. On SAUTE le SVG (placeholders de seed
+        // ou erreurs de transform) → jamais de crash de rendu.
+        if (!/^image\/(jpe?g|png|webp|gif)$/i.test(ct)) return
+        const buf = Buffer.from(await res.arrayBuffer())
+        out.set(path, `data:${ct};base64,${buf.toString('base64')}`)
+      } catch {
+        /* image illisible → omise (jamais de cadre vide) */
+      }
+    }),
+  )
+  return out
+}
+
+const CR_EMBED_TRANSFORM: PhotoTransform = { width: 1000, quality: 72 }
+/** Photos embarquées pour le CR (data URLs, taille raisonnable). */
+export async function getPhotoDataUrlsForCr(storagePaths: string[]): Promise<Map<string, string>> {
+  return getPhotoDataUrls(storagePaths, CR_EMBED_TRANSFORM)
+}
+
 // Helpers métiers — préférer ces fonctions aux appels avec transform brut.
 export async function getSignedPhotoUrlsThumb(storagePaths: string[]): Promise<Map<string, string>> {
   return getSignedPhotoUrls(storagePaths, THUMB_TRANSFORM)
