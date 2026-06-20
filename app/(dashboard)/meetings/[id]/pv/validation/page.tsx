@@ -65,6 +65,22 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           detail: 'Aucun point bloquant actif. Vous pouvez générer le PV.' }
   const GateIcon = gate.icon
 
+  // RÉSUMÉ action-first : « qu'est-ce qui m'empêche d'envoyer mon PV ? ». On agrège
+  // les points ACTIFS par type, en langage clair, + une estimation de temps (≈ 30s
+  // par point). L'utilisateur ne veut pas analyser, il veut agir → CTA « Corriger ».
+  const TYPE_LABEL: Record<string, (n: number) => string> = {
+    Responsable: (n) => `${n} responsable${n > 1 ? 's' : ''} manquant${n > 1 ? 's' : ''}`,
+    'Échéance': (n) => `${n} échéance${n > 1 ? 's' : ''} à confirmer`,
+    DNS: () => 'N° DNS absent',
+    Date: () => 'date de prochaine réunion',
+    Participant: (n) => `${n} organisme${n > 1 ? 's' : ''} à préciser`,
+    Photo: (n) => `${n} photo${n > 1 ? 's' : ''} sans légende`,
+  }
+  const byType = new Map<string, number>()
+  for (const g of actifs) byType.set(g.type, (byType.get(g.type) ?? 0) + 1)
+  const resume = [...byType.entries()].map(([t, n]) => (TYPE_LABEL[t] ? TYPE_LABEL[t](n) : `${n} ${t}`))
+  const minutes = Math.max(1, Math.ceil(actifs.length * 0.5))
+
   return (
     <div className="space-y-6 w-full max-w-3xl">
       <Link href={`/meetings/${id}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
@@ -79,24 +95,44 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         </p>
       </header>
 
-      {/* Gate + score */}
+      {/* Bandeau action-first : ce qui bloque, en clair, + temps + « Corriger ». */}
       <section className={`rounded-xl border p-4 ${gate.cls}`}>
         <div className="flex items-start gap-3">
           <GateIcon className="h-5 w-5 shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold">{gate.title}</h2>
-              <span className="text-xs font-medium">Confiance {readiness.score}/100</span>
+              <h2 className="text-base font-semibold">{gate.title}</h2>
+              <span className="text-xs font-medium opacity-80">Confiance {readiness.score}/100</span>
             </div>
-            <p className="mt-1 text-sm">{gate.detail}</p>
-            <div className="mt-2 flex flex-wrap gap-3 text-xs">
-              <span>🔴 {readiness.niveaux.bloquant} bloquant(s)</span>
-              <span>🟠 {readiness.niveaux.important} important(s)</span>
-              <span>🟢 {readiness.niveaux.suggestion} suggestion(s)</span>
+
+            {actifs.length > 0 ? (
+              <>
+                <p className="mt-1 text-sm">
+                  {actifs.length} élément{actifs.length > 1 ? 's' : ''} à traiter — {resume.join(' · ')}.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <a href="#a-corriger"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                    Corriger maintenant
+                  </a>
+                  <span className="text-xs opacity-80">≈ {minutes} min</span>
+                </div>
+              </>
+            ) : (
+              <p className="mt-1 text-sm">{gate.detail}</p>
+            )}
+
+            <div className="mt-3 flex flex-wrap gap-3 text-xs opacity-80">
+              <span>🔴 {readiness.niveaux.bloquant}</span>
+              <span>🟠 {readiness.niveaux.important}</span>
+              <span>🟢 {readiness.niveaux.suggestion}</span>
+              {traites.length > 0 && <span>· {traites.length} traité{traites.length > 1 ? 's' : ''}</span>}
             </div>
           </div>
         </div>
       </section>
+
+      <div id="a-corriger" className="scroll-mt-4" />
 
       {/* Points à confirmer, par sévérité */}
       {bloquantsMetier.length > 0 && (
