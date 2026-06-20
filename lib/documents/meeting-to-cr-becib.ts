@@ -98,21 +98,44 @@ export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
 
 const POIDS: Record<PvNiveau, number> = { bloquant: 15, important: 5, suggestion: 0 }
 
+// POLITIQUE DE BLOCAGE par entreprise (Vincent 2026-06-20). « documentaire » ≠
+// « non bloquant » : la SÉVÉRITÉ (niveau/nature) est intrinsèque au signal, mais la
+// CONSÉQUENCE (désactiver le PDF final) est une décision MÉTIER configurable. Un
+// bloquant MÉTIER (responsable d'action) bloque toujours ; un bloquant DOCUMENTAIRE
+// (DNS, date) ne bloque que si l'entreprise l'exige — BECIB peut rendre le DNS
+// obligatoire, un autre client non. Modèle : Signal → Politique → Bloquant.
+// Le stockage par org viendra plus tard ; ici on pose le SEAM + un défaut permissif,
+// pour ne PAS figer « documentaire = contournable » en dur dans le code.
+export type PvBlockingPolicy = {
+  /** Types de bloquants DOCUMENTAIRES que CETTE entreprise traite comme durs (ex. ['DNS']). */
+  documentaireBlocking: string[]
+}
+export const DEFAULT_PV_POLICY: PvBlockingPolicy = { documentaireBlocking: [] }
+
+/** Ce point désactive-t-il le PDF final, selon la politique ? Métier = toujours ;
+ *  documentaire = seulement si l'entreprise l'a déclaré obligatoire. */
+export function pointBloque(g: PvPointAConfirmer, policy: PvBlockingPolicy): boolean {
+  if (g.niveau !== 'bloquant') return false
+  if ((g.nature ?? 'metier') === 'metier') return true
+  return policy.documentaireBlocking.includes(g.type)
+}
+
 export type PvReadiness = {
   score: number
   checks: { label: string; ok: boolean }[]
   blocking: boolean
   /** Compte par sévérité (pour l'en-tête « 🔴 2 · 🟠 4 · 🟢 1 »). */
   niveaux: Record<PvNiveau, number>
-  /** Décompose les 🔴 : métier = jamais contournable ; documentaire = contournable en « PV urgent ». */
+  /** Décompose les 🔴 (intrinsèque) : métier vs documentaire. Indépendant de la politique. */
   bloquants: { metier: number; documentaire: number }
+  /** Bloquants DURS retenus par la politique = ceux qui désactivent réellement le PDF. */
+  durs: number
   gaps: PvPointAConfirmer[]
 }
 
-/** Niveau de confiance du PV. Au moins un point 🔴 non levé → PDF FINAL désactivé,
- *  mais DOCX brouillon autorisé (règle actée). L'override « PV urgent » (écran) ne
- *  pourra lever que les 🔴 DOCUMENTAIRES, jamais les 🔴 MÉTIER. */
-export function pvReadiness(input: MeetingInput): PvReadiness {
+/** Niveau de confiance du PV. Au moins un point 🔴 DUR (selon la politique) non levé
+ *  → PDF FINAL désactivé, mais DOCX brouillon autorisé (règle actée). */
+export function pvReadiness(input: MeetingInput, policy: PvBlockingPolicy = DEFAULT_PV_POLICY): PvReadiness {
   const gaps = detectPvGaps(input)
   const live = input.actions.filter((a) => a.status !== 'cancelled')
   const checks = [
@@ -124,13 +147,17 @@ export function pvReadiness(input: MeetingInput): PvReadiness {
   const niveaux: Record<PvNiveau, number> = { bloquant: 0, important: 0, suggestion: 0 }
   const bloquants = { metier: 0, documentaire: 0 }
   let malus = 0
+  let durs = 0
   for (const g of gaps) {
     niveaux[g.niveau]++; malus += POIDS[g.niveau]
-    if (g.niveau === 'bloquant') bloquants[g.nature ?? 'metier']++ // défaut prudent : non classé = métier (non contournable)
+    if (g.niveau === 'bloquant') {
+      bloquants[g.nature ?? 'metier']++ // défaut prudent : non classé = métier (non contournable)
+      if (pointBloque(g, policy)) durs++
+    }
   }
-  const blocking = niveaux.bloquant > 0
+  const blocking = durs > 0
   const score = Math.max(0, Math.min(100, Math.round(100 - malus)))
-  return { score, checks, blocking, niveaux, bloquants, gaps }
+  return { score, checks, blocking, niveaux, bloquants, durs, gaps }
 }
 
 // Projection des points typés (couche 3) → blocs BECIB (présentation). On route

@@ -71,7 +71,7 @@ async function main() {
     if (pv.gaps.length) {
       const n = pv.readiness.niveaux
       const b = pv.readiness.bloquants
-      console.log(`\n  ── POINTS À CONFIRMER (${pv.gaps.length})  🔴 ${n.bloquant} (métier ${b.metier} · doc ${b.documentaire}) · 🟠 ${n.important} · 🟢 ${n.suggestion}`)
+      console.log(`\n  ── POINTS À CONFIRMER (${pv.gaps.length})  🔴 ${n.bloquant} (métier ${b.metier} · doc ${b.documentaire} · durs ${pv.readiness.durs}) · 🟠 ${n.important} · 🟢 ${n.suggestion}`)
       const EMOJI = { bloquant: '🔴', important: '🟠', suggestion: '🟢' } as const
       for (const g of pv.gaps) {
         const nat = g.nature ? ` ⟨${g.nature}⟩` : ''

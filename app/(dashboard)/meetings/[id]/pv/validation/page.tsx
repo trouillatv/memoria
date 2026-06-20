@@ -66,14 +66,19 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   const importants = gaps.filter((g) => g.niveau === 'important')
   const suggestions = gaps.filter((g) => g.niveau === 'suggestion')
 
-  // Gate : un 🔴 MÉTIER ne se contourne jamais ; un 🔴 documentaire seul → « PV
-  // urgent » possible (DOCX brouillon de toute façon autorisé).
-  const gate = readiness.bloquants.metier > 0
+  // Gate piloté par la POLITIQUE (readiness.blocking) : un 🔴 dur (métier, ou
+  // documentaire rendu obligatoire par l'entreprise) désactive le PDF ; un 🔴
+  // documentaire resté souple → « PV urgent » possible. DOCX brouillon : toujours.
+  const detailDur = [
+    readiness.bloquants.metier > 0 ? `${readiness.bloquants.metier} métier (responsable d'action)` : null,
+    readiness.durs > readiness.bloquants.metier ? `${readiness.durs - readiness.bloquants.metier} documentaire(s) rendu(s) obligatoire(s) par l'entreprise` : null,
+  ].filter(Boolean).join(' + ')
+  const gate = readiness.blocking
     ? { cls: 'border-rose-200 bg-rose-50 text-rose-800', icon: ShieldAlert, title: 'PV non finalisable',
-        detail: `${readiness.bloquants.metier} point(s) métier à lever (responsable d'action). Le PDF final reste désactivé.` }
+        detail: `${readiness.durs} point(s) bloquant(s) dur(s) à lever — ${detailDur}. PDF final désactivé.` }
     : readiness.bloquants.documentaire > 0
       ? { cls: 'border-amber-200 bg-amber-50 text-amber-900', icon: FileWarning, title: 'PV finalisable en mode urgent',
-          detail: `${readiness.bloquants.documentaire} point(s) documentaire(s) (DNS, date) — contournables si le PV est urgent, sinon à compléter.` }
+          detail: `${readiness.bloquants.documentaire} point(s) documentaire(s) (DNS, date) — non bloquant(s) pour cette entreprise, à compléter ou assumer.` }
       : { cls: 'border-emerald-200 bg-emerald-50 text-emerald-800', icon: CheckCircle2, title: 'Prêt pour le PV',
           detail: 'Aucun point bloquant. Vous pouvez générer le PV.' }
   const GateIcon = gate.icon
@@ -200,8 +205,8 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         >
           <FileText className="h-4 w-4" /> Générer / valider le PV
         </Link>
-        {readiness.bloquants.metier > 0 && (
-          <span className="text-xs text-muted-foreground">PDF final désactivé tant qu&apos;un bloquant métier subsiste.</span>
+        {readiness.blocking && (
+          <span className="text-xs text-muted-foreground">PDF final désactivé tant qu&apos;un bloquant dur subsiste.</span>
         )}
       </section>
     </div>
