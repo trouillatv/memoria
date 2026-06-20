@@ -49,7 +49,12 @@ export type MeetingInput = {
 // `proposition` = valeur pré-remplie déterministe si une source existe (l'humain
 // clique pour valider) ; sinon undefined → on demande sans inventer.
 export type PvNiveau = 'bloquant' | 'important' | 'suggestion'
-export type PvPointAConfirmer = { niveau: PvNiveau; type: string; libelle: string; proposition?: string }
+// Sous-axe des 🔴 (Vincent 2026-06-20) : distinguer le blocage MÉTIER (vrai problème
+// de conduite — action sans responsable — JAMAIS contournable) du blocage DOCUMENTAIRE
+// (le document est incomplet — DNS, date réunion — qu'un « PV urgent » peut décider de
+// sortir quand même). Les deux restent rouges ; la nuance pilote l'override côté écran.
+export type PvNature = 'metier' | 'documentaire'
+export type PvPointAConfirmer = { niveau: PvNiveau; type: string; libelle: string; nature?: PvNature; proposition?: string }
 /** @deprecated alias historique — utiliser PvPointAConfirmer. */
 export type PvGapQuestion = PvPointAConfirmer
 
@@ -71,13 +76,14 @@ export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
   const q: PvPointAConfirmer[] = []
   // Actions : responsable inconnu = 🔴 (engagement non assumable) ; échéance = 🟠.
   for (const a of input.actions.filter((x) => x.status !== 'cancelled')) {
-    if (!a.assignedTo) q.push({ niveau: 'bloquant', type: 'Responsable', libelle: `Responsable de « ${a.title} »` })
+    if (!a.assignedTo) q.push({ niveau: 'bloquant', nature: 'metier', type: 'Responsable', libelle: `Responsable de « ${a.title} »` })
     if (!a.dueDate) q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC })
     else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC })
   }
-  // Identité du document : DNS + date de la prochaine réunion = 🔴.
-  if (!input.site.dns) q.push({ niveau: 'bloquant', type: 'DNS', libelle: 'N° DNS du chantier' })
-  if (!input.prochaineReunion?.date) q.push({ niveau: 'bloquant', type: 'Date', libelle: 'Date de la prochaine réunion' })
+  // Identité du document : DNS + date de la prochaine réunion = 🔴 mais DOCUMENTAIRE
+  // (contournable en PV urgent), pas métier.
+  if (!input.site.dns) q.push({ niveau: 'bloquant', nature: 'documentaire', type: 'DNS', libelle: 'N° DNS du chantier' })
+  if (!input.prochaineReunion?.date) q.push({ niveau: 'bloquant', nature: 'documentaire', type: 'Date', libelle: 'Date de la prochaine réunion' })
   // Participants : organisme manquant = 🟠 (la colonne organisme du PV en a besoin).
   for (const p of input.report.participants) {
     if (!p.organisme) q.push({ niveau: 'important', type: 'Participant', libelle: `Organisme de « ${p.name} »` })
@@ -98,11 +104,14 @@ export type PvReadiness = {
   blocking: boolean
   /** Compte par sévérité (pour l'en-tête « 🔴 2 · 🟠 4 · 🟢 1 »). */
   niveaux: Record<PvNiveau, number>
+  /** Décompose les 🔴 : métier = jamais contournable ; documentaire = contournable en « PV urgent ». */
+  bloquants: { metier: number; documentaire: number }
   gaps: PvPointAConfirmer[]
 }
 
 /** Niveau de confiance du PV. Au moins un point 🔴 non levé → PDF FINAL désactivé,
- *  mais DOCX brouillon autorisé (règle actée). */
+ *  mais DOCX brouillon autorisé (règle actée). L'override « PV urgent » (écran) ne
+ *  pourra lever que les 🔴 DOCUMENTAIRES, jamais les 🔴 MÉTIER. */
 export function pvReadiness(input: MeetingInput): PvReadiness {
   const gaps = detectPvGaps(input)
   const live = input.actions.filter((a) => a.status !== 'cancelled')
@@ -113,11 +122,15 @@ export function pvReadiness(input: MeetingInput): PvReadiness {
     { label: input.prochaineReunion?.date ? 'Prochaine réunion datée' : 'Prochaine réunion à confirmer', ok: !!input.prochaineReunion?.date },
   ]
   const niveaux: Record<PvNiveau, number> = { bloquant: 0, important: 0, suggestion: 0 }
+  const bloquants = { metier: 0, documentaire: 0 }
   let malus = 0
-  for (const g of gaps) { niveaux[g.niveau]++; malus += POIDS[g.niveau] }
+  for (const g of gaps) {
+    niveaux[g.niveau]++; malus += POIDS[g.niveau]
+    if (g.niveau === 'bloquant') bloquants[g.nature ?? 'metier']++ // défaut prudent : non classé = métier (non contournable)
+  }
   const blocking = niveaux.bloquant > 0
   const score = Math.max(0, Math.min(100, Math.round(100 - malus)))
-  return { score, checks, blocking, niveaux, gaps }
+  return { score, checks, blocking, niveaux, bloquants, gaps }
 }
 
 // Projection des points typés (couche 3) → blocs BECIB (présentation). On route
