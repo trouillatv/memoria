@@ -16,13 +16,15 @@ interface PvPanelProps {
   reportId: string
   initial: DbReportDocument | null
   finalVersions: ReportFinalVersion[]
+  /** Vrai quand le panneau est rendu SUR l'écran de validation (évite le lien vers lui-même). */
+  hideValidationLink?: boolean
 }
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function PvPanel({ reportId, initial, finalVersions }: PvPanelProps) {
+export function PvPanel({ reportId, initial, finalVersions, hideValidationLink }: PvPanelProps) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState('')
@@ -94,17 +96,25 @@ export function PvPanel({ reportId, initial, finalVersions }: PvPanelProps) {
       </p>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Link href={`/meetings/${reportId}/pv/validation`} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40">
-          <ClipboardCheck className="h-4 w-4" /> Points à confirmer
-        </Link>
+        {!hideValidationLink && (
+          <Link href={`/meetings/${reportId}/pv/validation`} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40">
+            <ClipboardCheck className="h-4 w-4" /> Points à confirmer
+          </Link>
+        )}
         <a href={`/meetings/${reportId}/pv`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40">
-          <Download className="h-4 w-4" /> {isValidated ? 'Télécharger le PDF' : 'Aperçu PDF'}
+          <Download className="h-4 w-4" /> Aperçu PDF
         </a>
         <a href={`/meetings/${reportId}/pv?format=docx`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/40">
-          <Download className="h-4 w-4" /> DOCX éditable
+          <Download className="h-4 w-4" /> Télécharger DOCX
         </a>
-        <button type="button" onClick={handleValidate} disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
-          <CheckCircle2 className="h-4 w-4" /> {isValidated ? 'Re-valider' : 'Valider le PV'}
+        <button
+          type="button"
+          onClick={handleValidate}
+          disabled={pending}
+          title="Crée la version de RÉFÉRENCE produite par MemorIA (≠ version finale que vous diffuserez). Sert de point de comparaison."
+          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40 disabled:opacity-60"
+        >
+          <CheckCircle2 className="h-4 w-4" /> {isValidated ? 'Ré-archiver la version générée' : 'Archiver la version générée'}
         </button>
       </div>
 

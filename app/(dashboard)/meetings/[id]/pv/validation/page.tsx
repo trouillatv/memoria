@@ -10,13 +10,16 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
   ArrowLeft, ShieldAlert, FileWarning, AlertTriangle, Lightbulb, CheckCircle2,
-  Users, History, ClipboardList, CalendarClock, ImageIcon, Download, FileText,
+  Users, History, ClipboardList, CalendarClock, ImageIcon,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
+import { getLatestReportDocument } from '@/lib/db/report-documents'
+import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { buildPvValidation, type PvSection } from '@/lib/documents/pv-validation'
 import { PvConfirmCard } from './PvConfirmCard'
 import { PvItemRow } from './PvItemRow'
+import { PvPanel } from '../../PvPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +38,12 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/planning')
 
   const { id } = await params
-  const [report, pv] = await Promise.all([getSiteReport(id), buildPvValidation(id)])
+  const [report, pv, pvDoc, finalVersions] = await Promise.all([
+    getSiteReport(id),
+    buildPvValidation(id),
+    getLatestReportDocument(id),
+    listReportFinalVersions(id),
+  ])
   if (!report || !pv) notFound()
 
   const { readiness, gaps } = pv
@@ -215,25 +223,9 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
       </section>
 
       {/* Sorties : DOCX brouillon toujours dispo ; PDF final gated (cf. PvPanel). */}
-      <section className="flex flex-wrap items-center gap-2 border-t pt-5">
-        <a
-          href={`/meetings/${id}/pv`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40"
-        >
-          <Download className="h-4 w-4" /> Aperçu DOCX brouillon
-        </a>
-        <Link
-          href={`/meetings/${id}`}
-          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40"
-        >
-          <FileText className="h-4 w-4" /> Générer / valider le PV
-        </Link>
-        {pv.blocking && (
-          <span className="text-xs text-muted-foreground">PDF final désactivé tant qu&apos;un bloquant dur subsiste.</span>
-        )}
-      </section>
+      {/* HUB d'actions (Finding A) : on corrige ci-dessus, on prépare/diffuse ici —
+          tout au même endroit, plus de va-et-vient vers la réunion. */}
+      <PvPanel reportId={id} initial={pvDoc} finalVersions={finalVersions} hideValidationLink />
     </div>
   )
 }

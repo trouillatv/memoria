@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
   Mic, Building2, MapPin, Users, AlertTriangle, ListTodo, CalendarClock, ClipboardList,
-  Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass, ClipboardCheck,
+  Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
@@ -11,7 +11,6 @@ import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { getSiteEngagements } from '@/lib/db/site-engagements'
-import { PvPanel } from './PvPanel'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
 import { EngagementsTable } from './EngagementsTable'
@@ -58,6 +57,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     report.site_id ? getSiteEngagements(report.site_id) : Promise.resolve(null),
     listReportFinalVersions(id),
   ])
+  const isPvValidated = pvDoc?.status === 'validated' || pvDoc?.status === 'exported'
 
   const supabase = createAdminClient()
 
@@ -146,22 +146,27 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         actions={actions}
       />
 
-      {/* Points à confirmer avant le PV — la « vitre du cockpit » (lecture des
-          gaps/readiness typés). Étape de vérification avant génération. */}
+      {/* Compte-rendu de chantier — l'écran de validation est le HUB central
+          (corriger → prévisualiser → télécharger → téléverser le final → historique).
+          La page réunion ne fait que pointer dessus (plus de panneau dupliqué). */}
       <Link
         href={`/meetings/${id}/pv/validation`}
-        className="flex items-center gap-2.5 rounded-xl border bg-card p-3 text-sm font-medium hover:bg-muted/40"
+        className="flex items-center gap-2.5 rounded-xl border bg-card p-3 hover:bg-muted/40"
       >
-        <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-        Points à confirmer avant le PV
-        <span className="ml-auto text-xs text-muted-foreground">Vérifier →</span>
+        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm font-medium">Compte-rendu de chantier</span>
+        {isPvValidated && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+            <CheckCircle2 className="h-3 w-3" /> Référence archivée
+          </span>
+        )}
+        {finalVersions.length > 0 && (
+          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+            {finalVersions.length} version{finalVersions.length > 1 ? 's' : ''} finale{finalVersions.length > 1 ? 's' : ''}
+          </span>
+        )}
+        <span className="ml-auto text-xs text-muted-foreground">Préparer / finaliser →</span>
       </Link>
-
-      {/* PV / CR de chantier — génération documentaire (Sprint 1) */}
-      {/* key = id+statut du PV serveur : force le remount quand le brouillon est
-          créé (null→doc) ou validé (draft→validated). Sinon le useState interne de
-          PvPanel ignore le nouveau prop après router.refresh() → « rien ne s'affiche ». */}
-      <PvPanel key={pvDoc ? `${pvDoc.id}:${pvDoc.status}:${finalVersions.length}` : `none:${finalVersions.length}`} reportId={id} initial={pvDoc} finalVersions={finalVersions} />
 
       {/* Participants détectés */}
       {report.participants && report.participants.length > 0 && (
