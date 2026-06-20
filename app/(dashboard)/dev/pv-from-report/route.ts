@@ -15,9 +15,13 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function GET(req: NextRequest) {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  if (user.role !== 'admin' && user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Outil de DEV : en local on ne bloque pas sur l'auth (les loaders utilisent
+  // le service-role admin, indépendant de la session). En prod, admin/manager.
+  if (process.env.NODE_ENV === 'production') {
+    const user = await getCurrentUserWithProfile()
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    if (user.role !== 'admin' && user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) {

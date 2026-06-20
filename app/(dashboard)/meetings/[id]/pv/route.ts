@@ -10,18 +10,47 @@ import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { getReportTemplate, companyLabelForOrg, becibReference } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CrChantierPdf } from '@/lib/pdf/cr-chantier'
+import { loadMeetingInput } from '@/lib/documents/load-meeting-input'
+import { mapMeetingToCrBecib } from '@/lib/documents/meeting-to-cr-becib'
+import { buildPvDocx } from '@/lib/documents/pv-docx-template'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUserWithProfile()
-  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  if (user.role !== 'admin' && user.role !== 'manager') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  // En prod : admin/manager. En local (dev) : on ne bloque pas (les loaders
+  // utilisent le service-role admin, indépendant de la session).
+  if (process.env.NODE_ENV === 'production') {
+    const user = await getCurrentUserWithProfile()
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    if (user.role !== 'admin' && user.role !== 'manager') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
   }
 
   const { id } = await ctx.params
+
+  // ?becib=1 → template Word BECIB fidèle (DOCX), depuis la réunion réelle.
+  if (new URL(req.url).searchParams.get('becib')) {
+    const input = await loadMeetingInput(id)
+    if (!input) return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
+    try {
+      const docx = buildPvDocx(mapMeetingToCrBecib(input))
+      return new NextResponse(new Uint8Array(docx), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'Content-Disposition': `inline; filename="PV-BECIB-${id.slice(0, 8)}.docx"`,
+          'Cache-Control': 'no-store',
+        },
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'render error'
+      console.error('[pv becib] failed:', e)
+      return NextResponse.json({ error: `Erreur template BECIB: ${msg}` }, { status: 500 })
+    }
+  }
+
   const [report, doc] = await Promise.all([getSiteReport(id), getLatestReportDocument(id)])
   if (!report) return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
   if (!doc) return NextResponse.json({ error: 'Aucun PV généré' }, { status: 404 })
