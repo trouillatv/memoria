@@ -14,8 +14,9 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
-import { buildPvValidation, type PvSection, type PvValidationItem } from '@/lib/documents/pv-validation'
+import { buildPvValidation, type PvSection } from '@/lib/documents/pv-validation'
 import { PvConfirmCard } from './PvConfirmCard'
+import { PvItemRow } from './PvItemRow'
 
 export const dynamic = 'force-dynamic'
 
@@ -196,20 +197,16 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           if (list.length === 0) return null
           const meta = SECTION_META[section]
           const Icon = meta.icon
+          // Lignes parasites (anomalies « szdz »…) excludables là où elles vivent.
+          const excludable = section === 'points_examines' || section === 'previsions'
           return (
             <div key={section} className="space-y-1.5">
               <h3 className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Icon className="h-3.5 w-3.5" /> {meta.label} ({list.length})
               </h3>
               <ul className="space-y-1">
-                {list.map((it: PvValidationItem) => (
-                  <li key={it.id} className="flex items-start gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-                    {it.blocking && <span title="Blocage métier" className="mt-0.5 text-rose-600">⛔</span>}
-                    <span className="min-w-0 flex-1">{it.texte}</span>
-                    {it.confiance === 'à confirmer' && (
-                      <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">à confirmer</span>
-                    )}
-                  </li>
+                {list.map((it) => (
+                  <PvItemRow key={it.id} reportId={id} item={it} excludable={excludable} />
                 ))}
               </ul>
             </div>

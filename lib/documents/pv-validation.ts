@@ -29,6 +29,7 @@ export interface PvValidationItem {
   confiance: 'sûr' | 'à confirmer'
   statutValidation: ValidationStatut  // défaut 'pending' (aucune décision humaine encore)
   blocking: boolean                   // l'item EST un blocage métier (anomalie / dépendance)
+  excluded: boolean                   // « Exclure du PV » : item retiré de la CR (ligne parasite)
 }
 
 // Point à confirmer + la décision humaine éventuelle (reporter/ignorer/faux positif).
@@ -54,7 +55,7 @@ export async function buildPvValidation(reportId: string): Promise<PvValidation 
   const ctx = await loadMeetingContext(reportId)
   if (!ctx) return null
   const { input, sources } = ctx
-  const items: PvValidationItem[] = []
+  const items: Omit<PvValidationItem, 'excluded'>[] = []
 
   // 1) PARTICIPANTS détectés (source = nom ; pas d'id contact en V1).
   input.report.participants.forEach((p, i) => {
@@ -133,14 +134,18 @@ export async function buildPvValidation(reportId: string): Promise<PvValidation 
   const counts = Object.fromEntries(SECTIONS.map((s) => [s, 0])) as Record<PvSection, number>
   for (const it of items) counts[it.section]++
 
-  // DÉCISIONS humaines : on annote chaque signal et on recalcule le gate. Un signal
-  // 'ignored' ou 'false_positive' est LEVÉ (sort du gate) ; 'reported' reste bloquant
-  // (différé ≠ résolu) — il garde son blocage dur tant que la mémoire n'est pas corrigée.
+  // DÉCISIONS humaines : annotation des gaps (gate) + marquage des items exclus.
+  // 'ignored'/'false_positive' LÈVENT un gap (gate) ET excluent un item (CR) ;
+  // 'reported' reste bloquant (différé ≠ résolu).
   const decisions = await listPvSignalDecisions(reportId)
   const byId = new Map(decisions.map((d) => [d.signalId, d]))
+  const excluded = new Set(
+    decisions.filter((d) => d.statut === 'ignored' || d.statut === 'false_positive').map((d) => d.signalId),
+  )
+  const annotatedItems: PvValidationItem[] = items.map((it) => ({ ...it, excluded: excluded.has(it.source) }))
   const gaps: PvGapAnnote[] = readiness.gaps.map((g) => ({ ...g, decision: byId.get(g.id) ?? null }))
   const leve = (g: PvGapAnnote) => g.decision?.statut === 'ignored' || g.decision?.statut === 'false_positive'
   const durs = gaps.filter((g) => !leve(g) && pointBloque(g, DEFAULT_PV_POLICY)).length
 
-  return { reportId, items, counts, readiness, gaps, blocking: durs > 0, durs }
+  return { reportId, items: annotatedItems, counts, readiness, gaps, blocking: durs > 0, durs }
 }

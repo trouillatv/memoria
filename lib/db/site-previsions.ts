@@ -57,7 +57,9 @@ export async function buildPrevisionsFromInterventions(siteId: string): Promise<
     for (const a of data ?? []) {
       const desc = ((a.description as string | null) ?? (a.category_other as string | null) ?? '').trim()
       if (!desc) continue
-      anomalies.push({ kind: 'anomalie', texte: oneDot(`Traitement de l'anomalie : ${desc}`), confiance: 'sûr', source: a.id as string })
+      // Côté Prévisions = l'ACTION (traitement/contrôle à prévoir), wording DISTINCT
+      // du constat « Anomalie signalée : … » côté Points examinés. Ne pas réaligner.
+      anomalies.push({ kind: 'anomalie', texte: oneDot(`Traitement / contrôle à prévoir : ${desc}`), confiance: 'sûr', source: a.id as string })
     }
   }
 
@@ -66,11 +68,17 @@ export async function buildPrevisionsFromInterventions(siteId: string): Promise<
     if (i.status !== 'planned') continue
     const date = (i.scheduled_for as string | null) ?? (i.scheduled_at ? (i.scheduled_at as string).slice(0, 10) : null)
     if (!date || date < today) continue
-    const note = ((i.notes as string | null) ?? '').trim()
+    // Reformulation langage CR (pas « base de données ») : les notes ont la forme
+    // « Description. Planifié le AAAA-MM-JJ : description » → on coupe au marqueur
+    // technique et on garde la description humaine (avant, ou à défaut après le « : »).
+    const rawNote = ((i.notes as string | null) ?? '').trim()
+    const parts = rawNote.split(/\s*\.?\s*Planifié le \d{4}-\d{2}-\d{2}\s*:?\s*/i)
+    const note = (parts[0] || parts[1] || '').replace(/[.\s]+$/, '').trim()
+    const cap = note ? note.charAt(0).toUpperCase() + note.slice(1) : ''
     const d = ddmmyyyy(date)
     planned.push({
       kind: 'intervention',
-      texte: oneDot(note ? `Intervention prévue le ${d} : ${note}` : `Intervention prévue le ${d}`),
+      texte: oneDot(cap ? `${cap}, prévu le ${d}` : `Intervention prévue le ${d}`),
       confiance: 'sûr',
       source: i.id as string,
     })

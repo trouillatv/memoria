@@ -99,13 +99,13 @@ export async function buildPointsExamines(
           const desc = ((an.description as string | null) ?? (an.category_other as string | null) ?? '').trim()
           if (!desc) continue
           // Cadrage CONSTAT (Vincent 2026-06-20, option 3) : ici l'anomalie est le
-          // point bloquant EXAMINÉ (« Anomalie constatée : … »). Le TRAITEMENT prévu
-          // vit côté Prévisions (« Traitement de l'anomalie : … ») — wording distinct
-          // VOULU, jamais le même texte. INVARIANT : ne pas réaligner ces deux libellés.
+          // point bloquant EXAMINÉ (« Anomalie signalée : … »). Le TRAITEMENT prévu
+          // vit côté Prévisions (« Traitement / contrôle à prévoir : … ») — wording
+          // distinct VOULU, jamais le même texte. INVARIANT : ne pas réaligner.
           points.push({
             type: 'blocage',
             sousTitre: 'ANOMALIES NON RÉSOLUES',
-            texte: `Anomalie constatée : ${desc}`,
+            texte: `Anomalie signalée : ${desc}`,
             action: null,
             statut: 'bloqué',
             source: an.id as string,

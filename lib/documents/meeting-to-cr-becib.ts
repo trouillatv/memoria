@@ -272,6 +272,6 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       heure: input.prochaineReunion?.heure ?? null,
       lieu: input.prochaineReunion?.lieu ?? null,
     },
-    signature: 'POUR BECIB,',
+    signature: `POUR ${(input.moe ?? 'BECIB').toUpperCase()},`, // identité de l'org (jamais « BECIB » pour une autre org)
   }
 }

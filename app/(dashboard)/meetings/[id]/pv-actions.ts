@@ -167,6 +167,45 @@ export async function undoPvSignalDecisionAction(
   }
 }
 
+/**
+ * EXCLURE DU PV un item parasite (ex. anomalie « szdz ») : décision sur la mémoire,
+ * pas une édition du document. L'item est retiré de la CR (points examinés ET
+ * prévisions, par sa source) mais reste visible barré dans l'écran de validation.
+ */
+export async function excludePvItemAction(
+  reportId: string,
+  source: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const pv = await buildPvValidation(reportId)
+  if (!pv) return { ok: false, error: 'Réunion introuvable' }
+  if (!pv.items.some((it) => it.source === source)) return { ok: false, error: 'Ligne introuvable.' }
+  try {
+    await upsertPvSignalDecision({ reportId, signalId: source, statut: 'ignored', comment: 'exclu du PV', decidedBy: user.id })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Réintègre un item précédemment exclu → il revient dans la CR. */
+export async function includePvItemAction(
+  reportId: string,
+  source: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await clearPvSignalDecision(reportId, source)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
 /** Sauvegarde l'édition humaine des sections (brouillon uniquement). */
 export async function savePvSectionsAction(
   reportId: string,

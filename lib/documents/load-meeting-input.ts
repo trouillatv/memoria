@@ -14,6 +14,7 @@ import { buildRemarquesCrPrecedent } from '@/lib/db/meeting-followup'
 import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
 import { listSitePhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
+import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
 import { companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
@@ -80,6 +81,16 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
     }
   }
 
+  // ITEMS EXCLUS DU PV (décision humaine « Exclure du PV » sur une ligne parasite,
+  // ex. anomalie « szdz »). On filtre la projection CR (input) ; les sources restent
+  // complètes pour que l'écran de validation puisse les montrer barrés + réintégrer.
+  const decisions = await listPvSignalDecisions(reportId)
+  const excluded = new Set(
+    decisions.filter((d) => d.statut === 'ignored' || d.statut === 'false_positive').map((d) => d.signalId),
+  )
+  const pointsForCr = points.filter((p) => !excluded.has(p.source))
+  const previsionsForCr = previsions.filter((p) => !excluded.has(p.source))
+
   // Actions VALIDÉES (pour l'avancement Fait/Prévisions ; le rendu « actions à
   // suivre » passe désormais par les points examinés typés).
   const liveActions = actions.filter((a) => a.status !== 'cancelled')
@@ -102,11 +113,14 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
     actions: liveActions.map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status })),
     contacts: [], // V1 : pas de jointure contacts → tel/mob/email = trous
     moe, // identité de l'org (BECIB réservé à l'org BECIB)
-    pointsExaminesTyped: points, // couche 3 : actions de la réunion + risques + anomalies
+    pointsExaminesTyped: pointsForCr, // couche 3 (hors items exclus du PV)
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
-    previsionsInterventions: previsions.map((p) => p.texte), // anomalies + interventions à venir
-    photos: photos.map((p) => ({ url: p.storagePath, legende: p.legende })), // structure → projection PV
+    previsionsInterventions: previsionsForCr.map((p) => p.texte), // anomalies + interventions (hors exclus)
+    // Photos : grille MASQUÉE tant que les images ne sont pas réellement embarquées
+    // (les `storagePath` ne sont pas des URLs chargeables par @react-pdf → cadres vides).
+    // Réactiver dès qu'on signe + base64-embarque les images. Vincent 2026-06-20.
+    photos: [],
   }
 
   return { input, sources: { remarques, points, previsions, photos } }
