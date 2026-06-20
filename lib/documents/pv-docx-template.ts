@@ -65,11 +65,45 @@ function buildTemplate(): Buffer {
   xml = tagWholePara(xml, 'EAUX PLUVIALES DU CENTRE', '')
   xml = tagWholePara(xml, 'COMPTE-RENDU', 'COMPTE-RENDU N°{numeroCR} DE LA RÉUNION DE CHANTIER')
   xml = tagWholePara(xml, 'novembre 2025', 'Du {dateLong} - semaine {semaine}')
+
+  // PHOTOS : garder le 1er drawing (logo client en p.1), retirer les photos
+  // Cravache figées ; placeholder à la place de la 1re. Les médias orphelins
+  // sont élagués plus bas (drop des ~23 Mo).
+  let dn = 0
+  xml = xml.replace(/<w:drawing>[\s\S]*?<\/w:drawing>/g, (dr) => {
+    dn++
+    if (dn === 1) return dr // logo client (Image 1)
+    if (dn === 2) return '<w:t xml:space="preserve">Photos à insérer (à compléter)</w:t>'
+    return ''
+  })
   zip.file('word/document.xml', xml)
+
   let foot = zip.file('word/footer1.xml')!.asText()
   foot = foot.split('2025BEC010/CR004').join('{dns}')
   foot = tagWholePara(foot, 'CR réunion de chantier', '{moaNom} / BECIB / {chantier} / CR réunion de chantier')
   zip.file('word/footer1.xml', foot)
+
+  // --- Élagage des médias orphelins (photos retirées) → réduit la taille ---
+  const refIds = new Set<string>()
+  for (const m of (xml + (zip.file('word/header1.xml')?.asText() ?? '')).matchAll(/r:embed="([^"]+)"/g)) refIds.add(m[1])
+  const keep = new Set<string>()
+  const relPaths = ['word/_rels/document.xml.rels', 'word/_rels/header1.xml.rels']
+  for (const rp of relPaths) {
+    const rels = zip.file(rp)?.asText(); if (!rels) continue
+    let cleaned = rels
+    for (const rel of rels.match(/<Relationship\b[^>]*\/>/g) ?? []) {
+      const id = (rel.match(/Id="([^"]+)"/) ?? [])[1]
+      const tgt = (rel.match(/Target="([^"]+)"/) ?? [])[1]
+      if (!tgt || !tgt.includes('media/')) continue
+      const full = 'word/' + tgt.replace(/^\.\.\//, '').replace(/^\//, '')
+      if (id && refIds.has(id)) keep.add(full)
+      else cleaned = cleaned.replace(rel, '') // rel orphelin → retiré
+    }
+    zip.file(rp, cleaned)
+  }
+  for (const f of Object.keys(zip.files)) {
+    if (f.startsWith('word/media/') && !keep.has(f)) zip.remove(f)
+  }
   return zip.generate({ type: 'nodebuffer' })
 }
 
