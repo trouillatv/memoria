@@ -1,9 +1,11 @@
-// Charge une VRAIE réunion (site_report) + son contexte (site, contrat, actions)
-// et la met en forme MeetingInput pour le mapper. Réutilise les loaders existants
-// (mêmes que generatePvAction → fonctionnent en contexte server action).
-// V1 : contenu éditorial (points discutés) = pas encore de source validée → on
-// ne met QUE les actions validées ; le reste = « à compléter » jusqu'au draft IA
-// validé (Sprint B). RÈGLE : jamais inventer.
+// Charge une VRAIE réunion (site_report) + son contexte (site, contrat, actions).
+// UN SEUL chargement DB expose deux vues :
+//   - MeetingInput        : projection (lossy) consommée par le mapper CrBecib.
+//   - MeetingSources       : les objets TYPÉS riches (chacun garde son `source`/
+//     `confiance`), consommés tels quels par la surface de validation (PvValidation)
+//     AVANT toute projection. Évite de re-charger la base deux fois.
+// V1 : contenu éditorial (points discutés) = QUE les sources déterministes ; le
+// reste = « à compléter » jusqu'au draft IA validé. RÈGLE : jamais inventer.
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
@@ -14,6 +16,10 @@ import { listSitePhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
+import type { RemarquesCrPrecedent } from '@/lib/db/meeting-followup'
+import type { PrevisionItem } from '@/lib/db/site-previsions'
+import type { SitePhoto } from '@/lib/db/site-photos'
+import type { PointExamine } from '@/lib/db/points-examines'
 
 function ddmmyyyy(iso: string | null | undefined): string | null {
   if (!iso) return null
@@ -22,25 +28,34 @@ function ddmmyyyy(iso: string | null | undefined): string | null {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
-export async function loadMeetingInput(reportId: string): Promise<MeetingInput | null> {
+// Sources TYPÉES riches d'une réunion (chaque item conserve son `source`/`confiance`).
+export interface MeetingSources {
+  remarques: RemarquesCrPrecedent
+  points: PointExamine[]
+  previsions: PrevisionItem[]
+  photos: SitePhoto[]
+}
+export interface MeetingContext { input: MeetingInput; sources: MeetingSources }
+
+/** Charge une réunion : projection MeetingInput + sources typées riches (un seul accès DB). */
+export async function loadMeetingContext(reportId: string): Promise<MeetingContext | null> {
   const report = await getSiteReport(reportId)
   if (!report) return null
   const identity = report.site_id ? await getSiteIdentity(report.site_id) : null
   const contract = report.contract_id ? await getContract(report.contract_id) : null
   const actions = await listSiteActionsByReport(reportId)
 
-  // REMARQUES SUR CR PRÉCÉDENT : 100% déterministe (meeting_followup), pas le
-  // transcript. mémoire → remarque → (rédaction LLM plus tard).
+  // REMARQUES SUR CR PRÉCÉDENT : 100% déterministe (meeting_followup), pas le transcript.
   const remarques = await buildRemarquesCrPrecedent({ id: reportId, site_id: report.site_id, created_at: report.created_at })
 
   // PRÉVISIONS (volet interventions) : anomalies non résolues + interventions à venir.
-  const previsionsIntv = report.site_id ? await buildPrevisionsFromInterventions(report.site_id) : []
+  const previsions = report.site_id ? await buildPrevisionsFromInterventions(report.site_id) : []
 
   // PHOTOS : structure mémoire réutilisable (intervention + clôture d'action).
-  const sitePhotos = report.site_id ? await listSitePhotos(report.site_id) : []
+  const photos = report.site_id ? await listSitePhotos(report.site_id) : []
 
   // POINTS EXAMINÉS typés (couche 3) : actions de la réunion + risques + anomalies.
-  const pointsExaminesTyped = await buildPointsExamines({ id: reportId, site_id: report.site_id, risks: report.risks })
+  const points = await buildPointsExamines({ id: reportId, site_id: report.site_id, risks: report.risks })
 
   // numéro de CR = nb de réunions du site jusqu'à cette date (déterministe).
   let numeroCR: string | null = null
@@ -51,11 +66,11 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
     numeroCR = count ? String(count) : null
   }
 
-  // Actions VALIDÉES (pour l'avancement Fait/Prévisions ; les points examinés
-  // typés gèrent désormais le rendu « actions à suivre » via buildPointsExamines).
+  // Actions VALIDÉES (pour l'avancement Fait/Prévisions ; le rendu « actions à
+  // suivre » passe désormais par les points examinés typés).
   const liveActions = actions.filter((a) => a.status !== 'cancelled')
 
-  return {
+  const input: MeetingInput = {
     numeroCR,
     report: {
       title: report.title,
@@ -72,10 +87,18 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
     },
     actions: liveActions.map((a) => ({ title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status })),
     contacts: [], // V1 : pas de jointure contacts → tel/mob/email = trous
-    pointsExaminesTyped, // couche 3 : actions de la réunion + risques + anomalies
+    pointsExaminesTyped: points, // couche 3 : actions de la réunion + risques + anomalies
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
-    previsionsInterventions: previsionsIntv.map((p) => p.texte), // anomalies + interventions à venir
-    photos: sitePhotos.map((p) => ({ url: p.storagePath, legende: p.legende })), // structure → projection PV
+    previsionsInterventions: previsions.map((p) => p.texte), // anomalies + interventions à venir
+    photos: photos.map((p) => ({ url: p.storagePath, legende: p.legende })), // structure → projection PV
   }
+
+  return { input, sources: { remarques, points, previsions, photos } }
+}
+
+/** Projection MeetingInput seule (contrat historique, consommé par generatePvAction). */
+export async function loadMeetingInput(reportId: string): Promise<MeetingInput | null> {
+  const ctx = await loadMeetingContext(reportId)
+  return ctx?.input ?? null
 }
