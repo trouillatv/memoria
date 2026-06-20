@@ -134,7 +134,14 @@ export async function decidePvSignalAction(
   const user = await requireManagerOrAdmin()
   const pv = await buildPvValidation(reportId)
   if (!pv) return { ok: false, error: 'Réunion introuvable' }
-  if (!pv.gaps.some((g) => g.id === signalId)) return { ok: false, error: 'Ce point n’est plus à confirmer.' }
+  const gap = pv.gaps.find((g) => g.id === signalId)
+  if (!gap) return { ok: false, error: 'Ce point n’est plus à confirmer.' }
+  // Garde-fou métier (Vincent 2026-06-20) : un point MÉTIER (responsable/échéance
+  // d'une action) ne peut être ni ignoré ni classé faux positif — sinon « pourquoi
+  // l'action n'a jamais été faite ? Quelqu'un a cliqué Ignorer. ». Au max : reporter.
+  if ((statut === 'ignored' || statut === 'false_positive') && (gap.nature ?? '') === 'metier') {
+    return { ok: false, error: 'Un point métier ne peut pas être ignoré — complétez-le ou reportez-le.' }
+  }
   try {
     await upsertPvSignalDecision({ reportId, signalId, statut, comment: comment?.trim() || null, decidedBy: user.id })
     revalidatePath(`/meetings/${reportId}/pv/validation`)

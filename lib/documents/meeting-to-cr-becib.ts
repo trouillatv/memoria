@@ -90,8 +90,9 @@ export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
     const cibleResp = a.id ? { resolver: 'action_responsable', refId: a.id } : undefined
     const cibleEch = a.id ? { resolver: 'action_echeance', refId: a.id } : undefined
     if (!a.assignedTo) q.push({ niveau: 'bloquant', nature: 'metier', type: 'Responsable', libelle: `Responsable de « ${a.title} »`, cible: cibleResp })
-    if (!a.dueDate) q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC, cible: cibleEch })
-    else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC, cible: cibleEch })
+    // Échéance = concern MÉTIER (engagement) → jamais « ignorable », au max reportable.
+    if (!a.dueDate) q.push({ niveau: 'important', nature: 'metier', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC, cible: cibleEch })
+    else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', nature: 'metier', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC, cible: cibleEch })
   }
   // Identité du document : DNS + date de la prochaine réunion = 🔴 mais DOCUMENTAIRE
   // (contournable en PV urgent), pas métier.

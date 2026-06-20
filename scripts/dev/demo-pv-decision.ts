@@ -42,20 +42,22 @@ async function main() {
   console.log(`\n① AVANT — durs=${before!.durs} · PDF ${before!.blocking ? 'BLOQUÉ' : 'OK'}`)
   console.log(`   signal ciblé : 🔴 ${gap.libelle}  (id: ${gap.id})`)
 
-  console.log(`\n② IGNORER (décision, AUCUNE écriture mémoire) …`)
-  await upsertPvSignalDecision({ reportId, signalId: gap.id, statut: 'ignored', comment: 'démo' })
+  console.log(`\n② REPORTER (décision, AUCUNE écriture mémoire) …`)
+  await upsertPvSignalDecision({ reportId, signalId: gap.id, statut: 'reported', comment: 'démo' })
 
   const after = await buildPvValidation(reportId)
   const ann = after!.gaps.find((g) => g.id === gap.id)
+  const metier = (gap.nature ?? '') === 'metier'
   console.log(`\n③ APRÈS — durs=${after!.durs} (était ${before!.durs}) · PDF ${after!.blocking ? 'BLOQUÉ' : 'OK'}`)
-  console.log(`   décision portée par le signal : ${ann?.decision?.statut ?? 'aucune'}  → levé du gate : ${after!.durs < before!.durs ? '✅' : '— (autres bloquants restants)'}`)
+  console.log(`   décision portée par le signal : ${ann?.decision?.statut ?? 'aucune'}`)
+  console.log(`   ${metier ? 'point MÉTIER → Reporter NE lève PAS le gate (différé ≠ résolu)' : 'documentaire'} : durs inchangé ${after!.durs === before!.durs ? '✅' : '⚠'}`)
 
   console.log(`\n④ ANNULER la décision …`)
   await clearPvSignalDecision(reportId, gap.id)
   const restored = await buildPvValidation(reportId)
-  console.log(`   durs=${restored!.durs} (retour à ${before!.durs}) · décision : ${restored!.gaps.find((g) => g.id === gap.id)?.decision?.statut ?? 'aucune'}`)
+  console.log(`   durs=${restored!.durs} · décision : ${restored!.gaps.find((g) => g.id === gap.id)?.decision?.statut ?? 'aucune'}`)
 
-  console.log(`\nLoop décision vérifié : Ignorer lève le gate sans toucher la mémoire ; Annuler restaure. Aucune donnée laissée modifiée.`)
+  console.log(`\nLoop décision vérifié : Reporter trace sans toucher la mémoire ET maintient le blocage métier ; Annuler restaure. Aucune donnée laissée modifiée.`)
 }
 
 main().catch((e) => { console.error(e); process.exit(1) })

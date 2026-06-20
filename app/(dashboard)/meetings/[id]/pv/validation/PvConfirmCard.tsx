@@ -28,6 +28,9 @@ export function PvConfirmCard({ reportId, signal }: { reportId: string; signal: 
   const resolvable = !!signal.cible
   const isDate = signal.type === 'Échéance'
   const decision = signal.decision
+  // Un point MÉTIER (responsable / échéance) ne peut être ni ignoré ni classé faux
+  // positif (garde-fou serveur aussi) : au maximum reporté. On le complète ou on l'assume.
+  const metier = signal.nature === 'metier'
 
   function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>) {
     setError(null)
@@ -98,14 +101,19 @@ export function PvConfirmCard({ reportId, signal }: { reportId: string; signal: 
                     className="inline-flex items-center gap-1 text-muted-foreground hover:text-amber-700 disabled:opacity-50">
                     <Clock className="h-3.5 w-3.5" /> Reporter
                   </button>
-                  <button type="button" onClick={() => decide('ignored')} disabled={pending}
-                    className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground disabled:opacity-50">
-                    <BellOff className="h-3.5 w-3.5" /> Ignorer
-                  </button>
-                  <button type="button" onClick={() => decide('false_positive')} disabled={pending}
-                    className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground disabled:opacity-50">
-                    <Bug className="h-3.5 w-3.5" /> Faux positif
-                  </button>
+                  {/* Ignorer / Faux positif : interdits sur un point métier. */}
+                  {!metier && (
+                    <>
+                      <button type="button" onClick={() => decide('ignored')} disabled={pending}
+                        className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground disabled:opacity-50">
+                        <BellOff className="h-3.5 w-3.5" /> Ignorer
+                      </button>
+                      <button type="button" onClick={() => decide('false_positive')} disabled={pending}
+                        className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground disabled:opacity-50">
+                        <Bug className="h-3.5 w-3.5" /> Faux positif
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>
