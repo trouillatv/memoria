@@ -3,17 +3,18 @@
 // Grille de photos du CR (priorité #1 Vincent). Par photo : vignette, légende
 // ÉDITABLE (corrige la mémoire), ⭐ couverture, ↑↓ ordre, exclure. + un commentaire
 // GÉNÉRAL du bloc photos. Présentation propre au CR (mig 129) ; ne touche pas la photo.
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Check, X, EyeOff, RotateCcw, Loader2, ImageOff, Star, ArrowUp, ArrowDown } from 'lucide-react'
+import { Pencil, Check, X, EyeOff, RotateCcw, Loader2, ImageOff, Star, ArrowUp, ArrowDown, Trash2, ImagePlus } from 'lucide-react'
 import {
   setPhotoCaptionAction, excludePvItemAction, includePvItemAction,
   setCoverPhotoAction, reorderPhotosAction, setPhotosCommentAction,
+  addReportPhotoAction, deleteReportPhotoAction,
 } from '../../pv-actions'
 
 export interface PhotoCard {
   id: string
-  source: 'intervention' | 'action'
+  source: 'intervention' | 'action' | 'report'
   thumbUrl: string | null
   legende: string
   excluded: boolean
@@ -88,7 +89,13 @@ function PhotoTile({
             <button type="button" disabled={pending} title="Modifier la légende" onClick={() => setEditing(true)} className="hover:text-foreground disabled:opacity-50"><Pencil className="h-3 w-3" /></button>
             <button type="button" disabled={pending || index === 0} title="Monter" onClick={() => onMove(index, 'up')} className="hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3 w-3" /></button>
             <button type="button" disabled={pending || index === total - 1} title="Descendre" onClick={() => onMove(index, 'down')} className="hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3 w-3" /></button>
-            {photo.excluded ? (
+            {/* Photo report = ajout éditorial → VRAIE suppression. Photo terrain
+                (intervention/action) = artefact → « exclure » réversible seulement. */}
+            {photo.source === 'report' ? (
+              <button type="button" disabled={pending} title="Supprimer la photo"
+                onClick={() => { if (confirm('Supprimer définitivement cette photo ajoutée ?')) run(() => deleteReportPhotoAction(reportId, photo.id)) }}
+                className="hover:text-rose-600 disabled:opacity-50"><Trash2 className="h-3 w-3" /></button>
+            ) : photo.excluded ? (
               <button type="button" disabled={pending} title="Réintégrer" onClick={() => run(() => includePvItemAction(reportId, photo.id))} className="hover:text-foreground disabled:opacity-50"><RotateCcw className="h-3 w-3" /></button>
             ) : (
               <button type="button" disabled={pending} title="Exclure du PV" onClick={() => run(() => excludePvItemAction(reportId, photo.id))} className="hover:text-rose-600 disabled:opacity-50"><EyeOff className="h-3 w-3" /></button>
@@ -139,6 +146,54 @@ function GeneralComment({ reportId, comment }: { reportId: string; comment: stri
   )
 }
 
+function AddPhoto({ reportId }: { reportId: string }) {
+  const router = useRouter()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [caption, setCaption] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+
+  function onPick(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setError(null)
+    startTransition(async () => {
+      try {
+        // Upload séquentiel (plusieurs photos d'un coup) — simple et fiable.
+        for (const file of Array.from(files)) {
+          const fd = new FormData()
+          fd.set('report_id', reportId)
+          fd.set('file', file)
+          if (caption.trim()) fd.set('caption', caption)
+          const res = await addReportPhotoAction(fd)
+          if (!res.ok) { setError(res.error); break }
+        }
+        setCaption('')
+        if (inputRef.current) inputRef.current.value = ''
+        router.refresh()
+      } catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
+    })
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          placeholder="Légende (optionnelle) de la prochaine photo"
+          className="min-w-[12rem] flex-1 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-300"
+        />
+        <button type="button" disabled={pending} onClick={() => inputRef.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted/40 disabled:opacity-50">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} Ajouter une photo
+        </button>
+        <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={(e) => onPick(e.target.files)} />
+      </div>
+      {error && <p className="text-[11px] text-rose-600">{error}</p>}
+    </div>
+  )
+}
+
 export function PvPhotoGrid({ reportId, photos, comment }: { reportId: string; photos: PhotoCard[]; comment: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -159,11 +214,16 @@ export function PvPhotoGrid({ reportId, photos, comment }: { reportId: string; p
   return (
     <div className="space-y-2">
       <GeneralComment reportId={reportId} comment={comment} />
-      <ul className={`grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 ${pending ? 'opacity-60' : ''}`}>
-        {photos.map((p, i) => (
-          <PhotoTile key={p.id} reportId={reportId} photo={p} index={i} total={photos.length} onMove={onMove} />
-        ))}
-      </ul>
+      <AddPhoto reportId={reportId} />
+      {photos.length > 0 ? (
+        <ul className={`grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 ${pending ? 'opacity-60' : ''}`}>
+          {photos.map((p, i) => (
+            <PhotoTile key={p.id} reportId={reportId} photo={p} index={i} total={photos.length} onMove={onMove} />
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs italic text-muted-foreground">Aucune photo — ajoutez-en une ci-dessus.</p>
+      )}
     </div>
   )
 }

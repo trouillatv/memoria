@@ -10,6 +10,7 @@
 //   - site_actions.completed_photo_path (photo de clôture d'action)
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { listReportPhotos } from './report-photos'
 
 export interface SitePhoto {
   id: string
@@ -22,7 +23,7 @@ export interface SitePhoto {
   interventionId: string | null
   anomalyId: string | null
   actionId: string | null
-  source: 'intervention' | 'action'
+  source: 'intervention' | 'action' | 'report'
 }
 
 /**
@@ -51,10 +52,14 @@ export async function listMeetingScopedPhotos(report: {
     .maybeSingle()
   const since = (prev as { created_at: string } | null)?.created_at ?? null
   const until = report.created_at
-  return all.filter((p) => {
+  const scoped = all.filter((p) => {
     if (!p.takenAt) return since === null // non datée : gardée seulement à la 1re réunion
     return p.takenAt <= until && (since === null || p.takenAt > since)
   })
+  // Photos AJOUTÉES directement à CE CR (mig 133) : toujours incluses (rattachées au
+  // report, pas au site → hors logique de fenêtre). Plus récentes d'abord, en tête.
+  const reportPhotos = await listReportPhotos(report.id)
+  return [...reportPhotos, ...scoped]
 }
 
 /** Toutes les photos rattachées à un site, triées de la plus récente à la plus ancienne. */

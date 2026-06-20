@@ -16,6 +16,7 @@ import { upsertPvSignalDecision, clearPvSignalDecision, type PvSignalStatut } fr
 import { reorderReportPhotos, setReportCoverPhoto, setCrPhotosComment } from '@/lib/db/report-photo-meta'
 import { addReportHumanPoint, removeReportHumanPoint, type HumanPointSection } from '@/lib/db/report-human-points'
 import { setReportPointActions } from '@/lib/db/report-point-actions'
+import { addReportPhoto, deleteReportPhoto } from '@/lib/db/report-photos'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -201,17 +202,76 @@ export async function excludePvItemAction(
 export async function setPhotoCaptionAction(
   reportId: string,
   photoId: string,
-  source: 'intervention' | 'action',
+  source: 'intervention' | 'action' | 'report',
   caption: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   const sb = createAdminClient()
   const v = caption.trim() || null
   try {
-    const { error } = source === 'intervention'
-      ? await sb.from('intervention_photos').update({ caption: v }).eq('id', photoId)
-      : await sb.from('site_actions').update({ completed_comment: v }).eq('id', photoId)
+    const { error } =
+      source === 'intervention'
+        ? await sb.from('intervention_photos').update({ caption: v }).eq('id', photoId)
+        : source === 'report'
+          ? await sb.from('report_photos').update({ caption: v }).eq('id', photoId).eq('report_id', reportId)
+          : await sb.from('site_actions').update({ completed_comment: v }).eq('id', photoId)
     if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────────── PHOTOS report (Ajouter / Supprimer directement) ───
+// Reconstruction manuelle du PV (mig 133) : Émeline joint une photo même sans
+// remontée terrain. Photo report = ajout ÉDITORIAL → vraie suppression autorisée
+// (≠ « exclure » réversible des photos intervention/action, qui sont des artefacts).
+const PHOTO_MAX_BYTES = 12 * 1024 * 1024 // 12 Mo
+const PHOTO_TYPES = /^image\/(jpe?g|png|webp|gif|heic|heif)$/i
+
+export async function addReportPhotoAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const reportId = String(formData.get('report_id') ?? '')
+  const file = formData.get('file')
+  const caption = String(formData.get('caption') ?? '')
+  if (!reportId) return { ok: false, error: 'Réunion inconnue.' }
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Aucun fichier.' }
+  if (file.size > PHOTO_MAX_BYTES) return { ok: false, error: 'Fichier trop lourd (max 12 Mo).' }
+  if (!PHOTO_TYPES.test(file.type)) return { ok: false, error: 'Format image non supporté.' }
+  try {
+    const sb = createAdminClient()
+    const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase().slice(0, 5)
+    const safeExt = /^[a-z0-9]+$/.test(ext) ? ext : 'jpg'
+    const storagePath = `report/${reportId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const { error: upErr } = await sb.storage
+      .from('intervention-photos')
+      .upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    if (upErr) return { ok: false, error: `Upload échoué : ${upErr.message}` }
+    await addReportPhoto({ reportId, storagePath, caption, createdBy: user.id })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function deleteReportPhotoAction(
+  reportId: string,
+  photoId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    const path = await deleteReportPhoto(reportId, photoId)
+    if (path) {
+      // Purge du bucket (best-effort : la ligne est déjà supprimée, la vérité = la DB).
+      await createAdminClient().storage.from('intervention-photos').remove([path]).catch(() => {})
+    }
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -423,7 +483,7 @@ export async function removeHumanPointAction(
 /** Réordonne les photos du CR (ordre = position dans la liste fournie). */
 export async function reorderPhotosAction(
   reportId: string,
-  ordered: { id: string; source: 'intervention' | 'action' }[],
+  ordered: { id: string; source: 'intervention' | 'action' | 'report' }[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   try {
@@ -440,7 +500,7 @@ export async function reorderPhotosAction(
 export async function setCoverPhotoAction(
   reportId: string,
   photoId: string,
-  source: 'intervention' | 'action',
+  source: 'intervention' | 'action' | 'report',
   cover: boolean,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()

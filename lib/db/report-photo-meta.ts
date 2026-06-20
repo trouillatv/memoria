@@ -21,7 +21,7 @@ export async function listReportPhotoMeta(reportId: string): Promise<Map<string,
 /** Réordonne : sort_order = index dans la liste fournie (préserve la couverture). */
 export async function reorderReportPhotos(
   reportId: string,
-  ordered: { id: string; source: 'intervention' | 'action' }[],
+  ordered: { id: string; source: 'intervention' | 'action' | 'report' }[],
 ): Promise<void> {
   if (ordered.length === 0) return
   const sb = createAdminClient()
@@ -42,7 +42,7 @@ export async function reorderReportPhotos(
 export async function setReportCoverPhoto(
   reportId: string,
   photoId: string,
-  source: 'intervention' | 'action',
+  source: 'intervention' | 'action' | 'report',
   cover: boolean,
 ): Promise<void> {
   const sb = createAdminClient()
