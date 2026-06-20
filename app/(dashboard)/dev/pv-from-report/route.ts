@@ -36,7 +36,13 @@ export async function GET(req: NextRequest) {
 
   if (req.nextUrl.searchParams.get('info')) {
     const cr = mapMeetingToCrBecib(input)
-    return NextResponse.json({ chantier: cr.meta.chantier, moa: cr.meta.moa, numeroCR: cr.meta.numeroCR, readiness: pvReadiness(input) })
+    return NextResponse.json({
+      chantier: cr.meta.chantier, moa: cr.meta.moa, numeroCR: cr.meta.numeroCR,
+      remarquesCrPrecedent: cr.remarquesCrPrecedent,
+      avancement: cr.avancement,
+      photos: { count: cr.photos.length, sample: cr.photos.slice(0, 5) },
+      readiness: pvReadiness(input),
+    })
   }
 
   try {

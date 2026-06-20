@@ -29,6 +29,9 @@ export type MeetingInput = {
   // Prévisions issues des interventions (anomalies non résolues + interventions à
   // venir) — déjà rédigées en lignes déterministes ; complètent les actions ouvertes.
   previsionsInterventions?: string[]
+  // Photos du site (projection fine de SitePhoto → {url, legende}). La structure
+  // riche réutilisable vit dans lib/db/site-photos.ts.
+  photos?: { url: string; legende: string }[]
   numeroCR?: string | null
   prochaineReunion?: { date?: string | null; heure?: string | null; lieu?: string | null }
 }
@@ -145,7 +148,7 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       retard: { previsionnel: null, effectif: null },
     },
     securite: [],
-    photos: [],
+    photos: input.photos ?? [],
     prochaineReunion: {
       date: input.prochaineReunion?.date ?? TBC,
       heure: input.prochaineReunion?.heure ?? null,
