@@ -12,6 +12,7 @@ import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getContract } from '@/lib/db/contracts'
 import { buildRemarquesCrPrecedent } from '@/lib/db/meeting-followup'
 import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
+import { listAddedPrevisions } from '@/lib/db/report-added-points'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
 import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
@@ -59,8 +60,11 @@ export async function loadMeetingContext(
   // REMARQUES SUR CR PRÉCÉDENT : 100% déterministe (meeting_followup), pas le transcript.
   const remarques = await buildRemarquesCrPrecedent({ id: reportId, site_id: report.site_id, created_at: report.created_at })
 
-  // PRÉVISIONS (volet interventions) : anomalies non résolues + interventions à venir.
-  const previsions = report.site_id ? await buildPrevisionsFromInterventions(report.site_id) : []
+  // PRÉVISIONS (volet interventions) : anomalies non résolues + interventions à venir,
+  // + prévisions STRUCTURÉES ajoutées en séance (mig 134, source `added:<id>`).
+  const previsionsBase = report.site_id ? await buildPrevisionsFromInterventions(report.site_id) : []
+  const addedPrevisions = await listAddedPrevisions(reportId)
+  const previsions = [...previsionsBase, ...addedPrevisions]
 
   // PHOTOS : scopées à CE CR (fenêtre depuis la réunion précédente), pas tout le site.
   const photos = await listMeetingScopedPhotos({ id: reportId, site_id: report.site_id, created_at: report.created_at })

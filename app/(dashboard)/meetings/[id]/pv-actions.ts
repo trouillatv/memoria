@@ -17,6 +17,7 @@ import { reorderReportPhotos, setReportCoverPhoto, setCrPhotosComment } from '@/
 import { addReportHumanPoint, removeReportHumanPoint, type HumanPointSection } from '@/lib/db/report-human-points'
 import { setReportPointActions } from '@/lib/db/report-point-actions'
 import { addReportPhoto, deleteReportPhoto } from '@/lib/db/report-photos'
+import { addReportAddedPoint, deleteReportAddedPoint } from '@/lib/db/report-added-points'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -359,6 +360,63 @@ export async function setPointActionsAction(
   await requireManagerOrAdmin()
   try {
     await setReportPointActions(reportId, pointSource, codes)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────── POINTS STRUCTURÉS ajoutés en séance (mig 134) ─────────
+// « Ajouter une anomalie » / « Ajouter une prévision structurée » : objet TYPÉ saisi
+// par l'humain (≠ texte libre). Anomalie → Points examinés ; prévision → Prévisions.
+// Ajout éditorial mémorisé → vraie suppression autorisée.
+
+export async function addAnomalieAction(
+  reportId: string,
+  input: { label: string; statut?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const label = input.label.trim()
+  if (!label) return { ok: false, error: 'Description vide.' }
+  try {
+    await addReportAddedPoint({ reportId, kind: 'anomalie', label, statut: input.statut, createdBy: user.id })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function addPrevisionAction(
+  reportId: string,
+  input: { label: string; assignedTo?: string; dueDate?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const label = input.label.trim()
+  if (!label) return { ok: false, error: 'Intitulé vide.' }
+  try {
+    await addReportAddedPoint({
+      reportId, kind: 'prevision', label,
+      assignedTo: input.assignedTo, dueDate: input.dueDate, createdBy: user.id,
+    })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function deleteAddedPointAction(
+  reportId: string,
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await deleteReportAddedPoint(reportId, id)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }

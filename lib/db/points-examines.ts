@@ -11,6 +11,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
+import { listAddedAnomaliesAsPoints } from '@/lib/db/report-added-points'
 import type { DbSiteReport } from '@/types/db'
 
 export type PointExamineType =
@@ -116,6 +117,11 @@ export async function buildPointsExamines(
       }
     }
   }
+
+  // 4) ANOMALIES AJOUTÉES EN SÉANCE (mig 134) — objet structuré saisi par l'humain
+  //    quand le terrain n'a rien remonté. Même type 'blocage' que les anomalies site.
+  const addedAnomalies = await listAddedAnomaliesAsPoints(report.id)
+  points.push(...addedAnomalies)
 
   return points
 }
