@@ -118,7 +118,18 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
     remarquesCrPrecedent: input.remarquesCrPrecedent ?? '',
     // Contenu éditorial = VALIDÉ uniquement (propositions acceptées / curation).
     pointsExamines: { administratifs: input.pointsAdmin ?? [], techniques: input.pointsTech ?? [] },
-    avancement: { fait: [], previsions: [] },
+    // Avancement adossé à la donnée structurée (jamais inventé) :
+    //  FAIT ← actions clôturées ; PRÉVISIONS ← actions ouvertes (avec échéance/responsable).
+    //  Le transcript enrichira ces listes plus tard (couche intelligence).
+    avancement: {
+      fait: input.actions.filter((a) => a.status === 'done').map((a) => a.title),
+      previsions: input.actions
+        .filter((a) => a.status !== 'done' && a.status !== 'cancelled')
+        .map((a) => {
+          const det = [a.assignedTo, a.dueDate ? `éch. ${a.dueDate}` : null].filter(Boolean).join(', ')
+          return det ? `${a.title} (${det})` : a.title
+        }),
+    },
     intemperiesAleas: [],
     planning: {
       marche: { osDemarrage: input.contract.startDate ?? null, delai: input.contract.delai ?? null, finContractuelle: input.contract.endDate ?? null },

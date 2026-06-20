@@ -24,8 +24,12 @@ function tagRow(tr: string, tags: string[]): string {
 function pointsCell(tc: string, blocKey: string): string {
   const paras = tc.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!
   const st = setText(paras[1], `{#${blocKey}}{sousTitre}`)
-  const pt = setText(paras[2], `{#points}{texte}{/points}{/${blocKey}}`)
-  return tc.replace(paras.slice(1).join(''), st + pt)
+  // points = boucle PARAGRAPHE imbriquée (1 puce par point) ; {#points}/{/points}
+  // sur des paragraphes à part (sinon concat inline). {/blocKey} ferme après.
+  const ptOpen = '<w:p><w:r><w:t xml:space="preserve">{#points}</w:t></w:r></w:p>'
+  const body = setText(paras[2], '{texte}')
+  const ptClose = `<w:p><w:r><w:t xml:space="preserve">{/points}{/${blocKey}}</w:t></w:r></w:p>`
+  return tc.replace(paras.slice(1).join(''), st + ptOpen + body + ptClose)
 }
 function actionCell(tc: string, blocKey: string): string {
   const paras = tc.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!
@@ -39,6 +43,39 @@ function tagWholePara(xml: string, match: string, replacement: string): string {
     if (!ts.length || !ts.map((m) => m[1]).join('').includes(match)) return pp
     return setText(pp, replacement)
   })
+}
+// Texte concaténé de tous les <w:t> d'un fragment (runs fusionnés).
+function paraText(pp: string): string {
+  return [...pp.matchAll(/<w:t(?: [^>]*)?>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]).join('')
+}
+// Supprime les paragraphes dont le texte contient un des `matches` (puces-exemple
+// figées du modèle qu'on remplace par une boucle).
+function removeParas(xml: string, matches: string[]): string {
+  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (pp) => (matches.some((m) => paraText(pp).includes(m)) ? '' : pp))
+}
+// Transforme la puce-exemple contenant `anchor` en une vraie BOUCLE PARAGRAPHE :
+// {#key} et {/key} sont posés sur des paragraphes À PART (sinon docxtemplater fait
+// une boucle inline → tout se concatène sur une seule ligne sans puce). La puce
+// d'origine (avec son formatage liste) devient le corps répété `{texte}`.
+function wrapParaLoop(xml: string, anchor: string, key: string): string {
+  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (pp) => {
+    if (!paraText(pp).includes(anchor)) return pp
+    const open = `<w:p><w:r><w:t xml:space="preserve">{#${key}}</w:t></w:r></w:p>`
+    const close = `<w:p><w:r><w:t xml:space="preserve">{/${key}}</w:t></w:r></w:p>`
+    return open + setText(pp, '{texte}') + close
+  })
+}
+// Vide le TEXTE de tout run <w:t> qui contient un `match` (indépendant des
+// paragraphes/zones de texte : utile dans le footer où le breadcrumb vit dans
+// un txbxContent non capturé comme <w:p>).
+function blankRuns(xml: string, matches: string[]): string {
+  return xml.replace(WT, (m, o, x, c) => (matches.some((s) => (x as string).includes(s)) ? o + c : m))
+}
+// Vide le TEXTE des paragraphes contenant un `match` SANS retirer le <w:p>
+// (les légendes-photos sont dans des cellules de table : retirer le paragraphe
+// rendrait la cellule invalide). Utilisé pour neutraliser les légendes Cravache.
+function blankParas(xml: string, matches: string[]): string {
+  return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (pp) => (matches.some((m) => paraText(pp).includes(m)) ? setText(pp, '') : pp))
 }
 
 // Construit le template tagué (chirurgie minimale, formatage préservé).
@@ -61,17 +98,49 @@ function buildTemplate(): Buffer {
   let t1n = t1.replace(r1[1], r1[1].replace(adm[0], pointsCell(adm[0], 'blocsAdmin')).replace(adm[1], actionCell(adm[1], 'blocsAdmin')))
   t1n = t1n.replace(r1[3], r1[3].replace(tec[0], pointsCell(tec[0], 'blocsTech')).replace(tec[1], actionCell(tec[1], 'blocsTech')))
   xml = xml.replace(t1, t1n)
+  // Planning : on tague la 3e cellule (valeur) de chaque ligne utile (déterministe).
+  const tP = tbls.find((x) => x.includes('MARCHE') && x.includes('INTEMPERIES'))!
+  const rP = tP.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g)!
+  const planTags: Record<number, string> = {
+    1: '{osDemarrage}', 2: '{delaiContractuel}', 3: '{finContractuelle}',
+    5: '{intemperiesDepuis}', 6: '{intemperiesCumul}', 7: '{finAvecIntemperies}',
+    9: '{prolongations}', 10: '{finAvecProlongations}',
+    12: '{retardPrevisionnel}', 13: '{retardEffectif}',
+  }
+  let tPn = tP
+  for (const [i, tag] of Object.entries(planTags)) {
+    const cells = rP[+i].match(/<w:tc>[\s\S]*?<\/w:tc>/g)!
+    const valCell = cells[cells.length - 1] // dernière cellule = valeur
+    tPn = tPn.replace(rP[+i], rP[+i].replace(valCell, setText(valCell, tag)))
+  }
+  xml = xml.replace(tP, tPn)
   // Scalaires (fusion-par-paragraphe : les runs sont fragmentés → xml.replace brut échoue)
   xml = tagWholePara(xml, 'TRAVAUX POUR L', '{projetTitre}')
   xml = tagWholePara(xml, 'EAUX PLUVIALES DU CENTRE', '')
   xml = tagWholePara(xml, 'COMPTE-RENDU', 'COMPTE-RENDU N°{numeroCR} DE LA RÉUNION DE CHANTIER')
-  xml = tagWholePara(xml, 'novembre 2025', 'Du {dateLong} - semaine {semaine}')
-  // Ordre du jour (liste) + Remarques sur CR précédent
-  xml = tagWholePara(xml, 'Suivi des travaux', '{#ordreDuJour}{texte}{/ordreDuJour}')
+  xml = tagWholePara(xml, 'semaine 45', 'Du {dateLong} - semaine {semaine}') // anchor header (≠ date prochaine réunion)
+  // Ordre du jour (liste → boucle paragraphe) + Remarques sur CR précédent
+  xml = wrapParaLoop(xml, 'Suivi des travaux', 'ordreDuJour')
   xml = tagWholePara(xml, 'corrigé afin de noter', '{remarquesCrPrecedent}')
-  // Prochaine réunion + signature
+  // Avancement : Fait / Prévisions (boucle paragraphe ; on garde la 1re puce
+  // comme corps répété et on retire les puces-exemple suivantes).
+  xml = wrapParaLoop(xml, 'Reprofilage des paddocks', 'fait')
+  xml = removeParas(xml, ['Fossé le long des paddocks Sud', 'Autorisation de voirie pour les travaux'])
+  xml = wrapParaLoop(xml, 'Suite et fin piste aval', 'previsions')
+  xml = removeParas(xml, ['Suite et fin de la mise en œuvre de la scorie', 'Suite et fin GNT', 'Fin des cunettes', 'Reprise des traversées'])
+  // Intempéries / aléas (texte libre, déterministe → météo/mémoire plus tard)
+  xml = tagWholePara(xml, '21 / 22 / 23 / 24 Octobre', '{aleas}')
+  // Prochaine réunion + signature (et on retire la date figée Cravache résiduelle)
   xml = tagWholePara(xml, 'PROCHAINE REUNION', 'PROCHAINE RÉUNION : {prochaineReunion}')
+  xml = removeParas(xml, ['8h30 sur site'])
   xml = tagWholePara(xml, 'POUR BECIB', '{signature}')
+  // PHOTOS : neutraliser les légendes Cravache figées (la table est conservée,
+  // la vraie boucle image {#photos} viendra plus tard ; le 2e drawing → placeholder).
+  xml = blankParas(xml, [
+    'Fossé amont derrière les boxes', 'Fossé de protection ajouté contre les boxes',
+    'Traversée busée amont faite', 'Fossé amont terminé', 'Différence entre la GNT et le poussier',
+    'Paddock aval nord et cunette en cours', 'Fossé paddocks aval sud', 'entreprise BAJA',
+  ])
 
   // PHOTOS : garder le 1er drawing (logo client en p.1), retirer les photos
   // Cravache figées ; placeholder à la place de la 1re. Les médias orphelins
@@ -85,9 +154,17 @@ function buildTemplate(): Buffer {
   })
   zip.file('word/document.xml', xml)
 
+  // Footer (Vincent) : on VIDE les valeurs, on GARDE les libellés de colonnes.
+  //  - breadcrumb Cravache (Mairie / BECIB / LA CRAVACHE GDE / …) → vidé
+  //  - ligne de valeurs DNS / Version / Modification / Date → vidée (en-tête conservé)
+  //  - les numéros de page (champs PAGE/NUMPAGES) sont préservés.
   let foot = zip.file('word/footer1.xml')!.asText()
-  foot = foot.split('2025BEC010/CR004').join('{dns}')
-  foot = tagWholePara(foot, 'CR réunion de chantier', '{moaNom} / BECIB / {chantier} / CR réunion de chantier')
+  // breadcrumb (dans une zone de texte) → vidé run par run
+  foot = blankRuns(foot, ['Mairie', 'BECIB', 'MONT-DORE', 'CRAVACHE', 'réunion', 'chantier'])
+  // ligne de valeurs DNS/Version/Modif/Date → vidée (texte JOINT car les valeurs
+  // sont fragmentées en runs) ; en-têtes de colonnes et n° de page conservés.
+  foot = foot.replace(/<w:tr[ >][\s\S]*?<\/w:tr>/g, (tr) =>
+    paraText(tr).includes('2025BEC010/CR004') ? tr.replace(WT, (_m, o, _x, c) => o + c) : tr)
   zip.file('word/footer1.xml', foot)
 
   // --- Élagage des médias orphelins (photos retirées) → réduit la taille ---
@@ -119,6 +196,13 @@ function dateLong(iso: string): string {
   const d = new Date(iso); if (isNaN(d.getTime())) return iso || 'à compléter'
   return `${String(d.getUTCDate()).padStart(2, '0')} ${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
+// Date courte format BECIB « jj / mm / aa » (sinon la valeur brute si non-ISO).
+function shortDate(v: string | null): string {
+  if (!v) return 'à compléter'
+  const d = new Date(v); if (isNaN(d.getTime())) return v
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getUTCDate())} / ${p(d.getUTCMonth() + 1)} / ${String(d.getUTCFullYear()).slice(2)}`
+}
 
 const GROUP_LABEL: Record<string, string> = { MOA: "MAÎTRISE D'OUVRAGE", MOE: "MAÎTRISE D'ŒUVRE", ENTREPRISE: 'ENTREPRISE TITULAIRE', PARTENAIRES: 'PARTENAIRES' }
 const GROUPS = ['MOA', 'MOE', 'ENTREPRISE', 'PARTENAIRES'] as const
@@ -146,13 +230,27 @@ function blocs(arr: CrBecib['pointsExamines']['administratifs']) {
 export function buildPvDocx(cr: CrBecib): Buffer {
   const doc = new Docxtemplater(new PizZip(buildTemplate()), { paragraphLoop: true, linebreaks: true })
   doc.render({
-    numeroCR: cr.meta.numeroCR || 'à compléter', dateLong: dateLong(cr.meta.dateIso), semaine: cr.meta.semaine || 'à compléter', dns: cr.meta.dns || 'à compléter',
-    projetTitre: cr.meta.projetTitre || 'à compléter', moaNom: cr.meta.moa || 'à compléter', chantier: cr.meta.chantier || 'à compléter',
+    numeroCR: cr.meta.numeroCR || 'à compléter', dateLong: dateLong(cr.meta.dateIso), semaine: cr.meta.semaine || 'à compléter',
+    projetTitre: cr.meta.projetTitre || 'à compléter',
     groupes: GROUPS.map((g) => ({ groupeLabel: GROUP_LABEL[g], orgs: orgsOf(cr, g) })).filter((x) => x.orgs.length > 0),
     ordreDuJour: cr.ordreDuJour.map((t) => ({ texte: t })),
     remarquesCrPrecedent: cr.remarquesCrPrecedent || 'RAS.',
     prochaineReunion: [cr.prochaineReunion.date, cr.prochaineReunion.heure, cr.prochaineReunion.lieu].filter(Boolean).join(' · ') || 'À planifier',
     signature: cr.signature || 'POUR BECIB,',
+    fait: (cr.avancement.fait.length ? cr.avancement.fait : ['à compléter']).map((t) => ({ texte: t })),
+    previsions: (cr.avancement.previsions.length ? cr.avancement.previsions : ['à compléter']).map((t) => ({ texte: t })),
+    aleas: cr.intemperiesAleas.length ? cr.intemperiesAleas.join(' ; ') : 'à compléter',
+    // Planning (déterministe) : MARCHÉ ← contrat ; intempéries/retard ← données calculées (placeholder pour l'instant)
+    osDemarrage: shortDate(cr.planning.marche.osDemarrage),
+    delaiContractuel: cr.planning.marche.delai || 'à compléter',
+    finContractuelle: shortDate(cr.planning.marche.finContractuelle),
+    intemperiesDepuis: cr.planning.intemperies.depuisDerniereReunion ?? '-',
+    intemperiesCumul: cr.planning.intemperies.cumulOuvrable ?? '-',
+    finAvecIntemperies: cr.planning.intemperies.finAvecIntemperies ?? '-',
+    prolongations: cr.planning.prolongations ?? '-',
+    finAvecProlongations: '-',
+    retardPrevisionnel: cr.planning.retard.previsionnel ?? '-',
+    retardEffectif: cr.planning.retard.effectif ?? '-',
     blocsAdmin: blocs(cr.pointsExamines.administratifs), blocsTech: blocs(cr.pointsExamines.techniques),
   })
   return doc.getZip().generate({ type: 'nodebuffer' })
