@@ -203,19 +203,31 @@ function PointLine({ texte, statut }: { texte: string; statut: CrBecib['pointsEx
   )
 }
 
-// Un bloc = sous-titre + points (gauche) ; action du bloc (droite, centrée vert.).
+// Un bloc = sous-titre (en-tête) + une ligne PAR point : texte (gauche) | ACTION
+// codes responsables du point (droite). L'ACTION est désormais MÉMORISÉE par point
+// (mig 132) ; fallback sur l'action commune du bloc si le point n'en porte pas.
 function Bloc({ bloc }: { bloc: CrBecibBloc }) {
   return (
-    <View style={s.tRow} wrap={false}>
-      <View style={[s.tCell, s.blocLeft]}>
-        {bloc.sousTitre ? <Text style={s.sousTitre}>{bloc.sousTitre}</Text> : null}
-        {bloc.points.map((p, i) => (
-          <PointLine key={i} texte={p.texte} statut={p.statut} />
-        ))}
-      </View>
-      <View style={[s.tCell, s.blocAction]}>
-        <Text style={s.blocActionTxt}>{actionLabel(bloc.action)}</Text>
-      </View>
+    <View>
+      {bloc.sousTitre ? (
+        <View style={s.tRow} wrap={false}>
+          <Text style={[s.tCell, s.blocLeft, s.sousTitre]}>{bloc.sousTitre}</Text>
+          <View style={[s.tCell, s.blocAction]} />
+        </View>
+      ) : null}
+      {bloc.points.map((p, i) => {
+        const codes = p.action.length ? p.action : bloc.action
+        return (
+          <View key={i} style={s.tRow} wrap={false}>
+            <View style={[s.tCell, s.blocLeft]}>
+              <PointLine texte={p.texte} statut={p.statut} />
+            </View>
+            <View style={[s.tCell, s.blocAction]}>
+              <Text style={s.blocActionTxt}>{actionLabel(codes)}</Text>
+            </View>
+          </View>
+        )
+      })}
     </View>
   )
 }

@@ -7,6 +7,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Check, X, Trash2, Plus, Loader2, ListTodo } from 'lucide-react'
 import { addActionAction, editActionAction, deleteActionAction } from '../../pv-actions'
+import { PvActionCodes } from './PvActionCodes'
 
 export interface ActionRow {
   id: string
@@ -14,6 +15,7 @@ export interface ActionRow {
   assignedTo: string
   dueDate: string // AAAA-MM-JJ ou ''
   corpsEtat: string
+  actionCodes: string[] // colonne ACTION mémorisée (ETV/MOA/… ; mig 132)
 }
 
 type Res = { ok: true } | { ok: false; error: string }
@@ -69,6 +71,12 @@ function Row({ reportId, action }: { reportId: string; action: ActionRow }) {
           </span>
           <button type="button" disabled={pending} title="Modifier" onClick={() => setEditing(true)} className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
           <button type="button" disabled={pending} title="Supprimer" onClick={() => run(() => deleteActionAction(reportId, action.id))} className="shrink-0 text-muted-foreground hover:text-rose-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+      {/* Colonne ACTION (mig 132) : qui doit faire quoi — codes responsables mémorisés. */}
+      {!editing && (
+        <div className="mt-2 border-t pt-2">
+          <PvActionCodes reportId={reportId} source={action.id} codes={action.actionCodes} />
         </div>
       )}
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}

@@ -15,6 +15,7 @@ import { mapMeetingToCrBecib } from '@/lib/documents/meeting-to-cr-becib'
 import { upsertPvSignalDecision, clearPvSignalDecision, type PvSignalStatut } from '@/lib/db/pv-signal-decisions'
 import { reorderReportPhotos, setReportCoverPhoto, setCrPhotosComment } from '@/lib/db/report-photo-meta'
 import { addReportHumanPoint, removeReportHumanPoint, type HumanPointSection } from '@/lib/db/report-human-points'
+import { setReportPointActions } from '@/lib/db/report-point-actions'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -280,6 +281,24 @@ export async function deleteActionAction(reportId: string, actionId: string): Pr
   await requireManagerOrAdmin()
   try {
     await updateSiteAction(actionId, { status: 'cancelled' })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Colonne ACTION d'un point examiné : codes responsables (ETV/MOA/MOE/FSH/CLUB),
+ *  multi. Stocké en mémoire (clé = source du point) → rendu dans le CR. */
+export async function setPointActionsAction(
+  reportId: string,
+  pointSource: string,
+  codes: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await setReportPointActions(reportId, pointSource, codes)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }

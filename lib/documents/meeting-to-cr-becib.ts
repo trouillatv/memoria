@@ -3,7 +3,7 @@
 // « à compléter »/« à confirmer », JAMAIS inventé. Voir mémoire
 // pv-questions-avant-validation. Prévu pour brancher un vrai site_report.
 
-import type { CrBecib, CrBecibBloc, CrBecibIntervenant, StatutPoint } from './cr-becib-schema'
+import { ROLE_CODES, type CrBecib, type CrBecibBloc, type CrBecibIntervenant, type RoleCode, type StatutPoint } from './cr-becib-schema'
 import type { PointExamine, PointExamineStatut } from '@/lib/db/points-examines'
 import type { HumanPointSection } from '@/lib/db/report-human-points'
 
@@ -195,7 +195,9 @@ function toBlocs(points: PointExamine[]): CrBecibBloc[] {
     let b = map.get(p.sousTitre)
     if (!b) { b = { sousTitre: p.sousTitre, points: [], action: [] }; map.set(p.sousTitre, b); order.push(p.sousTitre) }
     const suffix = p.confiance === 'à confirmer' ? ' (à confirmer)' : ''
-    b.points.push({ texte: p.texte + suffix, statut: p.statut ? STATUT_MAP[p.statut] : null, action: [] })
+    // Colonne ACTION (mig 132) : codes responsables mémorisés du point (ETV/MOA/…).
+    const codes = (p.actionCodes ?? []).filter((c): c is RoleCode => (ROLE_CODES as readonly string[]).includes(c))
+    b.points.push({ texte: p.texte + suffix, statut: p.statut ? STATUT_MAP[p.statut] : null, action: codes })
   }
   return order.map((s) => map.get(s)!)
 }

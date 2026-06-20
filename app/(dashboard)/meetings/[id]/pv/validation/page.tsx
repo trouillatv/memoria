@@ -56,9 +56,14 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   if (!report || !pv) notFound()
 
   // ACTIONS éditables (Ajouter / Modifier / Supprimer) — l'entité la plus fréquente.
+  // Colonne ACTION (codes responsables, mig 132) : la source d'un point typé 'action'
+  // = l'id de l'action → on récupère ses codes mémorisés pour les éditer ici.
+  const actionCodesBySource = new Map(
+    pv.items.filter((i) => i.section === 'points_examines' && i.type === 'action').map((i) => [i.source, i.actionCodes ?? []]),
+  )
   const actionRows: ActionRow[] = (await listSiteActionsByReport(id))
     .filter((a) => a.status !== 'cancelled')
-    .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '' }))
+    .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [] }))
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })

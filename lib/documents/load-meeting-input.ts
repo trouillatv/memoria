@@ -18,6 +18,7 @@ import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
 import { getPhotoDataUrlsForCr } from '@/lib/storage/intervention-photos'
 import { listReportPhotoMeta, getCrPhotosComment } from '@/lib/db/report-photo-meta'
 import { listReportHumanPoints } from '@/lib/db/report-human-points'
+import { listReportPointActions } from '@/lib/db/report-point-actions'
 import { companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
@@ -65,7 +66,10 @@ export async function loadMeetingContext(
   const photos = await listMeetingScopedPhotos({ id: reportId, site_id: report.site_id, created_at: report.created_at })
 
   // POINTS EXAMINÉS typés (couche 3) : actions de la réunion + risques + anomalies.
-  const points = await buildPointsExamines({ id: reportId, site_id: report.site_id, risks: report.risks })
+  const pointsRaw = await buildPointsExamines({ id: reportId, site_id: report.site_id, risks: report.risks })
+  // Colonne ACTION (mig 132) : codes responsables MÉMORISÉS par point (clé = source).
+  const pointActions = await listReportPointActions(reportId)
+  const points = pointsRaw.map((p) => ({ ...p, actionCodes: pointActions.get(p.source) ?? [] }))
 
   // numéro de CR = nb de réunions du site jusqu'à cette date (déterministe).
   let numeroCR: string | null = null

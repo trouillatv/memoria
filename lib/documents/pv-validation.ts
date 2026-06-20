@@ -30,6 +30,7 @@ export interface PvValidationItem {
   statutValidation: ValidationStatut  // défaut 'pending' (aucune décision humaine encore)
   blocking: boolean                   // l'item EST un blocage métier (anomalie / dépendance)
   excluded: boolean                   // « Exclure du PV » : item retiré de la CR (ligne parasite)
+  actionCodes?: string[]              // colonne ACTION mémorisée du point (ETV/MOA/… ; mig 132)
 }
 
 // Point à confirmer + la décision humaine éventuelle (reporter/ignorer/faux positif).
@@ -96,6 +97,7 @@ export async function buildPvValidation(reportId: string): Promise<PvValidation 
       confiance: p.confiance,
       statutValidation: 'pending',
       blocking: p.type === 'blocage',
+      actionCodes: p.actionCodes ?? [], // codes responsables mémorisés (mig 132)
     })
   }
 

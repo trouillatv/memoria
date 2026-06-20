@@ -33,6 +33,7 @@ export interface PointExamine {
   statut: PointExamineStatut | null
   source: string // id de l'objet source (traçabilité / validation)
   confiance: 'sûr' | 'à confirmer'
+  actionCodes?: string[] // colonne ACTION du PV (codes responsables ETV/MOA/MOE… ; mig 132)
 }
 
 function statutFromActionStatus(s: string): PointExamineStatut | null {
