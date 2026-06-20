@@ -14,7 +14,7 @@
 // avec l'UI ; ici tous les items naissent 'pending'.
 
 import { loadMeetingContext } from './load-meeting-input'
-import { pvReadiness, type PvReadiness, type PvGapQuestion } from './meeting-to-cr-becib'
+import { pvReadiness, type PvReadiness, type PvPointAConfirmer } from './meeting-to-cr-becib'
 
 export type ValidationStatut = 'pending' | 'accepted' | 'edited' | 'rejected'
 export type PvSection = 'participants' | 'remarques_cr' | 'points_examines' | 'previsions' | 'photos'
@@ -34,9 +34,9 @@ export interface PvValidation {
   reportId: string
   items: PvValidationItem[]
   counts: Record<PvSection, number>
-  readiness: PvReadiness    // score + checks (réutilise meeting-to-cr-becib, pas de double source)
-  gaps: PvGapQuestion[]     // « points à confirmer » (responsable / échéance / DNS manquants…)
-  blocking: boolean         // GATE génération : PDF final désactivé tant que true (DOCX brouillon OK)
+  readiness: PvReadiness    // score + checks + compte par niveau (réutilise meeting-to-cr-becib)
+  gaps: PvPointAConfirmer[]  // POINTS À CONFIRMER classés 🔴 bloquant / 🟠 important / 🟢 suggestion
+  blocking: boolean         // GATE génération : ≥1 point 🔴 non levé → PDF final désactivé (DOCX brouillon OK)
 }
 
 const SECTIONS: PvSection[] = ['participants', 'remarques_cr', 'points_examines', 'previsions', 'photos']

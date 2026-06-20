@@ -6,7 +6,8 @@ import { buildPvDocx } from '@/lib/documents/pv-docx-template'
 import { MEETING_BECIB } from '@/lib/documents/fixtures/meeting-becib'
 
 console.log('=== POINTS À CONFIRMER AVANT PV (filet qualité) ===')
-detectPvGaps(MEETING_BECIB).forEach((q) => console.log(`  [${q.type}] ${q.question}${q.propositionIA ? `  → proposition: ${q.propositionIA}` : ''}`))
+const EMOJI = { bloquant: '🔴', important: '🟠', suggestion: '🟢' } as const
+detectPvGaps(MEETING_BECIB).forEach((p) => console.log(`  ${EMOJI[p.niveau]} [${p.type}] ${p.libelle}${p.proposition ? `  → proposition: ${p.proposition}` : ''}`))
 
 const cr = mapMeetingToCrBecib(MEETING_BECIB)
 fs.writeFileSync('.preview/pv-from-meeting.docx', buildPvDocx(cr))

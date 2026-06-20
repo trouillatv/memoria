@@ -39,7 +39,19 @@ export type MeetingInput = {
   prochaineReunion?: { date?: string | null; heure?: string | null; lieu?: string | null }
 }
 
-export type PvGapQuestion = { type: string; question: string; propositionIA?: string }
+// POINTS À CONFIRMER (jamais « questions ») — vocabulaire pro voulu par Vincent
+// (2026-06-20). Doctrine : MemorIA ne devine pas tout, il identifie PRÉCISÉMENT
+// ce qu'il ne sait pas, et ne demande QUE ce qui empêche la qualité du PV
+// (« j'ai compris 90 %, il me manque 3 infos »). 3 niveaux de sévérité :
+//   🔴 bloquant   — sans réponse, PV NON finalisable (PDF désactivé) ;
+//   🟠 important  — PV générable mais avec avertissement ;
+//   🟢 suggestion — aucune obligation (confort).
+// `proposition` = valeur pré-remplie déterministe si une source existe (l'humain
+// clique pour valider) ; sinon undefined → on demande sans inventer.
+export type PvNiveau = 'bloquant' | 'important' | 'suggestion'
+export type PvPointAConfirmer = { niveau: PvNiveau; type: string; libelle: string; proposition?: string }
+/** @deprecated alias historique — utiliser PvPointAConfirmer. */
+export type PvGapQuestion = PvPointAConfirmer
 
 // Semaine ISO (W..).
 function isoWeek(iso: string): string {
@@ -50,28 +62,47 @@ function isoWeek(iso: string): string {
   return String(Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7))
 }
 
-/** FILET QUALITÉ : détecte les trous/ambiguïtés → questions à valider AVANT PV.
- *  (version déterministe ; la détection IA fine viendra avec l'UI dédiée.) */
-export function detectPvGaps(input: MeetingInput): PvGapQuestion[] {
-  const q: PvGapQuestion[] = []
+/** FILET QUALITÉ : ce que la mémoire ne sait pas et qui compte pour le PV, classé
+ *  par sévérité. PARCIMONIE volontaire — on NE demande PAS la présence (défaut
+ *  « présent » : la personne figure dans les participants) et on regroupe les
+ *  photos sans légende en UN point (pas un par photo). Déterministe ; la détection
+ *  IA fine et les propositions auto (calendrier/réunions passées) viendront ensuite. */
+export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
+  const q: PvPointAConfirmer[] = []
+  // Actions : responsable inconnu = 🔴 (engagement non assumable) ; échéance = 🟠.
   for (const a of input.actions.filter((x) => x.status !== 'cancelled')) {
-    if (!a.assignedTo) q.push({ type: 'Responsable', question: `L'action « ${a.title} » n'a pas de responsable. Qui la porte ?` })
-    if (!a.dueDate) q.push({ type: 'Échéance', question: `L'action « ${a.title} » n'a pas d'échéance. Laquelle ?`, propositionIA: TBC })
-    else if (a.dueDateStatus === 'estimated') q.push({ type: 'Échéance', question: `Échéance de « ${a.title} » estimée (${a.dueDate}). Confirmer ?`, propositionIA: TBC })
+    if (!a.assignedTo) q.push({ niveau: 'bloquant', type: 'Responsable', libelle: `Responsable de « ${a.title} »` })
+    if (!a.dueDate) q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC })
+    else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC })
   }
-  if (!input.prochaineReunion?.date) q.push({ type: 'Date', question: 'Date de prochaine réunion non claire. Indiquer « à confirmer » ?', propositionIA: TBC })
-  if (!input.site.dns) q.push({ type: 'DNS', question: 'Le N° DNS du chantier est absent. À renseigner.' })
+  // Identité du document : DNS + date de la prochaine réunion = 🔴.
+  if (!input.site.dns) q.push({ niveau: 'bloquant', type: 'DNS', libelle: 'N° DNS du chantier' })
+  if (!input.prochaineReunion?.date) q.push({ niveau: 'bloquant', type: 'Date', libelle: 'Date de la prochaine réunion' })
+  // Participants : organisme manquant = 🟠 (la colonne organisme du PV en a besoin).
   for (const p of input.report.participants) {
-    if (!p.organisme) q.push({ type: 'Participant', question: `Organisme de « ${p.name} » non identifié. À préciser.` })
-    if (!p.presence) q.push({ type: 'Présence', question: `Présence de « ${p.name} » (P / AE / AN) ?`, propositionIA: 'P' })
+    if (!p.organisme) q.push({ niveau: 'important', type: 'Participant', libelle: `Organisme de « ${p.name} »` })
   }
+  // Photos sans légende → UN seul point regroupé (jamais un par photo = bruit).
+  const photosSansLegende = (input.photos ?? []).filter((p) => !(p.legende ?? '').trim()).length
+  if (photosSansLegende > 0) q.push({ niveau: 'important', type: 'Photo', libelle: `${photosSansLegende} photo(s) sans légende` })
+  // Suggestion (🟢) : confort, jamais bloquant.
+  if ((input.photos ?? []).length === 0) q.push({ niveau: 'suggestion', type: 'Photo', libelle: 'Aucune photo rattachée — en ajouter une ?' })
   return q
 }
 
-export type PvReadiness = { score: number; checks: { label: string; ok: boolean }[]; blocking: boolean; gaps: PvGapQuestion[] }
+const POIDS: Record<PvNiveau, number> = { bloquant: 15, important: 5, suggestion: 0 }
 
-/** Niveau de confiance du PV. Points BLOQUANTS (responsable/DNS manquants) →
- *  PDF FINAL désactivé, mais DOCX brouillon autorisé. */
+export type PvReadiness = {
+  score: number
+  checks: { label: string; ok: boolean }[]
+  blocking: boolean
+  /** Compte par sévérité (pour l'en-tête « 🔴 2 · 🟠 4 · 🟢 1 »). */
+  niveaux: Record<PvNiveau, number>
+  gaps: PvPointAConfirmer[]
+}
+
+/** Niveau de confiance du PV. Au moins un point 🔴 non levé → PDF FINAL désactivé,
+ *  mais DOCX brouillon autorisé (règle actée). */
 export function pvReadiness(input: MeetingInput): PvReadiness {
   const gaps = detectPvGaps(input)
   const live = input.actions.filter((a) => a.status !== 'cancelled')
@@ -81,9 +112,12 @@ export function pvReadiness(input: MeetingInput): PvReadiness {
     { label: input.site.dns ? 'N° DNS présent' : 'N° DNS manquant', ok: !!input.site.dns },
     { label: input.prochaineReunion?.date ? 'Prochaine réunion datée' : 'Prochaine réunion à confirmer', ok: !!input.prochaineReunion?.date },
   ]
-  const blocking = gaps.some((g) => g.type === 'Responsable' || g.type === 'DNS')
-  const score = Math.max(0, Math.round(100 - gaps.length * 6))
-  return { score, checks, blocking, gaps }
+  const niveaux: Record<PvNiveau, number> = { bloquant: 0, important: 0, suggestion: 0 }
+  let malus = 0
+  for (const g of gaps) { niveaux[g.niveau]++; malus += POIDS[g.niveau] }
+  const blocking = niveaux.bloquant > 0
+  const score = Math.max(0, Math.min(100, Math.round(100 - malus)))
+  return { score, checks, blocking, niveaux, gaps }
 }
 
 // Projection des points typés (couche 3) → blocs BECIB (présentation). On route

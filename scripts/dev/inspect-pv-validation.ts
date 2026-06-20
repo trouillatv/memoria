@@ -69,8 +69,10 @@ async function main() {
     }
 
     if (pv.gaps.length) {
-      console.log(`\n  ── POINTS À CONFIRMER (${pv.gaps.length})`)
-      for (const g of pv.gaps) console.log(`     [${g.type}] ${g.question}`)
+      const n = pv.readiness.niveaux
+      console.log(`\n  ── POINTS À CONFIRMER (${pv.gaps.length})  🔴 ${n.bloquant} · 🟠 ${n.important} · 🟢 ${n.suggestion}`)
+      const EMOJI = { bloquant: '🔴', important: '🟠', suggestion: '🟢' } as const
+      for (const g of pv.gaps) console.log(`     ${EMOJI[g.niveau]} [${g.type}] ${g.libelle}${g.proposition ? `  → ${g.proposition}` : ''}`)
     }
   }
   console.log('')
