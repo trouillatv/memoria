@@ -16,9 +16,12 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
+import { listSitePhotos } from '@/lib/db/site-photos'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { buildPvValidation, type PvSection } from '@/lib/documents/pv-validation'
 import { PvConfirmCard } from './PvConfirmCard'
 import { PvItemRow } from './PvItemRow'
+import { PvPhotoGrid, type PhotoCard } from './PvPhotoGrid'
 import { PvPanel } from '../../PvPanel'
 
 export const dynamic = 'force-dynamic'
@@ -45,6 +48,18 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
     listReportFinalVersions(id),
   ])
   if (!report || !pv) notFound()
+
+  // PHOTOS (priorité #1) : vignettes signées + état d'exclusion, pour la grille éditable.
+  const sitePhotos = report.site_id ? await listSitePhotos(report.site_id) : []
+  const thumbs = await getSignedPhotoUrlsThumb(sitePhotos.map((p) => p.storagePath))
+  const excludedPhotoIds = new Set(pv.items.filter((i) => i.section === 'photos' && i.excluded).map((i) => i.source))
+  const photoCards: PhotoCard[] = sitePhotos.map((p) => ({
+    id: p.id,
+    source: p.source,
+    thumbUrl: thumbs.get(p.storagePath) ?? null,
+    legende: p.legende,
+    excluded: excludedPhotoIds.has(p.id),
+  }))
 
   const { readiness, gaps } = pv
   const dateLabel = new Date(report.created_at).toLocaleDateString('fr-FR', {
@@ -207,6 +222,17 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           const Icon = meta.icon
           // Lignes parasites (anomalies « szdz »…) excludables là où elles vivent.
           const excludable = section === 'points_examines' || section === 'previsions'
+          // Photos : grille éditable (vignette + légende + exclure), pas une liste de texte.
+          if (section === 'photos') {
+            return (
+              <div key={section} className="space-y-1.5">
+                <h3 className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Icon className="h-3.5 w-3.5" /> {meta.label} ({photoCards.length})
+                </h3>
+                <PvPhotoGrid reportId={id} photos={photoCards} />
+              </div>
+            )
+          }
           return (
             <div key={section} className="space-y-1.5">
               <h3 className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">

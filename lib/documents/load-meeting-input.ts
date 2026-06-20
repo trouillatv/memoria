@@ -117,9 +117,10 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
     previsionsInterventions: previsionsForCr.map((p) => p.texte), // anomalies + interventions (hors exclus)
-    // Photos : grille MASQUÉE tant que les images ne sont pas réellement embarquées
-    // (les `storagePath` ne sont pas des URLs chargeables par @react-pdf → cadres vides).
-    // Réactiver dès qu'on signe + base64-embarque les images. Vincent 2026-06-20.
+    // Photos du CR : MASQUÉES dans le PDF pour l'instant (@react-pdf ne charge pas
+    // les URLs signées au rendu → 500). Réactivation = embarquer en base64 sur le
+    // chemin de rendu uniquement (pas sur l'écran de validation). Les photos sont
+    // déjà gérables (vignettes/légende/exclure) dans l'écran de validation.
     photos: [],
   }
 

@@ -190,6 +190,33 @@ export async function excludePvItemAction(
   }
 }
 
+/**
+ * MODIFIER LA LÉGENDE d'une photo (la légende humaine prime ; cf. listSitePhotos).
+ * Écrit la source : intervention_photos.caption (terrain) ou site_actions.completed_comment
+ * (clôture d'action). Corrige la MÉMOIRE — la photo enrichie ressert partout.
+ */
+export async function setPhotoCaptionAction(
+  reportId: string,
+  photoId: string,
+  source: 'intervention' | 'action',
+  caption: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const sb = createAdminClient()
+  const v = caption.trim() || null
+  try {
+    const { error } = source === 'intervention'
+      ? await sb.from('intervention_photos').update({ caption: v }).eq('id', photoId)
+      : await sb.from('site_actions').update({ completed_comment: v }).eq('id', photoId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
 /** Réintègre un item précédemment exclu → il revient dans la CR. */
 export async function includePvItemAction(
   reportId: string,
