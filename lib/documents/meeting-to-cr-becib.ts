@@ -61,7 +61,10 @@ export type PvNature = 'metier' | 'documentaire'
 // participant). `cible` = à quel resolver s'adresser, sur quel objet. Absent =
 // pas (encore) de complétion possible (ex. DNS/date : aucun stockage à ce jour).
 export type PvResolutionCible = { resolver: string; refId: string }
-export type PvPointAConfirmer = { niveau: PvNiveau; type: string; libelle: string; nature?: PvNature; proposition?: string; cible?: PvResolutionCible }
+// `id` = clé STABLE du signal (déterministe, survit aux recalculs) → support des
+// décisions humaines (reporter/ignorer/faux positif). Cible → resolver:refId ;
+// sinon type::libellé (le libellé porte le détail discriminant : nom, compteur…).
+export type PvPointAConfirmer = { id: string; niveau: PvNiveau; type: string; libelle: string; nature?: PvNature; proposition?: string; cible?: PvResolutionCible }
 /** @deprecated alias historique — utiliser PvPointAConfirmer. */
 export type PvGapQuestion = PvPointAConfirmer
 
@@ -80,7 +83,7 @@ function isoWeek(iso: string): string {
  *  photos sans légende en UN point (pas un par photo). Déterministe ; la détection
  *  IA fine et les propositions auto (calendrier/réunions passées) viendront ensuite. */
 export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
-  const q: PvPointAConfirmer[] = []
+  const q: Omit<PvPointAConfirmer, 'id'>[] = []
   // Actions : responsable inconnu = 🔴 (engagement non assumable) ; échéance = 🟠.
   for (const a of input.actions.filter((x) => x.status !== 'cancelled')) {
     // refId présent (vraie réunion) → Compléter adressable ; absent (fixture) → affichage seul.
@@ -103,7 +106,7 @@ export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
   if (photosSansLegende > 0) q.push({ niveau: 'important', type: 'Photo', libelle: `${photosSansLegende} photo(s) sans légende` })
   // Suggestion (🟢) : confort, jamais bloquant.
   if ((input.photos ?? []).length === 0) q.push({ niveau: 'suggestion', type: 'Photo', libelle: 'Aucune photo rattachée — en ajouter une ?' })
-  return q
+  return q.map((g) => ({ ...g, id: g.cible ? `${g.cible.resolver}:${g.cible.refId}` : `${g.type}::${g.libelle}` }))
 }
 
 const POIDS: Record<PvNiveau, number> = { bloquant: 15, important: 5, suggestion: 0 }

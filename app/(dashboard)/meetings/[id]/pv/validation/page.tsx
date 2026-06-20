@@ -42,26 +42,27 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
 
-  const bloquantsMetier = gaps.filter((g) => g.niveau === 'bloquant' && (g.nature ?? 'metier') === 'metier')
-  const bloquantsDoc = gaps.filter((g) => g.niveau === 'bloquant' && g.nature === 'documentaire')
-  const importants = gaps.filter((g) => g.niveau === 'important')
-  const suggestions = gaps.filter((g) => g.niveau === 'suggestion')
+  // ACTIFS (à traiter) = signaux sans décision « levante ». 'reported' reste actif
+  // (différé ≠ résolu) avec son badge ; 'ignored'/'false_positive' partent en « Traités ».
+  const leve = (g: (typeof gaps)[number]) => g.decision?.statut === 'ignored' || g.decision?.statut === 'false_positive'
+  const actifs = gaps.filter((g) => !leve(g))
+  const traites = gaps.filter((g) => leve(g))
 
-  // Gate piloté par la POLITIQUE (readiness.blocking) : un 🔴 dur (métier, ou
-  // documentaire rendu obligatoire par l'entreprise) désactive le PDF ; un 🔴
-  // documentaire resté souple → « PV urgent » possible. DOCX brouillon : toujours.
-  const detailDur = [
-    readiness.bloquants.metier > 0 ? `${readiness.bloquants.metier} métier (responsable d'action)` : null,
-    readiness.durs > readiness.bloquants.metier ? `${readiness.durs - readiness.bloquants.metier} documentaire(s) rendu(s) obligatoire(s) par l'entreprise` : null,
-  ].filter(Boolean).join(' + ')
-  const gate = readiness.blocking
+  const bloquantsMetier = actifs.filter((g) => g.niveau === 'bloquant' && (g.nature ?? 'metier') === 'metier')
+  const bloquantsDoc = actifs.filter((g) => g.niveau === 'bloquant' && g.nature === 'documentaire')
+  const importants = actifs.filter((g) => g.niveau === 'important')
+  const suggestions = actifs.filter((g) => g.niveau === 'suggestion')
+
+  // Gate DÉCISION-AWARE (pv.blocking / pv.durs) : un 🔴 dur encore ACTIF désactive
+  // le PDF ; un 🔴 documentaire souple → « PV urgent » possible. DOCX : toujours.
+  const gate = pv.blocking
     ? { cls: 'border-rose-200 bg-rose-50 text-rose-800', icon: ShieldAlert, title: 'PV non finalisable',
-        detail: `${readiness.durs} point(s) bloquant(s) dur(s) à lever — ${detailDur}. PDF final désactivé.` }
-    : readiness.bloquants.documentaire > 0
+        detail: `${pv.durs} point(s) bloquant(s) dur(s) encore actif(s). PDF final désactivé (DOCX brouillon possible).` }
+    : bloquantsDoc.length > 0
       ? { cls: 'border-amber-200 bg-amber-50 text-amber-900', icon: FileWarning, title: 'PV finalisable en mode urgent',
-          detail: `${readiness.bloquants.documentaire} point(s) documentaire(s) (DNS, date) — non bloquant(s) pour cette entreprise, à compléter ou assumer.` }
+          detail: `${bloquantsDoc.length} point(s) documentaire(s) (DNS, date) — non bloquant(s) pour cette entreprise, à compléter ou assumer.` }
       : { cls: 'border-emerald-200 bg-emerald-50 text-emerald-800', icon: CheckCircle2, title: 'Prêt pour le PV',
-          detail: 'Aucun point bloquant. Vous pouvez générer le PV.' }
+          detail: 'Aucun point bloquant actif. Vous pouvez générer le PV.' }
   const GateIcon = gate.icon
 
   return (
@@ -103,7 +104,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-rose-700">
             <ShieldAlert className="h-3.5 w-3.5" /> Bloquants métier ({bloquantsMetier.length})
           </h2>
-          <ul className="space-y-1.5">{bloquantsMetier.map((p, i) => <PvConfirmCard key={`bm${i}`} reportId={id} signal={p} />)}</ul>
+          <ul className="space-y-1.5">{bloquantsMetier.map((p) => <PvConfirmCard key={p.id} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
@@ -113,7 +114,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
             <FileWarning className="h-3.5 w-3.5" /> Bloquants documentaires ({bloquantsDoc.length})
             <span className="ml-1 normal-case tracking-normal text-muted-foreground font-normal">— contournables en PV urgent</span>
           </h2>
-          <ul className="space-y-1.5">{bloquantsDoc.map((p, i) => <PvConfirmCard key={`bd${i}`} reportId={id} signal={p} />)}</ul>
+          <ul className="space-y-1.5">{bloquantsDoc.map((p) => <PvConfirmCard key={p.id} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
@@ -122,7 +123,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-amber-700">
             <AlertTriangle className="h-3.5 w-3.5" /> Importants ({importants.length})
           </h2>
-          <ul className="space-y-1.5">{importants.map((p, i) => <PvConfirmCard key={`im${i}`} reportId={id} signal={p} />)}</ul>
+          <ul className="space-y-1.5">{importants.map((p) => <PvConfirmCard key={p.id} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
@@ -131,12 +132,22 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
             <Lightbulb className="h-3.5 w-3.5" /> Suggestions ({suggestions.length})
           </h2>
-          <ul className="space-y-1.5">{suggestions.map((p, i) => <PvConfirmCard key={`sg${i}`} reportId={id} signal={p} />)}</ul>
+          <ul className="space-y-1.5">{suggestions.map((p) => <PvConfirmCard key={p.id} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
-      {gaps.length === 0 && (
-        <p className="text-sm text-muted-foreground italic">Aucun point à confirmer — la mémoire est complète pour ce PV.</p>
+      {actifs.length === 0 && (
+        <p className="text-sm text-muted-foreground italic">Aucun point à confirmer actif — vous pouvez générer le PV.</p>
+      )}
+
+      {/* Traités : ignorés / faux positifs (levés du gate), repliés. Annulables. */}
+      {traites.length > 0 && (
+        <details className="group rounded-lg border bg-card">
+          <summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Traités ({traites.length})
+          </summary>
+          <ul className="space-y-1.5 border-t p-3">{traites.map((p) => <PvConfirmCard key={p.id} reportId={id} signal={p} />)}</ul>
+        </details>
       )}
 
       {/* Ce qui ira dans le PV (contenu typé, lecture) */}
@@ -186,7 +197,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         >
           <FileText className="h-4 w-4" /> Générer / valider le PV
         </Link>
-        {readiness.blocking && (
+        {pv.blocking && (
           <span className="text-xs text-muted-foreground">PDF final désactivé tant qu&apos;un bloquant dur subsiste.</span>
         )}
       </section>

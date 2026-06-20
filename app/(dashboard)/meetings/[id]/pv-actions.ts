@@ -10,6 +10,7 @@ import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-follow
 import { resolveReportTemplate, getReportTemplate, companyLabelForOrg, becibReference } from '@/lib/documents/templates/cr-chantier'
 import { buildPvValidation } from '@/lib/documents/pv-validation'
 import { resolvePvSignal } from '@/lib/documents/pv-resolvers'
+import { upsertPvSignalDecision, clearPvSignalDecision, type PvSignalStatut } from '@/lib/db/pv-signal-decisions'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -115,6 +116,46 @@ export async function completePvSignalAction(
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Échec de la complétion' }
+  }
+}
+
+/**
+ * DÉCIDER d'un point à confirmer sans corriger la mémoire (≠ Compléter) :
+ * reporter (différé), ignorer (renoncement), faux positif (erreur de détection).
+ * Auditable {statut, commentaire, auteur, date}. Revérifie que le signal existe
+ * bien dans les gaps courants (anti-forge).
+ */
+export async function decidePvSignalAction(
+  reportId: string,
+  signalId: string,
+  statut: PvSignalStatut,
+  comment?: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const pv = await buildPvValidation(reportId)
+  if (!pv) return { ok: false, error: 'Réunion introuvable' }
+  if (!pv.gaps.some((g) => g.id === signalId)) return { ok: false, error: 'Ce point n’est plus à confirmer.' }
+  try {
+    await upsertPvSignalDecision({ reportId, signalId, statut, comment: comment?.trim() || null, decidedBy: user.id })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec de la décision' }
+  }
+}
+
+/** Annule une décision (l'humain s'est ravisé) → le signal redevient actif. */
+export async function undoPvSignalDecisionAction(
+  reportId: string,
+  signalId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await clearPvSignalDecision(reportId, signalId)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
   }
 }
 

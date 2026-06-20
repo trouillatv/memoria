@@ -14,7 +14,8 @@
 // avec l'UI ; ici tous les items naissent 'pending'.
 
 import { loadMeetingContext } from './load-meeting-input'
-import { pvReadiness, type PvReadiness, type PvPointAConfirmer } from './meeting-to-cr-becib'
+import { pvReadiness, pointBloque, DEFAULT_PV_POLICY, type PvReadiness, type PvPointAConfirmer } from './meeting-to-cr-becib'
+import { listPvSignalDecisions, type PvSignalDecision } from '@/lib/db/pv-signal-decisions'
 
 export type ValidationStatut = 'pending' | 'accepted' | 'edited' | 'rejected'
 export type PvSection = 'participants' | 'remarques_cr' | 'points_examines' | 'previsions' | 'photos'
@@ -30,13 +31,17 @@ export interface PvValidationItem {
   blocking: boolean                   // l'item EST un blocage métier (anomalie / dépendance)
 }
 
+// Point à confirmer + la décision humaine éventuelle (reporter/ignorer/faux positif).
+export type PvGapAnnote = PvPointAConfirmer & { decision: PvSignalDecision | null }
+
 export interface PvValidation {
   reportId: string
   items: PvValidationItem[]
   counts: Record<PvSection, number>
-  readiness: PvReadiness    // score + checks + compte par niveau (réutilise meeting-to-cr-becib)
-  gaps: PvPointAConfirmer[]  // POINTS À CONFIRMER classés 🔴 bloquant / 🟠 important / 🟢 suggestion
-  blocking: boolean         // GATE génération : ≥1 point 🔴 non levé → PDF final désactivé (DOCX brouillon OK)
+  readiness: PvReadiness     // sévérité INTRINSÈQUE (compte par niveau, score) — avant décisions
+  gaps: PvGapAnnote[]        // POINTS À CONFIRMER + décision éventuelle
+  blocking: boolean          // GATE décision-aware : ≥1 bloquant DUR encore ACTIF → PDF désactivé
+  durs: number               // bloquants durs ACTIFS (ignorés / faux positifs levés)
 }
 
 const SECTIONS: PvSection[] = ['participants', 'remarques_cr', 'points_examines', 'previsions', 'photos']
@@ -128,5 +133,14 @@ export async function buildPvValidation(reportId: string): Promise<PvValidation 
   const counts = Object.fromEntries(SECTIONS.map((s) => [s, 0])) as Record<PvSection, number>
   for (const it of items) counts[it.section]++
 
-  return { reportId, items, counts, readiness, gaps: readiness.gaps, blocking: readiness.blocking }
+  // DÉCISIONS humaines : on annote chaque signal et on recalcule le gate. Un signal
+  // 'ignored' ou 'false_positive' est LEVÉ (sort du gate) ; 'reported' reste bloquant
+  // (différé ≠ résolu) — il garde son blocage dur tant que la mémoire n'est pas corrigée.
+  const decisions = await listPvSignalDecisions(reportId)
+  const byId = new Map(decisions.map((d) => [d.signalId, d]))
+  const gaps: PvGapAnnote[] = readiness.gaps.map((g) => ({ ...g, decision: byId.get(g.id) ?? null }))
+  const leve = (g: PvGapAnnote) => g.decision?.statut === 'ignored' || g.decision?.statut === 'false_positive'
+  const durs = gaps.filter((g) => !leve(g) && pointBloque(g, DEFAULT_PV_POLICY)).length
+
+  return { reportId, items, counts, readiness, gaps, blocking: durs > 0, durs }
 }
