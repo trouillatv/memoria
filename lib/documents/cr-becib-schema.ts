@@ -99,6 +99,7 @@ export const crBecibSchema = z.object({
   planning: planningSchema,
   securite: z.array(z.string()).catch([]),
   photos: z.array(z.object({ url: z.string(), legende: z.string().catch('') })).catch([]),
+  photosComment: z.string().nullable().catch(null), // commentaire général du bloc photos
   prochaineReunion: z.object({
     date: z.string().nullable().catch(null),
     heure: z.string().nullable().catch(null),

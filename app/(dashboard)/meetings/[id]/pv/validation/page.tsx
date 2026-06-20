@@ -17,6 +17,7 @@ import { getSiteReport } from '@/lib/db/site-reports'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
+import { listReportPhotoMeta, getCrPhotosComment } from '@/lib/db/report-photo-meta'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { buildPvValidation, type PvSection } from '@/lib/documents/pv-validation'
 import { PvConfirmCard } from './PvConfirmCard'
@@ -49,16 +50,28 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   ])
   if (!report || !pv) notFound()
 
-  // PHOTOS (priorité #1) : vignettes signées + état d'exclusion, pour la grille éditable.
+  // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
-  const thumbs = await getSignedPhotoUrlsThumb(sitePhotos.map((p) => p.storagePath))
+  const [thumbs, photoMeta, photosComment] = await Promise.all([
+    getSignedPhotoUrlsThumb(sitePhotos.map((p) => p.storagePath)),
+    listReportPhotoMeta(id),
+    getCrPhotosComment(id),
+  ])
   const excludedPhotoIds = new Set(pv.items.filter((i) => i.section === 'photos' && i.excluded).map((i) => i.source))
-  const photoCards: PhotoCard[] = sitePhotos.map((p) => ({
+  // Ordre : couverture d'abord, puis sort_order, puis ordre par défaut (scopé).
+  const orderedPhotos = [...sitePhotos].sort((a, b) => {
+    const ma = photoMeta.get(a.id), mb = photoMeta.get(b.id)
+    const ca = ma?.isCover ? 0 : 1, cb = mb?.isCover ? 0 : 1
+    if (ca !== cb) return ca - cb
+    return (ma?.sortOrder ?? Number.MAX_SAFE_INTEGER) - (mb?.sortOrder ?? Number.MAX_SAFE_INTEGER)
+  })
+  const photoCards: PhotoCard[] = orderedPhotos.map((p) => ({
     id: p.id,
     source: p.source,
     thumbUrl: thumbs.get(p.storagePath) ?? null,
     legende: p.legende,
     excluded: excludedPhotoIds.has(p.id),
+    isCover: photoMeta.get(p.id)?.isCover ?? false,
   }))
 
   const { readiness, gaps } = pv
@@ -229,7 +242,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
                 <h3 className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Icon className="h-3.5 w-3.5" /> {meta.label} ({photoCards.length})
                 </h3>
-                <PvPhotoGrid reportId={id} photos={photoCards} />
+                <PvPhotoGrid reportId={id} photos={photoCards} comment={photosComment ?? ''} />
               </div>
             )
           }

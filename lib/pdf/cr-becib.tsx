@@ -442,6 +442,9 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
         {cr.photos.length > 0 && (
           <>
             <Band1 num="7" title="PHOTOS" />
+            {cr.photosComment ? (
+              <Text style={{ fontSize: 8, marginBottom: 4 }}>{cr.photosComment}</Text>
+            ) : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {cr.photos.map((p, i) => (
                 <View key={i} style={{ width: 150 }} wrap={false}>

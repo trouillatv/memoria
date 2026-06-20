@@ -35,6 +35,7 @@ export type MeetingInput = {
   // Photos du site (projection fine de SitePhoto → {url, legende}). La structure
   // riche réutilisable vit dans lib/db/site-photos.ts.
   photos?: { url: string; legende: string }[]
+  photosComment?: string | null
   numeroCR?: string | null
   // Libellé MOE du bandeau = identité de l'ORG (« BECIB » seulement pour l'org BECIB,
   // sinon son propre nom). Trame partagée, identité propre. Défaut 'BECIB' (fixtures).
@@ -267,6 +268,7 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
     },
     securite: [],
     photos: input.photos ?? [],
+    photosComment: input.photosComment ?? null,
     prochaineReunion: {
       date: input.prochaineReunion?.date ?? TBC,
       heure: input.prochaineReunion?.heure ?? null,

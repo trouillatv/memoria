@@ -13,6 +13,7 @@ import { resolvePvSignal } from '@/lib/documents/pv-resolvers'
 import { loadMeetingInput } from '@/lib/documents/load-meeting-input'
 import { mapMeetingToCrBecib } from '@/lib/documents/meeting-to-cr-becib'
 import { upsertPvSignalDecision, clearPvSignalDecision, type PvSignalStatut } from '@/lib/db/pv-signal-decisions'
+import { reorderReportPhotos, setReportCoverPhoto, setCrPhotosComment } from '@/lib/db/report-photo-meta'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -209,6 +210,56 @@ export async function setPhotoCaptionAction(
       ? await sb.from('intervention_photos').update({ caption: v }).eq('id', photoId)
       : await sb.from('site_actions').update({ completed_comment: v }).eq('id', photoId)
     if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Réordonne les photos du CR (ordre = position dans la liste fournie). */
+export async function reorderPhotosAction(
+  reportId: string,
+  ordered: { id: string; source: 'intervention' | 'action' }[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await reorderReportPhotos(reportId, ordered)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Définit / retire la photo de COUVERTURE (1ʳᵉ du PDF, miniature du CR). */
+export async function setCoverPhotoAction(
+  reportId: string,
+  photoId: string,
+  source: 'intervention' | 'action',
+  cover: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await setReportCoverPhoto(reportId, photoId, source, cover)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Commentaire général du bloc photos (texte humain, ≠ légendes par photo). */
+export async function setPhotosCommentAction(
+  reportId: string,
+  comment: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  try {
+    await setCrPhotosComment(reportId, comment.trim() || null, user.id)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }

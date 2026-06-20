@@ -16,6 +16,7 @@ import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
 import { buildPointsExamines } from '@/lib/db/points-examines'
 import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
 import { getPhotoDataUrlsForCr } from '@/lib/storage/intervention-photos'
+import { listReportPhotoMeta, getCrPhotosComment } from '@/lib/db/report-photo-meta'
 import { companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
@@ -97,11 +98,22 @@ export async function loadMeetingContext(
   const pointsForCr = points.filter((p) => !excluded.has(p.source))
   const previsionsForCr = previsions.filter((p) => !excluded.has(p.source))
 
+  // Présentation des photos (ordre / couverture / commentaire général, mig 129).
+  const [photoMeta, photosComment] = await Promise.all([listReportPhotoMeta(reportId), getCrPhotosComment(reportId)])
+
   // PHOTOS du CR : embarquées en base64 UNIQUEMENT au rendu (embedPhotos), hors
-  // photos exclues. @react-pdf charge un data URL de façon fiable (≠ URL signée → 500).
+  // photos exclues, ORDONNÉES (couverture d'abord puis sort_order). @react-pdf
+  // charge un data URL de façon fiable (≠ URL signée → 500).
   let crPhotos: { url: string; legende: string }[] = []
   if (opts?.embedPhotos) {
-    const visible = photos.filter((p) => !excluded.has(p.id))
+    const visible = photos
+      .filter((p) => !excluded.has(p.id))
+      .sort((a, b) => {
+        const ma = photoMeta.get(a.id), mb = photoMeta.get(b.id)
+        const ca = ma?.isCover ? 0 : 1, cb = mb?.isCover ? 0 : 1
+        if (ca !== cb) return ca - cb
+        return (ma?.sortOrder ?? Number.MAX_SAFE_INTEGER) - (mb?.sortOrder ?? Number.MAX_SAFE_INTEGER)
+      })
     if (visible.length) {
       const dataUrls = await getPhotoDataUrlsForCr(visible.map((p) => p.storagePath))
       crPhotos = visible
@@ -137,6 +149,7 @@ export async function loadMeetingContext(
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
     previsionsInterventions: previsionsForCr.map((p) => p.texte), // anomalies + interventions (hors exclus)
     photos: crPhotos, // base64 au rendu (embedPhotos) ; [] côté validation
+    photosComment, // commentaire général du bloc photos (mig 129)
   }
 
   return { input, sources: { remarques, points, previsions, photos } }

@@ -88,6 +88,7 @@ export const CRAVACHE_FIXTURE: CrBecib = {
     'Blindage de tranchée à prévoir selon profondeur.',
   ],
   photos: [],
+  photosComment: null,
   prochaineReunion: { date: '14/11/2025', heure: '09h00', lieu: 'Sur site — La Cravache' },
   signature: 'POUR BECIB, E. DEVALLEZ',
 }
