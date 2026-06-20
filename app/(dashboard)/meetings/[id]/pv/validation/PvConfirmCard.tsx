@@ -26,7 +26,7 @@ export function PvConfirmCard({ reportId, signal }: { reportId: string; signal: 
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const resolvable = !!signal.cible
-  const isDate = signal.type === 'Échéance'
+  const isDate = signal.type === 'Échéance' || signal.type === 'Date'
   const decision = signal.decision
   // Un point MÉTIER (responsable / échéance) ne peut être ni ignoré ni classé faux
   // positif (garde-fou serveur aussi) : au maximum reporté. On le complète ou on l'assume.
@@ -50,9 +50,11 @@ export function PvConfirmCard({ reportId, signal }: { reportId: string; signal: 
   const undo = () => run(() => undoPvSignalDecisionAction(reportId, signal.id))
 
   const badge = decision ? DECISION_BADGE[decision.statut] : null
+  // Couleur visible par sévérité (🔴 bloquant / 🟠 important / 🟢 suggestion).
+  const NIVEAU_BORDER: Record<string, string> = { bloquant: 'border-l-rose-500', important: 'border-l-amber-500', suggestion: 'border-l-emerald-500' }
 
   return (
-    <li className="rounded-lg border bg-card p-3">
+    <li className={`rounded-lg border border-l-4 ${NIVEAU_BORDER[signal.niveau] ?? 'border-l-slate-300'} bg-card p-3`}>
       <div className="flex items-start gap-2.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

@@ -79,9 +79,11 @@ export async function loadMeetingContext(
   // IDENTITÉ MOE = l'organisation du chantier (« BECIB » seulement pour l'org BECIB,
   // sinon son propre nom). Trame BECIB partagée, identité propre à chaque org.
   let moe: string | null = null
+  let siteDns: string | null = null
   if (report.site_id) {
     const sb = createAdminClient()
-    const { data: site } = await sb.from('sites').select('organization_id').eq('id', report.site_id).maybeSingle()
+    const { data: site } = await sb.from('sites').select('organization_id, dns').eq('id', report.site_id).maybeSingle()
+    siteDns = (site as { dns?: string | null } | null)?.dns ?? null
     const orgId = (site as { organization_id: string | null } | null)?.organization_id
     if (orgId) {
       const { data: org } = await sb.from('organizations').select('name, slug').eq('id', orgId).maybeSingle()
@@ -134,12 +136,14 @@ export async function loadMeetingContext(
 
   const input: MeetingInput = {
     numeroCR,
+    reportId, // resolvers scopés CR (date prochaine réunion, organisme participant)
     report: {
       title: report.title,
       createdAt: report.created_at,
       participants: (report.participants ?? []).map((p) => ({ name: p.name, role: p.role, presence: p.presence })),
     },
-    site: { name: identity?.name ?? report.title ?? null, dns: null }, // DNS non stocké en base → trou (à compléter)
+    site: { id: report.site_id, name: identity?.name ?? report.title ?? null, dns: siteDns }, // DNS désormais stocké (mig 131)
+    prochaineReunion: report.next_meeting_at ? { date: ddmmyyyy(report.next_meeting_at) } : undefined, // date stockée (mig 131)
     contract: {
       name: contract?.name ?? null,
       clientName: contract?.client_name ?? identity?.clientName ?? null,

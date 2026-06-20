@@ -348,6 +348,7 @@ export type SiteReportTranscriptStatus = 'none' | 'pending' | 'done' | 'failed'
 
 // Présent détecté à la réunion (coordination descriptive, jamais score).
 export type ParticipantPresence = 'I' | 'P' | 'AE' | 'AN' | 'D' // Invité / Présent / Absent excusé / Absent non excusé / Diffusion
+// (next_meeting_at est ajouté à DbSiteReport plus bas via la migration 131.)
 export interface SiteReportParticipant {
   name: string
   role: string | null
@@ -374,6 +375,7 @@ export interface DbSiteReport {
   site_id: string | null
   contract_id: string | null
   title: string | null
+  next_meeting_at: string | null // date de prochaine réunion (mig 131)
   tenant_id: string
   organization_id: string | null
   status: SiteReportStatus

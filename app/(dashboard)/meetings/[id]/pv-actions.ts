@@ -113,7 +113,7 @@ export async function completePvSignalAction(
   const legit = pv.gaps.some((g) => g.cible && g.cible.resolver === resolver && g.cible.refId === refId)
   if (!legit) return { ok: false, error: 'Ce point n’est plus à confirmer (déjà résolu ?).' }
   try {
-    await resolvePvSignal(resolver, refId, value)
+    await resolvePvSignal(resolver, refId, value, { reportId })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }

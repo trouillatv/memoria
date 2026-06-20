@@ -47,7 +47,7 @@ async function main() {
   console.log(`   bloquants durs = ${before!.readiness.durs} · PDF ${before!.blocking ? 'BLOQUÉ' : 'OK'}`)
 
   console.log(`\n② COMPLÉTER — resolver écrit la mémoire (assigned_to = "DÉMO-RESOLVER") …`)
-  await resolvePvSignal('action_responsable', refId, 'DÉMO-RESOLVER')
+  await resolvePvSignal('action_responsable', refId, 'DÉMO-RESOLVER', { reportId })
 
   const after = await buildPvValidation(reportId)
   const stillThere = after!.gaps.some((g) => g.cible?.resolver === 'action_responsable' && g.cible.refId === refId)

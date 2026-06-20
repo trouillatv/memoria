@@ -18,8 +18,9 @@ export type MeetingParticipant = {
   invite?: boolean; diffusion?: boolean
 }
 export type MeetingInput = {
+  reportId?: string // pour les resolvers scopés CR (date prochaine réunion, organisme participant)
   report: { title?: string | null; createdAt: string; participants: MeetingParticipant[] }
-  site: { name?: string | null; dns?: string | null }
+  site: { id?: string | null; name?: string | null; dns?: string | null }
   contract: { name?: string | null; clientName?: string | null; startDate?: string | null; endDate?: string | null; delai?: string | null }
   actions: { id?: string; title: string; assignedTo?: string | null; dueDate?: string | null; dueDateStatus?: string | null; status: string }[]
   contacts: { fullName: string; phone?: string | null; mob?: string | null; email?: string | null }[]
@@ -101,14 +102,14 @@ export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
     if (!a.dueDate) q.push({ niveau: 'important', nature: 'metier', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC, cible: cibleEch })
     else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', nature: 'metier', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC, cible: cibleEch })
   }
-  // Identité du document : DNS + date de la prochaine réunion = 🔴 mais DOCUMENTAIRE
-  // (contournable en PV urgent), pas métier.
-  if (!input.site.dns) q.push({ niveau: 'bloquant', nature: 'documentaire', type: 'DNS', libelle: 'N° DNS du chantier' })
-  if (!input.prochaineReunion?.date) q.push({ niveau: 'bloquant', nature: 'documentaire', type: 'Date', libelle: 'Date de la prochaine réunion' })
-  // Participants : organisme manquant = 🟠 (la colonne organisme du PV en a besoin).
-  for (const p of input.report.participants) {
-    if (!p.organisme) q.push({ niveau: 'important', type: 'Participant', libelle: `Organisme de « ${p.name} »` })
-  }
+  // Identité du document : DNS + date de la prochaine réunion = 🔴 DOCUMENTAIRE
+  // (contournable en PV urgent), maintenant REMPLISSABLES (resolver écrit la source).
+  if (!input.site.dns) q.push({ niveau: 'bloquant', nature: 'documentaire', type: 'DNS', libelle: 'N° DNS du chantier', cible: input.site.id ? { resolver: 'site_dns', refId: input.site.id } : undefined })
+  if (!input.prochaineReunion?.date) q.push({ niveau: 'bloquant', nature: 'documentaire', type: 'Date', libelle: 'Date de la prochaine réunion', cible: input.reportId ? { resolver: 'reunion_date', refId: input.reportId } : undefined })
+  // Participants : organisme (role) manquant = 🟠, remplissable (écrit participants[i].role).
+  input.report.participants.forEach((p, i) => {
+    if (!p.role) q.push({ niveau: 'important', type: 'Participant', libelle: `Organisme de « ${p.name} »`, cible: input.reportId ? { resolver: 'participant_organisme', refId: String(i) } : undefined })
+  })
   // Photos sans légende → UN seul point regroupé (jamais un par photo = bruit).
   const photosSansLegende = (input.photos ?? []).filter((p) => !(p.legende ?? '').trim()).length
   if (photosSansLegende > 0) q.push({ niveau: 'important', type: 'Photo', libelle: `${photosSansLegende} photo(s) sans légende` })

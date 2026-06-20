@@ -130,7 +130,6 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   const byType = new Map<string, number>()
   for (const g of actifs) byType.set(g.type, (byType.get(g.type) ?? 0) + 1)
   const resume = [...byType.entries()].map(([t, n]) => (TYPE_LABEL[t] ? TYPE_LABEL[t](n) : `${n} ${t}`))
-  const minutes = Math.max(1, Math.ceil(actifs.length * 0.5))
 
   return (
     <div className="w-full max-w-6xl">
@@ -159,18 +158,9 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
             </div>
 
             {actifs.length > 0 ? (
-              <>
-                <p className="mt-1 text-sm">
-                  {actifs.length} élément{actifs.length > 1 ? 's' : ''} à traiter — {resume.join(' · ')}.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <a href="#a-corriger"
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
-                    Corriger maintenant
-                  </a>
-                  <span className="text-xs opacity-80">≈ {minutes} min</span>
-                </div>
-              </>
+              <p className="mt-1 text-sm">
+                {actifs.length} élément{actifs.length > 1 ? 's' : ''} à traiter — {resume.join(' · ')}.
+              </p>
             ) : (
               <p className="mt-1 text-sm">{gate.detail}</p>
             )}
@@ -184,8 +174,6 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           </div>
         </div>
       </section>
-
-      <div id="a-corriger" className="scroll-mt-4" />
 
       {/* Points à confirmer, par sévérité */}
       {bloquantsMetier.length > 0 && (
