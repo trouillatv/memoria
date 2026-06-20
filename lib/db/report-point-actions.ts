@@ -16,12 +16,22 @@ export async function listReportPointActions(reportId: string): Promise<Map<stri
   return map
 }
 
-export async function setReportPointActions(reportId: string, pointSource: string, codes: string[]): Promise<void> {
+/** Écrit les responsables d'un point. `organisations` (mig 135) prépare le modèle
+ *  « le vrai responsable = l'organisme » (ETV→BatiSud) : stocké à côté des rôles,
+ *  même si l'UI n'envoie encore que les rôles. Quand on branchera la sélection
+ *  d'organisme, aucune migration ni rupture — juste l'UI à compléter. */
+export async function setReportPointActions(
+  reportId: string,
+  pointSource: string,
+  codes: string[],
+  organisations: string[] = [],
+): Promise<void> {
   const clean = codes.filter((c): c is ActionCode => (ACTION_CODES as readonly string[]).includes(c))
+  const orgs = organisations.map((o) => o.trim()).filter(Boolean)
   const { error } = await createAdminClient()
     .from('report_point_actions')
     .upsert(
-      { report_id: reportId, point_source: pointSource, codes: clean, updated_at: new Date().toISOString() },
+      { report_id: reportId, point_source: pointSource, codes: clean, organisations: orgs, updated_at: new Date().toISOString() },
       { onConflict: 'report_id,point_source' },
     )
   if (error) throw new Error(error.message)

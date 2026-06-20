@@ -25,6 +25,7 @@ import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { buildPvValidation, type PvSection } from '@/lib/documents/pv-validation'
 import { PvConfirmCard } from './PvConfirmCard'
 import { PvItemRow } from './PvItemRow'
+import { PvPrevisionRow } from './PvPrevisionRow'
 import { PvPhotoGrid, type PhotoCard } from './PvPhotoGrid'
 import { PvHumanPoints } from './PvHumanPoints'
 import { PvAddedPoints } from './PvAddedPoints'
@@ -301,9 +302,10 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
                 <Icon className="h-3.5 w-3.5" /> {meta.label} ({display.length})
               </h3>
               <ul className="space-y-1">
-                {display.map((it) => (
-                  <PvItemRow key={it.id} reportId={id} item={it} excludable={excludable} />
-                ))}
+                {/* Prévisions = lignes STRUCTURÉES (qui/quand/fiabilité) ; le reste = ligne simple. */}
+                {section === 'previsions'
+                  ? display.map((it) => <PvPrevisionRow key={it.id} reportId={id} item={it} />)
+                  : display.map((it) => <PvItemRow key={it.id} reportId={id} item={it} excludable={excludable} />)}
               </ul>
             </div>
           )

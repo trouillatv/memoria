@@ -59,17 +59,25 @@ function AddPrevision({ reportId }: { reportId: string }) {
   const [label, setLabel] = useState('')
   const [who, setWho] = useState('')
   const [due, setDue] = useState('')
+  const [confiance, setConfiance] = useState<'sûr' | 'à confirmer'>('sûr')
   return (
     <div className="space-y-1 rounded-lg border bg-card p-2">
       <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Prévision (ex. « Réception des menuiseries extérieures »)"
         className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
       <div className="flex flex-wrap items-center gap-2">
         <input value={who} onChange={(e) => setWho(e.target.value)} placeholder="Responsable"
-          className="min-w-[8rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+          className="min-w-[7rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
         <input value={due} onChange={(e) => setDue(e.target.value)} type="date"
           className="rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+        {/* Fiabilité (Vincent) : une prévision porte sa confiance, c'est une donnée. */}
+        <select value={confiance} onChange={(e) => setConfiance(e.target.value as typeof confiance)}
+          title="Fiabilité de la prévision"
+          className="rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+          <option value="sûr">confirmée</option>
+          <option value="à confirmer">à confirmer</option>
+        </select>
         <button type="button" disabled={pending || !label.trim()}
-          onClick={() => run(() => addPrevisionAction(reportId, { label, assignedTo: who, dueDate: due }), () => { setLabel(''); setWho(''); setDue('') })}
+          onClick={() => run(() => addPrevisionAction(reportId, { label, assignedTo: who, dueDate: due, confiance }), () => { setLabel(''); setWho(''); setDue(''); setConfiance('sûr') })}
           className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Prévision
         </button>
@@ -92,6 +100,9 @@ function Row({ reportId, point }: { reportId: string; point: ReportAddedPoint })
         {point.label}
         {det && <span className="block text-[11px] text-muted-foreground">{det}</span>}
       </span>
+      {point.kind === 'prevision' && point.confiance === 'à confirmer' && (
+        <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">à confirmer</span>
+      )}
       <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
         {point.kind === 'anomalie' ? 'anomalie' : 'prévision'}
       </span>

@@ -13,7 +13,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export interface PrevisionItem {
   kind: 'anomalie' | 'intervention'
-  texte: string
+  texte: string // ligne RENDUE (CR/PDF) — formatée depuis la structure ci-dessous
+  // STRUCTURE (Vincent 2026-06-21) : une prévision n'est pas une phrase, c'est un
+  // objet. Socle des futurs « préparer la réunion / détecter retards / prévu-réalisé ».
+  titre: string // l'intitulé propre, sans le détail responsable/échéance
+  responsable: string | null
+  echeance: string | null // ISO (AAAA-MM-JJ) si connue
   confiance: 'sûr' | 'à confirmer'
   source: string // id (traçabilité / validation humaine)
 }
@@ -59,7 +64,9 @@ export async function buildPrevisionsFromInterventions(siteId: string): Promise<
       if (!desc) continue
       // Côté Prévisions = l'ACTION (traitement/contrôle à prévoir), wording DISTINCT
       // du constat « Anomalie signalée : … » côté Points examinés. Ne pas réaligner.
-      anomalies.push({ kind: 'anomalie', texte: oneDot(`Traitement / contrôle à prévoir : ${desc}`), confiance: 'sûr', source: a.id as string })
+      // Confiance « à confirmer » : le traitement est PROJETÉ, pas encore acté.
+      const titre = `Traitement / contrôle à prévoir : ${desc}`
+      anomalies.push({ kind: 'anomalie', texte: oneDot(titre), titre, responsable: null, echeance: null, confiance: 'à confirmer', source: a.id as string })
     }
   }
 
@@ -76,10 +83,14 @@ export async function buildPrevisionsFromInterventions(siteId: string): Promise<
     const note = (parts[0] || parts[1] || '').replace(/[.\s]+$/, '').trim()
     const cap = note ? note.charAt(0).toUpperCase() + note.slice(1) : ''
     const d = ddmmyyyy(date)
+    const titre = cap || 'Intervention prévue'
     planned.push({
       kind: 'intervention',
       texte: oneDot(cap ? `${cap}, prévu le ${d}` : `Intervention prévue le ${d}`),
-      confiance: 'sûr',
+      titre,
+      responsable: null, // non extrait du planning à ce stade — trou honnête
+      echeance: date,    // ISO : la date EST l'échéance structurée
+      confiance: 'sûr',  // intervention PLANIFIÉE → sûr
       source: i.id as string,
     })
   }

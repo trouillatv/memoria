@@ -31,6 +31,10 @@ export interface PvValidationItem {
   blocking: boolean                   // l'item EST un blocage métier (anomalie / dépendance)
   excluded: boolean                   // « Exclure du PV » : item retiré de la CR (ligne parasite)
   actionCodes?: string[]              // colonne ACTION mémorisée du point (ETV/MOA/… ; mig 132)
+  // Prévisions STRUCTURÉES (mig 135) : la donnée derrière la ligne (qui/quand/fiabilité).
+  titre?: string
+  responsable?: string | null
+  echeance?: string | null            // ISO (AAAA-MM-JJ) si connue
 }
 
 // Point à confirmer + la décision humaine éventuelle (reporter/ignorer/faux positif).
@@ -115,6 +119,9 @@ export async function buildPvValidation(reportId: string): Promise<PvValidation 
       confiance: pv.confiance,
       statutValidation: 'pending',
       blocking: false,
+      titre: pv.titre,
+      responsable: pv.responsable,
+      echeance: pv.echeance,
     })
   }
 

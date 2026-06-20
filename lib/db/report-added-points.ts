@@ -15,6 +15,7 @@ export interface ReportAddedPoint {
   statut: string | null
   dueDate: string | null
   assignedTo: string | null
+  confiance: 'sûr' | 'à confirmer'
 }
 
 function ddmmyyyy(iso: string | null): string | null {
@@ -27,7 +28,7 @@ function ddmmyyyy(iso: string | null): string | null {
 export async function listReportAddedPoints(reportId: string): Promise<ReportAddedPoint[]> {
   const { data } = await createAdminClient()
     .from('report_added_points')
-    .select('id, kind, label, statut, due_date, assigned_to, created_at')
+    .select('id, kind, label, statut, due_date, assigned_to, confiance, created_at')
     .eq('report_id', reportId)
     .order('created_at', { ascending: true })
   return (data ?? []).map((p) => ({
@@ -37,6 +38,7 @@ export async function listReportAddedPoints(reportId: string): Promise<ReportAdd
     statut: (p.statut as string | null) ?? null,
     dueDate: (p.due_date as string | null) ?? null,
     assignedTo: (p.assigned_to as string | null) ?? null,
+    confiance: (p.confiance as string | null) === 'à confirmer' ? 'à confirmer' : 'sûr',
   }))
 }
 
@@ -56,7 +58,7 @@ export async function listAddedAnomaliesAsPoints(reportId: string): Promise<Poin
     }))
 }
 
-/** Prévisions ajoutées → items de prévision structurés, source stable `added:<id>`. */
+/** Prévisions ajoutées → items de prévision STRUCTURÉS, source stable `added:<id>`. */
 export async function listAddedPrevisions(reportId: string): Promise<PrevisionItem[]> {
   const rows = await listReportAddedPoints(reportId)
   return rows
@@ -66,7 +68,10 @@ export async function listAddedPrevisions(reportId: string): Promise<PrevisionIt
       return {
         kind: 'intervention' as const,
         texte: det ? `${r.label} (${det})` : r.label,
-        confiance: 'sûr' as const,
+        titre: r.label,
+        responsable: r.assignedTo,
+        echeance: r.dueDate,
+        confiance: r.confiance, // fiabilité choisie par Émeline (mig 135)
         source: `added:${r.id}`,
       }
     })
@@ -79,6 +84,7 @@ export async function addReportAddedPoint(input: {
   statut?: string | null
   dueDate?: string | null
   assignedTo?: string | null
+  confiance?: string | null
   createdBy?: string | null
 }): Promise<string> {
   const { data, error } = await createAdminClient()
@@ -90,6 +96,8 @@ export async function addReportAddedPoint(input: {
       statut: input.kind === 'anomalie' ? (input.statut?.trim() || 'bloqué') : null,
       due_date: input.kind === 'prevision' ? (input.dueDate || null) : null,
       assigned_to: input.kind === 'prevision' ? (input.assignedTo?.trim() || null) : null,
+      // Fiabilité (mig 135) : pertinente pour une prévision (projection humaine).
+      confiance: input.kind === 'prevision' && input.confiance === 'à confirmer' ? 'à confirmer' : null,
       created_by: input.createdBy ?? null,
     })
     .select('id')

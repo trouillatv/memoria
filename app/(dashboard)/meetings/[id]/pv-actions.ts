@@ -392,7 +392,7 @@ export async function addAnomalieAction(
 
 export async function addPrevisionAction(
   reportId: string,
-  input: { label: string; assignedTo?: string; dueDate?: string },
+  input: { label: string; assignedTo?: string; dueDate?: string; confiance?: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
   const label = input.label.trim()
@@ -400,7 +400,7 @@ export async function addPrevisionAction(
   try {
     await addReportAddedPoint({
       reportId, kind: 'prevision', label,
-      assignedTo: input.assignedTo, dueDate: input.dueDate, createdBy: user.id,
+      assignedTo: input.assignedTo, dueDate: input.dueDate, confiance: input.confiance, createdBy: user.id,
     })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
