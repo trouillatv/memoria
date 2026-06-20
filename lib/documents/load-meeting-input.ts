@@ -11,21 +11,15 @@ import { getContract } from '@/lib/db/contracts'
 import { buildRemarquesCrPrecedent } from '@/lib/db/meeting-followup'
 import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
 import { listSitePhotos } from '@/lib/db/site-photos'
+import { buildPointsExamines } from '@/lib/db/points-examines'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
-import type { CrBecibBloc, StatutPoint } from './cr-becib-schema'
 
 function ddmmyyyy(iso: string | null | undefined): string | null {
   if (!iso) return null
   const d = new Date(iso); if (isNaN(d.getTime())) return null
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
-}
-function statutFromAction(s: string): StatutPoint | null {
-  if (s === 'done') return 'fait'
-  if (s === 'open') return 'à faire'
-  if (s === 'planned') return 'en cours'
-  return null
 }
 
 export async function loadMeetingInput(reportId: string): Promise<MeetingInput | null> {
@@ -45,6 +39,9 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
   // PHOTOS : structure mémoire réutilisable (intervention + clôture d'action).
   const sitePhotos = report.site_id ? await listSitePhotos(report.site_id) : []
 
+  // POINTS EXAMINÉS typés (couche 3) : actions de la réunion + risques + anomalies.
+  const pointsExaminesTyped = await buildPointsExamines({ id: reportId, site_id: report.site_id, risks: report.risks })
+
   // numéro de CR = nb de réunions du site jusqu'à cette date (déterministe).
   let numeroCR: string | null = null
   if (report.site_id) {
@@ -54,17 +51,9 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
     numeroCR = count ? String(count) : null
   }
 
-  // Actions VALIDÉES → un bloc « ACTIONS À SUIVRE » (donnée validée, pas IA).
+  // Actions VALIDÉES (pour l'avancement Fait/Prévisions ; les points examinés
+  // typés gèrent désormais le rendu « actions à suivre » via buildPointsExamines).
   const liveActions = actions.filter((a) => a.status !== 'cancelled')
-  const pointsTech: CrBecibBloc[] = liveActions.length
-    ? [{
-        sousTitre: 'ACTIONS À SUIVRE', action: [],
-        points: liveActions.map((a) => ({
-          texte: [a.title, a.assigned_to ? `— ${a.assigned_to}` : '', a.due_date ? `(échéance ${ddmmyyyy(a.due_date)}${a.due_date_status === 'estimated' ? ' à confirmer' : ''})` : ''].filter(Boolean).join(' '),
-          statut: statutFromAction(a.status), action: [],
-        })),
-      }]
-    : []
 
   return {
     numeroCR,
@@ -83,8 +72,7 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
     },
     actions: liveActions.map((a) => ({ title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status })),
     contacts: [], // V1 : pas de jointure contacts → tel/mob/email = trous
-    pointsAdmin: [], // contenu éditorial admin = brouillon IA à valider (Sprint B)
-    pointsTech, // actions validées
+    pointsExaminesTyped, // couche 3 : actions de la réunion + risques + anomalies
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
     previsionsInterventions: previsionsIntv.map((p) => p.texte), // anomalies + interventions à venir

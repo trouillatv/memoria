@@ -3,7 +3,8 @@
 // « à compléter »/« à confirmer », JAMAIS inventé. Voir mémoire
 // pv-questions-avant-validation. Prévu pour brancher un vrai site_report.
 
-import type { CrBecib, CrBecibBloc, CrBecibIntervenant } from './cr-becib-schema'
+import type { CrBecib, CrBecibBloc, CrBecibIntervenant, StatutPoint } from './cr-becib-schema'
+import type { PointExamine, PointExamineStatut } from '@/lib/db/points-examines'
 
 const TODO = 'à compléter'
 const TBC = 'à confirmer'
@@ -24,6 +25,8 @@ export type MeetingInput = {
   // Contenu éditorial VALIDÉ (points examinés) — propositions acceptées / curation humaine.
   pointsAdmin?: CrBecibBloc[]
   pointsTech?: CrBecibBloc[]
+  // Points examinés TYPÉS (couche 3) — prioritaire sur pointsAdmin/pointsTech.
+  pointsExaminesTyped?: PointExamine[]
   ordreDuJour?: string[]
   remarquesCrPrecedent?: string | null
   // Prévisions issues des interventions (anomalies non résolues + interventions à
@@ -83,6 +86,28 @@ export function pvReadiness(input: MeetingInput): PvReadiness {
   return { score, checks, blocking, gaps }
 }
 
+// Projection des points typés (couche 3) → blocs BECIB (présentation). On route
+// decision/demande_moa vers les POINTS ADMINISTRATIFS, le reste vers les POINTS
+// TECHNIQUES, en regroupant par sousTitre (ordre d'apparition préservé).
+const STATUT_MAP: Record<PointExamineStatut, StatutPoint> = {
+  fait: 'fait', 'en cours': 'en cours', 'à faire': 'à faire', 'en attente': 'en attente', bloqué: 'en attente',
+}
+function toBlocs(points: PointExamine[]): CrBecibBloc[] {
+  const order: string[] = []
+  const map = new Map<string, CrBecibBloc>()
+  for (const p of points) {
+    let b = map.get(p.sousTitre)
+    if (!b) { b = { sousTitre: p.sousTitre, points: [], action: [] }; map.set(p.sousTitre, b); order.push(p.sousTitre) }
+    const suffix = p.confiance === 'à confirmer' ? ' (à confirmer)' : ''
+    b.points.push({ texte: p.texte + suffix, statut: p.statut ? STATUT_MAP[p.statut] : null, action: [] })
+  }
+  return order.map((s) => map.get(s)!)
+}
+function groupPointsExamines(points: PointExamine[]): { administratifs: CrBecibBloc[]; techniques: CrBecibBloc[] } {
+  const isAdmin = (p: PointExamine) => p.type === 'decision' || p.type === 'demande_moa'
+  return { administratifs: toBlocs(points.filter(isAdmin)), techniques: toBlocs(points.filter((p) => !isAdmin(p))) }
+}
+
 function findContact(input: MeetingInput, name: string) {
   const norm = (s: string) => s.toLowerCase().replace(/^m\.|^mme|^mlle/, '').trim()
   return input.contacts.find((c) => norm(c.fullName).includes(norm(name)) || norm(name).includes(norm(c.fullName)))
@@ -123,7 +148,9 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
     ordreDuJour: input.ordreDuJour ?? [],
     remarquesCrPrecedent: input.remarquesCrPrecedent ?? '',
     // Contenu éditorial = VALIDÉ uniquement (propositions acceptées / curation).
-    pointsExamines: { administratifs: input.pointsAdmin ?? [], techniques: input.pointsTech ?? [] },
+    pointsExamines: input.pointsExaminesTyped
+      ? groupPointsExamines(input.pointsExaminesTyped)
+      : { administratifs: input.pointsAdmin ?? [], techniques: input.pointsTech ?? [] },
     // Avancement adossé à la donnée structurée (jamais inventé) :
     //  FAIT ← actions clôturées ; PRÉVISIONS ← actions ouvertes (avec échéance/responsable).
     //  Le transcript enrichira ces listes plus tard (couche intelligence).
