@@ -69,6 +69,9 @@ function buildTemplate(): Buffer {
   // Ordre du jour (liste) + Remarques sur CR précédent
   xml = tagWholePara(xml, 'Suivi des travaux', '{#ordreDuJour}{texte}{/ordreDuJour}')
   xml = tagWholePara(xml, 'corrigé afin de noter', '{remarquesCrPrecedent}')
+  // Prochaine réunion + signature
+  xml = tagWholePara(xml, 'PROCHAINE REUNION', 'PROCHAINE RÉUNION : {prochaineReunion}')
+  xml = tagWholePara(xml, 'POUR BECIB', '{signature}')
 
   // PHOTOS : garder le 1er drawing (logo client en p.1), retirer les photos
   // Cravache figées ; placeholder à la place de la 1re. Les médias orphelins
@@ -148,6 +151,8 @@ export function buildPvDocx(cr: CrBecib): Buffer {
     groupes: GROUPS.map((g) => ({ groupeLabel: GROUP_LABEL[g], orgs: orgsOf(cr, g) })).filter((x) => x.orgs.length > 0),
     ordreDuJour: cr.ordreDuJour.map((t) => ({ texte: t })),
     remarquesCrPrecedent: cr.remarquesCrPrecedent || 'RAS.',
+    prochaineReunion: [cr.prochaineReunion.date, cr.prochaineReunion.heure, cr.prochaineReunion.lieu].filter(Boolean).join(' · ') || 'À planifier',
+    signature: cr.signature || 'POUR BECIB,',
     blocsAdmin: blocs(cr.pointsExamines.administratifs), blocsTech: blocs(cr.pointsExamines.techniques),
   })
   return doc.getZip().generate({ type: 'nodebuffer' })
