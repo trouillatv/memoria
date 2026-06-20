@@ -100,7 +100,7 @@ function PhotoTile({ reportId, photo }: { reportId: string; photo: PhotoCard }) 
 export function PvPhotoGrid({ reportId, photos }: { reportId: string; photos: PhotoCard[] }) {
   if (photos.length === 0) return null
   return (
-    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
       {photos.map((p) => <PhotoTile key={p.id} reportId={reportId} photo={p} />)}
     </ul>
   )
