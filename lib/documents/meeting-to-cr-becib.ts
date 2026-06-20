@@ -59,6 +59,24 @@ export function detectPvGaps(input: MeetingInput): PvGapQuestion[] {
   return q
 }
 
+export type PvReadiness = { score: number; checks: { label: string; ok: boolean }[]; blocking: boolean; gaps: PvGapQuestion[] }
+
+/** Niveau de confiance du PV. Points BLOQUANTS (responsable/DNS manquants) →
+ *  PDF FINAL désactivé, mais DOCX brouillon autorisé. */
+export function pvReadiness(input: MeetingInput): PvReadiness {
+  const gaps = detectPvGaps(input)
+  const live = input.actions.filter((a) => a.status !== 'cancelled')
+  const checks = [
+    { label: `${input.report.participants.length} participant(s) identifié(s)`, ok: input.report.participants.length > 0 },
+    { label: `${live.length} action(s) — ${live.filter((a) => a.assignedTo && a.dueDate).length} complète(s)`, ok: live.every((a) => a.assignedTo && a.dueDate) },
+    { label: input.site.dns ? 'N° DNS présent' : 'N° DNS manquant', ok: !!input.site.dns },
+    { label: input.prochaineReunion?.date ? 'Prochaine réunion datée' : 'Prochaine réunion à confirmer', ok: !!input.prochaineReunion?.date },
+  ]
+  const blocking = gaps.some((g) => g.type === 'Responsable' || g.type === 'DNS')
+  const score = Math.max(0, Math.round(100 - gaps.length * 6))
+  return { score, checks, blocking, gaps }
+}
+
 function findContact(input: MeetingInput, name: string) {
   const norm = (s: string) => s.toLowerCase().replace(/^m\.|^mme|^mlle/, '').trim()
   return input.contacts.find((c) => norm(c.fullName).includes(norm(name)) || norm(name).includes(norm(c.fullName)))

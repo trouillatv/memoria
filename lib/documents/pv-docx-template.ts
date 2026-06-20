@@ -68,7 +68,7 @@ function buildTemplate(): Buffer {
   zip.file('word/document.xml', xml)
   let foot = zip.file('word/footer1.xml')!.asText()
   foot = foot.split('2025BEC010/CR004').join('{dns}')
-  foot = tagWholePara(foot, 'CR réunion de chantier', '{moa} / BECIB / {chantier} / CR réunion de chantier')
+  foot = tagWholePara(foot, 'CR réunion de chantier', '{moaNom} / BECIB / {chantier} / CR réunion de chantier')
   zip.file('word/footer1.xml', foot)
   return zip.generate({ type: 'nodebuffer' })
 }
@@ -103,7 +103,7 @@ export function buildPvDocx(cr: CrBecib): Buffer {
   const doc = new Docxtemplater(new PizZip(buildTemplate()), { paragraphLoop: true, linebreaks: true })
   doc.render({
     numeroCR: cr.meta.numeroCR || 'à compléter', dateLong: dateLong(cr.meta.dateIso), semaine: cr.meta.semaine || 'à compléter', dns: cr.meta.dns || 'à compléter',
-    projetTitre: cr.meta.projetTitre || 'à compléter', moa: cr.meta.moa || 'à compléter', chantier: cr.meta.chantier || 'à compléter',
+    projetTitre: cr.meta.projetTitre || 'à compléter', moaNom: cr.meta.moa || 'à compléter', chantier: cr.meta.chantier || 'à compléter',
     moa: orgsOf(cr, 'MOA'), moe: orgsOf(cr, 'MOE'), ent: orgsOf(cr, 'ENTREPRISE'), part: orgsOf(cr, 'PARTENAIRES'),
     blocsAdmin: blocs(cr.pointsExamines.administratifs), blocsTech: blocs(cr.pointsExamines.techniques),
   })
