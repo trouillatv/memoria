@@ -16,6 +16,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
+import { listSiteIntervenants, getRoleActorMap } from '@/lib/db/site-intervenants'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
@@ -32,6 +33,7 @@ import { PvHumanPoints } from './PvHumanPoints'
 import { PvAddedPoints } from './PvAddedPoints'
 import { PvActionsBlock, type ActionRow } from './PvActionsBlock'
 import { PvDecisionsBlock } from './PvDecisionsBlock'
+import { PvCastingBlock } from './PvCastingBlock'
 import { PvParticipantRow, AddParticipant } from './PvParticipantRow'
 import { PvResizable } from './PvResizable'
 import { PvPanel } from '../../PvPanel'
@@ -73,6 +75,13 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
 
   // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
   const decisions = await listDecisionsByReport(id)
+
+  // CASTING DU CHANTIER (mig 137) : rôle → entreprise → contact. Sert le bloc casting
+  // ET l'enrichissement « ETV · BatiSud » des codes ACTION. Donnée SITE.
+  const [intervenants, roleActorMap] = report.site_id
+    ? await Promise.all([listSiteIntervenants(report.site_id), getRoleActorMap(report.site_id)])
+    : [[], new Map<string, { company: string; contact: string | null }>()]
+  const roleActors = Object.fromEntries(roleActorMap)
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
@@ -243,9 +252,15 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         </details>
       )}
 
+      {/* Casting du chantier — qui est qui (rôle → entreprise → contact). Alimente la
+          colonne ACTION (« ETV · BatiSud ») et les futures relances. Donnée site. */}
+      <div className="border-t pt-5">
+        <PvCastingBlock reportId={id} intervenants={intervenants} />
+      </div>
+
       {/* Actions — Ajouter / Modifier / Supprimer (l'entité la plus fréquente). */}
       <div className="border-t pt-5">
-        <PvActionsBlock reportId={id} actions={actionRows} />
+        <PvActionsBlock reportId={id} actions={actionRows} roleActors={roleActors} />
       </div>
 
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
@@ -317,7 +332,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
                 {/* Prévisions = lignes STRUCTURÉES (qui/quand/fiabilité) ; le reste = ligne simple. */}
                 {section === 'previsions'
                   ? display.map((it) => <PvPrevisionRow key={it.id} reportId={id} item={it} />)
-                  : display.map((it) => <PvItemRow key={it.id} reportId={id} item={it} excludable={excludable} />)}
+                  : display.map((it) => <PvItemRow key={it.id} reportId={id} item={it} excludable={excludable} roleActors={roleActors} />)}
               </ul>
             </div>
           )

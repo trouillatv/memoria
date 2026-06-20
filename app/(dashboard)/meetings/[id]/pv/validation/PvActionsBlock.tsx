@@ -19,8 +19,9 @@ export interface ActionRow {
 }
 
 type Res = { ok: true } | { ok: false; error: string }
+type RoleActors = Record<string, { company: string; contact: string | null }>
 
-function Row({ reportId, action }: { reportId: string; action: ActionRow }) {
+function Row({ reportId, action, roleActors }: { reportId: string; action: ActionRow; roleActors?: RoleActors }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(action.title)
@@ -76,7 +77,7 @@ function Row({ reportId, action }: { reportId: string; action: ActionRow }) {
       {/* Colonne ACTION (mig 132) : qui doit faire quoi — codes responsables mémorisés. */}
       {!editing && (
         <div className="mt-2 border-t pt-2">
-          <PvActionCodes reportId={reportId} source={action.id} codes={action.actionCodes} />
+          <PvActionCodes reportId={reportId} source={action.id} codes={action.actionCodes} roleActors={roleActors} />
         </div>
       )}
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
@@ -129,14 +130,14 @@ function AddAction({ reportId }: { reportId: string }) {
   )
 }
 
-export function PvActionsBlock({ reportId, actions }: { reportId: string; actions: ActionRow[] }) {
+export function PvActionsBlock({ reportId, actions, roleActors }: { reportId: string; actions: ActionRow[]; roleActors?: RoleActors }) {
   return (
     <section className="space-y-2">
       <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
         <ListTodo className="h-3.5 w-3.5" /> Actions ({actions.length})
       </h2>
       {actions.length > 0 && (
-        <ul className="space-y-1">{actions.map((a) => <Row key={a.id} reportId={reportId} action={a} />)}</ul>
+        <ul className="space-y-1">{actions.map((a) => <Row key={a.id} reportId={reportId} action={a} roleActors={roleActors} />)}</ul>
       )}
       <AddAction reportId={reportId} />
     </section>

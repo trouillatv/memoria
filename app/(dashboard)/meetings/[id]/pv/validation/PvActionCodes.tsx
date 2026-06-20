@@ -14,10 +14,13 @@ export function PvActionCodes({
   reportId,
   source,
   codes,
+  roleActors,
 }: {
   reportId: string
   source: string
   codes: string[]
+  // Résolution rôle → acteur réel (casting du chantier, mig 137) : « ETV » → BatiSud.
+  roleActors?: Record<string, { company: string; contact: string | null }>
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<string[]>(codes)
@@ -64,6 +67,16 @@ export function PvActionCodes({
       })}
       {pending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
       {error && <span className="text-[11px] text-rose-600">{error}</span>}
+      {/* Acteur réel résolu via le casting du chantier (« ETV · BatiSud »). */}
+      {roleActors &&
+        selected
+          .map((c) => ({ c, a: roleActors[c] }))
+          .filter((x) => x.a)
+          .map(({ c, a }) => (
+            <span key={`actor-${c}`} className="ml-1 inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              {c} · {a!.company}{a!.contact ? ` · ${a!.contact}` : ''}
+            </span>
+          ))}
     </div>
   )
 }

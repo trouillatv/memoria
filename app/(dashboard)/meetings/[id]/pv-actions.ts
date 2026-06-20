@@ -22,6 +22,9 @@ import {
   createSiteDecision, updateSiteDecision, deleteSiteDecision,
   type DecisionStatut, type DecisionImpact,
 } from '@/lib/db/site-decisions'
+import { findOrCreateCompanyByName } from '@/lib/db/companies'
+import { createContact } from '@/lib/db/company-contacts'
+import { upsertSiteIntervenant, deleteSiteIntervenant } from '@/lib/db/site-intervenants'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -364,6 +367,74 @@ export async function setPointActionsAction(
   await requireManagerOrAdmin()
   try {
     await setReportPointActions(reportId, pointSource, codes)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────── CASTING DU CHANTIER (mig 137) ─────────────────────────
+// Qui est qui : rôle → entreprise → contact. Saisie depuis la revue CR (donnée
+// SITE, réutilisée par tous ses CR). Crée l'entreprise (find-or-create par nom) et
+// son contact principal au passage → registres peuplés sans page d'admin séparée.
+
+/** organization_id du site porteur de la réunion (scope des entreprises). */
+async function siteOrgOfReport(reportId: string): Promise<{ siteId: string; orgId: string } | null> {
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return null
+  const { data } = await createAdminClient().from('sites').select('organization_id').eq('id', report.site_id).maybeSingle()
+  const orgId = (data as { organization_id: string | null } | null)?.organization_id
+  if (!orgId) return null
+  return { siteId: report.site_id, orgId }
+}
+
+export async function addSiteIntervenantAction(
+  reportId: string,
+  input: {
+    role: string; companyName: string
+    contactName?: string; contactFunction?: string; contactPhone?: string; contactMobile?: string; contactEmail?: string
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const role = input.role.trim()
+  const companyName = input.companyName.trim()
+  if (!role) return { ok: false, error: 'Rôle manquant.' }
+  if (!companyName) return { ok: false, error: 'Entreprise manquante.' }
+  const ctx = await siteOrgOfReport(reportId)
+  if (!ctx) return { ok: false, error: 'Réunion sans site/organisation.' }
+  try {
+    const companyId = await findOrCreateCompanyByName(ctx.orgId, companyName)
+    let contactId: string | null = null
+    if (input.contactName?.trim()) {
+      contactId = await createContact(companyId, {
+        fullName: input.contactName,
+        function: input.contactFunction,
+        phone: input.contactPhone,
+        mobile: input.contactMobile,
+        email: input.contactEmail,
+        isMain: true,
+      })
+    }
+    await upsertSiteIntervenant({ siteId: ctx.siteId, role, companyId, mainContactId: contactId })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function deleteSiteIntervenantAction(
+  reportId: string,
+  intervenantId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const ctx = await siteOrgOfReport(reportId)
+  if (!ctx) return { ok: false, error: 'Réunion sans site.' }
+  try {
+    await deleteSiteIntervenant(ctx.siteId, intervenantId)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }

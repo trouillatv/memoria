@@ -10,7 +10,10 @@ import { excludePvItemAction, includePvItemAction } from '../../pv-actions'
 import { PvActionCodes } from './PvActionCodes'
 import type { PvValidationItem } from '@/lib/documents/pv-validation'
 
-export function PvItemRow({ reportId, item, excludable }: { reportId: string; item: PvValidationItem; excludable: boolean }) {
+export function PvItemRow({ reportId, item, excludable, roleActors }: {
+  reportId: string; item: PvValidationItem; excludable: boolean
+  roleActors?: Record<string, { company: string; contact: string | null }>
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +65,7 @@ export function PvItemRow({ reportId, item, excludable }: { reportId: string; it
       </div>
       {showActions && (
         <div className="mt-2 border-t pt-2">
-          <PvActionCodes reportId={reportId} source={item.source} codes={item.actionCodes ?? []} />
+          <PvActionCodes reportId={reportId} source={item.source} codes={item.actionCodes ?? []} roleActors={roleActors} />
         </div>
       )}
     </li>
