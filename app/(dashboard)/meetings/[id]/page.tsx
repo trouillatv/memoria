@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
   Mic, Building2, MapPin, Users, AlertTriangle, ListTodo, CalendarClock, ClipboardList,
-  Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass,
+  Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass, ClipboardCheck,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
@@ -143,6 +143,17 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         pendingProposals={proposals.filter((p) => p.type === 'action' && p.status === 'proposed')}
         actions={actions}
       />
+
+      {/* Points à confirmer avant le PV — la « vitre du cockpit » (lecture des
+          gaps/readiness typés). Étape de vérification avant génération. */}
+      <Link
+        href={`/meetings/${id}/pv/validation`}
+        className="flex items-center gap-2.5 rounded-xl border bg-card p-3 text-sm font-medium hover:bg-muted/40"
+      >
+        <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+        Points à confirmer avant le PV
+        <span className="ml-auto text-xs text-muted-foreground">Vérifier →</span>
+      </Link>
 
       {/* PV / CR de chantier — génération documentaire (Sprint 1) */}
       {/* key = id+statut du PV serveur : force le remount quand le brouillon est
