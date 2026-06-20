@@ -13,6 +13,7 @@ import { DECISION_STATUTS, DECISION_IMPACTS, STATUT_LABEL, IMPACT_LABEL, type De
 import type { SiteDecision } from '@/lib/db/site-decisions'
 
 type Res = { ok: true } | { ok: false; error: string }
+export interface DecisionOption { id: string; label: string }
 
 // Cycle de vie pertinent à piloter à la main (proposée = réservé extraction IA).
 const STATUTS_HUMAINS = DECISION_STATUTS.filter((s) => s !== 'proposee')
@@ -24,17 +25,21 @@ function ddmmyyyy(iso: string | null): string | null {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
-function Row({ reportId, d }: { reportId: string; d: SiteDecision }) {
+function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[] }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [titre, setTitre] = useState(d.titre)
   const [desc, setDesc] = useState(d.description ?? '')
   const [sujet, setSujet] = useState(d.sujet ?? '')
   const [role, setRole] = useState(d.decisionnaireRole ?? '')
+  const [contactId, setContactId] = useState(d.decisionnaireContactId ?? '')
+  const [actionId, setActionId] = useState(d.actionId ?? '')
   const [impact, setImpact] = useState<DecisionImpact | ''>(d.impact ?? '')
   const [ech, setEch] = useState(d.echeance ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const contactLabel = d.decisionnaireContactId ? contacts.find((c) => c.id === d.decisionnaireContactId)?.label : null
+  const actionLabel = d.actionId ? actions.find((a) => a.id === d.actionId)?.label : null
 
   function run(fn: () => Promise<Res>, onOk?: () => void) {
     setError(null)
@@ -44,7 +49,9 @@ function Row({ reportId, d }: { reportId: string; d: SiteDecision }) {
     })
   }
 
-  const meta = [d.sujet, d.decisionnaireOrg || d.decisionnaireRole, d.impact ? IMPACT_LABEL[d.impact] : null, ddmmyyyy(d.echeance) ? `éch. ${ddmmyyyy(d.echeance)}` : null].filter(Boolean).join(' · ')
+  // Décisionnaire : la PERSONNE réelle si liée (P2), sinon l'organisme, sinon le rôle.
+  const decideur = contactLabel || d.decisionnaireOrg || d.decisionnaireRole
+  const meta = [d.sujet, decideur, d.impact ? IMPACT_LABEL[d.impact] : null, ddmmyyyy(d.echeance) ? `éch. ${ddmmyyyy(d.echeance)}` : null].filter(Boolean).join(' · ')
 
   return (
     <li className="rounded-lg border bg-card px-3 py-2 text-sm">
@@ -70,13 +77,30 @@ function Row({ reportId, d }: { reportId: string; d: SiteDecision }) {
             <input value={ech} onChange={(e) => setEch(e.target.value)} type="date" title="Échéance d'application"
               className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
           </div>
+          {/* Décisionnaire = personne réelle (P2) + lien vers l'action engendrée (UI légère). */}
+          <div className="flex flex-wrap gap-2">
+            {contacts.length > 0 && (
+              <select value={contactId} onChange={(e) => setContactId(e.target.value)} title="Décisionnaire (contact réel)"
+                className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">Décisionnaire — contact réel…</option>
+                {contacts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            )}
+            {actions.length > 0 && (
+              <select value={actionId} onChange={(e) => setActionId(e.target.value)} title="Action engendrée par la décision"
+                className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">→ Action liée…</option>
+                {actions.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+              </select>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pending || !titre.trim()}
-              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, impact: impact || '', echeance: ech }), () => setEditing(false))}
+              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech }), () => setEditing(false))}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Enregistrer
             </button>
-            <button type="button" disabled={pending} onClick={() => { setTitre(d.titre); setDesc(d.description ?? ''); setSujet(d.sujet ?? ''); setRole(d.decisionnaireRole ?? ''); setImpact(d.impact ?? ''); setEch(d.echeance ?? ''); setEditing(false); setError(null) }}
+            <button type="button" disabled={pending} onClick={() => { setTitre(d.titre); setDesc(d.description ?? ''); setSujet(d.sujet ?? ''); setRole(d.decisionnaireRole ?? ''); setContactId(d.decisionnaireContactId ?? ''); setActionId(d.actionId ?? ''); setImpact(d.impact ?? ''); setEch(d.echeance ?? ''); setEditing(false); setError(null) }}
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /> Annuler</button>
           </div>
         </div>
@@ -87,6 +111,7 @@ function Row({ reportId, d }: { reportId: string; d: SiteDecision }) {
             <span className={d.statut === 'caduque' || d.statut === 'contredite' ? 'text-muted-foreground line-through' : ''}>{d.titre}</span>
             {d.description && <span className="block text-[11px] text-muted-foreground">{d.description}</span>}
             {meta && <span className="block text-[11px] text-muted-foreground">{meta}</span>}
+            {actionLabel && <span className="block text-[11px] text-sky-700">→ Action : {actionLabel}</span>}
           </span>
           {/* Cycle de vie piloté à la main (la mémoire vivante : appliquée / caduque…). */}
           <select value={d.statut} disabled={pending} title="Statut de la décision"
@@ -104,11 +129,12 @@ function Row({ reportId, d }: { reportId: string; d: SiteDecision }) {
   )
 }
 
-function AddDecision({ reportId }: { reportId: string }) {
+function AddDecision({ reportId, contacts }: { reportId: string; contacts: DecisionOption[] }) {
   const router = useRouter()
   const [titre, setTitre] = useState('')
   const [sujet, setSujet] = useState('')
   const [role, setRole] = useState('')
+  const [contactId, setContactId] = useState('')
   const [impact, setImpact] = useState<DecisionImpact | ''>('')
   const [ech, setEch] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -118,8 +144,8 @@ function AddDecision({ reportId }: { reportId: string }) {
     setError(null)
     startTransition(async () => {
       try {
-        const r = await addDecisionAction(reportId, { titre, sujet, decisionnaireRole: role, impact, echeance: ech })
-        if (r.ok) { setTitre(''); setSujet(''); setRole(''); setImpact(''); setEch(''); router.refresh() }
+        const r = await addDecisionAction(reportId, { titre, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || undefined, impact, echeance: ech })
+        if (r.ok) { setTitre(''); setSujet(''); setRole(''); setContactId(''); setImpact(''); setEch(''); router.refresh() }
         else setError(r.error)
       } catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
@@ -134,9 +160,16 @@ function AddDecision({ reportId }: { reportId: string }) {
           className="min-w-[8rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
         <select value={role} onChange={(e) => setRole(e.target.value)} title="Décisionnaire"
           className="rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
-          <option value="">Décisionnaire…</option>
+          <option value="">Rôle décideur…</option>
           {ACTION_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        {contacts.length > 0 && (
+          <select value={contactId} onChange={(e) => setContactId(e.target.value)} title="Décisionnaire (contact réel)"
+            className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+            <option value="">Contact décideur…</option>
+            {contacts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        )}
         <select value={impact} onChange={(e) => setImpact(e.target.value as DecisionImpact | '')} title="Impact"
           className="rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
           <option value="">Impact…</option>
@@ -154,16 +187,18 @@ function AddDecision({ reportId }: { reportId: string }) {
   )
 }
 
-export function PvDecisionsBlock({ reportId, decisions }: { reportId: string; decisions: SiteDecision[] }) {
+export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions = [] }: {
+  reportId: string; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]
+}) {
   return (
     <section className="space-y-2">
       <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
         <Gavel className="h-3.5 w-3.5" /> Décisions ({decisions.length})
       </h2>
       {decisions.length > 0 && (
-        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} d={d} />)}</ul>
+        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} d={d} contacts={contacts} actions={actions} />)}</ul>
       )}
-      <AddDecision reportId={reportId} />
+      <AddDecision reportId={reportId} contacts={contacts} />
     </section>
   )
 }

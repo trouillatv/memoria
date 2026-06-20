@@ -13,19 +13,21 @@ export interface SiteIntervenant {
   companyShort: string | null
   mainContactId: string | null
   contactName: string | null
+  contactFunction: string | null
   contactPhone: string | null
   contactMobile: string | null
   contactEmail: string | null
 }
 
-/** Casting complet d'un site (rôle → entreprise → contact), stitché à la main
- *  (robuste vs embeddings ; volumes faibles). */
+/** Casting ACTIF d'un site (liens non clôturés : effective_to is null), rôle →
+ *  entreprise → contact. Stitché à la main (robuste vs embeddings ; volumes faibles). */
 export async function listSiteIntervenants(siteId: string): Promise<SiteIntervenant[]> {
   const sb = createAdminClient()
   const { data: rows } = await sb
     .from('site_intervenants')
     .select('id, site_id, role, company_id, main_contact_id, created_at')
     .eq('site_id', siteId)
+    .is('effective_to', null) // casting COURANT (l'historique vit dans les lignes clôturées)
     .order('created_at', { ascending: true })
   const list = rows ?? []
   if (list.length === 0) return []
@@ -37,7 +39,7 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
   const companyById = new Map((companies ?? []).map((c) => [c.id as string, c]))
   const contactById = new Map<string, Record<string, unknown>>()
   if (contactIds.length > 0) {
-    const { data: contacts } = await sb.from('company_contacts').select('id, full_name, phone, mobile, email').in('id', contactIds)
+    const { data: contacts } = await sb.from('company_contacts').select('id, full_name, function, phone, mobile, email').in('id', contactIds)
     for (const c of contacts ?? []) contactById.set(c.id as string, c)
   }
 
@@ -53,6 +55,7 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
       companyShort: (c?.short_name as string | null) ?? null,
       mainContactId: (r.main_contact_id as string | null) ?? null,
       contactName: (ct?.full_name as string | null) ?? null,
+      contactFunction: (ct?.function as string | null) ?? null,
       contactPhone: (ct?.phone as string | null) ?? null,
       contactMobile: (ct?.mobile as string | null) ?? null,
       contactEmail: (ct?.email as string | null) ?? null,
@@ -60,24 +63,87 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
   })
 }
 
-export async function upsertSiteIntervenant(input: {
+/** Ouvre un lien rôle→entreprise (ACTIF). Si un lien actif identique existe, met à
+ *  jour son contact ; sinon en crée un (effective_from = date du CR, source = le CR).
+ *  Ne clôture PAS les autres entreprises du même rôle (co-traitance possible). */
+export async function openSiteIntervenant(input: {
   siteId: string
   role: string
   companyId: string
   mainContactId?: string | null
+  effectiveFrom?: string | null
+  sourceReportId?: string | null
 }): Promise<void> {
-  const { error } = await createAdminClient()
+  const sb = createAdminClient()
+  const role = input.role.trim().toUpperCase()
+  const { data: existing } = await sb
     .from('site_intervenants')
-    .upsert(
-      { site_id: input.siteId, role: input.role.trim().toUpperCase(), company_id: input.companyId, main_contact_id: input.mainContactId ?? null },
-      { onConflict: 'site_id,role,company_id' },
-    )
+    .select('id')
+    .eq('site_id', input.siteId)
+    .eq('role', role)
+    .eq('company_id', input.companyId)
+    .is('effective_to', null)
+    .maybeSingle()
+  if (existing?.id) {
+    const { error } = await sb.from('site_intervenants').update({ main_contact_id: input.mainContactId ?? null }).eq('id', existing.id)
+    if (error) throw new Error(error.message)
+    return
+  }
+  const row: Record<string, unknown> = {
+    site_id: input.siteId, role, company_id: input.companyId, main_contact_id: input.mainContactId ?? null,
+    source_report_id: input.sourceReportId ?? null,
+  }
+  if (input.effectiveFrom) row.effective_from = input.effectiveFrom
+  const { error } = await sb.from('site_intervenants').insert(row)
   if (error) throw new Error(error.message)
 }
 
-export async function deleteSiteIntervenant(siteId: string, id: string): Promise<void> {
-  const { error } = await createAdminClient().from('site_intervenants').delete().eq('id', id).eq('site_id', siteId)
+/** CLÔTURE un lien (effective_to = date) au lieu de le supprimer → l'historique du
+ *  casting est préservé (« qui était ETV au CR05 »). */
+export async function closeSiteIntervenant(siteId: string, id: string, effectiveTo: string): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('site_intervenants')
+    .update({ effective_to: effectiveTo })
+    .eq('id', id)
+    .eq('site_id', siteId)
+    .is('effective_to', null)
   if (error) throw new Error(error.message)
+}
+
+export interface SiteContactOption {
+  id: string
+  fullName: string
+  function: string | null
+  phone: string | null
+  mobile: string | null
+  email: string | null
+  companyName: string
+}
+
+/** Tous les contacts des entreprises ACTIVES du casting d'un site — pour relier un
+ *  participant ou un décisionnaire à une vraie personne (« Jean Dupont — BatiSud »). */
+export async function listSiteContacts(siteId: string): Promise<SiteContactOption[]> {
+  const sb = createAdminClient()
+  const intervenants = await listSiteIntervenants(siteId)
+  const companyIds = [...new Set(intervenants.map((i) => i.companyId))]
+  if (companyIds.length === 0) return []
+  const { data: companies } = await sb.from('companies').select('id, name, short_name').in('id', companyIds)
+  const nameById = new Map((companies ?? []).map((c) => [c.id as string, (c.short_name as string | null) || (c.name as string)]))
+  const { data: contacts } = await sb
+    .from('company_contacts')
+    .select('id, company_id, full_name, function, phone, mobile, email')
+    .in('company_id', companyIds)
+    .is('deleted_at', null)
+    .order('full_name', { ascending: true })
+  return (contacts ?? []).map((c) => ({
+    id: c.id as string,
+    fullName: (c.full_name as string) ?? '',
+    function: (c.function as string | null) ?? null,
+    phone: (c.phone as string | null) ?? null,
+    mobile: (c.mobile as string | null) ?? null,
+    email: (c.email as string | null) ?? null,
+    companyName: nameById.get(c.company_id as string) ?? '',
+  }))
 }
 
 export interface RoleActor { company: string; contact: string | null }

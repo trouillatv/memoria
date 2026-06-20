@@ -16,6 +16,8 @@ export interface SiteDecision {
   sujet: string | null
   decisionnaireRole: string | null
   decisionnaireOrg: string | null
+  decisionnaireContactId: string | null
+  actionId: string | null
   dateDecision: string | null
   echeance: string | null
   statut: DecisionStatut
@@ -34,6 +36,8 @@ function rowToDecision(r: Record<string, unknown>): SiteDecision {
     sujet: (r.sujet as string | null) ?? null,
     decisionnaireRole: (r.decisionnaire_role as string | null) ?? null,
     decisionnaireOrg: (r.decisionnaire_org as string | null) ?? null,
+    decisionnaireContactId: (r.decisionnaire_contact_id as string | null) ?? null,
+    actionId: (r.action_id as string | null) ?? null,
     dateDecision: (r.date_decision as string | null) ?? null,
     echeance: (r.echeance as string | null) ?? null,
     statut: (DECISION_STATUTS as readonly string[]).includes(r.statut as string) ? (r.statut as DecisionStatut) : 'actee',
@@ -44,7 +48,7 @@ function rowToDecision(r: Record<string, unknown>): SiteDecision {
 }
 
 const SELECT =
-  'id, site_id, report_id, titre, description, sujet, decisionnaire_role, decisionnaire_org, date_decision, echeance, statut, impact, confiance, source'
+  'id, site_id, report_id, titre, description, sujet, decisionnaire_role, decisionnaire_org, decisionnaire_contact_id, action_id, date_decision, echeance, statut, impact, confiance, source'
 
 /** Décisions PRISES dans ce CR (report_id), les plus récentes d'abord. */
 export async function listDecisionsByReport(reportId: string): Promise<SiteDecision[]> {
@@ -74,6 +78,8 @@ export interface CreateDecisionInput {
   sujet?: string | null
   decisionnaireRole?: string | null
   decisionnaireOrg?: string | null
+  decisionnaireContactId?: string | null
+  actionId?: string | null
   dateDecision?: string | null
   echeance?: string | null
   statut?: DecisionStatut
@@ -92,6 +98,8 @@ export async function createSiteDecision(input: CreateDecisionInput): Promise<st
     sujet: input.sujet?.trim() || null,
     decisionnaire_role: input.decisionnaireRole?.trim() || null,
     decisionnaire_org: input.decisionnaireOrg?.trim() || null,
+    decisionnaire_contact_id: input.decisionnaireContactId || null,
+    action_id: input.actionId || null,
     echeance: input.echeance || null,
     statut: input.statut ?? 'actee',        // MVP : ajout manuel = actée
     impact: input.impact ?? null,
@@ -116,6 +124,8 @@ export interface UpdateDecisionPatch {
   description?: string | null
   sujet?: string | null
   decisionnaireRole?: string | null
+  decisionnaireContactId?: string | null
+  actionId?: string | null
   echeance?: string | null
   statut?: DecisionStatut
   impact?: DecisionImpact | null
@@ -129,6 +139,8 @@ export async function updateSiteDecision(siteId: string, id: string, patch: Upda
   if (patch.description !== undefined) row.description = patch.description?.trim() || null
   if (patch.sujet !== undefined) row.sujet = patch.sujet?.trim() || null
   if (patch.decisionnaireRole !== undefined) row.decisionnaire_role = patch.decisionnaireRole?.trim() || null
+  if (patch.decisionnaireContactId !== undefined) row.decisionnaire_contact_id = patch.decisionnaireContactId || null
+  if (patch.actionId !== undefined) row.action_id = patch.actionId || null
   if (patch.echeance !== undefined) row.echeance = patch.echeance || null
   if (patch.statut !== undefined) row.statut = patch.statut
   if (patch.impact !== undefined) row.impact = patch.impact

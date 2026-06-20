@@ -30,7 +30,11 @@ function Row({ reportId, it }: { reportId: string; it: SiteIntervenant }) {
     <li className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
       <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{it.role}</span>
       <span className="inline-flex items-center gap-1 font-medium"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />{it.companyShort || it.companyName}</span>
-      {it.contactName && <span className="inline-flex items-center gap-1 text-muted-foreground"><User className="h-3 w-3" />{it.contactName}</span>}
+      {it.contactName && (
+        <span className="inline-flex items-center gap-1 text-muted-foreground">
+          <User className="h-3 w-3" />{it.contactName}{it.contactFunction ? <span className="text-[11px] italic"> · {it.contactFunction}</span> : null}
+        </span>
+      )}
       {tel && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Phone className="h-3 w-3" />{tel}</span>}
       <button type="button" disabled={pending} title="Retirer du casting" onClick={remove}
         className="ml-auto shrink-0 text-muted-foreground hover:text-rose-600 disabled:opacity-50">
@@ -46,6 +50,7 @@ function AddIntervenant({ reportId }: { reportId: string }) {
   const [role, setRole] = useState('')
   const [company, setCompany] = useState('')
   const [contact, setContact] = useState('')
+  const [func, setFunc] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -56,9 +61,9 @@ function AddIntervenant({ reportId }: { reportId: string }) {
     startTransition(async () => {
       try {
         const r = await addSiteIntervenantAction(reportId, {
-          role, companyName: company, contactName: contact, contactPhone: phone, contactEmail: email,
+          role, companyName: company, contactName: contact, contactFunction: func, contactPhone: phone, contactEmail: email,
         })
-        if (r.ok) { setRole(''); setCompany(''); setContact(''); setPhone(''); setEmail(''); router.refresh() }
+        if (r.ok) { setRole(''); setCompany(''); setContact(''); setFunc(''); setPhone(''); setEmail(''); router.refresh() }
         else setError(r.error)
       } catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
@@ -75,6 +80,8 @@ function AddIntervenant({ reportId }: { reportId: string }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Contact (optionnel)"
+          className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+        <input value={func} onChange={(e) => setFunc(e.target.value)} placeholder="Fonction (ex. « Conducteur »)"
           className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Téléphone"
           className="w-32 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />

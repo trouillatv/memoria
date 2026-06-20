@@ -24,7 +24,7 @@ import {
 } from '@/lib/db/site-decisions'
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { createContact } from '@/lib/db/company-contacts'
-import { upsertSiteIntervenant, deleteSiteIntervenant } from '@/lib/db/site-intervenants'
+import { openSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -380,14 +380,14 @@ export async function setPointActionsAction(
 // SITE, réutilisée par tous ses CR). Crée l'entreprise (find-or-create par nom) et
 // son contact principal au passage → registres peuplés sans page d'admin séparée.
 
-/** organization_id du site porteur de la réunion (scope des entreprises). */
-async function siteOrgOfReport(reportId: string): Promise<{ siteId: string; orgId: string } | null> {
+/** organization_id + date du site porteur de la réunion (scope entreprises + effective_from). */
+async function siteOrgOfReport(reportId: string): Promise<{ siteId: string; orgId: string; reportDate: string } | null> {
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return null
   const { data } = await createAdminClient().from('sites').select('organization_id').eq('id', report.site_id).maybeSingle()
   const orgId = (data as { organization_id: string | null } | null)?.organization_id
   if (!orgId) return null
-  return { siteId: report.site_id, orgId }
+  return { siteId: report.site_id, orgId, reportDate: report.created_at.slice(0, 10) }
 }
 
 export async function addSiteIntervenantAction(
@@ -417,7 +417,8 @@ export async function addSiteIntervenantAction(
         isMain: true,
       })
     }
-    await upsertSiteIntervenant({ siteId: ctx.siteId, role, companyId, mainContactId: contactId })
+    // Lien ACTIF, daté du CR (assurance historique : on n'écrase jamais, mig 138).
+    await openSiteIntervenant({ siteId: ctx.siteId, role, companyId, mainContactId: contactId, effectiveFrom: ctx.reportDate, sourceReportId: reportId })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -434,7 +435,8 @@ export async function deleteSiteIntervenantAction(
   const ctx = await siteOrgOfReport(reportId)
   if (!ctx) return { ok: false, error: 'Réunion sans site.' }
   try {
-    await deleteSiteIntervenant(ctx.siteId, intervenantId)
+    // CLÔTURE (effective_to = date du CR), pas suppression → l'historique reste.
+    await closeSiteIntervenant(ctx.siteId, intervenantId, ctx.reportDate)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -452,7 +454,7 @@ export async function addDecisionAction(
   reportId: string,
   input: {
     titre: string; description?: string; sujet?: string
-    decisionnaireRole?: string; impact?: DecisionImpact | ''; echeance?: string
+    decisionnaireRole?: string; decisionnaireContactId?: string; impact?: DecisionImpact | ''; echeance?: string
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
@@ -468,6 +470,7 @@ export async function addDecisionAction(
       description: input.description,
       sujet: input.sujet,
       decisionnaireRole: input.decisionnaireRole,
+      decisionnaireContactId: input.decisionnaireContactId,
       impact: input.impact ? (input.impact as DecisionImpact) : null,
       echeance: input.echeance,
       dateDecision: report.created_at ? report.created_at.slice(0, 10) : null, // date du CR
@@ -486,7 +489,8 @@ export async function editDecisionAction(
   decisionId: string,
   patch: {
     titre?: string; description?: string; sujet?: string
-    decisionnaireRole?: string; impact?: DecisionImpact | ''; echeance?: string
+    decisionnaireRole?: string; decisionnaireContactId?: string | null; actionId?: string | null
+    impact?: DecisionImpact | ''; echeance?: string
     statut?: DecisionStatut; confiance?: 'sûr' | 'à confirmer'
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -499,6 +503,8 @@ export async function editDecisionAction(
       description: patch.description,
       sujet: patch.sujet,
       decisionnaireRole: patch.decisionnaireRole,
+      decisionnaireContactId: patch.decisionnaireContactId,
+      actionId: patch.actionId,
       echeance: patch.echeance,
       statut: patch.statut,
       impact: patch.impact === '' ? null : patch.impact,
@@ -644,6 +650,7 @@ export async function editParticipantAction(
   presence: ParticipantPresence = 'P',
   invite = true,
   diffusion = false,
+  contactId?: string | null, // lien OPTIONNEL vers un contact réel (mig 137/138)
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   const n = name.trim()
@@ -653,7 +660,7 @@ export async function editParticipantAction(
     if (!report) return { ok: false, error: 'Réunion introuvable' }
     const participants = [...(report.participants ?? [])]
     if (index < 0 || index >= participants.length) return { ok: false, error: 'Participant introuvable.' }
-    participants[index] = { ...participants[index], name: n, role: role.trim() || null, presence, invite, diffusion }
+    participants[index] = { ...participants[index], name: n, role: role.trim() || null, presence, invite, diffusion, contactId: contactId || undefined }
     const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
     revalidatePath(`/meetings/${reportId}/pv/validation`)

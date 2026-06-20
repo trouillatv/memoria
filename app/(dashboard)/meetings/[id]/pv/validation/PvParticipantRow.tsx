@@ -47,9 +47,15 @@ function Badges({ presence, invite, diffusion }: { presence: ParticipantPresence
   )
 }
 
+export interface ContactOption { id: string; label: string }
+
 export function PvParticipantRow({
-  reportId, index, name, role, presence, invite, diffusion,
-}: { reportId: string; index: number; name: string; role: string; presence: ParticipantPresence; invite: boolean; diffusion: boolean }) {
+  reportId, index, name, role, presence, invite, diffusion, contactId, contacts = [],
+}: {
+  reportId: string; index: number; name: string; role: string
+  presence: ParticipantPresence; invite: boolean; diffusion: boolean
+  contactId?: string; contacts?: ContactOption[]
+}) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [n, setN] = useState(name)
@@ -57,8 +63,10 @@ export function PvParticipantRow({
   const [pres, setPres] = useState<ParticipantPresence>(presence)
   const [inv, setInv] = useState(invite)
   const [diff, setDiff] = useState(diffusion)
+  const [ct, setCt] = useState(contactId ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const linkedLabel = contactId ? contacts.find((c) => c.id === contactId)?.label : null
 
   function run(fn: () => Promise<Res>, onOk?: () => void) {
     setError(null)
@@ -67,8 +75,8 @@ export function PvParticipantRow({
       catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
   }
-  const save = () => run(() => editParticipantAction(reportId, index, n, r, pres, inv, diff), () => setEditing(false))
-  const resetAndClose = () => { setN(name); setR(role); setPres(presence); setInv(invite); setDiff(diffusion); setEditing(false); setError(null) }
+  const save = () => run(() => editParticipantAction(reportId, index, n, r, pres, inv, diff, ct || null), () => setEditing(false))
+  const resetAndClose = () => { setN(name); setR(role); setPres(presence); setInv(invite); setDiff(diffusion); setCt(contactId ?? ''); setEditing(false); setError(null) }
 
   return (
     <li className="rounded-lg border bg-card px-3 py-2 text-sm">
@@ -81,6 +89,14 @@ export function PvParticipantRow({
               className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
           </div>
           <PresenceFields pres={pres} setPres={setPres} inv={inv} setInv={setInv} diff={diff} setDiff={setDiff} disabled={pending} />
+          {/* Lien OPTIONNEL vers un contact réel du casting (souplesse : « non lié » possible). */}
+          {contacts.length > 0 && (
+            <select value={ct} disabled={pending} onChange={(e) => setCt(e.target.value)} title="Contact réel (casting du chantier)"
+              className="w-full rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60">
+              <option value="">Contact réel — non lié</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          )}
           <div className="flex items-center gap-2">
             <button type="button" disabled={pending || !n.trim()} onClick={save}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
@@ -91,7 +107,10 @@ export function PvParticipantRow({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1">{name}{role ? <span className="text-muted-foreground"> — {role}</span> : null}</span>
+          <span className="min-w-0 flex-1">
+            {name}{role ? <span className="text-muted-foreground"> — {role}</span> : null}
+            {linkedLabel && <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title="Lié à un contact réel">🔗 {linkedLabel}</span>}
+          </span>
           <Badges presence={presence} invite={invite} diffusion={diffusion} />
           <button type="button" disabled={pending} title="Modifier (corrige la mémoire)" onClick={() => setEditing(true)}
             className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>

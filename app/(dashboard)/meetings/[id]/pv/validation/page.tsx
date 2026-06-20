@@ -16,7 +16,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
-import { listSiteIntervenants, getRoleActorMap } from '@/lib/db/site-intervenants'
+import { listSiteIntervenants, getRoleActorMap, listSiteContacts } from '@/lib/db/site-intervenants'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
@@ -78,10 +78,15 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
 
   // CASTING DU CHANTIER (mig 137) : rôle → entreprise → contact. Sert le bloc casting
   // ET l'enrichissement « ETV · BatiSud » des codes ACTION. Donnée SITE.
-  const [intervenants, roleActorMap] = report.site_id
-    ? await Promise.all([listSiteIntervenants(report.site_id), getRoleActorMap(report.site_id)])
-    : [[], new Map<string, { company: string; contact: string | null }>()]
+  const [intervenants, roleActorMap, siteContacts] = report.site_id
+    ? await Promise.all([listSiteIntervenants(report.site_id), getRoleActorMap(report.site_id), listSiteContacts(report.site_id)])
+    : [[], new Map<string, { company: string; contact: string | null }>(), []]
   const roleActors = Object.fromEntries(roleActorMap)
+  // Options de liaison participant/décisionnaire → contact réel (« Jean Dupont — BatiSud »).
+  const contactOptions = siteContacts.map((c) => ({
+    id: c.id,
+    label: c.function ? `${c.fullName} — ${c.companyName} (${c.function})` : `${c.fullName} — ${c.companyName}`,
+  }))
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
@@ -266,7 +271,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
           les Points administratifs du CR (spine), gérée ici (pas d'écran parallèle). */}
       <div className="border-t pt-5">
-        <PvDecisionsBlock reportId={id} decisions={decisions} />
+        <PvDecisionsBlock reportId={id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} />
       </div>
 
       {/* Ajouts STRUCTURÉS en séance (anomalie / prévision) — objets typés mémorisés. */}
@@ -301,7 +306,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
                 </h3>
                 <ul className="space-y-1">
                   {ps.map((p, i) => (
-                    <PvParticipantRow key={i} reportId={id} index={i} name={p.name} role={p.role ?? ''} presence={p.presence ?? 'P'} invite={p.invite ?? true} diffusion={p.diffusion ?? false} />
+                    <PvParticipantRow key={i} reportId={id} index={i} name={p.name} role={p.role ?? ''} presence={p.presence ?? 'P'} invite={p.invite ?? true} diffusion={p.diffusion ?? false} contactId={p.contactId} contacts={contactOptions} />
                   ))}
                 </ul>
                 <AddParticipant reportId={id} />

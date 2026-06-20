@@ -356,6 +356,9 @@ export interface SiteReportParticipant {
   presence?: ParticipantPresence
   invite?: boolean // convié (colonne I)
   diffusion?: boolean // en diffusion (colonne D)
+  /** Lien OPTIONNEL vers un contact réel (company_contacts, mig 137/138). Le nom libre
+   *  reste possible pour un participant non répertorié — souplesse terrain voulue. */
+  contactId?: string
 }
 
 // Risque / dépendance proposé par l'IA (conducteur de travaux assistant).
