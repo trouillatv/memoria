@@ -142,6 +142,9 @@ function SectionBody({ content, twoCol = false }: { content: string; twoCol?: bo
 export function CrChantierPdf({ title, siteName, clientName, dateLabel, sections, layout = 'neutral', companyLabel, reference }: CrChantierPdfProps) {
   const subtitleParts = [clientName, siteName].filter(Boolean) as string[]
   const isBecib = layout === 'becib'
+  // Le LOGO BECIB est réservé à l'entreprise BECIB (companyLabel === 'BECIB').
+  // Les autres orgs gardent la trame becib (structure) mais SANS le logo BECIB.
+  const showBecibLogo = isBecib && companyLabel === 'BECIB'
   // Bandeau BECIB : MOA / MOE / chantier / type de document (répété en tête).
   const bandeau = isBecib
     ? [clientName, companyLabel, siteName].filter(Boolean).join(' / ') + ' / Compte-rendu de réunion de chantier'
@@ -153,8 +156,10 @@ export function CrChantierPdf({ title, siteName, clientName, dateLabel, sections
           {isBecib ? (
             <>
               <View style={styles.becibTop} fixed>
-                {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
-                <Image src={BECIB_LOGO_DATA_URL} style={styles.becibLogo} />
+                {showBecibLogo && (
+                  // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                  <Image src={BECIB_LOGO_DATA_URL} style={styles.becibLogo} />
+                )}
                 <Text style={styles.becibBandeau}>{bandeau}</Text>
                 {reference ? <Text style={styles.becibRef}>{reference}</Text> : null}
               </View>

@@ -219,13 +219,15 @@ export function getReportTemplate(key: string): ReportTemplateSpec | null {
   return TEMPLATES[key] ?? null
 }
 
-// Orgs « branchées sur BECIB » : leur CR porte l'identité BECIB dans le bandeau
-// (compte démo BatiSud, le temps du test). Les autres orgs portent leur PROPRE
-// nom (l'identité ne se partage pas — doctrine). À retirer quand BatiSud aura
-// sa propre trame.
-const BECIB_BRANDED_ORG_SLUGS = new Set(['batisud'])
+// IDENTITÉ BECIB = réservée à l'entreprise BECIB (directive Vincent 2026-06-20).
+// L'identité (nom + logo) NE SE PARTAGE PAS : chaque org porte la sienne. Seule
+// une org dont le slug est « becib » affiche le label/logo BECIB ; toute autre
+// (BatiSud, ContraBat…) porte son PROPRE nom, sans logo BECIB. La trame (structure
+// numérotée, codification, responsable par point) reste partagée — c'est la mise
+// en page ; l'IDENTITÉ, non.
+const BECIB_BRANDED_ORG_SLUGS = new Set(['becib'])
 
-/** Libellé MOE du bandeau : « BECIB » pour les orgs branchées, sinon le nom réel. */
+/** Libellé MOE du bandeau : « BECIB » uniquement pour l'org BECIB, sinon le nom réel. */
 export function companyLabelForOrg(org: { slug?: string | null; name?: string | null } | null): string | null {
   if (!org) return null
   if (org.slug && BECIB_BRANDED_ORG_SLUGS.has(org.slug.toLowerCase())) return 'BECIB'
