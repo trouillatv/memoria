@@ -8,6 +8,8 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
 import { resolveReportTemplate, getReportTemplate, companyLabelForOrg, becibReference } from '@/lib/documents/templates/cr-chantier'
+import { buildPvValidation } from '@/lib/documents/pv-validation'
+import { resolvePvSignal } from '@/lib/documents/pv-resolvers'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -85,6 +87,34 @@ export async function generatePvAction(reportId: string): Promise<{ ok: true; id
     const msg = e instanceof Error ? e.message : 'unknown'
     console.error('[generatePvAction] failed:', e)
     return { ok: false, error: `Génération échouée : ${msg}` }
+  }
+}
+
+/**
+ * COMPLÉTER un point à confirmer = corriger la MÉMOIRE (décision A), via un
+ * resolver (Signal → Resolver → Mutation métier). On revérifie que le signal
+ * existe bien dans les gaps COURANTS de cette réunion (anti-forge / anti-stale) :
+ * la cible n'est légitime que si un détecteur la produit réellement maintenant.
+ * Après mutation, le gap est recalculé au prochain rendu (revalidate) et disparaît.
+ */
+export async function completePvSignalAction(
+  reportId: string,
+  resolver: string,
+  refId: string,
+  value: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const pv = await buildPvValidation(reportId)
+  if (!pv) return { ok: false, error: 'Réunion introuvable' }
+  const legit = pv.gaps.some((g) => g.cible && g.cible.resolver === resolver && g.cible.refId === refId)
+  if (!legit) return { ok: false, error: 'Ce point n’est plus à confirmer (déjà résolu ?).' }
+  try {
+    await resolvePvSignal(resolver, refId, value)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec de la complétion' }
   }
 }
 

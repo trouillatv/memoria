@@ -20,7 +20,7 @@ export type MeetingInput = {
   report: { title?: string | null; createdAt: string; participants: MeetingParticipant[] }
   site: { name?: string | null; dns?: string | null }
   contract: { name?: string | null; clientName?: string | null; startDate?: string | null; endDate?: string | null; delai?: string | null }
-  actions: { title: string; assignedTo?: string | null; dueDate?: string | null; dueDateStatus?: string | null; status: string }[]
+  actions: { id?: string; title: string; assignedTo?: string | null; dueDate?: string | null; dueDateStatus?: string | null; status: string }[]
   contacts: { fullName: string; phone?: string | null; mob?: string | null; email?: string | null }[]
   // Contenu éditorial VALIDÉ (points examinés) — propositions acceptées / curation humaine.
   pointsAdmin?: CrBecibBloc[]
@@ -54,7 +54,14 @@ export type PvNiveau = 'bloquant' | 'important' | 'suggestion'
 // (le document est incomplet — DNS, date réunion — qu'un « PV urgent » peut décider de
 // sortir quand même). Les deux restent rouges ; la nuance pilote l'override côté écran.
 export type PvNature = 'metier' | 'documentaire'
-export type PvPointAConfirmer = { niveau: PvNiveau; type: string; libelle: string; nature?: PvNature; proposition?: string }
+// CIBLE de résolution (Vincent 2026-06-20) : un signal ne se résout PAS par un
+// UPDATE SQL direct, mais via un RESOLVER (Signal → Resolver → Mutation métier),
+// pour éviter le sprawl de `if signal.type === …` et absorber les complétions
+// COMPOSÉES (ex. « Entreprise inconnue » = créer organisme + associer + MAJ
+// participant). `cible` = à quel resolver s'adresser, sur quel objet. Absent =
+// pas (encore) de complétion possible (ex. DNS/date : aucun stockage à ce jour).
+export type PvResolutionCible = { resolver: string; refId: string }
+export type PvPointAConfirmer = { niveau: PvNiveau; type: string; libelle: string; nature?: PvNature; proposition?: string; cible?: PvResolutionCible }
 /** @deprecated alias historique — utiliser PvPointAConfirmer. */
 export type PvGapQuestion = PvPointAConfirmer
 
@@ -76,9 +83,12 @@ export function detectPvGaps(input: MeetingInput): PvPointAConfirmer[] {
   const q: PvPointAConfirmer[] = []
   // Actions : responsable inconnu = 🔴 (engagement non assumable) ; échéance = 🟠.
   for (const a of input.actions.filter((x) => x.status !== 'cancelled')) {
-    if (!a.assignedTo) q.push({ niveau: 'bloquant', nature: 'metier', type: 'Responsable', libelle: `Responsable de « ${a.title} »` })
-    if (!a.dueDate) q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC })
-    else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC })
+    // refId présent (vraie réunion) → Compléter adressable ; absent (fixture) → affichage seul.
+    const cibleResp = a.id ? { resolver: 'action_responsable', refId: a.id } : undefined
+    const cibleEch = a.id ? { resolver: 'action_echeance', refId: a.id } : undefined
+    if (!a.assignedTo) q.push({ niveau: 'bloquant', nature: 'metier', type: 'Responsable', libelle: `Responsable de « ${a.title} »`, cible: cibleResp })
+    if (!a.dueDate) q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} »`, proposition: TBC, cible: cibleEch })
+    else if (a.dueDateStatus === 'estimated') q.push({ niveau: 'important', type: 'Échéance', libelle: `Échéance de « ${a.title} » estimée (${a.dueDate}) — à confirmer`, proposition: TBC, cible: cibleEch })
   }
   // Identité du document : DNS + date de la prochaine réunion = 🔴 mais DOCUMENTAIRE
   // (contournable en PV urgent), pas métier.

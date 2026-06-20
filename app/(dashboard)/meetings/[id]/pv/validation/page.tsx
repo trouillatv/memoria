@@ -15,7 +15,7 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { buildPvValidation, type PvSection, type PvValidationItem } from '@/lib/documents/pv-validation'
-import type { PvPointAConfirmer } from '@/lib/documents/meeting-to-cr-becib'
+import { PvConfirmCard } from './PvConfirmCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,25 +27,6 @@ const SECTION_META: Record<PvSection, { label: string; icon: typeof Users }> = {
   photos: { label: 'Photos', icon: ImageIcon },
 }
 const SECTION_ORDER: PvSection[] = ['participants', 'remarques_cr', 'points_examines', 'previsions', 'photos']
-
-function ConfirmCard({ p }: { p: PvPointAConfirmer }) {
-  return (
-    <li className="rounded-lg border bg-card p-3">
-      <div className="flex items-start gap-2.5">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm">{p.libelle}</div>
-          <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span className="font-medium">{p.type}</span>
-            {p.nature && <span>· {p.nature === 'metier' ? 'métier' : 'documentaire'}</span>}
-            {p.proposition && (
-              <span className="normal-case text-sky-700">· proposition : {p.proposition}</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </li>
-  )
-}
 
 export default async function PvValidationPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUserWithProfile()
@@ -122,7 +103,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-rose-700">
             <ShieldAlert className="h-3.5 w-3.5" /> Bloquants métier ({bloquantsMetier.length})
           </h2>
-          <ul className="space-y-1.5">{bloquantsMetier.map((p, i) => <ConfirmCard key={`bm${i}`} p={p} />)}</ul>
+          <ul className="space-y-1.5">{bloquantsMetier.map((p, i) => <PvConfirmCard key={`bm${i}`} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
@@ -132,7 +113,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
             <FileWarning className="h-3.5 w-3.5" /> Bloquants documentaires ({bloquantsDoc.length})
             <span className="ml-1 normal-case tracking-normal text-muted-foreground font-normal">— contournables en PV urgent</span>
           </h2>
-          <ul className="space-y-1.5">{bloquantsDoc.map((p, i) => <ConfirmCard key={`bd${i}`} p={p} />)}</ul>
+          <ul className="space-y-1.5">{bloquantsDoc.map((p, i) => <PvConfirmCard key={`bd${i}`} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
@@ -141,7 +122,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-amber-700">
             <AlertTriangle className="h-3.5 w-3.5" /> Importants ({importants.length})
           </h2>
-          <ul className="space-y-1.5">{importants.map((p, i) => <ConfirmCard key={`im${i}`} p={p} />)}</ul>
+          <ul className="space-y-1.5">{importants.map((p, i) => <PvConfirmCard key={`im${i}`} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 
@@ -150,7 +131,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-emerald-700">
             <Lightbulb className="h-3.5 w-3.5" /> Suggestions ({suggestions.length})
           </h2>
-          <ul className="space-y-1.5">{suggestions.map((p, i) => <ConfirmCard key={`sg${i}`} p={p} />)}</ul>
+          <ul className="space-y-1.5">{suggestions.map((p, i) => <PvConfirmCard key={`sg${i}`} reportId={id} signal={p} />)}</ul>
         </section>
       )}
 

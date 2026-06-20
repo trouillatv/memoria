@@ -85,7 +85,7 @@ export async function loadMeetingContext(reportId: string): Promise<MeetingConte
       endDate: ddmmyyyy(contract?.end_date),
       delai: null,
     },
-    actions: liveActions.map((a) => ({ title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status })),
+    actions: liveActions.map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status })),
     contacts: [], // V1 : pas de jointure contacts → tel/mob/email = trous
     pointsExaminesTyped: points, // couche 3 : actions de la réunion + risques + anomalies
     ordreDuJour: report.title ? [report.title] : [],
