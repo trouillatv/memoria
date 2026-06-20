@@ -347,14 +347,15 @@ export type SiteReportStatus =
 export type SiteReportTranscriptStatus = 'none' | 'pending' | 'done' | 'failed'
 
 // Présent détecté à la réunion (coordination descriptive, jamais score).
-export type ParticipantPresence = 'I' | 'P' | 'AE' | 'AN' | 'D' // Invité / Présent / Absent excusé / Absent non excusé / Diffusion
-// (next_meeting_at est ajouté à DbSiteReport plus bas via la migration 131.)
+export type ParticipantPresence = 'P' | 'AE' | 'AN' // Présent / Absent excusé / Absent non excusé
 export interface SiteReportParticipant {
   name: string
   role: string | null
   kind: 'person' | 'company' | 'control' | 'other'
-  /** Statut de présence (CR chantier). Défaut implicite « Présent ». */
+  /** Statut de présence (P/AE/AN). Invité et Diffusion sont INDÉPENDANTS (colonnes BECIB). */
   presence?: ParticipantPresence
+  invite?: boolean // convié (colonne I)
+  diffusion?: boolean // en diffusion (colonne D)
 }
 
 // Risque / dépendance proposé par l'IA (conducteur de travaux assistant).

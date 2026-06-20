@@ -295,6 +295,8 @@ export async function addParticipantAction(
   name: string,
   role: string,
   presence: ParticipantPresence = 'P',
+  invite = true,
+  diffusion = false,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   const n = name.trim()
@@ -302,7 +304,7 @@ export async function addParticipantAction(
   try {
     const report = await getSiteReport(reportId)
     if (!report) return { ok: false, error: 'Réunion introuvable' }
-    const participants = [...(report.participants ?? []), { name: n, role: role.trim() || null, kind: 'person' as const, presence }]
+    const participants = [...(report.participants ?? []), { name: n, role: role.trim() || null, kind: 'person' as const, presence, invite, diffusion }]
     const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
@@ -342,6 +344,8 @@ export async function editParticipantAction(
   name: string,
   role: string,
   presence: ParticipantPresence = 'P',
+  invite = true,
+  diffusion = false,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   const n = name.trim()
@@ -351,7 +355,7 @@ export async function editParticipantAction(
     if (!report) return { ok: false, error: 'Réunion introuvable' }
     const participants = [...(report.participants ?? [])]
     if (index < 0 || index >= participants.length) return { ok: false, error: 'Participant introuvable.' }
-    participants[index] = { ...participants[index], name: n, role: role.trim() || null, presence }
+    participants[index] = { ...participants[index], name: n, role: role.trim() || null, presence, invite, diffusion }
     const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
     revalidatePath(`/meetings/${reportId}/pv/validation`)

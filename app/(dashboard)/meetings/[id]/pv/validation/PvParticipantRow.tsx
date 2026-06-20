@@ -1,8 +1,9 @@
 'use client'
 
-// Participant éditable (#5 « Modifier la mémoire ») : nom + organisme + PRÉSENCE
-// (I/P/AE/AN/D) écrivent la SOURCE (site_reports.participants). La présence est une
-// donnée métier (tableau du PV, stats de présence, jamais d'action à un « D »…).
+// Participant éditable (#5 « Modifier la mémoire ») : nom + organisme + PRÉSENCE.
+// La présence n'est PAS un choix unique : statut Présent/Absent (P/AE/AN) + cases
+// INDÉPENDANTES Invité (I) et Diffusion (D) — comme les colonnes BECIB. Écrit la
+// SOURCE (site_reports.participants).
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Check, X, Loader2, Trash2, Plus } from 'lucide-react'
@@ -11,32 +12,51 @@ import type { ParticipantPresence } from '@/types/db'
 
 type Res = { ok: true } | { ok: false; error: string }
 
-const PRESENCE_OPTIONS: { value: ParticipantPresence; label: string }[] = [
+const STATUTS: { value: ParticipantPresence; label: string }[] = [
   { value: 'P', label: 'Présent' },
-  { value: 'I', label: 'Invité' },
   { value: 'AE', label: 'Absent excusé' },
   { value: 'AN', label: 'Absent non excusé' },
-  { value: 'D', label: 'Diffusion' },
 ]
-const PRESENCE_LABEL = Object.fromEntries(PRESENCE_OPTIONS.map((o) => [o.value, o.label])) as Record<ParticipantPresence, string>
 
-function PresenceSelect({ value, onChange, disabled }: { value: ParticipantPresence; onChange: (v: ParticipantPresence) => void; disabled?: boolean }) {
+function PresenceFields({
+  pres, setPres, inv, setInv, diff, setDiff, disabled,
+}: {
+  pres: ParticipantPresence; setPres: (v: ParticipantPresence) => void
+  inv: boolean; setInv: (v: boolean) => void
+  diff: boolean; setDiff: (v: boolean) => void
+  disabled?: boolean
+}) {
   return (
-    <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as ParticipantPresence)}
-      className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60">
-      {PRESENCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <div className="flex flex-wrap items-center gap-3">
+      <select value={pres} disabled={disabled} onChange={(e) => setPres(e.target.value as ParticipantPresence)}
+        className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60">
+        {STATUTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={inv} disabled={disabled} onChange={(e) => setInv(e.target.checked)} /> Invité</label>
+      <label className="inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={diff} disabled={disabled} onChange={(e) => setDiff(e.target.checked)} /> Diffusion</label>
+    </div>
+  )
+}
+
+function Badges({ presence, invite, diffusion }: { presence: ParticipantPresence; invite: boolean; diffusion: boolean }) {
+  const items = [invite ? 'I' : null, presence, diffusion ? 'D' : null].filter(Boolean) as string[]
+  return (
+    <span className="shrink-0 flex gap-1">
+      {items.map((c) => <span key={c} className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">{c}</span>)}
+    </span>
   )
 }
 
 export function PvParticipantRow({
-  reportId, index, name, role, presence,
-}: { reportId: string; index: number; name: string; role: string; presence: ParticipantPresence }) {
+  reportId, index, name, role, presence, invite, diffusion,
+}: { reportId: string; index: number; name: string; role: string; presence: ParticipantPresence; invite: boolean; diffusion: boolean }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [n, setN] = useState(name)
   const [r, setR] = useState(role)
   const [pres, setPres] = useState<ParticipantPresence>(presence)
+  const [inv, setInv] = useState(invite)
+  const [diff, setDiff] = useState(diffusion)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -47,7 +67,8 @@ export function PvParticipantRow({
       catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
   }
-  const save = () => run(() => editParticipantAction(reportId, index, n, r, pres), () => setEditing(false))
+  const save = () => run(() => editParticipantAction(reportId, index, n, r, pres, inv, diff), () => setEditing(false))
+  const resetAndClose = () => { setN(name); setR(role); setPres(presence); setInv(invite); setDiff(diffusion); setEditing(false); setError(null) }
 
   return (
     <li className="rounded-lg border bg-card px-3 py-2 text-sm">
@@ -58,21 +79,20 @@ export function PvParticipantRow({
               className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
             <input value={r} onChange={(e) => setR(e.target.value)} placeholder="Organisme (ex. SudÉlec)"
               className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
-            <PresenceSelect value={pres} onChange={setPres} disabled={pending} />
           </div>
+          <PresenceFields pres={pres} setPres={setPres} inv={inv} setInv={setInv} diff={diff} setDiff={setDiff} disabled={pending} />
           <div className="flex items-center gap-2">
             <button type="button" disabled={pending || !n.trim()} onClick={save}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Enregistrer
             </button>
-            <button type="button" disabled={pending} onClick={() => { setN(name); setR(role); setPres(presence); setEditing(false); setError(null) }}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /> Annuler</button>
+            <button type="button" disabled={pending} onClick={resetAndClose} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /> Annuler</button>
           </div>
         </div>
       ) : (
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1">{name}{role ? <span className="text-muted-foreground"> — {role}</span> : null}</span>
-          <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600" title={PRESENCE_LABEL[presence]}>{presence}</span>
+          <Badges presence={presence} invite={invite} diffusion={diffusion} />
           <button type="button" disabled={pending} title="Modifier (corrige la mémoire)" onClick={() => setEditing(true)}
             className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
           <button type="button" disabled={pending} title="Retirer ce participant" onClick={() => run(() => removeParticipantAction(reportId, index))}
@@ -90,6 +110,8 @@ export function AddParticipant({ reportId }: { reportId: string }) {
   const [n, setN] = useState('')
   const [r, setR] = useState('')
   const [pres, setPres] = useState<ParticipantPresence>('P')
+  const [inv, setInv] = useState(true)
+  const [diff, setDiff] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -97,8 +119,8 @@ export function AddParticipant({ reportId }: { reportId: string }) {
     setError(null)
     startTransition(async () => {
       try {
-        const res = await addParticipantAction(reportId, n, r, pres)
-        if (res.ok) { setN(''); setR(''); setPres('P'); setOpen(false); router.refresh() }
+        const res = await addParticipantAction(reportId, n, r, pres, inv, diff)
+        if (res.ok) { setN(''); setR(''); setPres('P'); setInv(true); setDiff(false); setOpen(false); router.refresh() }
         else setError(res.error)
       } catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
@@ -110,18 +132,22 @@ export function AddParticipant({ reportId }: { reportId: string }) {
     </button>
   )
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-      <input value={n} onChange={(e) => setN(e.target.value)} placeholder="Nom / représentant" autoFocus
-        className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
-      <input value={r} onChange={(e) => setR(e.target.value)} placeholder="Organisme"
-        className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
-      <PresenceSelect value={pres} onChange={setPres} disabled={pending} />
-      <button type="button" disabled={pending || !n.trim()} onClick={add}
-        className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ajouter
-      </button>
-      <button type="button" disabled={pending} onClick={() => { setOpen(false); setError(null) }} className="text-sm text-muted-foreground hover:text-foreground">Annuler</button>
-      {error && <p className="w-full text-xs text-rose-600">{error}</p>}
+    <div className="space-y-1.5 rounded-lg border bg-card p-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={n} onChange={(e) => setN(e.target.value)} placeholder="Nom / représentant" autoFocus
+          className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+        <input value={r} onChange={(e) => setR(e.target.value)} placeholder="Organisme"
+          className="min-w-[9rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+      </div>
+      <PresenceFields pres={pres} setPres={setPres} inv={inv} setInv={setInv} diff={diff} setDiff={setDiff} disabled={pending} />
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={pending || !n.trim()} onClick={add}
+          className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Ajouter
+        </button>
+        <button type="button" disabled={pending} onClick={() => { setOpen(false); setError(null) }} className="text-sm text-muted-foreground hover:text-foreground">Annuler</button>
+      </div>
+      {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   )
 }

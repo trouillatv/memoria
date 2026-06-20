@@ -259,7 +259,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
                 </h3>
                 <ul className="space-y-1">
                   {ps.map((p, i) => (
-                    <PvParticipantRow key={i} reportId={id} index={i} name={p.name} role={p.role ?? ''} presence={p.presence ?? 'P'} />
+                    <PvParticipantRow key={i} reportId={id} index={i} name={p.name} role={p.role ?? ''} presence={p.presence ?? 'P'} invite={p.invite ?? true} diffusion={p.diffusion ?? false} />
                   ))}
                 </ul>
                 <AddParticipant reportId={id} />

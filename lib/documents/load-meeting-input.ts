@@ -140,7 +140,7 @@ export async function loadMeetingContext(
     report: {
       title: report.title,
       createdAt: report.created_at,
-      participants: (report.participants ?? []).map((p) => ({ name: p.name, role: p.role, presence: p.presence })),
+      participants: (report.participants ?? []).map((p) => ({ name: p.name, role: p.role, presence: p.presence, invite: p.invite, diffusion: p.diffusion })),
     },
     site: { id: report.site_id, name: identity?.name ?? report.title ?? null, dns: siteDns }, // DNS désormais stocké (mig 131)
     prochaineReunion: report.next_meeting_at ? { date: ddmmyyyy(report.next_meeting_at) } : undefined, // date stockée (mig 131)

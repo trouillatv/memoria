@@ -220,11 +220,10 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       tel: c?.phone ?? null,
       mob: c?.mob ?? null,
       email: c?.email ?? null,
-      // Un seul code présence (I/P/AE/AN/D) pilote les 3 colonnes du gabarit :
-      //  P/AE/AN → la colonne correspondante ; I → Invité seul ; D → Diffusion seule.
-      invite: (p.presence ?? 'P') !== 'D',
+      // Colonnes BECIB indépendantes : Invité (I), statut P/AE/AN, Diffusion (D).
+      invite: p.invite ?? true,
       presence: p.presence ?? 'P',
-      diffusion: (p.presence ?? 'P') === 'D',
+      diffusion: p.diffusion ?? false,
     }
   })
 
