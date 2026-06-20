@@ -15,6 +15,7 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
+import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
@@ -30,6 +31,7 @@ import { PvPhotoGrid, type PhotoCard } from './PvPhotoGrid'
 import { PvHumanPoints } from './PvHumanPoints'
 import { PvAddedPoints } from './PvAddedPoints'
 import { PvActionsBlock, type ActionRow } from './PvActionsBlock'
+import { PvDecisionsBlock } from './PvDecisionsBlock'
 import { PvParticipantRow, AddParticipant } from './PvParticipantRow'
 import { PvResizable } from './PvResizable'
 import { PvPanel } from '../../PvPanel'
@@ -68,6 +70,9 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   const actionRows: ActionRow[] = (await listSiteActionsByReport(id))
     .filter((a) => a.status !== 'cancelled')
     .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [] }))
+
+  // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
+  const decisions = await listDecisionsByReport(id)
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
@@ -243,6 +248,12 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         <PvActionsBlock reportId={id} actions={actionRows} />
       </div>
 
+      {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
+          les Points administratifs du CR (spine), gérée ici (pas d'écran parallèle). */}
+      <div className="border-t pt-5">
+        <PvDecisionsBlock reportId={id} decisions={decisions} />
+      </div>
+
       {/* Ajouts STRUCTURÉS en séance (anomalie / prévision) — objets typés mémorisés. */}
       <div className="border-t pt-5">
         <PvAddedPoints reportId={id} points={addedPoints} />
@@ -293,8 +304,9 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
               </div>
             )
           }
-          // Actions retirées d'ici (gérées dans le bloc Actions éditable au-dessus).
-          const display = section === 'points_examines' ? list.filter((it) => it.type !== 'action') : list
+          // Actions ET décisions retirées d'ici (gérées dans leurs blocs éditables
+          // au-dessus ; elles restent projetées dans le CR via le spine).
+          const display = section === 'points_examines' ? list.filter((it) => it.type !== 'action' && it.type !== 'decision') : list
           if (display.length === 0) return null
           return (
             <div key={section} className="space-y-1.5">

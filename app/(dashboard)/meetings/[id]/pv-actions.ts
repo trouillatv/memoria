@@ -18,6 +18,10 @@ import { addReportHumanPoint, removeReportHumanPoint, type HumanPointSection } f
 import { setReportPointActions } from '@/lib/db/report-point-actions'
 import { addReportPhoto, deleteReportPhoto } from '@/lib/db/report-photos'
 import { addReportAddedPoint, deleteReportAddedPoint } from '@/lib/db/report-added-points'
+import {
+  createSiteDecision, updateSiteDecision, deleteSiteDecision,
+  type DecisionStatut, type DecisionImpact,
+} from '@/lib/db/site-decisions'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -360,6 +364,92 @@ export async function setPointActionsAction(
   await requireManagerOrAdmin()
   try {
     await setReportPointActions(reportId, pointSource, codes)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────────── DÉCISIONS (mig 136) ───────────────────────────────
+// « On a décidé que… » — mémoire DURABLE du site, ni action ni prévision. Projetée
+// dans le spine (Points administratifs). MVP : ajout manuel = source human, confiance
+// sûr, statut actée ; l'extraction IA (source transcript / proposée / à confirmer) plus tard.
+
+export async function addDecisionAction(
+  reportId: string,
+  input: {
+    titre: string; description?: string; sujet?: string
+    decisionnaireRole?: string; impact?: DecisionImpact | ''; echeance?: string
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const titre = input.titre.trim()
+  if (!titre) return { ok: false, error: 'Intitulé de décision vide.' }
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site — décision impossible.' }
+  try {
+    await createSiteDecision({
+      siteId: report.site_id,
+      reportId,
+      titre,
+      description: input.description,
+      sujet: input.sujet,
+      decisionnaireRole: input.decisionnaireRole,
+      impact: input.impact ? (input.impact as DecisionImpact) : null,
+      echeance: input.echeance,
+      dateDecision: report.created_at ? report.created_at.slice(0, 10) : null, // date du CR
+      createdBy: user.id,
+    })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function editDecisionAction(
+  reportId: string,
+  decisionId: string,
+  patch: {
+    titre?: string; description?: string; sujet?: string
+    decisionnaireRole?: string; impact?: DecisionImpact | ''; echeance?: string
+    statut?: DecisionStatut; confiance?: 'sûr' | 'à confirmer'
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
+  try {
+    await updateSiteDecision(report.site_id, decisionId, {
+      titre: patch.titre,
+      description: patch.description,
+      sujet: patch.sujet,
+      decisionnaireRole: patch.decisionnaireRole,
+      echeance: patch.echeance,
+      statut: patch.statut,
+      impact: patch.impact === '' ? null : patch.impact,
+      confiance: patch.confiance,
+    })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+export async function deleteDecisionAction(
+  reportId: string,
+  decisionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
+  try {
+    await deleteSiteDecision(report.site_id, decisionId)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }

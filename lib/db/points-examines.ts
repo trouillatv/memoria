@@ -12,6 +12,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listAddedAnomaliesAsPoints } from '@/lib/db/report-added-points'
+import { listDecisionsAsPoints } from '@/lib/db/site-decisions'
 import type { DbSiteReport } from '@/types/db'
 
 export type PointExamineType =
@@ -122,6 +123,11 @@ export async function buildPointsExamines(
   //    quand le terrain n'a rien remonté. Même type 'blocage' que les anomalies site.
   const addedAnomalies = await listAddedAnomaliesAsPoints(report.id)
   points.push(...addedAnomalies)
+
+  // 5) DÉCISIONS (mig 136) — « on a décidé que… ». Type 'decision' → routé vers les
+  //    Points administratifs. Mémoire durable du site, projetée ici dans le CR.
+  const decisions = await listDecisionsAsPoints(report.id)
+  points.push(...decisions)
 
   return points
 }
