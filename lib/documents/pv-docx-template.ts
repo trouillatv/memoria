@@ -21,7 +21,6 @@ function tagRow(tr: string, tags: string[]): string {
   let k = 0
   return tr.replace(/<w:tc>[\s\S]*?<\/w:tc>/g, (tc) => (k < tags.length ? setText(tc, tags[k++]) : tc))
 }
-const ivCells = (key: string) => [`{#${key}}{organisme}`, '{representants}', '{tels}', '{mobs}', '{emails}', '{iMark}', '{pMark}', '{aeMark}', '{anMark}', `{dMarks}{/${key}}`]
 function pointsCell(tc: string, blocKey: string): string {
   const paras = tc.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!
   const st = setText(paras[1], `{#${blocKey}}{sousTitre}`)
@@ -47,11 +46,13 @@ function buildTemplate(): Buffer {
   const zip = new PizZip(fs.readFileSync(TEMPLATE_SRC))
   let xml = zip.file('word/document.xml')!.asText()
   const tbls = xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/g)!
-  // Participants
+  // Participants : boucle {#groupes} (bande corps de métier DANS la boucle) →
+  // les groupes vides ne s'affichent plus. {#orgs} = 1 ligne par organisme.
   const t0 = tbls.find((x) => x.includes('Repr'))!
   const r0 = t0.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g)!
-  const newR0 = [r0[0], r0[1], tagRow(r0[2], ivCells('moa')), r0[3], tagRow(r0[4], ivCells('moe')), r0[5], tagRow(r0[6], ivCells('ent')), r0[7], tagRow(r0[8], ivCells('part'))]
-  xml = xml.replace(t0, t0.replace(r0.join(''), newR0.join('')))
+  const band = setText(r0[1], '{#groupes}{groupeLabel}')
+  const orgRow = tagRow(r0[2], ['{#orgs}{organisme}', '{representants}', '{tels}', '{mobs}', '{emails}', '{iMark}', '{pMark}', '{aeMark}', '{anMark}', '{dMarks}{/orgs}{/groupes}'])
+  xml = xml.replace(t0, t0.replace(r0.join(''), [r0[0], band, orgRow].join('')))
   // Points examinés
   const t1 = tbls.find((x) => x.includes('POINTS ADMINISTRATIFS'))!
   const r1 = t1.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g)!
@@ -113,6 +114,9 @@ function dateLong(iso: string): string {
   return `${String(d.getUTCDate()).padStart(2, '0')} ${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 
+const GROUP_LABEL: Record<string, string> = { MOA: "MAÎTRISE D'OUVRAGE", MOE: "MAÎTRISE D'ŒUVRE", ENTREPRISE: 'ENTREPRISE TITULAIRE', PARTENAIRES: 'PARTENAIRES' }
+const GROUPS = ['MOA', 'MOE', 'ENTREPRISE', 'PARTENAIRES'] as const
+
 type IV = CrBecib['intervenants'][number]
 function orgsOf(cr: CrBecib, g: string) {
   const persons = cr.intervenants.filter((i) => i.groupe === g)
@@ -138,7 +142,7 @@ export function buildPvDocx(cr: CrBecib): Buffer {
   doc.render({
     numeroCR: cr.meta.numeroCR || 'à compléter', dateLong: dateLong(cr.meta.dateIso), semaine: cr.meta.semaine || 'à compléter', dns: cr.meta.dns || 'à compléter',
     projetTitre: cr.meta.projetTitre || 'à compléter', moaNom: cr.meta.moa || 'à compléter', chantier: cr.meta.chantier || 'à compléter',
-    moa: orgsOf(cr, 'MOA'), moe: orgsOf(cr, 'MOE'), ent: orgsOf(cr, 'ENTREPRISE'), part: orgsOf(cr, 'PARTENAIRES'),
+    groupes: GROUPS.map((g) => ({ groupeLabel: GROUP_LABEL[g], orgs: orgsOf(cr, g) })).filter((x) => x.orgs.length > 0),
     blocsAdmin: blocs(cr.pointsExamines.administratifs), blocsTech: blocs(cr.pointsExamines.techniques),
   })
   return doc.getZip().generate({ type: 'nodebuffer' })
