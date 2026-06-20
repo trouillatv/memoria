@@ -25,6 +25,7 @@ import { PvConfirmCard } from './PvConfirmCard'
 import { PvItemRow } from './PvItemRow'
 import { PvPhotoGrid, type PhotoCard } from './PvPhotoGrid'
 import { PvHumanPoints } from './PvHumanPoints'
+import { PvParticipantRow } from './PvParticipantRow'
 import { PvPanel } from '../../PvPanel'
 
 export const dynamic = 'force-dynamic'
@@ -243,6 +244,27 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           const Icon = meta.icon
           // Lignes parasites (anomalies « szdz »…) excludables là où elles vivent.
           const excludable = section === 'points_examines' || section === 'previsions'
+          // Participants : ligne ÉDITABLE (nom + organisme → corrige la mémoire, #5).
+          if (section === 'participants') {
+            return (
+              <div key={section} className="space-y-1.5">
+                <h3 className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Icon className="h-3.5 w-3.5" /> {meta.label} ({list.length})
+                </h3>
+                <ul className="space-y-1">
+                  {list.map((it) => (
+                    <PvParticipantRow
+                      key={it.id}
+                      reportId={id}
+                      index={Number(it.id.split(':')[1] ?? 0)}
+                      name={it.source}
+                      role={it.type === 'participant' ? '' : it.type}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )
+          }
           // Photos : grille éditable (vignette + légende + exclure), pas une liste de texte.
           if (section === 'photos') {
             return (

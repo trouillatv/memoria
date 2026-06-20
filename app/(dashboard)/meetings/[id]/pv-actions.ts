@@ -219,6 +219,36 @@ export async function setPhotoCaptionAction(
   }
 }
 
+/**
+ * MODIFIER UN PARTICIPANT (#5, « Modifier la mémoire ») : corrige nom + organisme
+ * dans la SOURCE (site_reports.participants). Une seule vérité : la correction
+ * ressert partout (prochains CR, recherche…). Pas d'override « ce PV seulement ».
+ */
+export async function editParticipantAction(
+  reportId: string,
+  index: number,
+  name: string,
+  role: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const n = name.trim()
+  if (!n) return { ok: false, error: 'Nom vide.' }
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Réunion introuvable' }
+    const participants = [...(report.participants ?? [])]
+    if (index < 0 || index >= participants.length) return { ok: false, error: 'Participant introuvable.' }
+    participants[index] = { ...participants[index], name: n, role: role.trim() || null }
+    const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
 /** Ajoute une REMARQUE HUMAINE à une section du CR (texte libre, ≠ correction mémoire). */
 export async function addHumanPointAction(
   reportId: string,
