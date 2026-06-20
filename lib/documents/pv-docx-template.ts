@@ -66,6 +66,9 @@ function buildTemplate(): Buffer {
   xml = tagWholePara(xml, 'EAUX PLUVIALES DU CENTRE', '')
   xml = tagWholePara(xml, 'COMPTE-RENDU', 'COMPTE-RENDU N°{numeroCR} DE LA RÉUNION DE CHANTIER')
   xml = tagWholePara(xml, 'novembre 2025', 'Du {dateLong} - semaine {semaine}')
+  // Ordre du jour (liste) + Remarques sur CR précédent
+  xml = tagWholePara(xml, 'Suivi des travaux', '{#ordreDuJour}{texte}{/ordreDuJour}')
+  xml = tagWholePara(xml, 'corrigé afin de noter', '{remarquesCrPrecedent}')
 
   // PHOTOS : garder le 1er drawing (logo client en p.1), retirer les photos
   // Cravache figées ; placeholder à la place de la 1re. Les médias orphelins
@@ -143,6 +146,8 @@ export function buildPvDocx(cr: CrBecib): Buffer {
     numeroCR: cr.meta.numeroCR || 'à compléter', dateLong: dateLong(cr.meta.dateIso), semaine: cr.meta.semaine || 'à compléter', dns: cr.meta.dns || 'à compléter',
     projetTitre: cr.meta.projetTitre || 'à compléter', moaNom: cr.meta.moa || 'à compléter', chantier: cr.meta.chantier || 'à compléter',
     groupes: GROUPS.map((g) => ({ groupeLabel: GROUP_LABEL[g], orgs: orgsOf(cr, g) })).filter((x) => x.orgs.length > 0),
+    ordreDuJour: cr.ordreDuJour.map((t) => ({ texte: t })),
+    remarquesCrPrecedent: cr.remarquesCrPrecedent || 'RAS.',
     blocsAdmin: blocs(cr.pointsExamines.administratifs), blocsTech: blocs(cr.pointsExamines.techniques),
   })
   return doc.getZip().generate({ type: 'nodebuffer' })
