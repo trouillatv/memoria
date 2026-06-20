@@ -219,9 +219,11 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       tel: c?.phone ?? null,
       mob: c?.mob ?? null,
       email: c?.email ?? null,
-      invite: p.invite ?? true, // convié par défaut (présent à la réunion)
-      presence: p.presence ?? 'P', // présent par défaut ; le filet pose la question
-      diffusion: p.diffusion ?? true,
+      // Un seul code présence (I/P/AE/AN/D) pilote les 3 colonnes du gabarit :
+      //  P/AE/AN → la colonne correspondante ; I → Invité seul ; D → Diffusion seule.
+      invite: (p.presence ?? 'P') !== 'D',
+      presence: p.presence ?? 'P',
+      diffusion: (p.presence ?? 'P') === 'D',
     }
   })
 

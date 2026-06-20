@@ -137,7 +137,7 @@ export async function loadMeetingContext(
     report: {
       title: report.title,
       createdAt: report.created_at,
-      participants: (report.participants ?? []).map((p) => ({ name: p.name, role: p.role })),
+      participants: (report.participants ?? []).map((p) => ({ name: p.name, role: p.role, presence: p.presence })),
     },
     site: { name: identity?.name ?? report.title ?? null, dns: null }, // DNS non stocké en base → trou (à compléter)
     contract: {

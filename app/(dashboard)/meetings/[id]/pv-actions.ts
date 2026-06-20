@@ -29,7 +29,7 @@ import {
 } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CrBecibPdf } from '@/lib/pdf/cr-becib'
-import type { ReportDocumentSection } from '@/types/db'
+import type { ReportDocumentSection, ParticipantPresence } from '@/types/db'
 
 const CR_COLLECTION_NAME = 'Comptes-rendus de chantier'
 
@@ -294,6 +294,7 @@ export async function addParticipantAction(
   reportId: string,
   name: string,
   role: string,
+  presence: ParticipantPresence = 'P',
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   const n = name.trim()
@@ -301,7 +302,7 @@ export async function addParticipantAction(
   try {
     const report = await getSiteReport(reportId)
     if (!report) return { ok: false, error: 'Réunion introuvable' }
-    const participants = [...(report.participants ?? []), { name: n, role: role.trim() || null }]
+    const participants = [...(report.participants ?? []), { name: n, role: role.trim() || null, kind: 'person' as const, presence }]
     const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
@@ -340,6 +341,7 @@ export async function editParticipantAction(
   index: number,
   name: string,
   role: string,
+  presence: ParticipantPresence = 'P',
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   const n = name.trim()
@@ -349,7 +351,7 @@ export async function editParticipantAction(
     if (!report) return { ok: false, error: 'Réunion introuvable' }
     const participants = [...(report.participants ?? [])]
     if (index < 0 || index >= participants.length) return { ok: false, error: 'Participant introuvable.' }
-    participants[index] = { ...participants[index], name: n, role: role.trim() || null }
+    participants[index] = { ...participants[index], name: n, role: role.trim() || null, presence }
     const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
     revalidatePath(`/meetings/${reportId}/pv/validation`)

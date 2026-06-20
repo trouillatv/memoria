@@ -347,10 +347,13 @@ export type SiteReportStatus =
 export type SiteReportTranscriptStatus = 'none' | 'pending' | 'done' | 'failed'
 
 // Présent détecté à la réunion (coordination descriptive, jamais score).
+export type ParticipantPresence = 'I' | 'P' | 'AE' | 'AN' | 'D' // Invité / Présent / Absent excusé / Absent non excusé / Diffusion
 export interface SiteReportParticipant {
   name: string
   role: string | null
   kind: 'person' | 'company' | 'control' | 'other'
+  /** Statut de présence (CR chantier). Défaut implicite « Présent ». */
+  presence?: ParticipantPresence
 }
 
 // Risque / dépendance proposé par l'IA (conducteur de travaux assistant).
