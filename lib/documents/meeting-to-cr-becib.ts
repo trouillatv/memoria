@@ -26,6 +26,9 @@ export type MeetingInput = {
   pointsTech?: CrBecibBloc[]
   ordreDuJour?: string[]
   remarquesCrPrecedent?: string | null
+  // Prévisions issues des interventions (anomalies non résolues + interventions à
+  // venir) — déjà rédigées en lignes déterministes ; complètent les actions ouvertes.
+  previsionsInterventions?: string[]
   numeroCR?: string | null
   prochaineReunion?: { date?: string | null; heure?: string | null; lieu?: string | null }
 }
@@ -123,12 +126,16 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
     //  Le transcript enrichira ces listes plus tard (couche intelligence).
     avancement: {
       fait: input.actions.filter((a) => a.status === 'done').map((a) => a.title),
-      previsions: input.actions
-        .filter((a) => a.status !== 'done' && a.status !== 'cancelled')
-        .map((a) => {
-          const det = [a.assignedTo, a.dueDate ? `éch. ${a.dueDate}` : null].filter(Boolean).join(', ')
-          return det ? `${a.title} (${det})` : a.title
-        }),
+      // Prévisions = actions ouvertes + anomalies non résolues + interventions à venir.
+      previsions: [
+        ...input.actions
+          .filter((a) => a.status !== 'done' && a.status !== 'cancelled')
+          .map((a) => {
+            const det = [a.assignedTo, a.dueDate ? `éch. ${a.dueDate}` : null].filter(Boolean).join(', ')
+            return det ? `${a.title} (${det})` : a.title
+          }),
+        ...(input.previsionsInterventions ?? []),
+      ],
     },
     intemperiesAleas: [],
     planning: {

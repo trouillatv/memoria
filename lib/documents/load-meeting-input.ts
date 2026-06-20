@@ -9,6 +9,7 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getContract } from '@/lib/db/contracts'
 import { buildRemarquesCrPrecedent } from '@/lib/db/meeting-followup'
+import { buildPrevisionsFromInterventions } from '@/lib/db/site-previsions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
 import type { CrBecibBloc, StatutPoint } from './cr-becib-schema'
@@ -36,6 +37,9 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
   // REMARQUES SUR CR PRÉCÉDENT : 100% déterministe (meeting_followup), pas le
   // transcript. mémoire → remarque → (rédaction LLM plus tard).
   const remarques = await buildRemarquesCrPrecedent({ id: reportId, site_id: report.site_id, created_at: report.created_at })
+
+  // PRÉVISIONS (volet interventions) : anomalies non résolues + interventions à venir.
+  const previsionsIntv = report.site_id ? await buildPrevisionsFromInterventions(report.site_id) : []
 
   // numéro de CR = nb de réunions du site jusqu'à cette date (déterministe).
   let numeroCR: string | null = null
@@ -79,5 +83,6 @@ export async function loadMeetingInput(reportId: string): Promise<MeetingInput |
     pointsTech, // actions validées
     ordreDuJour: report.title ? [report.title] : [],
     remarquesCrPrecedent: remarques.text, // déterministe (meeting_followup)
+    previsionsInterventions: previsionsIntv.map((p) => p.texte), // anomalies + interventions à venir
   }
 }
