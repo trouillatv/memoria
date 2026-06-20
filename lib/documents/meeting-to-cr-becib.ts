@@ -5,6 +5,7 @@
 
 import type { CrBecib, CrBecibBloc, CrBecibIntervenant, StatutPoint } from './cr-becib-schema'
 import type { PointExamine, PointExamineStatut } from '@/lib/db/points-examines'
+import type { HumanPointSection } from '@/lib/db/report-human-points'
 
 const TODO = 'à compléter'
 const TBC = 'à confirmer'
@@ -36,6 +37,8 @@ export type MeetingInput = {
   // riche réutilisable vit dans lib/db/site-photos.ts.
   photos?: { url: string; legende: string }[]
   photosComment?: string | null
+  // Remarques HUMAINES ajoutées (texte libre par section) — injectées dans le CR.
+  humanPoints?: { section: HumanPointSection; text: string }[]
   numeroCR?: string | null
   // Libellé MOE du bandeau = identité de l'ORG (« BECIB » seulement pour l'org BECIB,
   // sinon son propre nom). Trame partagée, identité propre. Défaut 'BECIB' (fixtures).
@@ -222,6 +225,16 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
     }
   })
 
+  // Remarques HUMAINES ajoutées (texte libre), injectées par section.
+  const hpOf = (s: HumanPointSection) => (input.humanPoints ?? []).filter((p) => p.section === s).map((p) => p.text)
+  const pointsExamines = input.pointsExaminesTyped
+    ? groupPointsExamines(input.pointsExaminesTyped)
+    : { administratifs: input.pointsAdmin ?? [], techniques: input.pointsTech ?? [] }
+  const hpPoints = hpOf('points_examines')
+  if (hpPoints.length) {
+    pointsExamines.techniques.push({ sousTitre: 'REMARQUES', action: [], points: hpPoints.map((t) => ({ texte: t, statut: null, action: [] })) })
+  }
+
   return {
     meta: {
       numeroCR: input.numeroCR ?? TODO,
@@ -237,17 +250,15 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       clientLogoDataUrl: null, // logo client variable, fourni par donnée
     },
     intervenants,
-    ordreDuJour: input.ordreDuJour ?? [],
+    ordreDuJour: [...(input.ordreDuJour ?? []), ...hpOf('ordre_du_jour')],
     remarquesCrPrecedent: input.remarquesCrPrecedent ?? '',
-    // Contenu éditorial = VALIDÉ uniquement (propositions acceptées / curation).
-    pointsExamines: input.pointsExaminesTyped
-      ? groupPointsExamines(input.pointsExaminesTyped)
-      : { administratifs: input.pointsAdmin ?? [], techniques: input.pointsTech ?? [] },
+    // Contenu éditorial = VALIDÉ uniquement + remarques humaines (bloc REMARQUES).
+    pointsExamines,
     // Avancement adossé à la donnée structurée (jamais inventé) :
     //  FAIT ← actions clôturées ; PRÉVISIONS ← actions ouvertes (avec échéance/responsable).
     //  Le transcript enrichira ces listes plus tard (couche intelligence).
     avancement: {
-      fait: input.actions.filter((a) => a.status === 'done').map((a) => a.title),
+      fait: [...input.actions.filter((a) => a.status === 'done').map((a) => a.title), ...hpOf('avancement')],
       // Prévisions = actions ouvertes + anomalies non résolues + interventions à venir.
       previsions: [
         ...input.actions
@@ -257,6 +268,7 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
             return det ? `${a.title} (${det})` : a.title
           }),
         ...(input.previsionsInterventions ?? []),
+        ...hpOf('previsions'),
       ],
     },
     intemperiesAleas: [],
@@ -266,7 +278,7 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       prolongations: null,
       retard: { previsionnel: null, effectif: null },
     },
-    securite: [],
+    securite: hpOf('securite'),
     photos: input.photos ?? [],
     photosComment: input.photosComment ?? null,
     prochaineReunion: {

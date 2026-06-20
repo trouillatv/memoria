@@ -17,6 +17,7 @@ import { buildPointsExamines } from '@/lib/db/points-examines'
 import { listPvSignalDecisions } from '@/lib/db/pv-signal-decisions'
 import { getPhotoDataUrlsForCr } from '@/lib/storage/intervention-photos'
 import { listReportPhotoMeta, getCrPhotosComment } from '@/lib/db/report-photo-meta'
+import { listReportHumanPoints } from '@/lib/db/report-human-points'
 import { companyLabelForOrg } from '@/lib/documents/templates/cr-chantier'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MeetingInput } from './meeting-to-cr-becib'
@@ -98,8 +99,13 @@ export async function loadMeetingContext(
   const pointsForCr = points.filter((p) => !excluded.has(p.source))
   const previsionsForCr = previsions.filter((p) => !excluded.has(p.source))
 
-  // Présentation des photos (ordre / couverture / commentaire général, mig 129).
-  const [photoMeta, photosComment] = await Promise.all([listReportPhotoMeta(reportId), getCrPhotosComment(reportId)])
+  // Présentation des photos (ordre/couverture/commentaire, mig 129) + remarques humaines (mig 130).
+  const [photoMeta, photosComment, humanPointsRaw] = await Promise.all([
+    listReportPhotoMeta(reportId),
+    getCrPhotosComment(reportId),
+    listReportHumanPoints(reportId),
+  ])
+  const humanPoints = humanPointsRaw.map((p) => ({ section: p.section, text: p.text }))
 
   // PHOTOS du CR : embarquées en base64 UNIQUEMENT au rendu (embedPhotos), hors
   // photos exclues, ORDONNÉES (couverture d'abord puis sort_order). @react-pdf
@@ -150,6 +156,7 @@ export async function loadMeetingContext(
     previsionsInterventions: previsionsForCr.map((p) => p.texte), // anomalies + interventions (hors exclus)
     photos: crPhotos, // base64 au rendu (embedPhotos) ; [] côté validation
     photosComment, // commentaire général du bloc photos (mig 129)
+    humanPoints, // remarques humaines ajoutées par section (mig 130)
   }
 
   return { input, sources: { remarques, points, previsions, photos } }

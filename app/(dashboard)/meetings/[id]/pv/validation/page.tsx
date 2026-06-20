@@ -18,11 +18,13 @@ import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { listMeetingScopedPhotos } from '@/lib/db/site-photos'
 import { listReportPhotoMeta, getCrPhotosComment } from '@/lib/db/report-photo-meta'
+import { listReportHumanPoints } from '@/lib/db/report-human-points'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { buildPvValidation, type PvSection } from '@/lib/documents/pv-validation'
 import { PvConfirmCard } from './PvConfirmCard'
 import { PvItemRow } from './PvItemRow'
 import { PvPhotoGrid, type PhotoCard } from './PvPhotoGrid'
+import { PvHumanPoints } from './PvHumanPoints'
 import { PvPanel } from '../../PvPanel'
 
 export const dynamic = 'force-dynamic'
@@ -52,10 +54,11 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
 
   // PHOTOS (priorité #1) : vignettes signées + exclusion + ORDRE/COUVERTURE + commentaire.
   const sitePhotos = await listMeetingScopedPhotos({ id, site_id: report.site_id, created_at: report.created_at })
-  const [thumbs, photoMeta, photosComment] = await Promise.all([
+  const [thumbs, photoMeta, photosComment, humanPoints] = await Promise.all([
     getSignedPhotoUrlsThumb(sitePhotos.map((p) => p.storagePath)),
     listReportPhotoMeta(id),
     getCrPhotosComment(id),
+    listReportHumanPoints(id),
   ])
   const excludedPhotoIds = new Set(pv.items.filter((i) => i.section === 'photos' && i.excluded).map((i) => i.source))
   // Ordre : couverture d'abord, puis sort_order, puis ordre par défaut (scopé).
@@ -222,6 +225,11 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
           <ul className="space-y-1.5 border-t p-3">{traites.map((p) => <PvConfirmCard key={p.id} reportId={id} signal={p} />)}</ul>
         </details>
       )}
+
+      {/* Remarques humaines ajoutées (texte libre par section) — injectées dans le CR. */}
+      <div className="border-t pt-5">
+        <PvHumanPoints reportId={id} points={humanPoints} />
+      </div>
 
       {/* Ce qui ira dans le PV (contenu typé, lecture) */}
       <section className="space-y-3 border-t pt-5">

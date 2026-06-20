@@ -14,6 +14,7 @@ import { loadMeetingInput } from '@/lib/documents/load-meeting-input'
 import { mapMeetingToCrBecib } from '@/lib/documents/meeting-to-cr-becib'
 import { upsertPvSignalDecision, clearPvSignalDecision, type PvSignalStatut } from '@/lib/db/pv-signal-decisions'
 import { reorderReportPhotos, setReportCoverPhoto, setCrPhotosComment } from '@/lib/db/report-photo-meta'
+import { addReportHumanPoint, removeReportHumanPoint, type HumanPointSection } from '@/lib/db/report-human-points'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -210,6 +211,41 @@ export async function setPhotoCaptionAction(
       ? await sb.from('intervention_photos').update({ caption: v }).eq('id', photoId)
       : await sb.from('site_actions').update({ completed_comment: v }).eq('id', photoId)
     if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Ajoute une REMARQUE HUMAINE à une section du CR (texte libre, ≠ correction mémoire). */
+export async function addHumanPointAction(
+  reportId: string,
+  section: HumanPointSection,
+  text: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const v = text.trim()
+  if (!v) return { ok: false, error: 'Texte vide.' }
+  try {
+    await addReportHumanPoint({ reportId, section, text: v, createdBy: user.id })
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Retire une remarque humaine ajoutée. */
+export async function removeHumanPointAction(
+  reportId: string,
+  pointId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    await removeReportHumanPoint(reportId, pointId)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
