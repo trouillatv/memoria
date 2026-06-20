@@ -30,6 +30,7 @@ import { PvHumanPoints } from './PvHumanPoints'
 import { PvAddedPoints } from './PvAddedPoints'
 import { PvActionsBlock, type ActionRow } from './PvActionsBlock'
 import { PvParticipantRow, AddParticipant } from './PvParticipantRow'
+import { PvResizable } from './PvResizable'
 import { PvPanel } from '../../PvPanel'
 
 export const dynamic = 'force-dynamic'
@@ -140,9 +141,10 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
   const resume = [...byType.entries()].map(([t, n]) => (TYPE_LABEL[t] ? TYPE_LABEL[t](n) : `${n} ${t}`))
 
   return (
-    <div className="w-full max-w-6xl">
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start lg:gap-6">
-        <div className="space-y-6 min-w-0">
+    <div className="w-full max-w-[96rem]">
+      <PvResizable
+        left={
+          <>
       <Link href={`/meetings/${id}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Réunion
       </Link>
@@ -312,19 +314,22 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
       {/* HUB d'actions (Finding A) : on corrige ci-dessus, on prépare/diffuse ici —
           tout au même endroit, plus de va-et-vient vers la réunion. */}
       <PvPanel reportId={id} initial={pvDoc} finalVersions={finalVersions} hideValidationLink />
-        </div>
-
-        {/* Aperçu vivant du CR (côte-à-côte) : le vrai PDF, rechargé à chaque modif. */}
-        <aside className="mt-6 lg:mt-0 lg:sticky lg:top-4">
-          <h2 className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" /> Aperçu du CR
-          </h2>
-          <iframe title="Aperçu du CR" src={`/meetings/${id}/pv?t=${previewTs}`} className="h-[80vh] w-full rounded-lg border bg-white" />
-          <a href={`/meetings/${id}/pv`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-muted-foreground hover:text-foreground">
-            Ouvrir en grand →
-          </a>
-        </aside>
-      </div>
+          </>
+        }
+        right={
+          <>
+            {/* Aperçu vivant du CR : le vrai PDF, rechargé à chaque modif. */}
+            <h2 className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <FileText className="h-3.5 w-3.5" /> Aperçu du CR
+              <span className="ml-1 normal-case tracking-normal text-muted-foreground/70 font-normal">— glissez la poignée pour agrandir</span>
+            </h2>
+            <iframe title="Aperçu du CR" src={`/meetings/${id}/pv?t=${previewTs}`} className="h-[80vh] w-full rounded-lg border bg-white" />
+            <a href={`/meetings/${id}/pv`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-muted-foreground hover:text-foreground">
+              Ouvrir en grand →
+            </a>
+          </>
+        }
+      />
     </div>
   )
 }
