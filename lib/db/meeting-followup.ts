@@ -108,6 +108,82 @@ export async function getMeetingFollowup(report: {
   }
 }
 
+export interface RemarqueCrItem {
+  kind: 'closed' | 'overdue' | 'open'
+  texte: string
+  confiance: 'sûr' | 'à confirmer'
+  source: string // id de l'action (traçabilité, validation humaine)
+}
+export interface RemarquesCrPrecedent {
+  hasPrevious: boolean
+  items: RemarqueCrItem[]
+  text: string // alimente {remarquesCrPrecedent} dans le PV BECIB
+}
+
+function ownerSuffix(owner: string | null): string {
+  const o = (owner ?? '').trim()
+  return o ? ` (${o})` : ''
+}
+
+/**
+ * REMARQUES SUR CR PRÉCÉDENT — 100% DÉTERMINISTE depuis site_actions + la date de
+ * la réunion précédente (JAMAIS le transcript). Le LLM ne fera que reformuler
+ * proprement plus tard (couche 4 « rédaction »). Règles (Vincent 2026-06-20) :
+ *   - clôturée depuis la dernière réunion → reportée comme « réalisé »
+ *   - ouverte en retard         → « reste en attente (retard N j) »
+ *   - ouverte reconduite        → « toujours ouverte », échéance « à confirmer » si incertaine
+ *   - aucune remarque           → « RAS. »   ·   jamais d'invention
+ * Wording centré ACTION, jamais sur la personne (anti-RH, cf. getMeetingFollowup).
+ */
+export async function buildRemarquesCrPrecedent(report: {
+  id: string
+  site_id: string | null
+  created_at: string
+}): Promise<RemarquesCrPrecedent> {
+  if (!report.site_id) return { hasPrevious: false, items: [], text: 'RAS.' }
+
+  const [prevDate, actions] = await Promise.all([
+    previousMeetingDate(report.site_id, report.created_at, report.id),
+    listSiteActionsBySite(report.site_id),
+  ])
+  const today = todayIso()
+  const items: RemarqueCrItem[] = []
+
+  // 1) Clôturées depuis la réunion précédente → « réalisé »
+  for (const a of actions) {
+    if (a.status === 'done' && a.done_at != null && (prevDate == null || a.done_at >= prevDate)) {
+      items.push({ kind: 'closed', texte: `${a.title}${ownerSuffix(a.assigned_to)} — réalisé.`, confiance: 'sûr', source: a.id })
+    }
+  }
+
+  const open = actions.filter((a) => a.status === 'open' || a.status === 'planned')
+
+  // 2) Ouvertes en retard → « reste en attente (retard N j) »
+  for (const a of open) {
+    if (a.due_date != null && a.due_date < today) {
+      items.push({ kind: 'overdue', texte: `${a.title}${ownerSuffix(a.assigned_to)} — reste en attente (retard de ${daysOverdue(a.due_date)} jours).`, confiance: 'sûr', source: a.id })
+    }
+  }
+
+  // 3) Ouvertes RECONDUITES (créées avant la réunion précédente) → « toujours ouverte »
+  //    (on ne re-mentionne pas une action née à cette réunion-ci).
+  for (const a of open) {
+    if (a.due_date != null && a.due_date < today) continue
+    const carried = prevDate != null && a.created_at < prevDate
+    if (!carried) continue
+    const incertaine = a.due_date == null || a.due_date_status === 'estimated'
+    const ech = a.due_date == null
+      ? 'échéance à confirmer'
+      : a.due_date_status === 'estimated'
+        ? `échéance ${a.due_date} à confirmer`
+        : `échéance ${a.due_date}`
+    items.push({ kind: 'open', texte: `${a.title}${ownerSuffix(a.assigned_to)} — toujours ouverte, ${ech}.`, confiance: incertaine ? 'à confirmer' : 'sûr', source: a.id })
+  }
+
+  const text = items.length ? items.map((i) => `– ${i.texte}`).join('\n') : 'RAS.'
+  return { hasPrevious: prevDate != null, items, text }
+}
+
 /** Rendu texte du bloc pour une section de PV (source de vérité = sections jsonb). */
 export function formatFollowupForPv(f: MeetingFollowup): string {
   const lines: string[] = []
