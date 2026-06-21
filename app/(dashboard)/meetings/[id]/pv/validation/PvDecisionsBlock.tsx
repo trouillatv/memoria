@@ -4,7 +4,7 @@
 // mémoire du site, ni action ni prévision. Saisie + cycle de vie (actée → appliquée
 // → caduque/contredite) ici même ; la décision est PROJETÉE dans le CR (Points
 // administratifs) via le spine, pas dans un écran parallèle. MVP : ajout = human/sûr/actée.
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2 } from 'lucide-react'
 import { addDecisionAction, editDecisionAction, deleteDecisionAction } from '../../pv-actions'
@@ -38,6 +38,7 @@ function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDeci
   const [ech, setEch] = useState(d.echeance ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const editStartRef = useRef<number>(0) // chrono d'édition → temps de correction (mig 140)
   const contactLabel = d.decisionnaireContactId ? contacts.find((c) => c.id === d.decisionnaireContactId)?.label : null
   const actionLabel = d.actionId ? actions.find((a) => a.id === d.actionId)?.label : null
 
@@ -96,7 +97,7 @@ function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDeci
           </div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pending || !titre.trim()}
-              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech }), () => setEditing(false))}
+              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech, timeToCorrectMs: editStartRef.current ? Date.now() - editStartRef.current : null }), () => setEditing(false))}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Enregistrer
             </button>
@@ -120,7 +121,7 @@ function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDeci
             {STATUTS_HUMAINS.map((s) => <option key={s} value={s}>{STATUT_LABEL[s]}</option>)}
           </select>
           {d.confiance === 'à confirmer' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">à confirmer</span>}
-          <button type="button" disabled={pending} title="Modifier" onClick={() => setEditing(true)} className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
+          <button type="button" disabled={pending} title="Modifier" onClick={() => { editStartRef.current = Date.now(); setEditing(true) }} className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
           <button type="button" disabled={pending} title="Supprimer" onClick={() => run(() => deleteDecisionAction(reportId, d.id))} className="shrink-0 text-muted-foreground hover:text-rose-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       )}

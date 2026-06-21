@@ -4,7 +4,7 @@
 // La présence n'est PAS un choix unique : statut Présent/Absent (P/AE/AN) + cases
 // INDÉPENDANTES Invité (I) et Diffusion (D) — comme les colonnes BECIB. Écrit la
 // SOURCE (site_reports.participants).
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Check, X, Loader2, Trash2, Plus } from 'lucide-react'
 import { editParticipantAction, removeParticipantAction, addParticipantAction } from '../../pv-actions'
@@ -66,6 +66,7 @@ export function PvParticipantRow({
   const [ct, setCt] = useState(contactId ?? '')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const editStartRef = useRef<number>(0) // début d'édition → temps de correction (mig 140)
   const linkedLabel = contactId ? contacts.find((c) => c.id === contactId)?.label : null
 
   function run(fn: () => Promise<Res>, onOk?: () => void) {
@@ -75,7 +76,7 @@ export function PvParticipantRow({
       catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
   }
-  const save = () => run(() => editParticipantAction(reportId, index, n, r, pres, inv, diff, ct || null), () => setEditing(false))
+  const save = () => run(() => editParticipantAction(reportId, index, n, r, pres, inv, diff, ct || null, editStartRef.current ? Date.now() - editStartRef.current : null), () => setEditing(false))
   const resetAndClose = () => { setN(name); setR(role); setPres(presence); setInv(invite); setDiff(diffusion); setCt(contactId ?? ''); setEditing(false); setError(null) }
 
   return (
@@ -112,7 +113,7 @@ export function PvParticipantRow({
             {linkedLabel && <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title="Lié à un contact réel">🔗 {linkedLabel}</span>}
           </span>
           <Badges presence={presence} invite={invite} diffusion={diffusion} />
-          <button type="button" disabled={pending} title="Modifier (corrige la mémoire)" onClick={() => setEditing(true)}
+          <button type="button" disabled={pending} title="Modifier (corrige la mémoire)" onClick={() => { editStartRef.current = Date.now(); setEditing(true) }}
             className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
           <button type="button" disabled={pending} title="Retirer ce participant" onClick={() => run(() => removeParticipantAction(reportId, index))}
             className="shrink-0 text-muted-foreground hover:text-rose-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>

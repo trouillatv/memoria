@@ -126,7 +126,7 @@ export async function completePvSignalAction(
   try {
     await resolvePvSignal(resolver, refId, value, { reportId })
     // Capture passive : un trou détecté par l'IA et comblé par l'humain (donnée d'or).
-    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'document_field', field: resolver, category: 'completion', op: 'added', after: value }] })
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'document_field', field: resolver, category: 'completion', op: 'added', after: value, sourceType: 'ai' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -198,7 +198,7 @@ export async function excludePvItemAction(
   try {
     await upsertPvSignalDecision({ reportId, signalId: source, statut: 'ignored', comment: 'exclu du PV', decidedBy: user.id })
     // Signal d'apprentissage : l'IA a proposé une ligne que l'humain juge parasite.
-    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'pv_item', field: source.split(':')[0] || null, category: 'exclusion', op: 'removed', before: source }] })
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'pv_item', field: source.split(':')[0] || null, category: 'exclusion', op: 'removed', before: source, sourceType: 'ai' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -318,7 +318,7 @@ export async function addActionAction(
       created_by: user.id,
       created_from: 'report',
     })
-    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'action', category: 'action', op: 'added', after: title }] })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'action', category: 'action', op: 'added', after: title, sourceType: 'human' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -428,7 +428,7 @@ export async function addSiteIntervenantAction(
     }
     // Lien ACTIF, daté du CR (assurance historique : on n'écrase jamais, mig 138).
     await openSiteIntervenant({ siteId: ctx.siteId, role, companyId, mainContactId: contactId, effectiveFrom: ctx.reportDate, sourceReportId: reportId })
-    await recordCorrections({ reportId, siteId: ctx.siteId, actorId: user.id, events: [{ entity: 'casting', field: 'organisme', category: 'organisation', op: 'added', after: `${role} = ${companyName}` }] })
+    await recordCorrections({ reportId, siteId: ctx.siteId, actorId: user.id, events: [{ entity: 'casting', field: 'organisme', category: 'organisation', op: 'added', after: `${role} = ${companyName}`, sourceType: 'human' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -486,7 +486,7 @@ export async function addDecisionAction(
       dateDecision: report.created_at ? report.created_at.slice(0, 10) : null, // date du CR
       createdBy: user.id,
     })
-    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', category: 'decision', op: 'added', after: titre }] })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', category: 'decision', op: 'added', after: titre, sourceType: 'human' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -503,6 +503,7 @@ export async function editDecisionAction(
     decisionnaireRole?: string; decisionnaireContactId?: string | null; actionId?: string | null
     impact?: DecisionImpact | ''; echeance?: string
     statut?: DecisionStatut; confiance?: 'sûr' | 'à confirmer'
+    timeToCorrectMs?: number | null // temps passé côté client (mig 140)
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
@@ -523,7 +524,7 @@ export async function editDecisionAction(
     })
     // Capture passive : on logue le ou les champs réellement présents dans le patch.
     const field = patch.statut ? 'statut' : patch.actionId !== undefined ? 'action_liee' : patch.decisionnaireContactId !== undefined ? 'decisionnaire' : 'contenu'
-    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', field, category: 'decision', op: 'edited', after: patch.statut ?? patch.titre ?? null }] })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', field, category: 'decision', op: 'edited', after: patch.statut ?? patch.titre ?? null, timeToCorrectMs: patch.timeToCorrectMs ?? null }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -666,6 +667,7 @@ export async function editParticipantAction(
   invite = true,
   diffusion = false,
   contactId?: string | null, // lien OPTIONNEL vers un contact réel (mig 137/138)
+  timeToCorrectMs?: number | null, // temps passé côté client (mig 140)
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
   const n = name.trim()
@@ -688,7 +690,7 @@ export async function editParticipantAction(
     if ((prev.invite ?? true) !== invite) events.push({ entity: 'participant', field: 'invite', category: 'presence', op: 'edited', before: String(prev.invite ?? true), after: String(invite) })
     if ((prev.diffusion ?? false) !== diffusion) events.push({ entity: 'participant', field: 'diffusion', category: 'presence', op: 'edited', before: String(prev.diffusion ?? false), after: String(diffusion) })
     if ((prev.contactId ?? '') !== (contactId || '')) events.push({ entity: 'participant', field: 'contact', category: 'contact', op: 'edited', before: prev.contactId ?? null, after: contactId || null })
-    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: events.map((e) => ({ ...e, timeToCorrectMs: timeToCorrectMs ?? null })) })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
