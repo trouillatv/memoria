@@ -56,13 +56,22 @@ export async function setSourceTranscript(attachmentId: string, raw: string, sta
   if (error) throw new Error(error.message)
 }
 
+function fmtDur(sec: number | null): string | null {
+  if (!sec || sec <= 0) return null
+  const m = Math.round(sec / 60)
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`
+}
+
 /** CORPUS RÉUNION : concaténation ÉTIQUETÉE des transcriptions de toutes les sources.
- *  Chaque source garde la sienne (traçabilité) ; le corpus alimente l'analyse. */
+ *  Chaque source garde la sienne (traçabilité) ; le corpus alimente l'analyse.
+ *  La DURÉE est encodée dans l'étiquette → le POIDS de la source (`source_weight`)
+ *  devient RÉEL pour le LLM (un débrief de 2 min ne pèse pas comme une réunion d'1h20),
+ *  pas décoratif. Le 1er audio (le plus long en général) est annoncé comme PRINCIPAL. */
 export async function buildCombinedCorpus(reportId: string): Promise<string> {
   const sb = createAdminClient()
   const { data } = await sb
     .from('site_report_attachments')
-    .select('label, type_source, transcript_raw, created_at')
+    .select('label, type_source, duration_seconds, transcript_raw, created_at')
     .eq('report_id', reportId)
     .eq('kind', 'audio')
     .order('created_at', { ascending: true })
@@ -72,7 +81,9 @@ export async function buildCombinedCorpus(reportId: string): Promise<string> {
     if (!t) return
     const type = (r.type_source as AudioSourceType | null) ?? (i === 0 ? 'audio_meeting' : 'other')
     const label = ((r.label as string | null) ?? '').trim() || (i === 0 ? 'Audio principal' : AUDIO_SOURCE_LABEL[type])
-    parts.push(`[${label}]\n${t}`)
+    const dur = fmtDur(r.duration_seconds as number | null)
+    const tag = [label, i === 0 ? 'source principale' : 'complément', dur].filter(Boolean).join(' · ')
+    parts.push(`[${tag}]\n${t}`)
   })
   return parts.join('\n\n')
 }
