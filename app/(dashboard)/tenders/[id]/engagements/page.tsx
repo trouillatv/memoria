@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { ScanSearch } from 'lucide-react'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { EngagementCurationView } from '../engagement-curation-view'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
@@ -18,6 +20,12 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
           </p>
         </div>
         {engagements.length === 0 && <ExtractEngagementsButton tenderId={id} />}
+        {engagements.length > 0 && (
+          <Link href={`/tenders/${id}/audit`}
+            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40 shrink-0">
+            <ScanSearch className="h-3.5 w-3.5" /> Audit documentaire
+          </Link>
+        )}
       </div>
 
       {engagements.length === 0 ? (
