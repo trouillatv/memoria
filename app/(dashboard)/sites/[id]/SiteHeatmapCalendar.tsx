@@ -103,7 +103,7 @@ export function SiteHeatmapCalendar({ days }: { days: SiteRhythmDay[] }) {
                   return (
                     <Tooltip key={di}>
                       <TooltipTrigger>{dayCell}</TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[200px]">
+                      <TooltipContent side="top" className="max-w-xs">
                         <div className="space-y-0.5 text-xs">
                           <p className="font-medium">
                             {cell.weekdayLabel} {cell.dayMonthLabel}
