@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck, Search, Layers, ShieldAlert } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck, Search, Layers, ShieldAlert, Download } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -255,6 +255,17 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <Sparkles className="h-3.5 w-3.5" />
           Atelier mémoire
         </Link>
+        {/* S2 — Export ZIP « propriété des données » (admin/manager). La donnée et
+            les preuves restent au client, même si MemorIA disparaît. */}
+        {(user.role === 'admin' || user.role === 'manager') && (
+          <a
+            href={`/sites/${id}/export`}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Exporter (Excel + photos)
+          </a>
+        )}
         {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM) */}
         <SiteBriefButton siteId={id} variant="desktop" />
         {/* Compte-rendu multimodal — voix + texte + photos + pièces → décisions */}
