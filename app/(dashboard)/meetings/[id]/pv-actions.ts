@@ -25,6 +25,7 @@ import {
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { createContact } from '@/lib/db/company-contacts'
 import { openSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
+import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
 import { generatePv } from '@/services/ai/document-generation'
 import {
   createReportDocument,
@@ -117,13 +118,15 @@ export async function completePvSignalAction(
   refId: string,
   value: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   const pv = await buildPvValidation(reportId)
   if (!pv) return { ok: false, error: 'Réunion introuvable' }
   const legit = pv.gaps.some((g) => g.cible && g.cible.resolver === resolver && g.cible.refId === refId)
   if (!legit) return { ok: false, error: 'Ce point n’est plus à confirmer (déjà résolu ?).' }
   try {
     await resolvePvSignal(resolver, refId, value, { reportId })
+    // Capture passive : un trou détecté par l'IA et comblé par l'humain (donnée d'or).
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'document_field', field: resolver, category: 'completion', op: 'added', after: value }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -194,6 +197,8 @@ export async function excludePvItemAction(
   if (!pv.items.some((it) => it.source === source)) return { ok: false, error: 'Ligne introuvable.' }
   try {
     await upsertPvSignalDecision({ reportId, signalId: source, statut: 'ignored', comment: 'exclu du PV', decidedBy: user.id })
+    // Signal d'apprentissage : l'IA a proposé une ligne que l'humain juge parasite.
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'pv_item', field: source.split(':')[0] || null, category: 'exclusion', op: 'removed', before: source }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -313,6 +318,7 @@ export async function addActionAction(
       created_by: user.id,
       created_from: 'report',
     })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'action', category: 'action', op: 'added', after: title }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -326,7 +332,7 @@ export async function editActionAction(
   actionId: string,
   input: { title: string; assignedTo?: string; dueDate?: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   const title = input.title.trim()
   if (!title) return { ok: false, error: 'Intitulé vide.' }
   try {
@@ -336,6 +342,7 @@ export async function editActionAction(
       due_date: input.dueDate || null,
       due_date_status: input.dueDate ? null : null, // date saisie = confirmée (null = figée)
     })
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'action', field: 'contenu', category: 'action', op: 'edited', after: title }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -346,9 +353,10 @@ export async function editActionAction(
 
 /** Supprimer = annuler (soft : status 'cancelled'). L'action sort du CR et des piliers. */
 export async function deleteActionAction(reportId: string, actionId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   try {
     await updateSiteAction(actionId, { status: 'cancelled' })
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'action', category: 'action', op: 'removed' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -364,9 +372,10 @@ export async function setPointActionsAction(
   pointSource: string,
   codes: string[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   try {
     await setReportPointActions(reportId, pointSource, codes)
+    await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'point_action', field: 'codes', category: 'action', op: 'edited', after: codes.join('/') }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -397,7 +406,7 @@ export async function addSiteIntervenantAction(
     contactName?: string; contactFunction?: string; contactPhone?: string; contactMobile?: string; contactEmail?: string
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   const role = input.role.trim()
   const companyName = input.companyName.trim()
   if (!role) return { ok: false, error: 'Rôle manquant.' }
@@ -419,6 +428,7 @@ export async function addSiteIntervenantAction(
     }
     // Lien ACTIF, daté du CR (assurance historique : on n'écrase jamais, mig 138).
     await openSiteIntervenant({ siteId: ctx.siteId, role, companyId, mainContactId: contactId, effectiveFrom: ctx.reportDate, sourceReportId: reportId })
+    await recordCorrections({ reportId, siteId: ctx.siteId, actorId: user.id, events: [{ entity: 'casting', field: 'organisme', category: 'organisation', op: 'added', after: `${role} = ${companyName}` }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -476,6 +486,7 @@ export async function addDecisionAction(
       dateDecision: report.created_at ? report.created_at.slice(0, 10) : null, // date du CR
       createdBy: user.id,
     })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', category: 'decision', op: 'added', after: titre }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -494,7 +505,7 @@ export async function editDecisionAction(
     statut?: DecisionStatut; confiance?: 'sûr' | 'à confirmer'
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
   try {
@@ -510,6 +521,9 @@ export async function editDecisionAction(
       impact: patch.impact === '' ? null : patch.impact,
       confiance: patch.confiance,
     })
+    // Capture passive : on logue le ou les champs réellement présents dans le patch.
+    const field = patch.statut ? 'statut' : patch.actionId !== undefined ? 'action_liee' : patch.decisionnaireContactId !== undefined ? 'decisionnaire' : 'contenu'
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', field, category: 'decision', op: 'edited', after: patch.statut ?? patch.titre ?? null }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -522,11 +536,12 @@ export async function deleteDecisionAction(
   reportId: string,
   decisionId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
   try {
     await deleteSiteDecision(report.site_id, decisionId)
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', category: 'decision', op: 'removed' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
@@ -652,7 +667,7 @@ export async function editParticipantAction(
   diffusion = false,
   contactId?: string | null, // lien OPTIONNEL vers un contact réel (mig 137/138)
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await requireManagerOrAdmin()
+  const user = await requireManagerOrAdmin()
   const n = name.trim()
   if (!n) return { ok: false, error: 'Nom vide.' }
   try {
@@ -660,9 +675,20 @@ export async function editParticipantAction(
     if (!report) return { ok: false, error: 'Réunion introuvable' }
     const participants = [...(report.participants ?? [])]
     if (index < 0 || index >= participants.length) return { ok: false, error: 'Participant introuvable.' }
-    participants[index] = { ...participants[index], name: n, role: role.trim() || null, presence, invite, diffusion, contactId: contactId || undefined }
+    const prev = participants[index] // AVANT mutation → diffs (capture passive)
+    const r2 = role.trim() || null
+    participants[index] = { ...prev, name: n, role: r2, presence, invite, diffusion, contactId: contactId || undefined }
     const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
     if (error) throw new Error(error.message)
+    // Capture passive des corrections (mig 139, best-effort) : organisme/présence/nom/lien.
+    const events: CorrectionEvent[] = []
+    if ((prev.name ?? '') !== n) events.push({ entity: 'participant', field: 'nom', category: 'participant', op: 'edited', before: prev.name ?? null, after: n })
+    if ((prev.role ?? null) !== r2) events.push({ entity: 'participant', field: 'organisme', category: 'organisation', op: 'edited', before: prev.role ?? null, after: r2 })
+    if ((prev.presence ?? 'P') !== presence) events.push({ entity: 'participant', field: 'presence', category: 'presence', op: 'edited', before: prev.presence ?? 'P', after: presence })
+    if ((prev.invite ?? true) !== invite) events.push({ entity: 'participant', field: 'invite', category: 'presence', op: 'edited', before: String(prev.invite ?? true), after: String(invite) })
+    if ((prev.diffusion ?? false) !== diffusion) events.push({ entity: 'participant', field: 'diffusion', category: 'presence', op: 'edited', before: String(prev.diffusion ?? false), after: String(diffusion) })
+    if ((prev.contactId ?? '') !== (contactId || '')) events.push({ entity: 'participant', field: 'contact', category: 'contact', op: 'edited', before: prev.contactId ?? null, after: contactId || null })
+    await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
     return { ok: true }
