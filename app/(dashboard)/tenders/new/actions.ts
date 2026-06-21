@@ -31,6 +31,22 @@ async function requireManagerOrAdmin() {
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 
+// Timeouts : un AO lourd peut faire PENDRE l'extraction (pdf-parse) ou l'OCR
+// sans jamais throw → le server action ne rend pas la main → le formulaire
+// reste bloqué « Upload + analyse en cours… » à l'infini. On borne ces étapes :
+// au-delà, l'AO bascule en `failed` avec un message exploitable (jamais un hang).
+const EXTRACT_TIMEOUT_MS = 90_000
+const OCR_TIMEOUT_MS = 120_000
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} : délai dépassé (${Math.round(ms / 1000)}s)`)), ms),
+    ),
+  ])
+}
+
 const createSchema = z.object({
   title: z.string().min(1).max(200),
   client_name: z.string().max(200).nullable().optional(),
@@ -87,7 +103,7 @@ export async function createTenderAction(formData: FormData) {
   // 4. Extract text
   let extracted: { text: string; pageCount: number; isLikelyScanned: boolean }
   try {
-    const r = await extractPdfText(buffer)
+    const r = await withTimeout(extractPdfText(buffer), EXTRACT_TIMEOUT_MS, 'Extraction PDF')
     extracted = r
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -103,7 +119,7 @@ export async function createTenderAction(formData: FormData) {
     let ocrText: string | null = null
     if (process.env.GOOGLE_GENAI_API_KEY) {
       try {
-        ocrText = await extractWithGeminiOCR(buffer)
+        ocrText = await withTimeout(extractWithGeminiOCR(buffer), OCR_TIMEOUT_MS, 'OCR')
       } catch (e) {
         console.error(JSON.stringify({
           service: 'createTenderAction',
