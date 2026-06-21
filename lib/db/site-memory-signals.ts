@@ -207,35 +207,46 @@ export async function detectRepeatedAbsences(siteId: string, threshold = 3, wind
   }
 }
 
-/** Tous les signaux « Préparer la réunion » d'un site. Ordre = priorité S+ (les sujets
- *  récurrents, tournés vers l'avenir, d'abord ; le reste regarde le passé). */
+/** Tous les signaux « Préparer la réunion » d'un site (détecteurs ACTIFS).
+ *
+ *  NOTE V1 (Vincent 2026-06-21) : `detectRecurringTopics` est VOLONTAIREMENT exclu —
+ *  basé sur le texte libre `site_decisions.sujet`, il fragmente (« DOE » / « DOE lot
+ *  CFO » = 2 sujets) et rate les vrais récurrents → bruit/faux négatifs. La fonction
+ *  reste pour une V2 fondée sur des OBJETS RÉOUVERTS (actions/décisions/réserves
+ *  rouvertes), qui demande un historique de statut (à instrumenter). Une réunion mal
+ *  détectée est gênante ; une réunion perdue est catastrophique → priorité ailleurs. */
 export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()): Promise<MemorySignal[]> {
-  const [topics, overdue, decisions, absences, reserves] = await Promise.all([
-    detectRecurringTopics(siteId),
+  const [overdue, decisions, absences, reserves] = await Promise.all([
     detectOverdueActions(siteId, asOf),
     detectUnappliedDecisions(siteId, asOf),
     detectRepeatedAbsences(siteId),
     detectOpenReserves(siteId),
   ])
-  return [topics, overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  return [overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
 }
 
+export interface SuggestedQuestion { question: string; why: string | null }
+
 /** QUESTIONS À POSER (Vincent : « probablement ce qu'Émeline utilisera le plus »).
- *  Déterministe : signal mémoire → question associée. AUCUN LLM créatif — juste un
- *  gabarit par type de signal, appliqué aux items réels. Cap à quelques-unes par type. */
-export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): string[] {
-  const q: string[] = []
+ *  Déterministe : signal mémoire → question associée + son POURQUOI (Vincent : sinon
+ *  ça ressemble à un assistant qui balance des questions sans justification). AUCUN
+ *  LLM créatif — gabarit par type, appliqué aux items réels ; `why` = la donnée qui
+ *  a déclenché le signal (échéance, ancienneté…). Cap à quelques-unes par type. */
+export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): SuggestedQuestion[] {
+  const out: SuggestedQuestion[] = []
   for (const s of signals) {
-    const items = s.items.slice(0, perKind)
-    for (const it of items) {
+    for (const it of s.items.slice(0, perKind)) {
+      const why = it.meta ?? s.source
+      let question = ''
       switch (s.kind) {
-        case 'recurring_topic': q.push(`Le sujet « ${it.label} » revient depuis plusieurs réunions — peut-on le clôturer ?`); break
-        case 'action_overdue': q.push(`Où en est l'action « ${it.label} » (échéance dépassée) ?`); break
-        case 'decision_unapplied': q.push(`La décision « ${it.label} » a-t-elle été appliquée ?`); break
-        case 'actor_absent': q.push(`${it.label} est absente depuis plusieurs réunions — qui reprend ses actions en attente ?`); break
-        case 'reserve_open': q.push(`La réserve « ${it.label} » est-elle levée ?`); break
+        case 'recurring_topic': question = `Le sujet « ${it.label} » revient depuis plusieurs réunions — peut-on le clôturer ?`; break
+        case 'action_overdue': question = `Où en est l'action « ${it.label} » ?`; break
+        case 'decision_unapplied': question = `La décision « ${it.label} » a-t-elle été appliquée ?`; break
+        case 'actor_absent': question = `${it.label} est absente — qui reprend ses actions en attente ?`; break
+        case 'reserve_open': question = `La réserve « ${it.label} » est-elle levée ?`; break
       }
+      if (question) out.push({ question, why })
     }
   }
-  return q
+  return out
 }

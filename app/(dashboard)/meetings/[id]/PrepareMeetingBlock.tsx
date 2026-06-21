@@ -3,7 +3,7 @@
 // appliquées, entreprises absentes, réserves ouvertes. Affichage seul (server
 // component), calme et DESCRIPTIF — pas d'alerte rouge. Chaque bloc explicite sa source.
 import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle } from 'lucide-react'
-import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
+import type { MemorySignal, SignalKind, SuggestedQuestion } from '@/lib/db/site-memory-signals'
 
 const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
   recurring_topic: { icon: Repeat, tone: 'text-rose-700' },
@@ -13,7 +13,7 @@ const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
   reserve_open: { icon: ClipboardCheck, tone: 'text-emerald-700' },
 }
 
-export function PrepareMeetingBlock({ signals, questions = [] }: { signals: MemorySignal[]; questions?: string[] }) {
+export function PrepareMeetingBlock({ signals, questions = [] }: { signals: MemorySignal[]; questions?: SuggestedQuestion[] }) {
   if (signals.length === 0) {
     return (
       <section className="rounded-xl border bg-card p-4">
@@ -64,11 +64,14 @@ export function PrepareMeetingBlock({ signals, questions = [] }: { signals: Memo
           <div className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
             <HelpCircle className="h-4 w-4 text-muted-foreground" /> Questions à poser
           </div>
-          <ul className="mt-1.5 space-y-0.5">
+          <ul className="mt-1.5 space-y-1">
             {questions.map((qz, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
                 <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden />
-                <span className="min-w-0">{qz}</span>
+                <span className="min-w-0">
+                  {qz.question}
+                  {qz.why && <span className="block text-[11px] text-muted-foreground">Pourquoi : {qz.why}</span>}
+                </span>
               </li>
             ))}
           </ul>
