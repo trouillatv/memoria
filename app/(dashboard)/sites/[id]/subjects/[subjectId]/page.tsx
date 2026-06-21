@@ -27,6 +27,17 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
+  // Vue Sujet enrichie (Sprint A) — « répondre en 5 secondes ». Tout dérivé de la
+  // timeline et du thread DÉJÀ chargés (zéro requête de plus) : dernière trace +
+  // d'où vient l'histoire (réunions / documents / obligations).
+  const lastEvent = timeline.length ? timeline[timeline.length - 1] : null
+  const meetingSources = [...new Set(timeline.map((e) => e.reportLabel).filter((x): x is string => !!x))]
+  const obligationCount = timeline.filter((e) => e.kind === 'obligation').length
+  const sourceBits: string[] = []
+  if (meetingSources.length) sourceBits.push(`${meetingSources.length} réunion${meetingSources.length > 1 ? 's' : ''}`)
+  if (documents.length) sourceBits.push(`${documents.length} document${documents.length > 1 ? 's' : ''}`)
+  if (obligationCount) sourceBits.push(`${obligationCount} obligation${obligationCount > 1 ? 's' : ''}`)
+
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
   const supabase = createAdminClient()
   const linkedDocIds = new Set(documents.map((d) => d.id))
@@ -116,7 +127,19 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
               </div>
             )}
             {insights.lastEvolution && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Dernière évolution :</dt><dd>{insights.lastEvolution}</dd></div>}
-            {insights.nextStep && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Prochaine étape :</dt><dd>{insights.nextStep}</dd></div>}
+            {lastEvent && (
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-muted-foreground">Dernière trace :</dt>
+                <dd>{fr(lastEvent.date)}{lastEvent.reportLabel ? ` · ${lastEvent.reportLabel}` : ''} <span className="text-muted-foreground">— {lastEvent.label}</span></dd>
+              </div>
+            )}
+            {sourceBits.length > 0 && (
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-muted-foreground">Sources :</dt>
+                <dd>{sourceBits.join(' · ')}{meetingSources.length ? ` — ${meetingSources.join(', ')}` : ''}</dd>
+              </div>
+            )}
+            {insights.nextStep && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">À faire :</dt><dd>{insights.nextStep}</dd></div>}
             {insights.openQuestion && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Question ouverte :</dt><dd className="italic">{insights.openQuestion}</dd></div>}
             {insights.blocksCount > 0 && (
               <div className="flex flex-wrap gap-x-2">
