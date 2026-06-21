@@ -211,7 +211,8 @@ export async function materializeEngagementsAsObligations(siteId: string, userId
     const subjectId = await findOrCreateSubjectByName(siteId, shortSubjectName(e.short_label as string), userId).catch(() => null)
     const def = obligationDefaultsForKind(kind)
     const ref = (e.source_ref as Record<string, unknown> | null) ?? null
-    const page = ref?.page != null ? `p.${ref.page}` : null
+    const pageNum = typeof ref?.page === 'number' ? (ref.page as number) : null
+    const page = pageNum != null ? `p.${pageNum}` : null
     const tender = tenderById.get(e.tender_id as string)
     const originLabel = docByTender.get(e.tender_id as string) ?? (tender?.title as string | undefined) ?? 'AO'
     const originRef = [originLabel, page].filter(Boolean).join(' · ') || null
@@ -224,11 +225,47 @@ export async function materializeEngagementsAsObligations(siteId: string, userId
       origin_tender_id: e.tender_id, origin_engagement_id: e.id,
       origin_excerpt: (e.source_excerpt as string | null) ?? null,
       origin_ref: originRef,
+      origin_page: pageNum,
       origin_date: (tender?.created_at as string | undefined) ?? null,
     })
     if (!error) created++
   }
   return { created, alreadyDone, skipped }
+}
+
+export interface ObligationOrigin {
+  obligationLabel: string
+  ref: string | null
+  excerpt: string | null
+  page: number | null
+  pdfUrl: string | null   // URL signée du PDF source (tender-documents), null si absent
+  filename: string | null
+}
+
+/** Résout la provenance navigable d'une obligation : PDF source (URL signée) + page +
+ *  extrait. Sprint C1 — saut à la page (#page=N), pas de surlignage. */
+export async function getObligationOrigin(obligationId: string): Promise<ObligationOrigin | null> {
+  const supabase = createAdminClient()
+  const { data: o } = await supabase.from('site_obligation')
+    .select('label, origin_tender_id, origin_page, origin_excerpt, origin_ref')
+    .eq('id', obligationId).maybeSingle()
+  if (!o) return null
+  const base: ObligationOrigin = {
+    obligationLabel: o.label as string,
+    ref: (o.origin_ref as string | null) ?? null,
+    excerpt: (o.origin_excerpt as string | null) ?? null,
+    page: (o.origin_page as number | null) ?? null,
+    pdfUrl: null, filename: null,
+  }
+  const tenderId = o.origin_tender_id as string | null
+  if (!tenderId) return base
+  const { data: doc } = await supabase.from('tender_documents')
+    .select('storage_path, filename').eq('tender_id', tenderId)
+    .order('created_at', { ascending: true }).limit(1).maybeSingle()
+  if (!doc?.storage_path) return base
+  const { data: signed } = await supabase.storage.from('tender-documents')
+    .createSignedUrl(doc.storage_path as string, 3600)
+  return { ...base, pdfUrl: signed?.signedUrl ?? null, filename: (doc.filename as string | null) ?? null }
 }
 
 export async function setObligationStatus(id: string, status: ObligationStatus, note?: string | null): Promise<void> {

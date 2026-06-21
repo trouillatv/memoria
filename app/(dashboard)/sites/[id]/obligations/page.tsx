@@ -46,9 +46,10 @@ function ObligationRow({ siteId, o, linked, siteDocs }: { siteId: string; o: Sit
             </span>
           )}
           {o.originRef && (
-            <span className="block text-[11px] text-sky-700" title={o.originExcerpt ?? undefined}>
-              ↳ origine : {o.originRef}
-            </span>
+            <Link href={`/sites/${siteId}/obligations/source?o=${o.id}`}
+              className="inline-flex items-center gap-1 text-[11px] text-sky-700 hover:underline" title={o.originExcerpt ?? undefined}>
+              ↳ origine : {o.originRef} <span className="text-sky-500">— vérifier</span>
+            </Link>
           )}
         </div>
       </div>
