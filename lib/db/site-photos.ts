@@ -115,5 +115,29 @@ export async function listSitePhotos(siteId: string): Promise<SitePhoto[]> {
     })
   }
 
+  // 3) Photos de preuve déclarées par une entreprise (QR/lien, mig 148).
+  //    Légende = entreprise + commentaire ; auteur = entreprise (label), jamais
+  //    un salarié nommé (anti-pointage).
+  const { data: extActions } = await sb
+    .from('site_actions')
+    .select('id, ext_photo_path, ext_comment, ext_by, ext_at')
+    .eq('site_id', siteId)
+    .not('ext_photo_path', 'is', null)
+  for (const a of extActions ?? []) {
+    const by = (a.ext_by as string | null) ?? ''
+    const comment = (a.ext_comment as string | null) ?? ''
+    photos.push({
+      id: `${a.id as string}-ext`,
+      storagePath: a.ext_photo_path as string,
+      legende: [by, comment].filter(Boolean).join(' — '),
+      takenAt: (a.ext_at as string | null) ?? null,
+      authorId: null,
+      interventionId: null,
+      anomalyId: null,
+      actionId: a.id as string,
+      source: 'action',
+    })
+  }
+
   return photos.sort((x, y) => (y.takenAt ?? '').localeCompare(x.takenAt ?? ''))
 }

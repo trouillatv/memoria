@@ -489,6 +489,14 @@ export interface DbSiteAction {
   reserve_id: string | null
   // Rattachement à un sujet vivant (migration 124). NULL = action non rattachée.
   subject_id: string | null
+  // Surcouche de déclaration externe (migration 148) : dernière réponse d'une
+  // entreprise via action_distributions (QR/lien). ÉCHO de terrain, ne pilote
+  // jamais `status` (le MOE garde la main). NULL = aucune déclaration externe.
+  ext_status: 'done' | 'blocked' | null
+  ext_comment: string | null
+  ext_photo_path: string | null
+  ext_at: string | null
+  ext_by: string | null
 }
 
 // Sujets vivants (migration 124) — fil persistant qui agrège dans le temps

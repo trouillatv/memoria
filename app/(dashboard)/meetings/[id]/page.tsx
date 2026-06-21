@@ -170,6 +170,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       {/* Qui fait quoi, pour quand — curation des actions (Sprint 2) */}
       <ActionsCuration
         reportId={id}
+        siteId={report.site_id}
         pendingProposals={proposals.filter((p) => p.type === 'action' && p.status === 'proposed')}
         actions={actions}
       />

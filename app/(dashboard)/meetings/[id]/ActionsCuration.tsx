@@ -2,18 +2,40 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ListTodo, Check, X, Clock, Loader2, Pencil } from 'lucide-react'
+import { ListTodo, Check, X, Clock, Loader2, Pencil, Ban } from 'lucide-react'
 import {
   acceptActionProposalAction,
   ignoreActionProposalAction,
   updateActionAction,
 } from './action-curation-actions'
+import { ShareActionsToCompanyButton } from './ShareActionsToCompanyButton'
 import type { DbSiteReportProposal, DbSiteAction } from '@/types/db'
 
 interface ActionsCurationProps {
   reportId: string
+  siteId: string | null
   pendingProposals: DbSiteReportProposal[]
   actions: DbSiteAction[]
+}
+
+/** Écho de la déclaration externe (entreprise via QR). N'est PAS le statut
+ *  interne : c'est « déclaré par l'entreprise », à vérifier par le MOE. */
+function ExternalEcho({ action }: { action: DbSiteAction }) {
+  if (!action.ext_status) return null
+  const done = action.ext_status === 'done'
+  return (
+    <span
+      title={action.ext_comment ?? undefined}
+      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+        done ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+      }`}
+    >
+      {done ? <Check className="h-3 w-3" /> : <Ban className="h-3 w-3" />}
+      {done ? 'Déclaré fait' : 'Déclaré bloqué'}
+      {action.ext_by ? ` · ${action.ext_by}` : ''}
+      {action.ext_photo_path ? ' · photo' : ''}
+    </span>
+  )
 }
 
 type DueStatus = 'explicit' | 'estimated' | null
@@ -151,6 +173,7 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
             )}
             {action.corps_etat && <span>· {action.corps_etat}</span>}
           </div>
+          <div className="mt-1"><ExternalEcho action={action} /></div>
         </div>
         <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-muted-foreground hover:text-foreground">
           <Pencil className="h-3.5 w-3.5" />
@@ -181,7 +204,7 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
   )
 }
 
-export function ActionsCuration({ reportId, pendingProposals, actions }: ActionsCurationProps) {
+export function ActionsCuration({ reportId, siteId, pendingProposals, actions }: ActionsCurationProps) {
   const visibleActions = actions.filter((a) => a.status !== 'cancelled')
   if (pendingProposals.length === 0 && visibleActions.length === 0) return null
 
@@ -214,6 +237,13 @@ export function ActionsCuration({ reportId, pendingProposals, actions }: Actions
               <ActionRow key={a.id} reportId={reportId} action={a} />
             ))}
           </ul>
+          {/* Confier un lot à une entreprise (QR/lien) — capte une déclaration,
+              ne gère pas le travail. Seulement si le site est connu. */}
+          {siteId && (
+            <div className="pt-1">
+              <ShareActionsToCompanyButton reportId={reportId} siteId={siteId} actions={visibleActions} />
+            </div>
+          )}
         </div>
       )}
     </section>
