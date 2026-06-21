@@ -281,14 +281,32 @@ export interface SubjectInsights {
 
 type SubjRow = Record<string, unknown>
 export interface SubjectAnomaly { label: string; open: boolean }
-/** Calcul PUR de l'intelligence d'un sujet (aucune DB) — réutilisé en lot (briefing). */
-function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], anoms: SubjectAnomaly[], recurringMeetings: number): SubjectInsights {
+// Décisions CR (propositions) ACTIONNABLES restées lettre morte = un type qui appelle
+// une exécution (action/intervention/mission), non rejeté, et sans entité créée. Une
+// telle décision « action attendue non suivie » empêche un sujet de paraître neutre.
+const ACTIONABLE_PROPOSAL_TYPES = new Set(['action', 'intervention', 'mission'])
+/** Calcul PUR de l'intelligence d'un sujet (aucune DB) — réutilisé en lot (briefing).
+ *  Absorbe TOUT ce qui est rattaché au fil : décisions, actions, anomalies, RÉSERVES et
+ *  décisions CR. Un objet visible dans le fil mais ignoré ici = un état/cause qui ment. */
+function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], anoms: SubjectAnomaly[], reserves: SubjRow[], crProps: SubjRow[], recurringMeetings: number): SubjectInsights {
   const today = todayIso()
   const openAnoms = anoms.filter((a) => a.open && a.label.trim())
+  // RÉSERVE non levée (status 'open' — jamais « résolue », cf. doctrine juridique) = un
+  // vrai blocage au même titre qu'une anomalie : la réception n'est pas prononcée.
+  const openReserves = reserves
+    .filter((r) => (r.status as string) === 'open')
+    .map((r) => ({ label: ((r.label as string | null) ?? '').trim() }))
+    .filter((r) => r.label)
+  // BLOQUEURS FACTUELS = anomalies non résolues + réserves non levées (cause connue, élevée).
+  const blockers = [...openAnoms.map((a) => ({ label: a.label.trim() })), ...openReserves]
+  // Décisions CR actionnables sans suite d'effet.
+  const pendingCr = crProps.filter((p) =>
+    ACTIONABLE_PROPOSAL_TYPES.has(p.type as string) && (p.status as string) !== 'rejected' && p.created_entity_id == null)
 
   const reportIds = new Set<string>()
   for (const d of decs) if (d.report_id) reportIds.add(d.report_id as string)
   for (const a of acts) if (a.report_id) reportIds.add(a.report_id as string)
+  for (const p of crProps) if (p.report_id) reportIds.add(p.report_id as string)
 
   // ÉCHÉANCES ANNONCÉES dans le temps (décision.echeance, action.due_date), ordonnées
   // par date d'annonce. On NE les appelle PAS « promesses » (ce serait une interprétation).
@@ -321,23 +339,28 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
   const lastActivity = [...decs.map((d) => d.date_decision as string | null), ...acts.map((a) => (a.created_at as string).slice(0, 10))].filter((x): x is string => !!x).sort().pop() ?? null
   const dormant = lastActivity ? daysBetween(lastActivity, today) > 90 : false
 
-  // ÉTAT (priorité : clos > bloqué(anomalie/retard) > en attente(responsable) > dormant > ouvert).
-  // Une ANOMALIE NON RÉSOLUE rattachée = un vrai blocage (Vincent : « Façade Nord »).
+  // ÉTAT (priorité : clos > bloqué(blocage/retard) > en attente(responsable/décision CR sans
+  // suite) > dormant > ouvert). Un BLOQUEUR = anomalie non résolue OU réserve non levée
+  // (Vincent : « Façade Nord »). Une décision CR actionnable sans suite empêche le neutre.
   let state: SubjectState
   if (subject.status === 'closed') state = 'clos'
-  else if (openAnoms.length > 0 || overdue.length > 0) state = 'bloqué'
-  else if (parties.length > 0) state = 'en_attente'
+  else if (blockers.length > 0 || overdue.length > 0) state = 'bloqué'
+  else if (parties.length > 0 || pendingCr.length > 0) state = 'en_attente'
   else if (subject.status === 'dormant' || dormant) state = 'dormant'
   else state = 'ouvert'
 
-  // CAUSE + CONFIANCE. Les anomalies sont une cause FACTUELLE (confiance élevée) — elles
-  // priment sur la déduction « en attente de … ». Sinon, déduction (confiance dégradée).
+  // CAUSE + CONFIANCE. Les bloqueurs (anomalies + réserves) sont une cause FACTUELLE
+  // (confiance élevée) — ils priment sur la déduction « en attente de … ». Une décision CR
+  // sans suite est une cause moyenne (le suivi manque, le responsable n'est pas certain).
   let cause: { text: string; confidence: CauseConfidence } | null = null
-  if (openAnoms.length > 0) {
-    cause = { text: `Blocage : ${openAnoms.slice(0, 3).map((a) => a.label).join(', ')}${openAnoms.length > 3 ? `, +${openAnoms.length - 3}` : ''}`, confidence: 'élevée' }
+  if (blockers.length > 0) {
+    cause = { text: `Blocage : ${blockers.slice(0, 3).map((b) => b.label).join(', ')}${blockers.length > 3 ? `, +${blockers.length - 3}` : ''}`, confidence: 'élevée' }
   } else if (parties.length === 1) cause = { text: `En attente de ${parties[0]}`, confidence: 'élevée' }
   else if (parties.length > 1) cause = { text: `En attente de ${parties.slice(0, 3).join(', ')}`, confidence: 'moyenne' }
-  else if (overdue.length > 0) cause = { text: 'Échéance dépassée — responsable non précisé', confidence: 'faible' }
+  else if (pendingCr.length > 0) {
+    const lbl = ((pendingCr[0].short_label as string | null) ?? '').trim()
+    cause = { text: `Décision CR sans suite${lbl ? ` : ${lbl}` : ''}`, confidence: 'moyenne' }
+  } else if (overdue.length > 0) cause = { text: 'Échéance dépassée — responsable non précisé', confidence: 'faible' }
 
   // DERNIÈRE ÉVOLUTION : un report d'échéance si détecté, sinon le dernier objet daté.
   let lastEvolution: string | null = null
@@ -347,6 +370,7 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
     const evs = [
       ...decs.map((d) => ({ date: d.date_decision as string | null, label: `décision : ${d.titre as string}` })),
       ...acts.map((a) => ({ date: (a.created_at as string).slice(0, 10), label: `action : ${a.title as string}` })),
+      ...crProps.map((p) => ({ date: (p.created_at as string | null)?.slice(0, 10) ?? null, label: `décision CR : ${p.short_label as string}` })),
     ].filter((e): e is { date: string; label: string } => !!e.date).sort((x, y) => x.date.localeCompare(y.date))
     lastEvolution = evs.length ? `${ddmmyyyy(evs[evs.length - 1].date)} — ${evs[evs.length - 1].label}` : null
   }
@@ -361,8 +385,10 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
   const openQuestion = subject.status === 'open' && lastDeadline ? `${subject.name} sera-t-il tenu pour le ${ddmmyyyy(lastDeadline)} ?` : null
 
   // ÉNERGIE (mémoire, PAS note d'acteur) : attention humaine que le sujet consomme.
+  // Réserves non levées pèsent comme les anomalies (×2, vrais blocages) ; décisions CR
+  // sans suite ajoutent une charge de suivi (×1).
   const ageMonths = ageDays != null && ageDays >= 0 ? ageDays / 30 : 0
-  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length + openAnoms.length * 2
+  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length + openAnoms.length * 2 + openReserves.length * 2 + pendingCr.length
   const energy: SubjectEnergy = score >= 12 ? 'très élevée' : score >= 7 ? 'élevée' : score >= 3 ? 'moyenne' : 'basse'
 
   return {
@@ -397,14 +423,16 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
   const subject = await getSubject(subjectId)
   if (!subject) return null
   const supabase = createAdminClient()
-  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }] = await Promise.all([
+  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }, { data: reserves }, { data: crProps }] = await Promise.all([
     supabase.from('site_decisions').select('titre, date_decision, echeance, report_id, statut').eq('subject_id', subjectId),
     supabase.from('site_actions').select('title, created_at, due_date, report_id, status, assigned_to').eq('subject_id', subjectId),
     supabase.from('intervention_anomalies').select('description, category_other, resolved_at').eq('subject_id', subjectId),
     supabase.from('report_added_points').select('label, kind').eq('subject_id', subjectId).eq('kind', 'anomalie'),
+    supabase.from('site_reserve').select('label, status').eq('subject_id', subjectId),
+    supabase.from('site_report_proposals').select('short_label, type, status, created_entity_id, report_id, created_at').eq('subject_id', subjectId),
   ])
   const anoms = toAnomalies((anomI ?? []) as SubjRow[], (anomA ?? []) as SubjRow[])
-  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], anoms, recurringMeetings)
+  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], anoms, reserves ?? [], crProps ?? [], recurringMeetings)
 }
 
 export interface SubjectWatch {
@@ -422,11 +450,13 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
   const subjects = (subs ?? []) as DbSubject[]
   if (subjects.length === 0) return []
   const ids = subjects.map((s) => s.id)
-  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }] = await Promise.all([
+  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }, { data: reserves }, { data: crProps }] = await Promise.all([
     supabase.from('site_decisions').select('subject_id, titre, date_decision, echeance, report_id, statut').in('subject_id', ids),
     supabase.from('site_actions').select('subject_id, title, created_at, due_date, report_id, status, assigned_to').in('subject_id', ids),
     supabase.from('intervention_anomalies').select('subject_id, description, category_other, resolved_at').in('subject_id', ids),
     supabase.from('report_added_points').select('subject_id, label, kind').in('subject_id', ids).eq('kind', 'anomalie'),
+    supabase.from('site_reserve').select('subject_id, label, status').in('subject_id', ids),
+    supabase.from('site_report_proposals').select('subject_id, short_label, type, status, created_entity_id, report_id, created_at').in('subject_id', ids),
   ])
   const decBy = new Map<string, SubjRow[]>()
   for (const d of (decisions ?? []) as SubjRow[]) { const k = d.subject_id as string; const a = decBy.get(k); if (a) a.push(d); else decBy.set(k, [d]) }
@@ -434,12 +464,16 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
   for (const a of (actions ?? []) as SubjRow[]) { const k = a.subject_id as string; const arr = actBy.get(k); if (arr) arr.push(a); else actBy.set(k, [a]) }
   const anomBy = new Map<string, SubjRow[]>()
   for (const a of [...((anomI ?? []) as SubjRow[]), ...((anomA ?? []) as SubjRow[])]) { const k = a.subject_id as string; const arr = anomBy.get(k); if (arr) arr.push(a); else anomBy.set(k, [a]) }
+  const resBy = new Map<string, SubjRow[]>()
+  for (const r of (reserves ?? []) as SubjRow[]) { const k = r.subject_id as string; const arr = resBy.get(k); if (arr) arr.push(r); else resBy.set(k, [r]) }
+  const crBy = new Map<string, SubjRow[]>()
+  for (const c of (crProps ?? []) as SubjRow[]) { const k = c.subject_id as string; const arr = crBy.get(k); if (arr) arr.push(c); else crBy.set(k, [c]) }
 
   return subjects
     .map((s) => {
       const raw = anomBy.get(s.id) ?? []
       const anoms = toAnomalies(raw.filter((r) => 'description' in r || 'category_other' in r), raw.filter((r) => 'kind' in r))
-      return { s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], anoms, 3) }
+      return { s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], anoms, resBy.get(s.id) ?? [], crBy.get(s.id) ?? [], 3) }
     })
     .filter(({ ins }) => ins.state === 'bloqué' || ins.state === 'en_attente' || ins.slippages > 0 || ins.recurring || ins.openQuestion != null)
     .sort((a, b) => (a.ins.state === 'bloqué' ? 0 : 1) - (b.ins.state === 'bloqué' ? 0 : 1) || ENERGY_RANK[b.ins.energy] - ENERGY_RANK[a.ins.energy])
