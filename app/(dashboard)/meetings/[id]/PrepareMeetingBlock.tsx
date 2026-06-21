@@ -30,11 +30,13 @@ function SubjectsToWatch({ subjects, siteId }: { subjects: SubjectWatch[]; siteI
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
                 <Link href={`/sites/${siteId}/subjects/${s.id}`} className="font-medium hover:underline">{s.name}</Link>
+                {s.criticalImpact && <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">⚠ critique</span>}
                 {s.ageDays != null && <span className="text-[11px] text-muted-foreground">{s.ageDays} j · énergie {s.energy}</span>}
                 <Link href={`/sites/${siteId}/subjects/${s.id}`} className="ml-auto inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground">détail <ArrowRight className="h-3 w-3" /></Link>
               </div>
               <div className="mt-0.5 space-y-0.5 text-[11px] text-muted-foreground">
                 {s.cause && <span className="block">{s.cause}</span>}
+                {s.blocksCount > 0 && <span className="block">Impact : bloque {s.blocksCount} sujet{s.blocksCount > 1 ? 's' : ''}</span>}
                 {s.lastEvolution && <span className="block">Dernière évolution : {s.lastEvolution}</span>}
                 {s.openQuestion && <span className="block italic">Question : {s.openQuestion}</span>}
               </div>

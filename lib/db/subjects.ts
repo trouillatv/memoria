@@ -9,6 +9,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { getSubjectImpactCounts, type SubjectImpact } from '@/lib/db/subject-relations'
 import type { DbSubject, SubjectStatus, DbSiteAction, DbSiteReportProposal } from '@/types/db'
 
 export type SubjectCriticality = 'basse' | 'moyenne' | 'haute'
@@ -277,6 +278,10 @@ export interface SubjectInsights {
   slippages: number
   recurring: boolean      // sujet OUVERT concerné par ≥ seuil réunions
   status: SubjectStatus
+  // IMPACT (migration 145) : combien de sujets CE sujet bloque, et si l'un de ces
+  // blocages est critique. Dérivé de subject_relation. Amplifie l'attention, pas un score.
+  blocksCount: number
+  criticalImpact: boolean
 }
 
 type SubjRow = Record<string, unknown>
@@ -288,7 +293,7 @@ const ACTIONABLE_PROPOSAL_TYPES = new Set(['action', 'intervention', 'mission'])
 /** Calcul PUR de l'intelligence d'un sujet (aucune DB) — réutilisé en lot (briefing).
  *  Absorbe TOUT ce qui est rattaché au fil : décisions, actions, anomalies, RÉSERVES et
  *  décisions CR. Un objet visible dans le fil mais ignoré ici = un état/cause qui ment. */
-function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], anoms: SubjectAnomaly[], reserves: SubjRow[], crProps: SubjRow[], recurringMeetings: number): SubjectInsights {
+function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], anoms: SubjectAnomaly[], reserves: SubjRow[], crProps: SubjRow[], recurringMeetings: number, impact: SubjectImpact = { blocksCount: 0, criticalImpact: false }): SubjectInsights {
   const today = todayIso()
   const openAnoms = anoms.filter((a) => a.open && a.label.trim())
   // RÉSERVE non levée (status 'open' — jamais « résolue », cf. doctrine juridique) = un
@@ -386,9 +391,10 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
 
   // ÉNERGIE (mémoire, PAS note d'acteur) : attention humaine que le sujet consomme.
   // Réserves non levées pèsent comme les anomalies (×2, vrais blocages) ; décisions CR
-  // sans suite ajoutent une charge de suivi (×1).
+  // sans suite ajoutent une charge de suivi (×1) ; un sujet qui en BLOQUE d'autres
+  // consomme de l'attention collective (+1 chacun, +2 s'il y a un blocage critique).
   const ageMonths = ageDays != null && ageDays >= 0 ? ageDays / 30 : 0
-  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length + openAnoms.length * 2 + openReserves.length * 2 + pendingCr.length
+  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length + openAnoms.length * 2 + openReserves.length * 2 + pendingCr.length + impact.blocksCount + (impact.criticalImpact ? 2 : 0)
   const energy: SubjectEnergy = score >= 12 ? 'très élevée' : score >= 7 ? 'élevée' : score >= 3 ? 'moyenne' : 'basse'
 
   return {
@@ -407,6 +413,8 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
     slippages,
     recurring: subject.status === 'open' && reportIds.size >= recurringMeetings,
     status: subject.status,
+    blocksCount: impact.blocksCount,
+    criticalImpact: impact.criticalImpact,
   }
 }
 
@@ -432,12 +440,14 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
     supabase.from('site_report_proposals').select('short_label, type, status, created_entity_id, report_id, created_at').eq('subject_id', subjectId),
   ])
   const anoms = toAnomalies((anomI ?? []) as SubjRow[], (anomA ?? []) as SubjRow[])
-  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], anoms, reserves ?? [], crProps ?? [], recurringMeetings)
+  const impact = (await getSubjectImpactCounts([subjectId])).get(subjectId)
+  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], anoms, reserves ?? [], crProps ?? [], recurringMeetings, impact)
 }
 
 export interface SubjectWatch {
   id: string; name: string; state: SubjectState; ageDays: number | null
   energy: SubjectEnergy; cause: string | null; lastEvolution: string | null; openQuestion: string | null
+  blocksCount: number; criticalImpact: boolean
 }
 const ENERGY_RANK: Record<SubjectEnergy, number> = { basse: 0, moyenne: 1, élevée: 2, 'très élevée': 3 }
 
@@ -458,6 +468,7 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
     supabase.from('site_reserve').select('subject_id, label, status').in('subject_id', ids),
     supabase.from('site_report_proposals').select('subject_id, short_label, type, status, created_entity_id, report_id, created_at').in('subject_id', ids),
   ])
+  const impactBy = await getSubjectImpactCounts(ids)
   const decBy = new Map<string, SubjRow[]>()
   for (const d of (decisions ?? []) as SubjRow[]) { const k = d.subject_id as string; const a = decBy.get(k); if (a) a.push(d); else decBy.set(k, [d]) }
   const actBy = new Map<string, SubjRow[]>()
@@ -473,12 +484,18 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
     .map((s) => {
       const raw = anomBy.get(s.id) ?? []
       const anoms = toAnomalies(raw.filter((r) => 'description' in r || 'category_other' in r), raw.filter((r) => 'kind' in r))
-      return { s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], anoms, resBy.get(s.id) ?? [], crBy.get(s.id) ?? [], 3) }
+      return { s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], anoms, resBy.get(s.id) ?? [], crBy.get(s.id) ?? [], 3, impactBy.get(s.id)) }
     })
-    .filter(({ ins }) => ins.state === 'bloqué' || ins.state === 'en_attente' || ins.slippages > 0 || ins.recurring || ins.openQuestion != null)
-    .sort((a, b) => (a.ins.state === 'bloqué' ? 0 : 1) - (b.ins.state === 'bloqué' ? 0 : 1) || ENERGY_RANK[b.ins.energy] - ENERGY_RANK[a.ins.energy])
+    // Appelle l'attention si : bloqué, en attente, échéance qui glisse, récurrent,
+    // question ouverte, OU s'il bloque d'autres sujets (impact chantier).
+    .filter(({ ins }) => ins.state === 'bloqué' || ins.state === 'en_attente' || ins.slippages > 0 || ins.recurring || ins.openQuestion != null || ins.blocksCount > 0)
+    // Tri : impact critique d'abord, puis bloqué, puis énergie.
+    .sort((a, b) =>
+      (b.ins.criticalImpact ? 1 : 0) - (a.ins.criticalImpact ? 1 : 0) ||
+      (a.ins.state === 'bloqué' ? 0 : 1) - (b.ins.state === 'bloqué' ? 0 : 1) ||
+      ENERGY_RANK[b.ins.energy] - ENERGY_RANK[a.ins.energy])
     .slice(0, limit)
-    .map(({ s, ins }) => ({ id: s.id, name: s.name, state: ins.state, ageDays: ins.ageDays, energy: ins.energy, cause: ins.cause?.text ?? null, lastEvolution: ins.lastEvolution, openQuestion: ins.openQuestion }))
+    .map(({ s, ins }) => ({ id: s.id, name: s.name, state: ins.state, ageDays: ins.ageDays, energy: ins.energy, cause: ins.cause?.text ?? null, lastEvolution: ins.lastEvolution, openQuestion: ins.openQuestion, blocksCount: ins.blocksCount, criticalImpact: ins.criticalImpact }))
 }
 
 /** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et

@@ -4,10 +4,12 @@ import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History,
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSubjectThread, getSubjectTimeline, getSubjectInsights } from '@/lib/db/subjects'
+import { getSubjectRelations } from '@/lib/db/subject-relations'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SubjectDetailControls } from './SubjectDetailControls'
+import { SubjectRelationControls } from './SubjectRelationControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +22,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, subjectId } = await params
-  const [identity, thread, timeline, insights] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId), getSubjectInsights(subjectId)])
+  const [identity, thread, timeline, insights, relations] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId), getSubjectInsights(subjectId), getSubjectRelations(subjectId)])
   if (!identity || !thread || thread.subject.site_id !== id) notFound()
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
@@ -62,6 +64,12 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     addedAnomalies: candAddedAnomalies,
     documents: siteDocs.filter((d) => !linkedDocIds.has(d.id)).map((d) => ({ id: d.id, label: d.filename })),
   }
+
+  // Sujets candidats à bloquer : les autres sujets du site, sauf soi-même et ceux déjà
+  // bloqués par ce sujet (l'arête from=ce sujet existe déjà).
+  const alreadyBlocked = new Set(relations.blocks.map((r) => r.subjectId))
+  const { data: siteSubjects } = await supabase.from('subjects').select('id, name').eq('site_id', id).neq('id', subjectId).neq('status', 'closed').order('name')
+  const relationCandidates = ((siteSubjects ?? []) as { id: string; name: string }[]).filter((s) => !alreadyBlocked.has(s.id))
 
   return (
     <div className="space-y-6 w-full max-w-3xl">
@@ -110,6 +118,12 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
             {insights.lastEvolution && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Dernière évolution :</dt><dd>{insights.lastEvolution}</dd></div>}
             {insights.nextStep && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Prochaine étape :</dt><dd>{insights.nextStep}</dd></div>}
             {insights.openQuestion && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Question ouverte :</dt><dd className="italic">{insights.openQuestion}</dd></div>}
+            {insights.blocksCount > 0 && (
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-muted-foreground">Impact :</dt>
+                <dd>{insights.criticalImpact && <span className="mr-1 text-rose-700">⚠</span>}bloque {insights.blocksCount} sujet{insights.blocksCount > 1 ? 's' : ''}{insights.criticalImpact ? ' (dont un critique)' : ''}</dd>
+              </div>
+            )}
           </dl>
         </section>
       )}
@@ -149,6 +163,13 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
       )}
 
       <SubjectDetailControls siteId={id} subjectId={subjectId} status={subject.status} candidates={candidates} />
+
+      {/* DÉPENDANCES entre sujets (mig 145) — « ce sujet bloque … » / « en attente de … ».
+          Arête dirigée, raison obligatoire, acte humain. Pas de cascade, pas de graphe. */}
+      <SubjectRelationControls
+        siteId={id} subjectId={subjectId} subjectName={subject.name}
+        blocks={relations.blocks} blockedBy={relations.blockedBy} candidates={relationCandidates}
+      />
 
       {/* HISTORIQUE CHRONOLOGIQUE — l'histoire complète du sujet (Vincent : « un sujet =
           l'histoire d'un problème, pas une liste d'occurrences »). Tous les objets

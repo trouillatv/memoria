@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createSubject, setSubjectStatus, attachToSubject } from '@/lib/db/subjects'
+import { createSubjectRelation, deleteSubjectRelation } from '@/lib/db/subject-relations'
 import { addDocumentLink } from '@/lib/db/documents'
 import type { SubjectStatus } from '@/types/db'
 
@@ -91,6 +92,60 @@ export async function attachToSubjectAction(formData: FormData): Promise<Result>
   } else {
     await attachToSubject(KIND_TABLE[parsed.data.kind], parsed.data.rowId, parsed.data.subjectId)
   }
+  revalidatePath(`/sites/${parsed.data.siteId}/subjects/${parsed.data.subjectId}`)
+  return { ok: true }
+}
+
+// ── Dépendances entre sujets (migration 145) — « ce sujet BLOQUE … ». Acte humain. ──
+
+const relationSchema = z.object({
+  siteId: z.string().uuid(),
+  subjectId: z.string().uuid(),        // le BLOQUEUR (sujet de la page)
+  targetSubjectId: z.string().uuid(),  // le BLOQUÉ
+  reason: z.string().trim().min(1, 'La raison du blocage est obligatoire').max(300),
+  importance: z.enum(['critique', 'normal']),
+})
+
+export async function createSubjectRelationAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = relationSchema.safeParse({
+    siteId: formData.get('siteId'),
+    subjectId: formData.get('subjectId'),
+    targetSubjectId: formData.get('targetSubjectId'),
+    reason: formData.get('reason'),
+    importance: formData.get('importance'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  if (parsed.data.subjectId === parsed.data.targetSubjectId) return { error: 'Un sujet ne peut pas se bloquer lui-même.' }
+  try {
+    await createSubjectRelation({
+      fromSubjectId: parsed.data.subjectId, toSubjectId: parsed.data.targetSubjectId,
+      reason: parsed.data.reason, importance: parsed.data.importance, userId: operator.id,
+    })
+  } catch {
+    return { error: 'Cette dépendance existe déjà ou est invalide.' }
+  }
+  revalidatePath(`/sites/${parsed.data.siteId}/subjects/${parsed.data.subjectId}`)
+  return { ok: true }
+}
+
+const deleteRelationSchema = z.object({
+  siteId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  relationId: z.string().uuid(),
+})
+
+export async function deleteSubjectRelationAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = deleteRelationSchema.safeParse({
+    siteId: formData.get('siteId'),
+    subjectId: formData.get('subjectId'),
+    relationId: formData.get('relationId'),
+  })
+  if (!parsed.success) return { error: 'Suppression invalide' }
+  await deleteSubjectRelation(parsed.data.relationId)
   revalidatePath(`/sites/${parsed.data.siteId}/subjects/${parsed.data.subjectId}`)
   return { ok: true }
 }
