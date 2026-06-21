@@ -117,6 +117,43 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
   ],
 }
 
+// Récupère les objets engagement COMPLETS d'une sortie JSON tronquée.
+// Parcourt le contenu du tableau "engagements" et ne garde que les objets
+// dont les accolades sont équilibrées (le dernier, incomplet, est jeté).
+function salvageEngagements(text: string): { engagements: unknown[] } | null {
+  const start = text.indexOf('"engagements"')
+  if (start === -1) return null
+  const bracket = text.indexOf('[', start)
+  if (bracket === -1) return null
+
+  const objects: unknown[] = []
+  let depth = 0
+  let objStart = -1
+  let inString = false
+  let escaped = false
+
+  for (let i = bracket + 1; i < text.length; i++) {
+    const ch = text[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') { inString = true; continue }
+    if (ch === '{') { if (depth === 0) objStart = i; depth++ }
+    else if (ch === '}') {
+      depth--
+      if (depth === 0 && objStart !== -1) {
+        try { objects.push(JSON.parse(text.slice(objStart, i + 1))) } catch { /* skip */ }
+        objStart = -1
+      }
+    } else if (ch === ']' && depth === 0) break
+  }
+
+  return objects.length > 0 ? { engagements: objects } : null
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -156,7 +193,10 @@ export async function runEngagementExtractionAgent(
       userMessage,
       responseSchema: extractedSchema,
       modelTier: ENGAGEMENT_EXTRACTOR_V1.modelTier,
-      maxOutputTokens: 2000,
+      // Un CCTP dense produit 20-30 engagements : à 2000 tokens le JSON était
+      // tronqué en plein milieu → parse échec → « 0 engagement extrait ».
+      // 8000 (comme lecteur-ao) couvre largement le pire cas observé (~2600).
+      maxOutputTokens: 8000,
     })
 
     let parsed: z.infer<typeof extractedSchema> | undefined
@@ -173,6 +213,16 @@ export async function runEngagementExtractionAgent(
         if (r.success) parsed = r.data
       } catch {
         // ignore
+      }
+    }
+
+    // Filet anti-troncature : si le JSON est coupé (sortie trop longue), on
+    // récupère les objets COMPLETS de la liste plutôt que de tout perdre.
+    if (parsed === undefined) {
+      const salvaged = salvageEngagements(output.text)
+      if (salvaged) {
+        const r = extractedSchema.safeParse(salvaged)
+        if (r.success) parsed = r.data
       }
     }
 
