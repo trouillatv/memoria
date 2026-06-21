@@ -53,13 +53,13 @@ export function Tooltip({ content, delay = 150, side = 'right', children }: Tool
         <span
           role="tooltip"
           className={cn(
-            'absolute z-30 px-2 py-1 text-[11px] leading-snug text-white bg-foreground/90 rounded shadow-lg pointer-events-none whitespace-pre-line',
+            'absolute z-30 w-max px-2.5 py-1.5 text-[11px] leading-snug text-white bg-foreground/90 rounded shadow-lg pointer-events-none whitespace-pre-line',
             side === 'right'  && 'left-full top-1/2 -translate-y-1/2 ml-2',
             side === 'top'    && 'bottom-full left-1/2 -translate-x-1/2 mb-1',
             side === 'left'   && 'right-full top-1/2 -translate-y-1/2 mr-2',
             side === 'bottom' && 'top-full left-1/2 -translate-x-1/2 mt-1'
           )}
-          style={{ maxWidth: 360 }}
+          style={{ maxWidth: 'min(90vw, 560px)' }}
         >
           {content}
         </span>
