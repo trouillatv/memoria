@@ -1,9 +1,12 @@
 /**
  * Extraction texte depuis un Buffer PDF via pdf-parse v2 (PDFParse class API).
  * Détecte les PDF scannés (texte vide ou trop court) et signale via le champ isLikelyScanned.
+ *
+ * SERVERLESS : le polyfill DOM (DOMMatrix…) est importé À EFFET DE BORD AVANT tout,
+ * et `pdf-parse` est chargé DYNAMIQUEMENT dans la fonction → la lib ne s'évalue
+ * qu'une fois les globals posés (sinon « DOMMatrix is not defined » sur Vercel).
  */
-
-import { PDFParse } from 'pdf-parse'
+import './polyfill-dom'
 
 export interface ExtractResult {
   text: string
@@ -13,6 +16,7 @@ export interface ExtractResult {
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<ExtractResult> {
+  const { PDFParse } = await import('pdf-parse')
   const parser = new PDFParse({ data: buffer })
   try {
     const result = await parser.getText()
