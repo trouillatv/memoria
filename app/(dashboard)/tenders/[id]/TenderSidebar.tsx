@@ -46,6 +46,7 @@ interface TenderSidebarProps {
   isInProgress: boolean
   tenderId: string
   activityFeed: ActivityItem[]
+  engagementsCount: number
 }
 
 function timeAgo(iso: string): string {
@@ -79,6 +80,7 @@ export function TenderSidebar({
   isInProgress,
   tenderId,
   activityFeed,
+  engagementsCount,
 }: TenderSidebarProps) {
   const deadline = formatDeadline(tender.deadline)
 
@@ -338,7 +340,7 @@ export function TenderSidebar({
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent transition-colors"
           >
             <Target className="h-4 w-4 text-muted-foreground" />
-            Engagements extraits
+            <span>Engagements extraits{engagementsCount > 0 && <span className="text-muted-foreground"> ({engagementsCount})</span>}</span>
           </Link>
         </>
       )}

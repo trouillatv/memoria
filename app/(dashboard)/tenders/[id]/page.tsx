@@ -11,6 +11,7 @@ import {
 import { listChatMessages, listConversations } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
 import { listTenderDocumentSources } from '@/lib/db/tender-document-sources'
+import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getTenderClientCapital } from '@/lib/db/tender-client-capital'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -76,6 +77,10 @@ export default async function TenderDetailPage({
     : [null, null, [], [], [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
+
+  // Compteur d'engagements extraits — affiché entre parenthèses dans la sidebar.
+  // Seulement quand le lien existe (statut finalisé), pour éviter une requête inutile.
+  const engagementsCount = isReady ? (await listEngagementsByTender(id)).length : 0
 
   // Mémoire commerciale MC-2 — rappel contextuel AO similaires.
   // Affiché uniquement AVANT soumission (le moment où la mémoire sert), et
@@ -154,6 +159,7 @@ export default async function TenderDetailPage({
         isInProgress={isInProgress}
         tenderId={id}
         activityFeed={activityFeed}
+        engagementsCount={engagementsCount}
       />
       }
       right={
