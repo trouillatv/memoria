@@ -563,6 +563,36 @@ export async function searchSiteSubjects(siteId: string, term: string, limit = 1
     .sort((a, b) => ENERGY_RANK[b.insights.energy] - ENERGY_RANK[a.insights.energy])
 }
 
+// SANTÉ DE RATTACHEMENT (Vincent : le KPI INTERNE qui décide si la recherche sera bonne).
+// % d'objets reliés à un sujet — pas Guillaume-facing, INDICATIF, jamais bloquant
+// (doctrine « santé de la mémoire »). Un objet sans subject_id est invisible à la recherche.
+export interface LinkageStat { total: number; linked: number; pct: number }
+export interface SubjectLinkageHealth {
+  actions: LinkageStat; decisions: LinkageStat; reserves: LinkageStat; obligations: LinkageStat
+  overallPct: number
+}
+export async function getSubjectLinkageHealth(siteId: string): Promise<SubjectLinkageHealth> {
+  const supabase = createAdminClient()
+  const [{ data: acts }, { data: decs }, { data: res }, { data: obl }] = await Promise.all([
+    supabase.from('site_actions').select('subject_id').eq('site_id', siteId).neq('status', 'cancelled'),
+    supabase.from('site_decisions').select('subject_id').eq('site_id', siteId),
+    supabase.from('site_reserve').select('subject_id').eq('site_id', siteId),
+    supabase.from('site_obligation').select('subject_id').eq('site_id', siteId),
+  ])
+  const stat = (rows: { subject_id: string | null }[] | null): LinkageStat => {
+    const all = rows ?? []
+    const linked = all.filter((r) => r.subject_id != null).length
+    return { total: all.length, linked, pct: all.length === 0 ? 0 : Math.round((linked / all.length) * 100) }
+  }
+  const actions = stat(acts as { subject_id: string | null }[])
+  const decisions = stat(decs as { subject_id: string | null }[])
+  const reserves = stat(res as { subject_id: string | null }[])
+  const obligations = stat(obl as { subject_id: string | null }[])
+  const sumTotal = [actions, decisions, reserves, obligations].reduce((s, x) => s + x.total, 0)
+  const sumLinked = [actions, decisions, reserves, obligations].reduce((s, x) => s + x.linked, 0)
+  return { actions, decisions, reserves, obligations, overallPct: sumTotal === 0 ? 0 : Math.round((sumLinked / sumTotal) * 100) }
+}
+
 /** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et
  *  datés, situés à leur réunion (Vincent : « CR12 décision · CR14 promesse · … »). */
 export async function getSubjectTimeline(subjectId: string): Promise<SubjectEvent[]> {

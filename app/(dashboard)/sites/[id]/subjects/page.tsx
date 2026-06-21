@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Layers, ChevronRight, ListTodo, ClipboardCheck, FileCheck2, FileText, Clock } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listSubjectsBySite, searchSiteSubjects, type SubjectSummary, type SubjectCriticality, type SubjectSearchResult } from '@/lib/db/subjects'
+import { listSubjectsBySite, searchSiteSubjects, getSubjectLinkageHealth, type SubjectSummary, type SubjectCriticality, type SubjectSearchResult, type SubjectLinkageHealth, type LinkageStat } from '@/lib/db/subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SubjectCreateForm } from './SubjectCreateForm'
@@ -86,6 +86,39 @@ function SubjectRow({ siteId, s }: { siteId: string; s: SubjectSummary }) {
   )
 }
 
+function pctTone(pct: number): string {
+  return pct >= 70 ? 'text-emerald-700' : pct >= 40 ? 'text-amber-700' : 'text-rose-700'
+}
+
+/** Santé de rattachement — KPI INTERNE (Vincent), indicatif et jamais bloquant.
+ *  Un objet sans sujet est invisible à la recherche : ce panneau dit si le chantier
+ *  est assez rattaché pour que la recherche démontre bien (avant de la montrer). */
+function LinkageHealthPanel({ h }: { h: SubjectLinkageHealth }) {
+  const total = h.actions.total + h.decisions.total + h.reserves.total + h.obligations.total
+  if (total === 0) return null
+  const items: { label: string; s: LinkageStat }[] = [
+    { label: 'Actions', s: h.actions }, { label: 'Décisions', s: h.decisions },
+    { label: 'Réserves', s: h.reserves }, { label: 'Obligations', s: h.obligations },
+  ]
+  return (
+    <section className="rounded-lg border bg-muted/20 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Santé de rattachement (interne)</span>
+        <span className={`text-[11px] font-medium ${pctTone(h.overallPct)}`}>{h.overallPct}% rattaché</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
+        {items.map((it) => (
+          <span key={it.label} className="text-muted-foreground">
+            {it.label} <strong className={it.s.total === 0 ? 'text-muted-foreground' : pctTone(it.s.pct)}>{it.s.total === 0 ? '—' : `${it.s.pct}%`}</strong>
+            {it.s.total > 0 && <span className="text-muted-foreground/70"> ({it.s.linked}/{it.s.total})</span>}
+          </span>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] text-muted-foreground/70">Plus un objet est rattaché à un sujet, plus la recherche le retrouve. Indicatif, non bloquant.</p>
+    </section>
+  )
+}
+
 export default async function SiteSubjectsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string }> }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
@@ -95,11 +128,12 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
   const { q } = await searchParams
   const query = (q ?? '').trim()
   const supabase = createAdminClient()
-  const [identity, subjects, { data: scopeRows }, results] = await Promise.all([
+  const [identity, subjects, { data: scopeRows }, results, linkage] = await Promise.all([
     getSiteIdentity(id),
     listSubjectsBySite(id),
     supabase.from('memory_scopes').select('id, label').eq('site_id', id).is('deleted_at', null).eq('active', true),
     query ? searchSiteSubjects(id, query) : Promise.resolve([] as SubjectSearchResult[]),
+    getSubjectLinkageHealth(id),
   ])
   if (!identity) notFound()
   const scopes = (scopeRows ?? []) as { id: string; label: string }[]
@@ -126,6 +160,8 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
           Un sujet = un problème / ouvrage / livrable, jamais une personne.
         </p>
       </header>
+
+      <LinkageHealthPanel h={linkage} />
 
       <SubjectSearch siteId={id} initial={query} />
 
