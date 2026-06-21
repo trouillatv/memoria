@@ -11,8 +11,7 @@ import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { getSiteEngagements } from '@/lib/db/site-engagements'
-import { buildSiteMemorySignals, buildSuggestedQuestions } from '@/lib/db/site-memory-signals'
-import { PrepareMeetingBlock } from './PrepareMeetingBlock'
+import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
 import { EngagementsTable } from './EngagementsTable'
@@ -64,7 +63,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   // « Préparer cette réunion » : détecteurs déterministes (mémoire chantier, P1).
   // Ce qui traîne sur le SITE avant la réunion. Zéro IA, descriptif.
   const memorySignals = report.site_id ? await buildSiteMemorySignals(report.site_id) : []
-  const suggestedQuestions = buildSuggestedQuestions(memorySignals)
+  const briefingCount = memorySignals.reduce((n, s) => n + s.items.length, 0)
 
   const supabase = createAdminClient()
 
@@ -140,8 +139,18 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
-      {/* Préparer cette réunion — détecteurs mémoire chantier (déterministe, P1). */}
-      {report.site_id && <PrepareMeetingBlock signals={memorySignals} questions={suggestedQuestions} />}
+      {/* Briefing réunion — objet métier dédié (déterministe). Entrée compacte ici,
+          contenu sur sa propre page (Vincent : pas un bloc perdu au milieu). */}
+      {report.site_id && (
+        <Link href={`/meetings/${id}/briefing`} className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4 hover:bg-muted/30">
+          <span className="inline-flex items-center gap-2 text-sm font-semibold">
+            <ClipboardList className="h-4 w-4 text-muted-foreground" /> Préparer cette réunion
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {briefingCount > 0 ? `${briefingCount} point${briefingCount > 1 ? 's' : ''} à surveiller` : 'Rien à signaler'} →
+          </span>
+        </Link>
+      )}
 
       {/* Suivi de la réunion précédente — PV de pilotage (Sprint 3) */}
       {followup && <MeetingFollowup data={followup} />}

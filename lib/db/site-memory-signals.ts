@@ -10,7 +10,7 @@
 // chaque signal est EXPLICABLE (champ `source`).
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export type SignalKind = 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open'
+export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open'
 
 export interface SignalItem { id: string; label: string; meta?: string | null }
 export interface MemorySignal {
@@ -109,6 +109,44 @@ export async function detectOpenReserves(siteId: string): Promise<MemorySignal |
       meta: [r.location as string | null, r.issued_on ? `émise le ${ddmmyyyy(r.issued_on as string)}` : null].filter(Boolean).join(' · '),
     })),
     source: 'Réserves non levées (site_reserve, status « open »).',
+  }
+}
+
+/** ENGORGEMENT / CONCENTRATION (Vincent 2026-06-21) — le seul détecteur qui ANTICIPE.
+ *  Les problèmes de chantier se concentrent souvent autour d'UN acteur. Si une
+ *  entreprise (responsable des actions ouvertes) concentre ≥ seuil du total, on le
+ *  dit AVANT la réunion : « cette réunion va surtout parler de X ». Déterministe :
+ *  actions ouvertes groupées par responsable. */
+export async function detectActorCongestion(siteId: string, minActions = 4, shareThreshold = 0.4, asOf = todayIso()): Promise<MemorySignal | null> {
+  const { data } = await createAdminClient()
+    .from('site_actions')
+    .select('id, assigned_to, due_date, status')
+    .eq('site_id', siteId)
+    .eq('status', 'open')
+    .not('assigned_to', 'is', null)
+  const rows = data ?? []
+  if (rows.length < minActions) return null
+  const byActor = new Map<string, { actor: string; total: number; overdue: number }>()
+  for (const a of rows) {
+    const actor = (a.assigned_to as string).trim()
+    if (!actor) continue
+    const g = byActor.get(actor.toLowerCase()) ?? { actor, total: 0, overdue: 0 }
+    g.total++
+    if (a.due_date && (a.due_date as string) <= asOf) g.overdue++
+    byActor.set(actor.toLowerCase(), g)
+  }
+  const total = rows.length
+  const flagged = [...byActor.values()].filter((g) => g.total / total >= shareThreshold).sort((a, b) => b.total - a.total)
+  if (flagged.length === 0) return null
+  return {
+    kind: 'actor_congestion',
+    title: `Concentration des sujets ouverts`,
+    items: flagged.map((g) => ({
+      id: g.actor,
+      label: g.actor,
+      meta: `${Math.round((g.total / total) * 100)} % des actions ouvertes du chantier · ${g.total} action${g.total > 1 ? 's' : ''}${g.overdue ? `, ${g.overdue} en retard` : ''}`,
+    })),
+    source: 'Actions ouvertes (site_actions) groupées par responsable : un acteur ≥ 40 % du total.',
   }
 }
 
@@ -216,13 +254,14 @@ export async function detectRepeatedAbsences(siteId: string, threshold = 3, wind
  *  rouvertes), qui demande un historique de statut (à instrumenter). Une réunion mal
  *  détectée est gênante ; une réunion perdue est catastrophique → priorité ailleurs. */
 export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()): Promise<MemorySignal[]> {
-  const [overdue, decisions, absences, reserves] = await Promise.all([
+  const [congestion, overdue, decisions, absences, reserves] = await Promise.all([
+    detectActorCongestion(siteId, 4, 0.4, asOf), // en TÊTE : le seul qui anticipe « où ça va se concentrer »
     detectOverdueActions(siteId, asOf),
     detectUnappliedDecisions(siteId, asOf),
     detectRepeatedAbsences(siteId),
     detectOpenReserves(siteId),
   ])
-  return [overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  return [congestion, overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
 }
 
 export interface SuggestedQuestion { question: string; why: string | null }
@@ -239,6 +278,7 @@ export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): S
       const why = it.meta ?? s.source
       let question = ''
       switch (s.kind) {
+        case 'actor_congestion': question = `La réunion va beaucoup tourner autour de ${it.label} — prévoir un point dédié ?`; break
         case 'recurring_topic': question = `Le sujet « ${it.label} » revient depuis plusieurs réunions — peut-on le clôturer ?`; break
         case 'action_overdue': question = `Où en est l'action « ${it.label} » ?`; break
         case 'decision_unapplied': question = `La décision « ${it.label} » a-t-elle été appliquée ?`; break

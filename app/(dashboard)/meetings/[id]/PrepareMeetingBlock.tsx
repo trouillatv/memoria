@@ -2,10 +2,11 @@
 // Ce qui traîne sur le site AVANT la réunion : actions en retard, décisions jamais
 // appliquées, entreprises absentes, réserves ouvertes. Affichage seul (server
 // component), calme et DESCRIPTIF — pas d'alerte rouge. Chaque bloc explicite sa source.
-import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle } from 'lucide-react'
+import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle, Flame } from 'lucide-react'
 import type { MemorySignal, SignalKind, SuggestedQuestion } from '@/lib/db/site-memory-signals'
 
 const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
+  actor_congestion: { icon: Flame, tone: 'text-orange-700' },
   recurring_topic: { icon: Repeat, tone: 'text-rose-700' },
   action_overdue: { icon: ListTodo, tone: 'text-amber-700' },
   decision_unapplied: { icon: Gavel, tone: 'text-violet-700' },
