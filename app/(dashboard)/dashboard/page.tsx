@@ -109,8 +109,8 @@ export default async function DashboardPage() {
 
   const onboarding = await getOnboardingProgress()
 
-  // Mode bootstrap : aucun contrat actif → welcome card seule.
-  if (!onboarding.hasActiveContract) {
+  // Mode bootstrap : boucle chantier pas encore lancée → welcome card seule.
+  if (!onboarding.allDone) {
     return (
       <div className="space-y-6 w-full">
         <WelcomeCard progress={onboarding} />

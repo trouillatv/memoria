@@ -1,9 +1,8 @@
 ﻿import Link from 'next/link'
 import {
-  Upload,
-  ListChecks,
-  FileCheck,
-  ClipboardList,
+  MapPin,
+  Mic,
+  ListTodo,
   ArrowRight,
   CheckCircle2,
   Circle,
@@ -32,44 +31,34 @@ interface StepDef {
 
 const STEPS: StepDef[] = [
   {
-    key: 'hasImportedTender',
+    key: 'hasSite',
     number: 1,
-    icon: Upload,
-    title: 'Importer un dossier de démarrage',
+    icon: MapPin,
+    title: 'Créer votre premier chantier',
     description:
-      'Déposez votre premier dossier. Le copilote en extraira les engagements et rédigera la mémoire technique.',
-    href: '/tenders',
-    cta: 'Aller aux dossiers',
+      "Ajoutez un chantier : c'est le lieu où la mémoire s'accumule (réunions, photos, actions, décisions).",
+    href: '/sites',
+    cta: 'Aller aux chantiers',
   },
   {
-    key: 'hasCuratedEngagement',
+    key: 'hasMeeting',
     number: 2,
-    icon: ListChecks,
-    title: 'Valider les promesses',
+    icon: Mic,
+    title: 'Démarrer une réunion',
     description:
-      "Relisez et validez les engagements extraits par l'IA. Vous gardez la main sur ce qui vous engage.",
-    href: '/tenders',
-    cta: 'Voir les dossiers',
+      "Capturez une réunion (voix ou notes) : MemorIA en tire le compte-rendu, les actions et les décisions.",
+    href: '/meetings',
+    cta: 'Aller aux réunions',
   },
   {
-    key: 'hasActiveContract',
+    key: 'hasAction',
     number: 3,
-    icon: FileCheck,
-    title: 'Convertir en contrat actif',
+    icon: ListTodo,
+    title: 'Suivre les actions',
     description:
-      "Une fois le dossier gagné, convertissez-le en contrat opérationnel. Les engagements deviennent vos promesses à tenir.",
-    href: '/tenders',
-    cta: 'Voir les dossiers',
-  },
-  {
-    key: 'hasMission',
-    number: 4,
-    icon: ClipboardList,
-    title: 'Créer missions et récurrences',
-    description:
-      "Ajoutez les sites, les missions à exécuter, et leurs récurrences. La preuve commence à s'accumuler.",
-    href: '/contracts',
-    cta: 'Voir les contrats',
+      "Suivez ce qui reste à faire, confiez des actions aux entreprises (lien/QR) et préparez la prochaine réunion.",
+    href: '/actions',
+    cta: 'Voir les actions',
   },
 ]
 
@@ -84,8 +73,8 @@ export function WelcomeCard({ progress }: { progress: OnboardingProgress }) {
         <CardTitle className="text-lg">Démarrer avec MemorIA</CardTitle>
         <CardDescription>
           {completedCount === 0
-            ? 'Quatre étapes pour transformer un dossier en preuves accumulées.'
-            : `${completedCount} / ${STEPS.length} étapes franchies. Plus que ${STEPS.length - completedCount} pour activer la boucle de preuve.`}
+            ? 'Trois étapes pour lancer la mémoire de votre chantier.'
+            : `${completedCount} / ${STEPS.length} étapes franchies. Plus que ${STEPS.length - completedCount} pour lancer la boucle.`}
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -2,60 +2,52 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 
 /**
- * Progression d'onboarding d'un nouveau tenant.
- * Quatre étapes structurantes pour activer la boucle de preuve :
- *   1. Importer un AO
- *   2. Curer / valider les engagements extraits
- *   3. Convertir l'AO en contrat actif
- *   4. Planifier les missions (recettes opérationnelles)
+ * Progression d'onboarding d'un nouveau tenant — CHANTIER-CENTRIC (Vincent 2026-06-21).
+ * Avant : AO → engagements → contrat → missions (vision copilote AO).
+ * Maintenant le produit démarre par le CHANTIER et sa mémoire :
+ *   1. Créer un chantier (le lieu où la mémoire s'accumule)
+ *   2. Démarrer une réunion (voix/notes → compte-rendu, actions, décisions)
+ *   3. Suivre les actions (ce qui reste à faire / à confier aux entreprises)
  *
- * Le rideau tombe (la welcome card disparaît) dès qu'un contrat actif existe :
- * cf. doctrine — pas de "dismiss forever", pas de bouton "skip onboarding".
+ * Le rideau tombe (welcome card disparaît) dès que la boucle est lancée
+ * (chantier + réunion + action). Pas de "dismiss forever", pas de "skip".
  */
 export interface OnboardingProgress {
-  hasImportedTender: boolean
-  hasCuratedEngagement: boolean
-  hasActiveContract: boolean
-  hasMission: boolean
-  /** True quand toutes les étapes sont franchies (boucle de preuve démarrée). */
+  hasSite: boolean
+  hasMeeting: boolean
+  hasAction: boolean
+  /** True quand la boucle chantier est amorcée. */
   allDone: boolean
 }
 
-/**
- * 4 queries count exact en parallèle (head-only, pas de payload).
- * Coût ~marginal — appelée une seule fois sur /dashboard.
- */
 export async function getOnboardingProgress(): Promise<OnboardingProgress> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
 
-  const tq = supabase.from('tenders').select('id', { count: 'exact', head: true }).is('deleted_at', null)
-  const eq = supabase.from('engagements').select('id', { count: 'exact', head: true }).eq('status', 'curated')
-  const cq = supabase.from('contracts').select('id', { count: 'exact', head: true }).eq('status', 'active').is('deleted_at', null)
-  const mq = supabase.from('missions').select('id', { count: 'exact', head: true }).is('deleted_at', null)
+  // Chantiers de l'org (sert aussi à scoper les actions, qui n'ont pas d'org direct).
+  let sitesQ = supabase.from('sites').select('id').is('deleted_at', null)
+  if (orgId) sitesQ = sitesQ.eq('organization_id', orgId)
+  const { data: siteRows, error: sitesErr } = await sitesQ
+  if (sitesErr) throw sitesErr
+  const siteIds = ((siteRows ?? []) as Array<{ id: string }>).map((s) => s.id)
+  const hasSite = siteIds.length > 0
 
-  const [tendersRes, curatedRes, activeContractsRes, missionsRes] = await Promise.all([
-    (orgId ? tq.eq('organization_id', orgId) : tq),
-    (orgId ? eq.eq('organization_id', orgId) : eq),
-    (orgId ? cq.eq('organization_id', orgId) : cq),
-    (orgId ? mq.eq('organization_id', orgId) : mq),
-  ])
+  const rq = supabase.from('site_reports').select('id', { count: 'exact', head: true })
+  const reportsRes = await (orgId ? rq.eq('organization_id', orgId) : rq)
+  if (reportsRes.error) throw reportsRes.error
+  const hasMeeting = (reportsRes.count ?? 0) > 0
 
-  if (tendersRes.error) throw tendersRes.error
-  if (curatedRes.error) throw curatedRes.error
-  if (activeContractsRes.error) throw activeContractsRes.error
-  if (missionsRes.error) throw missionsRes.error
-
-  const hasImportedTender = (tendersRes.count ?? 0) > 0
-  const hasCuratedEngagement = (curatedRes.count ?? 0) > 0
-  const hasActiveContract = (activeContractsRes.count ?? 0) > 0
-  const hasMission = (missionsRes.count ?? 0) > 0
+  let hasAction = false
+  if (siteIds.length > 0) {
+    const aRes = await supabase.from('site_actions').select('id', { count: 'exact', head: true }).in('site_id', siteIds)
+    if (aRes.error) throw aRes.error
+    hasAction = (aRes.count ?? 0) > 0
+  }
 
   return {
-    hasImportedTender,
-    hasCuratedEngagement,
-    hasActiveContract,
-    hasMission,
-    allDone: hasImportedTender && hasCuratedEngagement && hasActiveContract && hasMission,
+    hasSite,
+    hasMeeting,
+    hasAction,
+    allDone: hasSite && hasMeeting && hasAction,
   }
 }
