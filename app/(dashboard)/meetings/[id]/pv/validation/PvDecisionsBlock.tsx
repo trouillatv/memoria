@@ -7,7 +7,7 @@
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2 } from 'lucide-react'
-import { addDecisionAction, editDecisionAction, deleteDecisionAction } from '../../pv-actions'
+import { addDecisionAction, editDecisionAction, deleteDecisionAction, attachDecisionToSubjectAction } from '../../pv-actions'
 import { ACTION_CODES } from '@/lib/db/action-codes'
 import { DECISION_STATUTS, DECISION_IMPACTS, STATUT_LABEL, IMPACT_LABEL, type DecisionImpact } from '@/lib/db/decision-constants'
 import type { SiteDecision } from '@/lib/db/site-decisions'
@@ -121,6 +121,14 @@ function Row({ reportId, d, contacts, actions }: { reportId: string; d: SiteDeci
             {STATUTS_HUMAINS.map((s) => <option key={s} value={s}>{STATUT_LABEL[s]}</option>)}
           </select>
           {d.confiance === 'à confirmer' && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">à confirmer</span>}
+          {/* Pont Vue Sujet : rattacher la décision à son sujet (find-or-create). */}
+          {d.subjectId ? (
+            <span title="Rattachée à un sujet" className="shrink-0 text-[11px] text-emerald-700">🔗 sujet</span>
+          ) : d.sujet ? (
+            <button type="button" disabled={pending} title={`Rattacher au sujet « ${d.sujet} »`}
+              onClick={() => run(() => attachDecisionToSubjectAction(reportId, d.id, d.sujet!))}
+              className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50">🔗 sujet</button>
+          ) : null}
           <button type="button" disabled={pending} title="Modifier" onClick={() => { editStartRef.current = Date.now(); setEditing(true) }} className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"><Pencil className="h-3.5 w-3.5" /></button>
           <button type="button" disabled={pending} title="Supprimer" onClick={() => run(() => deleteDecisionAction(reportId, d.id))} className="shrink-0 text-muted-foreground hover:text-rose-600 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>

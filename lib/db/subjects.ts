@@ -32,16 +32,35 @@ export interface SubjectSummary {
   criticality: SubjectCriticality
 }
 
+export interface SubjectDecisionLite { id: string; titre: string; statut: string; dateDecision: string | null }
 export interface SubjectThread {
   subject: DbSubject
   actions: DbSiteAction[]
   reserves: SubjectReserveLite[]
   decisions: DbSiteReportProposal[]
+  siteDecisions: SubjectDecisionLite[]
   documents: SubjectDocLite[]
+}
+
+// HISTOIRE du sujet (Vincent : « un sujet = l'histoire complète d'un problème, pas
+// une liste d'occurrences »). Un événement = un objet rattaché, daté, situé à sa réunion.
+export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'document'
+export interface SubjectEvent {
+  date: string                 // ISO (tri + affichage)
+  kind: SubjectEventKind
+  label: string
+  meta: string | null
+  reportLabel: string | null   // « Réunion du JJ/MM » si rattaché à un CR
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
+}
+function ddmmyyyy(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso); if (isNaN(d.getTime())) return null
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
 /** Criticité dérivée : haute si retard/réserve ouverte, moyenne si actif, basse sinon. */
@@ -90,13 +109,24 @@ export async function setSubjectStatus(id: string, status: SubjectStatus): Promi
 
 /** Rattache (ou détache si subjectId=null) un objet à un sujet. */
 export async function attachToSubject(
-  table: 'site_actions' | 'site_reserve' | 'site_report_proposals',
+  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions',
   rowId: string,
   subjectId: string | null,
 ): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase.from(table).update({ subject_id: subjectId }).eq('id', rowId)
   if (error) throw error
+}
+
+/** Trouve (insensible à la casse, dans le site) ou crée un sujet par son nom. C'est le
+ *  PONT de peuplement : le champ `sujet` d'une décision devient une entité Subject. */
+export async function findOrCreateSubjectByName(siteId: string, name: string, userId: string | null): Promise<string> {
+  const clean = name.trim()
+  if (!clean) throw new Error('Nom de sujet vide.')
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('subjects').select('id').eq('site_id', siteId).ilike('name', clean).limit(1).maybeSingle()
+  if (data?.id) return data.id as string
+  return createSubject({ siteId, name: clean, scopeId: null, userId })
 }
 
 // ---------------------------------------------------------------------------
@@ -181,10 +211,11 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
   if (!subject) return null
   const supabase = createAdminClient()
 
-  const [{ data: actions }, { data: reserves }, { data: decisions }, documents] = await Promise.all([
+  const [{ data: actions }, { data: reserves }, { data: decisions }, { data: siteDecisions }, documents] = await Promise.all([
     supabase.from('site_actions').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_report_proposals').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
+    supabase.from('site_decisions').select('id, titre, statut, date_decision').eq('subject_id', subjectId).order('date_decision', { ascending: false }),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
   ])
 
@@ -194,6 +225,56 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     reserves: ((reserves ?? []) as Array<{ id: string; label: string; status: string; issued_on: string | null }>)
       .map((r) => ({ id: r.id, label: r.label, status: r.status, issuedOn: r.issued_on })),
     decisions: (decisions ?? []) as DbSiteReportProposal[],
+    siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null }>)
+      .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision })),
     documents: documents.map((d) => ({ id: d.id, filename: d.filename })),
   }
+}
+
+/** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et
+ *  datés, situés à leur réunion (Vincent : « CR12 décision · CR14 promesse · … »). */
+export async function getSubjectTimeline(subjectId: string): Promise<SubjectEvent[]> {
+  const supabase = createAdminClient()
+  const [{ data: decisions }, { data: actions }, { data: reserves }, { data: crDecisions }, documents] = await Promise.all([
+    supabase.from('site_decisions').select('id, titre, statut, date_decision, echeance, report_id').eq('subject_id', subjectId),
+    supabase.from('site_actions').select('id, title, status, due_date, created_at, report_id').eq('subject_id', subjectId),
+    supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId),
+    supabase.from('site_report_proposals').select('id, short_label, created_at, report_id').eq('subject_id', subjectId),
+    listDocumentsForTarget('subject', subjectId).catch(() => []),
+  ])
+
+  // Résolution des réunions concernées (report_id → « Réunion du JJ/MM »), en lot.
+  const reportIds = [
+    ...(decisions ?? []).map((r) => r.report_id as string | null),
+    ...(actions ?? []).map((r) => r.report_id as string | null),
+    ...(crDecisions ?? []).map((r) => r.report_id as string | null),
+  ].filter((x): x is string => !!x)
+  const reportLabel = new Map<string, string>()
+  if (reportIds.length > 0) {
+    const { data: reps } = await supabase.from('site_reports').select('id, created_at, title').in('id', [...new Set(reportIds)])
+    for (const r of reps ?? []) reportLabel.set(r.id as string, (r.title as string | null)?.trim() || `Réunion du ${ddmmyyyy(r.created_at as string)}`)
+  }
+  const repOf = (id: string | null) => (id ? reportLabel.get(id) ?? null : null)
+
+  const events: SubjectEvent[] = []
+  for (const d of decisions ?? []) {
+    events.push({ date: (d.date_decision as string) ?? (d.report_id ? '' : ''), kind: 'decision', label: d.titre as string,
+      meta: [`décision (${d.statut})`, d.echeance ? `échéance ${ddmmyyyy(d.echeance as string)}` : null].filter(Boolean).join(' · '), reportLabel: repOf(d.report_id as string | null) })
+  }
+  for (const a of actions ?? []) {
+    events.push({ date: (a.created_at as string).slice(0, 10), kind: 'action', label: a.title as string,
+      meta: [`action (${a.status})`, a.due_date ? `échéance ${ddmmyyyy(a.due_date as string)}` : null].filter(Boolean).join(' · '), reportLabel: repOf(a.report_id as string | null) })
+  }
+  for (const r of reserves ?? []) {
+    events.push({ date: (r.issued_on as string) ?? '', kind: 'reserve', label: r.label as string, meta: `réserve (${r.status})`, reportLabel: null })
+  }
+  for (const c of crDecisions ?? []) {
+    events.push({ date: (c.created_at as string).slice(0, 10), kind: 'cr_decision', label: c.short_label as string, meta: 'décision (CR)', reportLabel: repOf(c.report_id as string | null) })
+  }
+  for (const doc of documents) {
+    const at = (doc as { created_at?: string }).created_at
+    events.push({ date: at ? at.slice(0, 10) : '', kind: 'document', label: (doc as { filename?: string }).filename ?? 'Document', meta: 'document', reportLabel: null })
+  }
+  // Ordre CHRONOLOGIQUE (du plus ancien au plus récent) = l'histoire qui se déroule.
+  return events.filter((e) => e.date).sort((a, b) => a.date.localeCompare(b.date))
 }

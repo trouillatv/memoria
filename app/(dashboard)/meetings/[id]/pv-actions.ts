@@ -23,6 +23,7 @@ import {
   type DecisionStatut, type DecisionImpact,
 } from '@/lib/db/site-decisions'
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
+import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 import { createContact } from '@/lib/db/company-contacts'
 import { openSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
 import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
@@ -527,6 +528,30 @@ export async function editDecisionAction(
     await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', field, category: 'decision', op: 'edited', after: patch.statut ?? patch.titre ?? null, timeToCorrectMs: patch.timeToCorrectMs ?? null }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** PONT VUE SUJET (mig 143) : rattache une décision à un SUJET (find-or-create par
+ *  nom). Le champ texte `sujet` de la décision devient une entité Subject vivante →
+ *  la décision entre dans l'histoire chronologique du sujet. */
+export async function attachDecisionToSubjectAction(
+  reportId: string,
+  decisionId: string,
+  subjectName: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const name = subjectName.trim()
+  if (!name) return { ok: false, error: 'Nom de sujet vide.' }
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
+  try {
+    const subjectId = await findOrCreateSubjectByName(report.site_id, name, user.id)
+    await attachToSubject('site_decisions', decisionId, subjectId)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/sites/${report.site_id}/subjects`)
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Échec' }

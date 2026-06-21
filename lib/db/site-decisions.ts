@@ -18,6 +18,7 @@ export interface SiteDecision {
   decisionnaireOrg: string | null
   decisionnaireContactId: string | null
   actionId: string | null
+  subjectId: string | null
   dateDecision: string | null
   echeance: string | null
   statut: DecisionStatut
@@ -38,6 +39,7 @@ function rowToDecision(r: Record<string, unknown>): SiteDecision {
     decisionnaireOrg: (r.decisionnaire_org as string | null) ?? null,
     decisionnaireContactId: (r.decisionnaire_contact_id as string | null) ?? null,
     actionId: (r.action_id as string | null) ?? null,
+    subjectId: (r.subject_id as string | null) ?? null,
     dateDecision: (r.date_decision as string | null) ?? null,
     echeance: (r.echeance as string | null) ?? null,
     statut: (DECISION_STATUTS as readonly string[]).includes(r.statut as string) ? (r.statut as DecisionStatut) : 'actee',
@@ -48,7 +50,7 @@ function rowToDecision(r: Record<string, unknown>): SiteDecision {
 }
 
 const SELECT =
-  'id, site_id, report_id, titre, description, sujet, decisionnaire_role, decisionnaire_org, decisionnaire_contact_id, action_id, date_decision, echeance, statut, impact, confiance, source'
+  'id, site_id, report_id, titre, description, sujet, decisionnaire_role, decisionnaire_org, decisionnaire_contact_id, action_id, subject_id, date_decision, echeance, statut, impact, confiance, source'
 
 /** Décisions PRISES dans ce CR (report_id), les plus récentes d'abord. */
 export async function listDecisionsByReport(reportId: string): Promise<SiteDecision[]> {

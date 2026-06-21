@@ -1,9 +1,9 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText } from 'lucide-react'
+import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSubjectThread } from '@/lib/db/subjects'
+import { getSubjectThread, getSubjectTimeline } from '@/lib/db/subjects'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -20,9 +20,9 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, subjectId } = await params
-  const [identity, thread] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId)])
+  const [identity, thread, timeline] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId)])
   if (!identity || !thread || thread.subject.site_id !== id) notFound()
-  const { subject, actions, reserves, decisions, documents } = thread
+  const { subject, actions, reserves, decisions, siteDecisions, documents } = thread
 
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
   const supabase = createAdminClient()
@@ -65,6 +65,53 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
       </header>
 
       <SubjectDetailControls siteId={id} subjectId={subjectId} status={subject.status} candidates={candidates} />
+
+      {/* HISTORIQUE CHRONOLOGIQUE — l'histoire complète du sujet (Vincent : « un sujet =
+          l'histoire d'un problème, pas une liste d'occurrences »). Tous les objets
+          rattachés, datés, situés à leur réunion. Du plus ancien au plus récent. */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold inline-flex items-center gap-2"><History className="h-4 w-4 text-muted-foreground" /> Historique du sujet ({timeline.length})</h2>
+        {timeline.length === 0 ? (
+          <p className="text-xs text-muted-foreground/80 italic">Rien de rattaché pour l&apos;instant — rattachez des décisions, actions ou réserves ci-dessous, ou depuis l&apos;écran de validation du PV.</p>
+        ) : (
+          <ol className="relative space-y-2 border-l-2 border-muted pl-4">
+            {timeline.map((e, i) => {
+              const Icon = e.kind === 'reserve' ? ClipboardCheck : e.kind === 'action' ? ListTodo : e.kind === 'document' ? FileText : Gavel
+              const date = e.date ? new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
+              return (
+                <li key={`${e.kind}-${i}`} className="relative">
+                  <span className="absolute -left-[1.42rem] top-1.5 h-2.5 w-2.5 rounded-full bg-muted-foreground/40" aria-hidden />
+                  <div className="rounded-md border bg-card px-3 py-1.5 text-sm">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="tabular-nums text-[11px] text-muted-foreground">{date}</span>
+                      {e.reportLabel && <span className="text-[11px] text-muted-foreground">· {e.reportLabel}</span>}
+                    </span>
+                    <span className="ml-1.5 font-medium">{e.label}</span>
+                    {e.meta && <span className="block text-[11px] text-muted-foreground">{e.meta}</span>}
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </section>
+
+      {/* Décisions structurées (site_decisions, reliées mig 143) */}
+      {siteDecisions.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold inline-flex items-center gap-2"><Gavel className="h-4 w-4 text-violet-600" /> Décisions ({siteDecisions.length})</h2>
+          <ul className="space-y-1">
+            {siteDecisions.map((d) => (
+              <li key={d.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
+                <span className="font-medium">{d.titre}</span>
+                <span className="text-muted-foreground"> · {d.statut}</span>
+                {d.dateDecision && <span className="text-muted-foreground"> · <CalendarClock className="inline h-3 w-3" /> {d.dateDecision}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Actions */}
       <section className="space-y-2">
