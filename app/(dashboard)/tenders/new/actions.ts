@@ -3,7 +3,6 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { after } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -13,12 +12,8 @@ import {
   createTenderDocument,
   updateTenderStatus,
   countAnalysesToday,
-  insertTenderAnalysis,
 } from '@/lib/db/tenders'
 import { extractPdfText, extractWithGeminiOCR } from '@/services/pdf/extract'
-import { analyzeTender } from '@/services/ai/orchestrator'
-import { validateAnalysisSources } from '@/services/ai/source-validation'
-import { listKnowledgeItems } from '@/lib/db/knowledge'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -37,7 +32,6 @@ const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 // au-delà, l'AO bascule en `failed` avec un message exploitable (jamais un hang).
 const EXTRACT_TIMEOUT_MS = 90_000
 const OCR_TIMEOUT_MS = 120_000
-const ANALYZE_TIMEOUT_MS = 180_000 // borne l'analyse IA (recall + LLM) — anti-hang
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -176,56 +170,9 @@ export async function createTenderAction(formData: FormData) {
   })
   revalidatePath('/tenders')
 
-  // 7. Schedule background analyze via Next.js after() — runs after the redirect
-  //    response is sent, but the function instance stays alive long enough.
-  //    Replaces the broken fire-and-forget fetch pattern.
-  const tenderIdForAnalyze = tenderId
-  const userIdForAnalyze = userId
-  const extractedTextForAnalyze = extracted.text
-  after(async () => {
-    try {
-      const result = await withTimeout(analyzeTender(extractedTextForAnalyze, userIdForAnalyze), ANALYZE_TIMEOUT_MS, 'Analyse IA')
-
-      // Validation des sources avant insertion
-      const knowledgeItems = await listKnowledgeItems({})
-      const isMock = result.provider === 'mock'
-      const validated = validateAnalysisSources(result.reading, {
-        extractedText: extractedTextForAnalyze,
-        knowledgeItems,
-        skipPdfValidation: isMock,
-      })
-
-      await insertTenderAnalysis({
-        tender_id: tenderIdForAnalyze,
-        provider: result.provider as 'mock' | 'gemini' | 'anthropic' | 'openai',
-        model: result.model,
-        prompt_versions: result.promptVersions,
-        summary: result.reading.summary,
-        constraints: validated.constraints,
-        risks: validated.risks,
-        checklist: validated.checklist,
-        technical_memo: result.memo.technical_memo,
-        library_snapshot: result.librarySnapshot,
-        raw_response: null,
-        document_sources: result.documentSources, // A6 — réf. recall A3, dédupé
-      })
-      await updateTenderStatus(tenderIdForAnalyze, 'ready', null, result.score.score)
-    } catch (e) {
-      // Erreur quelconque pendant l'analyse IA, le recall documentaire, la
-      // validation des sources ou l'insertion → l'AO passe en `failed` avec un
-      // message exploitable côté UI. On garde l'écriture du statut dans son
-      // propre try/catch : si même elle échoue (DB injoignable), on log au
-      // moins l'incident — le filet serveur (status route, 4 min) puis le cron
-      // sweep (à venir) rattraperont l'AO resté `analyzing`.
-      const msg = e instanceof Error ? e.message : 'unknown'
-      console.error('[createTenderAction] analyze failed:', e)
-      try {
-        await updateTenderStatus(tenderIdForAnalyze, 'failed', msg)
-      } catch (statusErr) {
-        console.error('[createTenderAction] could not mark tender failed:', statusErr)
-      }
-    }
-  })
-
+  // 7. L'analyse NE tourne PLUS en after() (coupé par Vercel → AO coincé). Le
+  //    statut est 'analyzing' ; le client (loader sur la page de l'AO) déclenche
+  //    l'analyse via POST /api/tenders/[id]/analyze, qui tourne dans une vraie
+  //    requête HTTP (fiable). On redirige simplement vers la page de l'AO.
   redirect(`/tenders/${tenderId}`)
 }

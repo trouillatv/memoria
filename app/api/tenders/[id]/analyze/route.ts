@@ -1,50 +1,39 @@
 import { NextResponse } from 'next/server'
-import { getTender, getTenderDocument, updateTenderStatus, insertTenderAnalysis } from '@/lib/db/tenders'
-import { analyzeTender } from '@/services/ai/orchestrator'
+import { getTender } from '@/lib/db/tenders'
+import { getUserRoleById } from '@/lib/db/users'
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { runTenderAnalysis } from '@/lib/tenders/run-analysis'
+
+// Durée max de la fonction (l'analyse tourne DANS cette requête, pas en after()).
+export const maxDuration = 300
 
 /**
- * Triggered by the Server Action after upload completes.
- * Runs the full analyze pipeline and writes results.
+ * Exécute l'analyse d'un AO DANS la requête HTTP (fiable sur Vercel, contrairement
+ * à after() qui est coupé). Déclenchée par le client (loader) sur la page de l'AO.
+ *
+ * Auth : utilisateur manager/admin (cookies) OU secret interne (x-internal-trigger).
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const expected = process.env.INTERNAL_ANALYZE_SECRET
-  const got = req.headers.get('x-internal-trigger')
-  if (!expected || got !== expected) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   const { id } = await ctx.params
 
-  const tender = await getTender(id)
-  if (!tender) return NextResponse.json({ error: 'tender not found' }, { status: 404 })
+  let userId: string | null = null
+  const internal = process.env.INTERNAL_ANALYZE_SECRET
+  const trigger = req.headers.get('x-internal-trigger')
 
-  const doc = await getTenderDocument(id)
-  if (!doc || !doc.extracted_text) {
-    await updateTenderStatus(id, 'failed', 'no extracted text')
-    return NextResponse.json({ error: 'no extracted text' }, { status: 400 })
+  if (internal && trigger === internal) {
+    const tender = await getTender(id)
+    userId = tender?.created_by ?? null
+  } else {
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ ok: false, error: 'Non authentifié' }, { status: 401 })
+    const role = await getUserRoleById(user.id)
+    if (role !== 'manager' && role !== 'admin') {
+      return NextResponse.json({ ok: false, error: 'Accès refusé' }, { status: 403 })
+    }
+    userId = user.id
   }
 
-  try {
-    const result = await analyzeTender(doc.extracted_text, tender.created_by)
-    await insertTenderAnalysis({
-      tender_id: id,
-      provider: result.provider as never,
-      model: result.model,
-      prompt_versions: result.promptVersions,
-      summary: result.reading.summary,
-      constraints: result.reading.constraints,
-      risks: result.reading.risks,
-      checklist: result.reading.checklist,
-      technical_memo: result.memo.technical_memo,
-      library_snapshot: result.librarySnapshot,
-      raw_response: null,
-      document_sources: result.documentSources, // A6 — réf. recall A3, dédupé
-    })
-    await updateTenderStatus(id, 'ready', null, result.score.score)
-    return NextResponse.json({ ok: true, score: result.score.score })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'unknown'
-    await updateTenderStatus(id, 'failed', msg)
-    return NextResponse.json({ error: msg }, { status: 500 })
-  }
+  const result = await runTenderAnalysis(id, userId)
+  return NextResponse.json(result, { status: result.ok ? 200 : 500 })
 }

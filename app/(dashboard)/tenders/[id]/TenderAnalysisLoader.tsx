@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 
@@ -8,30 +8,56 @@ interface TenderAnalysisLoaderProps {
   id: string
 }
 
-// Durée typique d'une analyse (lecture + mémoire technique + score). La barre
-// progresse vers ~95 % sur cette base puis attend la vraie fin (statut != analyzing).
+// Durée typique d'une analyse. La barre progresse vers ~95 % sur cette base puis
+// attend la vraie fin (réponse du POST /analyze, ou statut != analyzing).
 const EXPECTED_SECONDS = 75
 
 export function TenderAnalysisLoader({ id }: TenderAnalysisLoaderProps) {
   const router = useRouter()
   const [timedOut, setTimedOut] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const pollCountRef = useRef(0)
+  const [error, setError] = useState<string | null>(null)
+  const triggeredRef = useRef(false)
+  const doneRef = useRef(false)
 
-  // Compteur de temps écoulé (1 s) → alimente la barre + l'estimation restante.
+  const finish = useCallback(() => {
+    if (doneRef.current) return
+    doneRef.current = true
+    router.refresh()
+  }, [router])
+
+  // 1) DÉCLENCHE l'analyse (une seule fois). Elle tourne DANS cette requête HTTP
+  //    (fiable sur Vercel, contrairement à after() qui est coupé). Le navigateur
+  //    garde la fonction vivante jusqu'à la réponse.
+  useEffect(() => {
+    if (triggeredRef.current) return
+    triggeredRef.current = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/tenders/${id}/analyze`, { method: 'POST' })
+        const data = await res.json().catch(() => ({} as { error?: string }))
+        if (!res.ok) setError(data?.error ?? 'Échec de l\'analyse')
+        finish() // statut désormais terminal (ready/failed) → la page se met à jour
+      } catch {
+        // Connexion coupée → le poll de secours ci-dessous prend le relais.
+      }
+    })()
+  }, [id, finish])
+
+  // Compteur de temps écoulé (alimente la barre).
   useEffect(() => {
     const t = setInterval(() => setElapsed((e) => e + 1), 1000)
     return () => clearInterval(t)
   }, [])
 
+  // 2) Poll de secours : si le POST est coupé (réseau) ou si un autre onglet a
+  //    déjà lancé l'analyse, on détecte la fin via le statut.
   useEffect(() => {
-    // Poll toutes les 3 s pendant 5 min (100 tentatives) — plus long que le
-    // seuil serveur d'auto-fail (4 min, cf. /api/tenders/[id]/status) pour que
-    // l'AO bloqué bascule en `failed` AVANT qu'on arrête de poller.
-    const MAX_POLLS = 100
+    const MAX_POLLS = 100 // ~5 min
+    let polls = 0
     const interval = setInterval(async () => {
-      pollCountRef.current += 1
-      if (pollCountRef.current >= MAX_POLLS) {
+      polls += 1
+      if (polls >= MAX_POLLS) {
         clearInterval(interval)
         setTimedOut(true)
         return
@@ -40,21 +66,17 @@ export function TenderAnalysisLoader({ id }: TenderAnalysisLoaderProps) {
         const res = await fetch(`/api/tenders/${id}/status`)
         if (!res.ok) return
         const data = await res.json()
-        const inProgress = data.status === 'analyzing' || data.status === 'extracting'
-        if (!inProgress) {
+        if (data.status !== 'analyzing' && data.status !== 'extracting') {
           clearInterval(interval)
-          router.refresh()
+          finish()
         }
       } catch {
-        // Network error — keep polling
+        // erreur réseau — on continue à poller
       }
     }, 3000)
-
     return () => clearInterval(interval)
-  }, [id, router])
+  }, [id, finish])
 
-  // Progression estimée : ease-out asymptotique vers 95 % (ne ment jamais sur la
-  // fin — elle n'atteint 100 % qu'au vrai changement de statut, via router.refresh).
   const pct = timedOut
     ? 100
     : Math.min(95, Math.round((1 - Math.exp(-elapsed / (EXPECTED_SECONDS / 1.6))) * 100))
@@ -79,18 +101,20 @@ export function TenderAnalysisLoader({ id }: TenderAnalysisLoaderProps) {
         </div>
       </div>
 
-      {!timedOut && (
+      {!timedOut && !error && (
         <p className="text-xs text-muted-foreground/70 text-center max-w-md">
           Lecture du document, contraintes et risques, mémoire technique, score d&apos;opportunité.
           L&apos;estimation est indicative — la page se met à jour dès que l&apos;analyse est prête.
         </p>
       )}
 
-      {timedOut && (
+      {error && (
+        <p className="text-sm text-rose-700 text-center max-w-md">{error} — rechargez la page pour relancer.</p>
+      )}
+
+      {timedOut && !error && (
         <p className="text-sm text-rose-700 text-center max-w-md">
-          L&apos;analyse n&apos;a pas répondu dans le temps imparti. Rechargez la page : l&apos;analyse
-          devrait apparaître en échec, vous pourrez alors la relancer. Si le problème persiste,
-          contactez l&apos;admin.
+          L&apos;analyse n&apos;a pas répondu dans le temps imparti. Rechargez la page : vous pourrez la relancer.
         </p>
       )}
     </div>

@@ -2,28 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { after } from 'next/server'
 import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday, insertTenderAnalysis } from '@/lib/db/tenders'
-import { analyzeTender } from '@/services/ai/orchestrator'
-import { validateAnalysisSources } from '@/services/ai/source-validation'
-import { listKnowledgeItems } from '@/lib/db/knowledge'
+import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday } from '@/lib/db/tenders'
 import { getEvidenceForEngagement } from '@/lib/db/engagements'
-
-// Borne l'analyse IA dans after() : si analyzeTender PEND (sans throw), on
-// bascule en échec au lieu de rester coincé « analyzing » indéfiniment.
-const ANALYZE_TIMEOUT_MS = 180_000
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} : délai dépassé (${Math.round(ms / 1000)}s)`)), ms),
-    ),
-  ])
-}
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -61,44 +45,9 @@ export async function relaunchAnalysisAction(formData: FormData) {
   })
   revalidatePath(`/tenders/${parsed.data.id}`)
 
-  // Schedule background analyze via Next.js after()
-  const tenderId = parsed.data.id
-  const extractedText = doc.extracted_text
-  after(async () => {
-    try {
-      const result = await withTimeout(analyzeTender(extractedText, userId), ANALYZE_TIMEOUT_MS, 'Analyse IA')
-
-      // Validation des sources avant insertion
-      const knowledgeItems = await listKnowledgeItems({})
-      const isMock = result.provider === 'mock'
-      const validated = validateAnalysisSources(result.reading, {
-        extractedText,
-        knowledgeItems,
-        skipPdfValidation: isMock,
-      })
-
-      await insertTenderAnalysis({
-        tender_id: tenderId,
-        provider: result.provider as 'mock' | 'gemini' | 'anthropic' | 'openai',
-        model: result.model,
-        prompt_versions: result.promptVersions,
-        summary: result.reading.summary,
-        constraints: validated.constraints,
-        risks: validated.risks,
-        checklist: validated.checklist,
-        technical_memo: result.memo.technical_memo,
-        library_snapshot: result.librarySnapshot,
-        raw_response: null,
-        document_sources: result.documentSources, // A6 — réf. recall A3, dédupé
-      })
-      await updateTenderStatus(tenderId, 'ready', null, result.score.score)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'unknown'
-      console.error('[relaunchAnalysisAction] analyze failed:', e)
-      await updateTenderStatus(tenderId, 'failed', msg)
-    }
-  })
-
+  // L'analyse NE tourne PLUS en after() (coupé par Vercel). Le statut passe
+  // 'analyzing' ; le client (loader) la déclenche via POST /api/tenders/[id]/analyze
+  // dans une vraie requête HTTP (fiable).
   return { ok: true }
 }
 
