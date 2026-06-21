@@ -11,6 +11,8 @@ import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
 import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { getSiteEngagements } from '@/lib/db/site-engagements'
+import { buildSiteMemorySignals, buildSuggestedQuestions } from '@/lib/db/site-memory-signals'
+import { PrepareMeetingBlock } from './PrepareMeetingBlock'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
 import { EngagementsTable } from './EngagementsTable'
@@ -58,6 +60,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     listReportFinalVersions(id),
   ])
   const isPvValidated = pvDoc?.status === 'validated' || pvDoc?.status === 'exported'
+
+  // « Préparer cette réunion » : détecteurs déterministes (mémoire chantier, P1).
+  // Ce qui traîne sur le SITE avant la réunion. Zéro IA, descriptif.
+  const memorySignals = report.site_id ? await buildSiteMemorySignals(report.site_id) : []
+  const suggestedQuestions = buildSuggestedQuestions(memorySignals)
 
   const supabase = createAdminClient()
 
@@ -132,6 +139,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           L&apos;analyse a échoué : {report.analysis_error}. Le compte-rendu brut et ses pièces restent conservés.
         </div>
       )}
+
+      {/* Préparer cette réunion — détecteurs mémoire chantier (déterministe, P1). */}
+      {report.site_id && <PrepareMeetingBlock signals={memorySignals} questions={suggestedQuestions} />}
 
       {/* Suivi de la réunion précédente — PV de pilotage (Sprint 3) */}
       {followup && <MeetingFollowup data={followup} />}
