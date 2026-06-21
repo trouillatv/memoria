@@ -8,6 +8,7 @@ import { createGlossaryTerm, deleteGlossaryTerm } from '@/lib/db/glossary'
 const TermSchema = z.object({
   term: z.string().trim().min(1, 'Terme requis').max(120),
   definition: z.string().trim().max(1000).optional(),
+  category: z.string().trim().max(40).optional(),
   aliases: z.string().trim().max(500).optional(), // saisie « a, b, c »
 })
 
@@ -36,6 +37,7 @@ export async function createGlossaryTermAction(
     await createGlossaryTerm({
       term: parsed.data.term,
       definition: parsed.data.definition || null,
+      category: parsed.data.category || null,
       aliases,
       createdBy: auth.user.id,
     })

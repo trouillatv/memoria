@@ -11,9 +11,14 @@ export interface GlossaryTerm {
   id: string
   term: string
   definition: string | null
+  /** Catégorie métier (mig 152) : engin / matériau / document / processus / contrôle… */
+  category: string | null
   aliases: string[]
   createdAt: string
 }
+
+/** Catégories suggérées (libre — l'utilisateur peut en saisir d'autres). */
+export const GLOSSARY_CATEGORIES = ['engin', 'matériau', 'document', 'processus', 'contrôle', 'acteur'] as const
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -48,18 +53,19 @@ export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
   const orgId = await getOrgId()
   let q = supabase
     .from('glossary_terms')
-    .select('id, term, definition, aliases, created_at')
+    .select('id, term, definition, category, aliases, created_at')
     .order('term', { ascending: true })
   q = orgId ? q.eq('organization_id', orgId) : q.is('organization_id', null)
   const { data, error } = await q
   if (error) throw error
-  return ((data ?? []) as Array<{ id: string; term: string; definition: string | null; aliases: string[] | null; created_at: string }>)
-    .map((r) => ({ id: r.id, term: r.term, definition: r.definition, aliases: r.aliases ?? [], createdAt: r.created_at }))
+  return ((data ?? []) as Array<{ id: string; term: string; definition: string | null; category: string | null; aliases: string[] | null; created_at: string }>)
+    .map((r) => ({ id: r.id, term: r.term, definition: r.definition, category: r.category, aliases: r.aliases ?? [], createdAt: r.created_at }))
 }
 
 export async function createGlossaryTerm(input: {
   term: string
   definition?: string | null
+  category?: string | null
   aliases?: string[]
   createdBy: string | null
 }): Promise<string> {
@@ -71,6 +77,7 @@ export async function createGlossaryTerm(input: {
       organization_id: orgId,
       term: input.term,
       definition: input.definition ?? null,
+      category: input.category ?? null,
       aliases: input.aliases ?? [],
       created_by: input.createdBy,
     })
