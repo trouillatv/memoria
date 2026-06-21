@@ -212,6 +212,7 @@ export async function materializeEngagementsAsObligations(siteId: string, userId
     const def = obligationDefaultsForKind(kind)
     const ref = (e.source_ref as Record<string, unknown> | null) ?? null
     const pageNum = typeof ref?.page === 'number' ? (ref.page as number) : null
+    const section = typeof ref?.section === 'string' ? (ref.section as string).slice(0, 160) : null
     const page = pageNum != null ? `p.${pageNum}` : null
     const tender = tenderById.get(e.tender_id as string)
     const originLabel = docByTender.get(e.tender_id as string) ?? (tender?.title as string | undefined) ?? 'AO'
@@ -226,6 +227,7 @@ export async function materializeEngagementsAsObligations(siteId: string, userId
       origin_excerpt: (e.source_excerpt as string | null) ?? null,
       origin_ref: originRef,
       origin_page: pageNum,
+      origin_section: section,
       origin_date: (tender?.created_at as string | undefined) ?? null,
     })
     if (!error) created++
@@ -238,6 +240,7 @@ export interface ObligationOrigin {
   ref: string | null
   excerpt: string | null
   page: number | null
+  section: string | null
   pdfUrl: string | null   // URL signée du PDF source (tender-documents), null si absent
   filename: string | null
 }
@@ -247,7 +250,7 @@ export interface ObligationOrigin {
 export async function getObligationOrigin(obligationId: string): Promise<ObligationOrigin | null> {
   const supabase = createAdminClient()
   const { data: o } = await supabase.from('site_obligation')
-    .select('label, origin_tender_id, origin_page, origin_excerpt, origin_ref')
+    .select('label, origin_tender_id, origin_page, origin_section, origin_excerpt, origin_ref')
     .eq('id', obligationId).maybeSingle()
   if (!o) return null
   const base: ObligationOrigin = {
@@ -255,6 +258,7 @@ export async function getObligationOrigin(obligationId: string): Promise<Obligat
     ref: (o.origin_ref as string | null) ?? null,
     excerpt: (o.origin_excerpt as string | null) ?? null,
     page: (o.origin_page as number | null) ?? null,
+    section: (o.origin_section as string | null) ?? null,
     pdfUrl: null, filename: null,
   }
   const tenderId = o.origin_tender_id as string | null

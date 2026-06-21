@@ -1,15 +1,15 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Quote, FileText, ExternalLink, ArrowLeft } from 'lucide-react'
+import { Quote, FileText, ExternalLink, ArrowLeft, ChevronDown } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getObligationOrigin } from '@/lib/db/obligations'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 
 export const dynamic = 'force-dynamic'
 
-// Sprint C1 — provenance NAVIGABLE : « origine : CCTP p.148 » → cette page ouvre le
-// PDF source à la bonne page (viewer natif, #page=N) avec l'extrait cité à côté.
-// Pas de pdf.js, pas de surlignage : robuste, vérifiable en un clic.
+// Sprint C1 (affiné, Vincent) — Usage 1 « montre-moi le passage » : l'EXTRAIT est le
+// héros (source / page / chapitre / extrait complet), le PDF est SECONDAIRE (replié).
+// Ouvrir un PDF de 300 pages même à la bonne page est un mauvais réflexe. Pas de pdf.js.
 export default async function ObligationSourcePage({
   params, searchParams,
 }: {
@@ -29,7 +29,7 @@ export default async function ObligationSourcePage({
   const pdfSrc = origin.pdfUrl ? `${origin.pdfUrl}#page=${origin.page ?? 1}&view=FitH` : null
 
   return (
-    <div className="space-y-4 w-full">
+    <div className="space-y-4 w-full max-w-2xl">
       <DynamicCrumb segmentId="source" label="Source" />
       <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${id}/obligations`, label: 'Obligations' }]} />
 
@@ -38,49 +38,57 @@ export default async function ObligationSourcePage({
       </Link>
 
       <header className="space-y-1">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Engagement</p>
         <h1 className="text-xl font-semibold">{origin.obligationLabel}</h1>
-        <p className="text-xs text-muted-foreground">
-          Origine contractuelle{origin.ref ? ` · ${origin.ref}` : ''} — vérifiez la clause directement dans le document source.
-        </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 items-start">
-        {/* Extrait cité — à côté du PDF (Vincent : « affiche l'extrait source à côté »). */}
-        <aside className="space-y-3 lg:sticky lg:top-4">
-          <div className="rounded-xl border bg-card p-4 space-y-2">
-            <h2 className="text-sm font-semibold inline-flex items-center gap-2"><Quote className="h-4 w-4 text-sky-600" /> Extrait source</h2>
-            {origin.excerpt ? (
-              <blockquote className="text-sm italic text-foreground/90 border-l-2 border-sky-300 pl-3">« {origin.excerpt} »</blockquote>
-            ) : (
-              <p className="text-xs text-muted-foreground italic">Aucun extrait conservé.</p>
-            )}
-            {origin.ref && <p className="text-[11px] text-muted-foreground">Référence : {origin.ref}</p>}
-          </div>
-          {pdfSrc && (
-            <a href={pdfSrc} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40">
-              <ExternalLink className="h-3.5 w-3.5" /> Ouvrir le PDF dans un onglet
-            </a>
-          )}
-        </aside>
+      {/* LE PASSAGE — héros. « Montre-moi le passage », pas « ouvre-moi le document ». */}
+      <section className="rounded-xl border bg-card p-5 space-y-4">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          {origin.filename && (<><dt className="text-muted-foreground">Source</dt><dd className="font-medium">{origin.filename}</dd></>)}
+          {origin.page != null && (<><dt className="text-muted-foreground">Page</dt><dd className="font-medium tabular-nums">{origin.page}</dd></>)}
+          {origin.section && (<><dt className="text-muted-foreground">Chapitre</dt><dd className="font-medium">{origin.section}</dd></>)}
+        </dl>
 
-        {/* PDF ouvert à la bonne page (viewer natif du navigateur via iframe + #page=N). */}
-        <div className="rounded-xl border bg-card overflow-hidden">
-          {pdfSrc ? (
-            <iframe
-              src={pdfSrc}
-              title={`${origin.filename ?? 'Document source'} — page ${origin.page ?? 1}`}
-              className="w-full h-[calc(100vh-12rem)] min-h-[480px]"
-            />
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1 inline-flex items-center gap-1.5">
+            <Quote className="h-3.5 w-3.5 text-sky-600" /> Extrait
+          </p>
+          {origin.excerpt ? (
+            <blockquote className="text-[15px] leading-relaxed italic text-foreground/90 border-l-2 border-sky-300 pl-4">
+              « {origin.excerpt} »
+            </blockquote>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-2 py-20 text-center text-muted-foreground">
-              <FileText className="h-8 w-8" />
-              <p className="text-sm">Document source indisponible.</p>
-              <p className="text-xs max-w-sm">L&apos;extrait ci-contre reste la trace de la clause d&apos;origine.</p>
-            </div>
+            <p className="text-xs text-muted-foreground italic">Aucun extrait conservé.</p>
           )}
         </div>
-      </div>
+
+        {pdfSrc && (
+          <a href={pdfSrc} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/40">
+            <ExternalLink className="h-3.5 w-3.5" /> Ouvrir le PDF à la page {origin.page ?? 1}
+          </a>
+        )}
+      </section>
+
+      {/* PDF — SECONDAIRE, replié. La confirmation visuelle si on veut voir la page entière. */}
+      {pdfSrc ? (
+        <details className="rounded-xl border bg-card overflow-hidden group">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm font-medium hover:bg-muted/30">
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+            Voir le passage dans le document {origin.page != null ? `(page ${origin.page})` : ''}
+          </summary>
+          <iframe
+            src={pdfSrc}
+            title={`${origin.filename ?? 'Document source'} — page ${origin.page ?? 1}`}
+            className="w-full h-[calc(100vh-14rem)] min-h-[460px] border-t"
+          />
+        </details>
+      ) : (
+        <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+          <FileText className="h-3.5 w-3.5" /> Document source indisponible — l&apos;extrait ci-dessus reste la trace de la clause d&apos;origine.
+        </p>
+      )}
     </div>
   )
 }
