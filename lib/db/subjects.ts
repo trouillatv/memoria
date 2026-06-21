@@ -62,6 +62,9 @@ function ddmmyyyy(iso: string | null): string | null {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
+function daysBetween(isoA: string, isoB: string): number {
+  return Math.round((new Date(isoB).getTime() - new Date(isoA).getTime()) / 86400000)
+}
 
 /** Criticité dérivée : haute si retard/réserve ouverte, moyenne si actif, basse sinon. */
 function deriveCriticality(s: { lateActions: number; openReserves: number; lastActivity: string | null }): SubjectCriticality {
@@ -228,6 +231,70 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null }>)
       .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision })),
     documents: documents.map((d) => ({ id: d.id, filename: d.filename })),
+  }
+}
+
+// EXPLOITATION du sujet (Vincent P3 « Sujet vivant ») — synthèse DÉTERMINISTE de
+// l'histoire : âge, réunions concernées, promesses (échéances annoncées dans le temps),
+// reports (glissements vers plus tard), récurrence. Zéro IA, zéro score d'acteur.
+export interface SubjectPromise { announcedOn: string; dueDate: string; label: string }
+export interface SubjectInsights {
+  ageDays: number | null
+  meetingsCount: number
+  decisionsCount: number
+  openActions: number
+  promises: SubjectPromise[]
+  lastPromise: string | null
+  slippages: number       // nb de fois où l'échéance a glissé PLUS TARD = « reports »
+  recurring: boolean      // sujet OUVERT concerné par ≥ seuil réunions
+  status: SubjectStatus
+}
+
+export async function getSubjectInsights(subjectId: string, recurringMeetings = 3): Promise<SubjectInsights | null> {
+  const subject = await getSubject(subjectId)
+  if (!subject) return null
+  const supabase = createAdminClient()
+  const today = todayIso()
+  const [{ data: decisions }, { data: actions }] = await Promise.all([
+    supabase.from('site_decisions').select('titre, date_decision, echeance, report_id, statut').eq('subject_id', subjectId),
+    supabase.from('site_actions').select('title, created_at, due_date, report_id, status').eq('subject_id', subjectId),
+  ])
+  const decs = decisions ?? []
+  const acts = actions ?? []
+
+  const reportIds = new Set<string>()
+  for (const d of decs) if (d.report_id) reportIds.add(d.report_id as string)
+  for (const a of acts) if (a.report_id) reportIds.add(a.report_id as string)
+
+  // PROMESSES = échéances ANNONCÉES dans le temps (décision.echeance, action.due_date),
+  // ordonnées par date d'annonce. « DOE promis 12/03, 28/03, 14/04… ».
+  const promises: SubjectPromise[] = []
+  for (const d of decs) if (d.echeance) promises.push({ announcedOn: (d.date_decision as string) ?? '', dueDate: d.echeance as string, label: d.titre as string })
+  for (const a of acts) if (a.due_date) promises.push({ announcedOn: (a.created_at as string).slice(0, 10), dueDate: a.due_date as string, label: a.title as string })
+  promises.sort((x, y) => x.announcedOn.localeCompare(y.announcedOn))
+  // Reports : à chaque nouvelle promesse, l'échéance recule encore = glissement.
+  let slippages = 0
+  for (let i = 1; i < promises.length; i++) if (promises[i].dueDate > promises[i - 1].dueDate) slippages++
+  const lastPromise = promises.length ? promises[promises.length - 1].dueDate : null
+
+  // Âge = depuis le 1er événement daté.
+  const firstDates = [
+    ...decs.map((d) => d.date_decision as string | null),
+    ...acts.map((a) => (a.created_at as string).slice(0, 10)),
+  ].filter((x): x is string => !!x).sort()
+  const ageDays = firstDates.length ? daysBetween(firstDates[0], today) : null
+
+  const openActions = acts.filter((a) => a.status === 'open' || a.status === 'planned').length
+  return {
+    ageDays: ageDays != null && ageDays >= 0 ? ageDays : null,
+    meetingsCount: reportIds.size,
+    decisionsCount: decs.length,
+    openActions,
+    promises,
+    lastPromise,
+    slippages,
+    recurring: subject.status === 'open' && reportIds.size >= recurringMeetings,
+    status: subject.status,
   }
 }
 

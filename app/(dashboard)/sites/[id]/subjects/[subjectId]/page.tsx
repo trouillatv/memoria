@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSubjectThread, getSubjectTimeline } from '@/lib/db/subjects'
+import { getSubjectThread, getSubjectTimeline, getSubjectInsights } from '@/lib/db/subjects'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -20,9 +20,10 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, subjectId } = await params
-  const [identity, thread, timeline] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId)])
+  const [identity, thread, timeline, insights] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId), getSubjectInsights(subjectId)])
   if (!identity || !thread || thread.subject.site_id !== id) notFound()
   const { subject, actions, reserves, decisions, siteDecisions, documents } = thread
+  const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
   const supabase = createAdminClient()
@@ -63,6 +64,40 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         </div>
         <p className="text-xs text-muted-foreground">{identity.name}{identity.clientName ? ` · ${identity.clientName}` : ''}</p>
       </header>
+
+      {/* SYNTHÈSE « Sujet vivant » (P3) : l'exploitation déterministe de l'histoire —
+          âge, réunions, promesses, reports, récurrence. Zéro IA, zéro score d'acteur. */}
+      {insights && (insights.ageDays != null || insights.meetingsCount > 0) && (
+        <section className="rounded-xl border bg-card p-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {insights.ageDays != null && <span><strong>{insights.ageDays} j</strong> d&apos;ancienneté</span>}
+            <span><strong>{insights.meetingsCount}</strong> réunion{insights.meetingsCount > 1 ? 's' : ''} concernée{insights.meetingsCount > 1 ? 's' : ''}</span>
+            <span><strong>{insights.decisionsCount}</strong> décision{insights.decisionsCount > 1 ? 's' : ''}</span>
+            <span><strong>{insights.openActions}</strong> action{insights.openActions > 1 ? 's' : ''} ouverte{insights.openActions > 1 ? 's' : ''}</span>
+            {insights.promises.length > 0 && (
+              <span><strong>{insights.promises.length}</strong> échéance{insights.promises.length > 1 ? 's' : ''} annoncée{insights.promises.length > 1 ? 's' : ''}{insights.lastPromise ? ` · dernière : ${fr(insights.lastPromise)}` : ''}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {insights.recurring && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700">⚠ Sujet récurrent — {insights.meetingsCount} réunions, toujours ouvert</span>
+            )}
+            {insights.slippages > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">⚠ Décision réitérée — {insights.slippages} report{insights.slippages > 1 ? 's' : ''} d&apos;échéance</span>
+            )}
+          </div>
+          {insights.promises.length > 1 && (
+            <div className="text-[11px] text-muted-foreground">
+              Promesses successives : {insights.promises.map((p) => fr(p.dueDate)).join(' → ')}
+            </div>
+          )}
+          {insights.status === 'open' && insights.lastPromise && (
+            <p className="text-xs text-muted-foreground border-t pt-2">
+              Question à poser : « {subject.name} sera-t-il tenu pour le {fr(insights.lastPromise)} ? »
+            </p>
+          )}
+        </section>
+      )}
 
       <SubjectDetailControls siteId={id} subjectId={subjectId} status={subject.status} candidates={candidates} />
 
