@@ -4,6 +4,7 @@
 // La COUVERTURE = « Santé de la mémoire » (qualité de capture), jamais un détecteur.
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABEL, type AudioSourceType } from './audio-source-constants'
+import { listGlossaryTerms, applyGlossaryCorrections } from './glossary'
 
 export { AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABEL, type AudioSourceType }
 
@@ -85,7 +86,18 @@ export async function buildCombinedCorpus(reportId: string): Promise<string> {
     const tag = [label, i === 0 ? 'source principale' : 'complément', dur].filter(Boolean).join(' · ')
     parts.push(`[${tag}]\n${t}`)
   })
-  return parts.join('\n\n')
+  const corpus = parts.join('\n\n')
+
+  // Correction par le glossaire métier (mig 150) : « finisher » → « finisseur ».
+  // Déterministe, appliquée au CORPUS (les transcriptions brutes par source
+  // restent intactes — l'artefact brut n'est jamais modifié). Best-effort.
+  try {
+    const terms = await listGlossaryTerms()
+    if (terms.length > 0) return applyGlossaryCorrections(corpus, terms)
+  } catch {
+    /* glossaire indisponible → corpus non corrigé, jamais bloquant */
+  }
+  return corpus
 }
 
 export interface MemoryHealth {

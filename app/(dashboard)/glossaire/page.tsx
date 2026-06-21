@@ -21,7 +21,8 @@ export default async function GlossairePage() {
         <h1 className="text-2xl font-semibold">Glossaire métier</h1>
         <p className="text-sm text-muted-foreground">
           Le vocabulaire de votre métier (finisseur, grader, grave-bitume, PAQ, DOE…) et ses fautes
-          fréquentes. Il servira à corriger automatiquement les futures transcriptions.
+          fréquentes. Les alias sont <strong>corrigés automatiquement</strong> dans la transcription de
+          vos prochaines réunions (ex. « finisher » → « finisseur »).
         </p>
       </header>
       <GlossaryManager terms={terms} />

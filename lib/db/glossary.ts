@@ -15,6 +15,34 @@ export interface GlossaryTerm {
   createdAt: string
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Correction déterministe d'un texte par le glossaire (pas de LLM) : chaque
+ * alias est remplacé par le terme canonique (mot entier, insensible à la casse).
+ * Ex. « finisher » → « finisseur ». Les alias les plus longs d'abord (évite les
+ * remplacements partiels). Fonction PURE — testable, sans dépendance serveur.
+ */
+export function applyGlossaryCorrections(text: string, terms: GlossaryTerm[]): string {
+  if (!text) return text
+  const pairs: Array<{ alias: string; term: string }> = []
+  for (const t of terms) {
+    for (const a of t.aliases) {
+      const alias = a.trim()
+      if (alias && alias.toLowerCase() !== t.term.toLowerCase()) pairs.push({ alias, term: t.term })
+    }
+  }
+  // Alias les plus longs d'abord : « grave bitume » avant « grave ».
+  pairs.sort((x, y) => y.alias.length - x.alias.length)
+  let out = text
+  for (const { alias, term } of pairs) {
+    out = out.replace(new RegExp(`\\b${escapeRegex(alias)}\\b`, 'gi'), term)
+  }
+  return out
+}
+
 export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
