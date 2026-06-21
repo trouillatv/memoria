@@ -8,6 +8,7 @@ import { ArrowLeft, ClipboardList } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { buildSiteMemorySignals, buildSuggestedQuestions } from '@/lib/db/site-memory-signals'
+import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PrepareMeetingBlock } from '../PrepareMeetingBlock'
 import { PrintButton } from './PrintButton'
@@ -23,8 +24,9 @@ export default async function BriefingPage({ params }: { params: Promise<{ id: s
   const report = await getSiteReport(id)
   if (!report) notFound()
 
-  const [signals, siteRow] = await Promise.all([
+  const [signals, subjects, siteRow] = await Promise.all([
     report.site_id ? buildSiteMemorySignals(report.site_id) : Promise.resolve([]),
+    report.site_id ? listSiteSubjectsToWatch(report.site_id) : Promise.resolve([]),
     report.site_id
       ? createAdminClient().from('sites').select('name').eq('id', report.site_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -65,8 +67,8 @@ export default async function BriefingPage({ params }: { params: Promise<{ id: s
         </section>
       )}
 
-      {/* Détail + Questions à poser (avec leur « pourquoi »). */}
-      <PrepareMeetingBlock signals={signals} questions={questions} />
+      {/* Sujets à surveiller (intelligence) + détail + Questions à poser. */}
+      <PrepareMeetingBlock signals={signals} questions={questions} subjects={subjects} siteId={report.site_id ?? undefined} />
 
       <p className="text-[11px] text-muted-foreground/70 print:mt-6">
         Briefing déterministe (mémoire chantier) — généré le {dateLabel}. Le compte-rendu officiel se prépare après la réunion.

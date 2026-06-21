@@ -268,17 +268,10 @@ export interface SubjectInsights {
   status: SubjectStatus
 }
 
-export async function getSubjectInsights(subjectId: string, recurringMeetings = 3): Promise<SubjectInsights | null> {
-  const subject = await getSubject(subjectId)
-  if (!subject) return null
-  const supabase = createAdminClient()
+type SubjRow = Record<string, unknown>
+/** Calcul PUR de l'intelligence d'un sujet (aucune DB) — réutilisé en lot (briefing). */
+function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], recurringMeetings: number): SubjectInsights {
   const today = todayIso()
-  const [{ data: decisions }, { data: actions }] = await Promise.all([
-    supabase.from('site_decisions').select('titre, date_decision, echeance, report_id, statut').eq('subject_id', subjectId),
-    supabase.from('site_actions').select('title, created_at, due_date, report_id, status, assigned_to').eq('subject_id', subjectId),
-  ])
-  const decs = decisions ?? []
-  const acts = actions ?? []
 
   const reportIds = new Set<string>()
   for (const d of decs) if (d.report_id) reportIds.add(d.report_id as string)
@@ -372,6 +365,49 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
     recurring: subject.status === 'open' && reportIds.size >= recurringMeetings,
     status: subject.status,
   }
+}
+
+export async function getSubjectInsights(subjectId: string, recurringMeetings = 3): Promise<SubjectInsights | null> {
+  const subject = await getSubject(subjectId)
+  if (!subject) return null
+  const supabase = createAdminClient()
+  const [{ data: decisions }, { data: actions }] = await Promise.all([
+    supabase.from('site_decisions').select('titre, date_decision, echeance, report_id, statut').eq('subject_id', subjectId),
+    supabase.from('site_actions').select('title, created_at, due_date, report_id, status, assigned_to').eq('subject_id', subjectId),
+  ])
+  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], recurringMeetings)
+}
+
+export interface SubjectWatch {
+  id: string; name: string; state: SubjectState; ageDays: number | null
+  energy: SubjectEnergy; cause: string | null; lastEvolution: string | null; openQuestion: string | null
+}
+const ENERGY_RANK: Record<SubjectEnergy, number> = { basse: 0, moyenne: 1, élevée: 2, 'très élevée': 3 }
+
+/** Sujets d'un site qui APPELLENT une action/question (pour le briefing) : bloqué,
+ *  en attente, reports d'échéance, récurrence ou question ouverte. Batché (3 requêtes,
+ *  pas de N+1), trié (bloqué d'abord puis énergie), capé. Ne surcharge pas le briefing. */
+export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promise<SubjectWatch[]> {
+  const supabase = createAdminClient()
+  const { data: subs } = await supabase.from('subjects').select('*').eq('site_id', siteId).neq('status', 'closed')
+  const subjects = (subs ?? []) as DbSubject[]
+  if (subjects.length === 0) return []
+  const ids = subjects.map((s) => s.id)
+  const [{ data: decisions }, { data: actions }] = await Promise.all([
+    supabase.from('site_decisions').select('subject_id, titre, date_decision, echeance, report_id, statut').in('subject_id', ids),
+    supabase.from('site_actions').select('subject_id, title, created_at, due_date, report_id, status, assigned_to').in('subject_id', ids),
+  ])
+  const decBy = new Map<string, SubjRow[]>()
+  for (const d of (decisions ?? []) as SubjRow[]) { const k = d.subject_id as string; const a = decBy.get(k); if (a) a.push(d); else decBy.set(k, [d]) }
+  const actBy = new Map<string, SubjRow[]>()
+  for (const a of (actions ?? []) as SubjRow[]) { const k = a.subject_id as string; const arr = actBy.get(k); if (arr) arr.push(a); else actBy.set(k, [a]) }
+
+  return subjects
+    .map((s) => ({ s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], 3) }))
+    .filter(({ ins }) => ins.state === 'bloqué' || ins.state === 'en_attente' || ins.slippages > 0 || ins.recurring || ins.openQuestion != null)
+    .sort((a, b) => (a.ins.state === 'bloqué' ? 0 : 1) - (b.ins.state === 'bloqué' ? 0 : 1) || ENERGY_RANK[b.ins.energy] - ENERGY_RANK[a.ins.energy])
+    .slice(0, limit)
+    .map(({ s, ins }) => ({ id: s.id, name: s.name, state: ins.state, ageDays: ins.ageDays, energy: ins.energy, cause: ins.cause?.text ?? null, lastEvolution: ins.lastEvolution, openQuestion: ins.openQuestion }))
 }
 
 /** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et

@@ -2,8 +2,49 @@
 // Ce qui traîne sur le site AVANT la réunion : actions en retard, décisions jamais
 // appliquées, entreprises absentes, réserves ouvertes. Affichage seul (server
 // component), calme et DESCRIPTIF — pas d'alerte rouge. Chaque bloc explicite sa source.
-import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle, Flame } from 'lucide-react'
+import Link from 'next/link'
+import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle, Flame, Layers, ArrowRight } from 'lucide-react'
 import type { MemorySignal, SignalKind, SuggestedQuestion } from '@/lib/db/site-memory-signals'
+import type { SubjectWatch } from '@/lib/db/subjects'
+
+const STATE_BADGE: Record<string, { label: string; cls: string }> = {
+  bloqué: { label: 'Bloqué', cls: 'bg-rose-100 text-rose-700' },
+  en_attente: { label: 'En attente', cls: 'bg-amber-100 text-amber-800' },
+  dormant: { label: 'En sommeil', cls: 'bg-slate-100 text-slate-600' },
+  ouvert: { label: 'Ouvert', cls: 'bg-sky-100 text-sky-700' },
+  clos: { label: 'Clos', cls: 'bg-emerald-100 text-emerald-700' },
+}
+
+function SubjectsToWatch({ subjects, siteId }: { subjects: SubjectWatch[]; siteId: string }) {
+  if (subjects.length === 0) return null
+  return (
+    <section>
+      <h3 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+        <Layers className="h-3.5 w-3.5" /> Sujets à surveiller ({subjects.length})
+      </h3>
+      <ul className="mt-1.5 space-y-1.5">
+        {subjects.map((s) => {
+          const b = STATE_BADGE[s.state] ?? STATE_BADGE.ouvert
+          return (
+            <li key={s.id} className="rounded-lg border bg-background/40 p-2.5 text-sm">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${b.cls}`}>{b.label}</span>
+                <Link href={`/sites/${siteId}/subjects/${s.id}`} className="font-medium hover:underline">{s.name}</Link>
+                {s.ageDays != null && <span className="text-[11px] text-muted-foreground">{s.ageDays} j · énergie {s.energy}</span>}
+                <Link href={`/sites/${siteId}/subjects/${s.id}`} className="ml-auto inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground">détail <ArrowRight className="h-3 w-3" /></Link>
+              </div>
+              <div className="mt-0.5 space-y-0.5 text-[11px] text-muted-foreground">
+                {s.cause && <span className="block">{s.cause}</span>}
+                {s.lastEvolution && <span className="block">Dernière évolution : {s.lastEvolution}</span>}
+                {s.openQuestion && <span className="block italic">Question : {s.openQuestion}</span>}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
 
 const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
   actor_congestion: { icon: Flame, tone: 'text-orange-700' },
@@ -14,8 +55,8 @@ const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
   reserve_open: { icon: ClipboardCheck, tone: 'text-emerald-700' },
 }
 
-export function PrepareMeetingBlock({ signals, questions = [] }: { signals: MemorySignal[]; questions?: SuggestedQuestion[] }) {
-  if (signals.length === 0) {
+export function PrepareMeetingBlock({ signals, questions = [], subjects = [], siteId }: { signals: MemorySignal[]; questions?: SuggestedQuestion[]; subjects?: SubjectWatch[]; siteId?: string }) {
+  if (signals.length === 0 && subjects.length === 0) {
     return (
       <section className="rounded-xl border bg-card p-4">
         <h2 className="inline-flex items-center gap-2 text-sm font-semibold">
@@ -33,6 +74,11 @@ export function PrepareMeetingBlock({ signals, questions = [] }: { signals: Memo
         </h2>
         <span className="text-xs text-muted-foreground">Avant de commencer, ce qui reste à traiter sur le chantier</span>
       </div>
+
+      {/* SUJETS À SURVEILLER — l'intelligence du sujet remonte AVANT la réunion : pas
+          seulement « quoi surveiller » mais « pourquoi c'est encore ouvert ». */}
+      {siteId && <SubjectsToWatch subjects={subjects} siteId={siteId} />}
+
       <ul className="space-y-2">
         {signals.map((s) => {
           const m = META[s.kind]

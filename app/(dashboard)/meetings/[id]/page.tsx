@@ -153,7 +153,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             <ClipboardList className="h-4 w-4 text-muted-foreground" /> Préparer cette réunion
           </span>
           <span className="text-xs text-muted-foreground">
-            {briefingCount > 0 ? `${briefingCount} point${briefingCount > 1 ? 's' : ''} à surveiller` : 'Rien à signaler'} →
+            {briefingCount > 0 ? `${briefingCount} point${briefingCount > 1 ? 's' : ''} à surveiller` : 'Ouvrir le briefing'} →
           </span>
         </Link>
       )}
