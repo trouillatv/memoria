@@ -13,6 +13,7 @@ import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { getSiteEngagements } from '@/lib/db/site-engagements'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listAudioSources, computeMemoryHealth } from '@/lib/db/report-audio-sources'
+import { listAnalysisRuns } from '@/lib/db/report-analysis-runs'
 import { MeetingMemoryHealth } from './MeetingMemoryHealth'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
@@ -68,7 +69,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const briefingCount = memorySignals.reduce((n, s) => n + s.items.length, 0)
 
   // Santé de la mémoire (P2a) : sources audio + couverture. Zone SÉPARÉE des détecteurs.
-  const [audioSources, memoryHealth] = await Promise.all([listAudioSources(id), computeMemoryHealth(id)])
+  const [audioSources, memoryHealth, analysisRuns] = await Promise.all([listAudioSources(id), computeMemoryHealth(id), listAnalysisRuns(id)])
 
   const supabase = createAdminClient()
 
@@ -158,7 +159,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       )}
 
       {/* Santé de la mémoire — qualité de capture (≠ détecteurs chantier). */}
-      <MeetingMemoryHealth reportId={id} sources={audioSources} health={memoryHealth} />
+      <MeetingMemoryHealth reportId={id} sources={audioSources} health={memoryHealth} analysisRuns={analysisRuns} />
 
       {/* Suivi de la réunion précédente — PV de pilotage (Sprint 3) */}
       {followup && <MeetingFollowup data={followup} />}

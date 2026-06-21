@@ -61,6 +61,9 @@ function ProposalRow({ reportId, proposal }: { reportId: string; proposal: DbSit
 
   return (
     <li className="rounded-lg border bg-card p-3 space-y-2">
+      {proposal.origin === 'reanalysis' && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">🎙 Nouveau depuis audio complémentaire</span>
+      )}
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}

@@ -314,6 +314,34 @@ export async function setReportAnalysis(
   if (error) throw error
 }
 
+/** FUSION non destructive (P2b) : ajoute les participants/risques NOUVEAUX détectés
+ *  par une ré-analyse, sans jamais supprimer l'existant. Dédup déterministe (nom
+ *  normalisé pour les participants, libellé pour les risques). Renvoie le delta. */
+export async function mergeReportAnalysis(
+  id: string,
+  incoming: { participants: SiteReportParticipant[]; risks: SiteReportRisk[] },
+): Promise<{ addedParticipants: number; addedRisks: number }> {
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('site_reports').select('participants, risks').eq('id', id).maybeSingle()
+  const cur = data as { participants: SiteReportParticipant[] | null; risks: SiteReportRisk[] | null } | null
+  const norm = (s: string) => s.toLowerCase().trim()
+  const existingP = new Set((cur?.participants ?? []).map((p) => norm(p.name)))
+  const newP = incoming.participants.filter((p) => p.name?.trim() && !existingP.has(norm(p.name)))
+  const existingR = new Set((cur?.risks ?? []).map((r) => norm(r.label)))
+  const newR = incoming.risks.filter((r) => r.label?.trim() && !existingR.has(norm(r.label)))
+  if (newP.length === 0 && newR.length === 0) return { addedParticipants: 0, addedRisks: 0 }
+  const { error } = await supabase
+    .from('site_reports')
+    .update({
+      participants: [...(cur?.participants ?? []), ...newP],
+      risks: [...(cur?.risks ?? []), ...newR],
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+  return { addedParticipants: newP.length, addedRisks: newR.length }
+}
+
 /** Met à jour le texte saisi/corrigé sans toucher au statut. */
 export async function setReportText(
   id: string,
@@ -331,6 +359,7 @@ export async function setReportText(
 
 export async function bulkInsertProposals(input: {
   report_id: string
+  origin?: 'initial' | 'reanalysis' // tag d'origine (mig 142) ; défaut 'initial'
   proposals: Array<{
     type: SiteReportProposalType
     payload: Record<string, unknown>
@@ -357,6 +386,7 @@ export async function bulkInsertProposals(input: {
     site_id: p.site_id,
     ai_confidence: p.ai_confidence,
     status: 'proposed' as const,
+    origin: input.origin ?? 'initial',
   }))
   const { data, error } = await supabase
     .from('site_report_proposals')

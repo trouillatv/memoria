@@ -6,10 +6,63 @@
 // bloquante) + ajout d'audio de secours (mémo, appel, débrief) fusionné au corpus.
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mic, Plus, Loader2, Check, Activity, FileText, Sparkles } from 'lucide-react'
-import { addMeetingAudioSourceAction, setEstimatedDurationAction } from './memory-actions'
+import { Mic, Plus, Loader2, Check, Activity, FileText, Sparkles, RefreshCw, History } from 'lucide-react'
+import { addMeetingAudioSourceAction, setEstimatedDurationAction, reanalyzeReportAction } from './memory-actions'
 import { AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABEL, type AudioSourceType } from '@/lib/db/audio-source-constants'
 import type { AudioSource, MemoryHealth } from '@/lib/db/report-audio-sources'
+import type { AnalysisRun, AnalysisDelta } from '@/lib/db/report-analysis-runs'
+
+function fmtDelta(d: AnalysisDelta): string {
+  const parts = [
+    d.newActions ? `+${d.newActions} action${d.newActions > 1 ? 's' : ''}` : null,
+    d.newProposals - d.newActions > 0 ? `+${d.newProposals - d.newActions} proposition${d.newProposals - d.newActions > 1 ? 's' : ''}` : null,
+    d.newParticipants ? `+${d.newParticipants} participant${d.newParticipants > 1 ? 's' : ''}` : null,
+    d.newRisks ? `+${d.newRisks} risque${d.newRisks > 1 ? 's' : ''}` : null,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : 'aucun nouvel élément'
+}
+
+function Reanalyze({ reportId, runs }: { reportId: string; runs: AnalysisRun[] }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  function run() {
+    setResult(null); setError(null)
+    startTransition(async () => {
+      try {
+        const r = await reanalyzeReportAction(reportId)
+        if (r.ok) { setResult(fmtDelta(r.delta)); router.refresh() }
+        else setError(r.error)
+      } catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
+    })
+  }
+  return (
+    <div className="space-y-1.5 border-t pt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={run} disabled={pending}
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted/40 disabled:opacity-50">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Ré-analyser le corpus
+        </button>
+        {result && <span className="text-xs font-medium text-emerald-700">Ré-analyse : {result}</span>}
+        {error && <span className="text-xs text-rose-600">{error}</span>}
+      </div>
+      <p className="text-[11px] text-muted-foreground">Relance l'analyse sur le corpus fusionné. Jamais destructif : les éléments existants sont conservés, seuls les nouveaux sont proposés à la curation.</p>
+      {runs.length > 0 && (
+        <div className="pt-1">
+          <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground"><History className="h-3 w-3" /> Historique des analyses</p>
+          <ul className="mt-1 space-y-0.5">
+            {runs.map((r) => (
+              <li key={r.id} className="text-[11px] text-muted-foreground">
+                {new Date(r.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} · {r.trigger === 'initial' ? 'Analyse initiale' : 'Ré-analyse'} — {fmtDelta(r.delta)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function fmtDuration(sec: number | null): string {
   if (!sec || sec <= 0) return '—'
@@ -110,7 +163,7 @@ function AddSource({ reportId }: { reportId: string }) {
   )
 }
 
-export function MeetingMemoryHealth({ reportId, sources, health }: { reportId: string; sources: AudioSource[]; health: MemoryHealth }) {
+export function MeetingMemoryHealth({ reportId, sources, health, analysisRuns = [] }: { reportId: string; sources: AudioSource[]; health: MemoryHealth; analysisRuns?: AnalysisRun[] }) {
   return (
     <section className="rounded-xl border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -148,6 +201,7 @@ export function MeetingMemoryHealth({ reportId, sources, health }: { reportId: s
       )}
 
       <AddSource reportId={reportId} />
+      <Reanalyze reportId={reportId} runs={analysisRuns} />
       <p className="text-[11px] italic text-muted-foreground/70">La couverture est indicative — une réunion peut être clôturée même avec une couverture faible.</p>
     </section>
   )

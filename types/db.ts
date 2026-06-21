@@ -447,6 +447,8 @@ export interface DbSiteReportProposal {
   created_entity_id: string | null
   // Rattachement à un sujet vivant (migration 124).
   subject_id: string | null
+  // Origine (migration 142) : 'initial' (1re analyse) | 'reanalysis' (audio complémentaire).
+  origin?: 'initial' | 'reanalysis'
   created_at: string
 }
 

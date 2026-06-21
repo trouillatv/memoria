@@ -10,7 +10,11 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { transcribeAudio } from '@/lib/ai/transcribe'
-import { setSourceTranscript, buildCombinedCorpus, type AudioSourceType, AUDIO_SOURCE_TYPES } from '@/lib/db/report-audio-sources'
+import { setSourceTranscript, buildCombinedCorpus, listAudioSources, type AudioSourceType, AUDIO_SOURCE_TYPES } from '@/lib/db/report-audio-sources'
+import { runSiteReportAnalysisAgent } from '@/services/ai/site-report-analysis'
+import { listProposals, bulkInsertProposals, mergeReportAnalysis, setReportStatus } from '@/lib/db/site-reports'
+import { listSiteActionsBySite } from '@/lib/db/site-actions'
+import { createAnalysisRun, type AnalysisDelta } from '@/lib/db/report-analysis-runs'
 
 const BUCKET = 'site-reports'
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -80,6 +84,80 @@ export async function addMeetingAudioSourceAction(
     return { ok: true, transcribed }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────── RÉ-ANALYSE non destructive (mig 142, P2b) ─────────────
+// Jamais auto, jamais destructive : on relance l'agent sur le CORPUS FUSIONNÉ, on
+// garde tout l'existant, et on n'insère que les NOUVEAUX éléments (dédup déterministe
+// type + libellé normalisé), taggés 'reanalysis'. Delta enregistré pour l'historique.
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim()
+
+export async function reanalyzeReportAction(
+  reportId: string,
+): Promise<{ ok: true; delta: AnalysisDelta } | { ok: false; error: string }> {
+  const user = await guard()
+  const report = await getSiteReport(reportId)
+  if (!report) return { ok: false, error: 'Réunion introuvable.' }
+  if (!report.site_id) return { ok: false, error: 'Réunion sans site.' }
+  try {
+    // Corpus fusionné (compléments inclus) ; repli sur le transcript stocké.
+    const corpus = (await buildCombinedCorpus(reportId)) || report.transcript_corrected || report.transcript_raw || ''
+    const textInput = report.text_input ?? null
+    if (!corpus.trim() && !(textInput ?? '').trim()) return { ok: false, error: 'Rien à ré-analyser (corpus vide).' }
+
+    const sb = createAdminClient()
+    const { data: atts } = await sb.from('site_report_attachments').select('filename, kind').eq('report_id', reportId)
+    const attachmentNames = (atts ?? []).filter((a) => a.kind !== 'audio' && a.filename).map((a) => a.filename as string)
+    const priorOpen = await listSiteActionsBySite(report.site_id, { status: 'open' })
+    const priorOpenActions = priorOpen.map((a) => ({ id: a.id, title: a.title, corps_etat: a.corps_etat }))
+
+    const { proposals, participants, risks } = await runSiteReportAnalysisAgent({
+      transcript: corpus,
+      textInput,
+      attachmentNames,
+      priorOpenActions,
+      candidateSites: [],
+      defaultSiteId: report.site_id,
+      meetingDateLabel: report.created_at,
+      userId: user.id,
+    })
+
+    // Dédup déterministe vs propositions EXISTANTES (tous statuts → on ne re-propose
+    // pas ce qui a déjà été vu/curé). Clé = type + libellé normalisé.
+    const existing = await listProposals(reportId)
+    const seen = new Set(existing.map((p) => `${p.type}::${norm(p.short_label)}`))
+    const fresh = proposals.filter((p) => !seen.has(`${p.type}::${norm(p.short_label)}`))
+
+    if (fresh.length > 0) {
+      await bulkInsertProposals({
+        report_id: reportId,
+        origin: 'reanalysis',
+        proposals: fresh.map((p) => ({
+          type: p.type, payload: p.payload, short_label: p.short_label, rationale: p.rationale,
+          category: p.category, corps_etat: p.corps_etat, assigned_to: p.assigned_to, site_id: p.site_id, ai_confidence: p.ai_confidence,
+        })),
+      })
+    }
+    const merged = await mergeReportAnalysis(reportId, { participants, risks })
+
+    const byType: Record<string, number> = {}
+    for (const p of fresh) byType[p.type] = (byType[p.type] ?? 0) + 1
+    const delta: AnalysisDelta = {
+      newActions: byType['action'] ?? 0,
+      newProposals: fresh.length,
+      newParticipants: merged.addedParticipants,
+      newRisks: merged.addedRisks,
+      byType,
+    }
+    const sources = await listAudioSources(reportId)
+    await createAnalysisRun({ reportId, trigger: 'reanalysis', sourceCount: sources.length, delta })
+    if (report.status !== 'curated' && report.status !== 'archived') await setReportStatus(reportId, 'proposed')
+
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true, delta }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Ré-analyse échouée.' }
   }
 }
 
