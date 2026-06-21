@@ -48,20 +48,35 @@ export async function extractEngagementsAction(formData: FormData) {
   ])
   if (!doc?.extracted_text) return { error: 'Pas de texte extrait sur le document du dossier' }
 
-  const result = await runEngagementExtractionAgent({
-    aoText: doc.extracted_text,
-    memoireTechniqueText: analysis?.technical_memo ?? null,
-    userId: auth.userId,
-  })
+  // Toute exception (parse IA, contrainte DB…) est CAPTURÉE et renvoyée comme
+  // erreur lisible inline. Sans ce filet, un throw remonte à la page d'erreur
+  // globale (« Quelque chose s'est passé ») au lieu d'un message exploitable.
+  let count = 0
+  try {
+    const result = await runEngagementExtractionAgent({
+      aoText: doc.extracted_text,
+      memoireTechniqueText: analysis?.technical_memo ?? null,
+      userId: auth.userId,
+    })
 
-  await bulkInsertEngagements({
-    tender_id: parsed.data.tender_id,
-    created_by: auth.userId,
-    engagements: result.engagements,
-  })
+    if (result.engagements.length === 0) {
+      return { error: "Aucun engagement détecté dans ce dossier (l'IA n'a rien retourné d'exploitable)." }
+    }
+
+    await bulkInsertEngagements({
+      tender_id: parsed.data.tender_id,
+      created_by: auth.userId,
+      engagements: result.engagements,
+    })
+    count = result.engagements.length
+  } catch (e) {
+    console.error('[extractEngagementsAction] échec extraction/insertion:', e)
+    const msg = e instanceof Error ? e.message : String(e)
+    return { error: `Extraction impossible : ${msg.slice(0, 200)}` }
+  }
 
   revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
-  return { ok: true as const, count: result.engagements.length }
+  return { ok: true as const, count }
 }
 
 const curateSchema = z.object({
