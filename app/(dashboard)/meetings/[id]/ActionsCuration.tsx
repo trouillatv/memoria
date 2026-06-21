@@ -10,8 +10,15 @@ import {
 } from './action-curation-actions'
 import { ShareActionsToCompanyButton } from './ShareActionsToCompanyButton'
 import { LotStatusList } from './LotStatusList'
+import { actionDurationNarration } from '@/lib/actions/health'
 import type { DbSiteReportProposal, DbSiteAction } from '@/types/db'
 import type { DistributionStatusRow } from '@/lib/db/action-distribution'
+
+const NARRATION_TONE: Record<'bad' | 'warn' | 'muted', string> = {
+  bad: 'text-rose-700',
+  warn: 'text-amber-700',
+  muted: 'text-muted-foreground',
+}
 
 interface ActionsCurationProps {
   reportId: string
@@ -169,11 +176,22 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
     })
   }
 
+  // Couleur → phrase : « Ouverte depuis 143 j » plutôt qu'un simple point rouge.
+  const narration = actionDurationNarration({
+    createdAt: action.created_at,
+    status: action.status,
+    extStatus: action.ext_status,
+    extAt: action.ext_at,
+  })
+
   if (!editing) {
     return (
       <li className="flex items-start justify-between gap-2 rounded-lg border bg-card p-3 text-sm">
         <div className="min-w-0">
           <div className="font-medium">{action.title}</div>
+          {narration && (
+            <div className={`mt-0.5 text-xs font-medium ${NARRATION_TONE[narration.tone]}`}>{narration.text}</div>
+          )}
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
             {action.assigned_to && <span>{action.assigned_to}</span>}
             {action.due_date && (
