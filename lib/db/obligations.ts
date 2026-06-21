@@ -54,6 +54,9 @@ export interface SiteObligation {
   createdAt: string
   satisfiedAt: string | null
   lastRemindedAt: string | null
+  // — Provenance documentaire (mig 154, pont AO) —
+  originRef: string | null
+  originExcerpt: string | null
   // — Santé DÉRIVÉE —
   neglected: boolean
   healthReason: string | null
@@ -132,6 +135,100 @@ export async function instantiateObligations(siteId: string, templateIds: string
     .select('id')
   if (error) throw error
   return (data ?? []).length
+}
+
+// ---------------------------------------------------------------------------
+// Pont AO → chantier (mig 154) — un engagement validé devient une obligation
+// vivante, en PORTANT son origine documentaire. Pont, pas fusion : l'engagement
+// garde son monde AO, l'obligation vit ici, la provenance fait le lien.
+// ---------------------------------------------------------------------------
+
+// Seules les natures DÉMONTRABLES deviennent des obligations suivies. Un objectif
+// n'est pas démontrable (c'est un parent) ; une pénalité est une vigilance, pas une
+// obligation. Le typage (Sprint 1) sert ici à router juste.
+const MATERIALIZABLE_KINDS = new Set(['obligation', 'livrable', 'controle'])
+
+function obligationDefaultsForKind(kind: string | null): { verificationKind: VerificationKind; importance: ObligationImportance } {
+  switch (kind) {
+    case 'controle': return { verificationKind: 'control_event', importance: 'haute' }
+    case 'livrable': return { verificationKind: 'document', importance: 'haute' }
+    default: return { verificationKind: 'document', importance: 'moyenne' } // obligation / null
+  }
+}
+
+export interface MaterializeResult { created: number; alreadyDone: number; skipped: number }
+
+/** Combien d'engagements actifs du contrat du site restent à matérialiser (pour le bouton). */
+export async function countMaterializableEngagements(siteId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('contract_id').eq('id', siteId).maybeSingle()
+  const contractId = (site?.contract_id as string | null) ?? null
+  if (!contractId) return 0
+  const [{ data: engs }, { data: existing }] = await Promise.all([
+    supabase.from('engagements').select('id, kind').eq('contract_id', contractId).eq('status', 'active'),
+    supabase.from('site_obligation').select('origin_engagement_id').eq('site_id', siteId).not('origin_engagement_id', 'is', null),
+  ])
+  const done = new Set((existing ?? []).map((r) => r.origin_engagement_id as string))
+  return ((engs ?? []) as Record<string, unknown>[]).filter((e) =>
+    MATERIALIZABLE_KINDS.has(((e.kind as string | null) ?? 'obligation')) && !done.has(e.id as string)
+  ).length
+}
+
+/** Matérialise les engagements actifs du contrat du site en obligations vivantes, avec
+ *  provenance (origine CCTP) + rattachement au sujet. Idempotent (skip déjà matérialisés). */
+export async function materializeEngagementsAsObligations(siteId: string, userId: string | null): Promise<MaterializeResult> {
+  const supabase = createAdminClient()
+  const orgId = await getOrgId().catch(() => null)
+  const { data: site } = await supabase.from('sites').select('contract_id').eq('id', siteId).maybeSingle()
+  const contractId = (site?.contract_id as string | null) ?? null
+  if (!contractId) return { created: 0, alreadyDone: 0, skipped: 0 }
+
+  const { data: engs } = await supabase.from('engagements')
+    .select('id, tender_id, kind, short_label, source_excerpt, source_ref')
+    .eq('contract_id', contractId).eq('status', 'active')
+  const engagements = (engs ?? []) as Record<string, unknown>[]
+  if (engagements.length === 0) return { created: 0, alreadyDone: 0, skipped: 0 }
+
+  const { data: existing } = await supabase.from('site_obligation')
+    .select('origin_engagement_id').eq('site_id', siteId).not('origin_engagement_id', 'is', null)
+  const done = new Set((existing ?? []).map((r) => r.origin_engagement_id as string))
+
+  // Méta AO pour la référence de provenance (« CCTP · p.148 ») + date d'origine.
+  const tenderIds = [...new Set(engagements.map((e) => e.tender_id as string).filter(Boolean))]
+  const [{ data: tenders }, { data: tdocs }] = await Promise.all([
+    tenderIds.length ? supabase.from('tenders').select('id, title, created_at').in('id', tenderIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    tenderIds.length ? supabase.from('tender_documents').select('tender_id, filename').in('tender_id', tenderIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ])
+  const tenderById = new Map((tenders ?? []).map((t) => [t.id as string, t]))
+  const docByTender = new Map<string, string>()
+  for (const d of tdocs ?? []) if (!docByTender.has(d.tender_id as string)) docByTender.set(d.tender_id as string, d.filename as string)
+
+  let created = 0, alreadyDone = 0, skipped = 0
+  for (const e of engagements) {
+    if (done.has(e.id as string)) { alreadyDone++; continue }
+    const kind = (e.kind as string | null) ?? 'obligation'
+    if (!MATERIALIZABLE_KINDS.has(kind)) { skipped++; continue }
+    const subjectId = await findOrCreateSubjectByName(siteId, shortSubjectName(e.short_label as string), userId).catch(() => null)
+    const def = obligationDefaultsForKind(kind)
+    const ref = (e.source_ref as Record<string, unknown> | null) ?? null
+    const page = ref?.page != null ? `p.${ref.page}` : null
+    const tender = tenderById.get(e.tender_id as string)
+    const originLabel = docByTender.get(e.tender_id as string) ?? (tender?.title as string | undefined) ?? 'AO'
+    const originRef = [originLabel, page].filter(Boolean).join(' · ') || null
+    const { error } = await supabase.from('site_obligation').insert({
+      site_id: siteId, organization_id: orgId, template_id: null,
+      label: e.short_label, responsible_role: 'entreprise', status: 'a_produire',
+      importance: def.importance, trigger: 'manual', closure: 'on_artifact',
+      verification_kind: def.verificationKind, verification_param: {},
+      subject_id: subjectId, created_by: userId,
+      origin_tender_id: e.tender_id, origin_engagement_id: e.id,
+      origin_excerpt: (e.source_excerpt as string | null) ?? null,
+      origin_ref: originRef,
+      origin_date: (tender?.created_at as string | undefined) ?? null,
+    })
+    if (!error) created++
+  }
+  return { created, alreadyDone, skipped }
 }
 
 export async function setObligationStatus(id: string, status: ObligationStatus, note?: string | null): Promise<void> {
@@ -215,6 +312,8 @@ export async function getSiteObligations(siteId: string): Promise<SiteObligation
       subjectId: (r.subject_id as string | null) ?? null, createdAt: r.created_at as string,
       satisfiedAt: (r.satisfied_at as string | null) ?? null,
       lastRemindedAt: (r.last_reminded_at as string | null) ?? null,
+      originRef: (r.origin_ref as string | null) ?? null,
+      originExcerpt: (r.origin_excerpt as string | null) ?? null,
       neglected: h.neglected, healthReason: h.reason,
     }
   })

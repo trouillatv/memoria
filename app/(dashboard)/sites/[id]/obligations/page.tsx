@@ -3,10 +3,10 @@ import Link from 'next/link'
 import { ShieldAlert, CheckCircle2, CircleSlash, Circle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSiteObligations, listObligationTemplates, type SiteObligation, type ObligationImportance } from '@/lib/db/obligations'
+import { getSiteObligations, listObligationTemplates, countMaterializableEngagements, type SiteObligation, type ObligationImportance } from '@/lib/db/obligations'
 import { listDocumentsForTarget, listLinkedDocumentsForTargets, type LinkedDocument } from '@/lib/db/documents'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
-import { ProposeObligations, ObligationRowControls } from './ObligationControls'
+import { ProposeObligations, MaterializeEngagements, ObligationRowControls } from './ObligationControls'
 import { ObligationDocLink } from './ObligationDocLink'
 
 export const dynamic = 'force-dynamic'
@@ -45,6 +45,11 @@ function ObligationRow({ siteId, o, linked, siteDocs }: { siteId: string; o: Sit
               {o.lastRemindedAt ? `Relancé le ${ddmm(o.lastRemindedAt)}, sans réponse` : 'Jamais relancé'}
             </span>
           )}
+          {o.originRef && (
+            <span className="block text-[11px] text-sky-700" title={o.originExcerpt ?? undefined}>
+              ↳ origine : {o.originRef}
+            </span>
+          )}
         </div>
       </div>
       <ObligationRowControls siteId={siteId} obligationId={o.id} status={o.status} importance={o.importance} responsible={o.responsibleRole} />
@@ -60,9 +65,10 @@ export default async function SiteObligationsPage({ params }: { params: Promise<
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, obligations, templates, siteDocsRaw] = await Promise.all([
+  const [identity, obligations, templates, siteDocsRaw, materializable] = await Promise.all([
     getSiteIdentity(id), getSiteObligations(id), listObligationTemplates(),
     listDocumentsForTarget('site', id).catch(() => []),
+    countMaterializableEngagements(id).catch(() => 0),
   ])
   if (!identity) notFound()
 
@@ -96,6 +102,8 @@ export default async function SiteObligationsPage({ params }: { params: Promise<
           la rappelle avant la réunion. Une obligation, jamais une note d&apos;acteur.
         </p>
       </header>
+
+      <MaterializeEngagements siteId={id} count={materializable} />
 
       <ProposeObligations siteId={id} choices={choices} />
 

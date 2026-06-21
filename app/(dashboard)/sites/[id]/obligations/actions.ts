@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { instantiateObligations, setObligationStatus, setObligationImportance, setObligationResponsible, markObligationReminded } from '@/lib/db/obligations'
+import { instantiateObligations, materializeEngagementsAsObligations, setObligationStatus, setObligationImportance, setObligationResponsible, markObligationReminded } from '@/lib/db/obligations'
 import { addDocumentLink, removeDocumentLink } from '@/lib/db/documents'
 
 type Result = { ok: true; count?: number } | { error: string }
@@ -32,6 +32,19 @@ export async function instantiateObligationsAction(formData: FormData): Promise<
   const count = await instantiateObligations(parsed.data.siteId, parsed.data.templateIds, operator.id)
   revalidatePath(`/sites/${parsed.data.siteId}/obligations`)
   return { ok: true, count }
+}
+
+const materializeSchema = z.object({ siteId: z.string().uuid() })
+
+/** Pont AO : matérialise les engagements actifs du contrat en obligations (provenance). */
+export async function materializeEngagementsAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = materializeSchema.safeParse({ siteId: formData.get('siteId') })
+  if (!parsed.success) return { error: 'Requête invalide' }
+  const r = await materializeEngagementsAsObligations(parsed.data.siteId, operator.id)
+  revalidatePath(`/sites/${parsed.data.siteId}/obligations`)
+  return { ok: true, count: r.created }
 }
 
 const statusSchema = z.object({

@@ -4,8 +4,9 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Plus, ShieldCheck, Bell } from 'lucide-react'
 import { toast } from 'sonner'
+import { FileDown } from 'lucide-react'
 import {
-  instantiateObligationsAction, setObligationStatusAction,
+  instantiateObligationsAction, materializeEngagementsAction, setObligationStatusAction,
   setObligationImportanceAction, setObligationResponsibleAction, markObligationRemindedAction,
 } from './actions'
 import type { ObligationStatus, ObligationImportance } from '@/lib/db/obligations'
@@ -65,6 +66,39 @@ export function ProposeObligations({ siteId, choices }: { siteId: string; choice
       <button type="button" disabled={pending || sel.size === 0} onClick={add}
         className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted/40 disabled:opacity-50">
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Ajouter au chantier ({sel.size})
+      </button>
+    </section>
+  )
+}
+
+/** Pont AO (Sprint B) : transforme les engagements validés du contrat en obligations
+ *  vivantes, en conservant leur origine contractuelle (CCTP). L'humain déclenche. */
+export function MaterializeEngagements({ siteId, count }: { siteId: string; count: number }) {
+  const router = useRouter()
+  const [pending, start] = useTransition()
+  if (count === 0) return null
+
+  function run() {
+    const fd = new FormData()
+    fd.set('siteId', siteId)
+    start(async () => {
+      const r = await materializeEngagementsAction(fd)
+      if ('error' in r) { toast.error(r.error); return }
+      toast.success(`${r.count ?? 0} engagement(s) transformé(s) en obligations`)
+      router.refresh()
+    })
+  }
+
+  return (
+    <section className="space-y-2 rounded-xl border border-sky-200 bg-sky-50/40 p-4">
+      <h2 className="inline-flex items-center gap-2 text-sm font-semibold"><FileDown className="h-4 w-4 text-sky-600" /> Engagements de l&apos;appel d&apos;offres</h2>
+      <p className="text-xs text-muted-foreground">
+        {count} engagement{count > 1 ? 's' : ''} validé{count > 1 ? 's' : ''} du dossier {count > 1 ? 'peuvent' : 'peut'} devenir
+        des obligations suivies sur ce chantier — en gardant leur origine au CCTP (objectifs et pénalités exclus).
+      </p>
+      <button type="button" disabled={pending} onClick={run}
+        className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-card px-2.5 py-1 text-xs font-medium hover:bg-sky-100/50 disabled:opacity-50">
+        {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />} Transformer en obligations ({count})
       </button>
     </section>
   )

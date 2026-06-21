@@ -47,7 +47,7 @@ export interface SubjectThread {
 
 // HISTOIRE du sujet (Vincent : « un sujet = l'histoire complète d'un problème, pas
 // une liste d'occurrences »). Un événement = un objet rattaché, daté, situé à sa réunion.
-export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document' | 'obligation'
+export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document' | 'obligation' | 'origin'
 export interface SubjectEvent {
   date: string                 // ISO (tri + affichage)
   kind: SubjectEventKind
@@ -604,7 +604,7 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
     supabase.from('site_report_proposals').select('id, short_label, created_at, report_id').eq('subject_id', subjectId),
     supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at, created_at').eq('subject_id', subjectId),
     supabase.from('report_added_points').select('id, label, created_at, report_id').eq('subject_id', subjectId).eq('kind', 'anomalie'),
-    supabase.from('site_obligation').select('id, label, status, created_at').eq('subject_id', subjectId),
+    supabase.from('site_obligation').select('id, label, status, created_at, origin_excerpt, origin_ref, origin_date').eq('subject_id', subjectId),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
   ])
 
@@ -650,6 +650,14 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
     events.push({ date: (an.created_at as string | null)?.slice(0, 10) ?? '', kind: 'anomaly', label: (an.label as string) ?? '(anomalie)', meta: 'anomalie signalée en séance', reportLabel: repOf(an.report_id as string | null) })
   }
   for (const o of obligations ?? []) {
+    // Provenance documentaire (pont AO, mig 154) = le PREMIER événement de l'histoire :
+    // « Exigé au CCTP p.148 : "Le DOE devra…" ». Daté à la réception de l'AO.
+    if (o.origin_excerpt || o.origin_ref) {
+      const originIso = (o.origin_date as string | null) ?? (o.created_at as string)
+      events.push({ date: originIso.slice(0, 10), kind: 'origin',
+        label: `Exigé${o.origin_ref ? ` — ${o.origin_ref}` : ''}`,
+        meta: o.origin_excerpt ? `« ${(o.origin_excerpt as string).slice(0, 240)} »` : 'origine contractuelle', reportLabel: null })
+    }
     events.push({ date: (o.created_at as string).slice(0, 10), kind: 'obligation', label: o.label as string,
       meta: `obligation (${obligationStatusFr[o.status as string] ?? (o.status as string)})`, reportLabel: null })
   }
