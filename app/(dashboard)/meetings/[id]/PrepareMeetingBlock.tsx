@@ -49,6 +49,12 @@ export function PrepareMeetingBlock({ signals, questions = [] }: { signals: Memo
                     <span className="min-w-0">
                       {it.label}
                       {it.meta && <span className="text-muted-foreground"> — {it.meta}</span>}
+                      {/* Contexte / Historique déterministe (P3) : l'histoire de l'élément. */}
+                      {it.context && it.context.length > 0 && (
+                        <span className="mt-0.5 block border-l-2 border-muted pl-2 text-[11px] text-muted-foreground">
+                          {it.context.map((c, i) => <span key={i} className="block">{c}</span>)}
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}

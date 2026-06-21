@@ -12,7 +12,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open'
 
-export interface SignalItem { id: string; label: string; meta?: string | null }
+export interface SignalItem {
+  id: string
+  label: string
+  meta?: string | null
+  // CONTEXTE / HISTORIQUE déterministe (Vincent P3) : « ouvert depuis 72 j », origine,
+  // dernière échéance annoncée. Raconte l'histoire de l'élément, sans LLM.
+  context?: string[]
+}
 export interface MemorySignal {
   kind: SignalKind
   title: string            // « 3 actions en retard »
@@ -32,12 +39,17 @@ function ddmmyyyy(iso: string | null): string | null {
 function daysBetween(isoA: string, isoB: string): number {
   return Math.round((new Date(isoB).getTime() - new Date(isoA).getTime()) / 86400000)
 }
+function daysSince(iso: string | null, asOf: string): number | null {
+  if (!iso) return null
+  const d = daysBetween(iso, asOf)
+  return d >= 0 ? d : null
+}
 
 /** ACTIONS EN RETARD : ouvertes dont l'échéance est dépassée. */
 export async function detectOverdueActions(siteId: string, asOf = todayIso()): Promise<MemorySignal | null> {
   const { data } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, assigned_to, due_date, status')
+    .select('id, title, assigned_to, due_date, status, created_at')
     .eq('site_id', siteId)
     .eq('status', 'open')
     .not('due_date', 'is', null)
@@ -48,11 +60,20 @@ export async function detectOverdueActions(siteId: string, asOf = todayIso()): P
   return {
     kind: 'action_overdue',
     title: `${rows.length} action${rows.length > 1 ? 's' : ''} en retard`,
-    items: rows.map((a) => ({
-      id: a.id as string,
-      label: a.title as string,
-      meta: [a.assigned_to as string | null, `échéance ${ddmmyyyy(a.due_date as string)}`].filter(Boolean).join(' · '),
-    })),
+    items: rows.map((a) => {
+      const due = a.due_date as string
+      const lateBy = daysBetween(due, asOf)
+      const openSince = daysSince(a.created_at as string | null, asOf)
+      return {
+        id: a.id as string,
+        label: a.title as string,
+        meta: [a.assigned_to as string | null, `échéance ${ddmmyyyy(due)}`].filter(Boolean).join(' · '),
+        context: [
+          lateBy > 0 ? `En retard de ${lateBy} j (dernière échéance annoncée : ${ddmmyyyy(due)})` : null,
+          openSince != null ? `Ouverte depuis ${openSince} j` : null,
+        ].filter((x): x is string => !!x),
+      }
+    }),
     source: 'Actions ouvertes (site_actions) dont l’échéance est passée.',
   }
 }
@@ -79,11 +100,16 @@ export async function detectUnappliedDecisions(siteId: string, asOf = todayIso()
     items: rows.map((d) => {
       const ech = d.echeance as string | null
       const dd = d.date_decision as string | null
-      const age = dd ? `prise il y a ${daysBetween(dd, asOf)} j` : null
+      const ageD = daysSince(dd, asOf)
+      const age = ageD != null ? `prise il y a ${ageD} j` : null
       return {
         id: d.id as string,
         label: d.titre as string,
         meta: [d.sujet as string | null, ech ? `échéance ${ddmmyyyy(ech)}` : age].filter(Boolean).join(' · '),
+        context: [
+          dd ? `Actée le ${ddmmyyyy(dd)}${ageD != null ? ` (il y a ${ageD} j)` : ''}, jamais passée « appliquée »` : null,
+          ech ? `Échéance d'application : ${ddmmyyyy(ech)}${ech <= asOf ? ` — dépassée de ${daysBetween(ech, asOf)} j` : ''}` : null,
+        ].filter((x): x is string => !!x),
       }
     }),
     source: 'Décisions actées (site_decisions) jamais passées « appliquée », échéance ou ancienneté dépassée.',
@@ -91,7 +117,7 @@ export async function detectUnappliedDecisions(siteId: string, asOf = todayIso()
 }
 
 /** RÉSERVES OUVERTES : dressées, pas encore levées. */
-export async function detectOpenReserves(siteId: string): Promise<MemorySignal | null> {
+export async function detectOpenReserves(siteId: string, asOf = todayIso()): Promise<MemorySignal | null> {
   const { data } = await createAdminClient()
     .from('site_reserve')
     .select('id, label, location, issued_on, status')
@@ -103,11 +129,19 @@ export async function detectOpenReserves(siteId: string): Promise<MemorySignal |
   return {
     kind: 'reserve_open',
     title: `${rows.length} réserve${rows.length > 1 ? 's' : ''} ouverte${rows.length > 1 ? 's' : ''}`,
-    items: rows.map((r) => ({
-      id: r.id as string,
-      label: r.label as string,
-      meta: [r.location as string | null, r.issued_on ? `émise le ${ddmmyyyy(r.issued_on as string)}` : null].filter(Boolean).join(' · '),
-    })),
+    items: rows.map((r) => {
+      const issued = r.issued_on as string | null
+      const openSince = daysSince(issued, asOf)
+      return {
+        id: r.id as string,
+        label: r.label as string,
+        meta: [r.location as string | null, issued ? `émise le ${ddmmyyyy(issued)}` : null].filter(Boolean).join(' · '),
+        context: [
+          openSince != null ? `Ouverte depuis ${openSince} j (émise le ${ddmmyyyy(issued)})` : null,
+          r.location ? `Localisation : ${r.location as string}` : null,
+        ].filter((x): x is string => !!x),
+      }
+    }),
     source: 'Réserves non levées (site_reserve, status « open »).',
   }
 }
@@ -259,7 +293,7 @@ export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()):
     detectOverdueActions(siteId, asOf),
     detectUnappliedDecisions(siteId, asOf),
     detectRepeatedAbsences(siteId),
-    detectOpenReserves(siteId),
+    detectOpenReserves(siteId, asOf),
   ])
   return [congestion, overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
 }
