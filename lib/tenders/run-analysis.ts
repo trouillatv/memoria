@@ -97,7 +97,7 @@ export async function runTenderAnalysis(tenderId: string, userId: string | null)
   try {
     const result = await withTimeout(analyzeTender(extractedText, userId, orgId), ANALYZE_TIMEOUT_MS, 'Analyse IA')
 
-    const knowledgeItems = await listKnowledgeItems({})
+    const knowledgeItems = await listKnowledgeItems({}, { orgId }) // sans cookies
     const isMock = result.provider === 'mock'
     const validated = validateAnalysisSources(result.reading, {
       extractedText,
