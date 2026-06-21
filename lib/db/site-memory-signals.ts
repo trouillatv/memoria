@@ -9,8 +9,9 @@
 // sur une ENTREPRISE externe (fiabilité chantier), jamais une personne interne ;
 // chaque signal est EXPLICABLE (champ `source`).
 import { createAdminClient } from '@/lib/supabase/admin'
+import { detectNeglectedObligations } from '@/lib/db/obligations'
 
-export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open'
+export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected'
 
 export interface SignalItem {
   id: string
@@ -288,14 +289,15 @@ export async function detectRepeatedAbsences(siteId: string, threshold = 3, wind
  *  rouvertes), qui demande un historique de statut (à instrumenter). Une réunion mal
  *  détectée est gênante ; une réunion perdue est catastrophique → priorité ailleurs. */
 export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()): Promise<MemorySignal[]> {
-  const [congestion, overdue, decisions, absences, reserves] = await Promise.all([
+  const [congestion, obligations, overdue, decisions, absences, reserves] = await Promise.all([
     detectActorCongestion(siteId, 4, 0.4, asOf), // en TÊTE : le seul qui anticipe « où ça va se concentrer »
+    detectNeglectedObligations(siteId),          // obligations prescriptives négligées (DOE, journal photo…)
     detectOverdueActions(siteId, asOf),
     detectUnappliedDecisions(siteId, asOf),
     detectRepeatedAbsences(siteId),
     detectOpenReserves(siteId, asOf),
   ])
-  return [congestion, overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  return [congestion, obligations, overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
 }
 
 export interface SuggestedQuestion { question: string; why: string | null }
@@ -318,6 +320,7 @@ export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): S
         case 'decision_unapplied': question = `La décision « ${it.label} » a-t-elle été appliquée ?`; break
         case 'actor_absent': question = `${it.label} est absente — qui reprend ses actions en attente ?`; break
         case 'reserve_open': question = `La réserve « ${it.label} » est-elle levée ?`; break
+        case 'obligation_neglected': question = `Obligation « ${it.label} » — où en est-on ? (à rappeler à ${it.meta ?? 'l\'entreprise'})`; break
       }
       if (question) out.push({ question, why })
     }

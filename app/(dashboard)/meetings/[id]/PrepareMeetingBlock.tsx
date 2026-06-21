@@ -3,7 +3,7 @@
 // appliquées, entreprises absentes, réserves ouvertes. Affichage seul (server
 // component), calme et DESCRIPTIF — pas d'alerte rouge. Chaque bloc explicite sa source.
 import Link from 'next/link'
-import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle, Flame, Layers, ArrowRight } from 'lucide-react'
+import { ListTodo, Gavel, Building2, ClipboardCheck, Sparkles, Repeat, HelpCircle, Flame, Layers, ArrowRight, ShieldAlert } from 'lucide-react'
 import type { MemorySignal, SignalKind, SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import type { SubjectWatch } from '@/lib/db/subjects'
 
@@ -55,6 +55,7 @@ const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
   decision_unapplied: { icon: Gavel, tone: 'text-violet-700' },
   actor_absent: { icon: Building2, tone: 'text-sky-700' },
   reserve_open: { icon: ClipboardCheck, tone: 'text-emerald-700' },
+  obligation_neglected: { icon: ShieldAlert, tone: 'text-rose-700' },
 }
 
 export function PrepareMeetingBlock({ signals, questions = [], subjects = [], siteId }: { signals: MemorySignal[]; questions?: SuggestedQuestion[]; subjects?: SubjectWatch[]; siteId?: string }) {
