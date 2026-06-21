@@ -1,151 +1,102 @@
-﻿# MemorIA
+# MemorIA
 
-> B2B SaaS pour entreprises de nettoyage français — **système de capital de preuves**.
+> **Mémoire opérationnelle de chantier** — multi-métier (BTP/VRD, nettoyage, MOE…).
 
-Pas un logiciel de nettoyage. Pas un outil IA AO. Un système qui transforme chaque
-intervention exécutée en preuve réutilisable :
+MemorIA capte ce qui se passe sur un chantier (réunions, photos, actions,
+décisions, preuves), s'en souvient, et ramène la bonne information au bon moment.
+Le moat n'est pas de générer du texte, c'est de **contextualiser la mémoire** et
+de **survivre aux ruptures humaines** (départ, absence, passation).
 
-**AO gagné → Engagements extraits → Contrat → Missions → Interventions →
-Photos + Validations → Boucle de preuve → Réutilisation dans nouveaux AO**
+La boucle de valeur :
+
+**Réunion → Compte-rendu → Actions → (QR) Entreprise → Déclaration + Preuve →
+Visite ciblée → Prochain CR pré-rempli**
+
+👉 Manuel utilisateur complet (page par page) : [`docs/MODE_EMPLOI.md`](docs/MODE_EMPLOI.md) (rendu dans l'app sur `/manuel`).
 
 ## Doctrine
 
-Le produit est gouverné par 4 principes immuables :
+Principes immuables qui gouvernent le produit :
 
-1. **Le planning sert la preuve, pas la gestion des humains.** Pas d'`assigned_to`,
-   pas de `shift`, pas de rotation, pas de calendrier visuel, pas de KPI agent.
-2. **Anonymisation par défaut.** Les exports parlent d'"équipe terrain" — jamais
-   de prénoms. Override admin uniquement pour usage juridique.
-3. **Chaîne immuable.** Engagement → Mission → Intervention → Preuve. Aucun
-   bypass de niveau.
-4. **Sobriété calme.** Pas d'alerte rouge, pas de gamification, pas de tracking
-   analytics côté utilisateur.
+1. **La mémoire d'abord, jamais la notation des personnes.** Aucun score, aucun
+   classement d'agents. Les chiffres parlent du lieu et de la mémoire.
+2. **IA propose, humain valide.** L'artefact brut (audio, transcription) n'est
+   jamais détruit ; la correction est une couche.
+3. **Capter une déclaration, pas gérer le travail.** Le QR/lien entreprise capte
+   un fait signé (Fait/Bloqué + photo), il ne pilote pas l'entreprise (anti-ERP).
+4. **Déclaration ≠ vérité terrain.** La déclaration d'une entreprise et la
+   validation MOE restent deux vérités distinctes.
+5. **Sobriété calme.** Pas d'alerte rouge dramatisante, pas de gamification.
+6. **Test d'admission de toute feature :** aide-t-elle à *mémoriser, démontrer
+   ou transmettre* ? Sinon → on ne construit pas (anti usine à gaz).
 
-Détail complet : [`docs/superpowers/doctrines/planning-doctrine.md`](docs/superpowers/doctrines/planning-doctrine.md)
+Doctrines détaillées : [`docs/superpowers/doctrines/`](docs/superpowers/doctrines/).
 
 ## Stack
 
-- Next.js 16 (App Router, Turbopack, Server Actions, Server Components)
-- TypeScript 5
-- Tailwind v4 (CSS-first @theme)
-- shadcn/ui + base-ui
+- Next.js (App Router, Server Actions, Server Components) — voir `AGENTS.md` (lire les guides `node_modules/next/dist/docs/` avant de coder)
+- TypeScript 5 · Tailwind v4 (@theme) · shadcn/ui + base-ui
 - Supabase Cloud (Postgres + Auth + Storage)
 - vitest 4 + @testing-library/react
-- @react-pdf/renderer pour les exports PDF horodatés
-- pg_trgm pour le matching cross-tender (Phase 4)
+- exceljs (exports), pizzip + docxtemplater (Word), @react-pdf/renderer (PDF)
 
 ## Setup local
 
-1. **Cloner et installer**
-   ```bash
-   git clone https://github.com/trouillatv/memoria.git
-   cd memoria
-   npm install
-   ```
+```bash
+git clone https://github.com/trouillatv/memoria.git && cd memoria && npm install
+# copier .env.example → .env.local et remplir (Supabase + provider IA)
+npm run db:push            # applique les migrations supabase/migrations/*.sql
+npm run db:bootstrap-admin # crée l'admin initial
+npm run dev                # http://localhost:3001
+```
 
-2. **Variables d'environnement** — copier `.env.example` vers `.env.local` et remplir :
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
-   SUPABASE_SERVICE_ROLE_KEY=<service-role>
-   # AI provider (mock par défaut)
-   AI_PROVIDER=mock  # ou 'gemini' / 'anthropic'
-   # GOOGLE_GENAI_API_KEY=... ou ANTHROPIC_API_KEY=... selon le provider
-   INITIAL_ADMIN_EMAIL=admin@memoria.nc
-   INITIAL_ADMIN_PASSWORD=memoria2026
-   ```
-
-3. **Appliquer les migrations** (105 migrations `supabase/migrations/*.sql`) :
-   ```bash
-   npm run db:push
-   ```
-
-4. **Créer l'admin initial** :
-   ```bash
-   npm run db:bootstrap-admin
-   ```
-
-5. **Seeder les données de démo** :
-   ```bash
-   npm run db:seed-demo
-   ```
-   Crée 3 contrats (CHU Régional / Banque Centrale / École Jean Jaurès) +
-   1 AO démo en cours + templates de récurrence + interventions générées.
-
-6. **Lancer le dev server** :
-   ```bash
-   npm run dev
-   ```
-   Ouvrir http://localhost:3000 et se connecter avec `INITIAL_ADMIN_EMAIL` /
-   `INITIAL_ADMIN_PASSWORD`.
+Variables clés de `.env.local` : `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`AI_PROVIDER` (`mock` par défaut, ou `gemini`/`anthropic` + la clé associée),
+`INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`.
 
 ## Commandes utiles
 
 ```bash
-npm run typecheck     # 0 erreur attendu
+npm run typecheck   # tsc --noEmit (0 erreur attendu)
 npm run lint
-npm test              # vitest run — ~1100 tests (les tests d'intégration lib/db exigent un .env.local valide)
-npm run build && npm start  # mode prod (plus rapide qu'en dev pour la démo)
-
-# Smoke tests programmatiques (DB réelle, .env.local requis)
-npx tsx scripts/phase4-smoke.ts  # cross-tender matching
-npx tsx scripts/phase5-smoke.ts  # dossier de preuves
-npx tsx scripts/phase6-smoke.ts  # récurrence
+npm test            # vitest — le projet `unit` (CI) ; les tests d'intégration lib/db frappent une vraie Supabase (.env.local)
+npm run build       # next build (seul juge fiable de la frontière client/serveur)
 ```
 
-## Routes principales
+## Cartographie des routes
 
-| Route | Rôle | Quoi |
+| Zone | Routes | Rôle |
 |---|---|---|
-| `/login` | tous | Auth Supabase |
-| `/dashboard` | admin/manager | Cockpit exécutif (contrats actifs, alertes) |
-| `/tenders` | admin/manager | Liste AO + import + copilote IA |
-| `/tenders/[id]` | admin/manager | Mémoire technique, engagements, panel "Évidence disponible" |
-| `/contracts` | admin/manager | Liste contrats avec boucle de preuve |
-| `/contracts/[id]` | admin/manager | Cockpit contrat : sites, missions, récurrences, engagements |
-| `/missions` | admin/manager | Liste interventions filtrable (site/date/statut) |
-| `/preuves` | admin/manager | Dossier de preuves — recherche, détail, export PDF + partage |
-| `/m` | chef_equipe | Mobile field : missions du jour, capture photo, anomalies |
-| `/p/[token]` | public | Vue partagée d'une preuve (sans login) |
-| `/account` | tous | Profil + mot de passe |
-| `/admin/users` | admin | Gestion équipe |
+| Cockpit | `/dashboard` `/aujourdhui` `/semaine` `/briefing` `/actions` | admin/manager |
+| Chantiers | `/sites` `/sites/[id]` (+ journal, photos, reserves, subjects, obligations, preuves, qr, scopes) | admin/manager |
+| Réunions & CR | `/meetings` `/meetings/[id]` `/meetings/[id]/pv/validation` `/meetings/[id]/briefing` | admin/manager |
+| Contrats/équipes | `/clients` `/contracts` `/missions` `/equipes` `/intervenants` | admin/manager |
+| Continuité | `/handovers` (`/continuite` redirige ici) | admin/manager |
+| Mémoire/recherche | `/recherche` `/memoire` | admin/manager |
+| AO & biblio | `/tenders` `/tenders/[id]` `/library` `/documents` `/glossaire` | admin/manager |
+| Preuves | `/preuves` `/litige` | admin/manager |
+| Terrain (mobile) | `/m` …  | chef_equipe |
+| Publics (sans login) | `/a/[token]` (actions entreprise) · `/i/[token]` (intervention) · `/h/[token]` (passation) · `/qr/[token]` · `/p/[token]` | public |
+| Manuel | `/manuel` (rendu de `docs/MODE_EMPLOI.md`) | admin/manager |
 
 ## Structure dossier
 
-- `app/(dashboard)/` — écrans desktop superviseur
-- `app/(field)/` — écrans mobile agent terrain (`/m`)
-- `app/(auth)/` — flow auth
-- `app/p/[token]/` — route publique anonymisée
-- `lib/db/` — helpers DB par entité (15 modules)
-- `lib/recurrence/` — moteur de récurrence
-- `lib/pdf/` — générateur PDF preuves
-- `services/ai/` — abstraction providers IA (mock/gemini/anthropic)
-- `supabase/migrations/` — schéma DB
-- `docs/superpowers/` — doctrine, plans, notes, specs
-
-## Branches
-
-- `main` — production, déployé
-- `feat/<feature-name>` — feature branches, mergées via PR
-
-## Doc
-
-- [`docs/superpowers/doctrines/planning-doctrine.md`](docs/superpowers/doctrines/planning-doctrine.md) — doctrine immuable
-- [`docs/superpowers/notes/2026-05-phase4-cross-tender-matching.md`](docs/superpowers/notes/2026-05-phase4-cross-tender-matching.md)
-- [`docs/superpowers/notes/2026-05-phase5-dossier-de-preuves.md`](docs/superpowers/notes/2026-05-phase5-dossier-de-preuves.md)
-- [`docs/superpowers/notes/2026-05-phase6-recurrence-simple.md`](docs/superpowers/notes/2026-05-phase6-recurrence-simple.md)
-- [`docs/superpowers/notes/2026-05-pilote-terrain-prep.md`](docs/superpowers/notes/2026-05-pilote-terrain-prep.md) — kit handoff pilote terrain
+- `app/(dashboard)/` — écrans desktop superviseur · `app/(field)/` — mobile terrain (`/m`)
+- `app/a|i|h|qr|p/[token]/` — routes publiques tokenisées (sans login)
+- `lib/db/` — helpers DB par entité · `lib/tenders/` — pipeline d'analyse AO
+- `services/ai/` — providers IA (mock/gemini/anthropic) + agents + orchestrateur
+- `supabase/migrations/` — schéma DB (appliquées via `npm run db:push`)
+- `docs/MODE_EMPLOI.md` — manuel utilisateur (rendu sur `/manuel`)
+- `docs/superpowers/` — doctrines, plans, notes, specs
 
 ## Sécurité
 
-- **Aucun secret réel ne doit être commité.** `.env.local` est gitignored.
-- Si un token Supabase ou autre clé API a été exposé (chat, logs, message) :
-  **révoquer immédiatement** et régénérer. Tokens Supabase CLI :
-  https://supabase.com/dashboard/account/tokens
-- Le mot de passe `INITIAL_ADMIN_PASSWORD` est temporaire — forcé à être changé
-  à la première connexion (flag `must_change_password`).
-- Headers HTTP à activer avant production : CSP, HSTS, X-Frame-Options.
+- **Aucun secret réel commité.** `.env.local` est gitignored. Un token exposé →
+  le révoquer et le régénérer immédiatement.
+- `INITIAL_ADMIN_PASSWORD` / mot de passe temporaire `memoria2026` : forcé à être
+  changé à la première connexion (`must_change_password`).
 
 ## License
 
-Propriétaire — usage interne MemorIA / Aurélie Trouillat.
+Propriétaire — usage interne MemorIA.
