@@ -20,17 +20,33 @@ const CATEGORIES: EngagementCategory[] = [
 
 const KINDS: EngagementKind[] = ['objectif', 'obligation', 'livrable', 'controle', 'penalite']
 
-// Sprint 2 — regroupement par NATURE : pénalités et contrôles d'abord (ce qui
-// fait perdre / ce qui se prouve), objectifs en dernier. Non typés à la fin.
-function groupByKind(engagements: DbEngagement[]): Array<{ kind: EngagementKind | null; items: DbEngagement[] }> {
-  const groups: Array<{ kind: EngagementKind | null; items: DbEngagement[] }> = []
+const NEUTRAL_BADGE = 'border-slate-300 bg-slate-50 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300'
+
+interface RenderGroup { id: string; label: string; description: string | null; badge: string; items: DbEngagement[] }
+
+// Sprint 2 — regroupement par NATURE : pénalités et contrôles d'abord (ce qui fait
+// perdre / ce qui se prouve), objectifs en dernier, non typés à la fin.
+function groupsByKind(engagements: DbEngagement[]): RenderGroup[] {
+  const out: RenderGroup[] = []
   for (const kind of KIND_ORDER) {
     const items = engagements.filter((e) => e.kind === kind)
-    if (items.length) groups.push({ kind, items })
+    if (items.length) out.push({ id: kind, label: KIND_META[kind].short, description: KIND_META[kind].description, badge: KIND_META[kind].badge, items })
   }
   const untyped = engagements.filter((e) => !e.kind)
-  if (untyped.length) groups.push({ kind: null, items: untyped })
-  return groups
+  if (untyped.length) out.push({ id: 'untyped', label: 'Non typé', description: null, badge: 'border-muted bg-muted/40 text-muted-foreground', items: untyped })
+  return out
+}
+
+// Sprint 3 — regroupement par THÈME (la category : Qualité, Conformité, Reporting…).
+// Axe complémentaire à la nature : « l'utilisateur pense aussi en thèmes ».
+const CATEGORY_ORDER: EngagementCategory[] = ['quality', 'compliance', 'reporting', 'frequency', 'delivery', 'sla', 'other']
+function groupsByCategory(engagements: DbEngagement[]): RenderGroup[] {
+  const out: RenderGroup[] = []
+  for (const cat of CATEGORY_ORDER) {
+    const items = engagements.filter((e) => e.category === cat)
+    if (items.length) out.push({ id: cat, label: CATEGORY_LABELS[cat], description: null, badge: NEUTRAL_BADGE, items })
+  }
+  return out
 }
 
 // Destinations proposables à la curation en V1 (a_savoir/mission = à la conversion).
@@ -50,6 +66,8 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [groupMode, setGroupMode] = useState<'kind' | 'category'>('kind')
+  const groups = groupMode === 'kind' ? groupsByKind(engagements) : groupsByCategory(engagements)
 
   const editableCount = engagements.filter((e) => e.status === 'extracted' || e.status === 'curated').length
 
@@ -154,19 +172,26 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
         </div>
       )}
 
-      {/* Sprint 2 — regroupé par NATURE (pénalités/contrôles d'abord). */}
-      {groupByKind(engagements).map((group) => (
-        <section key={group.kind ?? 'untyped'} className="space-y-2">
+      {/* Bascule de regroupement : par NATURE (Sprint 2) ou par THÈME (Sprint 3). */}
+      <div className="flex items-center gap-1 text-[11px]">
+        <span className="text-muted-foreground mr-1">Grouper par</span>
+        {(['kind', 'category'] as const).map((m) => (
+          <button key={m} type="button" onClick={() => setGroupMode(m)}
+            className={`rounded-full border px-2 py-0.5 font-medium transition-colors ${groupMode === m ? 'border-foreground bg-foreground text-background' : 'hover:bg-muted/50'}`}>
+            {m === 'kind' ? 'Nature' : 'Thème'}
+          </button>
+        ))}
+      </div>
+
+      {/* Regroupé selon le mode choisi. */}
+      {groups.map((group) => (
+        <section key={group.id} className="space-y-2">
           <div className="flex items-center gap-2 pt-1">
-            <span
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                group.kind ? KIND_META[group.kind].badge : 'border-muted bg-muted/40 text-muted-foreground'
-              }`}
-            >
-              {group.kind ? KIND_META[group.kind].short : 'Non typé'} ({group.items.length})
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${group.badge}`}>
+              {group.label} ({group.items.length})
             </span>
-            {group.kind && (
-              <span className="text-[11px] text-muted-foreground">{KIND_META[group.kind].description}</span>
+            {group.description && (
+              <span className="text-[11px] text-muted-foreground">{group.description}</span>
             )}
           </div>
 

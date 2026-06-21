@@ -1,9 +1,9 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Layers, ChevronRight, ListTodo, ClipboardCheck, FileCheck2, FileText, Clock } from 'lucide-react'
+import { Layers, ChevronRight, ListTodo, ClipboardCheck, FileCheck2, FileText, Clock, AlertTriangle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listSubjectsBySite, searchSiteSubjects, getSubjectLinkageHealth, type SubjectSummary, type SubjectCriticality, type SubjectSearchResult, type SubjectLinkageHealth, type LinkageStat } from '@/lib/db/subjects'
+import { listSubjectsBySite, searchSiteSubjects, getSubjectLinkageHealth, listSiteSubjectsToWatch, type SubjectSummary, type SubjectCriticality, type SubjectSearchResult, type SubjectLinkageHealth, type LinkageStat, type SubjectWatch } from '@/lib/db/subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SubjectCreateForm } from './SubjectCreateForm'
@@ -90,6 +90,43 @@ function pctTone(pct: number): string {
   return pct >= 70 ? 'text-emerald-700' : pct >= 40 ? 'text-amber-700' : 'text-rose-700'
 }
 
+/** Le « pourquoi » d'un sujet à surveiller, en une ligne (pour la synthèse exécutive). */
+function watchHeadline(w: SubjectWatch): string {
+  if (w.cause) return w.cause
+  if (w.state === 'bloqué') return 'bloqué'
+  if (w.ageDays != null && w.ageDays >= 30) return `ouvert depuis ${w.ageDays} jours`
+  if (w.blocksCount > 0) return `bloque ${w.blocksCount} sujet${w.blocksCount > 1 ? 's' : ''}`
+  if (w.openQuestion) return w.openQuestion
+  return w.lastEvolution ?? 'à surveiller'
+}
+
+/** SYNTHÈSE EXÉCUTIVE (P2) — « ce qui appelle l'attention en priorité ». Le dirigeant
+ *  lit 3 lignes, pas 25. Réutilise listSiteSubjectsToWatch (déterministe). */
+function ExecutiveSummary({ siteId, watch }: { siteId: string; watch: SubjectWatch[] }) {
+  if (watch.length === 0) return null
+  return (
+    <section className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-2">
+      <h2 className="text-sm font-semibold text-rose-700 inline-flex items-center gap-1.5">
+        <AlertTriangle className="h-4 w-4" /> À surveiller en priorité
+      </h2>
+      <ol className="space-y-1">
+        {watch.map((w, i) => (
+          <li key={w.id}>
+            <Link href={`/sites/${siteId}/subjects/${w.id}`} className="flex items-start gap-2 rounded-md px-1 py-0.5 hover:bg-rose-100/50">
+              <span className="tabular-nums font-semibold text-rose-700">{i + 1}.</span>
+              <span className="text-sm">
+                <span className="font-medium">{w.name}</span>
+                <span className="text-rose-900/80"> — {watchHeadline(w)}</span>
+                {w.criticalImpact && <span className="ml-1 text-rose-600" title="impact critique">⚠</span>}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
 /** Santé de rattachement — KPI INTERNE (Vincent), indicatif et jamais bloquant.
  *  Un objet sans sujet est invisible à la recherche : ce panneau dit si le chantier
  *  est assez rattaché pour que la recherche démontre bien (avant de la montrer). */
@@ -128,12 +165,13 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
   const { q } = await searchParams
   const query = (q ?? '').trim()
   const supabase = createAdminClient()
-  const [identity, subjects, { data: scopeRows }, results, linkage] = await Promise.all([
+  const [identity, subjects, { data: scopeRows }, results, linkage, watch] = await Promise.all([
     getSiteIdentity(id),
     listSubjectsBySite(id),
     supabase.from('memory_scopes').select('id, label').eq('site_id', id).is('deleted_at', null).eq('active', true),
     query ? searchSiteSubjects(id, query) : Promise.resolve([] as SubjectSearchResult[]),
     getSubjectLinkageHealth(id),
+    listSiteSubjectsToWatch(id, 3),
   ])
   if (!identity) notFound()
   const scopes = (scopeRows ?? []) as { id: string; label: string }[]
@@ -160,6 +198,8 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
           Un sujet = un problème / ouvrage / livrable, jamais une personne.
         </p>
       </header>
+
+      {!query && <ExecutiveSummary siteId={id} watch={watch} />}
 
       <LinkageHealthPanel h={linkage} />
 

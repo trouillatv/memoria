@@ -38,6 +38,26 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   if (documents.length) sourceBits.push(`${documents.length} document${documents.length > 1 ? 's' : ''}`)
   if (obligationCount) sourceBits.push(`${obligationCount} obligation${obligationCount > 1 ? 's' : ''}`)
 
+  // P1 « Sujet actif » — bloc ⚠ Vigilance : ce qui APPELLE l'attention, dérivé de
+  // insights + timeline (déjà chargés, zéro requête de plus). On passe de l'« historique »
+  // à l'« attention ». Déterministe, zéro IA, jamais un score d'acteur.
+  const vigilance: string[] = []
+  if (insights) {
+    if (insights.ageDays != null && insights.ageDays >= 30 && insights.status === 'open')
+      vigilance.push(`Ouvert depuis ${insights.ageDays} jours`)
+    if (insights.blocksCount > 0)
+      vigilance.push(`Bloque ${insights.blocksCount} sujet${insights.blocksCount > 1 ? 's' : ''}${insights.criticalImpact ? ' (dont un critique)' : ''}`)
+    if (insights.recurring)
+      vigilance.push(`Cité dans ${insights.meetingsCount} réunions, toujours ouvert`)
+    if (insights.slippages > 0)
+      vigilance.push(`Échéance repoussée ${insights.slippages} fois`)
+    if (insights.openActions > 0)
+      vigilance.push(`${insights.openActions} action${insights.openActions > 1 ? 's' : ''} ouverte${insights.openActions > 1 ? 's' : ''}`)
+  }
+  if (timeline.some((e) => e.kind === 'origin')) vigilance.push('Engagement contractuel (origine au dossier)')
+  if (timeline.some((e) => e.kind === 'obligation' && /produire|en cours/i.test(e.meta ?? ''))) vigilance.push('Obligation non encore satisfaite')
+  const showVigilance = vigilance.length > 0 && insights?.state !== 'clos'
+
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
   const supabase = createAdminClient()
   const linkedDocIds = new Set(documents.map((d) => d.id))
@@ -105,6 +125,19 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         </div>
         <p className="text-xs text-muted-foreground">{identity.name}{identity.clientName ? ` · ${identity.clientName}` : ''}</p>
       </header>
+
+      {/* VIGILANCE (P1 « Sujet actif ») — l'attention AVANT l'histoire. Le sujet ne se
+          contente plus de raconter : il signale ce qui appelle une action. */}
+      {showVigilance && (
+        <section className="rounded-xl border border-rose-200 bg-rose-50/60 p-4 space-y-1.5">
+          <h2 className="text-sm font-semibold text-rose-700 inline-flex items-center gap-1.5"><AlertTriangle className="h-4 w-4" /> Vigilance</h2>
+          <ul className="space-y-0.5">
+            {vigilance.map((v, i) => (
+              <li key={i} className="text-sm text-rose-900/90 flex items-start gap-1.5"><span className="mt-1 text-rose-500">•</span><span>{v}</span></li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ÉTAT DU SUJET — l'intelligence (« pourquoi c'est encore ouvert ? »). Tout
           dérivé, déterministe, zéro IA. La cause porte sa confiance quand déduite. */}
