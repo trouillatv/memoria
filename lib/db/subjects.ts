@@ -237,15 +237,20 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
 // EXPLOITATION du sujet (Vincent P3 « Sujet vivant ») — synthèse DÉTERMINISTE de
 // l'histoire : âge, réunions concernées, promesses (échéances annoncées dans le temps),
 // reports (glissements vers plus tard), récurrence. Zéro IA, zéro score d'acteur.
-export interface SubjectPromise { announcedOn: string; dueDate: string; label: string }
+export interface SubjectDeadline { announcedOn: string; dueDate: string; label: string }
 export interface SubjectInsights {
   ageDays: number | null
   meetingsCount: number
   decisionsCount: number
   openActions: number
-  promises: SubjectPromise[]
-  lastPromise: string | null
-  slippages: number       // nb de fois où l'échéance a glissé PLUS TARD = « reports »
+  // ÉCHÉANCES ANNONCÉES (≠ « promesses » — Vincent : ne pas confondre un engagement
+  // avec une date cible modifiable). On expose le FAIT : les échéances déclarées,
+  // datées de leur annonce.
+  deadlines: SubjectDeadline[]
+  lastDeadline: string | null
+  // REPORTS = nb de fois où une échéance PLUS TARDIVE a été RÉ-ANNONCÉE à une date
+  // ultérieure (vrai recul dans le temps), pas une simple édition le même jour.
+  slippages: number
   recurring: boolean      // sujet OUVERT concerné par ≥ seuil réunions
   status: SubjectStatus
 }
@@ -266,16 +271,23 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
   for (const d of decs) if (d.report_id) reportIds.add(d.report_id as string)
   for (const a of acts) if (a.report_id) reportIds.add(a.report_id as string)
 
-  // PROMESSES = échéances ANNONCÉES dans le temps (décision.echeance, action.due_date),
-  // ordonnées par date d'annonce. « DOE promis 12/03, 28/03, 14/04… ».
-  const promises: SubjectPromise[] = []
-  for (const d of decs) if (d.echeance) promises.push({ announcedOn: (d.date_decision as string) ?? '', dueDate: d.echeance as string, label: d.titre as string })
-  for (const a of acts) if (a.due_date) promises.push({ announcedOn: (a.created_at as string).slice(0, 10), dueDate: a.due_date as string, label: a.title as string })
-  promises.sort((x, y) => x.announcedOn.localeCompare(y.announcedOn))
-  // Reports : à chaque nouvelle promesse, l'échéance recule encore = glissement.
+  // ÉCHÉANCES ANNONCÉES dans le temps (décision.echeance, action.due_date), ordonnées
+  // par date d'annonce. On NE les appelle PAS « promesses » (ce serait une interprétation).
+  const deadlines: SubjectDeadline[] = []
+  for (const d of decs) if (d.echeance && d.date_decision) deadlines.push({ announcedOn: d.date_decision as string, dueDate: d.echeance as string, label: d.titre as string })
+  for (const a of acts) if (a.due_date) deadlines.push({ announcedOn: (a.created_at as string).slice(0, 10), dueDate: a.due_date as string, label: a.title as string })
+  deadlines.sort((x, y) => x.announcedOn.localeCompare(y.announcedOn) || x.dueDate.localeCompare(y.dueDate))
+  // REPORT = une échéance plus tardive RÉ-ANNONCÉE à une date ULTÉRIEURE. On exige une
+  // nouvelle annonce (announcedOn strictement plus récent) → exclut deux échéances le
+  // même jour et les éditions (qui ne changent pas la date d'annonce de l'objet).
   let slippages = 0
-  for (let i = 1; i < promises.length; i++) if (promises[i].dueDate > promises[i - 1].dueDate) slippages++
-  const lastPromise = promises.length ? promises[promises.length - 1].dueDate : null
+  let prevDue: string | null = null
+  let prevAnn: string | null = null
+  for (const p of deadlines) {
+    if (prevDue != null && prevAnn != null && p.announcedOn > prevAnn && p.dueDate > prevDue) slippages++
+    if (prevAnn == null || p.announcedOn >= prevAnn) { prevDue = p.dueDate; prevAnn = p.announcedOn }
+  }
+  const lastDeadline = deadlines.length ? deadlines[deadlines.length - 1].dueDate : null
 
   // Âge = depuis le 1er événement daté.
   const firstDates = [
@@ -290,8 +302,8 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
     meetingsCount: reportIds.size,
     decisionsCount: decs.length,
     openActions,
-    promises,
-    lastPromise,
+    deadlines,
+    lastDeadline,
     slippages,
     recurring: subject.status === 'open' && reportIds.size >= recurringMeetings,
     status: subject.status,
