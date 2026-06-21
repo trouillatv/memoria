@@ -32,6 +32,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getInboxFeed } from '@/lib/db/inbox-feed'
+import { DashboardInbox } from './DashboardInbox'
 import { listContracts } from '@/lib/db/contracts'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
 import {
@@ -120,6 +122,9 @@ export default async function DashboardPage() {
 
   const continuityEnabled = isContinuityFeatureEnabled()
 
+  // Couche « Nouveau depuis hier » — déclarations QR fraîches depuis last_seen_at.
+  const inbox = await getInboxFeed(user.id, user.organization_id ?? null)
+
   const [
     contracts,
     capital,
@@ -201,6 +206,10 @@ export default async function DashboardPage() {
         activeContractsCount={active.length}
         activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
       />
+
+      {/* Couche « Nouveau depuis hier » (Vincent) — ce qui s'est passé pendant votre
+          absence : déclarations QR des entreprises. Silencieux si rien de neuf. */}
+      <DashboardInbox feed={inbox} />
 
       <Hero
         morningReading={morningReading}
