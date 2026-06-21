@@ -37,6 +37,7 @@ const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 // au-delà, l'AO bascule en `failed` avec un message exploitable (jamais un hang).
 const EXTRACT_TIMEOUT_MS = 90_000
 const OCR_TIMEOUT_MS = 120_000
+const ANALYZE_TIMEOUT_MS = 180_000 // borne l'analyse IA (recall + LLM) — anti-hang
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -183,7 +184,7 @@ export async function createTenderAction(formData: FormData) {
   const extractedTextForAnalyze = extracted.text
   after(async () => {
     try {
-      const result = await analyzeTender(extractedTextForAnalyze, userIdForAnalyze)
+      const result = await withTimeout(analyzeTender(extractedTextForAnalyze, userIdForAnalyze), ANALYZE_TIMEOUT_MS, 'Analyse IA')
 
       // Validation des sources avant insertion
       const knowledgeItems = await listKnowledgeItems({})

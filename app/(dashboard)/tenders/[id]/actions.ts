@@ -13,6 +13,18 @@ import { validateAnalysisSources } from '@/services/ai/source-validation'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
 import { getEvidenceForEngagement } from '@/lib/db/engagements'
 
+// Borne l'analyse IA dans after() : si analyzeTender PEND (sans throw), on
+// bascule en échec au lieu de rester coincé « analyzing » indéfiniment.
+const ANALYZE_TIMEOUT_MS = 180_000
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} : délai dépassé (${Math.round(ms / 1000)}s)`)), ms),
+    ),
+  ])
+}
+
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -54,7 +66,7 @@ export async function relaunchAnalysisAction(formData: FormData) {
   const extractedText = doc.extracted_text
   after(async () => {
     try {
-      const result = await analyzeTender(extractedText, userId)
+      const result = await withTimeout(analyzeTender(extractedText, userId), ANALYZE_TIMEOUT_MS, 'Analyse IA')
 
       // Validation des sources avant insertion
       const knowledgeItems = await listKnowledgeItems({})

@@ -51,7 +51,7 @@ export default function BackfillPage() {
         <ul className="space-y-1.5 text-sm text-muted-foreground">
           <li className="flex gap-2">
             <span className="text-emerald-600 font-bold">→</span>
-            Lit tous les items de la bibliothèque AGP (procédures, certifications, références…)
+            Lit tous les items de la bibliothèque (procédures, certifications, références…)
           </li>
           <li className="flex gap-2">
             <span className="text-emerald-600 font-bold">→</span>
@@ -109,7 +109,7 @@ export default function BackfillPage() {
                   </thead>
                   <tbody className="divide-y">
                     <ResultRow
-                      label="Bibliothèque AGP"
+                      label="Bibliothèque"
                       count={state.result.library.processed}
                       errors={state.result.library.errors}
                     />

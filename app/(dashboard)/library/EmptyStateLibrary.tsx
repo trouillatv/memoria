@@ -41,7 +41,7 @@ export function EmptyStateLibrary() {
         </div>
         <h2 className="text-xl font-bold">Votre IA est sous-alimentée</h2>
         <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          La Bibliothèque AGP est le cerveau métier de votre entreprise. Plus elle est riche en
+          La Bibliothèque est le cerveau métier de votre entreprise. Plus elle est riche en
           références, moyens et procédures, plus vos analyses de dossiers sont précises et défendables.
           Commencez par 3 éléments fondamentaux ci-dessous.
         </p>

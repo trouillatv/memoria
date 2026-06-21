@@ -36,7 +36,7 @@ function formatTerrainContext(matches: TerrainMatchBySite[]): string {
   if (matches.length === 0) return ''
   const lines: string[] = [
     '\n=== Preuves terrain reliées à cet AO ===',
-    'Ces traces proviennent de la mémoire opérationnelle réelle d\'AGP.',
+    'Ces traces proviennent de la mémoire opérationnelle réelle de votre entreprise.',
     'Utilisez-les comme matériaux de réponse — jamais comme conclusions.',
   ]
   // Cap : 5 sites, 4 traces par site — ne pas noyer le contexte
@@ -81,8 +81,8 @@ const DOMAIN_LABEL_FR: Record<string, string> = {
 function formatKnowledgeContext(matches: KnowledgeMatchBySource[]): string {
   if (matches.length === 0) return ''
   const lines: string[] = [
-    '\n=== Mémoire documentaire AGP reliée à cet AO ===',
-    'Ces fragments proviennent de la bibliothèque AGP et des AO passés (gagnés/perdus).',
+    '\n=== Mémoire documentaire de votre entreprise reliée à cet AO ===',
+    'Ces fragments proviennent de la bibliothèque de votre entreprise et des AO passés (gagnés/perdus).',
     'Citez la source précise — jamais de généralisation sans preuve documentaire.',
   ]
   for (const source of matches.slice(0, 6)) {

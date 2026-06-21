@@ -24,7 +24,7 @@ export default async function NewTenderPage() {
               <p className="text-sm font-medium text-amber-900">Bibliothèque vide</p>
               <p className="text-sm text-amber-800">
                 L&apos;analyse IA s&apos;appuiera sur un contenu générique. Pour des résultats spécifiques à votre entreprise,
-                ajoutez d&apos;abord des éléments dans la <Link href="/library" className="underline font-medium">Bibliothèque AGP</Link>.
+                ajoutez d&apos;abord des éléments dans la <Link href="/library" className="underline font-medium">Bibliothèque</Link>.
               </p>
             </div>
           </CardContent>
