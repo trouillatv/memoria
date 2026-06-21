@@ -8,6 +8,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { findOrCreateSubjectByName } from '@/lib/db/subjects'
+import { listLinkedDocumentsForTargets } from '@/lib/db/documents'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 
 export type ObligationStatus = 'a_produire' | 'en_cours' | 'satisfaite' | 'non_applicable'
@@ -232,19 +233,29 @@ export async function detectNeglectedObligations(siteId: string): Promise<Memory
     .filter((o) => o.neglected)
     .sort((a, b) => IMPORTANCE_RANK[a.importance] - IMPORTANCE_RANK[b.importance])
   if (neglected.length === 0) return null
+  // Documents rattachés (CCTP/PAQ, mig 151) → on rappelle « voir CCTP ch. 4.2 »
+  // dans le briefing. Lien + référence libre, jamais de parsing.
+  const linkedByOblig = await listLinkedDocumentsForTargets('obligation', neglected.map((o) => o.id)).catch(() => new Map())
   return {
     kind: 'obligation_neglected',
     title: `${neglected.length} obligation${neglected.length > 1 ? 's' : ''} à surveiller`,
-    items: neglected.map((o) => ({
-      id: o.id,
-      label: o.label,
-      meta: [IMPORTANCE_LABEL[o.importance], o.responsibleRole].filter(Boolean).join(' · '),
-      context: [
-        o.healthReason,
-        o.responsibleRole ? `Responsable : ${o.responsibleRole}` : null,
-        o.lastRemindedAt ? `Relancé le ${ddmmyyyy(o.lastRemindedAt)}, sans réponse à ce jour` : 'Jamais relancé',
-      ].filter((x): x is string => !!x),
-    })),
+    items: neglected.map((o) => {
+      const docs = (linkedByOblig.get(o.id) ?? []) as Array<{ filename: string; referenceLabel: string | null }>
+      const docLine = docs.length > 0
+        ? `Voir ${docs.map((d) => d.referenceLabel ? `${d.filename} (${d.referenceLabel})` : d.filename).join(', ')}`
+        : null
+      return {
+        id: o.id,
+        label: o.label,
+        meta: [IMPORTANCE_LABEL[o.importance], o.responsibleRole].filter(Boolean).join(' · '),
+        context: [
+          o.healthReason,
+          o.responsibleRole ? `Responsable : ${o.responsibleRole}` : null,
+          o.lastRemindedAt ? `Relancé le ${ddmmyyyy(o.lastRemindedAt)}, sans réponse à ce jour` : 'Jamais relancé',
+          docLine,
+        ].filter((x): x is string => !!x),
+      }
+    }),
     source: 'Obligations chantier (site_obligation) négligées, triées par criticité (bibliothèque, déterministe).',
   }
 }

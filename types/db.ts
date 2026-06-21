@@ -873,6 +873,8 @@ export type DocumentTargetType =
   | 'reserve'
   // Sujets vivants (migration 124) — un document rattaché à un fil/sujet.
   | 'subject'
+  // Obligations (migration 151) — rattacher le CCTP/PAQ source à l'obligation.
+  | 'obligation'
 
 export interface DbDocumentCollection {
   id: string
@@ -919,4 +921,7 @@ export interface DbDocumentLink {
   target_type: DocumentTargetType
   target_id: string
   created_at: string
+  // Référence libre (migration 151) : « CCTP chapitre 4.2 / page 18 ». Saisie
+  // humaine, jamais dérivée par IA. NULL = aucune.
+  reference_label: string | null
 }

@@ -4,8 +4,10 @@ import { ShieldAlert, CheckCircle2, CircleSlash, Circle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteObligations, listObligationTemplates, type SiteObligation, type ObligationImportance } from '@/lib/db/obligations'
+import { listDocumentsForTarget, listLinkedDocumentsForTargets, type LinkedDocument } from '@/lib/db/documents'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ProposeObligations, ObligationRowControls } from './ObligationControls'
+import { ObligationDocLink } from './ObligationDocLink'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +26,7 @@ function ddmm(iso: string | null): string | null {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
-function ObligationRow({ siteId, o }: { siteId: string; o: SiteObligation }) {
+function ObligationRow({ siteId, o, linked, siteDocs }: { siteId: string; o: SiteObligation; linked: LinkedDocument[]; siteDocs: Array<{ id: string; filename: string }> }) {
   const Icon = o.status === 'satisfaite' ? CheckCircle2 : o.status === 'non_applicable' ? CircleSlash : o.neglected ? ShieldAlert : Circle
   const tone = o.status === 'satisfaite' ? 'text-emerald-600' : o.status === 'non_applicable' ? 'text-muted-foreground' : o.neglected ? 'text-rose-600' : 'text-sky-600'
   const imp = IMP_BADGE[o.importance]
@@ -46,6 +48,8 @@ function ObligationRow({ siteId, o }: { siteId: string; o: SiteObligation }) {
         </div>
       </div>
       <ObligationRowControls siteId={siteId} obligationId={o.id} status={o.status} importance={o.importance} responsible={o.responsibleRole} />
+      {/* Option A (mig 151) : rattacher le CCTP/PAQ source + référence libre. Aucun parsing. */}
+      <ObligationDocLink siteId={siteId} obligationId={o.id} linked={linked} siteDocs={siteDocs} />
     </li>
   )
 }
@@ -56,10 +60,16 @@ export default async function SiteObligationsPage({ params }: { params: Promise<
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, obligations, templates] = await Promise.all([
+  const [identity, obligations, templates, siteDocsRaw] = await Promise.all([
     getSiteIdentity(id), getSiteObligations(id), listObligationTemplates(),
+    listDocumentsForTarget('site', id).catch(() => []),
   ])
   if (!identity) notFound()
+
+  // Documents du site (sélecteur) + liens par obligation (mig 151). Option A : lien
+  // + référence libre, jamais de parsing/IA.
+  const siteDocs = siteDocsRaw.map((d) => ({ id: d.id, filename: d.filename }))
+  const linkedByObligation = await listLinkedDocumentsForTargets('obligation', obligations.map((o) => o.id)).catch(() => new Map<string, LinkedDocument[]>())
 
   // Bibliothèque encore proposable = modèles pas déjà instanciés sur ce chantier.
   const usedTemplateIds = new Set(obligations.map((o) => o.templateId).filter(Boolean) as string[])
@@ -96,19 +106,19 @@ export default async function SiteObligationsPage({ params }: { params: Promise<
           {neglected.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-rose-700">À surveiller <span className="text-xs tabular-nums">({neglected.length})</span></h2>
-              <ul className="space-y-1.5">{neglected.map((o) => <ObligationRow key={o.id} siteId={id} o={o} />)}</ul>
+              <ul className="space-y-1.5">{neglected.map((o) => <ObligationRow key={o.id} siteId={id} o={o} linked={linkedByObligation.get(o.id) ?? []} siteDocs={siteDocs} />)}</ul>
             </section>
           )}
           {active.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-semibold">En cours <span className="text-xs text-muted-foreground tabular-nums">({active.length})</span></h2>
-              <ul className="space-y-1.5">{active.map((o) => <ObligationRow key={o.id} siteId={id} o={o} />)}</ul>
+              <ul className="space-y-1.5">{active.map((o) => <ObligationRow key={o.id} siteId={id} o={o} linked={linkedByObligation.get(o.id) ?? []} siteDocs={siteDocs} />)}</ul>
             </section>
           )}
           {done.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-muted-foreground">Réglées <span className="text-xs tabular-nums">({done.length})</span></h2>
-              <ul className="space-y-1.5">{done.map((o) => <ObligationRow key={o.id} siteId={id} o={o} />)}</ul>
+              <ul className="space-y-1.5">{done.map((o) => <ObligationRow key={o.id} siteId={id} o={o} linked={linkedByObligation.get(o.id) ?? []} siteDocs={siteDocs} />)}</ul>
             </section>
           )}
         </div>

@@ -244,14 +244,68 @@ export async function addDocumentLink(
   documentId: string,
   targetType: DocumentTargetType,
   targetId: string,
+  /** Référence libre (chapitre/article/page) — uniquement pour les liens
+   *  obligation↔document (mig 151). Saisie humaine, jamais dérivée. */
+  referenceLabel?: string | null,
 ): Promise<void> {
   const supabase = createAdminClient()
+  const ref = referenceLabel?.trim() || null
+  // upsert : si le lien existe déjà, on met à jour la référence (pas ignoreDuplicates
+  // ici — la référence doit pouvoir être corrigée).
   const { error } = await supabase
     .from('document_links')
     .upsert(
-      { document_id: documentId, target_type: targetType, target_id: targetId },
-      { onConflict: 'document_id,target_type,target_id', ignoreDuplicates: true },
+      { document_id: documentId, target_type: targetType, target_id: targetId, reference_label: ref },
+      { onConflict: 'document_id,target_type,target_id' },
     )
+  if (error) throw error
+}
+
+export interface LinkedDocument {
+  linkId: string
+  documentId: string
+  filename: string
+  documentType: string
+  referenceLabel: string | null
+}
+
+/** Documents liés à un (ou plusieurs) target(s) avec leur référence libre.
+ *  Sert le bloc « Document lié » des obligations (et le surfaçage briefing). */
+export async function listLinkedDocumentsForTargets(
+  targetType: DocumentTargetType,
+  targetIds: string[],
+): Promise<Map<string, LinkedDocument[]>> {
+  const out = new Map<string, LinkedDocument[]>()
+  if (targetIds.length === 0) return out
+  const supabase = createAdminClient()
+  const { data: links } = await supabase
+    .from('document_links')
+    .select('id, document_id, target_id, reference_label')
+    .eq('target_type', targetType)
+    .in('target_id', targetIds)
+  const rows = (links ?? []) as Array<{ id: string; document_id: string; target_id: string; reference_label: string | null }>
+  if (rows.length === 0) return out
+  const docIds = [...new Set(rows.map((r) => r.document_id))]
+  const { data: docs } = await supabase
+    .from('documents')
+    .select('id, filename, document_type')
+    .in('id', docIds)
+    .is('deleted_at', null)
+  const docById = new Map(((docs ?? []) as Array<{ id: string; filename: string; document_type: string }>).map((d) => [d.id, d]))
+  for (const r of rows) {
+    const d = docById.get(r.document_id)
+    if (!d) continue
+    const arr = out.get(r.target_id) ?? []
+    arr.push({ linkId: r.id, documentId: r.document_id, filename: d.filename, documentType: d.document_type, referenceLabel: r.reference_label })
+    out.set(r.target_id, arr)
+  }
+  return out
+}
+
+/** Retire un lien document↔target (par id de lien). */
+export async function removeDocumentLink(linkId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('document_links').delete().eq('id', linkId)
   if (error) throw error
 }
 
