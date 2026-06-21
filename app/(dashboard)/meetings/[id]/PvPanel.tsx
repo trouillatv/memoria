@@ -6,8 +6,7 @@
 // diffusée est CONSERVÉE (jamais « remplacée ») — un document diffusé est une preuve.
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { FileText, CheckCircle2, Download, Loader2, AlertTriangle, ClipboardCheck, Upload, History } from 'lucide-react'
+import { FileText, CheckCircle2, Download, Loader2, AlertTriangle, Upload, History } from 'lucide-react'
 import { validatePvAction } from './pv-actions'
 import type { DbReportDocument } from '@/types/db'
 import type { ReportFinalVersion } from '@/lib/db/report-final-versions'
@@ -16,15 +15,13 @@ interface PvPanelProps {
   reportId: string
   initial: DbReportDocument | null
   finalVersions: ReportFinalVersion[]
-  /** Vrai quand le panneau est rendu SUR l'écran de validation (évite le lien vers lui-même). */
-  hideValidationLink?: boolean
 }
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-export function PvPanel({ reportId, initial, finalVersions, hideValidationLink }: PvPanelProps) {
+export function PvPanel({ reportId, initial, finalVersions }: PvPanelProps) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [note, setNote] = useState('')
@@ -68,14 +65,14 @@ export function PvPanel({ reportId, initial, finalVersions, hideValidationLink }
   }
 
   return (
-    <section className="rounded-xl border bg-card p-4 space-y-3">
+    <section className="rounded-xl border bg-card p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="inline-flex items-center gap-2 text-sm font-semibold">
           <FileText className="h-4 w-4 text-muted-foreground" />
-          Compte-rendu de chantier
+          Finaliser le compte-rendu
           {isValidated && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-              <CheckCircle2 className="h-3 w-3" /> Validé
+              <CheckCircle2 className="h-3 w-3" /> Version générée figée
             </span>
           )}
         </h2>
@@ -89,32 +86,73 @@ export function PvPanel({ reportId, initial, finalVersions, hideValidationLink }
         </div>
       )}
 
-      <p className="text-sm text-muted-foreground">
-        Le compte-rendu se génère depuis la <strong>mémoire validée</strong> de la réunion (trame unique
-        «&nbsp;Chantier&nbsp;v1&nbsp;»). Pour combler un manque, complétez les <strong>points à confirmer</strong> —
-        le CR reflète la mémoire, on ne le réécrit pas à la main.
-      </p>
+      {/* Parcours d'ensemble — Émeline voit tout le chemin, sans quitter l'écran
+          (Finding A/C). ①②③ se font dans le corps de la page ci-dessus. */}
+      <ol className="flex flex-wrap items-center gap-x-1 gap-y-1 text-[11px] text-muted-foreground">
+        {['Vérifier les points', "Relire l'aperçu", 'Corriger', 'Télécharger', 'Téléverser le final', 'Figer (option)'].map((label, i) => (
+          <li key={label} className="inline-flex items-center gap-1">
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">{i + 1}</span>
+            {label}
+            {i < 5 && <span className="mx-0.5 text-muted-foreground/40">→</span>}
+          </li>
+        ))}
+      </ol>
 
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        {!hideValidationLink && (
-          <Link href={`/meetings/${reportId}/pv/validation`} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40">
-            <ClipboardCheck className="h-4 w-4" /> Points à confirmer
-          </Link>
-        )}
-        <a href={`/meetings/${reportId}/pv`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40">
-          <Download className="h-4 w-4" /> Aperçu PDF
-        </a>
-        <a href={`/meetings/${reportId}/pv?format=docx`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/40">
-          <Download className="h-4 w-4" /> Télécharger DOCX
-        </a>
+      {/* ④ Générer / télécharger — l'aperçu vivant est déjà à droite ; ici on
+          obtient le PDF ou le Word à retoucher. */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-foreground">④ Générer le document</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a href={`/meetings/${reportId}/pv`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40">
+            <Download className="h-4 w-4" /> Aperçu PDF
+          </a>
+          <a href={`/meetings/${reportId}/pv?format=docx`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/40">
+            <Download className="h-4 w-4" /> Télécharger DOCX (corriger dans Word)
+          </a>
+        </div>
+      </div>
+
+      {/* ⑤ Téléverser la version finale = LA preuve diffusée (action primaire). */}
+      <div className="rounded-lg border border-slate-200 bg-muted/20 p-3 space-y-2">
+        <p className="text-xs font-semibold text-foreground">⑤ Téléverser la version finale diffusée</p>
+        <p className="text-xs text-muted-foreground">
+          Le document réellement envoyé aux intervenants — <strong>conservé comme preuve</strong>, jamais écrasé.
+          C&apos;est l&apos;étape qui termine le CR.
+        </p>
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note de diffusion (ex. « envoyé à 18 destinataires »)"
+            className="min-w-[14rem] flex-1 rounded-lg border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+          />
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.docx"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFinal(f); e.target.value = '' }}
+          />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-60">
+            <Upload className="h-4 w-4" /> {finalVersions.length > 0 ? `Téléverser la v${finalVersions.length + 1}` : 'Téléverser la version finale'}
+          </button>
+        </div>
+      </div>
+
+      {/* ⑥ Figer la version GÉNÉRÉE = référence MemorIA (optionnel, ≠ preuve diffusée). */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-foreground">⑥ Figer la version générée <span className="font-normal text-muted-foreground">(optionnel)</span></p>
+        <p className="text-xs text-muted-foreground">
+          Instantané de référence du CR <strong>généré par MemorIA</strong>, pour comparaison. Ce n&apos;est
+          <strong> pas</strong> le document diffusé (celui-là se téléverse à l&apos;étape ⑤).
+        </p>
         <button
           type="button"
           onClick={handleValidate}
           disabled={pending}
-          title="Crée la version de RÉFÉRENCE produite par MemorIA (≠ version finale que vous diffuserez). Sert de point de comparaison."
           className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40 disabled:opacity-60"
         >
-          <CheckCircle2 className="h-4 w-4" /> {isValidated ? 'Ré-archiver la version générée' : 'Archiver la version générée'}
+          <CheckCircle2 className="h-4 w-4" /> {isValidated ? 'Re-figer la version générée' : 'Figer la version générée'}
         </button>
       </div>
 
@@ -147,28 +185,9 @@ export function PvPanel({ reportId, initial, finalVersions, hideValidationLink }
           </ul>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Après vos corrections manuelles (formulation, ajouts), téléversez le document final envoyé — chaque diffusion est conservée comme preuve.
+            Aucune version finale encore. Téléversez le document diffusé à l&apos;étape ⑤ — chaque diffusion est conservée comme preuve.
           </p>
         )}
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Note de diffusion (ex. « envoyé à 18 destinataires »)"
-            className="min-w-[14rem] flex-1 rounded-lg border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.docx"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFinal(f); e.target.value = '' }}
-          />
-          <button type="button" onClick={() => fileRef.current?.click()} disabled={pending} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted/40 disabled:opacity-60">
-            <Upload className="h-4 w-4" /> {finalVersions.length > 0 ? `Téléverser la v${finalVersions.length + 1}` : 'Téléverser la version finale'}
-          </button>
-        </div>
       </div>
     </section>
   )

@@ -344,10 +344,10 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
         })}
       </section>
 
-      {/* Sorties : DOCX brouillon toujours dispo ; PDF final gated (cf. PvPanel). */}
       {/* HUB d'actions (Finding A) : on corrige ci-dessus, on prépare/diffuse ici —
-          tout au même endroit, plus de va-et-vient vers la réunion. */}
-      <PvPanel reportId={id} initial={pvDoc} finalVersions={finalVersions} hideValidationLink />
+          tout au même endroit, plus de va-et-vient vers la réunion. Parcours ④⑤⑥
+          numéroté (Finding C) ; preuve diffusée ≠ référence générée (Finding B). */}
+      <PvPanel reportId={id} initial={pvDoc} finalVersions={finalVersions} />
           </>
         }
         right={
