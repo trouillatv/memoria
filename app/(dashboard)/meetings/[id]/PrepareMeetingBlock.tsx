@@ -56,6 +56,7 @@ const META: Record<SignalKind, { icon: typeof ListTodo; tone: string }> = {
   actor_absent: { icon: Building2, tone: 'text-sky-700' },
   reserve_open: { icon: ClipboardCheck, tone: 'text-emerald-700' },
   obligation_neglected: { icon: ShieldAlert, tone: 'text-rose-700' },
+  action_recurring: { icon: Repeat, tone: 'text-sky-700' },
 }
 
 export function PrepareMeetingBlock({ signals, questions = [], subjects = [], siteId }: { signals: MemorySignal[]; questions?: SuggestedQuestion[]; subjects?: SubjectWatch[]; siteId?: string }) {

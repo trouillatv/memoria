@@ -11,7 +11,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectNeglectedObligations } from '@/lib/db/obligations'
 
-export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected'
+export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected' | 'action_recurring'
 
 export interface SignalItem {
   id: string
@@ -288,16 +288,47 @@ export async function detectRepeatedAbsences(siteId: string, threshold = 3, wind
  *  reste pour une V2 fondée sur des OBJETS RÉOUVERTS (actions/décisions/réserves
  *  rouvertes), qui demande un historique de statut (à instrumenter). Une réunion mal
  *  détectée est gênante ; une réunion perdue est catastrophique → priorité ailleurs. */
+/** ACTIONS RÉCURRENTES À REPRENDRE (S3-ter) : kind = recurring_until_done et pas
+ *  clôturées. Une action récurrente ne porte pas forcément d'échéance, donc le
+ *  détecteur « en retard » ne la voit pas — celui-ci la fait revenir à CHAQUE
+ *  préparation de réunion, jusqu'à clôture (sans la transformer en obligation). */
+export async function detectRecurringActions(siteId: string, asOf = todayIso()): Promise<MemorySignal | null> {
+  const { data } = await createAdminClient()
+    .from('site_actions')
+    .select('id, title, assigned_to, corps_etat, created_at, status')
+    .eq('site_id', siteId)
+    .eq('kind', 'recurring_until_done')
+    .not('status', 'in', '(done,cancelled)')
+    .order('created_at', { ascending: true })
+  const rows = data ?? []
+  if (rows.length === 0) return null
+  return {
+    kind: 'action_recurring',
+    title: `${rows.length} action${rows.length > 1 ? 's' : ''} récurrente${rows.length > 1 ? 's' : ''} à reprendre`,
+    items: rows.map((a) => {
+      const openSince = daysSince(a.created_at as string | null, asOf)
+      return {
+        id: a.id as string,
+        label: a.title as string,
+        meta: [a.assigned_to as string | null, a.corps_etat as string | null].filter(Boolean).join(' · ') || null,
+        context: [openSince != null ? `Ouverte depuis ${openSince} j — récurrente jusqu'à clôture` : null].filter((x): x is string => !!x),
+      }
+    }),
+    source: 'Actions « récurrentes jusqu’à clôture » (site_actions, kind=recurring_until_done) encore ouvertes.',
+  }
+}
+
 export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()): Promise<MemorySignal[]> {
-  const [congestion, obligations, overdue, decisions, absences, reserves] = await Promise.all([
+  const [congestion, obligations, overdue, recurring, decisions, absences, reserves] = await Promise.all([
     detectActorCongestion(siteId, 4, 0.4, asOf), // en TÊTE : le seul qui anticipe « où ça va se concentrer »
     detectNeglectedObligations(siteId),          // obligations prescriptives négligées (DOE, journal photo…)
     detectOverdueActions(siteId, asOf),
+    detectRecurringActions(siteId, asOf),        // récurrentes ouvertes (sans échéance) — reviennent chaque réunion
     detectUnappliedDecisions(siteId, asOf),
     detectRepeatedAbsences(siteId),
     detectOpenReserves(siteId, asOf),
   ])
-  return [congestion, obligations, overdue, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  return [congestion, obligations, overdue, recurring, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
 }
 
 export interface SuggestedQuestion { question: string; why: string | null }
@@ -321,6 +352,7 @@ export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): S
         case 'actor_absent': question = `${it.label} est absente — qui reprend ses actions en attente ?`; break
         case 'reserve_open': question = `La réserve « ${it.label} » est-elle levée ?`; break
         case 'obligation_neglected': question = `Obligation « ${it.label} » — où en est-on ? (à rappeler à ${it.meta ?? 'l\'entreprise'})`; break
+        case 'action_recurring': question = `Action récurrente « ${it.label} » — point d'avancement de la semaine ?`; break
       }
       if (question) out.push({ question, why })
     }
