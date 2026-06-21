@@ -15,8 +15,10 @@ export interface LibrarySnapshot {
   total_chars: number
 }
 
-export async function buildLibraryContext(): Promise<{ markdown: string; snapshot: LibrarySnapshot }> {
-  const items = await listKnowledgeItems({})
+export async function buildLibraryContext(orgId?: string | null): Promise<{ markdown: string; snapshot: LibrarySnapshot }> {
+  // orgId fourni (même null) → mode admin scopé (indépendant des cookies, ex.
+  // analyse AO en route). Sinon → RLS via cookies (atelier en contexte requête).
+  const items = orgId !== undefined ? await listKnowledgeItems({}, { orgId }) : await listKnowledgeItems({})
   if (items.length === 0) {
     return { markdown: '', snapshot: { items_count: 0, total_chars: 0 } }
   }

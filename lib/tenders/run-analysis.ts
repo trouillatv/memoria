@@ -85,9 +85,17 @@ export async function runTenderAnalysis(tenderId: string, userId: string | null)
     }
   }
 
-  // ÉTAPE 2 — ANALYSE.
+  // ÉTAPE 2 — ANALYSE. On résout l'org depuis le userId via le client ADMIN et on
+  // la passe à analyzeTender → la bibliothèque est lue SANS cookies (l'analyse ne
+  // dépend plus du scope requête, qui manquait en after() et cassait l'analyse).
+  let orgId: string | null = null
+  if (userId) {
+    const { data: u } = await createAdminClient().from('users').select('organization_id').eq('id', userId).maybeSingle()
+    orgId = (u as { organization_id: string | null } | null)?.organization_id ?? null
+  }
+
   try {
-    const result = await withTimeout(analyzeTender(extractedText, userId), ANALYZE_TIMEOUT_MS, 'Analyse IA')
+    const result = await withTimeout(analyzeTender(extractedText, userId, orgId), ANALYZE_TIMEOUT_MS, 'Analyse IA')
 
     const knowledgeItems = await listKnowledgeItems({})
     const isMock = result.provider === 'mock'

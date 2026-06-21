@@ -23,10 +23,13 @@ export interface AnalyzeTenderResult {
 
 export async function analyzeTender(
   rawText: string,
-  userId: string | null
+  userId: string | null,
+  /** Org pour scoper la bibliothèque SANS cookies (route/after/script). Si
+   *  undefined → fallback RLS via cookies (contexte requête uniquement). */
+  orgId?: string | null,
 ): Promise<AnalyzeTenderResult> {
   const provider = getAIProvider()
-  const lib = await buildLibraryContext()
+  const lib = await buildLibraryContext(orgId)
 
   // A3 — recall documentaire BORNÉ calculé UNE SEULE FOIS par analyse AO,
   // hors de toute boucle agent (jamais un recall par agent). Rôle dérivé

@@ -14,21 +14,42 @@ export interface KnowledgeQuery {
  * Filtres optionnels par catégorie / tags / recherche full-text.
  * Lecture standard via le client serveur (RLS-protected, manager+admin only).
  */
-export async function listKnowledgeItems(query: KnowledgeQuery = {}): Promise<DbKnowledgeItem[]> {
+const KNOWLEDGE_SELECT = 'id, title, category, content_markdown, file_path, tags, created_at, updated_at, deleted_at'
+
+export async function listKnowledgeItems(
+  query: KnowledgeQuery = {},
+  opts?: { orgId?: string | null },
+): Promise<DbKnowledgeItem[]> {
+  // Mode ADMIN explicite (orgId fourni) : indépendant des cookies (utilisable
+  // dans une route / after() / script, ex. analyse AO). Sinon client serveur (RLS).
+  if (opts && 'orgId' in opts) {
+    const supabase = createAdminClient()
+    let q = supabase.from('knowledge_items').select(KNOWLEDGE_SELECT)
+    q = opts.orgId ? q.eq('organization_id', opts.orgId) : q.is('organization_id', null)
+    q = q.is('deleted_at', null).order('created_at', { ascending: false })
+    if (query.category) q = q.eq('category', query.category)
+    if (query.tags && query.tags.length > 0) q = q.overlaps('tags', query.tags)
+    if (query.search) {
+      const s = query.search.replace(/[%_]/g, '\\$&')
+      q = q.or(`title.ilike.%${s}%,content_markdown.ilike.%${s}%`)
+    }
+    const { data, error } = await q
+    if (error) throw error
+    return (data ?? []) as DbKnowledgeItem[]
+  }
+
   const supabase = await createServerClient()
   let q = supabase
     .from('knowledge_items')
-    .select('id, title, category, content_markdown, file_path, tags, created_at, updated_at, deleted_at')
+    .select(KNOWLEDGE_SELECT)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
-
   if (query.category) q = q.eq('category', query.category)
   if (query.tags && query.tags.length > 0) q = q.overlaps('tags', query.tags)
   if (query.search) {
     const s = query.search.replace(/[%_]/g, '\\$&')
     q = q.or(`title.ilike.%${s}%,content_markdown.ilike.%${s}%`)
   }
-
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as DbKnowledgeItem[]

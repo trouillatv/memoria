@@ -2,33 +2,44 @@ import { z } from 'zod'
 import type { AIAgent, AgentContext } from './types'
 import { LECTEUR_AO_V1 } from '../prompts/lecteur-ao.v1'
 
+// TOLÉRANCE : on TRONQUE les chaînes trop longues au lieu de faire échouer toute
+// l'analyse (un LLM verbeux dépasse régulièrement ces plafonds).
+const capped = (max: number) => z.string().transform((s) => s.slice(0, max))
+const cappedOpt = (max: number) => z.string().transform((s) => s.slice(0, max)).optional()
+
 const sourceSchemaForAnalysis = z.object({
   type: z.enum(['pdf', 'library', 'analysis']),
-  quote: z.string().max(500),
+  quote: capped(500),
   page: z.number().int().optional(),
-  library_item_title: z.string().max(200).optional(),
-  reasoning: z.string().max(200).optional(),
+  library_item_title: cappedOpt(200),
+  reasoning: cappedOpt(200),
 })
+
+// TOLÉRANCE : un LLM verbeux peut renvoyer plus de sources que le plafond. On
+// TRONQUE (transform) au lieu de FAIRE ÉCHOUER toute l'analyse (cause réelle des
+// AO « failed » : un risk avec >3 sources cassait le safeParse entier).
+const sourcesCapped = (max: number) =>
+  z.array(sourceSchemaForAnalysis).optional().transform((a) => (a ? a.slice(0, max) : a))
 
 const constraintSchema = z.object({
   label: z.string(),
   detail: z.string().optional(),
   required: z.boolean().optional(),
   category: z.string().optional(),
-  sources: z.array(sourceSchemaForAnalysis).max(3).optional(),
+  sources: sourcesCapped(3),
 })
 
 const riskSchema = z.object({
   label: z.string(),
   severity: z.enum(['low', 'medium', 'high']),
   detail: z.string().optional(),
-  sources: z.array(sourceSchemaForAnalysis).max(3).optional(),
+  sources: sourcesCapped(3),
 })
 
 const checklistItemSchema = z.object({
   item: z.string(),
   required: z.boolean(),
-  sources: z.array(sourceSchemaForAnalysis).max(2).optional(),
+  sources: sourcesCapped(2),
 })
 
 export const lecteurAoOutputSchema = z.object({
