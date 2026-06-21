@@ -1,12 +1,12 @@
 /**
- * Extraction texte depuis un Buffer PDF via pdf-parse v2 (PDFParse class API).
+ * Extraction texte depuis un Buffer PDF via `unpdf`.
  * Détecte les PDF scannés (texte vide ou trop court) et signale via le champ isLikelyScanned.
  *
- * SERVERLESS : le polyfill DOM (DOMMatrix…) est importé À EFFET DE BORD AVANT tout,
- * et `pdf-parse` est chargé DYNAMIQUEMENT dans la fonction → la lib ne s'évalue
- * qu'une fois les globals posés (sinon « DOMMatrix is not defined » sur Vercel).
+ * SERVERLESS : `unpdf` embarque un build de pdfjs prévu pour Node/serverless — pas de
+ * référence DOM au chargement (DOMMatrix…) ET pas de worker externe à résoudre
+ * (`pdf.worker.mjs`). C'est ce qui faisait échouer `pdf-parse` sur Vercel.
+ * Import DYNAMIQUE par prudence (la lib ne s'évalue qu'à l'appel).
  */
-import './polyfill-dom'
 
 export interface ExtractResult {
   text: string
@@ -16,18 +16,14 @@ export interface ExtractResult {
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<ExtractResult> {
-  const { PDFParse } = await import('pdf-parse')
-  const parser = new PDFParse({ data: buffer })
-  try {
-    const result = await parser.getText()
-    const text = (result.text ?? '').trim()
-    const pageCount = result.total ?? result.pages?.length ?? 0
-    const charCount = text.length
-    const isLikelyScanned = charCount < 200 && pageCount >= 1
-    return { text, pageCount, charCount, isLikelyScanned }
-  } finally {
-    await parser.destroy()
-  }
+  const { extractText, getDocumentProxy } = await import('unpdf')
+  const pdf = await getDocumentProxy(new Uint8Array(buffer))
+  const { text: raw, totalPages } = await extractText(pdf, { mergePages: true })
+  const text = (raw ?? '').trim()
+  const pageCount = totalPages ?? 0
+  const charCount = text.length
+  const isLikelyScanned = charCount < 200 && pageCount >= 1
+  return { text, pageCount, charCount, isLikelyScanned }
 }
 
 // OCR de secours pour PDF scannés — Gemini Vision (inline_data base64).
