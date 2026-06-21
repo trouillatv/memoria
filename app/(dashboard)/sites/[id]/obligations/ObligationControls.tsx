@@ -2,10 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, ShieldCheck } from 'lucide-react'
+import { Loader2, Plus, ShieldCheck, Bell } from 'lucide-react'
 import { toast } from 'sonner'
-import { instantiateObligationsAction, setObligationStatusAction } from './actions'
-import type { ObligationStatus } from '@/lib/db/obligations'
+import {
+  instantiateObligationsAction, setObligationStatusAction,
+  setObligationImportanceAction, setObligationResponsibleAction, markObligationRemindedAction,
+} from './actions'
+import type { ObligationStatus, ObligationImportance } from '@/lib/db/obligations'
 
 type TemplateChoice = { id: string; label: string; themes: string[]; responsible: string }
 
@@ -15,6 +18,7 @@ const STATUS: { value: ObligationStatus; label: string }[] = [
   { value: 'satisfaite', label: 'Satisfaite' },
   { value: 'non_applicable', label: 'Non applicable' },
 ]
+const IMPORTANCE: ObligationImportance[] = ['critique', 'haute', 'moyenne']
 
 /** Proposition de la bibliothèque standard — l'humain coche, MemorIA instancie. */
 export function ProposeObligations({ siteId, choices }: { siteId: string; choices: TemplateChoice[] }) {
@@ -66,34 +70,67 @@ export function ProposeObligations({ siteId, choices }: { siteId: string; choice
   )
 }
 
-/** Boutons de statut d'une obligation instanciée. */
-export function ObligationStatusButtons({ siteId, obligationId, status }: { siteId: string; obligationId: string; status: ObligationStatus }) {
+interface RowProps {
+  siteId: string; obligationId: string
+  status: ObligationStatus; importance: ObligationImportance; responsible: string
+}
+
+/** Contrôles d'une obligation : statut · criticité · responsable réel · relance. */
+export function ObligationRowControls({ siteId, obligationId, status, importance, responsible }: RowProps) {
   const router = useRouter()
   const [pending, start] = useTransition()
+  const [editResp, setEditResp] = useState(false)
+  const [respVal, setRespVal] = useState(responsible)
 
-  function change(next: ObligationStatus) {
-    if (next === status) return
-    const fd = new FormData()
-    fd.set('siteId', siteId); fd.set('obligationId', obligationId); fd.set('status', next)
+  const run = (fd: FormData, fn: (f: FormData) => Promise<{ ok: true } | { error: string }>, ok = 'Mis à jour') => {
+    fd.set('siteId', siteId); fd.set('obligationId', obligationId)
     start(async () => {
-      const r = await setObligationStatusAction(fd)
+      const r = await fn(fd)
       if ('error' in r) { toast.error(r.error); return }
-      toast.success('Mis à jour')
-      router.refresh()
+      toast.success(ok); router.refresh()
     })
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {STATUS.map((s) => (
-        <button key={s.value} type="button" disabled={pending} onClick={() => change(s.value)}
-          className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
-            s.value === status ? 'bg-foreground text-background' : 'bg-background hover:bg-muted/40'
-          }`}>
-          {s.label}
+    <div className="space-y-1.5">
+      {/* Statut */}
+      <div className="flex flex-wrap items-center gap-1">
+        {STATUS.map((s) => {
+          const fd = new FormData(); fd.set('status', s.value)
+          return (
+            <button key={s.value} type="button" disabled={pending} onClick={() => s.value !== status && run(fd, setObligationStatusAction)}
+              className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${s.value === status ? 'bg-foreground text-background' : 'bg-background hover:bg-muted/40'}`}>
+              {s.label}
+            </button>
+          )
+        })}
+        {pending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
+      {/* Criticité · Responsable · Relance */}
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="text-muted-foreground">Criticité</span>
+        <select value={importance} disabled={pending}
+          onChange={(e) => { const fd = new FormData(); fd.set('importance', e.target.value); run(fd, setObligationImportanceAction) }}
+          className="rounded border bg-background px-1.5 py-0.5">
+          {IMPORTANCE.map((i) => <option key={i} value={i}>{i}</option>)}
+        </select>
+        <span className="text-muted-foreground">· Responsable</span>
+        {editResp ? (
+          <span className="inline-flex items-center gap-1">
+            <input value={respVal} disabled={pending} onChange={(e) => setRespVal(e.target.value)} autoFocus
+              className="rounded border bg-background px-1.5 py-0.5 max-w-[140px]"
+              onKeyDown={(e) => { if (e.key === 'Enter' && respVal.trim()) { const fd = new FormData(); fd.set('responsible', respVal); run(fd, setObligationResponsibleAction); setEditResp(false) } }} />
+            <button type="button" disabled={pending || !respVal.trim()} className="rounded border px-1.5 py-0.5 hover:bg-muted/40"
+              onClick={() => { const fd = new FormData(); fd.set('responsible', respVal); run(fd, setObligationResponsibleAction); setEditResp(false) }}>OK</button>
+          </span>
+        ) : (
+          <button type="button" className="rounded border px-1.5 py-0.5 font-medium hover:bg-muted/40" onClick={() => setEditResp(true)}>{responsible || '—'}</button>
+        )}
+        <button type="button" disabled={pending} onClick={() => run(new FormData(), markObligationRemindedAction, 'Relance enregistrée')}
+          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 hover:bg-muted/40">
+          <Bell className="h-3 w-3" /> Relancé
         </button>
-      ))}
-      {pending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </div>
     </div>
   )
 }

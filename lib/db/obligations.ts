@@ -7,10 +7,23 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { findOrCreateSubjectByName } from '@/lib/db/subjects'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 
 export type ObligationStatus = 'a_produire' | 'en_cours' | 'satisfaite' | 'non_applicable'
 export type VerificationKind = 'document' | 'photo_journal' | 'control_event'
+export type ObligationImportance = 'critique' | 'haute' | 'moyenne'
+
+const IMPORTANCE_RANK: Record<ObligationImportance, number> = { critique: 0, haute: 1, moyenne: 2 }
+const IMPORTANCE_LABEL: Record<ObligationImportance, string> = { critique: 'Critique', haute: 'Haute', moyenne: 'Moyenne' }
+/** Nom court de sujet depuis le libellé d'obligation : « DOE (Dossier…) » → « DOE ». */
+function shortSubjectName(label: string): string { return label.split(' (')[0].trim() }
+function ddmmyyyy(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso); if (isNaN(d.getTime())) return null
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
+}
 
 export interface ObligationTemplate {
   id: string
@@ -23,6 +36,7 @@ export interface ObligationTemplate {
   verificationKind: VerificationKind
   verificationParam: Record<string, unknown>
   themes: string[]
+  importance: ObligationImportance
   isSystem: boolean
 }
 
@@ -33,10 +47,12 @@ export interface SiteObligation {
   label: string
   responsibleRole: string
   status: ObligationStatus
+  importance: ObligationImportance
   verificationKind: VerificationKind
   subjectId: string | null
   createdAt: string
   satisfiedAt: string | null
+  lastRemindedAt: string | null
   // — Santé DÉRIVÉE —
   neglected: boolean
   healthReason: string | null
@@ -61,6 +77,7 @@ function mapTemplate(r: Record<string, unknown>): ObligationTemplate {
     verificationKind: r.verification_kind as VerificationKind,
     verificationParam: (r.verification_param as Record<string, unknown>) ?? {},
     themes: (r.themes as string[]) ?? [],
+    importance: (r.importance as ObligationImportance) ?? 'moyenne',
     isSystem: r.organization_id == null,
   }
 }
@@ -84,19 +101,27 @@ export async function instantiateObligations(siteId: string, templateIds: string
   const supabase = createAdminClient()
   const orgId = await getOrgId().catch(() => null)
   const { data: tpls } = await supabase.from('obligation_template').select('*').in('id', templateIds)
-  const rows = ((tpls ?? []) as Record<string, unknown>[]).map((t) => ({
-    site_id: siteId,
-    organization_id: orgId,
-    template_id: t.id,
-    label: t.label,
-    responsible_role: t.default_responsible_role,
-    status: 'a_produire',
-    trigger: t.trigger,
-    phase_key: t.phase_key,
-    closure: t.closure,
-    verification_kind: t.verification_kind,
-    verification_param: t.verification_param,
-    created_by: userId,
+  // PONT obligation↔sujet (Vincent) : chaque obligation EST un sujet permanent. On
+  // crée/rejoint le sujet par son nom court → la recherche par sujet (Build A) rendra
+  // « DOE » avec son obligation ET son fil vivant. Best-effort (n'échoue pas l'injection).
+  const rows = await Promise.all(((tpls ?? []) as Record<string, unknown>[]).map(async (t) => {
+    const subjectId = await findOrCreateSubjectByName(siteId, shortSubjectName(t.label as string), userId).catch(() => null)
+    return {
+      site_id: siteId,
+      organization_id: orgId,
+      template_id: t.id,
+      label: t.label,
+      responsible_role: t.default_responsible_role,
+      status: 'a_produire',
+      importance: t.importance,
+      trigger: t.trigger,
+      phase_key: t.phase_key,
+      closure: t.closure,
+      verification_kind: t.verification_kind,
+      verification_param: t.verification_param,
+      subject_id: subjectId,
+      created_by: userId,
+    }
   }))
   if (rows.length === 0) return 0
   // Idempotent : l'unique (site_id, template_id) évite les doublons à la ré-injection.
@@ -113,6 +138,23 @@ export async function setObligationStatus(id: string, status: ObligationStatus, 
   const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() }
   if (status === 'satisfaite') { patch.satisfied_at = new Date().toISOString(); if (note) patch.satisfied_note = note }
   const { error } = await supabase.from('site_obligation').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function setObligationImportance(id: string, importance: ObligationImportance): Promise<void> {
+  const { error } = await createAdminClient().from('site_obligation').update({ importance, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+/** Responsable RÉEL de l'obligation (l'entreprise concrète : « BatiSud »), éditable. */
+export async function setObligationResponsible(id: string, responsible: string): Promise<void> {
+  const { error } = await createAdminClient().from('site_obligation').update({ responsible_role: responsible.trim(), updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
+/** Stampe une relance (enrichit la cause : « relancé le …, sans réponse »). */
+export async function markObligationReminded(id: string): Promise<void> {
+  const { error } = await createAdminClient().from('site_obligation').update({ last_reminded_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id)
   if (error) throw error
 }
 
@@ -167,9 +209,11 @@ export async function getSiteObligations(siteId: string): Promise<SiteObligation
     return {
       id: r.id as string, siteId: r.site_id as string, templateId: (r.template_id as string | null) ?? null,
       label: r.label as string, responsibleRole: r.responsible_role as string,
-      status: r.status as ObligationStatus, verificationKind: r.verification_kind as VerificationKind,
+      status: r.status as ObligationStatus, importance: (r.importance as ObligationImportance) ?? 'moyenne',
+      verificationKind: r.verification_kind as VerificationKind,
       subjectId: (r.subject_id as string | null) ?? null, createdAt: r.created_at as string,
       satisfiedAt: (r.satisfied_at as string | null) ?? null,
+      lastRemindedAt: (r.last_reminded_at as string | null) ?? null,
       neglected: h.neglected, healthReason: h.reason,
     }
   })
@@ -179,10 +223,14 @@ export async function getSiteObligations(siteId: string): Promise<SiteObligation
 // Détecteur briefing — la VITRINE (« Obligations à surveiller »)
 // ---------------------------------------------------------------------------
 
-/** Obligations négligées d'un site → signal « Préparer la réunion ». Déterministe. */
+/** Obligations négligées d'un site → signal « Préparer la réunion ». Déterministe.
+ *  TRIÉ par criticité (Vincent : sinon le briefing devient illisible) et la cause est
+ *  ENRICHIE (responsable réel + dernière relance), pas juste « absent depuis N j ». */
 export async function detectNeglectedObligations(siteId: string): Promise<MemorySignal | null> {
   const obligations = await getSiteObligations(siteId)
-  const neglected = obligations.filter((o) => o.neglected)
+  const neglected = obligations
+    .filter((o) => o.neglected)
+    .sort((a, b) => IMPORTANCE_RANK[a.importance] - IMPORTANCE_RANK[b.importance])
   if (neglected.length === 0) return null
   return {
     kind: 'obligation_neglected',
@@ -190,9 +238,13 @@ export async function detectNeglectedObligations(siteId: string): Promise<Memory
     items: neglected.map((o) => ({
       id: o.id,
       label: o.label,
-      meta: o.responsibleRole,
-      context: o.healthReason ? [o.healthReason] : [],
+      meta: [IMPORTANCE_LABEL[o.importance], o.responsibleRole].filter(Boolean).join(' · '),
+      context: [
+        o.healthReason,
+        o.responsibleRole ? `Responsable : ${o.responsibleRole}` : null,
+        o.lastRemindedAt ? `Relancé le ${ddmmyyyy(o.lastRemindedAt)}, sans réponse à ce jour` : 'Jamais relancé',
+      ].filter((x): x is string => !!x),
     })),
-    source: 'Obligations chantier (site_obligation) restées à produire / négligées (bibliothèque, déterministe).',
+    source: 'Obligations chantier (site_obligation) négligées, triées par criticité (bibliothèque, déterministe).',
   }
 }

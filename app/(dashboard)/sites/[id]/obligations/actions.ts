@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { instantiateObligations, setObligationStatus } from '@/lib/db/obligations'
+import { instantiateObligations, setObligationStatus, setObligationImportance, setObligationResponsible, markObligationReminded } from '@/lib/db/obligations'
 
 type Result = { ok: true; count?: number } | { error: string }
 
@@ -49,6 +49,54 @@ export async function setObligationStatusAction(formData: FormData): Promise<Res
   })
   if (!parsed.success) return { error: 'Statut invalide' }
   await setObligationStatus(parsed.data.obligationId, parsed.data.status)
+  revalidatePath(`/sites/${parsed.data.siteId}/obligations`)
+  return { ok: true }
+}
+
+const importanceSchema = z.object({
+  siteId: z.string().uuid(),
+  obligationId: z.string().uuid(),
+  importance: z.enum(['critique', 'haute', 'moyenne']),
+})
+
+export async function setObligationImportanceAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = importanceSchema.safeParse({
+    siteId: formData.get('siteId'), obligationId: formData.get('obligationId'), importance: formData.get('importance'),
+  })
+  if (!parsed.success) return { error: 'Criticité invalide' }
+  await setObligationImportance(parsed.data.obligationId, parsed.data.importance)
+  revalidatePath(`/sites/${parsed.data.siteId}/obligations`)
+  return { ok: true }
+}
+
+const responsibleSchema = z.object({
+  siteId: z.string().uuid(),
+  obligationId: z.string().uuid(),
+  responsible: z.string().trim().min(1, 'Responsable requis').max(120),
+})
+
+export async function setObligationResponsibleAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = responsibleSchema.safeParse({
+    siteId: formData.get('siteId'), obligationId: formData.get('obligationId'), responsible: formData.get('responsible'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  await setObligationResponsible(parsed.data.obligationId, parsed.data.responsible)
+  revalidatePath(`/sites/${parsed.data.siteId}/obligations`)
+  return { ok: true }
+}
+
+const remindSchema = z.object({ siteId: z.string().uuid(), obligationId: z.string().uuid() })
+
+export async function markObligationRemindedAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = remindSchema.safeParse({ siteId: formData.get('siteId'), obligationId: formData.get('obligationId') })
+  if (!parsed.success) return { error: 'Requête invalide' }
+  await markObligationReminded(parsed.data.obligationId)
   revalidatePath(`/sites/${parsed.data.siteId}/obligations`)
   return { ok: true }
 }

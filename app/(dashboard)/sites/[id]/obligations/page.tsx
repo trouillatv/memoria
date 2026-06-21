@@ -3,32 +3,49 @@ import Link from 'next/link'
 import { ShieldAlert, CheckCircle2, CircleSlash, Circle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSiteObligations, listObligationTemplates, type SiteObligation } from '@/lib/db/obligations'
+import { getSiteObligations, listObligationTemplates, type SiteObligation, type ObligationImportance } from '@/lib/db/obligations'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
-import { ProposeObligations, ObligationStatusButtons } from './ObligationControls'
+import { ProposeObligations, ObligationRowControls } from './ObligationControls'
 
 export const dynamic = 'force-dynamic'
 
 const STATUS_LABEL: Record<string, string> = {
   a_produire: 'À produire', en_cours: 'En cours', satisfaite: 'Satisfaite', non_applicable: 'Non applicable',
 }
+const IMP_RANK: Record<ObligationImportance, number> = { critique: 0, haute: 1, moyenne: 2 }
+const IMP_BADGE: Record<ObligationImportance, { label: string; cls: string }> = {
+  critique: { label: '🔥 Critique', cls: 'bg-rose-100 text-rose-700' },
+  haute: { label: 'Haute', cls: 'bg-amber-100 text-amber-800' },
+  moyenne: { label: 'Moyenne', cls: 'bg-slate-100 text-slate-600' },
+}
+function ddmm(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso); if (isNaN(d.getTime())) return null
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+}
 
 function ObligationRow({ siteId, o }: { siteId: string; o: SiteObligation }) {
   const Icon = o.status === 'satisfaite' ? CheckCircle2 : o.status === 'non_applicable' ? CircleSlash : o.neglected ? ShieldAlert : Circle
   const tone = o.status === 'satisfaite' ? 'text-emerald-600' : o.status === 'non_applicable' ? 'text-muted-foreground' : o.neglected ? 'text-rose-600' : 'text-sky-600'
+  const imp = IMP_BADGE[o.importance]
   return (
     <li className="rounded-lg border bg-card px-3 py-2.5 space-y-1.5">
       <div className="flex items-start gap-2">
         <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${tone}`} />
         <div className="min-w-0 flex-1">
-          <span className="font-medium text-sm">{o.label}</span>
+          <span className="font-medium text-sm">{o.label} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${imp.cls}`}>{imp.label}</span></span>
           <span className="block text-[11px] text-muted-foreground">
             {o.responsibleRole} · {STATUS_LABEL[o.status] ?? o.status}
             {o.neglected && o.healthReason && <span className="text-rose-600"> · ⚠ {o.healthReason}</span>}
           </span>
+          {o.neglected && (
+            <span className="block text-[11px] text-muted-foreground">
+              {o.lastRemindedAt ? `Relancé le ${ddmm(o.lastRemindedAt)}, sans réponse` : 'Jamais relancé'}
+            </span>
+          )}
         </div>
       </div>
-      <ObligationStatusButtons siteId={siteId} obligationId={o.id} status={o.status} />
+      <ObligationRowControls siteId={siteId} obligationId={o.id} status={o.status} importance={o.importance} responsible={o.responsibleRole} />
     </li>
   )
 }
@@ -50,8 +67,9 @@ export default async function SiteObligationsPage({ params }: { params: Promise<
     .filter((t) => !usedTemplateIds.has(t.id))
     .map((t) => ({ id: t.id, label: t.label, themes: t.themes, responsible: t.defaultResponsibleRole }))
 
-  const neglected = obligations.filter((o) => o.neglected)
-  const active = obligations.filter((o) => !o.neglected && o.status !== 'satisfaite' && o.status !== 'non_applicable')
+  const byImportance = (a: SiteObligation, b: SiteObligation) => IMP_RANK[a.importance] - IMP_RANK[b.importance]
+  const neglected = obligations.filter((o) => o.neglected).sort(byImportance)
+  const active = obligations.filter((o) => !o.neglected && o.status !== 'satisfaite' && o.status !== 'non_applicable').sort(byImportance)
   const done = obligations.filter((o) => o.status === 'satisfaite' || o.status === 'non_applicable')
 
   return (
