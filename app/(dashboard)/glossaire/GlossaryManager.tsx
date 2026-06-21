@@ -4,7 +4,8 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2, BookA } from 'lucide-react'
 import { createGlossaryTermAction, deleteGlossaryTermAction } from './glossary-actions'
-import { GLOSSARY_CATEGORIES, type GlossaryTerm } from '@/lib/db/glossary'
+import { GLOSSARY_CATEGORIES } from '@/lib/db/glossary-constants'
+import type { GlossaryTerm } from '@/lib/db/glossary'
 
 export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
   const router = useRouter()

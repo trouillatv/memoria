@@ -7,6 +7,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 
+// Re-export pour compat (les appelants serveur peuvent garder l'import depuis ici).
+// La constante VIT dans glossary-constants.ts (sans dépendance serveur) pour que
+// les composants client l'importent SANS tirer ce module serveur dans leur bundle.
+export { GLOSSARY_CATEGORIES } from './glossary-constants'
+
 export interface GlossaryTerm {
   id: string
   term: string
@@ -16,9 +21,6 @@ export interface GlossaryTerm {
   aliases: string[]
   createdAt: string
 }
-
-/** Catégories suggérées (libre — l'utilisateur peut en saisir d'autres). */
-export const GLOSSARY_CATEGORIES = ['engin', 'matériau', 'document', 'processus', 'contrôle', 'acteur'] as const
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
