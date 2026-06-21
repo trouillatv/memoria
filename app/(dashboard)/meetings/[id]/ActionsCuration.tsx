@@ -9,13 +9,17 @@ import {
   updateActionAction,
 } from './action-curation-actions'
 import { ShareActionsToCompanyButton } from './ShareActionsToCompanyButton'
+import { LotStatusList } from './LotStatusList'
 import type { DbSiteReportProposal, DbSiteAction } from '@/types/db'
+import type { DistributionStatusRow } from '@/lib/db/action-distribution'
 
 interface ActionsCurationProps {
   reportId: string
   siteId: string | null
   pendingProposals: DbSiteReportProposal[]
   actions: DbSiteAction[]
+  /** Statut des lots confiés (envoyé → lu → rempli). */
+  lots: DistributionStatusRow[]
 }
 
 /** Écho de la déclaration externe (entreprise via QR). N'est PAS le statut
@@ -204,7 +208,7 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
   )
 }
 
-export function ActionsCuration({ reportId, siteId, pendingProposals, actions }: ActionsCurationProps) {
+export function ActionsCuration({ reportId, siteId, pendingProposals, actions, lots }: ActionsCurationProps) {
   const visibleActions = actions.filter((a) => a.status !== 'cancelled')
   if (pendingProposals.length === 0 && visibleActions.length === 0) return null
 
@@ -244,6 +248,7 @@ export function ActionsCuration({ reportId, siteId, pendingProposals, actions }:
               <ShareActionsToCompanyButton reportId={reportId} siteId={siteId} actions={visibleActions} />
             </div>
           )}
+          <LotStatusList reportId={reportId} lots={lots} />
         </div>
       )}
     </section>

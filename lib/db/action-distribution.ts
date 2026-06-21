@@ -28,6 +28,8 @@ export interface ActionDistribution {
   created_at: string
   expires_at: string | null
   revoked_at: string | null
+  accessed_at: string | null
+  access_count: number
   submitted_at: string | null
   submitted_by_name: string | null
   signature_data_url: string | null
@@ -153,6 +155,72 @@ export async function listDistributionsForReport(reportId: string): Promise<Acti
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as ActionDistribution[]
+}
+
+/** État du tunnel d'un lot pour le MOE : envoyé → ouvert → répondu.
+ *  C'est la donnée qui valide LA question du pilote (« acceptent-elles de
+ *  répondre ? »), pas « savent-elles scanner ». */
+export type DistributionFunnel = 'sent' | 'opened' | 'responded' | 'expired' | 'revoked'
+
+export interface DistributionStatusRow {
+  id: string
+  recipient_label: string
+  created_at: string
+  expires_at: string | null
+  accessed_at: string | null
+  access_count: number
+  submitted_at: string | null
+  submitted_by_name: string | null
+  funnel: DistributionFunnel
+  total: number
+  done: number
+  blocked: number
+  pending: number
+}
+
+/** Lots d'une réunion enrichis de leur état (tunnel + décompte des déclarations). */
+export async function listDistributionStatusForReport(reportId: string): Promise<DistributionStatusRow[]> {
+  const supabase = createAdminClient()
+  const dists = await listDistributionsForReport(reportId)
+  if (dists.length === 0) return []
+
+  const ids = dists.map((d) => d.id)
+  const { data: items } = await supabase
+    .from('action_distribution_items')
+    .select('distribution_id, declared_status')
+    .in('distribution_id', ids)
+  const counts = new Map<string, { total: number; done: number; blocked: number; pending: number }>()
+  for (const r of (items ?? []) as Array<{ distribution_id: string; declared_status: DeclaredStatus }>) {
+    const c = counts.get(r.distribution_id) ?? { total: 0, done: 0, blocked: 0, pending: 0 }
+    c.total++
+    if (r.declared_status === 'done') c.done++
+    else if (r.declared_status === 'blocked') c.blocked++
+    else c.pending++
+    counts.set(r.distribution_id, c)
+  }
+
+  const now = Date.now()
+  return dists.map((d) => {
+    const c = counts.get(d.id) ?? { total: 0, done: 0, blocked: 0, pending: 0 }
+    let funnel: DistributionFunnel
+    if (d.revoked_at) funnel = 'revoked'
+    else if (d.submitted_at) funnel = 'responded'
+    else if (d.expires_at && new Date(d.expires_at).getTime() < now) funnel = 'expired'
+    else if ((d.access_count ?? 0) > 0) funnel = 'opened'
+    else funnel = 'sent'
+    return {
+      id: d.id,
+      recipient_label: d.recipient_label,
+      created_at: d.created_at,
+      expires_at: d.expires_at,
+      accessed_at: d.accessed_at,
+      access_count: d.access_count ?? 0,
+      submitted_at: d.submitted_at,
+      submitted_by_name: d.submitted_by_name,
+      funnel,
+      ...c,
+    }
+  })
 }
 
 /** IDs des actions déjà confiées à un lot ACTIF (non révoqué) du site.

@@ -9,6 +9,7 @@ import { getSiteReport, listProposals } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
+import { listDistributionStatusForReport } from '@/lib/db/action-distribution'
 import { getMeetingFollowup } from '@/lib/db/meeting-followup'
 import { getSiteEngagements } from '@/lib/db/site-engagements'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
@@ -53,13 +54,14 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const report = await getSiteReport(id)
   if (!report) notFound()
 
-  const [proposals, actions, pvDoc, followup, engagements, finalVersions] = await Promise.all([
+  const [proposals, actions, pvDoc, followup, engagements, finalVersions, actionLots] = await Promise.all([
     listProposals(id),
     listSiteActionsByReport(id),
     getLatestReportDocument(id),
     getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at }),
     report.site_id ? getSiteEngagements(report.site_id) : Promise.resolve(null),
     listReportFinalVersions(id),
+    listDistributionStatusForReport(id),
   ])
   const isPvValidated = pvDoc?.status === 'validated' || pvDoc?.status === 'exported'
 
@@ -173,6 +175,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         siteId={report.site_id}
         pendingProposals={proposals.filter((p) => p.type === 'action' && p.status === 'proposed')}
         actions={actions}
+        lots={actionLots}
       />
 
       {/* Compte-rendu de chantier — l'écran de validation est le HUB central

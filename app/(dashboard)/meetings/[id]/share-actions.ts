@@ -6,12 +6,14 @@
 // WhatsApp pré-rempli. Doctrine : recipient_label = entreprise, jamais salarié.
 
 import { headers } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 import QRCode from 'qrcode'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createActionDistribution,
   listDistributedActionIds,
+  revokeActionDistribution,
 } from '@/lib/db/action-distribution'
 
 export async function createActionDistributionAction(input: {
@@ -110,4 +112,44 @@ export async function createActionDistributionAction(input: {
   ].join('\n')
 
   return { ok: true, url, qrDataUrl, whatsappText, permanent: !!input.permanent }
+}
+
+/** Révoque un lot (le lien cesse de fonctionner). Réservé managers/admins/chefs. */
+export async function revokeActionDistributionAction(input: {
+  distributionId: string
+  reportId: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager' && user.role !== 'chef_equipe') {
+    return { ok: false, error: 'Accès refusé' }
+  }
+
+  // Le lot appartient-il bien à cette réunion + à l'org de l'utilisateur ?
+  const supabase = createAdminClient()
+  const { data: dist } = await supabase
+    .from('action_distributions')
+    .select('id, report_id, site_id')
+    .eq('id', input.distributionId)
+    .maybeSingle()
+  const row = dist as { id: string; report_id: string | null; site_id: string } | null
+  if (!row || row.report_id !== input.reportId) return { ok: false, error: 'Lot introuvable' }
+
+  if (user.organization_id) {
+    const { data: site } = await supabase
+      .from('sites')
+      .select('organization_id')
+      .eq('id', row.site_id)
+      .maybeSingle()
+    const orgId = (site as { organization_id: string | null } | null)?.organization_id
+    if (orgId && orgId !== user.organization_id) return { ok: false, error: 'Accès refusé' }
+  }
+
+  try {
+    await revokeActionDistribution(input.distributionId, user.id)
+  } catch {
+    return { ok: false, error: 'Échec de la révocation' }
+  }
+  revalidatePath(`/meetings/${input.reportId}`)
+  return { ok: true }
 }
