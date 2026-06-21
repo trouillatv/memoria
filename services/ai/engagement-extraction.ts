@@ -239,15 +239,27 @@ export async function runEngagementExtractionAgent(
     }
   })
 
-  const engagements: ExtractedEngagement[] = result.engagements.map((e) => ({
-    source_type: e.source_type,
-    source_excerpt: e.source_excerpt,
-    source_ref: e.source_ref ?? null,
-    category: e.category,
-    short_label: e.short_label,
-    measurable: e.measurable,
-    ai_confidence: e.confidence,
-  }))
+  // Sanitisation pour respecter les contraintes DB (mig 017) :
+  //   short_label   : length 3..100   → trim + tronque à 100
+  //   source_excerpt: length 5..2000  → trim + tronque à 2000 (fallback = label)
+  // Une seule ligne hors-bornes faisait échouer TOUT le batch d'insertion.
+  // On rabote ce qui peut l'être et on écarte les lignes inexploitables.
+  const engagements: ExtractedEngagement[] = result.engagements
+    .map((e) => {
+      const short_label = (e.short_label ?? '').trim().slice(0, 100)
+      let source_excerpt = (e.source_excerpt ?? '').trim().slice(0, 2000)
+      if (source_excerpt.length < 5) source_excerpt = short_label
+      return {
+        source_type: e.source_type,
+        source_excerpt,
+        source_ref: e.source_ref ?? null,
+        category: e.category,
+        short_label,
+        measurable: e.measurable,
+        ai_confidence: e.confidence,
+      }
+    })
+    .filter((e) => e.short_label.length >= 3 && e.source_excerpt.length >= 5)
 
   const metadata: Record<string, unknown> = {
     provider: provider.name,
