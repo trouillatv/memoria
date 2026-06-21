@@ -12,6 +12,7 @@ import {
   FileCheck,
   MapPin,
   BookOpen,
+  BookA,
   BookMarked,
   ShieldAlert,
   ArrowRightLeft,
@@ -80,6 +81,8 @@ export const NAV: NavItem[] = [
   { href: '/preuves',    label: 'Dossier de preuves',     icon: FileSearch,    roles: ['admin', 'manager'] },
   // « Bibliothèque » = bibliothèque documentaire vivante (/documents).
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
+  // Glossaire métier (mig 150) — vocabulaire + alias, nourrit les corrections.
+  { href: '/glossaire',  label: 'Glossaire métier',       icon: BookA,         roles: ['admin', 'manager'] },
   // — Guides (les 3 regroupés sous l'en-tête « Guides ») —
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'], groupStart: 'Guides' },
   { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
