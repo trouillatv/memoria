@@ -6,12 +6,16 @@
 // systématiquement — l'item actif restait sur l'ancienne page. `usePathname()`
 // est branché sur le router client, il se met à jour à chaque transition.
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { Minimize2, Maximize2 } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 import { cn } from '@/lib/utils'
 import { NAV, isActive } from './nav-items'
 import { BrandLegalDialog } from './BrandLegalDialog'
+
+const NAV_MODE_KEY = 'memoria.navMode'
 
 export function AppSidebar({
   role,
@@ -27,7 +31,25 @@ export function AppSidebar({
   actionsCritical?: number
 }) {
   const pathname = usePathname() ?? ''
-  const visible = NAV.filter((n) => n.roles.includes(role))
+  // S10 — Mode simplifié : ne garder que le cœur « chargé d'affaires » pour
+  // réduire la sensation d'usine à gaz. Persisté en localStorage (par appareil),
+  // initialisé après montage pour éviter un écart d'hydratation.
+  const [simplified, setSimplified] = useState(false)
+  useEffect(() => {
+    // Préférence client-only lue après montage (évite l'écart d'hydratation) :
+    // setState dans l'effet est ici intentionnel et borné au montage.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    try { setSimplified(localStorage.getItem(NAV_MODE_KEY) === 'simple') } catch { /* indisponible */ }
+  }, [])
+  function toggleMode() {
+    setSimplified((prev) => {
+      const next = !prev
+      try { localStorage.setItem(NAV_MODE_KEY, next ? 'simple' : 'complet') } catch { /* indisponible */ }
+      return next
+    })
+  }
+
+  const visible = NAV.filter((n) => n.roles.includes(role) && (!simplified || n.essential))
   return (
     <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 border-r bg-card">
       <div className="flex h-16 items-center border-b px-4">
@@ -85,7 +107,16 @@ export function AppSidebar({
           )
         })}
       </nav>
-      <div className="border-t p-2">
+      <div className="border-t p-2 space-y-1">
+        <button
+          type="button"
+          onClick={toggleMode}
+          title={simplified ? 'Afficher tous les modules' : 'Réduire aux modules essentiels (Sites, Réunions, Actions)'}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          {simplified ? <Maximize2 className="h-3.5 w-3.5 shrink-0" /> : <Minimize2 className="h-3.5 w-3.5 shrink-0" />}
+          {simplified ? 'Tout afficher' : 'Mode simplifié'}
+        </button>
         <Link
           href="/account"
           aria-current={isActive(pathname, '/account') ? 'page' : undefined}

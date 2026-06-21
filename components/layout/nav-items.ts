@@ -33,6 +33,9 @@ export interface NavItem {
   /** Si défini, un en-tête de section portant ce libellé est affiché AVANT
    *  cet item dans la nav (regroupement visuel léger, sans sous-menu). */
   groupStart?: string
+  /** Cœur « chargé d'affaires » (S10) : seuls ces items restent en mode
+   *  simplifié, pour réduire la sensation d'usine à gaz. */
+  essential?: boolean
 }
 
 // Ordre = importance / fréquence d'usage (Vincent 2026-05-26).
@@ -42,9 +45,9 @@ export interface NavItem {
 // 4) Commercial & docs → 5) Guides → 6) Admin.
 export const NAV: NavItem[] = [
   // — Recherche —
-  { href: '/recherche',  label: 'Recherche',              icon: Search,        roles: ['admin', 'manager'] },
+  { href: '/recherche',  label: 'Recherche',              icon: Search,        roles: ['admin', 'manager'], essential: true },
   // — Pilotage quotidien —
-  { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'] },
+  { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'], essential: true },
   { href: '/aujourdhui', label: 'Interventions du jour',  icon: ListChecks,    roles: ['admin', 'manager'] },
   { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
@@ -54,11 +57,11 @@ export const NAV: NavItem[] = [
   { href: '/planning',   label: 'Planning',               icon: CalendarDays,  roles: ['admin', 'manager', 'chef_equipe'] },
   // Réunions = objet métier central (réunion chantier/contrat → décisions →
   // actions → interventions → briefing). Le compte-rendu n'est que le support brut.
-  { href: '/meetings',   label: 'Réunions',               icon: Mic,           roles: ['admin', 'manager'] },
+  { href: '/meetings',   label: 'Réunions',               icon: Mic,           roles: ['admin', 'manager'], essential: true },
   // Actions = cockpit des « actions ouvertes » (site_actions) issues des réunions.
   // Répond à « qu'est-ce qui reste à faire, tous sites confondus ? » (≠ Planning).
-  { href: '/actions',    label: 'Actions',                icon: ListTodo,      roles: ['admin', 'manager'] },
-  { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'] },
+  { href: '/actions',    label: 'Actions',                icon: ListTodo,      roles: ['admin', 'manager'], essential: true },
+  { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'], essential: true },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
   // — Mémoire & continuité —
