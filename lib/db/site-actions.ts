@@ -32,6 +32,8 @@ export async function createSiteAction(input: {
   created_by: string | null
   /** Provenance (migration 112) : mobile_site / desktop_site / actions_list / report. */
   created_from?: string | null
+  /** Type (migration 149) : one_shot (défaut) | deadline | recurring_until_done. */
+  kind?: 'one_shot' | 'deadline' | 'recurring_until_done'
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -49,6 +51,7 @@ export async function createSiteAction(input: {
       subject_id: input.subject_id ?? null,
       created_by: input.created_by,
       created_from: input.created_from ?? null,
+      kind: input.kind ?? 'one_shot',
       status: 'open' as SiteActionStatus,
     })
     .select('id')
@@ -71,6 +74,7 @@ export async function updateSiteAction(
     due_date?: string | null
     due_date_status?: 'explicit' | 'estimated' | null
     status?: SiteActionStatus
+    kind?: 'one_shot' | 'deadline' | 'recurring_until_done'
   },
 ): Promise<void> {
   const supabase = createAdminClient()
@@ -81,6 +85,7 @@ export async function updateSiteAction(
   if (patch.due_date !== undefined) update.due_date = patch.due_date
   if (patch.due_date_status !== undefined) update.due_date_status = patch.due_date_status
   if (patch.status !== undefined) update.status = patch.status
+  if (patch.kind !== undefined) update.kind = patch.kind
   if (Object.keys(update).length === 0) return
   const { error } = await supabase.from('site_actions').update(update).eq('id', id)
   if (error) throw error

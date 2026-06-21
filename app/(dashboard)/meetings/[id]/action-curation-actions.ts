@@ -85,6 +85,7 @@ const updateSchema = z.object({
   assigned_to: z.string().max(120).nullable().optional(),
   due_date: isoDate.optional(),
   due_date_status: dueDateStatus.optional(),
+  kind: z.enum(['one_shot', 'deadline', 'recurring_until_done']).optional(),
 })
 
 /** Édite une action déjà créée (titre / responsable / échéance / badge). */

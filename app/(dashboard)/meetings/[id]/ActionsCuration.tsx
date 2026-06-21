@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ListTodo, Check, X, Clock, Loader2, Pencil, Ban } from 'lucide-react'
+import { ListTodo, Check, X, Clock, Loader2, Pencil, Ban, Repeat } from 'lucide-react'
 import {
   acceptActionProposalAction,
   ignoreActionProposalAction,
@@ -139,6 +139,13 @@ function ProposalRow({ reportId, proposal }: { reportId: string; proposal: DbSit
   )
 }
 
+type ActionKind = 'one_shot' | 'deadline' | 'recurring_until_done'
+const KIND_LABEL: Record<ActionKind, string> = {
+  one_shot: 'Ponctuelle',
+  deadline: 'Pour une échéance',
+  recurring_until_done: 'Récurrente jusqu’à clôture',
+}
+
 function ActionRow({ reportId, action }: { reportId: string; action: DbSiteAction }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
@@ -146,6 +153,7 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
   const [assignedTo, setAssignedTo] = useState(action.assigned_to ?? '')
   const [due, setDue] = useState(action.due_date ?? '')
   const [aConfirmer, setAConfirmer] = useState(action.due_date_status === 'estimated')
+  const [kind, setKind] = useState<ActionKind>(action.kind ?? 'one_shot')
   const [pending, start] = useTransition()
 
   function save() {
@@ -155,6 +163,7 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
         assigned_to: assignedTo.trim() || null,
         due_date: due || null,
         due_date_status: statusFromBadge(due, aConfirmer),
+        kind,
       })
       if (res.ok) { setEditing(false); router.refresh() }
     })
@@ -176,6 +185,11 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
               </span>
             )}
             {action.corps_etat && <span>· {action.corps_etat}</span>}
+            {action.kind === 'recurring_until_done' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 border border-sky-200">
+                <Repeat className="h-2.5 w-2.5" /> jusqu’à clôture
+              </span>
+            )}
           </div>
           <div className="mt-1"><ExternalEcho action={action} /></div>
         </div>
@@ -197,6 +211,16 @@ function ActionRow({ reportId, action }: { reportId: string; action: DbSiteActio
             <input type="checkbox" checked={aConfirmer} onChange={(e) => setAConfirmer(e.target.checked)} /> à confirmer
           </label>
         )}
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value as ActionKind)}
+          title="Type d'action"
+          className="rounded border px-2 py-1 text-xs"
+        >
+          {(Object.keys(KIND_LABEL) as ActionKind[]).map((k) => (
+            <option key={k} value={k}>{KIND_LABEL[k]}</option>
+          ))}
+        </select>
       </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={save} disabled={pending} className="inline-flex items-center gap-1 rounded bg-slate-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50">
