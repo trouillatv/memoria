@@ -21,6 +21,7 @@ import { TenderMemoireTechnique } from './TenderMemoireTechnique'
 import { AtelierIATab } from './AtelierIATab'
 import { CopiloteWorkspace } from './CopiloteWorkspace'
 import { TenderSidebar, type TenderView } from './TenderSidebar'
+import { TenderResizable } from './TenderResizable'
 import { buildActivityFeed } from './activity-feed'
 import { EvidencePanel } from './EvidencePanel'
 import { OutcomeTrigger } from './OutcomeDialog'
@@ -141,7 +142,8 @@ export default async function TenderDetailPage({
   })
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 md:gap-8">
+    <TenderResizable
+      left={
       <TenderSidebar
         tender={tender}
         currentView={view}
@@ -153,7 +155,8 @@ export default async function TenderDetailPage({
         tenderId={id}
         activityFeed={activityFeed}
       />
-
+      }
+      right={
       <div className={view === 'atelier'
         ? 'min-w-0 h-[calc(100vh-3rem)] flex flex-col'
         : 'space-y-4 min-w-0'
@@ -311,6 +314,7 @@ export default async function TenderDetailPage({
           </div>
         )}
       </div>
-    </div>
+      }
+      />
   )
 }

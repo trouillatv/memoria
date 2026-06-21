@@ -36,10 +36,12 @@ export function TenderAnalysisLoader({ id }: TenderAnalysisLoaderProps) {
       try {
         const res = await fetch(`/api/tenders/${id}/analyze`, { method: 'POST' })
         const data = await res.json().catch(() => ({} as { error?: string }))
-        if (!res.ok) setError(data?.error ?? 'Échec de l\'analyse')
+        // Affiche le code HTTP + le message exact (diagnostic) au lieu d'un texte générique.
+        if (!res.ok) setError(`(${res.status}) ${data?.error ?? 'Échec de l\'analyse'}`)
         finish() // statut désormais terminal (ready/failed) → la page se met à jour
-      } catch {
-        // Connexion coupée → le poll de secours ci-dessous prend le relais.
+      } catch (e) {
+        setError(e instanceof Error ? `Réseau : ${e.message}` : 'Erreur réseau')
+        // Le poll de secours ci-dessous prend aussi le relais.
       }
     })()
   }, [id, finish])
