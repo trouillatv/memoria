@@ -238,11 +238,24 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
 // l'histoire : âge, réunions concernées, promesses (échéances annoncées dans le temps),
 // reports (glissements vers plus tard), récurrence. Zéro IA, zéro score d'acteur.
 export interface SubjectDeadline { announcedOn: string; dueDate: string; label: string }
+// ÉTAT INTELLIGENT du sujet (Vincent : « la réunion raconte ce qui s'est passé, le
+// sujet raconte ce qui se passe »). Tout DÉRIVÉ, déterministe, zéro IA, zéro score
+// d'acteur. La cause porte un niveau de CONFIANCE quand elle est déduite, pas connue.
+export type SubjectState = 'ouvert' | 'en_attente' | 'bloqué' | 'dormant' | 'clos'
+export type CauseConfidence = 'élevée' | 'moyenne' | 'faible'
+export type SubjectEnergy = 'basse' | 'moyenne' | 'élevée' | 'très élevée'
 export interface SubjectInsights {
   ageDays: number | null
   meetingsCount: number
   decisionsCount: number
   openActions: number
+  // — Intelligence dérivée —
+  state: SubjectState
+  cause: { text: string; confidence: CauseConfidence } | null
+  lastEvolution: string | null
+  nextStep: string | null
+  openQuestion: string | null
+  energy: SubjectEnergy
   // ÉCHÉANCES ANNONCÉES (≠ « promesses » — Vincent : ne pas confondre un engagement
   // avec une date cible modifiable). On expose le FAIT : les échéances déclarées,
   // datées de leur annonce.
@@ -262,7 +275,7 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
   const today = todayIso()
   const [{ data: decisions }, { data: actions }] = await Promise.all([
     supabase.from('site_decisions').select('titre, date_decision, echeance, report_id, statut').eq('subject_id', subjectId),
-    supabase.from('site_actions').select('title, created_at, due_date, report_id, status').eq('subject_id', subjectId),
+    supabase.from('site_actions').select('title, created_at, due_date, report_id, status, assigned_to').eq('subject_id', subjectId),
   ])
   const decs = decisions ?? []
   const acts = actions ?? []
@@ -296,12 +309,63 @@ export async function getSubjectInsights(subjectId: string, recurringMeetings = 
   ].filter((x): x is string => !!x).sort()
   const ageDays = firstDates.length ? daysBetween(firstDates[0], today) : null
 
-  const openActions = acts.filter((a) => a.status === 'open' || a.status === 'planned').length
+  const openActs = acts.filter((a) => a.status === 'open' || a.status === 'planned')
+  const overdue = openActs.filter((a) => a.due_date && (a.due_date as string) < today)
+  const parties = [...new Set(openActs.map((a) => (a.assigned_to as string | null)?.trim()).filter((x): x is string => !!x))]
+  const lastActivity = [...decs.map((d) => d.date_decision as string | null), ...acts.map((a) => (a.created_at as string).slice(0, 10))].filter((x): x is string => !!x).sort().pop() ?? null
+  const dormant = lastActivity ? daysBetween(lastActivity, today) > 90 : false
+
+  // ÉTAT (priorité : clos > bloqué(retard) > en attente(responsable) > dormant > ouvert).
+  let state: SubjectState
+  if (subject.status === 'closed') state = 'clos'
+  else if (overdue.length > 0) state = 'bloqué'
+  else if (parties.length > 0) state = 'en_attente'
+  else if (subject.status === 'dormant' || dormant) state = 'dormant'
+  else state = 'ouvert'
+
+  // CAUSE + CONFIANCE (déduite, jamais certaine si ambiguë).
+  let cause: { text: string; confidence: CauseConfidence } | null = null
+  if (parties.length === 1) cause = { text: `En attente de ${parties[0]}`, confidence: 'élevée' }
+  else if (parties.length > 1) cause = { text: `En attente de ${parties.slice(0, 3).join(', ')}`, confidence: 'moyenne' }
+  else if (overdue.length > 0) cause = { text: 'Échéance dépassée — responsable non précisé', confidence: 'faible' }
+
+  // DERNIÈRE ÉVOLUTION : un report d'échéance si détecté, sinon le dernier objet daté.
+  let lastEvolution: string | null = null
+  if (slippages > 0 && deadlines.length >= 2) {
+    lastEvolution = `Échéance repoussée du ${ddmmyyyy(deadlines[deadlines.length - 2].dueDate)} au ${ddmmyyyy(lastDeadline)}`
+  } else {
+    const evs = [
+      ...decs.map((d) => ({ date: d.date_decision as string | null, label: `décision : ${d.titre as string}` })),
+      ...acts.map((a) => ({ date: (a.created_at as string).slice(0, 10), label: `action : ${a.title as string}` })),
+    ].filter((e): e is { date: string; label: string } => !!e.date).sort((x, y) => x.date.localeCompare(y.date))
+    lastEvolution = evs.length ? `${ddmmyyyy(evs[evs.length - 1].date)} — ${evs[evs.length - 1].label}` : null
+  }
+
+  // PROCHAINE ÉTAPE : l'action ouverte à échéance la plus proche (sinon la 1re en retard).
+  const future = openActs.filter((a) => a.due_date && (a.due_date as string) >= today).sort((x, y) => (x.due_date as string).localeCompare(y.due_date as string))
+  const pick = future[0] ?? overdue[0] ?? null
+  const nextStep = pick
+    ? `${pick.title as string}${pick.assigned_to ? ` — ${pick.assigned_to as string}` : ''}${pick.due_date ? ` (pour le ${ddmmyyyy(pick.due_date as string)})` : ''}`
+    : null
+
+  const openQuestion = subject.status === 'open' && lastDeadline ? `${subject.name} sera-t-il tenu pour le ${ddmmyyyy(lastDeadline)} ?` : null
+
+  // ÉNERGIE (mémoire, PAS note d'acteur) : attention humaine que le sujet consomme.
+  const ageMonths = ageDays != null && ageDays >= 0 ? ageDays / 30 : 0
+  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length
+  const energy: SubjectEnergy = score >= 12 ? 'très élevée' : score >= 7 ? 'élevée' : score >= 3 ? 'moyenne' : 'basse'
+
   return {
     ageDays: ageDays != null && ageDays >= 0 ? ageDays : null,
     meetingsCount: reportIds.size,
     decisionsCount: decs.length,
-    openActions,
+    openActions: openActs.length,
+    state,
+    cause,
+    lastEvolution,
+    nextStep,
+    openQuestion,
+    energy,
     deadlines,
     lastDeadline,
     slippages,

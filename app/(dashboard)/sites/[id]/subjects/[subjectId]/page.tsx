@@ -65,6 +65,33 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         <p className="text-xs text-muted-foreground">{identity.name}{identity.clientName ? ` · ${identity.clientName}` : ''}</p>
       </header>
 
+      {/* ÉTAT DU SUJET — l'intelligence (« pourquoi c'est encore ouvert ? »). Tout
+          dérivé, déterministe, zéro IA. La cause porte sa confiance quand déduite. */}
+      {insights && (
+        <section className="rounded-xl border bg-card p-4 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {(() => {
+              const cls: Record<string, string> = { bloqué: 'bg-rose-100 text-rose-700', en_attente: 'bg-amber-100 text-amber-800', dormant: 'bg-slate-100 text-slate-600', ouvert: 'bg-sky-100 text-sky-700', clos: 'bg-emerald-100 text-emerald-700' }
+              const label: Record<string, string> = { bloqué: 'Bloqué', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
+              return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls[insights.state]}`}>{label[insights.state]}</span>
+            })()}
+            {insights.ageDays != null && <span className="text-xs text-muted-foreground">depuis {insights.ageDays} j</span>}
+            <span className="text-xs text-muted-foreground">· énergie {insights.energy}</span>
+          </div>
+          <dl className="space-y-1 text-sm">
+            {insights.cause && (
+              <div className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-muted-foreground">Cause :</dt>
+                <dd>{insights.cause.text} <span className={`text-[11px] ${insights.cause.confidence === 'élevée' ? 'text-emerald-700' : insights.cause.confidence === 'moyenne' ? 'text-amber-700' : 'text-muted-foreground'}`}>(confiance {insights.cause.confidence})</span></dd>
+              </div>
+            )}
+            {insights.lastEvolution && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Dernière évolution :</dt><dd>{insights.lastEvolution}</dd></div>}
+            {insights.nextStep && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Prochaine étape :</dt><dd>{insights.nextStep}</dd></div>}
+            {insights.openQuestion && <div className="flex flex-wrap gap-x-2"><dt className="font-medium text-muted-foreground">Question ouverte :</dt><dd className="italic">{insights.openQuestion}</dd></div>}
+          </dl>
+        </section>
+      )}
+
       {/* SYNTHÈSE « Sujet vivant » (P3) : l'exploitation déterministe de l'histoire —
           âge, réunions, promesses, reports, récurrence. Zéro IA, zéro score d'acteur. */}
       {insights && (insights.ageDays != null || insights.meetingsCount > 0) && (
