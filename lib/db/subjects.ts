@@ -47,7 +47,7 @@ export interface SubjectThread {
 
 // HISTOIRE du sujet (Vincent : « un sujet = l'histoire complète d'un problème, pas
 // une liste d'occurrences »). Un événement = un objet rattaché, daté, situé à sa réunion.
-export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document'
+export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document' | 'obligation'
 export interface SubjectEvent {
   date: string                 // ISO (tri + affichage)
   kind: SubjectEventKind
@@ -115,7 +115,7 @@ export async function setSubjectStatus(id: string, status: SubjectStatus): Promi
 
 /** Rattache (ou détache si subjectId=null) un objet à un sujet. */
 export async function attachToSubject(
-  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions' | 'intervention_anomalies' | 'report_added_points',
+  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions' | 'intervention_anomalies' | 'report_added_points' | 'site_obligation',
   rowId: string,
   subjectId: string | null,
 ): Promise<void> {
@@ -597,15 +597,21 @@ export async function getSubjectLinkageHealth(siteId: string): Promise<SubjectLi
  *  datés, situés à leur réunion (Vincent : « CR12 décision · CR14 promesse · … »). */
 export async function getSubjectTimeline(subjectId: string): Promise<SubjectEvent[]> {
   const supabase = createAdminClient()
-  const [{ data: decisions }, { data: actions }, { data: reserves }, { data: crDecisions }, { data: anomI }, { data: anomA }, documents] = await Promise.all([
+  const [{ data: decisions }, { data: actions }, { data: reserves }, { data: crDecisions }, { data: anomI }, { data: anomA }, { data: obligations }, documents] = await Promise.all([
     supabase.from('site_decisions').select('id, titre, statut, date_decision, echeance, report_id').eq('subject_id', subjectId),
     supabase.from('site_actions').select('id, title, status, due_date, created_at, report_id').eq('subject_id', subjectId),
     supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId),
     supabase.from('site_report_proposals').select('id, short_label, created_at, report_id').eq('subject_id', subjectId),
     supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at, created_at').eq('subject_id', subjectId),
     supabase.from('report_added_points').select('id, label, created_at, report_id').eq('subject_id', subjectId).eq('kind', 'anomalie'),
+    supabase.from('site_obligation').select('id, label, status, created_at').eq('subject_id', subjectId),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
   ])
+
+  // Libellés FR des statuts d'obligation (cohérent avec la fiche obligations).
+  const obligationStatusFr: Record<string, string> = {
+    a_produire: 'à produire', en_cours: 'en cours', satisfaite: 'satisfaite', non_applicable: 'non applicable',
+  }
 
   // Résolution des réunions concernées (report_id → « Réunion du JJ/MM »), en lot.
   const reportIds = [
@@ -642,6 +648,10 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
   }
   for (const an of anomA ?? []) {
     events.push({ date: (an.created_at as string | null)?.slice(0, 10) ?? '', kind: 'anomaly', label: (an.label as string) ?? '(anomalie)', meta: 'anomalie signalée en séance', reportLabel: repOf(an.report_id as string | null) })
+  }
+  for (const o of obligations ?? []) {
+    events.push({ date: (o.created_at as string).slice(0, 10), kind: 'obligation', label: o.label as string,
+      meta: `obligation (${obligationStatusFr[o.status as string] ?? (o.status as string)})`, reportLabel: null })
   }
   for (const doc of documents) {
     const at = (doc as { created_at?: string }).created_at

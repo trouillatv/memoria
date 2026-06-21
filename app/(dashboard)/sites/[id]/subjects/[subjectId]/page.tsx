@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle } from 'lucide-react'
+import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle, Target } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSubjectThread, getSubjectTimeline, getSubjectInsights } from '@/lib/db/subjects'
@@ -181,7 +181,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         ) : (
           <ol className="relative space-y-2 border-l-2 border-muted pl-4">
             {timeline.map((e, i) => {
-              const Icon = e.kind === 'reserve' ? ClipboardCheck : e.kind === 'action' ? ListTodo : e.kind === 'document' ? FileText : e.kind === 'anomaly' ? AlertTriangle : Gavel
+              const Icon = e.kind === 'reserve' ? ClipboardCheck : e.kind === 'action' ? ListTodo : e.kind === 'document' ? FileText : e.kind === 'anomaly' ? AlertTriangle : e.kind === 'obligation' ? Target : Gavel
               const date = e.date ? new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
               return (
                 <li key={`${e.kind}-${i}`} className="relative">
