@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock } from 'lucide-react'
+import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSubjectThread, getSubjectTimeline, getSubjectInsights } from '@/lib/db/subjects'
@@ -22,7 +22,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const { id, subjectId } = await params
   const [identity, thread, timeline, insights] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId), getSubjectInsights(subjectId)])
   if (!identity || !thread || thread.subject.site_id !== id) notFound()
-  const { subject, actions, reserves, decisions, siteDecisions, documents } = thread
+  const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
   // Candidats à rattacher (existant non encore rattaché à ce sujet).
@@ -34,10 +34,32 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     supabase.from('site_report_proposals').select('id, short_label').eq('site_id', id).is('subject_id', null).eq('status', 'accepted').limit(50),
     listDocumentsForTarget('site', id).catch(() => []),
   ])
+  // Anomalies candidates : intervention (non résolues, via missions→interventions) +
+  // anomalies saisies en séance (report_added_points kind anomalie via les CR du site).
+  const { data: missions } = await supabase.from('missions').select('id').eq('site_id', id).is('deleted_at', null)
+  const missionIds = (missions ?? []).map((m) => m.id as string)
+  let candAnomalies: { id: string; label: string }[] = []
+  if (missionIds.length > 0) {
+    const { data: intvs } = await supabase.from('interventions').select('id').in('mission_id', missionIds)
+    const intvIds = (intvs ?? []).map((i) => i.id as string)
+    if (intvIds.length > 0) {
+      const { data: anoms } = await supabase.from('intervention_anomalies').select('id, description, category_other').in('intervention_id', intvIds).is('subject_id', null).is('resolved_at', null).limit(50)
+      candAnomalies = (anoms ?? []).map((a) => ({ id: a.id as string, label: ((a.description as string | null) ?? (a.category_other as string | null) ?? '(anomalie)').trim() }))
+    }
+  }
+  const { data: siteReps } = await supabase.from('site_reports').select('id').eq('site_id', id)
+  const repIds = (siteReps ?? []).map((r) => r.id as string)
+  let candAddedAnomalies: { id: string; label: string }[] = []
+  if (repIds.length > 0) {
+    const { data: ap } = await supabase.from('report_added_points').select('id, label').in('report_id', repIds).eq('kind', 'anomalie').is('subject_id', null).limit(50)
+    candAddedAnomalies = (ap ?? []).map((a) => ({ id: a.id as string, label: a.label as string }))
+  }
   const candidates = {
     actions: ((candActions ?? []) as { id: string; title: string }[]).map((a) => ({ id: a.id, label: a.title })),
     reserves: ((candReserves ?? []) as { id: string; label: string }[]).map((r) => ({ id: r.id, label: r.label })),
     decisions: ((candDecisions ?? []) as { id: string; short_label: string }[]).map((d) => ({ id: d.id, label: d.short_label })),
+    anomalies: candAnomalies,
+    addedAnomalies: candAddedAnomalies,
     documents: siteDocs.filter((d) => !linkedDocIds.has(d.id)).map((d) => ({ id: d.id, label: d.filename })),
   }
 
@@ -138,7 +160,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         ) : (
           <ol className="relative space-y-2 border-l-2 border-muted pl-4">
             {timeline.map((e, i) => {
-              const Icon = e.kind === 'reserve' ? ClipboardCheck : e.kind === 'action' ? ListTodo : e.kind === 'document' ? FileText : Gavel
+              const Icon = e.kind === 'reserve' ? ClipboardCheck : e.kind === 'action' ? ListTodo : e.kind === 'document' ? FileText : e.kind === 'anomaly' ? AlertTriangle : Gavel
               const date = e.date ? new Date(e.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
               return (
                 <li key={`${e.kind}-${i}`} className="relative">
@@ -191,6 +213,21 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           </ul>
         )}
       </section>
+
+      {/* Anomalies (mig 144) — la cause concrète du blocage. */}
+      {anomalies.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-rose-600" /> Anomalies ({anomalies.length})</h2>
+          <ul className="space-y-1">
+            {anomalies.map((a) => (
+              <li key={a.id} className="text-sm rounded-md border bg-card px-3 py-1.5">
+                <span className="font-medium">{a.label}</span>
+                <span className="text-muted-foreground"> · {a.open ? 'non résolue' : 'résolue'}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Réserves */}
       <section className="space-y-2">

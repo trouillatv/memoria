@@ -62,7 +62,7 @@ export async function setSubjectStatusAction(formData: FormData): Promise<Result
 const attachSchema = z.object({
   siteId: z.string().uuid(),
   subjectId: z.string().uuid(),
-  kind: z.enum(['action', 'reserve', 'decision', 'document']),
+  kind: z.enum(['action', 'reserve', 'decision', 'document', 'anomaly', 'added_anomaly']),
   rowId: z.string().uuid(),
 })
 
@@ -70,6 +70,8 @@ const KIND_TABLE = {
   action: 'site_actions',
   reserve: 'site_reserve',
   decision: 'site_report_proposals',
+  anomaly: 'intervention_anomalies',
+  added_anomaly: 'report_added_points',
 } as const
 
 /** Rattache un objet existant (action/réserve/décision/document) à un sujet. */

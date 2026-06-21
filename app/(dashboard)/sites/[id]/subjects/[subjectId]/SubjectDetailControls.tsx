@@ -8,13 +8,13 @@ import { setSubjectStatusAction, attachToSubjectAction } from '../actions'
 import type { SubjectStatus } from '@/types/db'
 
 type Candidate = { id: string; label: string }
-type Kind = 'action' | 'reserve' | 'decision' | 'document'
+type Kind = 'action' | 'reserve' | 'decision' | 'document' | 'anomaly' | 'added_anomaly'
 
 interface Props {
   siteId: string
   subjectId: string
   status: SubjectStatus
-  candidates: { actions: Candidate[]; reserves: Candidate[]; decisions: Candidate[]; documents: Candidate[] }
+  candidates: { actions: Candidate[]; reserves: Candidate[]; decisions: Candidate[]; documents: Candidate[]; anomalies: Candidate[]; addedAnomalies: Candidate[] }
 }
 
 const STATUS: { value: SubjectStatus; label: string }[] = [
@@ -27,6 +27,8 @@ const ATTACH: { kind: Kind; label: string; key: keyof Props['candidates'] }[] = 
   { kind: 'action', label: 'une action', key: 'actions' },
   { kind: 'reserve', label: 'une réserve', key: 'reserves' },
   { kind: 'decision', label: 'une décision', key: 'decisions' },
+  { kind: 'anomaly', label: 'une anomalie', key: 'anomalies' },
+  { kind: 'added_anomaly', label: 'une anomalie (séance)', key: 'addedAnomalies' },
   { kind: 'document', label: 'un document', key: 'documents' },
 ]
 

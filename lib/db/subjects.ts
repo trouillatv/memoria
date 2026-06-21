@@ -33,18 +33,20 @@ export interface SubjectSummary {
 }
 
 export interface SubjectDecisionLite { id: string; titre: string; statut: string; dateDecision: string | null }
+export interface SubjectAnomalyLite { id: string; label: string; open: boolean }
 export interface SubjectThread {
   subject: DbSubject
   actions: DbSiteAction[]
   reserves: SubjectReserveLite[]
   decisions: DbSiteReportProposal[]
   siteDecisions: SubjectDecisionLite[]
+  anomalies: SubjectAnomalyLite[]
   documents: SubjectDocLite[]
 }
 
 // HISTOIRE du sujet (Vincent : « un sujet = l'histoire complète d'un problème, pas
 // une liste d'occurrences »). Un événement = un objet rattaché, daté, situé à sa réunion.
-export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'document'
+export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document'
 export interface SubjectEvent {
   date: string                 // ISO (tri + affichage)
   kind: SubjectEventKind
@@ -112,7 +114,7 @@ export async function setSubjectStatus(id: string, status: SubjectStatus): Promi
 
 /** Rattache (ou détache si subjectId=null) un objet à un sujet. */
 export async function attachToSubject(
-  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions',
+  table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions' | 'intervention_anomalies' | 'report_added_points',
   rowId: string,
   subjectId: string | null,
 ): Promise<void> {
@@ -214,13 +216,21 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
   if (!subject) return null
   const supabase = createAdminClient()
 
-  const [{ data: actions }, { data: reserves }, { data: decisions }, { data: siteDecisions }, documents] = await Promise.all([
+  const [{ data: actions }, { data: reserves }, { data: decisions }, { data: siteDecisions }, { data: anomI }, { data: anomA }, documents] = await Promise.all([
     supabase.from('site_actions').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_report_proposals').select('*').eq('subject_id', subjectId).order('created_at', { ascending: false }),
     supabase.from('site_decisions').select('id, titre, statut, date_decision').eq('subject_id', subjectId).order('date_decision', { ascending: false }),
+    supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at').eq('subject_id', subjectId),
+    supabase.from('report_added_points').select('id, label').eq('subject_id', subjectId).eq('kind', 'anomalie'),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
   ])
+
+  const anomalies: SubjectAnomalyLite[] = [
+    ...((anomI ?? []) as Array<{ id: string; description: string | null; category_other: string | null; resolved_at: string | null }>)
+      .map((a) => ({ id: a.id, label: (a.description ?? a.category_other ?? '').trim() || '(anomalie)', open: a.resolved_at == null })),
+    ...((anomA ?? []) as Array<{ id: string; label: string }>).map((a) => ({ id: a.id, label: a.label, open: true })),
+  ]
 
   return {
     subject,
@@ -230,6 +240,7 @@ export async function getSubjectThread(subjectId: string): Promise<SubjectThread
     decisions: (decisions ?? []) as DbSiteReportProposal[],
     siteDecisions: ((siteDecisions ?? []) as Array<{ id: string; titre: string; statut: string; date_decision: string | null }>)
       .map((d) => ({ id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision })),
+    anomalies,
     documents: documents.map((d) => ({ id: d.id, filename: d.filename })),
   }
 }
@@ -269,9 +280,11 @@ export interface SubjectInsights {
 }
 
 type SubjRow = Record<string, unknown>
+export interface SubjectAnomaly { label: string; open: boolean }
 /** Calcul PUR de l'intelligence d'un sujet (aucune DB) — réutilisé en lot (briefing). */
-function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], recurringMeetings: number): SubjectInsights {
+function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjRow[], anoms: SubjectAnomaly[], recurringMeetings: number): SubjectInsights {
   const today = todayIso()
+  const openAnoms = anoms.filter((a) => a.open && a.label.trim())
 
   const reportIds = new Set<string>()
   for (const d of decs) if (d.report_id) reportIds.add(d.report_id as string)
@@ -308,17 +321,21 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
   const lastActivity = [...decs.map((d) => d.date_decision as string | null), ...acts.map((a) => (a.created_at as string).slice(0, 10))].filter((x): x is string => !!x).sort().pop() ?? null
   const dormant = lastActivity ? daysBetween(lastActivity, today) > 90 : false
 
-  // ÉTAT (priorité : clos > bloqué(retard) > en attente(responsable) > dormant > ouvert).
+  // ÉTAT (priorité : clos > bloqué(anomalie/retard) > en attente(responsable) > dormant > ouvert).
+  // Une ANOMALIE NON RÉSOLUE rattachée = un vrai blocage (Vincent : « Façade Nord »).
   let state: SubjectState
   if (subject.status === 'closed') state = 'clos'
-  else if (overdue.length > 0) state = 'bloqué'
+  else if (openAnoms.length > 0 || overdue.length > 0) state = 'bloqué'
   else if (parties.length > 0) state = 'en_attente'
   else if (subject.status === 'dormant' || dormant) state = 'dormant'
   else state = 'ouvert'
 
-  // CAUSE + CONFIANCE (déduite, jamais certaine si ambiguë).
+  // CAUSE + CONFIANCE. Les anomalies sont une cause FACTUELLE (confiance élevée) — elles
+  // priment sur la déduction « en attente de … ». Sinon, déduction (confiance dégradée).
   let cause: { text: string; confidence: CauseConfidence } | null = null
-  if (parties.length === 1) cause = { text: `En attente de ${parties[0]}`, confidence: 'élevée' }
+  if (openAnoms.length > 0) {
+    cause = { text: `Blocage : ${openAnoms.slice(0, 3).map((a) => a.label).join(', ')}${openAnoms.length > 3 ? `, +${openAnoms.length - 3}` : ''}`, confidence: 'élevée' }
+  } else if (parties.length === 1) cause = { text: `En attente de ${parties[0]}`, confidence: 'élevée' }
   else if (parties.length > 1) cause = { text: `En attente de ${parties.slice(0, 3).join(', ')}`, confidence: 'moyenne' }
   else if (overdue.length > 0) cause = { text: 'Échéance dépassée — responsable non précisé', confidence: 'faible' }
 
@@ -345,7 +362,7 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
 
   // ÉNERGIE (mémoire, PAS note d'acteur) : attention humaine que le sujet consomme.
   const ageMonths = ageDays != null && ageDays >= 0 ? ageDays / 30 : 0
-  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length
+  const score = ageMonths + reportIds.size + slippages * 2 + openActs.length + openAnoms.length * 2
   const energy: SubjectEnergy = score >= 12 ? 'très élevée' : score >= 7 ? 'élevée' : score >= 3 ? 'moyenne' : 'basse'
 
   return {
@@ -367,15 +384,27 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
   }
 }
 
+/** Anomalies d'un sujet (intervention_anomalies non résolues + anomalies saisies en
+ *  séance), normalisées en { label, open } pour nourrir l'état/cause. */
+function toAnomalies(intervention: SubjRow[], added: SubjRow[]): SubjectAnomaly[] {
+  return [
+    ...intervention.map((a) => ({ label: (((a.description as string | null) ?? (a.category_other as string | null)) ?? '').trim(), open: a.resolved_at == null })),
+    ...added.map((a) => ({ label: ((a.label as string | null) ?? '').trim(), open: true })),
+  ].filter((a) => a.label)
+}
+
 export async function getSubjectInsights(subjectId: string, recurringMeetings = 3): Promise<SubjectInsights | null> {
   const subject = await getSubject(subjectId)
   if (!subject) return null
   const supabase = createAdminClient()
-  const [{ data: decisions }, { data: actions }] = await Promise.all([
+  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }] = await Promise.all([
     supabase.from('site_decisions').select('titre, date_decision, echeance, report_id, statut').eq('subject_id', subjectId),
     supabase.from('site_actions').select('title, created_at, due_date, report_id, status, assigned_to').eq('subject_id', subjectId),
+    supabase.from('intervention_anomalies').select('description, category_other, resolved_at').eq('subject_id', subjectId),
+    supabase.from('report_added_points').select('label, kind').eq('subject_id', subjectId).eq('kind', 'anomalie'),
   ])
-  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], recurringMeetings)
+  const anoms = toAnomalies((anomI ?? []) as SubjRow[], (anomA ?? []) as SubjRow[])
+  return computeSubjectInsights(subject, decisions ?? [], actions ?? [], anoms, recurringMeetings)
 }
 
 export interface SubjectWatch {
@@ -393,17 +422,25 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
   const subjects = (subs ?? []) as DbSubject[]
   if (subjects.length === 0) return []
   const ids = subjects.map((s) => s.id)
-  const [{ data: decisions }, { data: actions }] = await Promise.all([
+  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }] = await Promise.all([
     supabase.from('site_decisions').select('subject_id, titre, date_decision, echeance, report_id, statut').in('subject_id', ids),
     supabase.from('site_actions').select('subject_id, title, created_at, due_date, report_id, status, assigned_to').in('subject_id', ids),
+    supabase.from('intervention_anomalies').select('subject_id, description, category_other, resolved_at').in('subject_id', ids),
+    supabase.from('report_added_points').select('subject_id, label, kind').in('subject_id', ids).eq('kind', 'anomalie'),
   ])
   const decBy = new Map<string, SubjRow[]>()
   for (const d of (decisions ?? []) as SubjRow[]) { const k = d.subject_id as string; const a = decBy.get(k); if (a) a.push(d); else decBy.set(k, [d]) }
   const actBy = new Map<string, SubjRow[]>()
   for (const a of (actions ?? []) as SubjRow[]) { const k = a.subject_id as string; const arr = actBy.get(k); if (arr) arr.push(a); else actBy.set(k, [a]) }
+  const anomBy = new Map<string, SubjRow[]>()
+  for (const a of [...((anomI ?? []) as SubjRow[]), ...((anomA ?? []) as SubjRow[])]) { const k = a.subject_id as string; const arr = anomBy.get(k); if (arr) arr.push(a); else anomBy.set(k, [a]) }
 
   return subjects
-    .map((s) => ({ s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], 3) }))
+    .map((s) => {
+      const raw = anomBy.get(s.id) ?? []
+      const anoms = toAnomalies(raw.filter((r) => 'description' in r || 'category_other' in r), raw.filter((r) => 'kind' in r))
+      return { s, ins: computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], anoms, 3) }
+    })
     .filter(({ ins }) => ins.state === 'bloqué' || ins.state === 'en_attente' || ins.slippages > 0 || ins.recurring || ins.openQuestion != null)
     .sort((a, b) => (a.ins.state === 'bloqué' ? 0 : 1) - (b.ins.state === 'bloqué' ? 0 : 1) || ENERGY_RANK[b.ins.energy] - ENERGY_RANK[a.ins.energy])
     .slice(0, limit)
@@ -414,11 +451,13 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
  *  datés, situés à leur réunion (Vincent : « CR12 décision · CR14 promesse · … »). */
 export async function getSubjectTimeline(subjectId: string): Promise<SubjectEvent[]> {
   const supabase = createAdminClient()
-  const [{ data: decisions }, { data: actions }, { data: reserves }, { data: crDecisions }, documents] = await Promise.all([
+  const [{ data: decisions }, { data: actions }, { data: reserves }, { data: crDecisions }, { data: anomI }, { data: anomA }, documents] = await Promise.all([
     supabase.from('site_decisions').select('id, titre, statut, date_decision, echeance, report_id').eq('subject_id', subjectId),
     supabase.from('site_actions').select('id, title, status, due_date, created_at, report_id').eq('subject_id', subjectId),
     supabase.from('site_reserve').select('id, label, status, issued_on').eq('subject_id', subjectId),
     supabase.from('site_report_proposals').select('id, short_label, created_at, report_id').eq('subject_id', subjectId),
+    supabase.from('intervention_anomalies').select('id, description, category_other, resolved_at, created_at').eq('subject_id', subjectId),
+    supabase.from('report_added_points').select('id, label, created_at, report_id').eq('subject_id', subjectId).eq('kind', 'anomalie'),
     listDocumentsForTarget('subject', subjectId).catch(() => []),
   ])
 
@@ -427,6 +466,7 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
     ...(decisions ?? []).map((r) => r.report_id as string | null),
     ...(actions ?? []).map((r) => r.report_id as string | null),
     ...(crDecisions ?? []).map((r) => r.report_id as string | null),
+    ...(anomA ?? []).map((r) => r.report_id as string | null),
   ].filter((x): x is string => !!x)
   const reportLabel = new Map<string, string>()
   if (reportIds.length > 0) {
@@ -449,6 +489,13 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
   }
   for (const c of crDecisions ?? []) {
     events.push({ date: (c.created_at as string).slice(0, 10), kind: 'cr_decision', label: c.short_label as string, meta: 'décision (CR)', reportLabel: repOf(c.report_id as string | null) })
+  }
+  for (const an of anomI ?? []) {
+    events.push({ date: (an.created_at as string | null)?.slice(0, 10) ?? '', kind: 'anomaly', label: ((an.description as string | null) ?? (an.category_other as string | null) ?? '(anomalie)').trim(),
+      meta: an.resolved_at ? 'anomalie (résolue)' : 'anomalie (non résolue)', reportLabel: null })
+  }
+  for (const an of anomA ?? []) {
+    events.push({ date: (an.created_at as string | null)?.slice(0, 10) ?? '', kind: 'anomaly', label: (an.label as string) ?? '(anomalie)', meta: 'anomalie signalée en séance', reportLabel: repOf(an.report_id as string | null) })
   }
   for (const doc of documents) {
     const at = (doc as { created_at?: string }).created_at
