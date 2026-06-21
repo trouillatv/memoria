@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,7 +18,16 @@ export function TenderUploadForm() {
   const [pending, setPending] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Compteur de temps pendant l'envoi (alimente la barre de progression).
+  useEffect(() => {
+    if (!pending) return
+    setElapsed(0)
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000)
+    return () => clearInterval(t)
+  }, [pending])
 
   function pickFile(f: File | null) {
     if (f && f.type !== 'application/pdf') {
@@ -145,6 +154,22 @@ export function TenderUploadForm() {
             <Upload className="h-4 w-4 mr-2" />
             {pending ? 'Upload + analyse en cours…' : 'Lancer l\'analyse IA'}
           </Button>
+
+          {pending && (
+            <div className="space-y-1">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
+                  // Envoi du fichier (~10 s typiques) : progresse vers ~90 % puis
+                  // la page redirige vers le dossier où l'analyse continue.
+                  style={{ width: `${Math.min(90, Math.round((1 - Math.exp(-elapsed / 6)) * 100))}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground text-center">
+                Envoi du document puis redirection vers le dossier — l&apos;analyse s&apos;y poursuit.
+              </p>
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>
