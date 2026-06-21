@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck, Search, Layers, ShieldAlert, Download } from 'lucide-react'
+import { MapPin, BookOpen, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck, Search, Layers, ShieldAlert, Download, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -240,6 +240,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         >
           <ShieldAlert className="h-3.5 w-3.5" />
           Obligations
+        </Link>
+        <Link
+          href={`/sites/${id}/preuves`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Dossier de preuve
         </Link>
         <Link
           href={`/sites/${id}/qr`}
