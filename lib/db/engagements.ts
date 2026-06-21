@@ -5,10 +5,12 @@ import type {
   EngagementCategory,
   EngagementDestination,
   EngagementEvidence,
+  EngagementKind,
   EngagementSourceType,
   EngagementStatus,
 } from '@/types/db'
 import { suggestDestination } from '@/lib/engagements/destination'
+import { defaultProofForKind } from '@/lib/engagements/kind'
 
 export async function listEngagementsByTender(tenderId: string): Promise<DbEngagement[]> {
   const supabase = createAdminClient()
@@ -72,6 +74,7 @@ export async function bulkInsertEngagements(input: {
     source_excerpt: string
     source_ref: Record<string, unknown> | null
     category: EngagementCategory
+    kind?: EngagementKind | null
     short_label: string
     measurable: boolean
     ai_confidence: number | null
@@ -88,15 +91,20 @@ export async function bulkInsertEngagements(input: {
     source_excerpt: e.source_excerpt,
     source_ref: e.source_ref,
     category: e.category,
+    kind: e.kind ?? null,
     short_label: e.short_label,
     measurable: e.measurable,
     ai_confidence: e.ai_confidence,
-    // Destination SUGGÉRÉE (déterministe, explicable) — l'humain valide à la
-    // curation. Défaut = obligation de contrat.
+    // Pré-remplissage déterministe selon la NATURE (Sprint 1.3) — l'humain
+    // ajuste à la curation. Un contrôle attend une preuve photo par défaut.
+    proof_requirement: defaultProofForKind(e.kind ?? null),
+    // Destination SUGGÉRÉE (déterministe, explicable). La nature prime
+    // (pénalité → vigilance), sinon détection texte. Défaut = obligation contrat.
     destination: suggestDestination({
       category: e.category,
       sourceExcerpt: e.source_excerpt,
       shortLabel: e.short_label,
+      kind: e.kind ?? null,
     }).destination,
     ...(orgId ? { organization_id: orgId } : {}),
   }))
@@ -110,6 +118,7 @@ export async function curateEngagement(
   patch: {
     short_label?: string
     category?: EngagementCategory
+    kind?: EngagementKind
     measurable?: boolean
     proof_requirement?: 'photo' | 'anomaly_documented' | 'none'
     destination?: EngagementDestination
@@ -131,6 +140,7 @@ export async function curateEngagement(
   const updates: Record<string, unknown> = { status: nextStatus }
   if (patch.short_label !== undefined) updates.short_label = patch.short_label
   if (patch.category !== undefined) updates.category = patch.category
+  if (patch.kind !== undefined) updates.kind = patch.kind
   if (patch.measurable !== undefined) updates.measurable = patch.measurable
   if (patch.proof_requirement !== undefined) updates.proof_requirement = patch.proof_requirement
   if (patch.destination !== undefined) updates.destination = patch.destination

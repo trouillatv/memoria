@@ -6,7 +6,8 @@
 // destinations site-scopées (a_savoir/mission) restent en attente jusqu'à la
 // conversion (option A) et ne sont pas suggérées ici.
 
-import type { EngagementDestination } from '@/types/db'
+import type { EngagementDestination, EngagementKind } from '@/types/db'
+import { destinationHintForKind } from './kind'
 export type { EngagementDestination }
 
 // Signaux d'une VIGILANCE : pénalité, sanction, risque contractuel, point
@@ -30,7 +31,13 @@ export function suggestDestination(input: {
   category: string
   sourceExcerpt: string
   shortLabel?: string
+  kind?: EngagementKind | null
 }): DestinationSuggestion {
+  // La NATURE prime quand elle est sans ambiguïté : une pénalité = une vigilance.
+  const kindHint = destinationHintForKind(input.kind ?? null)
+  if (kindHint === 'vigilance') {
+    return { destination: 'vigilance', reason: 'Pénalité (type) → vigilance' }
+  }
   const hay = `${input.sourceExcerpt} ${input.shortLabel ?? ''}`
     .toLowerCase()
     .replace(/[_\-./]+/g, ' ')

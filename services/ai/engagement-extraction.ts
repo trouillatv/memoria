@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { getAIProvider } from './factory'
 import { withAITracking } from './tracking'
 import type { AIProviderName } from './index'
-import type { EngagementCategory, EngagementSourceType } from '@/types/db'
+import type { EngagementCategory, EngagementKind, EngagementSourceType } from '@/types/db'
 import { ENGAGEMENT_EXTRACTOR_V1 } from './prompts/engagement-extractor.v1'
 
 // ---------------------------------------------------------------------------
@@ -18,6 +18,9 @@ const extractedSchema = z.object({
       category: z.enum([
         'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
       ]).catch('other'),
+      kind: z.enum([
+        'objectif', 'obligation', 'livrable', 'controle', 'penalite',
+      ]).catch('obligation'),
       short_label: z.string().max(200).catch(''),
       measurable: z.boolean().catch(false),
       // Gemini retourne parfois 0-100 au lieu de 0-1
@@ -31,6 +34,7 @@ export interface ExtractedEngagement {
   source_excerpt: string
   source_ref: Record<string, unknown> | null
   category: EngagementCategory
+  kind: EngagementKind
   short_label: string
   measurable: boolean
   ai_confidence: number
@@ -59,6 +63,7 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
         'Désinfection biquotidienne des sanitaires avec produits écolabel certifiés',
       source_ref: { page: 12, section: '3.2' },
       category: 'frequency',
+      kind: 'obligation',
       short_label: 'Sanitaires 2x/jour avec écolabel',
       measurable: true,
       confidence: 0.92,
@@ -69,6 +74,7 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
         'Audit qualité hebdomadaire avec rapport écrit transmis sous 48h',
       source_ref: { page: 22, section: '4.7.1' },
       category: 'reporting',
+      kind: 'controle',
       short_label: 'Audit qualité hebdomadaire',
       measurable: true,
       confidence: 0.88,
@@ -79,6 +85,7 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
         'Certification ISO 9001:2015 maintenue pendant toute la durée du marché',
       source_ref: { page: 8, section: '2.1' },
       category: 'compliance',
+      kind: 'obligation',
       short_label: 'ISO 9001 maintenue',
       measurable: false,
       confidence: 0.95,
@@ -89,6 +96,7 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
         "Délai de reprise sous 4h ouvrées 7j/7 en cas d'incident signalé",
       source_ref: { page: 14, section: '3.5' },
       category: 'sla',
+      kind: 'obligation',
       short_label: 'Reprise 4h ouvrées 7j/7',
       measurable: true,
       confidence: 0.9,
@@ -99,6 +107,7 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
         'Reporting mensuel avec photos avant/après et indicateurs qualité',
       source_ref: { page: 18, section: '4.2' },
       category: 'reporting',
+      kind: 'livrable',
       short_label: 'Reporting mensuel photos avant/après',
       measurable: true,
       confidence: 0.85,
@@ -110,6 +119,7 @@ const MOCK_FIXTURE: z.infer<typeof extractedSchema> = {
         "Pénalité de 2% du montant mensuel par manquement constaté lors d'un contrôle inopiné",
       source_ref: { page: 27, section: '6.3' },
       category: 'compliance',
+      kind: 'penalite',
       short_label: 'Pénalité 2% par manquement',
       measurable: true,
       confidence: 0.9,
@@ -254,6 +264,7 @@ export async function runEngagementExtractionAgent(
         source_excerpt,
         source_ref: e.source_ref ?? null,
         category: e.category,
+        kind: e.kind,
         short_label,
         measurable: e.measurable,
         ai_confidence: e.confidence,

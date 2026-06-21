@@ -258,6 +258,15 @@ export type EngagementStatus =
 // l'engagement comme exécuté de façon défendable.
 export type EngagementProofRequirement = 'photo' | 'anomaly_documented' | 'none'
 
+// Migration 153 (Sprint 1 typage) — NATURE prescriptive de l'engagement.
+// Première brique de l'atome « Assertion ». NULL = non typé.
+export type EngagementKind =
+  | 'objectif'
+  | 'obligation'
+  | 'livrable'
+  | 'controle'
+  | 'penalite'
+
 export interface DbEngagement {
   id: string
   tender_id: string
@@ -266,6 +275,7 @@ export interface DbEngagement {
   source_excerpt: string
   source_ref: Record<string, unknown> | null
   category: EngagementCategory
+  kind: EngagementKind | null
   short_label: string
   measurable: boolean
   ai_confidence: number | null

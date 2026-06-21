@@ -9,13 +9,29 @@ import {
   curateEngagementAction,
   rejectEngagementsAction,
 } from './engagements-actions'
-import type { DbEngagement, EngagementCategory, EngagementProofRequirement, EngagementDestination } from '@/types/db'
+import type { DbEngagement, EngagementCategory, EngagementKind, EngagementProofRequirement, EngagementDestination } from '@/types/db'
 import { DESTINATION_META } from '@/lib/engagements/destination'
 import { CATEGORY_LABELS } from '@/lib/engagements/labels'
+import { KIND_META, KIND_ORDER, kindLabel } from '@/lib/engagements/kind'
 
 const CATEGORIES: EngagementCategory[] = [
   'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
 ]
+
+const KINDS: EngagementKind[] = ['objectif', 'obligation', 'livrable', 'controle', 'penalite']
+
+// Sprint 2 — regroupement par NATURE : pénalités et contrôles d'abord (ce qui
+// fait perdre / ce qui se prouve), objectifs en dernier. Non typés à la fin.
+function groupByKind(engagements: DbEngagement[]): Array<{ kind: EngagementKind | null; items: DbEngagement[] }> {
+  const groups: Array<{ kind: EngagementKind | null; items: DbEngagement[] }> = []
+  for (const kind of KIND_ORDER) {
+    const items = engagements.filter((e) => e.kind === kind)
+    if (items.length) groups.push({ kind, items })
+  }
+  const untyped = engagements.filter((e) => !e.kind)
+  if (untyped.length) groups.push({ kind: null, items: untyped })
+  return groups
+}
 
 // Destinations proposables à la curation en V1 (a_savoir/mission = à la conversion).
 const CURATION_DESTINATIONS: EngagementDestination[] = ['contract_engagement', 'vigilance', 'a_savoir']
@@ -138,79 +154,105 @@ export function EngagementCurationView({ engagements }: { engagements: DbEngagem
         </div>
       )}
 
-      <ul className="space-y-2">
-        {engagements.map((e) => {
-          const isEditable = e.status === 'extracted' || e.status === 'curated'
-          const isEditing = editing === e.id
-          const isSelected = selected.has(e.id)
-          return (
-            <li
-              key={e.id}
-              className={`rounded-lg border p-3 bg-card flex items-start gap-3 transition-colors ${
-                isSelected ? 'border-amber-300 bg-amber-50/30' : ''
+      {/* Sprint 2 — regroupé par NATURE (pénalités/contrôles d'abord). */}
+      {groupByKind(engagements).map((group) => (
+        <section key={group.kind ?? 'untyped'} className="space-y-2">
+          <div className="flex items-center gap-2 pt-1">
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                group.kind ? KIND_META[group.kind].badge : 'border-muted bg-muted/40 text-muted-foreground'
               }`}
             >
-              {isEditable && !isEditing && (
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleSelect(e.id)}
-                  className="mt-1 shrink-0"
-                  aria-label={`Sélectionner ${e.short_label}`}
-                />
-              )}
+              {group.kind ? KIND_META[group.kind].short : 'Non typé'} ({group.items.length})
+            </span>
+            {group.kind && (
+              <span className="text-[11px] text-muted-foreground">{KIND_META[group.kind].description}</span>
+            )}
+          </div>
 
-              <div className="flex-1 min-w-0">
-                {isEditing ? (
-                  <EditForm
-                    engagement={e}
-                    pending={pending}
-                    onSave={(p) => saveEdit(e.id, p)}
-                    onCancel={() => setEditing(null)}
-                  />
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${DESTINATION_META[e.destination].badge}`}
-                        title="Destination proposée — modifiable à l'édition"
-                      >
-                        {DESTINATION_META[e.destination].label}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        conf. {e.ai_confidence?.toFixed(2) ?? '—'}
-                      </span>
-                      {e.status !== 'extracted' && (
-                        <span className="ml-auto">
-                          <StatusBadge status={e.status} />
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-sm font-semibold mb-1">{e.short_label}</div>
-                    <div className="text-xs text-muted-foreground italic">« {e.source_excerpt} »</div>
-                    {sourceRefLabel(e.source_ref) && (
-                      <div className="text-[10px] text-muted-foreground/80 mt-0.5">
-                        source : {sourceRefLabel(e.source_ref)}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {isEditable && !isEditing && (
-                <button
-                  type="button"
-                  onClick={() => setEditing(e.id)}
-                  className="p-1 rounded hover:bg-muted/50 shrink-0 text-muted-foreground"
-                  aria-label="Éditer"
+          <ul className="space-y-2">
+            {group.items.map((e) => {
+              const isEditable = e.status === 'extracted' || e.status === 'curated'
+              const isEditing = editing === e.id
+              const isSelected = selected.has(e.id)
+              return (
+                <li
+                  key={e.id}
+                  className={`rounded-lg border p-3 bg-card flex items-start gap-3 transition-colors ${
+                    isSelected ? 'border-amber-300 bg-amber-50/30' : ''
+                  }`}
                 >
-                  <Edit3 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+                  {isEditable && !isEditing && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(e.id)}
+                      className="mt-1 shrink-0"
+                      aria-label={`Sélectionner ${e.short_label}`}
+                    />
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    {isEditing ? (
+                      <EditForm
+                        engagement={e}
+                        pending={pending}
+                        onSave={(p) => saveEdit(e.id, p)}
+                        onCancel={() => setEditing(null)}
+                      />
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-1">
+                          {e.kind && (
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${KIND_META[e.kind].badge}`}
+                              title="Nature de l'engagement — modifiable à l'édition"
+                            >
+                              {KIND_META[e.kind].label}
+                            </span>
+                          )}
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${DESTINATION_META[e.destination].badge}`}
+                            title="Destination proposée — modifiable à l'édition"
+                          >
+                            {DESTINATION_META[e.destination].label}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            conf. {e.ai_confidence?.toFixed(2) ?? '—'}
+                          </span>
+                          {e.status !== 'extracted' && (
+                            <span className="ml-auto">
+                              <StatusBadge status={e.status} />
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm font-semibold mb-1">{e.short_label}</div>
+                        <div className="text-xs text-muted-foreground italic">« {e.source_excerpt} »</div>
+                        {sourceRefLabel(e.source_ref) && (
+                          <div className="text-[10px] text-muted-foreground/80 mt-0.5">
+                            source : {sourceRefLabel(e.source_ref)}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {isEditable && !isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(e.id)}
+                      className="p-1 rounded hover:bg-muted/50 shrink-0 text-muted-foreground"
+                      aria-label="Éditer"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ))}
     </div>
   )
 }
@@ -229,18 +271,20 @@ function EditForm({
 }: {
   engagement: DbEngagement
   pending: boolean
-  onSave: (patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination }) => void
+  onSave: (patch: { short_label?: string; category?: EngagementCategory; kind?: EngagementKind; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination }) => void
   onCancel: () => void
 }) {
   const [label, setLabel] = useState(engagement.short_label)
   const [category, setCategory] = useState<EngagementCategory>(engagement.category)
+  const [kind, setKind] = useState<EngagementKind>(engagement.kind ?? 'obligation')
   const [proofReq, setProofReq] = useState<EngagementProofRequirement>(engagement.proof_requirement)
   const [destination, setDestination] = useState<EngagementDestination>(engagement.destination)
 
   function submit() {
-    const patch: { short_label?: string; category?: EngagementCategory; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination } = {}
+    const patch: { short_label?: string; category?: EngagementCategory; kind?: EngagementKind; proof_requirement?: EngagementProofRequirement; destination?: EngagementDestination } = {}
     if (label !== engagement.short_label) patch.short_label = label
     if (category !== engagement.category) patch.category = category
+    if (kind !== (engagement.kind ?? 'obligation')) patch.kind = kind
     if (proofReq !== engagement.proof_requirement) patch.proof_requirement = proofReq
     if (destination !== engagement.destination) patch.destination = destination
     if (Object.keys(patch).length === 0) {
@@ -262,10 +306,20 @@ function EditForm({
       />
       <div className="flex items-center gap-2 flex-wrap">
         <select
+          value={kind}
+          onChange={(ev) => setKind(ev.target.value as EngagementKind)}
+          className="rounded border p-1 text-xs"
+          disabled={pending}
+          title="Nature de l'engagement"
+        >
+          {KINDS.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}
+        </select>
+        <select
           value={category}
           onChange={(ev) => setCategory(ev.target.value as EngagementCategory)}
           className="rounded border p-1 text-xs"
           disabled={pending}
+          title="Catégorie"
         >
           {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
         </select>
