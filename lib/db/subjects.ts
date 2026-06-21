@@ -261,6 +261,7 @@ export interface SubjectInsights {
   meetingsCount: number
   decisionsCount: number
   openActions: number
+  openReserves: number
   // — Intelligence dérivée —
   state: SubjectState
   cause: { text: string; confidence: CauseConfidence } | null
@@ -402,6 +403,7 @@ function computeSubjectInsights(subject: DbSubject, decs: SubjRow[], acts: SubjR
     meetingsCount: reportIds.size,
     decisionsCount: decs.length,
     openActions: openActs.length,
+    openReserves: openReserves.length,
     state,
     cause,
     lastEvolution,
@@ -496,6 +498,69 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
       ENERGY_RANK[b.ins.energy] - ENERGY_RANK[a.ins.energy])
     .slice(0, limit)
     .map(({ s, ins }) => ({ id: s.id, name: s.name, state: ins.state, ageDays: ins.ageDays, energy: ins.energy, cause: ins.cause?.text ?? null, lastEvolution: ins.lastEvolution, openQuestion: ins.openQuestion, blocksCount: ins.blocksCount, criticalImpact: ins.criticalImpact }))
+}
+
+// RECHERCHE PAR SUJET (Build A) — Vincent : « taper DOE → la fiche du sujet, pas 54
+// résultats ». Une VUE sur le graphe déjà relié : on résout un terme vers des SUJETS
+// (par nom OU par contenu rattaché) et on rend la fiche riche de chacun. Déterministe.
+export interface SubjectSearchResult {
+  id: string; name: string; status: SubjectStatus
+  matchedVia: 'nom' | 'contenu'
+  hasObligation: boolean
+  insights: SubjectInsights
+}
+
+export async function searchSiteSubjects(siteId: string, term: string, limit = 12): Promise<SubjectSearchResult[]> {
+  const q = term.trim()
+  if (!q) return []
+  const supabase = createAdminClient()
+  // Échappe les caractères qui cassent un filtre PostgREST `.or(... ilike ...)`.
+  const like = `%${q.replace(/[(),%]/g, ' ').trim()}%`
+
+  // 1. Résolution : match par NOM du sujet + par CONTENU rattaché (décision/action/réserve/obligation).
+  const [{ data: byName }, { data: decM }, { data: actM }, { data: resM }, { data: oblM }] = await Promise.all([
+    supabase.from('subjects').select('id').eq('site_id', siteId).ilike('name', like),
+    supabase.from('site_decisions').select('subject_id').eq('site_id', siteId).not('subject_id', 'is', null).or(`titre.ilike.${like},sujet.ilike.${like}`),
+    supabase.from('site_actions').select('subject_id').eq('site_id', siteId).not('subject_id', 'is', null).ilike('title', like),
+    supabase.from('site_reserve').select('subject_id').eq('site_id', siteId).not('subject_id', 'is', null).ilike('label', like),
+    supabase.from('site_obligation').select('subject_id').eq('site_id', siteId).not('subject_id', 'is', null).ilike('label', like),
+  ])
+  const nameIds = new Set(((byName ?? []) as { id: string }[]).map((r) => r.id))
+  const contentIds = new Set<string>()
+  for (const arr of [decM, actM, resM, oblM]) for (const r of (arr ?? []) as { subject_id: string | null }[]) if (r.subject_id) contentIds.add(r.subject_id)
+  const ids = [...new Set([...nameIds, ...contentIds])].slice(0, limit)
+  if (ids.length === 0) return []
+
+  // 2. Fiche riche par sujet — batché (même patron que listSiteSubjectsToWatch).
+  const { data: subs } = await supabase.from('subjects').select('*').in('id', ids)
+  const subjects = (subs ?? []) as DbSubject[]
+  const [{ data: decisions }, { data: actions }, { data: anomI }, { data: anomA }, { data: reserves }, { data: crProps }, { data: obls }] = await Promise.all([
+    supabase.from('site_decisions').select('subject_id, titre, date_decision, echeance, report_id, statut').in('subject_id', ids),
+    supabase.from('site_actions').select('subject_id, title, created_at, due_date, report_id, status, assigned_to').in('subject_id', ids),
+    supabase.from('intervention_anomalies').select('subject_id, description, category_other, resolved_at').in('subject_id', ids),
+    supabase.from('report_added_points').select('subject_id, label, kind').in('subject_id', ids).eq('kind', 'anomalie'),
+    supabase.from('site_reserve').select('subject_id, label, status').in('subject_id', ids),
+    supabase.from('site_report_proposals').select('subject_id, short_label, type, status, created_entity_id, report_id, created_at').in('subject_id', ids),
+    supabase.from('site_obligation').select('subject_id').in('subject_id', ids),
+  ])
+  const impactBy = await getSubjectImpactCounts(ids)
+  const group = (rows: unknown): Map<string, SubjRow[]> => {
+    const m = new Map<string, SubjRow[]>()
+    for (const r of (rows ?? []) as SubjRow[]) { const k = r.subject_id as string; const a = m.get(k); if (a) a.push(r); else m.set(k, [r]) }
+    return m
+  }
+  const decBy = group(decisions), actBy = group(actions), resBy = group(reserves), crBy = group(crProps)
+  const anomBy = group([...((anomI ?? []) as SubjRow[]), ...((anomA ?? []) as SubjRow[])])
+  const oblSet = new Set(((obls ?? []) as { subject_id: string }[]).map((r) => r.subject_id))
+
+  return subjects
+    .map((s) => {
+      const raw = anomBy.get(s.id) ?? []
+      const anoms = toAnomalies(raw.filter((r) => 'description' in r || 'category_other' in r), raw.filter((r) => 'kind' in r))
+      const insights = computeSubjectInsights(s, decBy.get(s.id) ?? [], actBy.get(s.id) ?? [], anoms, resBy.get(s.id) ?? [], crBy.get(s.id) ?? [], 3, impactBy.get(s.id))
+      return { id: s.id, name: s.name, status: s.status, matchedVia: (nameIds.has(s.id) ? 'nom' : 'contenu') as 'nom' | 'contenu', hasObligation: oblSet.has(s.id), insights }
+    })
+    .sort((a, b) => ENERGY_RANK[b.insights.energy] - ENERGY_RANK[a.insights.energy])
 }
 
 /** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et

@@ -3,12 +3,55 @@ import Link from 'next/link'
 import { Layers, ChevronRight, ListTodo, ClipboardCheck, FileCheck2, FileText, Clock } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listSubjectsBySite, type SubjectSummary, type SubjectCriticality } from '@/lib/db/subjects'
+import { listSubjectsBySite, searchSiteSubjects, type SubjectSummary, type SubjectCriticality, type SubjectSearchResult } from '@/lib/db/subjects'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SubjectCreateForm } from './SubjectCreateForm'
+import { SubjectSearch } from './SubjectSearch'
 
 export const dynamic = 'force-dynamic'
+
+const STATE_BADGE: Record<string, { label: string; cls: string }> = {
+  bloqué: { label: 'Bloqué', cls: 'bg-rose-100 text-rose-700' },
+  en_attente: { label: 'En attente', cls: 'bg-amber-100 text-amber-800' },
+  dormant: { label: 'En sommeil', cls: 'bg-slate-100 text-slate-600' },
+  ouvert: { label: 'Ouvert', cls: 'bg-sky-100 text-sky-700' },
+  clos: { label: 'Clos', cls: 'bg-emerald-100 text-emerald-700' },
+}
+
+/** Carte résultat de recherche : la FICHE du sujet (Vincent : « taper DOE → tout »). */
+function SearchResultCard({ siteId, r }: { siteId: string; r: SubjectSearchResult }) {
+  const ins = r.insights
+  const b = STATE_BADGE[ins.state] ?? STATE_BADGE.ouvert
+  return (
+    <Link href={`/sites/${siteId}/subjects/${r.id}`}
+      className="block rounded-xl border bg-card p-4 hover:border-foreground/30 hover:bg-muted/20 transition-colors">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${b.cls}`}>{b.label}</span>
+        <span className="font-semibold">{r.name}</span>
+        {r.hasObligation && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Obligation permanente</span>}
+        {ins.criticalImpact && <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">⚠ critique</span>}
+        <span className="ml-auto text-[11px] text-muted-foreground">trouvé par {r.matchedVia}</span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] text-muted-foreground">
+        {ins.ageDays != null && <span>ouvert depuis <strong>{ins.ageDays} j</strong></span>}
+        <span><strong>{ins.meetingsCount}</strong> réunion{ins.meetingsCount > 1 ? 's' : ''}</span>
+        <span><strong>{ins.decisionsCount}</strong> décision{ins.decisionsCount > 1 ? 's' : ''}</span>
+        <span><strong>{ins.openActions}</strong> action{ins.openActions > 1 ? 's' : ''} ouverte{ins.openActions > 1 ? 's' : ''}</span>
+        {ins.openReserves > 0 && <span><strong>{ins.openReserves}</strong> réserve{ins.openReserves > 1 ? 's' : ''} ouverte{ins.openReserves > 1 ? 's' : ''}</span>}
+        {ins.deadlines.length > 0 && <span><strong>{ins.deadlines.length}</strong> échéance{ins.deadlines.length > 1 ? 's' : ''}{ins.slippages > 0 ? ` (repoussée ${ins.slippages}×)` : ''}</span>}
+        {ins.blocksCount > 0 && <span>bloque <strong>{ins.blocksCount}</strong> sujet{ins.blocksCount > 1 ? 's' : ''}</span>}
+        <span>énergie <strong>{ins.energy}</strong></span>
+      </div>
+      <dl className="mt-1.5 space-y-0.5 text-[12px]">
+        {ins.cause && <div><dt className="inline font-medium text-muted-foreground">Cause : </dt><dd className="inline">{ins.cause.text}</dd></div>}
+        {ins.lastEvolution && <div><dt className="inline font-medium text-muted-foreground">Dernière évolution : </dt><dd className="inline">{ins.lastEvolution}</dd></div>}
+        {ins.nextStep && <div><dt className="inline font-medium text-muted-foreground">Prochaine étape : </dt><dd className="inline">{ins.nextStep}</dd></div>}
+        {ins.openQuestion && <div className="italic text-muted-foreground">{ins.openQuestion}</div>}
+      </dl>
+    </Link>
+  )
+}
 
 // Criticité DÉRIVÉE, discrète (jamais un score anxiogène). Calme : pas de rouge vif.
 const CRIT_DOT: Record<SubjectCriticality, string> = {
@@ -43,17 +86,20 @@ function SubjectRow({ siteId, s }: { siteId: string; s: SubjectSummary }) {
   )
 }
 
-export default async function SiteSubjectsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SiteSubjectsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string }> }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
+  const { q } = await searchParams
+  const query = (q ?? '').trim()
   const supabase = createAdminClient()
-  const [identity, subjects, { data: scopeRows }] = await Promise.all([
+  const [identity, subjects, { data: scopeRows }, results] = await Promise.all([
     getSiteIdentity(id),
     listSubjectsBySite(id),
     supabase.from('memory_scopes').select('id, label').eq('site_id', id).is('deleted_at', null).eq('active', true),
+    query ? searchSiteSubjects(id, query) : Promise.resolve([] as SubjectSearchResult[]),
   ])
   if (!identity) notFound()
   const scopes = (scopeRows ?? []) as { id: string; label: string }[]
@@ -81,6 +127,17 @@ export default async function SiteSubjectsPage({ params }: { params: Promise<{ i
         </p>
       </header>
 
+      <SubjectSearch siteId={id} initial={query} />
+
+      {query ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">Résultats pour « {query} » <span className="text-xs text-muted-foreground tabular-nums">({results.length})</span></h2>
+          {results.length === 0
+            ? <p className="text-sm text-muted-foreground italic py-4 text-center">Aucun sujet ne correspond à « {query} » sur ce chantier.</p>
+            : <div className="space-y-2">{results.map((r) => <SearchResultCard key={r.id} siteId={id} r={r} />)}</div>}
+        </section>
+      ) : (
+      <>
       <SubjectCreateForm siteId={id} scopes={scopes} />
 
       {subjects.length === 0 ? (
@@ -108,6 +165,8 @@ export default async function SiteSubjectsPage({ params }: { params: Promise<{ i
             </section>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   )
