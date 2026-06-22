@@ -60,7 +60,7 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
           <ArrowLeft className="h-3.5 w-3.5" /> Retour aux engagements
         </Link>
         <Link href={`/tenders/${id}`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40">
-          Dossier
+          <ArrowLeft className="h-3.5 w-3.5" /> Retour au dossier
         </Link>
       </div>
 
