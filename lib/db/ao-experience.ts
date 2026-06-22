@@ -17,6 +17,7 @@ export interface ExperienceTerm {
   reserveLabels: string[]  // libellés de réserves distincts (top 4)
   avgClosureDays: number | null
   difficult: boolean       // historiquement difficile (retards/réserves marqués)
+  causes: Array<{ label: string; count: number }>  // causes récurrentes (réserves+anomalies)
 }
 
 function norm(s: string): string {
@@ -108,9 +109,11 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
   const sb = createAdminClient()
   const allIds = groups.flatMap((g) => g.ids)
   const today = new Date().toISOString().slice(0, 10)
-  const [{ data: actions }, { data: reserves }] = await Promise.all([
+  const [{ data: actions }, { data: reserves }, { data: anomI }, { data: anomA }] = await Promise.all([
     sb.from('site_actions').select('subject_id, due_date, status').in('subject_id', allIds),
     sb.from('site_reserve').select('subject_id, label').in('subject_id', allIds),
+    sb.from('intervention_anomalies').select('subject_id, description, category_other').in('subject_id', allIds),
+    sb.from('report_added_points').select('subject_id, label').in('subject_id', allIds).eq('kind', 'anomalie'),
   ])
   const lateBySubject = new Set<string>()
   for (const a of (actions ?? []) as Record<string, unknown>[]) {
@@ -125,6 +128,18 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
     arr.push((r.label as string) ?? '')
     reservesBySubject.set(k, arr)
   }
+  // Pool de CAUSES par sujet = libellés de réserves + anomalies (texte réel terrain).
+  const causeTextBySubject = new Map<string, string[]>()
+  const pushCause = (sid: string, text: string) => {
+    const t = (text ?? '').trim()
+    if (!t) return
+    const arr = causeTextBySubject.get(sid) ?? []
+    arr.push(t)
+    causeTextBySubject.set(sid, arr)
+  }
+  for (const r of (reserves ?? []) as Record<string, unknown>[]) pushCause(r.subject_id as string, r.label as string)
+  for (const a of (anomI ?? []) as Record<string, unknown>[]) pushCause(a.subject_id as string, (a.description as string) || (a.category_other as string) || '')
+  for (const a of (anomA ?? []) as Record<string, unknown>[]) pushCause(a.subject_id as string, a.label as string)
 
   return groups.map((g) => {
     const lateProjects = g.ids.filter((id) => lateBySubject.has(id)).length
@@ -134,6 +149,19 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
     const lateRatioPct = occurrences ? Math.round((lateProjects / occurrences) * 100) : 0
     const avgClosureDays = g.closedDurations.length
       ? Math.round(g.closedDurations.reduce((a, b) => a + b, 0) / g.closedDurations.length) : null
+    // CAUSES RÉCURRENTES : compte les libellés (réserves+anomalies) regroupés par texte
+    // normalisé. « plans manquants (8) ». Déterministe, depuis le vécu.
+    const causeCounts = new Map<string, { label: string; count: number }>()
+    for (const id of g.ids) {
+      for (const text of causeTextBySubject.get(id) ?? []) {
+        const key = norm(text)
+        if (key.length < 3) continue
+        const c = causeCounts.get(key)
+        if (c) c.count += 1
+        else causeCounts.set(key, { label: text.trim(), count: 1 })
+      }
+    }
+    const causes = [...causeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 5)
     return {
       term: g.display,
       occurrences,
@@ -145,6 +173,7 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
       reserveLabels,
       avgClosureDays,
       difficult: lateRatioPct >= 40 || allReserves.length >= 3,
+      causes,
     }
   })
 }

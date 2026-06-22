@@ -29,9 +29,9 @@ export function AoExperiencePanel({ terms }: { terms: ExperienceTerm[] }) {
                 {t.difficult && <span className="text-[10px] font-semibold text-amber-700">· historiquement difficile</span>}
               </span>
               <span className="block text-[12px] text-muted-foreground">{bits.join(' · ')}</span>
-              {t.reserveLabels.length > 0 && (
+              {t.causes.length > 0 && (
                 <span className="block text-[11px] text-muted-foreground/90 mt-0.5">
-                  Réserves déjà rencontrées : {t.reserveLabels.join(' · ')}
+                  Causes récurrentes : {t.causes.map((c) => `${c.label}${c.count > 1 ? ` (${c.count})` : ''}`).join(' · ')}
                 </span>
               )}
             </li>

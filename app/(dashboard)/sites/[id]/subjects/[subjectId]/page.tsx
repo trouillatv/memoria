@@ -235,8 +235,10 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
             {orgHistory.reserveCount > 0 ? ` · ${orgHistory.reserveCount} réserve${orgHistory.reserveCount > 1 ? 's' : ''}` : ''}
             {orgHistory.avgClosureDays != null ? ` · clôture moyenne ${orgHistory.avgClosureDays} j` : ''}.
           </p>
-          {orgHistory.reserveLabels.length > 0 && (
-            <p className="text-[11px] text-muted-foreground/90">Réserves déjà rencontrées : {orgHistory.reserveLabels.join(' · ')}</p>
+          {orgHistory.causes.length > 0 && (
+            <p className="text-[11px] text-muted-foreground/90">
+              Causes récurrentes : {orgHistory.causes.map((c) => `${c.label}${c.count > 1 ? ` (${c.count})` : ''}`).join(' · ')}
+            </p>
           )}
           <p className="text-[10px] text-muted-foreground/70">Historique factuel cross-chantiers, déterministe — pas une prédiction.</p>
         </section>
