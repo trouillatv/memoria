@@ -17,8 +17,63 @@ import {
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 
 const idSchema = z.object({ id: z.string().uuid() })
+
+// AFFECTER / PRENDRE EN CHARGE une intervention sur le terrain. Une intervention
+// orpheline (sans équipe) ne peut pas être démarrée (cf. startInterventionMobileAction).
+// Doctrine planning : le GÉRANT (manager/admin) affecte librement ; un CHEF ne peut que
+// PRENDRE EN CHARGE un orphelin vers SA propre équipe (pas réaffecter le plan d'autrui).
+const claimSchema = z.object({ id: z.string().uuid(), teamId: z.string().uuid() })
+
+export async function claimInterventionTeamAction(formData: FormData) {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { error: 'Non authentifié' }
+  const parsed = claimSchema.safeParse({ id: formData.get('id'), teamId: formData.get('teamId') })
+  if (!parsed.success) return { error: 'Requête invalide' }
+
+  const intervention = await getIntervention(parsed.data.id)
+  if (!intervention) return { error: 'Intervention introuvable' }
+  if (intervention.status !== 'planned') return { error: 'Intervention déjà démarrée — affectation impossible.' }
+
+  const isManager = user.role === 'admin' || user.role === 'manager'
+  if (!isManager) {
+    if (intervention.assigned_team_id) return { error: 'Déjà affectée — seul le gérant peut réaffecter.' }
+    const myTeams = await listActiveTeamIdsForUser(user.id)
+    if (!myTeams.includes(parsed.data.teamId)) return { error: 'Vous ne pouvez prendre cette intervention que pour votre équipe.' }
+  }
+
+  const admin = createAdminClient()
+  const { data: team } = await admin.from('teams').select('id, active, deleted_at').eq('id', parsed.data.teamId).maybeSingle()
+  if (!team || (team as { deleted_at: string | null }).deleted_at || (team as { active: boolean }).active === false) {
+    return { error: 'Équipe inconnue ou archivée.' }
+  }
+
+  if (intervention.slot && intervention.scheduled_for) {
+    const conflict = await findTeamSiteConflict({
+      admin, teamId: parsed.data.teamId, missionId: intervention.mission_id,
+      scheduledFor: intervention.scheduled_for, slot: intervention.slot,
+      sourcePlannedStart: intervention.planned_start ?? undefined,
+      sourcePlannedEnd: intervention.planned_end ?? undefined,
+      excludeInterventionId: parsed.data.id,
+    })
+    if (conflict) return { error: `Cette équipe est déjà sur ${conflict.siteName} à ce créneau.`, conflict: true as const }
+  }
+
+  const { error } = await admin.from('interventions').update({ assigned_team_id: parsed.data.teamId }).eq('id', parsed.data.id)
+  if (error) return { error: error.message }
+
+  await logAuditEvent({
+    userId: user.id, entityType: 'mission', entityId: intervention.mission_id, action: 'updated',
+    metadata: { kind: 'intervention_team_assigned', intervention_id: parsed.data.id, old_team_id: intervention.assigned_team_id, new_team_id: parsed.data.teamId },
+  }).catch(() => {})
+
+  revalidatePath(`/m/intervention/${parsed.data.id}`)
+  revalidatePath('/m')
+  return { ok: true as const }
+}
 
 export async function startInterventionMobileAction(formData: FormData) {
   const auth = await requireFieldAgent()

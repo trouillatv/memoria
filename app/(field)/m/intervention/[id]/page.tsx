@@ -21,6 +21,8 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { AnomalyList } from './AnomalyList'
 import { ChecklistMobile } from './checklist-mobile'
 import { StartInterventionButton } from './start-intervention-button'
+import { AssignTeamMobile } from './AssignTeamMobile'
+import { listTeams, listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
 import { SkipInterventionTrigger } from './skip-modal'
@@ -90,7 +92,10 @@ export default async function FieldInterventionPage({
       .maybeSingle()
     isInAssignedTeam = !!membership
   }
-  if (!isAdmin && !isInLegacyTeam && !isInAssignedTeam) {
+  // Une intervention ORPHELINE (sans équipe ni team legacy) n'est à personne :
+  // tout agent terrain peut l'ouvrir pour la prendre en charge (puis la démarrer).
+  const isOrphan = !intervention.assigned_team_id && intervention.team.length === 0
+  if (!isAdmin && !isInLegacyTeam && !isInAssignedTeam && !isOrphan) {
     return (
       <div className="rounded-lg border bg-card p-6 max-w-md">
         <p className="text-base">Cette mission n&apos;est pas la vôtre.</p>
@@ -99,6 +104,20 @@ export default async function FieldInterventionPage({
         </Link>
       </div>
     )
+  }
+
+  // Équipes affectables si l'intervention est orpheline (pour la prendre en charge) :
+  // gérant → toutes les équipes actives ; chef → seulement les siennes.
+  const canManage = isAdmin
+  let assignableTeams: Array<{ id: string; name: string }> = []
+  if (!intervention.assigned_team_id && intervention.status === 'planned') {
+    const allTeams = await listTeams()
+    if (canManage) {
+      assignableTeams = allTeams.map((t) => ({ id: t.id, name: t.name }))
+    } else {
+      const myIds = new Set(await listActiveTeamIdsForUser(user.id))
+      assignableTeams = allTeams.filter((t) => myIds.has(t.id)).map((t) => ({ id: t.id, name: t.name }))
+    }
   }
 
   const [mission, checklistItems, photos, voiceNotes, anomalies, allTokens, externalPhotos, delegatedItemIds] = await Promise.all([
@@ -355,7 +374,11 @@ export default async function FieldInterventionPage({
       {!isSkipped && isPlanned && externalValidation && (
         <ExternalDoneCardMobile interventionId={id} summary={externalValidation} />
       )}
-      {!isSkipped && isPlanned && !externalValidation && <StartInterventionButton interventionId={id} />}
+      {!isSkipped && isPlanned && !externalValidation && (
+        intervention.assigned_team_id
+          ? <StartInterventionButton interventionId={id} />
+          : <AssignTeamMobile interventionId={id} teams={assignableTeams} canManage={canManage} />
+      )}
 
       {isCompleted && (
         <div className="rounded-lg border border-border bg-muted/30 p-4 text-base text-foreground flex items-center gap-2">
