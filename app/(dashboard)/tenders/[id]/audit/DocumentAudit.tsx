@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, FileText, ExternalLink } from 'lucide-react'
 import { KIND_META } from '@/lib/engagements/kind'
+import { citationLevel } from '@/lib/engagements/citation'
 import type { EngagementKind } from '@/types/db'
 
 export interface AuditEngagement {
@@ -71,10 +72,12 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
     return <p className="text-sm text-muted-foreground italic">Aucun engagement détecté dans ce dossier.</p>
   }
   const cur = engagements[i]
-  const src = pdfUrl ? `${pdfUrl}#page=${cur.page ?? 1}&view=FitH` : null
+  const level = citationLevel(cur.page, cur.section)
+  // On ne saute à une page PRÉCISE que si elle est FIABLE (niveau exact). Sinon on
+  // ouvre le document entier — jamais vers une page potentiellement inventée.
+  const src = pdfUrl ? (level === 'exact' ? `${pdfUrl}#page=${cur.page}&view=FitH` : `${pdfUrl}#view=FitH`) : null
   const go = (d: number) => setI((x) => Math.min(engagements.length - 1, Math.max(0, x + d)))
-  // Clé de remontage : change quand la page change → l'iframe se recharge et saute.
-  const iframeKey = cur.page != null ? `p-${cur.page}` : `i-${i}`
+  const iframeKey = level === 'exact' ? `p-${cur.page}` : 'whole'
 
   return (
     <div ref={containerRef} className="flex flex-col lg:flex-row lg:items-stretch gap-0 min-h-[480px]">
@@ -102,7 +105,7 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
                   <span className="flex items-center gap-1.5 mb-0.5">
                     {e.kind && <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${KIND_META[e.kind].badge}`}>{KIND_META[e.kind].label}</span>}
                     <span className="text-[10px] text-muted-foreground tabular-nums">
-                      {e.page != null ? `p.${e.page}` : 'page non précisée'}{e.section ? ` · §${e.section}` : ''}
+                      {(() => { const l = citationLevel(e.page, e.section); return l === 'exact' ? `p.${e.page}` : l === 'section' ? `§${e.section}` : 'réf. approximative' })()}
                     </span>
                   </span>
                   <span className="block text-sm font-medium">{e.shortLabel}</span>
@@ -137,7 +140,7 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
               <span className="text-xs text-muted-foreground truncate inline-flex items-center gap-1.5">
                 <FileText className="h-3.5 w-3.5" /> {filename ?? 'Document'}
-                {cur.page != null ? ` — page ${cur.page}` : ' — page non précisée'}
+                {level === 'exact' ? ` — page ${cur.page}` : level === 'section' ? ` — chapitre ${cur.section} (page non fiable)` : ' — référence approximative'}
               </span>
               <a href={src} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline shrink-0">
                 <ExternalLink className="h-3.5 w-3.5" /> Onglet
@@ -149,9 +152,11 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
               title={`${filename ?? 'Document'} — page ${cur.page ?? 1}`}
               className="w-full h-[calc(100vh-12rem)] min-h-[460px]"
             />
-            {cur.page == null && (
+            {level !== 'exact' && (
               <p className="px-3 py-1.5 text-[11px] text-muted-foreground border-t">
-                L&apos;extraction n&apos;a pas précisé la page de cet engagement — le document s&apos;ouvre au début. L&apos;extrait ci-contre reste la trace exacte.
+                {level === 'section'
+                  ? `Page non identifiée de façon fiable — cherchez l'extrait${cur.section ? ` au chapitre ${cur.section}` : ''}. L'extrait à gauche reste la trace exacte.`
+                  : "Référence approximative : pas de localisation fiable dans le document. L'extrait à gauche reste la trace exacte."}
               </p>
             )}
           </>

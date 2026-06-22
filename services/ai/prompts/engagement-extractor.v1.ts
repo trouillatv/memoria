@@ -29,6 +29,16 @@ NATURE de l'engagement (kind) — détermine ce qu'on en attend :
                « prélèvement ATP hebdomadaire », audit)
 - penalite   : sanction / retenue en cas de manquement
 
+PAGE & SECTION (source_ref) — RÈGLE DE CONFIANCE, ne JAMAIS inventer :
+- Le texte contient des marqueurs « [[page N]] » au début de chaque page. Pour
+  source_ref.page, indique le numéro de la page où se trouve réellement la clause,
+  d'après le marqueur qui la PRÉCÈDE.
+- Si tu n'es pas certain de la page, N'INDIQUE PAS de page (omets le champ). Une page
+  fausse est pire que pas de page.
+- source_ref.section = le numéro/intitulé de chapitre si visible (« 3.2.4 », « Essais
+  et contrôles »), sinon omets.
+- Ne recopie JAMAIS les marqueurs « [[page N]] » dans source_excerpt.
+
 Règles strictes :
 - 15 à 25 engagements maximum (pas plus)
 - Évite les généralités creuses ("être professionnel", "respecter les normes" sans clause précise)

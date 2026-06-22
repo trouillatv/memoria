@@ -18,10 +18,14 @@ export interface ExtractResult {
 export async function extractPdfText(buffer: Buffer): Promise<ExtractResult> {
   const { extractText, getDocumentProxy } = await import('unpdf')
   const pdf = await getDocumentProxy(new Uint8Array(buffer))
-  const { text: raw, totalPages } = await extractText(pdf, { mergePages: true })
-  const text = (raw ?? '').trim()
-  const pageCount = totalPages ?? 0
-  const charCount = text.length
+  // mergePages:false → texte PAGE PAR PAGE. On injecte des marqueurs « [[page N]] »
+  // pour que le LLM cite la VRAIE page (sinon, sur texte fusionné, il devine — et une
+  // page inventée est pire que pas de page : elle détruit la confiance au clic).
+  const { text: rawPages, totalPages } = await extractText(pdf, { mergePages: false })
+  const pages = (Array.isArray(rawPages) ? rawPages : [rawPages]) as string[]
+  const text = pages.map((t, i) => `[[page ${i + 1}]]\n${(t ?? '').trim()}`).join('\n\n').trim()
+  const charCount = pages.reduce((n, t) => n + (t?.length ?? 0), 0) // contenu réel, hors marqueurs
+  const pageCount = totalPages ?? pages.length
   const isLikelyScanned = charCount < 200 && pageCount >= 1
   return { text, pageCount, charCount, isLikelyScanned }
 }
