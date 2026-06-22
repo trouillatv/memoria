@@ -68,6 +68,7 @@ import { ContinuityWidget } from '@/components/dashboard/ContinuityWidget'
 import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/site-cockpit'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
+import { StartBar } from './StartBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -206,6 +207,10 @@ export default async function DashboardPage() {
         activeContractsCount={active.length}
         activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
       />
+
+      {/* Barre « Démarrer » sobre & repliable — raccourcis de création + invite
+          d'installation mobile. Se masque (mémorisé par appareil). */}
+      <StartBar />
 
       {/* Couche « Nouveau depuis hier » (Vincent) — ce qui s'est passé pendant votre
           absence : déclarations QR des entreprises. Silencieux si rien de neuf. */}
