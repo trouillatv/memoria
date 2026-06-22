@@ -258,6 +258,25 @@ checklist *ou* actions selon la source). À ne pas fusionner par élégance tech
 l'usage réel ne l'impose pas (doctrine *1 source → N surfaces*, *ne pas laisser deux surfaces
 dériver*).
 
+### Autres axes de lecture (grille multi-axes)
+
+« Montrer / récolter » n'est qu'un découpage. Cinq autres axes recoupent ces surfaces
+différemment — utile pour décider où brancher une nouvelle surface publique sans créer de
+doublon.
+
+| Axe | Pôles | Ce qu'il révèle |
+|---|---|---|
+| **Permanence** | poster durable (`/qr`) ↔ lien jetable, révocable, expirable (tous les autres) | `/qr` n'est pas un « lien » mais un **panneau** : le révoquer/l'envoyer n'a pas de sens. Fracture plus nette que montrer/récolter. |
+| **Anonymat** | anonyme (`/qr`, `/v`) ↔ nominatif (`/i`, `/a`, `/h`, `/p`, `/c`) | Un lien anonyme ne porte **jamais** de données nominatives → justifie `/qr` en lecture seule et `/v` sans contenu. |
+| **Temps mémoriel** ([[temps-memoriel]]) | instant (`/c`) · présent actif (`/qr`, `/i`, `/a`) · futur-litige (`/p`) · archive longue (`/v`) | `/v` est le seul pensé pour **survivre à l'expiration** de tout le reste. |
+| **Pilier produit** | transparence (`/qr`) · récolte (`/i`, `/a`) · continuité (`/h`) · preuve (`/p`) · authenticité (`/v`) · lien léger (`/c`) | 7 surfaces ↔ presque autant de piliers : peu de gras. |
+| **Engagement capturé** | signature+horodatage (`/i`, `/a`) · accusé de lecture (`/h`) · aucun (`/qr`, `/c`) | Force probante. C'est l'axe sur lequel `/a` et `/i` se ressemblent le plus. |
+
+**2ᵉ paire voisine révélée par ces axes** : sur l'axe preuve/authenticité, `/p` (contenu de la
+preuve, peut expirer) et `/v` (survie de l'authenticité quand `/p` a expiré) sont proches —
+comme `/i`⟷`/a` sur l'axe récolte. **Complémentaires, pas redondants** : même logique, voisins
+par thème mais séparés par leur fonction exacte → pas de fusion.
+
 ---
 
 ## Documentation
