@@ -97,6 +97,28 @@ Doctrines détaillées : [`docs/superpowers/doctrines/`](docs/superpowers/doctri
 
 ---
 
+## Lire MemorIA par axes
+
+La doctrine donne des **règles** ; les axes donnent des **spectres**. Avant d'ajouter une
+feature, situer où elle tombe sur ces axes transversaux dit immédiatement si elle a sa place,
+et à côté de quoi — c'est l'outil anti-doublon et anti usine-à-gaz.
+
+| Axe | Spectre | Pourquoi il structure tout |
+|---|---|---|
+| **Mouvement** | **capter** (réunions, audio, photos, déclarations) ↔ **restituer** (briefing, recherche, passation, preuve) | Toute l'appli n'est que ces deux gestes. Une feature qui ne fait ni l'un ni l'autre n'a pas de place. |
+| **Nature de l'objet** | **descriptif** (Action, Réserve, Décision, Sujet) ↔ **prescriptif** (Obligation : l'absence est le signal) | Dit si l'on enregistre ce qui *est* ou l'on surveille ce qui *doit être*. |
+| **Production** | **déterministe** (retards, causes, impact, santé, sujet canonique = calculés) ↔ **LLM** (résumés, extraction, suggestions = à vérifier) | Décide ce qui fait foi sans relecture et ce qui passe par la validation. |
+| **Autorité** | **l'IA propose** ↔ **l'humain valide** (l'artefact brut survit toujours) | Aucune écriture autonome ne fait foi. |
+| **Temps** ([[temps-memoriel]]) | présent actif → atténuation → archive → snapshot → **supersession** | MemorIA a un temps propre : savoir mettre en sommeil compte autant que retenir. |
+| **Sujet** | tout gravite autour du **lieu / Sujet** ↔ **jamais la personne** | Aucun score d'agent ; les chiffres parlent du lieu et de la mémoire. |
+| **Surfaces publiques** | **montrer** (sortant) ↔ **récolter** (entrant) | Voir *Surfaces à token* ci-dessous — application directe de cet axe. |
+
+Les surfaces à token (section suivante) sont le **cas d'application le plus visible** de cette
+grille : on les classe d'abord par mouvement (montrer/récolter), puis on raffine avec
+permanence, anonymat, temps mémoriel, pilier et engagement capturé.
+
+---
+
 ## Stack
 
 - **Next.js** (App Router, Server Actions, Server Components) — ⚠️ voir `AGENTS.md` :
