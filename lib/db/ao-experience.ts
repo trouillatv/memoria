@@ -17,6 +17,7 @@ export interface ExperienceTerm {
   reserveLabels: string[]  // libellés de réserves distincts (top 4)
   avgClosureDays: number | null
   difficult: boolean       // historiquement difficile (retards/réserves marqués)
+  lateDaysCumulative: number  // IMPACT : jours cumulés de retard (actions échues encore ouvertes)
   causes: Array<{ label: string; count: number }>  // causes récurrentes (réserves+anomalies)
   // Facteurs de RÉUSSITE OBSERVÉS (analytique, pas prescriptif) : ce qui était présent
   // sur les occurrences tenues et absent sur les ratées. Calculé seulement si assez d'histoire.
@@ -125,10 +126,17 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
     sb.from('subjects').select('id, status').in('id', allIds),
   ])
   const lateBySubject = new Set<string>()
+  const lateDaysBySubject = new Map<string, number>()
+  const nowMs = Date.parse(today + 'T00:00:00Z')
   for (const a of (actions ?? []) as Record<string, unknown>[]) {
     const due = a.due_date as string | null
     const st = a.status as string
-    if (due && due < today && (st === 'open' || st === 'planned')) lateBySubject.add(a.subject_id as string)
+    if (due && due < today && (st === 'open' || st === 'planned')) {
+      const sid = a.subject_id as string
+      lateBySubject.add(sid)
+      const days = Math.max(0, Math.round((nowMs - Date.parse(due + 'T00:00:00Z')) / 86_400_000))
+      lateDaysBySubject.set(sid, (lateDaysBySubject.get(sid) ?? 0) + days)
+    }
   }
   // Facteurs OBSERVABLES par sujet (binaires) : obligation rattachée, évoqué en réunion,
   // suivi par actions. Déterministe, depuis les tables existantes.
@@ -217,6 +225,7 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
       reserveLabels,
       avgClosureDays,
       difficult: lateRatioPct >= 40 || allReserves.length >= 3,
+      lateDaysCumulative: g.ids.reduce((n, id) => n + (lateDaysBySubject.get(id) ?? 0), 0),
       causes,
       successes,
       failures,

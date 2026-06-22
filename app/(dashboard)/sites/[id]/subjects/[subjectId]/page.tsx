@@ -233,6 +233,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
             « {orgHistory.term} » rencontré <strong className="text-foreground">{orgHistory.occurrences} fois</strong> sur {orgHistory.projectCount} chantier{orgHistory.projectCount > 1 ? 's' : ''}
             {orgHistory.lateProjects > 0 ? ` · ${orgHistory.lateRatioPct}% en retard` : ''}
             {orgHistory.reserveCount > 0 ? ` · ${orgHistory.reserveCount} réserve${orgHistory.reserveCount > 1 ? 's' : ''}` : ''}
+            {orgHistory.lateDaysCumulative > 0 ? ` · ${orgHistory.lateDaysCumulative} j cumulés de retard` : ''}
             {orgHistory.avgClosureDays != null ? ` · clôture moyenne ${orgHistory.avgClosureDays} j` : ''}.
           </p>
           {orgHistory.causes.length > 0 && (

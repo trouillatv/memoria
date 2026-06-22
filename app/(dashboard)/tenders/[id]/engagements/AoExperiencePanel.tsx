@@ -20,6 +20,7 @@ export function AoExperiencePanel({ terms }: { terms: ExperienceTerm[] }) {
           if (t.lateProjects > 0) bits.push(`${t.lateRatioPct}% en retard`)
           if (t.reserveCount > 0) bits.push(`${t.reserveCount} réserve${t.reserveCount > 1 ? 's' : ''}`)
           if (t.openOrBlocked > 0) bits.push(`${t.openOrBlocked} encore ouvert${t.openOrBlocked > 1 ? 's' : ''}`)
+          if (t.lateDaysCumulative > 0) bits.push(`${t.lateDaysCumulative} j cumulés de retard`)
           if (t.avgClosureDays != null) bits.push(`clôture moyenne ${t.avgClosureDays} j`)
           return (
             <li key={t.term} className="rounded-lg border bg-card px-3 py-2 text-sm">
