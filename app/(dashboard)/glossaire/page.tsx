@@ -22,7 +22,11 @@ export default async function GlossairePage() {
         <p className="text-sm text-muted-foreground">
           Le vocabulaire de votre métier (finisseur, grader, grave-bitume, PAQ, DOE…) et ses fautes
           fréquentes. Les alias sont <strong>corrigés automatiquement</strong> dans la transcription de
-          vos prochaines réunions (ex. « finisher » → « finisseur »).
+          vos prochaines réunions (ex. « finisher » → « finisseur ») et regroupent un même sujet à
+          travers ses variantes (DOE = « Dossier des ouvrages exécutés »).
+        </p>
+        <p className="text-xs text-muted-foreground/80">
+          Termes de démarrage fournis — à adapter, compléter ou supprimer selon votre vocabulaire.
         </p>
       </header>
       <GlossaryManager terms={terms} />
