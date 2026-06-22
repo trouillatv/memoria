@@ -227,6 +227,39 @@ Push sur `main` → déploiement automatique **Vercel** (`memorianc.vercel.app`)
 
 ---
 
+## Surfaces à token (QR & liens publics)
+
+Sept routes publiques (sans login) coexistent. Elles **ne font pas doublon** : chacune
+est ancrée sur un objet métier distinct et un sens de circulation. Deux axes les séparent —
+**sortant** (on *montre*) vs **entrant** (on *récolte*), et le **périmètre** exposé.
+
+| Route | Surface | Destinataire | Périmètre | Sens | Lecture / Écriture |
+|---|---|---|---|---|---|
+| `/qr/[token]` | **QR chantier** | Anonyme (QR affiché sur site) | **Tout le chantier** (journal chrono) | Sortant | Lecture seule |
+| `/i/[token]` | **QR intervention** | 1 sous-traitant, **1 mission** | 1 intervention + sa checklist | Entrant | Écriture (valide la checklist) |
+| `/a/[token]` | **QR actions** (mig 148) | 1 entreprise, **1 lot d'actions** | N `site_actions` confiées à cette boîte | Entrant | Écriture (Fait/Bloqué + photo + signature) |
+| `/h/[token]` | Passage de témoin | Chef qui prend la relève | 1 brief de passation | Sortant | Lecture + « C'est lu » |
+| `/p/[token]` | Preuve / rapport mensuel | Client (anonymisé) | 1 dossier de preuve ou rapport | Sortant | Lecture + télécharger PDF |
+| `/v/[token]` | Attestation d'authenticité | Auditeur (QR sur PDF archivé) | Aucun contenu — « émis par X le … » | Sortant | Lecture (1 ligne) |
+| `/c/[token]` | Capsule WhatsApp | Client, coup d'œil 12 s | 1 photo + 1 phrase | Sortant | Lecture passive |
+
+**Le seul vrai voisinage** est `/i` (QR intervention) ⟷ `/a` (QR actions) : les deux sont
+*« un tiers déclare l'état d'un travail + photo »*. Ils sont distincts par leur **source**
+et leurs **pilotes** ([[pilotes-agp-vs-becib]]) :
+
+- **`/i`** s'ancre sur une **intervention planifiée datée** (checklist) → monde **propreté /
+  AGP** (valider qu'une mission a eu lieu).
+- **`/a`** s'ancre sur des **`site_actions`** issues d'une **réunion de chantier**, groupées
+  en lot par entreprise, transverses → monde **MOE / BECIB** (suivi d'actions de réunion).
+
+⚠️ **Frontière à surveiller au pilote** : si une même entreprise devait recevoir les deux
+liens, converger vers une **surface de déclaration externe unique** (token unique, contenu =
+checklist *ou* actions selon la source). À ne pas fusionner par élégance technique tant que
+l'usage réel ne l'impose pas (doctrine *1 source → N surfaces*, *ne pas laisser deux surfaces
+dériver*).
+
+---
+
 ## Documentation
 
 Trois documents majeurs (utilisation → technique → stratégie), maintenus en **base vivante**

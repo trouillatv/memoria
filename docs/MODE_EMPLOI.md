@@ -19,6 +19,7 @@ l'information, et les garde-fous appliqués.
 5. Réunions & compte-rendu de chantier
 6. Contrats, Missions, Équipes, Acteurs, Continuité
 7. Recherche, Dossiers de démarrage, Bibliothèque, Glossaire, Preuves, Outils
+8. Les liens & QR Codes (sans login) — qui sert à quoi
 
 ---
 
@@ -286,6 +287,51 @@ Un assistant guidé en 4 étapes (site → période → types de preuves → gé
 
 ### Mode simplifié (barre latérale)
 Le bouton **« Mode simplifié »** réduit la navigation aux 5 essentiels (Recherche, Tableau de bord, Réunions, Actions, Sites) et masque le reste. Persisté par appareil, réversible (« Tout afficher »). Aucune donnée n'est supprimée — tout reste accessible par URL.
+
+---
+
+## 8. Les liens & QR Codes (sans login) — qui sert à quoi
+
+MemorIA génère plusieurs **liens publics** (QR Code ou lien à coller dans WhatsApp). Ils se
+ressemblent (mobile, sans compte) mais **ne servent pas à la même chose**. La bonne grille de
+lecture n'est pas « c'est un QR » : c'est **dans quel sens circule l'information** et **quel
+périmètre** est exposé. Deux familles :
+
+**🟦 Les liens qui MONTRENT (sortant — lecture seule).** Vous communiquez vers l'extérieur.
+
+- **QR Code du chantier** (`/qr/[token]`) — affiché **sur le chantier**. Quiconque scanne voit
+  le **journal complet** du site (interventions, photos, anomalies), en lecture seule. C'est la
+  **vitrine de transparence** (client, maître d'ouvrage, riverain). Aucune action possible.
+- **Passage de témoin** (`/h/[token]`) — le brief de relève envoyé au chef qui prend la suite ;
+  il lit et confirme « C'est lu ».
+- **Preuve / rapport mensuel** (`/p/[token]`) — envoyé au **client** : il voit la preuve
+  (anonymisée) et télécharge le PDF. C'est aussi la cible du QR imprimé sur les PDF.
+- **Attestation d'authenticité** (`/v/[token]`) — QR sur un PDF archivé : des années plus tard,
+  atteste juste « ce document a bien été émis par X le … ». Aucun contenu.
+- **Capsule** (`/c/[token]`) — un coup d'œil de 12 s (1 photo + 1 phrase) pour un client.
+
+**🟧 Les liens qui RÉCOLTENT (entrant — l'entreprise vous répond).** Une entreprise externe
+vous renvoie l'état d'un travail, avec photo.
+
+- **QR intervention** (`/i/[token]`) — confié à un sous-traitant pour **une mission planifiée
+  précise** : il voit **cette intervention et sa checklist**, et la valide. *Usage type :
+  propreté / interventions récurrentes.*
+- **QR actions** (`/a/[token]`) — confié à **une entreprise pour un lot d'actions** issues d'une
+  **réunion de chantier** (« qui fait quoi ») : elle déclare chaque action **Fait / Bloqué** (+
+  commentaire, photo, signature). *Usage type : MOE / suivi de réunion (BECIB).* Voir aussi
+  §5 « Confier à une entreprise » et §4 « Dossier de preuve ».
+
+> **Pourquoi deux liens « entrants » et pas un seul ?** Parce qu'ils partent de deux objets
+> différents : une **intervention planifiée** (mission datée + checklist) ≠ des **actions de
+> réunion** (engagements transverses, regroupés par entreprise). Tant qu'une même entreprise ne
+> reçoit pas les deux en même temps, ils ne se marchent pas dessus. Si ce cas se présente sur le
+> terrain, ils seront **fusionnés en une seule page de déclaration** — pas avant que l'usage réel
+> le demande.
+
+> **Règle de sécurité commune à tous.** Chaque lien est **révocable** et peut **expirer** ; les
+> accès sont **tracés** (sans cookie ni pisteur tiers). Une **déclaration d'entreprise n'est pas
+> une vérité de terrain** : votre validation reste la vôtre. Les liens « preuve » sont
+> **anonymisés** (aucun prénom d'agent).
 
 ---
 
