@@ -23,6 +23,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { SiteReportProposalType, SiteReportStatus, DbSiteReportProposal } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
+// La relance de transcription (action serveur de cette page) peut être longue sur un
+// audio de réunion → on autorise jusqu'à 300 s.
+export const maxDuration = 300
 
 const TYPE_META: Record<SiteReportProposalType, { label: string; icon: typeof ListTodo; cls: string }> = {
   action: { label: 'Action', icon: ListTodo, cls: 'text-sky-600' },

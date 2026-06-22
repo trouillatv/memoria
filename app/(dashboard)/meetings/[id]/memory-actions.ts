@@ -9,7 +9,7 @@ import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { transcribeAudio } from '@/lib/ai/transcribe'
+import { transcribeAudio, mimeToExt } from '@/lib/ai/transcribe'
 import { setSourceTranscript, buildCombinedCorpus, listAudioSources, type AudioSourceType, AUDIO_SOURCE_TYPES } from '@/lib/db/report-audio-sources'
 import { runSiteReportAnalysisAgent } from '@/services/ai/site-report-analysis'
 import { listProposals, bulkInsertProposals, mergeReportAnalysis, setReportStatus } from '@/lib/db/site-reports'
@@ -84,6 +84,56 @@ export async function addMeetingAudioSourceAction(
     return { ok: true, transcribed }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+// ───────────────────────── RÉ-ÉCOUTE + RELANCE DE TRANSCRIPTION ──────────────────
+// Une erreur de transcription ne doit jamais bloquer : l'audio est conservé, on peut
+// le RÉÉCOUTER (URL signée) et RELANCER la transcription autant de fois que nécessaire.
+
+/** URL signée (1 h) de l'audio d'une source, pour le réécouter dans le navigateur. */
+export async function getAudioSourceUrlAction(
+  attachmentId: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  await guard()
+  const sb = createAdminClient()
+  const { data: att } = await sb.from('site_report_attachments').select('storage_path, kind').eq('id', attachmentId).maybeSingle()
+  if (!att || att.kind !== 'audio') return { ok: false, error: 'Source audio introuvable.' }
+  const { data: signed, error } = await sb.storage.from(BUCKET).createSignedUrl(att.storage_path as string, 3600)
+  if (error || !signed?.signedUrl) return { ok: false, error: 'Audio indisponible.' }
+  return { ok: true, url: signed.signedUrl }
+}
+
+/** Relance la transcription d'une source (échec / vide / jamais faite). Reconstruit le corpus. */
+export async function retranscribeSourceAction(
+  attachmentId: string,
+): Promise<{ ok: true; chars: number } | { ok: false; error: string }> {
+  await guard()
+  const sb = createAdminClient()
+  const { data: att } = await sb.from('site_report_attachments').select('id, report_id, storage_path, mime_type, kind').eq('id', attachmentId).maybeSingle()
+  if (!att || att.kind !== 'audio') return { ok: false, error: 'Source audio introuvable.' }
+  const reportId = att.report_id as string
+  try {
+    await sb.from('site_report_attachments').update({ transcript_status: 'pending' }).eq('id', attachmentId)
+    const { data: blob, error: dlErr } = await sb.storage.from(BUCKET).download(att.storage_path as string)
+    if (dlErr || !blob) {
+      await setSourceTranscript(attachmentId, '', 'failed'); revalidatePath(`/meetings/${reportId}`)
+      return { ok: false, error: 'Audio introuvable dans le stockage.' }
+    }
+    const mime = (att.mime_type as string | null) ?? 'audio/webm'
+    const transcript = await transcribeAudio(await blob.arrayBuffer(), mime, mimeToExt(mime))
+    if (!transcript.trim()) {
+      await setSourceTranscript(attachmentId, '', 'failed'); revalidatePath(`/meetings/${reportId}`)
+      return { ok: false, error: 'Transcription revenue vide — réessayez, ou vérifiez que l’audio est audible.' }
+    }
+    await setSourceTranscript(attachmentId, transcript, 'done')
+    const corpus = await buildCombinedCorpus(reportId)
+    await sb.from('site_reports').update({ transcript_raw: corpus, transcript_status: 'done' }).eq('id', reportId)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true, chars: transcript.length }
+  } catch (e) {
+    await setSourceTranscript(attachmentId, '', 'failed'); revalidatePath(`/meetings/${reportId}`)
+    return { ok: false, error: e instanceof Error ? e.message : 'Transcription échouée.' }
   }
 }
 

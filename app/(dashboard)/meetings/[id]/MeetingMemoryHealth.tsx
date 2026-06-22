@@ -6,8 +6,8 @@
 // bloquante) + ajout d'audio de secours (mémo, appel, débrief) fusionné au corpus.
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mic, Plus, Loader2, Check, Activity, FileText, Sparkles, RefreshCw, History } from 'lucide-react'
-import { addMeetingAudioSourceAction, setEstimatedDurationAction, reanalyzeReportAction } from './memory-actions'
+import { Mic, Plus, Loader2, Check, Activity, FileText, Sparkles, RefreshCw, History, Volume2, AlertTriangle } from 'lucide-react'
+import { addMeetingAudioSourceAction, setEstimatedDurationAction, reanalyzeReportAction, getAudioSourceUrlAction, retranscribeSourceAction } from './memory-actions'
 import { AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABEL, type AudioSourceType } from '@/lib/db/audio-source-constants'
 import type { AudioSource, MemoryHealth } from '@/lib/db/report-audio-sources'
 import type { AnalysisRun, AnalysisDelta } from '@/lib/db/report-analysis-runs'
@@ -61,6 +61,59 @@ function Reanalyze({ reportId, runs }: { reportId: string; runs: AnalysisRun[] }
         </div>
       )}
     </div>
+  )
+}
+
+// Une source audio : réécoute (URL signée) + relance de transcription si échec/vide.
+function SourceRow({ source }: { source: AudioSource }) {
+  const router = useRouter()
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [loadingUrl, startLoadUrl] = useTransition()
+  const [retrying, startRetry] = useTransition()
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const needsTranscript = source.transcriptStatus === 'failed' || source.transcriptStatus === 'none' || !source.hasTranscript
+
+  function toggleListen() {
+    setMsg(null)
+    if (audioUrl) { setAudioUrl(null); return }
+    startLoadUrl(async () => {
+      const r = await getAudioSourceUrlAction(source.id)
+      if (r.ok) setAudioUrl(r.url)
+      else setMsg({ ok: false, text: r.error })
+    })
+  }
+  function retry() {
+    setMsg(null)
+    startRetry(async () => {
+      const r = await retranscribeSourceAction(source.id)
+      if (r.ok) { setMsg({ ok: true, text: `Transcription régénérée (${r.chars} car.)` }); router.refresh() }
+      else setMsg({ ok: false, text: r.error })
+    })
+  }
+
+  return (
+    <li className="rounded-md border bg-card/40 px-2 py-1.5 space-y-1">
+      <div className="flex items-center gap-2 text-sm">
+        <Mic className="h-3.5 w-3.5 shrink-0 text-sky-600" />
+        <span className="min-w-0 flex-1 truncate">{source.label}<span className="text-muted-foreground"> · {AUDIO_SOURCE_LABEL[source.typeSource]}</span></span>
+        {source.transcriptStatus === 'pending' && <span className="inline-flex items-center gap-1 text-[10px] text-amber-700"><Loader2 className="h-3 w-3 animate-spin" /> en cours</span>}
+        {needsTranscript && source.transcriptStatus !== 'pending' && <span className="inline-flex items-center gap-1 text-[10px] text-rose-600"><AlertTriangle className="h-3 w-3" /> transcription manquante</span>}
+        {!needsTranscript && source.transcriptStatus === 'done' && <span className="text-[10px] text-emerald-700">transcrit</span>}
+        <span className="shrink-0 tabular-nums text-muted-foreground">{fmtDuration(source.durationSeconds)}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={toggleListen} disabled={loadingUrl}
+          className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] hover:bg-muted/40 disabled:opacity-50">
+          {loadingUrl ? <Loader2 className="h-3 w-3 animate-spin" /> : <Volume2 className="h-3 w-3" />} {audioUrl ? 'Masquer' : 'Réécouter'}
+        </button>
+        <button type="button" onClick={retry} disabled={retrying}
+          className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] hover:bg-muted/40 disabled:opacity-50">
+          {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} {needsTranscript ? 'Relancer la transcription' : 'Régénérer la transcription'}
+        </button>
+        {msg && <span className={`text-[11px] ${msg.ok ? 'text-emerald-700' : 'text-rose-600'}`}>{msg.text}</span>}
+      </div>
+      {audioUrl && <audio controls preload="none" src={audioUrl} className="mt-1 h-9 w-full" />}
+    </li>
   )
 }
 
@@ -187,14 +240,7 @@ export function MeetingMemoryHealth({ reportId, sources, health, analysisRuns = 
       {sources.length > 0 && (
         <div className="space-y-1">
           <ul className="space-y-1">
-            {sources.map((s) => (
-              <li key={s.id} className="flex items-center gap-2 text-sm">
-                <Mic className="h-3.5 w-3.5 shrink-0 text-sky-600" />
-                <span className="min-w-0 flex-1">{s.label}<span className="text-muted-foreground"> · {AUDIO_SOURCE_LABEL[s.typeSource]}</span></span>
-                {s.transcriptStatus === 'failed' && <span className="text-[10px] text-rose-600">transcription à relancer</span>}
-                <span className="shrink-0 tabular-nums text-muted-foreground">{fmtDuration(s.durationSeconds)}</span>
-              </li>
-            ))}
+            {sources.map((s) => <SourceRow key={s.id} source={s} />)}
           </ul>
           <p className="text-[11px] text-muted-foreground">Total corpus : {fmtDuration(health.capturedSeconds)} · {sources.length} source{sources.length > 1 ? 's' : ''}</p>
         </div>
