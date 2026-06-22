@@ -1,13 +1,21 @@
 import Link from 'next/link'
 import { ScanSearch } from 'lucide-react'
 import { listEngagementsByTender } from '@/lib/db/engagements'
+import { getOrgId } from '@/lib/db/users'
+import { getAoExperience } from '@/lib/db/ao-experience'
 import { EngagementCurationView } from '../engagement-curation-view'
+import { AoExperiencePanel } from './AoExperiencePanel'
 import { ExtractEngagementsButton } from './ExtractEngagementsButton'
 import { BackButton } from './BackButton'
 
 export default async function TenderEngagementsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const engagements = await listEngagementsByTender(id)
+  // A3 — confronte les libellés de cet AO à l'expérience accumulée (sujets de l'org).
+  const orgId = await getOrgId().catch(() => null)
+  const experience = engagements.length > 0
+    ? await getAoExperience(orgId, engagements.map((e) => e.short_label)).catch(() => [])
+    : []
 
   return (
     <div className="space-y-4 w-full">
@@ -33,7 +41,10 @@ export default async function TenderEngagementsPage({ params }: { params: Promis
           Aucun engagement extrait. Cliquez ci-dessus pour lancer l&apos;extraction IA.
         </p>
       ) : (
-        <EngagementCurationView engagements={engagements} />
+        <>
+          <AoExperiencePanel terms={experience} />
+          <EngagementCurationView engagements={engagements} />
+        </>
       )}
     </div>
   )
