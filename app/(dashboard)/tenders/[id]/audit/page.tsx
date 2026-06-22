@@ -5,6 +5,8 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getTender, getTenderDocument } from '@/lib/db/tenders'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { paragraphAround } from '@/lib/pdf/paragraph'
+import { pagesContaining, glossaryFormsForLabel } from '@/lib/pdf/occurrences'
+import { listGlossaryTerms } from '@/lib/db/glossary'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DocumentAudit, type AuditEngagement } from './DocumentAudit'
 
@@ -18,8 +20,9 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/')
 
   const { id } = await params
-  const [tender, doc, engagements] = await Promise.all([
+  const [tender, doc, engagements, glossary] = await Promise.all([
     getTender(id), getTenderDocument(id), listEngagementsByTender(id),
+    listGlossaryTerms().catch(() => []),
   ])
   if (!tender) notFound()
 
@@ -35,12 +38,15 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
   const items: AuditEngagement[] = engagements
     .map((e) => {
       const ref = (e.source_ref ?? {}) as { page?: unknown; section?: unknown }
+      // Occurrences : pages où le terme canonique (glossaire) apparaît dans le doc.
+      const forms = glossaryFormsForLabel(e.short_label, glossary) ?? glossaryFormsForLabel(e.source_excerpt, glossary)
       return {
         id: e.id,
         kind: e.kind,
         shortLabel: e.short_label,
         excerpt: e.source_excerpt,
         context: paragraphAround(docText, e.source_excerpt),
+        occurrences: forms ? pagesContaining(docText, forms) : [],
         page: typeof ref.page === 'number' ? ref.page : null,
         section: typeof ref.section === 'string' ? ref.section : null,
       }

@@ -16,6 +16,7 @@ export interface AuditEngagement {
   shortLabel: string
   excerpt: string
   context: string | null   // paragraphe complet autour de l'extrait (déterministe)
+  occurrences: number[]    // pages où le terme canonique apparaît aussi dans le doc
   page: number | null
   section: string | null
 }
@@ -118,6 +119,11 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
                       <summary className="cursor-pointer text-[11px] text-sky-700 hover:underline">Voir le contexte complet</summary>
                       <p className="mt-1 text-[12px] text-muted-foreground bg-muted/30 rounded p-2 leading-relaxed">{e.context}</p>
                     </details>
+                  )}
+                  {active && e.occurrences.filter((p) => p !== e.page).length > 0 && (
+                    <span className="block mt-1 text-[11px] text-muted-foreground">
+                      Aussi mentionné : {e.occurrences.filter((p) => p !== e.page).map((p) => `p.${p}`).join(' · ')}
+                    </span>
                   )}
                 </button>
               </li>
