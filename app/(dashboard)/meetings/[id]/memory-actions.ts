@@ -104,6 +104,27 @@ export async function getAudioSourceUrlAction(
   return { ok: true, url: signed.signedUrl }
 }
 
+/** Supprime une source audio qui n'est pas bonne (échec, inaudible, doublon) — fichier
+ *  + ligne — puis reconstruit le corpus. Permet d'en réenregistrer une propre derrière. */
+export async function deleteAudioSourceAction(
+  attachmentId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await guard()
+  const sb = createAdminClient()
+  const { data: att } = await sb.from('site_report_attachments').select('id, report_id, storage_path, kind').eq('id', attachmentId).maybeSingle()
+  if (!att || att.kind !== 'audio') return { ok: false, error: 'Source audio introuvable.' }
+  const reportId = att.report_id as string
+  // Fichier du stockage (best-effort) puis la ligne.
+  await sb.storage.from(BUCKET).remove([att.storage_path as string]).catch(() => {})
+  const { error } = await sb.from('site_report_attachments').delete().eq('id', attachmentId)
+  if (error) return { ok: false, error: error.message }
+  // Reconstruit le corpus à partir des sources restantes.
+  const corpus = await buildCombinedCorpus(reportId)
+  await sb.from('site_reports').update({ transcript_raw: corpus || null }).eq('id', reportId)
+  revalidatePath(`/meetings/${reportId}`)
+  return { ok: true }
+}
+
 /** Relance la transcription d'une source (échec / vide / jamais faite). Reconstruit le corpus. */
 export async function retranscribeSourceAction(
   attachmentId: string,

@@ -6,8 +6,9 @@
 // bloquante) + ajout d'audio de secours (mémo, appel, débrief) fusionné au corpus.
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mic, Plus, Loader2, Check, Activity, FileText, Sparkles, RefreshCw, History, Volume2, AlertTriangle } from 'lucide-react'
-import { addMeetingAudioSourceAction, setEstimatedDurationAction, reanalyzeReportAction, getAudioSourceUrlAction, retranscribeSourceAction } from './memory-actions'
+import { toast } from 'sonner'
+import { Mic, Plus, Loader2, Check, Activity, FileText, Sparkles, RefreshCw, History, Volume2, AlertTriangle, Trash2 } from 'lucide-react'
+import { addMeetingAudioSourceAction, setEstimatedDurationAction, reanalyzeReportAction, getAudioSourceUrlAction, retranscribeSourceAction, deleteAudioSourceAction } from './memory-actions'
 import { AUDIO_SOURCE_TYPES, AUDIO_SOURCE_LABEL, type AudioSourceType } from '@/lib/db/audio-source-constants'
 import type { AudioSource, MemoryHealth } from '@/lib/db/report-audio-sources'
 import type { AnalysisRun, AnalysisDelta } from '@/lib/db/report-analysis-runs'
@@ -70,6 +71,8 @@ function SourceRow({ source }: { source: AudioSource }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [loadingUrl, startLoadUrl] = useTransition()
   const [retrying, startRetry] = useTransition()
+  const [deleting, startDelete] = useTransition()
+  const [confirmDel, setConfirmDel] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const needsTranscript = source.transcriptStatus === 'failed' || source.transcriptStatus === 'none' || !source.hasTranscript
 
@@ -88,6 +91,14 @@ function SourceRow({ source }: { source: AudioSource }) {
       const r = await retranscribeSourceAction(source.id)
       if (r.ok) { setMsg({ ok: true, text: `Transcription régénérée (${r.chars} car.)` }); router.refresh() }
       else setMsg({ ok: false, text: r.error })
+    })
+  }
+  function del() {
+    setMsg(null)
+    startDelete(async () => {
+      const r = await deleteAudioSourceAction(source.id)
+      if (r.ok) { toast.success('Audio supprimé — vous pouvez en enregistrer un nouveau.'); router.refresh() }
+      else { setMsg({ ok: false, text: r.error }); setConfirmDel(false) }
     })
   }
 
@@ -110,6 +121,20 @@ function SourceRow({ source }: { source: AudioSource }) {
           className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] hover:bg-muted/40 disabled:opacity-50">
           {retrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} {needsTranscript ? 'Relancer la transcription' : 'Régénérer la transcription'}
         </button>
+        {!confirmDel ? (
+          <button type="button" onClick={() => setConfirmDel(true)} disabled={deleting}
+            className="inline-flex items-center gap-1 rounded border border-rose-200 px-2 py-0.5 text-[11px] text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+            <Trash2 className="h-3 w-3" /> Supprimer
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-1">
+            <button type="button" onClick={del} disabled={deleting}
+              className="inline-flex items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 disabled:opacity-50">
+              {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Confirmer
+            </button>
+            <button type="button" onClick={() => setConfirmDel(false)} disabled={deleting} className="text-[11px] text-muted-foreground">Annuler</button>
+          </span>
+        )}
         {msg && <span className={`text-[11px] ${msg.ok ? 'text-emerald-700' : 'text-rose-600'}`}>{msg.text}</span>}
       </div>
       {audioUrl && <audio controls preload="none" src={audioUrl} className="mt-1 h-9 w-full" />}
