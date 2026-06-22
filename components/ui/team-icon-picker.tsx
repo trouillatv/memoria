@@ -17,83 +17,21 @@
 // hors de cette whitelist est acceptée par le CHECK mais ne s'affichera
 // pas (TeamBadge ignore les icônes inconnues, voir fallback dot).
 
-import {
-  Sparkles,
-  SprayCan,
-  Brush,
-  Droplets,
-  Flower2,
-  Leaf,
-  Wind,
-  ShieldCheck,
-  Bed,
-  Building2,
-  Hospital,
-  School,
-  Factory,
-  Package,
-  Mountain,
-  Truck,
-  Key,
-  Users,
-  type LucideIcon,
-} from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import {
+  TEAM_ICONS,
+  TEAM_ICON_KEYS,
+  TEAM_ICON_LABELS,
+  type TeamIconName,
+} from './team-meta'
 
-export const TEAM_ICONS = {
-  sparkles: Sparkles,
-  'spray-can': SprayCan,
-  brush: Brush,
-  droplets: Droplets,
-  'flower-2': Flower2,
-  leaf: Leaf,
-  wind: Wind,
-  'shield-check': ShieldCheck,
-  bed: Bed,
-  'building-2': Building2,
-  hospital: Hospital,
-  school: School,
-  factory: Factory,
-  package: Package,
-  mountain: Mountain,
-  truck: Truck,
-  key: Key,
-  users: Users,
-} as const satisfies Record<string, LucideIcon>
-
-export type TeamIconName = keyof typeof TEAM_ICONS
-
-/** Liste des icônes dans l'ordre d'affichage du picker. */
-export const TEAM_ICON_KEYS: TeamIconName[] = [
-  'sparkles', 'spray-can', 'brush', 'droplets',
-  'flower-2', 'leaf', 'wind', 'shield-check',
-  'bed', 'building-2', 'hospital', 'school',
-  'factory', 'package', 'mountain', 'truck',
-  'key', 'users',
-]
-
-/** Tooltips FR — facultatifs, affichés au survol. */
-export const TEAM_ICON_LABELS: Record<TeamIconName, string> = {
-  sparkles: 'Nettoyage général',
-  'spray-can': 'Désinfection',
-  brush: 'Brossage',
-  droplets: 'Eau / hydro',
-  'flower-2': 'Espaces verts',
-  leaf: 'Extérieur',
-  wind: 'Vitrerie',
-  'shield-check': 'Bio-nettoyage',
-  bed: 'Hébergement',
-  'building-2': 'Bureaux',
-  hospital: 'Santé',
-  school: 'Éducation',
-  factory: 'Industrie',
-  package: 'Logistique',
-  mountain: 'Site éloigné',
-  truck: 'Mobile',
-  key: 'Conciergerie',
-  users: 'Équipe générique',
-}
+// Données d'icônes déplacées dans team-meta.ts (SERVER-SAFE) — voir le commentaire
+// d'en-tête de ce fichier : un module 'use client' ne peut pas fournir ces valeurs
+// au code serveur (action de validation + rendu de TeamBadge). On réexporte ici
+// pour les importateurs CLIENT existants.
+export { TEAM_ICONS, TEAM_ICON_KEYS, TEAM_ICON_LABELS }
+export type { TeamIconName }
 
 // ----------------------------------------------------------------------------
 // Picker UI

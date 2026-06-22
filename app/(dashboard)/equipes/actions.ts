@@ -27,8 +27,10 @@ import {
 } from '@/lib/db/teams'
 import { logAuditEvent } from '@/lib/audit/log'
 import { TEAM_BADGE_COLORS } from '@/components/ui/team-badge'
-import { TEAM_ICON_KEYS } from '@/components/ui/team-icon-picker'
-import { TEAM_SPECIALTY_MAX } from '@/components/ui/team-specialties'
+// team-meta = SERVER-SAFE. Ne JAMAIS réimporter ces constantes depuis
+// team-icon-picker / team-specialties ('use client') : côté serveur elles
+// deviennent des références client opaques et l'action plante (bug 2026-06-23).
+import { TEAM_ICON_KEYS, TEAM_SPECIALTY_MAX } from '@/components/ui/team-meta'
 
 // ----------------------------------------------------------------------------
 // Auth helper

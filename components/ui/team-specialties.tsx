@@ -9,6 +9,8 @@
 // meilleure en bio-nettoyage que B"). Servent uniquement au matcher AO.
 
 import { cn } from '@/lib/utils'
+// Source unique server-safe (le code serveur valide via cette constante).
+import { TEAM_SPECIALTY_MAX } from './team-meta'
 
 export const TEAM_SPECIALTIES = {
   'bio-nettoyage':   { label: 'Bio-nettoyage', short: 'Bio' },
@@ -35,7 +37,7 @@ export const TEAM_SPECIALTY_KEYS: TeamSpecialtyKey[] = [
   'industriel', 'residentiel', 'conciergerie',
 ]
 
-export const TEAM_SPECIALTY_MAX = 12
+export { TEAM_SPECIALTY_MAX }
 
 // ----------------------------------------------------------------------------
 // Affichage badge readonly

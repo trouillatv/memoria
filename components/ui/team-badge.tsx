@@ -10,7 +10,7 @@
 //   Le composant n'expose JAMAIS de métrique d'équipe.
 
 import { cn } from '@/lib/utils'
-import { TEAM_ICONS, type TeamIconName } from './team-icon-picker'
+import { TEAM_ICONS, type TeamIconName } from './team-meta'
 
 export interface TeamBadgeProps {
   name: string
