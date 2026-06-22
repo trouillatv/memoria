@@ -17,6 +17,7 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { SiteReportLauncher } from './SiteReportLauncher'
+import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
@@ -328,6 +329,9 @@ export default async function FieldSitePage({
 
         {/* Compte-rendu multimodal (riche) : voix + texte + photos + pièces → décisions */}
         <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
+
+        {/* Livraisons / évacuations déclarées depuis le terrain (+ photo). */}
+        <DeliverFieldPanel siteId={siteId} />
       </section>
     </div>
   )
