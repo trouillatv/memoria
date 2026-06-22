@@ -59,7 +59,10 @@ retrouver ce qui s'est vraiment passé, raconter la durée (« ouvert depuis
 - **Manager / chargé d'affaires** — l'organisation, les chantiers, les réunions,
   les actions, la bibliothèque. C'est le rôle « bureau ».
 - **Chef d'équipe / terrain** — une expérience mobile dédiée (« aujourd'hui ici »,
-  photo, anomalie, tâche). Redirigé vers l'espace terrain.
+  photo, anomalie, tâche). Redirigé vers l'espace terrain. Il peut aussi **déclarer une
+  livraison/évacuation** (+ photo) et **prendre en charge une intervention non affectée**
+  pour son équipe afin de la démarrer (le gérant, lui, peut l'affecter à n'importe quelle
+  équipe).
 - **Entreprise externe** — pas de compte : elle reçoit un **lien public** (QR)
   pour déclarer ses actions ou confirmer une intervention.
 
@@ -88,6 +91,13 @@ Trois panneaux : **État de la continuité** (santé du relais entre équipes), 
 
 #### Vie des lieux
 Un fil unique regroupé par type (attention opérationnelle, continuité, dossiers de démarrage, mémoire terrain). Chaque ligne est cliquable vers le détail. Aucune métrique de charge : on voit ce qui se passe, pas qui travaille.
+
+#### Nouveau depuis votre dernier passage
+Une couche discrète en tête (pas un 5ᵉ écran) : ce qui s'est passé **pendant votre
+absence** — déclarations des entreprises via QR (Fait/Bloqué + commentaire + photo).
+« COLAS a déclaré : Regard 12 terminé · 📷 photo », « BatiSud signale un blocage ».
+Un seul bouton : **Tout marquer comme vu**. Silencieux s'il n'y a rien de neuf
+(c'est un filtre sur du frais, jamais un journal d'activité).
 
 #### Réservoir de mémoire
 En bas, deux chiffres bruts : interventions documentées et photos versées (votre capital mémoire).
@@ -128,7 +138,7 @@ En haut : identité (nom, client, région, statut) puis une rangée d'**accès r
 Une réserve = un point de non-conformité signalé, à corriger avant réception. Compte « N ouvert · N levé ». Chaque réserve est un **mini-dossier** : photo avant, photo après, date de levée, actions correctives liées, documents liés, commentaire. Export PDF en un clic. Vocabulaire « levée », jamais « résolu ».
 
 ### Bons de livraison (/sites/[id]/livraisons)
-Chaque livraison enregistrée avec photo du BL, date/heure (opposable). Liste des fournisseurs triée par date.
+Chaque livraison enregistrée avec photo du BL, date/heure (opposable). Liste des fournisseurs triée par date. **Depuis le terrain** : sur la fiche site mobile (`/m/site/[siteId]`), le chef d'équipe peut **déclarer une livraison / évacuation** directement (fournisseur, produit, quantité, zone, note + **photo en un tap**) — utile quand un camion livre/évacue toute la journée. Tout remonte ici côté bureau.
 
 ### Journal du chantier (/sites/[id]/journal)
 Historique jour par jour : entreprises présentes, équipes, anomalies, météo (ajoutable), photos du jour. Export PDF complet.
@@ -136,10 +146,14 @@ Historique jour par jour : entreprises présentes, équipes, anomalies, météo 
 ### Sujets : l'histoire des problèmes (/sites/[id]/subjects)
 Un **sujet** = l'histoire complète d'un problème ou livrable (DOE, essais, fissure…), jamais une personne. Recherche instantanée (« Taper DOE → tout »). Un indicateur de **santé de rattachement** montre le % d'objets reliés à un sujet (informatif, non bloquant).
 
-La **fiche sujet** raconte : **état** (Bloqué / En attente / En sommeil / Ouvert / Clos) + ancienneté (« depuis N j ») + énergie + cause probable (déterministe) ; **synthèse vivante** (nb réunions, décisions, alertes « récurrent », « échéance repoussée N fois ») ; **dépendances** (« ce sujet bloque N autres ») ; **historique chronologique** daté et situé à sa réunion ; **rattachements** à ajouter après coup.
+La **fiche sujet** raconte : un **bloc Vigilance** en tête (⚠ « ouvert depuis 143 j · bloque la réception · engagement contractuel · obligation non satisfaite ») qui fait passer le sujet de *raconter* à *alerter* ; l'**état** (Bloqué / En attente / En sommeil / Ouvert / Clos) + ancienneté + énergie + cause probable (déterministe) ; un résumé « en 5 secondes » (état · depuis N j · cause · **dernière trace** · **sources** : d'où vient l'histoire · à faire) ; **synthèse vivante** (réunions, décisions, « récurrent », « échéance repoussée N fois ») ; **dépendances** (« ce sujet bloque N autres ») ; **historique chronologique** daté et situé à sa réunion ; **rattachements** à ajouter après coup.
+
+**À l'échelle de l'organisation** : si le même sujet canonique existe sur d'autres chantiers, un bloc révèle le bilan cross-chantiers — *rencontré sur N chantiers · X % en retard · réserves · clôture moyenne · jours cumulés de retard*, ses **causes récurrentes** (« plans manquants (8) ») et les **facteurs de réussite observés** (« sur les réussites : obligation suivie 83 % vs 40 % sur les ratés »). Factuel, déterministe, jamais une prédiction — « voici ce qui revient quand ce sujet apparaît ».
 
 ### Obligations : ce qui DOIT exister (/sites/[id]/obligations)
 Objet **prescriptif** : ce qui doit exister (DOE, journal photo, essais, PAQ…). MemorIA injecte au démarrage une **bibliothèque VRD curée**. Statut (À produire / En cours / Satisfaite / Non applicable), criticité (🔥/ambre/gris), santé **« négligée »** (l'entreprise n'a pas livré malgré relance) avec date de dernière relance. **Lier un document** : rattachez le CCTP/PAQ source + une **référence libre** (« chapitre 4.2, page 18 ») — MemorIA pointe le document, il ne le parse pas (aucune IA).
+
+**Depuis les engagements de l'AO.** Si le chantier vient d'un appel d'offres converti, un bouton **« Transformer en obligations »** matérialise les engagements validés du contrat en obligations suivies, en conservant leur **origine contractuelle**. Chaque obligation issue d'un AO affiche alors **« ↳ origine : CCTP · p.148 »** — cliquable, qui ouvre le passage source (voir *Provenance navigable*). C'est le pont qui fait qu'une promesse écrite ne meurt pas dans le contrat : elle devient une obligation vivante reliée à son sujet.
 
 ### Dossier de preuve (/sites/[id]/preuves)
 Vue consolidée : pour chaque action déclarée par une entreprise via QR, la chaîne **demande → entreprise → déclaration (Fait/Bloqué) → commentaire → photo → signature → validation MOE**. Rappel permanent : **la déclaration de l'entreprise et votre validation sont deux vérités distinctes** (une promesse vs une vérité de terrain). Lecture seule.
@@ -159,7 +173,7 @@ Vos réunions de chantier ou de contrat, triées par date. Filtres (Toutes / Con
 ### Fiche réunion (/meetings/[id])
 Centralise tout :
 - **Préparer cette réunion** : un briefing déterministe (ce qui traîne sur le chantier), zéro IA.
-- **Santé de la mémoire** : couverture audio, état de la transcription. Vous ajoutez des audios de secours (mémo, débrief) fusionnés au corpus.
+- **Santé de la mémoire** : couverture audio, état de la transcription. Vous ajoutez des audios de secours (mémo, débrief) fusionnés au corpus. Sur **chaque source** : **Réécouter** (lecteur intégré), **Relancer la transcription** (si elle est revenue vide ou a échoué) et **Supprimer** (un audio inaudible/raté, avec confirmation) — l'audio n'est jamais perdu, une erreur de transcription est toujours rattrapable.
 - **Qui fait quoi, pour quand** : le panneau de curation des actions.
 - **Compte-rendu** : un bouton vers l'écran de validation.
 
@@ -225,6 +239,35 @@ Importez le **PDF** d'un cahier des charges ; MemorIA en extrait **contraintes, 
 La fiche AO offre 4 vues : **Synthèse** (résumé, risques, contraintes, score, capital client, sources documentaires cliquables `[doc:id]`), **Analyse détaillée**, **Mémoire technique** (+ terrain matching avec vos interventions réelles), et **Atelier IA** (plusieurs agents experts, conversation multi-tours, accessible même pendant une relance). Si l'analyse échoue, un message précis s'affiche et vous pouvez **relancer**.
 
 > L'analyse tourne désormais de façon fiable (dans la requête, avec garde-temps) et l'IA cite ses sources ; elle ne prétend jamais conclure sans preuve documentaire.
+
+#### Engagements (/tenders/[id]/engagements)
+Au-delà de l'analyse, MemorIA extrait les **engagements** du dossier — les clauses
+prescriptives que vous devrez tenir. Chacun est **typé** (Objectif / Obligation /
+Livrable / Contrôle / Pénalité) et **regroupé** par nature (ou par thème). Vous **curez**
+(valider / éditer / rejeter, fixer l'exigence de preuve et la destination) ; le type
+pré-remplit des défauts sensés (un contrôle attend une photo, une pénalité part en
+vigilance). Un encart **« Ce que dit votre expérience »** confronte chaque exigence à
+l'historique de vos chantiers (sujet canonique) : *« DOE — rencontré sur 5 chantiers ·
+44 % en retard · causes : plans manquants (8) »*. Factuel, jamais une prédiction.
+Une fois l'AO gagné, le **wizard de conversion** (`/tenders/[id]/convert`) crée le contrat,
+et les engagements deviennent des **obligations** sur le chantier (voir §4 Obligations).
+
+#### Provenance navigable & audit documentaire
+« L'IA n'invente rien » : chaque engagement garde son **extrait verbatim** et sa
+**localisation**, avec **trois niveaux de confiance** — *Citation exacte* (page fiable →
+bouton « ouvrir la page »), *Section connue* (chapitre, pas de page → « ouvrir le
+document »), *Référence approximative* (concept identifié sans localisation fiable →
+**aucun bouton page**, l'extrait reste la trace). **Jamais de fausse page.** Pour vérifier,
+la page « source » montre l'**extrait** d'abord (le passage, pas le PDF de 300 pages),
+son **paragraphe complet**, et les **autres occurrences** du terme dans le document
+(« aussi mentionné : p.4 · p.9 »). L'**Audit documentaire** (`/tenders/[id]/audit`) ouvre
+le PDF complet face à la liste navigable de tous les engagements.
+
+#### Promotion depuis l'Atelier IA
+Dans l'Atelier, sous chaque réponse d'agent, un bouton **« Transformer en engagement »** :
+une réflexion utile (« le nettoyage des hottes semble absent du CCTP ») devient un
+engagement suivi, que vous typez. La réflexion ne se perd plus — elle rejoint le même
+fil que les engagements extraits.
 
 ### Bibliothèque — capital IA (/library)
 Le capital de connaissance de votre entreprise (références, moyens, procédures, qualité). Plus elle est riche, plus l'analyse des AO est précise. Hero de synthèse (top ressources citées ce mois), filtres (catégorie, tags), ajout en un clic.
