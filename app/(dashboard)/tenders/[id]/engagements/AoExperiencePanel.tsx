@@ -34,6 +34,12 @@ export function AoExperiencePanel({ terms }: { terms: ExperienceTerm[] }) {
                   Causes récurrentes : {t.causes.map((c) => `${c.label}${c.count > 1 ? ` (${c.count})` : ''}`).join(' · ')}
                 </span>
               )}
+              {t.successFactors.length > 0 && (
+                <span className="block text-[11px] text-emerald-700/90 mt-0.5">
+                  Observé sur les réussites ({t.successes}) vs les ratés ({t.failures}) :{' '}
+                  {t.successFactors.map((f) => `${f.label} ${f.successPct}% vs ${f.failurePct}%`).join(' · ')}
+                </span>
+              )}
             </li>
           )
         })}

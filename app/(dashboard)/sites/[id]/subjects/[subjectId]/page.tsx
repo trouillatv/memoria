@@ -240,6 +240,12 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
               Causes récurrentes : {orgHistory.causes.map((c) => `${c.label}${c.count > 1 ? ` (${c.count})` : ''}`).join(' · ')}
             </p>
           )}
+          {orgHistory.successFactors.length > 0 && (
+            <p className="text-[11px] text-emerald-700/90">
+              Observé sur les réussites ({orgHistory.successes}) vs les ratés ({orgHistory.failures}) :{' '}
+              {orgHistory.successFactors.map((f) => `${f.label} ${f.successPct}% vs ${f.failurePct}%`).join(' · ')}
+            </p>
+          )}
           <p className="text-[10px] text-muted-foreground/70">Historique factuel cross-chantiers, déterministe — pas une prédiction.</p>
         </section>
       )}

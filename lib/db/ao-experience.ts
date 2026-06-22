@@ -18,6 +18,11 @@ export interface ExperienceTerm {
   avgClosureDays: number | null
   difficult: boolean       // historiquement difficile (retards/réserves marqués)
   causes: Array<{ label: string; count: number }>  // causes récurrentes (réserves+anomalies)
+  // Facteurs de RÉUSSITE OBSERVÉS (analytique, pas prescriptif) : ce qui était présent
+  // sur les occurrences tenues et absent sur les ratées. Calculé seulement si assez d'histoire.
+  successes: number
+  failures: number
+  successFactors: Array<{ label: string; successPct: number; failurePct: number }>
 }
 
 function norm(s: string): string {
@@ -109,11 +114,15 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
   const sb = createAdminClient()
   const allIds = groups.flatMap((g) => g.ids)
   const today = new Date().toISOString().slice(0, 10)
-  const [{ data: actions }, { data: reserves }, { data: anomI }, { data: anomA }] = await Promise.all([
-    sb.from('site_actions').select('subject_id, due_date, status').in('subject_id', allIds),
+  const [{ data: actions }, { data: reserves }, { data: anomI }, { data: anomA }, { data: obligs }, { data: decisions }, { data: proposals }, { data: subjRows }] = await Promise.all([
+    sb.from('site_actions').select('subject_id, due_date, status, report_id').in('subject_id', allIds),
     sb.from('site_reserve').select('subject_id, label').in('subject_id', allIds),
     sb.from('intervention_anomalies').select('subject_id, description, category_other').in('subject_id', allIds),
     sb.from('report_added_points').select('subject_id, label').in('subject_id', allIds).eq('kind', 'anomalie'),
+    sb.from('site_obligation').select('subject_id').in('subject_id', allIds),
+    sb.from('site_decisions').select('subject_id, report_id').in('subject_id', allIds),
+    sb.from('site_report_proposals').select('subject_id').in('subject_id', allIds),
+    sb.from('subjects').select('id, status').in('id', allIds),
   ])
   const lateBySubject = new Set<string>()
   for (const a of (actions ?? []) as Record<string, unknown>[]) {
@@ -121,6 +130,15 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
     const st = a.status as string
     if (due && due < today && (st === 'open' || st === 'planned')) lateBySubject.add(a.subject_id as string)
   }
+  // Facteurs OBSERVABLES par sujet (binaires) : obligation rattachée, évoqué en réunion,
+  // suivi par actions. Déterministe, depuis les tables existantes.
+  const statusById = new Map((subjRows ?? []).map((s) => [s.id as string, s.status as string]))
+  const hasObligation = new Set((obligs ?? []).map((o) => o.subject_id as string))
+  const hasAction = new Set((actions ?? []).map((a) => a.subject_id as string))
+  const evoked = new Set<string>()
+  for (const a of (actions ?? []) as Record<string, unknown>[]) if (a.report_id) evoked.add(a.subject_id as string)
+  for (const d of (decisions ?? []) as Record<string, unknown>[]) if (d.report_id) evoked.add(d.subject_id as string)
+  for (const p of (proposals ?? []) as Record<string, unknown>[]) evoked.add(p.subject_id as string)
   const reservesBySubject = new Map<string, string[]>()
   for (const r of (reserves ?? []) as Record<string, unknown>[]) {
     const k = r.subject_id as string
@@ -162,6 +180,32 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
       }
     }
     const causes = [...causeCounts.values()].sort((a, b) => b.count - a.count).slice(0, 5)
+
+    // RÉUSSITE / ÉCHEC par occurrence : réussite = clos sans retard ni réserve ;
+    // échec = a connu un retard ou une réserve. Le reste (ouvert sans accroc) = en cours.
+    const succIds: string[] = []
+    const failIds: string[] = []
+    for (const id of g.ids) {
+      const trouble = lateBySubject.has(id) || (reservesBySubject.get(id)?.length ?? 0) > 0
+      if (trouble) failIds.push(id)
+      else if (statusById.get(id) === 'closed') succIds.push(id)
+    }
+    const successes = succIds.length
+    const failures = failIds.length
+    let successFactors: Array<{ label: string; successPct: number; failurePct: number }> = []
+    if (successes >= 2 && failures >= 2) {
+      const pct = (ids: string[], has: Set<string>) => Math.round((ids.filter((id) => has.has(id)).length / ids.length) * 100)
+      const candidates = [
+        { label: 'Obligation suivie', has: hasObligation },
+        { label: 'Évoqué en réunion', has: evoked },
+        { label: 'Suivi par des actions', has: hasAction },
+      ]
+      successFactors = candidates
+        .map((c) => ({ label: c.label, successPct: pct(succIds, c.has), failurePct: pct(failIds, c.has) }))
+        .filter((f) => f.successPct - f.failurePct >= 20 && f.successPct >= 50)
+        .sort((a, b) => (b.successPct - b.failurePct) - (a.successPct - a.failurePct))
+    }
+
     return {
       term: g.display,
       occurrences,
@@ -174,6 +218,9 @@ async function enrichGroups(groups: CanonGroup[]): Promise<ExperienceTerm[]> {
       avgClosureDays,
       difficult: lateRatioPct >= 40 || allReserves.length >= 3,
       causes,
+      successes,
+      failures,
+      successFactors,
     }
   })
 }
