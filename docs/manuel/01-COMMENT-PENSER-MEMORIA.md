@@ -24,7 +24,8 @@
 9. Pourquoi le QR existe
 10. Pourquoi le briefing existe
 11. Pourquoi l'IA n'est qu'un assistant
-12. Le modèle mental en une page
+12. Lire MemorIA par axes
+13. Le modèle mental en une page
 
 ---
 
@@ -407,7 +408,47 @@ Ce qui fait foi  =  ce que l'humain a confirmé
 
 ---
 
-## 12. Le modèle mental en une page
+## 12. Lire MemorIA par axes
+
+Jusqu'ici, vous avez vu des **objets** (le Sujet, l'Obligation…) et des **règles** (l'IA
+propose, l'humain valide). Il existe une troisième façon de penser le produit, plus
+puissante encore : non pas en *catégories* (« ceci est un QR, cela est une preuve ») mais
+en **axes** — des spectres sur lesquels chaque fonctionnalité se situe.
+
+Une règle dit *oui ou non*. Un axe dit *où*. Et savoir *où* tombe une chose suffit
+souvent à comprendre à quoi elle sert, et à côté de quoi elle vit.
+
+Sept axes traversent tout MemorIA :
+
+| Axe | D'un côté… | …de l'autre |
+|---|---|---|
+| **Mouvement** | **capter** ce qui se passe (réunions, audio, photos, déclarations) | **restituer** au bon moment (briefing, recherche, passation, preuve) |
+| **Nature de l'objet** | **descriptif** : ce qui *est* (Action, Réserve, Décision, Sujet) | **prescriptif** : ce qui *doit être* (Obligation — son absence est le signal) |
+| **Production** | **déterministe** : ce qui est *calculé* (retards, causes, impact, santé) | **LLM** : ce qui est *suggéré* (résumés, extraction) — à vérifier |
+| **Autorité** | **l'IA propose** | **l'humain valide** (et l'artefact brut survit toujours) |
+| **Temps** | présent actif → atténuation → archive → snapshot | **supersession** (ce qui en remplace un autre) |
+| **Sujet** | tout gravite autour du **lieu / Sujet** | **jamais autour de la personne** (aucun score d'agent) |
+| **Surfaces partagées** | **montrer** : un lien qui expose (QR chantier, preuve client, passation) | **récolter** : un lien qui recueille (QR intervention, QR actions) |
+
+Prenons un exemple concret — les **liens publics** (les QR et liens sans compte). On
+pourrait les ranger en « types de QR » et s'y perdre. L'axe **Mouvement** tranche d'un
+coup : le QR affiché sur le chantier *montre* (tout le journal, en lecture), le QR confié
+à une entreprise *récolte* (elle déclare ce qu'elle a fait). Deux liens qui se ressemblent,
+mais aux **antipodes** d'un axe — donc aucun risque de doublon.
+
+> **À retenir.** Les **règles** disent ce qui est interdit ; les **axes** disent comment
+> les choses se répartissent. Devant une fonctionnalité, demandez-vous : *capte-t-elle ou
+> restitue-t-elle ? décrit-elle ou prescrit-elle ? est-elle calculée ou suggérée ?* Sa
+> position sur ces axes révèle sa vraie nature mieux qu'une étiquette.
+
+> **Bonne pratique (anti usine à gaz).** Avant d'ajouter quoi que ce soit, situez-le sur
+> ces axes. S'il tombe **exactement au même endroit** qu'une fonction existante, c'est
+> probablement un doublon. S'il ne tombe sur **aucun** axe (ni capter ni restituer, ni
+> décrire ni prescrire), il n'a sans doute pas sa place dans MemorIA.
+
+---
+
+## 13. Le modèle mental en une page
 
 Si vous ne deviez retenir qu'une image, ce serait celle-ci :
 
