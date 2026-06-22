@@ -118,9 +118,11 @@ const ENTITY_FR: Record<string, string> = {
   action: 'une action',
   user: 'une fiche personne',
   tender: 'un dossier de démarrage',
+  feedback: 'un retour',
 }
 function labelForAction(entityType: string, action: string): string {
   const what = ENTITY_FR[entityType] ?? entityType
+  if (entityType === 'feedback' && action === 'created') return 'A envoyé un retour (bouton feedback)'
   if (action === 'created') return `A créé ${what}`
   if (action === 'opened') return `A ouvert ${what}`
   if (action === 'updated') return `A modifié ${what}`
