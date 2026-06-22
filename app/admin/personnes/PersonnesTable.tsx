@@ -6,7 +6,8 @@
 // téléphone, reset, suppression) restent inchangés.
 
 import { useState } from 'react'
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronUp, ChevronDown, ChevronsUpDown, LineChart } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { UserRoleSelect } from '../users/UserRoleSelect'
 import { ForcePasswordResetButton } from '../users/ForcePasswordResetButton'
@@ -169,7 +170,14 @@ export function PersonnesTable({
           ) : sorted.map((u) => (
             <tr key={u.id} className="hover:bg-muted/20">
               <td className="px-3 py-2">
-                <div className="font-medium">{u.full_name || '—'}</div>
+                <Link
+                  href={`/admin/personnes/${u.id}`}
+                  className="group inline-flex items-center gap-1.5 font-medium hover:text-brand-700 hover:underline"
+                  title="Voir l'analyse d'usage (parcours, menus, friction)"
+                >
+                  {u.full_name || '—'}
+                  <LineChart className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-brand-600" />
+                </Link>
                 <div className="font-mono text-xs text-muted-foreground">{u.email}</div>
               </td>
               <td className="px-3 py-2">
