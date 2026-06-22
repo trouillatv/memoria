@@ -4,6 +4,8 @@ import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History,
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSubjectThread, getSubjectTimeline, getSubjectInsights } from '@/lib/db/subjects'
+import { getOrgId } from '@/lib/db/users'
+import { getSubjectOrgHistory } from '@/lib/db/ao-experience'
 import { getSubjectRelations } from '@/lib/db/subject-relations'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -24,6 +26,8 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   const { id, subjectId } = await params
   const [identity, thread, timeline, insights, relations] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId), getSubjectInsights(subjectId), getSubjectRelations(subjectId)])
   if (!identity || !thread || thread.subject.site_id !== id) notFound()
+  // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
+  const orgHistory = await getSubjectOrgHistory(await getOrgId().catch(() => null), thread.subject.name).catch(() => null)
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
   const fr = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : null
 
@@ -215,6 +219,26 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
               Question à poser : « {subject.name} sera-t-il tenu pour le {fr(insights.lastDeadline)} ? »
             </p>
           )}
+        </section>
+      )}
+
+      {/* Niveau 3 — du local au collectif : ce même sujet à l'échelle de l'org. */}
+      {orgHistory && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-1">
+          <h2 className="text-sm font-semibold inline-flex items-center gap-1.5">
+            <History className="h-4 w-4 text-amber-700" /> À l&apos;échelle de l&apos;organisation
+            {orgHistory.difficult && <span className="text-[10px] font-semibold text-amber-700">· historiquement difficile</span>}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            « {orgHistory.term} » rencontré <strong className="text-foreground">{orgHistory.occurrences} fois</strong> sur {orgHistory.projectCount} chantier{orgHistory.projectCount > 1 ? 's' : ''}
+            {orgHistory.lateProjects > 0 ? ` · ${orgHistory.lateRatioPct}% en retard` : ''}
+            {orgHistory.reserveCount > 0 ? ` · ${orgHistory.reserveCount} réserve${orgHistory.reserveCount > 1 ? 's' : ''}` : ''}
+            {orgHistory.avgClosureDays != null ? ` · clôture moyenne ${orgHistory.avgClosureDays} j` : ''}.
+          </p>
+          {orgHistory.reserveLabels.length > 0 && (
+            <p className="text-[11px] text-muted-foreground/90">Réserves déjà rencontrées : {orgHistory.reserveLabels.join(' · ')}</p>
+          )}
+          <p className="text-[10px] text-muted-foreground/70">Historique factuel cross-chantiers, déterministe — pas une prédiction.</p>
         </section>
       )}
 

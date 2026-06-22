@@ -1,8 +1,9 @@
 import { History, AlertTriangle } from 'lucide-react'
 import type { ExperienceTerm } from '@/lib/db/ao-experience'
 
-// A3 — « Ce que dit votre expérience » : confrontation déterministe de l'AO avec
-// l'historique des sujets de l'org. On ne lit plus un document, on mobilise le vécu.
+// A3 v2 — « Ce que dit votre expérience » : confrontation déterministe de l'AO avec
+// l'historique des sujets CANONIQUES de l'org. On ne lit plus un document, on
+// mobilise le vécu. Factuel, jamais une prédiction.
 export function AoExperiencePanel({ terms }: { terms: ExperienceTerm[] }) {
   if (terms.length === 0) return null
   return (
@@ -15,19 +16,24 @@ export function AoExperiencePanel({ terms }: { terms: ExperienceTerm[] }) {
       </p>
       <ul className="space-y-1.5">
         {terms.map((t) => {
-          const bits: string[] = [`rencontré sur ${t.projectCount} chantier${t.projectCount > 1 ? 's' : ''}`]
-          if (t.lateProjects > 0) bits.push(`${t.lateProjects} en retard`)
+          const bits: string[] = [`${t.occurrences} rencontré${t.occurrences > 1 ? 's' : ''} sur ${t.projectCount} chantier${t.projectCount > 1 ? 's' : ''}`]
+          if (t.lateProjects > 0) bits.push(`${t.lateRatioPct}% en retard`)
           if (t.reserveCount > 0) bits.push(`${t.reserveCount} réserve${t.reserveCount > 1 ? 's' : ''}`)
           if (t.openOrBlocked > 0) bits.push(`${t.openOrBlocked} encore ouvert${t.openOrBlocked > 1 ? 's' : ''}`)
           if (t.avgClosureDays != null) bits.push(`clôture moyenne ${t.avgClosureDays} j`)
-          const warn = t.lateProjects > 0 || t.reserveCount > 0
           return (
             <li key={t.term} className="rounded-lg border bg-card px-3 py-2 text-sm">
               <span className="inline-flex items-center gap-1.5 font-medium">
-                {warn && <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
+                {t.difficult && <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />}
                 {t.term}
+                {t.difficult && <span className="text-[10px] font-semibold text-amber-700">· historiquement difficile</span>}
               </span>
               <span className="block text-[12px] text-muted-foreground">{bits.join(' · ')}</span>
+              {t.reserveLabels.length > 0 && (
+                <span className="block text-[11px] text-muted-foreground/90 mt-0.5">
+                  Réserves déjà rencontrées : {t.reserveLabels.join(' · ')}
+                </span>
+              )}
             </li>
           )
         })}
