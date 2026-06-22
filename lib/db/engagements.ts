@@ -157,25 +157,35 @@ export async function createEngagementManual(input: {
   contract_id?: string | null
   short_label: string
   category: EngagementCategory
+  kind?: EngagementKind | null
+  source_excerpt?: string | null
   created_by: string | null
 }): Promise<DbEngagement> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
   // status is 'active' when directly linked to a contract, otherwise 'extracted'
   const status: EngagementStatus = input.contract_id ? 'active' : 'extracted'
+  const kind = input.kind ?? null
+  // Extrait source : le texte fourni (≥5 car) sinon le label. Tronqué à 2000 (CHECK).
+  const excerptRaw = (input.source_excerpt ?? '').trim()
+  const source_excerpt = (excerptRaw.length >= 5 ? excerptRaw : input.short_label).slice(0, 2000)
   const { data, error } = await supabase
     .from('engagements')
     .insert({
       tender_id: input.tender_id ?? null,
       contract_id: input.contract_id ?? null,
       source_type: 'manual' as EngagementSourceType,
-      source_excerpt: input.short_label,
+      source_excerpt,
       source_ref: null,
       category: input.category,
+      kind,
       short_label: input.short_label,
       measurable: false,
       ai_confidence: null,
       status,
+      // Pré-remplissage déterministe selon la nature (cohérent avec l'extraction).
+      proof_requirement: defaultProofForKind(kind),
+      destination: suggestDestination({ category: input.category, sourceExcerpt: source_excerpt, shortLabel: input.short_label, kind }).destination,
       created_by: input.created_by,
       ...(orgId ? { organization_id: orgId } : {}),
     })

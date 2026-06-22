@@ -16,6 +16,7 @@ import { chatWithAgent } from '@/services/ai/chat'
 import { runInitialAnalysisAgent } from '@/services/ai/initial-analysis'
 import { validateSources } from '@/services/ai/source-validation'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
+import { createEngagementManual } from '@/lib/db/engagements'
 import { matchAoToTerrain, type TerrainMatchBySite } from '@/lib/ai/match-ao-terrain'
 import { matchAoToKnowledge, type KnowledgeMatchBySource } from '@/lib/ai/match-ao-knowledge'
 import { getActiveProvider } from '@/lib/ai/embeddings'
@@ -154,6 +155,43 @@ async function requireManagerOrAdmin() {
   const role = await getUserRoleById(user.id)
   if (role !== 'manager' && role !== 'admin') throw new Error('Forbidden')
   return user.id
+}
+
+// A2 — Promotion Atelier → Objet : une réflexion d'un échange IA devient un
+// engagement suivi (l'humain choisit, jamais auto). L'engagement rejoint ensuite
+// le pont → obligation → sujet comme les autres. Doctrine « IA propose, humain valide ».
+const promoteSchema = z.object({
+  tender_id: z.string().uuid(),
+  short_label: z.string().trim().min(3, 'Libellé trop court').max(100),
+  excerpt: z.string().trim().min(1).max(2000),
+  kind: z.enum(['objectif', 'obligation', 'livrable', 'controle', 'penalite']).optional(),
+})
+
+export async function promoteMessageToEngagementAction(formData: FormData) {
+  let userId: string
+  try { userId = await requireManagerOrAdmin() } catch { return { error: 'Non autorisé' } }
+  const parsed = promoteSchema.safeParse({
+    tender_id: formData.get('tender_id'),
+    short_label: formData.get('short_label'),
+    excerpt: formData.get('excerpt'),
+    kind: formData.get('kind') || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  try {
+    await createEngagementManual({
+      tender_id: parsed.data.tender_id,
+      contract_id: null,
+      short_label: parsed.data.short_label,
+      category: 'other',
+      kind: parsed.data.kind ?? null,
+      source_excerpt: parsed.data.excerpt,
+      created_by: userId,
+    })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Création impossible' }
+  }
+  revalidatePath(`/tenders/${parsed.data.tender_id}/engagements`)
+  return { ok: true as const }
 }
 
 function buildTenderContext(tender: { title: string; client_name: string | null; status: string; opportunity_score: number | null }, doc: { extracted_text: string | null } | null, analysis: { summary: string | null; constraints: unknown; risks: unknown; technical_memo: string | null } | null): string {

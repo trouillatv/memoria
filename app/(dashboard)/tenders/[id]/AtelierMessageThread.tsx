@@ -11,6 +11,7 @@ import { AGENT_COLORS } from './agents-colors'
 import { cn } from '@/lib/utils'
 import type { DbTenderChatMessage, ChatAgentName, Source } from '@/types/db'
 import { SourceList } from './SourceList'
+import { ConvertToEngagementButton } from './ConvertToEngagementButton'
 
 interface Props {
   messages: DbTenderChatMessage[]
@@ -65,7 +66,7 @@ function groupMessagesByTurn(messages: DbTenderChatMessage[]): TurnGroup[] {
   return result
 }
 
-function MessageBubble({ message }: { message: DbTenderChatMessage }) {
+function MessageBubble({ message, tenderId }: { message: DbTenderChatMessage; tenderId: string }) {
   const isUser = message.role === 'user'
   const sources = (message.metadata && typeof message.metadata === 'object'
     ? (message.metadata as Record<string, unknown>).sources
@@ -111,6 +112,10 @@ function MessageBubble({ message }: { message: DbTenderChatMessage }) {
           <div className="mt-2">
             <SourceList sources={sources} />
           </div>
+        )}
+        {/* A2 — promouvoir cette réflexion en engagement suivi (l'humain valide). */}
+        {message.content.trim().length >= 5 && (
+          <ConvertToEngagementButton tenderId={tenderId} content={message.content} />
         )}
       </div>
     </div>
@@ -165,7 +170,7 @@ export function AtelierMessageThread({ messages, tenderId, pending = false, onCh
 
         return (
           <div key={group.turnId ?? `legacy-${idx}`} className="space-y-3">
-            {group.userMessage && <MessageBubble message={group.userMessage} />}
+            {group.userMessage && <MessageBubble message={group.userMessage} tenderId={tenderId} />}
 
             {sortedRounds.map(([roundNum, roundMessages]) => (
               <div key={roundNum} className="space-y-2">
@@ -181,7 +186,7 @@ export function AtelierMessageThread({ messages, tenderId, pending = false, onCh
                 <div className={`grid gap-2 ${roundMessages.length === 1 ? 'grid-cols-1' : roundMessages.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
                   {roundMessages.map((m) => (
                     <div key={m.id} className="border rounded-lg p-2 bg-card">
-                      <MessageBubble message={m} />
+                      <MessageBubble message={m} tenderId={tenderId} />
                     </div>
                   ))}
                 </div>
