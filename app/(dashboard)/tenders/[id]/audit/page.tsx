@@ -46,9 +46,14 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
 
   return (
     <div className="space-y-4 w-full">
-      <Link href={`/tenders/${id}/engagements`} className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
-        <ArrowLeft className="h-3 w-3" /> Engagements
-      </Link>
+      <div className="flex items-center gap-2">
+        <Link href={`/tenders/${id}/engagements`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40">
+          <ArrowLeft className="h-3.5 w-3.5" /> Retour aux engagements
+        </Link>
+        <Link href={`/tenders/${id}`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40">
+          Dossier
+        </Link>
+      </div>
 
       <header className="space-y-1">
         <h1 className="text-xl font-semibold inline-flex items-center gap-2">
