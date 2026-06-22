@@ -4,6 +4,7 @@ import { ArrowLeft, ScanSearch } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getTender, getTenderDocument } from '@/lib/db/tenders'
 import { listEngagementsByTender } from '@/lib/db/engagements'
+import { paragraphAround } from '@/lib/pdf/paragraph'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DocumentAudit, type AuditEngagement } from './DocumentAudit'
 
@@ -30,6 +31,7 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
   }
 
   // Tri par page (l'audit suit le document) ; pages inconnues à la fin.
+  const docText = doc?.extracted_text ?? null
   const items: AuditEngagement[] = engagements
     .map((e) => {
       const ref = (e.source_ref ?? {}) as { page?: unknown; section?: unknown }
@@ -38,6 +40,7 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
         kind: e.kind,
         shortLabel: e.short_label,
         excerpt: e.source_excerpt,
+        context: paragraphAround(docText, e.source_excerpt),
         page: typeof ref.page === 'number' ? ref.page : null,
         section: typeof ref.section === 'string' ? ref.section : null,
       }

@@ -15,6 +15,7 @@ export interface AuditEngagement {
   kind: EngagementKind | null
   shortLabel: string
   excerpt: string
+  context: string | null   // paragraphe complet autour de l'extrait (déterministe)
   page: number | null
   section: string | null
 }
@@ -111,6 +112,12 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
                   <span className="block text-sm font-medium">{e.shortLabel}</span>
                   {active && e.excerpt && (
                     <blockquote className="mt-1 text-[12px] italic text-muted-foreground border-l-2 border-sky-300 pl-2">« {e.excerpt} »</blockquote>
+                  )}
+                  {active && e.context && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[11px] text-sky-700 hover:underline">Voir le contexte complet</summary>
+                      <p className="mt-1 text-[12px] text-muted-foreground bg-muted/30 rounded p-2 leading-relaxed">{e.context}</p>
+                    </details>
                   )}
                 </button>
               </li>
