@@ -135,7 +135,8 @@ export function PersonnesTable({
   rows: PersonneRow[]
   orgs: { id: string; name: string }[]
 }) {
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'name', dir: 'asc' })
+  // Tri par défaut : dernière connexion, plus récente d'abord (Vincent 2026-06-23).
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'connexion', dir: 'desc' })
 
   function onSort(key: SortKey) {
     setSort((prev) =>
