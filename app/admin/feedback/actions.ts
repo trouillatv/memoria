@@ -7,6 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { createNotification } from '@/lib/db/notifications'
 
 export async function replyToFeedbackAction(input: {
   feedbackId: string
@@ -20,7 +21,7 @@ export async function replyToFeedbackAction(input: {
   if (reply.length > 4000) return { ok: false, error: '4000 caractères max' }
 
   const admin = createAdminClient()
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('feedback')
     .update({
       admin_reply: reply,
@@ -30,8 +31,23 @@ export async function replyToFeedbackAction(input: {
       status: 'done',
     })
     .eq('id', input.feedbackId)
+    .select('user_id')
+    .single()
 
   if (error) return { ok: false, error: error.message }
+
+  // Notification au socle : l'auteur la verra au CHARGEMENT (bandeau), pas
+  // seulement s'il ouvre le bouton feedback. dedupeKey = 1 notif / retour.
+  if (updated?.user_id) {
+    await createNotification({
+      userId: updated.user_id,
+      type: 'feedback_reply',
+      title: 'Réponse à votre retour',
+      body: reply.length > 280 ? reply.slice(0, 279) + '…' : reply,
+      dedupeKey: `feedback_reply:${input.feedbackId}`,
+    }).catch(() => {}) // best-effort : ne pas faire échouer la réponse
+  }
+
   revalidatePath('/admin/feedback')
   return { ok: true }
 }

@@ -69,6 +69,8 @@ import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
 import { StartBar } from './StartBar'
+import { NotificationsBar } from './NotificationsBar'
+import { getMyUnreadNotifications } from '@/lib/db/notifications'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,6 +127,9 @@ export default async function DashboardPage() {
 
   // Couche « Nouveau depuis hier » — déclarations QR fraîches depuis last_seen_at.
   const inbox = await getInboxFeed(user.id, user.organization_id ?? null)
+
+  // Socle notifications (mig 159) — surfacé au chargement (bandeau).
+  const notifications = await getMyUnreadNotifications()
 
   const [
     contracts,
@@ -207,6 +212,10 @@ export default async function DashboardPage() {
         activeContractsCount={active.length}
         activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
       />
+
+      {/* Notifications (socle mig 159) — réponse à un retour, etc. Au chargement,
+          pas seulement si l'utilisateur ouvre le bouton feedback. */}
+      <NotificationsBar notifications={notifications} />
 
       {/* Barre « Démarrer » sobre & repliable — raccourcis de création + invite
           d'installation mobile. Se masque (mémorisé par appareil). */}
