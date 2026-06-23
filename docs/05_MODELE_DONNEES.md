@@ -103,7 +103,7 @@ Analyses parallèles par agent (`general | lecteur_ao | memoire_technique | cont
 | created_by | uuid FK users | |
 | deleted_at | timestamptz | |
 
-`monthly_reports` : rapport mensuel par contrat et mois (markdown). `tender_similarity` (mig 030) : voisinage AO.
+> Note : le **rapport mensuel** par contrat n'a pas de table dédiée — il est généré (markdown) à la volée depuis les données du contrat/site et partagé via jeton. Le **voisinage d'AO** (mig 030) repose sur deux index trigram `pg_trgm` sur `tenders` (`tenders_title_trgm_idx`, `tenders_client_name_trgm_idx`), pas sur une table.
 
 ---
 
