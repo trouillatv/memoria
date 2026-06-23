@@ -63,7 +63,9 @@ export default async function AdminFeedbackPage({
       .eq('status', 'spam'),
     admin
       .from('feedback')
-      .select('id, user_id, message, page, user_agent, status, created_at, attachment_paths, admin_reply, admin_reply_at, author:users(full_name, email, role, org:organizations(name))')
+      // FK explicite : depuis mig 158, feedback a 2 relations vers users
+      // (user_id ET admin_reply_by) → l'embed doit nommer la clé (sinon ambigu).
+      .select('id, user_id, message, page, user_agent, status, created_at, attachment_paths, admin_reply, admin_reply_at, author:users!feedback_user_id_fkey(full_name, email, role, org:organizations(name))')
       .eq('status', filter)
       .order('created_at', { ascending: false })
       .limit(500),
