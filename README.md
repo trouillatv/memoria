@@ -150,6 +150,26 @@ docs/manuel/     documentation pérenne (conceptuel, architecture, plan)
 docs/superpowers/  doctrines, plans, specs
 ```
 
+### Pipeline réunion → compte-rendu / PV (de la voix au PDF)
+
+Le geste le plus visible du produit : *« je pose mon téléphone, je repars avec mon CR. »*
+L'IA **rédige**, elle ne **valide** jamais — l'humain garde la main à chaque étape.
+
+```
+ENREGISTREMENT  réunion (audio multi-sources : mémo, appel, débrief) + notes + photos
+  → transcription PAR SOURCE puis corpus fusionné (site_report_attachments, mig 141)
+  → correction auto via le GLOSSAIRE métier (alias « finisher » → « finisseur », DOE…)
+  → analyse IA → site_report_proposals : actions · décisions · risques/dépendances · prévisions
+DÉTECTION       risques/dépendances → « créer un blocage ? » (IA propose, humain valide, mig 160)
+VALIDATION      écran /meetings/[id]/pv/validation — modèle PvValidation, items TYPÉS et tracés
+  → accepter / éditer / exclure chaque item ; rien n'est inventé (chaque item pointe sa source)
+  → « Points à confirmer avant PV » : l'IA pose ses TROUS en questions, jamais ne comble seule
+  → gate : un bloquant dur encore actif désactive l'export (filet de qualité juridique)
+PDF AUTO-REMPLI gabarit Word/Excel DU CLIENT (docxtemplater + LibreOffice → PDF) = source de vérité
+  → ~80 % auto-rempli (scalaires, participants, points examinés, actions) ; React-PDF en secours
+  → version finale ARCHIVÉE comme référence + alimente la mémoire du site (timeline, sujets)
+```
+
 ### Pipeline AO → mémoire vivante (cœur produit)
 
 ```
