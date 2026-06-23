@@ -147,6 +147,9 @@ Historique jour par jour : entreprises présentes, équipes, anomalies, météo 
 ### Blocages de chantier (mémoire de contexte)
 Un **blocage** = un fait daté qui a empêché d'avancer : **intempéries, grève, accès, livraison, matériel, sous-traitant, administratif, sécurité, autre**. Ce n'est **pas du planning ni un Gantt** — c'est de la mémoire de contexte opposable (« le 12/07, terrassement reporté pour pluie »). Depuis la **Mémoire du lieu**, bouton **« Déclarer un blocage »** (type, ce qui a empêché d'avancer, impact, date) ; le blocage apparaît ensuite dans la ligne de temps en rouge, **« en cours »** tant qu'il n'est pas levé. Descriptif, jamais une imputation de retard à quelqu'un — on décrit le fait, on ne juge personne. Un blocage météo s'appuie sur la météo du jour déjà saisie (journal), il ne la recopie pas.
 
+### Récit du chantier (/sites/[id]/recit)
+**L'histoire du chantier**, pas un tableau. Accès rapide **« Récit »** en tête de fiche. Deux parties : (1) **« Raconte-moi ce chantier »** — une synthèse *déterministe* (démarrage, ancienneté, phase, sujet le plus actif, **jours de blocage cumulés + répartition par cause**, réserves levées) ; (2) la **frise mois par mois** des **jalons** lus comme un récit : 📝 réunion · ⛔ blocage · 🚚 livraison · 📋 réserve ouverte · ✅ réserve levée · 🧭 décision · ✔️ action terminée. C'est une **3ᵉ lecture** des mêmes données (le Journal montre le brut quotidien, la Mémoire du lieu les traces qui changent le lieu, le Récit les jalons). Aucune saisie, jamais un score ni une prédiction — « voici comment ce chantier s'est déroulé ».
+
 ### Sujets : l'histoire des problèmes (/sites/[id]/subjects)
 Un **sujet** = l'histoire complète d'un problème ou livrable (DOE, essais, fissure…), jamais une personne. Recherche instantanée (« Taper DOE → tout »). Un indicateur de **santé de rattachement** montre le % d'objets reliés à un sujet (informatif, non bloquant).
 
