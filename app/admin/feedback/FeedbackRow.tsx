@@ -6,14 +6,15 @@
 // L'update du statut passe par le client Supabase (RLS admin déjà en place
 // via migration 075). Refresh server après mutation.
 
-import { useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Trash2, RotateCcw, Smartphone, Monitor, Building2 } from 'lucide-react'
+import { Check, Trash2, RotateCcw, Smartphone, Monitor, Building2, Reply, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient as createBrowserClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { FeedbackStatus } from './page'
+import { replyToFeedbackAction } from './actions'
 
 interface Entry {
   id: string
@@ -28,6 +29,8 @@ interface Entry {
   attachment_paths: string[]
   attachment_urls: string[]
   author_org: string | null
+  admin_reply: string | null
+  admin_reply_at: string | null
 }
 
 function formatDateFr(iso: string): string {
@@ -75,6 +78,23 @@ export function FeedbackRow({ entry }: { entry: Entry }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const supabase = createBrowserClient()
+  const [composing, setComposing] = useState(false)
+  const [reply, setReply] = useState(entry.admin_reply ?? '')
+
+  function sendReply() {
+    const text = reply.trim()
+    if (!text) return
+    startTransition(async () => {
+      const res = await replyToFeedbackAction({ feedbackId: entry.id, reply: text })
+      if (!res.ok) {
+        toast.error(res.error ?? 'Erreur lors de l’envoi de la réponse.')
+        return
+      }
+      toast.success('Réponse envoyée à l’auteur')
+      setComposing(false)
+      router.refresh()
+    })
+  }
 
   function updateStatus(newStatus: FeedbackStatus) {
     startTransition(async () => {
@@ -172,7 +192,54 @@ export function FeedbackRow({ entry }: { entry: Entry }) {
         </div>
       )}
 
+      {/* Réponse de l'équipe (visible par l'auteur dans son bouton feedback) */}
+      {entry.admin_reply && !composing && (
+        <div className="rounded-md border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">
+            Réponse envoyée à l&apos;auteur
+          </p>
+          <p className="mt-1 text-sm whitespace-pre-wrap break-words leading-relaxed">{entry.admin_reply}</p>
+          {entry.admin_reply_at && (
+            <p className="mt-1 text-[11px] text-muted-foreground">{formatDateFr(entry.admin_reply_at)}</p>
+          )}
+        </div>
+      )}
+
+      {composing && (
+        <div className="space-y-2">
+          <textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value.slice(0, 4000))}
+            rows={3}
+            disabled={pending}
+            autoFocus
+            placeholder="Votre réponse — elle apparaîtra à l'auteur dans son bouton feedback…"
+            className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={sendReply} disabled={pending || !reply.trim()}>
+              <Send className="mr-1 h-3.5 w-3.5" />
+              Envoyer la réponse
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => { setComposing(false); setReply(entry.admin_reply ?? '') }}
+              disabled={pending}
+            >
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 pt-1">
+        {!composing && (
+          <Button size="sm" variant="outline" onClick={() => setComposing(true)} disabled={pending}>
+            <Reply className="mr-1 h-3.5 w-3.5" />
+            {entry.admin_reply ? 'Modifier la réponse' : 'Répondre'}
+          </Button>
+        )}
         {entry.status === 'open' && (
           <>
             <Button

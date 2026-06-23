@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { usePathname } from 'next/navigation'
-import { ImagePlus, MessageSquare, X } from 'lucide-react'
+import { ImagePlus, MessageSquare, X, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -20,6 +20,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  getMyFeedbackReplies,
+  markMyFeedbackRepliesSeen,
+  type MyFeedbackReply,
+} from '@/app/(dashboard)/feedback-reply-actions'
 
 const MAX_LENGTH = 2000
 const MAX_ATTACHMENTS = 3
@@ -39,6 +44,29 @@ export function FeedbackButton() {
   const [pending, startTransition] = useTransition()
   const [showHint, setShowHint] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [replies, setReplies] = useState<MyFeedbackReply[]>([])
+  const [unseen, setUnseen] = useState(0)
+
+  // Charge les réponses de l'équipe à mes retours (pour la pastille « non lu »).
+  useEffect(() => {
+    let alive = true
+    getMyFeedbackReplies()
+      .then((rows) => {
+        if (!alive) return
+        setReplies(rows)
+        setUnseen(rows.filter((r) => !r.reply_seen_at).length)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  // À l'ouverture : marquer les réponses comme lues (best-effort).
+  useEffect(() => {
+    if (open && unseen > 0) {
+      markMyFeedbackRepliesSeen().catch(() => {})
+      setUnseen(0)
+    }
+  }, [open, unseen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -176,6 +204,14 @@ export function FeedbackButton() {
           <span className="absolute inset-0 rounded-full bg-foreground/20 motion-safe:animate-ping" aria-hidden />
         )}
         <MessageSquare className="relative h-5 w-5" />
+        {unseen > 0 && (
+          <span
+            className="absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white ring-2 ring-background"
+            title={`${unseen} réponse${unseen > 1 ? 's' : ''} de l'équipe`}
+          >
+            {unseen}
+          </span>
+        )}
       </button>
 
       <Dialog
@@ -196,6 +232,21 @@ export function FeedbackButton() {
           </DialogHeader>
 
           <div className="space-y-3">
+            {/* Réponses de l'équipe à mes retours précédents */}
+            {replies.length > 0 && (
+              <div className="max-h-44 space-y-2 overflow-y-auto rounded-md border border-brand-200 bg-brand-50/50 p-3 dark:border-brand-900/40 dark:bg-brand-950/20">
+                <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">
+                  <Sparkles className="h-3 w-3" /> Réponses de l&apos;équipe
+                </p>
+                {replies.map((r) => (
+                  <div key={r.id} className="border-l-2 border-brand-300 pl-2">
+                    <p className="line-clamp-2 text-xs text-muted-foreground">Vous : « {r.message} »</p>
+                    <p className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed">{r.admin_reply}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value.slice(0, MAX_LENGTH))}

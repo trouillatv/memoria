@@ -32,6 +32,8 @@ interface FeedbackEntry {
   /** Signed URLs générées server-side pour afficher les miniatures (1h TTL). */
   attachment_urls: string[]
   author_org: string | null
+  admin_reply: string | null
+  admin_reply_at: string | null
 }
 
 export default async function AdminFeedbackPage({
@@ -61,7 +63,7 @@ export default async function AdminFeedbackPage({
       .eq('status', 'spam'),
     admin
       .from('feedback')
-      .select('id, user_id, message, page, user_agent, status, created_at, attachment_paths, author:users(full_name, email, role, org:organizations(name))')
+      .select('id, user_id, message, page, user_agent, status, created_at, attachment_paths, admin_reply, admin_reply_at, author:users(full_name, email, role, org:organizations(name))')
       .eq('status', filter)
       .order('created_at', { ascending: false })
       .limit(500),
@@ -90,6 +92,8 @@ export default async function AdminFeedbackPage({
     status: FeedbackStatus
     created_at: string
     attachment_paths: string[] | null
+    admin_reply: string | null
+    admin_reply_at: string | null
     author: AuthorShape | AuthorShape[] | null
   }
   const pickOne = <T,>(v: T | T[] | null | undefined): T | null => {
@@ -126,6 +130,8 @@ export default async function AdminFeedbackPage({
       author_label: author?.full_name ?? author?.email ?? 'Utilisateur inconnu',
       author_role: author?.role ?? '—',
       author_org: org?.name ?? null,
+      admin_reply: r.admin_reply,
+      admin_reply_at: r.admin_reply_at,
     }
   })
 
