@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Loader2, BookA } from 'lucide-react'
-import { createGlossaryTermAction, deleteGlossaryTermAction } from './glossary-actions'
+import { Plus, Trash2, Loader2, BookA, Sparkles } from 'lucide-react'
+import { createGlossaryTermAction, deleteGlossaryTermAction, loadDefaultGlossaryAction } from './glossary-actions'
 import { GLOSSARY_CATEGORIES } from '@/lib/db/glossary-constants'
+import { DEFAULT_GLOSSARY } from '@/lib/db/glossary-seed'
 import type { GlossaryTerm } from '@/lib/db/glossary'
 
 export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
@@ -32,8 +33,31 @@ export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
     })
   }
 
+  function loadDefaults() {
+    setError(null)
+    start(async () => {
+      const res = await loadDefaultGlossaryAction()
+      if (res.ok) router.refresh()
+      else setError(res.error ?? 'Échec')
+    })
+  }
+
   return (
     <div className="space-y-5">
+      {/* Vocabulaire de démarrage (BTP/VRD + MOE) — idempotent, n'écrase rien. */}
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed bg-muted/20 p-3">
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Vocabulaire de démarrage</span> — {DEFAULT_GLOSSARY.length} termes
+          BTP/VRD + MOE (DOE, PAQ, OPR, finisseur, enrobé…). N&apos;écrase rien : ajoute seulement ce qui manque.
+        </p>
+        <button
+          type="button" onClick={loadDefaults} disabled={pending}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/40 disabled:opacity-50"
+        >
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Charger le vocabulaire métier
+        </button>
+      </section>
+
       {/* Ajout */}
       <section className="rounded-xl border bg-card p-4 space-y-2.5">
         <h2 className="text-sm font-semibold">Ajouter un terme</h2>

@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { createGlossaryTerm, deleteGlossaryTerm } from '@/lib/db/glossary'
+import { createGlossaryTerm, deleteGlossaryTerm, seedDefaultGlossary } from '@/lib/db/glossary'
 
 const TermSchema = z.object({
   term: z.string().trim().min(1, 'Terme requis').max(120),
@@ -44,6 +44,19 @@ export async function createGlossaryTermAction(
     })
     revalidatePath('/glossaire')
     return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'unknown' }
+  }
+}
+
+/** Charge le vocabulaire de démarrage (BTP/VRD + MOE). Idempotent. Admin only. */
+export async function loadDefaultGlossaryAction(): Promise<{ ok: boolean; inserted?: number; error?: string }> {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth
+  try {
+    const r = await seedDefaultGlossary(auth.user.id)
+    revalidatePath('/glossaire')
+    return { ok: true, inserted: r.inserted }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'unknown' }
   }

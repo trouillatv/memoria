@@ -6,6 +6,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { DEFAULT_GLOSSARY } from './glossary-seed'
 
 // Re-export pour compat (les appelants serveur peuvent garder l'import depuis ici).
 // La constante VIT dans glossary-constants.ts (sans dépendance serveur) pour que
@@ -87,6 +88,32 @@ export async function createGlossaryTerm(input: {
     .single()
   if (error) throw error
   return (data as { id: string }).id
+}
+
+/**
+ * Charge le vocabulaire métier de démarrage (BTP/VRD + MOE) pour l'organisation
+ * courante. IDEMPOTENT : ne réinsère pas un terme déjà présent (comparaison
+ * insensible à la casse). Renvoie le nombre de termes effectivement ajoutés.
+ */
+export async function seedDefaultGlossary(createdBy: string | null): Promise<{ inserted: number; skipped: number }> {
+  const supabase = createAdminClient()
+  const orgId = await getOrgId()
+  const existing = await listGlossaryTerms()
+  const have = new Set(existing.map((t) => t.term.trim().toLowerCase()))
+  const toInsert = DEFAULT_GLOSSARY.filter((t) => !have.has(t.term.trim().toLowerCase()))
+  if (toInsert.length === 0) return { inserted: 0, skipped: DEFAULT_GLOSSARY.length }
+  const { error } = await supabase.from('glossary_terms').insert(
+    toInsert.map((t) => ({
+      organization_id: orgId,
+      term: t.term,
+      definition: t.definition,
+      category: t.category,
+      aliases: t.aliases,
+      created_by: createdBy,
+    })),
+  )
+  if (error) throw error
+  return { inserted: toInsert.length, skipped: DEFAULT_GLOSSARY.length - toInsert.length }
 }
 
 /** Suppression — gardée scopée à l'organisation de l'utilisateur courant. */
