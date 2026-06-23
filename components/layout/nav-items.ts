@@ -81,8 +81,6 @@ export const NAV: NavItem[] = [
   { href: '/preuves',    label: 'Dossier de preuves',     icon: FileSearch,    roles: ['admin', 'manager'] },
   // « Bibliothèque » = bibliothèque documentaire vivante (/documents).
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
-  // Glossaire métier (mig 150) — vocabulaire + alias, nourrit les corrections.
-  { href: '/glossaire',  label: 'Glossaire métier',       icon: BookA,         roles: ['admin', 'manager'] },
   // — Guides (les 3 regroupés sous l'en-tête « Guides ») —
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'], groupStart: 'Guides' },
   { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
@@ -90,6 +88,9 @@ export const NAV: NavItem[] = [
   // — Admin —
   { href: '/admin',          label: 'Administration', icon: ShieldAlert, roles: ['admin'], groupStart: 'Admin' },
   { href: '/admin/depenses-ia', label: 'Dépenses IA', icon: Eye,         roles: ['admin'] },
+  // Glossaire métier (mig 150) — vocabulaire + alias, nourrit les corrections de
+  // transcription. Admin uniquement (référentiel sensible, géré au sommet).
+  { href: '/glossaire',      label: 'Glossaire métier', icon: BookA,     roles: ['admin'] },
 ]
 
 export function isActive(pathname: string, href: string): boolean {

@@ -12,17 +12,18 @@ const TermSchema = z.object({
   aliases: z.string().trim().max(500).optional(), // saisie « a, b, c »
 })
 
-async function requireManagerOrAdmin() {
+// Admin uniquement (Vincent 2026-06-24) — le glossaire passe sous Admin.
+async function requireAdmin() {
   const user = await getCurrentUserWithProfile()
   if (!user) return { ok: false as const, error: 'Non authentifié' }
-  if (user.role !== 'admin' && user.role !== 'manager') return { ok: false as const, error: 'Accès refusé' }
+  if (user.role !== 'admin') return { ok: false as const, error: 'Accès refusé' }
   return { ok: true as const, user }
 }
 
 export async function createGlossaryTermAction(
   input: z.infer<typeof TermSchema>,
 ): Promise<{ ok: boolean; error?: string }> {
-  const auth = await requireManagerOrAdmin()
+  const auth = await requireAdmin()
   if (!auth.ok) return auth
   const parsed = TermSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
@@ -49,7 +50,7 @@ export async function createGlossaryTermAction(
 }
 
 export async function deleteGlossaryTermAction(id: string): Promise<{ ok: boolean; error?: string }> {
-  const auth = await requireManagerOrAdmin()
+  const auth = await requireAdmin()
   if (!auth.ok) return auth
   if (!z.string().uuid().safeParse(id).success) return { ok: false, error: 'Identifiant invalide' }
   try {

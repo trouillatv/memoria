@@ -11,7 +11,8 @@ import { GlossaryManager } from './GlossaryManager'
 export default async function GlossairePage() {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
-  if (user.role !== 'admin' && user.role !== 'manager') redirect('/planning')
+  // Admin uniquement (Vincent 2026-06-24) — référentiel sensible, sous Admin.
+  if (user.role !== 'admin') redirect('/dashboard')
 
   const terms = await listGlossaryTerms()
 
