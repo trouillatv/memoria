@@ -30,7 +30,22 @@ async function sendFeedbackEmail(params: {
 }) {
   const apiKey = process.env.RESEND_API_KEY
   const to = process.env.FEEDBACK_NOTIFY_EMAIL
-  if (!apiKey || !to) return  // silently skip if not configured
+  // Expéditeur configurable : une fois un domaine vérifié dans Resend, définir
+  // FEEDBACK_FROM_EMAIL (ex « MemorIA <feedback@mondomaine.fr> ») pour une bonne
+  // délivrabilité. Défaut = bac à sable Resend (souvent bloqué par Hotmail/Outlook).
+  const from = process.env.FEEDBACK_FROM_EMAIL ?? 'MemorIA Feedback <onboarding@resend.dev>'
+
+  if (!apiKey || !to) {
+    // NON silencieux (avant : `return` muet → l'absence d'email était invisible).
+    const missing = [!apiKey && 'RESEND_API_KEY', !to && 'FEEDBACK_NOTIFY_EMAIL']
+      .filter(Boolean)
+      .join(', ')
+    console.warn(
+      `[feedback-email] Relais email sauté — variable(s) manquante(s) en prod : ${missing}. ` +
+        `À définir dans Vercel → Settings → Environment Variables, puis redéployer.`,
+    )
+    return
+  }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
   const adminLink = appUrl ? `${appUrl}/admin/feedback` : '/admin/feedback'
@@ -58,19 +73,34 @@ async function sendFeedbackEmail(params: {
     </div>
   `
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      from: 'MemorIA Feedback <onboarding@resend.dev>',
-      to: [to],
-      subject: `[MemorIA] Retour de ${params.userName}`,
-      html,
-    }),
-  }).catch(() => {})  // fire-and-forget : l'échec email ne bloque pas le feedback
+  // Fire-and-forget : l'échec email ne bloque jamais le feedback — mais on LOGGE
+  // désormais le refus Resend (ex : sandbox onboarding@resend.dev limité à
+  // l'adresse du compte) pour rendre le diagnostic possible.
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: `[MemorIA] Retour de ${params.userName}`,
+        html,
+      }),
+    })
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      console.warn(
+        `[feedback-email] Resend a refusé l'envoi (HTTP ${res.status}). ` +
+          `Souvent : expéditeur sandbox (vérifier un domaine + FEEDBACK_FROM_EMAIL) ` +
+          `ou destinataire non autorisé. Détail : ${detail.slice(0, 300)}`,
+      )
+    }
+  } catch (e) {
+    console.warn('[feedback-email] Échec réseau vers Resend :', e)
+  }
 }
 
 // ───────────────────────────────── Route handler ──────────────────────────────
