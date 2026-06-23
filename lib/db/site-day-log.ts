@@ -23,6 +23,12 @@ export interface SiteDayWeather {
   weather: WeatherCode | null
   intemperie: boolean
   note: string | null
+  // Métriques Open-Meteo (mig 161) — null si météo saisie à la main.
+  precipitationMm: number | null
+  windMaxKmh: number | null
+  tempMin: number | null
+  tempMax: number | null
+  weatherSource: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -36,27 +42,172 @@ export async function getSiteDayLogs(
   const sb = createAdminClient()
   let q = sb
     .from('site_day_log')
-    .select('log_date, weather, intemperie, note')
+    .select('log_date, weather, intemperie, note, precipitation_mm, wind_max_kmh, temp_min, temp_max, weather_source')
     .eq('site_id', siteId)
     .order('log_date', { ascending: false })
   if (options?.dateFrom) q = q.gte('log_date', options.dateFrom)
 
   const { data, error } = await q
   if (error) {
-    // Dégradation gracieuse si la migration 108 n'est pas encore appliquée.
+    // Dégradation gracieuse si la migration 108/161 n'est pas encore appliquée.
     const code = (error as { code?: string }).code ?? ''
     const msg = error.message ?? ''
-    if (code === '42P01' || msg.includes('does not exist') || msg.includes('site_day_log')) {
+    if (code === '42P01' || msg.includes('does not exist') || msg.includes('site_day_log') || msg.includes('column')) {
       return []
     }
     throw error
   }
-  return (data ?? []).map((r) => ({
+  return (data ?? []).map(rowToDayWeather)
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' ? v : v == null ? null : Number.isFinite(Number(v)) ? Number(v) : null
+}
+
+function rowToDayWeather(r: Record<string, unknown>): SiteDayWeather {
+  return {
     logDate: r.log_date as string,
     weather: (r.weather as WeatherCode | null) ?? null,
     intemperie: Boolean(r.intemperie),
     note: (r.note as string | null) ?? null,
-  }))
+    precipitationMm: num(r.precipitation_mm),
+    windMaxKmh: num(r.wind_max_kmh),
+    tempMin: num(r.temp_min),
+    tempMax: num(r.temp_max),
+    weatherSource: (r.weather_source as string | null) ?? null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Coordonnées du site (mig 161) — pour interroger Open-Meteo.
+// ---------------------------------------------------------------------------
+
+export interface SiteCoordinates {
+  latitude: number | null
+  longitude: number | null
+}
+
+export async function getSiteCoordinates(siteId: string): Promise<SiteCoordinates> {
+  const { data } = await createAdminClient()
+    .from('sites')
+    .select('latitude, longitude')
+    .eq('id', siteId)
+    .maybeSingle()
+  return {
+    latitude: num((data as Record<string, unknown> | null)?.latitude),
+    longitude: num((data as Record<string, unknown> | null)?.longitude),
+  }
+}
+
+export async function setSiteCoordinates(siteId: string, latitude: number, longitude: number): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('sites')
+    .update({ latitude, longitude })
+    .eq('id', siteId)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Lecture d'UN jour précis (cache) + d'un lot d'ids (timeline blocage météo).
+// ---------------------------------------------------------------------------
+
+/** Id du jour de météo (pour lier un blocage météo), ou null s'il n'existe pas. */
+export async function getSiteDayLogId(siteId: string, logDate: string): Promise<string | null> {
+  const { data } = await createAdminClient()
+    .from('site_day_log')
+    .select('id')
+    .eq('site_id', siteId)
+    .eq('log_date', logDate)
+    .maybeSingle()
+  return (data as { id: string } | null)?.id ?? null
+}
+
+export async function getSiteDayLog(siteId: string, logDate: string): Promise<SiteDayWeather | null> {
+  const { data } = await createAdminClient()
+    .from('site_day_log')
+    .select('id, log_date, weather, intemperie, note, precipitation_mm, wind_max_kmh, temp_min, temp_max, weather_source')
+    .eq('site_id', siteId)
+    .eq('log_date', logDate)
+    .maybeSingle()
+  return data ? rowToDayWeather(data as Record<string, unknown>) : null
+}
+
+export async function getDayLogsByIds(ids: string[]): Promise<Map<string, SiteDayWeather>> {
+  const out = new Map<string, SiteDayWeather>()
+  if (ids.length === 0) return out
+  const { data, error } = await createAdminClient()
+    .from('site_day_log')
+    .select('id, log_date, weather, intemperie, note, precipitation_mm, wind_max_kmh, temp_min, temp_max, weather_source')
+    .in('id', ids)
+  if (error) return out
+  for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+    out.set(r.id as string, rowToDayWeather(r))
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Enrichissement météo depuis l'API (mig 161). PRÉSERVE le drapeau intemperie
+// et la note saisis par l'humain : la météo documente, elle ne décide pas.
+// Renvoie l'id du jour (pour pouvoir lier un blocage météo).
+// ---------------------------------------------------------------------------
+
+export async function enrichSiteDayLogWeather(input: {
+  siteId: string
+  logDate: string
+  weather: WeatherCode | null
+  precipitationMm: number | null
+  windMaxKmh: number | null
+  tempMin: number | null
+  tempMax: number | null
+  source: string
+  userId?: string | null
+}): Promise<string> {
+  const sb = createAdminClient()
+  const orgId = await getOrgId()
+  const weatherFields = {
+    weather: input.weather,
+    precipitation_mm: input.precipitationMm,
+    wind_max_kmh: input.windMaxKmh,
+    temp_min: input.tempMin,
+    temp_max: input.tempMax,
+    weather_source: input.source,
+    weather_fetched_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+  const { data: existing } = await sb
+    .from('site_day_log')
+    .select('id')
+    .eq('site_id', input.siteId)
+    .eq('log_date', input.logDate)
+    .maybeSingle()
+
+  if (existing) {
+    // Mise à jour CIBLÉE : on ne touche ni intemperie ni note (décision humaine).
+    const { data, error } = await sb
+      .from('site_day_log')
+      .update(weatherFields)
+      .eq('id', (existing as { id: string }).id)
+      .select('id')
+      .single()
+    if (error) throw error
+    return (data as { id: string }).id
+  }
+
+  const { data, error } = await sb
+    .from('site_day_log')
+    .insert({
+      site_id: input.siteId,
+      organization_id: orgId,
+      log_date: input.logDate,
+      intemperie: false, // suggestion seulement — jamais auto-cochée ici
+      created_by: input.userId ?? null,
+      ...weatherFields,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  return (data as { id: string }).id
 }
 
 // ---------------------------------------------------------------------------

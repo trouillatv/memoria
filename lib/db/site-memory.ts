@@ -6,6 +6,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { listBlocagesBySite, blocagesToMemoryEvents } from './site-blocages'
+import { getDayLogsByIds } from './site-day-log'
+import { weatherMetricsSummary } from '@/services/weather/open-meteo'
 
 export type SiteMemoryEventType =
   | 'intervention'
@@ -487,8 +489,22 @@ export async function getSiteMemoryTimeline(
   // rien. En cours = saillant, résolu = trace conservée (preuve datée).
   {
     const blocages = await listBlocagesBySite(siteId)
+    const dayLogIds = blocages.map((b) => b.dayLogId).filter((v): v is string => !!v)
+    const dayLogs = dayLogIds.length ? await getDayLogsByIds(dayLogIds) : new Map()
     for (const ev of blocagesToMemoryEvents(blocages)) {
       if (since && ev.occurredAt < since) continue
+      // Blocage météo lié à un jour de site_day_log → on documente avec la météo
+      // mesurée (« pluie 42 mm »). La météo documente, elle ne décide pas.
+      const dlId = ev.meta?.dayLogId as string | undefined
+      const dl = dlId ? dayLogs.get(dlId) : undefined
+      if (dl) {
+        const wx = weatherMetricsSummary({
+          precipitationMm: dl.precipitationMm,
+          windMaxKmh: dl.windMaxKmh,
+          tempMax: dl.tempMax,
+        })
+        if (wx) ev.detail = ev.detail ? `${ev.detail} · ${wx}` : wx
+      }
       events.push(ev)
     }
   }

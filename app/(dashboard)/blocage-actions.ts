@@ -12,6 +12,7 @@ import {
   updateSiteBlocage,
   deleteSiteBlocage,
 } from '@/lib/db/site-blocages'
+import { getSiteDayLogId } from '@/lib/db/site-day-log'
 import { BLOCAGE_TYPES, type BlocageType } from '@/lib/db/blocage-constants'
 
 type Result = { ok: boolean; error?: string }
@@ -25,6 +26,21 @@ async function requireManagerOrAdmin() {
 
 function coerceType(t: string | null | undefined): BlocageType {
   return (BLOCAGE_TYPES as readonly string[]).includes(t ?? '') ? (t as BlocageType) : 'autre'
+}
+
+/** Blocage météo → lie le jour de météo existant (mig 161), sans le recopier.
+ *  Best-effort : si aucun jour n'existe encore, le lien reste vide. */
+async function resolveWeatherDayLogId(
+  type: BlocageType,
+  siteId: string,
+  dateStart: string | null | undefined,
+): Promise<string | null> {
+  if (type !== 'intemperie' || !dateStart) return null
+  try {
+    return await getSiteDayLogId(siteId, dateStart)
+  } catch {
+    return null
+  }
 }
 
 export interface NewBlocageInput {
@@ -44,14 +60,16 @@ export async function declareSiteBlocageAction(
   try {
     const user = await requireManagerOrAdmin()
     if (!input.title?.trim()) return { ok: false, error: 'Titre requis' }
+    const type = coerceType(input.type)
     await createSiteBlocage({
       siteId,
-      type: coerceType(input.type),
+      type,
       title: input.title,
       description: input.description ?? null,
       impact: input.impact ?? null,
       dateStart: input.dateStart ?? null,
       dateEnd: input.dateEnd ?? null,
+      dayLogId: await resolveWeatherDayLogId(type, siteId, input.dateStart),
       sourceType: 'human',
       organizationId: await getOrgId(),
       createdBy: user.id,
@@ -74,15 +92,18 @@ export async function addBlocageFromReportAction(
     const report = await getSiteReport(reportId)
     if (!report?.site_id) return { ok: false, error: 'Réunion sans chantier rattaché' }
     if (!input.title?.trim()) return { ok: false, error: 'Titre requis' }
+    const type = coerceType(input.type)
+    // Par défaut : daté au jour du CR (mémoire de contexte cohérente).
+    const dateStart = input.dateStart ?? report.created_at?.slice(0, 10) ?? null
     await createSiteBlocage({
       siteId: report.site_id,
-      type: coerceType(input.type),
+      type,
       title: input.title,
       description: input.description ?? null,
       impact: input.impact ?? null,
-      // Par défaut : daté au jour du CR (mémoire de contexte cohérente).
-      dateStart: input.dateStart ?? report.created_at?.slice(0, 10) ?? null,
+      dateStart,
       dateEnd: input.dateEnd ?? null,
+      dayLogId: await resolveWeatherDayLogId(type, report.site_id, dateStart),
       sourceType: input.sourceType ?? 'meeting',
       sourceReportId: reportId,
       organizationId: await getOrgId(),

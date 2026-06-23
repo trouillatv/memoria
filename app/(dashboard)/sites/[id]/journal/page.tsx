@@ -8,6 +8,7 @@ import { getSiteDayLogs, mergeWeatherIntoJournal } from '@/lib/db/site-day-log'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { JournalView } from './JournalView'
 import { DayWeatherForm } from './DayWeatherForm'
+import { SiteWeatherFetch } from './SiteWeatherFetch'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -79,6 +80,8 @@ export default async function SiteJournalPage({ params }: PageProps) {
           Historique complet des interventions — qui était là, ce qui s&apos;est passé, quelles entreprises étaient présentes.
         </p>
       </header>
+
+      <SiteWeatherFetch siteId={id} />
 
       <DayWeatherForm siteId={id} />
 
