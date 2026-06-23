@@ -154,7 +154,16 @@ export default async function AdminFeedbackPage({
         <TabLink href="/admin/feedback?status=spam" active={filter === 'spam'} label="Spam" count={counts.spam} />
       </nav>
 
-      {entries.length === 0 ? (
+      {listRes.error ? (
+        <div className="rounded-lg border border-red-300 bg-red-50/60 px-6 py-6 text-sm text-red-900 dark:bg-red-950/20">
+          <p className="font-medium">Impossible de charger les retours.</p>
+          <p className="mt-1 text-xs text-red-700">
+            {listRes.error.message}
+            {counts.open + counts.done + counts.spam > 0 &&
+              ' — des retours existent pourtant (cf. compteurs). Si une migration vient d’être appliquée, le cache de schéma se recharge sous peu ; réessayez.'}
+          </p>
+        </div>
+      ) : entries.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground italic">
           {filter === 'open' ? 'Aucun feedback à traiter pour le moment.' : `Aucun feedback ${filter === 'done' ? 'traité' : 'marqué spam'}.`}
         </div>

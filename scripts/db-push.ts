@@ -115,6 +115,18 @@ async function main() {
     }
   }
 
+  // Recharge le cache de schéma PostgREST : sinon, une colonne fraîchement
+  // ajoutée que l'app SELECT via supabase-js renvoie une erreur (colonne inconnue
+  // du cache) tant que PostgREST n'a pas rechargé — bug silencieux (liste vide).
+  if (appliedCount > 0) {
+    try {
+      await runQuery(`notify pgrst, 'reload schema';`)
+      console.log(`[db-push] PostgREST schema cache reloaded (NOTIFY pgrst).`)
+    } catch (e) {
+      console.warn(`[db-push] (non bloquant) reload schema échoué:`, e)
+    }
+  }
+
   console.log(`[db-push] Done. Applied ${appliedCount} new migration(s). Total tracked: ${applied.size + appliedCount}.`)
 }
 
