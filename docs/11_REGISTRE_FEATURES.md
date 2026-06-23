@@ -16,6 +16,11 @@ Source principale : audits board (5 rôles + 5 techniques) du 13-14 mai 2026.
 | **Phase 3 — Mémoire du lieu** | 2026-05-14 | Extension site_notes (kind + active_until), vue `/sites/[id]`, ASavoirManager | Commit `79bea49` |
 | **Phase 4 — Continuité contractuelle** | 2026-05-14 | proof_requirement, RPC contract_summaries enrichi, DossierConfidenceBadge | Commit `8aa42d4` |
 | **Continuité & mémoire (sprints 05-23→27)** | 2026-05-27 | Passages de témoin (PDF imprimable, QR, **date d'effet obligatoire**, suppression, sélecteur depuis /handovers, offboarding guidé) ; **coût IA en XPF** (tooltip, moyenne observée) ; **temps mémoriel** Sprint D moitié 1 (4 états + résolution + supersession visible) ; gestion des collections documentaires ; audit board /handovers **Lot A** | `10_JOURNAL_DECISIONS.md` (2026-05-27) |
+| **Pivot réunion → Compte-rendu** | 2026-06-14/15 | `site_reports` multimodal (audio/notes/photos), CR = objet de 1er rang multi-sites, reconstruction manuelle complète, preuve d'exécution externe `/i/[token]`, contributions scopées | mig 099-107 |
+| **Objets métier du chantier** | 2026-06-15→21 | Actions (`site_actions`), Réserves (`site_reserve` + mini-dossier), Livraisons (`site_delivery`), Décisions (`site_decisions`), **Sujets** (`subjects` + dépendances), **Obligations** (`site_obligations`, objet prescriptif + provenance CCTP), casting companies/intervenants | mig 108-156 |
+| **PV BECIB (gabarit client)** | 2026-06-19→21 | Génération du CR/PV au **gabarit Word/Excel du client** (docxtemplater + LibreOffice), écran de validation humaine typé, « points à confirmer avant PV », capture des corrections (apprentissage) | `cr-becib-export-word`, mig 124-143 |
+| **Blocages · Récit · Météo** | 2026-06-24 | **Blocages chantier** (`site_blocages`, mémoire de contexte, détection PV) ; **Récit du chantier** (`/recit`, timeline narrative + synthèse déterministe) ; **météo Open-Meteo** (enrichit `site_day_log`, sans clé) | mig 160-161, `blocages-chantier-mig160` |
+| **Glossaire métier** | 2026-06-21→24 | Référentiel terme/définition/alias/catégorie (corrige la transcription) ; passé **admin-only** sous Administration ; **seed multi-métier** 59 termes (VRD/MOE, propreté, élec, CVC, SSI) en 1 clic | mig 150-152 |
 
 ---
 

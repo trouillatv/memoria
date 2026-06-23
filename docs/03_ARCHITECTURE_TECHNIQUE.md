@@ -15,9 +15,12 @@
 | Composants | shadcn/ui + Radix Base UI | — |
 | Toasts | sonner | 2.x |
 | DnD | @dnd-kit/core | 6.x |
-| PDF | @react-pdf/renderer | 4.x |
-| Export Word | docx | 9.x |
-| Export Excel | exceljs | 4.x |
+| PDF (gabarit client) | docxtemplater + LibreOffice (DOCX→PDF) | — |
+| PDF (composants) | @react-pdf/renderer | 4.x |
+| Extraction PDF (AO) | unpdf | — |
+| Export Word / Excel | docx · docxtemplater · exceljs | — |
+| Météo | Open-Meteo (sans clé) | — |
+| Vecteurs | pgvector (Supabase) | — |
 | Formulaires | react-hook-form + zod | — |
 | Tests | Vitest + @testing-library/react | — |
 | TypeScript | strict | 5.x |
@@ -26,18 +29,25 @@
 
 ## Routing Next.js App Router
 
-Trois groupes de routes :
+Groupes de routes :
 
 ```
 app/
   (auth)/          — pages publiques (login, accept-invite, change-password)
-  (dashboard)/     — app principale, nécessite session
-  (field)/m/       — interface mobile chef d'équipe
-  admin/           — backoffice admin uniquement
-  api/             — route handlers REST
+  (dashboard)/     — app principale (manager/admin) : tenders, contracts, sites,
+                     meetings (réunions/CR/PV), actions, preuves, glossaire, manuel…
+  (field)/m/       — interface mobile chef d'équipe (interventions, site terrain)
+  admin/           — backoffice admin (users, usage, personnes, dépenses IA)
+  api/             — route handlers REST (ex. analyse AO maxDuration=300)
+  a/[token]/       — déclaration externe d'entreprise sur un lot (sans auth)
+  i/[token]/       — preuve d'exécution externe (sans auth)
+  h/[token]/       — passation publique (sans auth)
+  qr/[token]/      — journal de chantier via QR (sans auth)
   p/[token]/       — partage public preuve (sans auth)
-  v/[token]/       — vérification publique preuve
 ```
+
+Multi-tenant : toutes les données sont scopées par `organization_id` (mig 089).
+Le rôle JWT (`admin | manager | chef_equipe`) gouverne la nav et les gardes.
 
 ---
 
@@ -56,7 +66,7 @@ app/
 
 Pattern principal de mutation. Chaque dossier de page a son fichier `actions.ts` :
 - Validation Zod systématique
-- Vérification du rôle en tête de fonction (`requireAdmin()`, `requireAdminOrManager()`)
+- Vérification du rôle en tête de fonction (`requireManagerOrAdmin()`, `requireAdmin()`)
 - `revalidatePath()` après mutation
 - Retour `{ ok: true }` ou `{ error: string }` — jamais d'exception à la surface UI
 
@@ -64,18 +74,19 @@ Pattern principal de mutation. Chaque dossier de page a son fichier `actions.ts`
 
 ## Couche DB (`lib/db/`)
 
-Chaque entité a son fichier. Fonctions pures qui prennent le client Supabase en paramètre implicite (créé au sein de la fonction).
-
-Fichiers principaux :
-- `users.ts` — getCurrentUserWithProfile, getUserRoleById, updateUserProfileAsAdmin
-- `tenders.ts` — CRUD AO, analyses, documents
-- `engagements.ts` — cycle de vie complet (extract→curate→archive)
-- `missions.ts` — missions + templates de récurrence
-- `interventions.ts` — CRUD interventions
-- `proofs.ts` — agrégation preuves, dossier
-- `teams.ts` — équipes + membres
-- `dashboard.ts` — toutes les requêtes du cockpit manager
-- `evening-briefing.ts` — données briefing du soir avec couverture par site
+~104 fichiers, un par domaine. Chaque fonction crée son client Supabase
+(`createAdminClient()` côté serveur, scope `organization_id` appliqué). Voir
+`07_CARTOGRAPHIE_CODE.md` pour l'inventaire complet. Grands domaines :
+- **AO** : `tenders.ts`, `engagements.ts`, `tenders/*`, `ao-experience.ts`
+- **Terrain** : `missions.ts`, `interventions.ts`, `intervention-*.ts`, `teams.ts`
+- **Réunions / CR** : `site-reports.ts`, `report-*.ts`, `points-examines.ts`, `meeting-*.ts`
+- **Objets métier** : `site-actions.ts`, `site-reserve.ts`, `site-delivery.ts`,
+  `site-decisions.ts`, `site-blocages.ts`, `subjects.ts`, `site-obligations.ts`
+- **Mémoire du lieu** : `site-memory.ts`, `site-journal.ts`, `site-narrative.ts`,
+  `site-day-log.ts`, `site-memory-signals.ts`, `site-cockpit.ts`
+- **Casting** : `companies.ts`, `company-contacts.ts`, `site-intervenants.ts`
+- **Transverse** : `glossary.ts`, `notifications.ts`, `documents.ts`, `proofs.ts`,
+  `user-journey.ts`, `usage-events.ts`, `memory-corrections.ts`
 
 ---
 
@@ -85,29 +96,45 @@ Architecture factory multi-provider :
 
 ```
 services/ai/
-  factory.ts          — sélection provider selon env (mock/anthropic/gemini)
-  index.ts            — export principal
-  orchestrator.ts     — orchestration agents parallèles
-  chat.ts             — chat Atelier IA
-  initial-analysis.ts — analyse AO initiale
-  engagement-extraction.ts — extraction engagements
-  source-validation.ts
-  agents/             — logique par agent (lecteur_ao, terrain, financier…)
-  prompts/            — prompts versionnés
-  providers/          — implémentation Anthropic, Gemini, mock
-  tracking.ts         — usage tokens / coût
+  factory.ts            — sélection provider selon env (mock/anthropic/gemini)
+  orchestrator.ts       — agents parallèles Atelier IA (lecteur_ao, mémoire, scoreur)
+  initial-analysis.ts   — analyse AO initiale
+  engagement-extraction.ts — extraction engagements typés
+  site-report-analysis.ts — analyse d'une réunion → propositions (actions/risques…)
+  document-generation.ts — génération de CR/PV (gabarit)
+  agents/ · prompts/ · providers/ · tracking.ts
+services/weather/
+  open-meteo.ts         — géocodage + météo journalière (mapping WMO → enum, PUR)
 ```
 
-**Providers disponibles** : `mock` (tests), `anthropic` (Claude), `gemini` (Google)
-Sélection via `AI_PROVIDER` env var.
+**Providers IA** : `mock` (tests), `anthropic` (Claude), `gemini` — via `AI_PROVIDER`.
+
+**Déterministe vs LLM (principe)** : retards, causes, santé d'obligation, sujet
+canonique, détecteurs de réunion, synthèse « récit », corrections glossaire,
+météo = **calculés** (aucun LLM). Résumés, extraction, suggestions = **LLM, à
+vérifier par l'humain**. L'IA rédige, elle ne valide jamais seule.
+
+---
+
+## Pipeline réunion → Compte-rendu / PV
+
+Le geste central du produit (voir aussi `README.md`) :
+`audio multi-sources → transcription → correction glossaire → analyse IA
+(site-report-analysis) → propositions (site_report_proposals) → écran de
+validation humaine typé (lib/documents/pv-validation) → gabarit Word/Excel du
+client (docxtemplater + LibreOffice) → PDF + archivage + mémoire du site`.
 
 ---
 
 ## PDF
 
-Deux approches selon le contexte :
-- **@react-pdf/renderer** : composants React rendus côté serveur dans une route handler (`route.ts`). Utilisé pour : dossier preuve, atelier export, litige dossier.
-- **docx** : export Word pour rapport mensuel.
+Trois approches selon le contexte :
+- **Gabarit client (CR/PV)** : `docxtemplater` remplit un modèle Word/Excel fourni
+  par le client (BECIB…), puis **LibreOffice** convertit DOCX→PDF. C'est la SOURCE
+  DE VÉRITÉ du livrable « je pose mon tél, j'ai mon CR ».
+- **@react-pdf/renderer** : composants React rendus en route handler (`route.ts`).
+  Dossier preuve, journal de chantier, export Atelier, gabarit CR de secours.
+- **docx / exceljs** : exports Word/Excel directs (réserves, rapports).
 
 Pattern route handler PDF :
 ```ts
@@ -139,7 +166,8 @@ tests/
 ## Audit / sécurité
 
 - Toutes les mutations admin sont loggées dans `audit_log` via `lib/audit/log.ts`
-- RLS sur toutes les tables — aucune table n'est accessible sans auth sauf les routes `/p/` et `/v/`
+- RLS sur toutes les tables, scopée par `organization_id` — accès sans auth uniquement via jetons signés (`/a`, `/i`, `/h`, `/qr`, `/p`)
+- Vues sensibles (observation d'usage `/admin/usage`, page personne) : admin only, **auditées** (tripwire), descriptives — jamais de score RH
 - Validation Zod côté serveur sur tous les inputs
 - Pas de secret dans le code — tout dans `.env.local` (non committé)
 
@@ -156,3 +184,6 @@ ANTHROPIC_API_KEY
 GOOGLE_AI_API_KEY
 INITIAL_ADMIN_PASSWORD        — mot de passe temporaire (reset forcé)
 ```
+
+Météo : Open-Meteo ne nécessite **aucune clé**. Conversion DOCX→PDF : LibreOffice
+doit être installé sur l'environnement (binaire `soffice`).

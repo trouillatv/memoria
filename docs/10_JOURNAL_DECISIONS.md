@@ -4,6 +4,56 @@ Décisions architecturales et produit notables, avec leur contexte et leur raiso
 
 ---
 
+## 2026-06-24 — Blocages chantier : pas de table `site_events`, timeline = projection
+
+**Décision** : un **blocage** (intempérie/grève/accès/livraison/matériel/sous-traitant/administratif/sécurité) est une **mémoire de contexte datée**, PAS un Gantt. Une seule table neuve `site_blocages` (mig 160) ; la timeline reste une **projection en lecture** (`getSiteMemoryTimeline` lit les blocages), jamais une table-poubelle `site_events` qui dupliquerait interventions/actions/réserves.
+
+**Raison** : une 3ᵉ table d'agrégation aurait cassé « 1 source → N surfaces » (donnée à deux endroits qui divergent). Collision détectée et signalée avant de coder.
+
+**Alternative écartée** : `site_events` générique avec `source_type/source_id` recopiant les autres objets — rejetée.
+
+**Impact code** : `lib/db/site-blocages.ts`, `lib/db/site-memory.ts`, `TraceStream.tsx`, `app/(dashboard)/blocage-actions.ts`, mig 160.
+
+---
+
+## 2026-06-24 — Météo : Open-Meteo documente, ne décide jamais
+
+**Décision** : la météo (Open-Meteo V1, sans clé, sans scraping) **enrichit `site_day_log`** (mig 161, + `sites.latitude/longitude`) et **documente** un blocage déclaré (« pluie 42 mm »). Elle ne crée JAMAIS un blocage ni ne coche « intempérie » seule — elle le *suggère*, l'humain tranche. Cache par site/jour ; un blocage météo **pointe** vers `site_day_log` (`day_log_id`), ne recopie pas.
+
+**Raison** : doctrine litige (`litige-no-automatic-reading`) — une lecture automatique ne doit pas produire un fait opposable. La météo est un contexte, pas un juge.
+
+**Impact code** : `services/weather/open-meteo.ts`, `lib/db/site-day-log.ts`, `app/(dashboard)/sites/[id]/journal/`, mig 161.
+
+---
+
+## 2026-06-24 — Récit du chantier : 3ᵉ lentille, synthèse déterministe
+
+**Décision** : `/sites/[id]/recit` = les **jalons** lus comme une histoire (réunions/blocages/livraisons/réserves/décisions/actions), distincts du Journal (brut) et de la Mémoire du lieu (traces). La synthèse « Raconte-moi ce chantier » (démarrage, phase, jours de blocage cumulés + % par cause) est **100 % déterministe** ; la version LLM est différée et encadrée.
+
+**Raison** : déterministe d'abord (coût IA, fiabilité) ; projection des sources existantes, aucune table neuve.
+
+**Impact code** : `lib/db/site-narrative.ts`, `app/(dashboard)/sites/[id]/recit/`.
+
+---
+
+## 2026-06-24 — Glossaire métier : admin-only + seed multi-métier
+
+**Décision** : le glossaire est un **référentiel de configuration** → déplacé sous **Administration**, **admin uniquement** (nav, garde de page, server actions). Un **seed de démarrage 59 termes multi-métier** (VRD/MOE, propreté, électricité, CVC, SSI) est chargeable en 1 clic, **idempotent**.
+
+**Raison** : ce n'est pas un outil de travail quotidien ; et la page promettait des « termes de démarrage » sans les livrer (chaque org démarrait vide). MemorIA est multi-métier, pas seulement BTP.
+
+**Impact code** : `lib/db/glossary-seed.ts`, `lib/db/glossary.ts`, `nav-items.ts`, `app/(dashboard)/glossaire/`.
+
+---
+
+## 2026-06-24 — Résurrection de la documentation de référence
+
+**Décision** : régénération des docs `00/03/05/07` (gelés depuis ~mi-mai, ~125 migrations de retard) à partir du code actuel. `MODE_EMPLOI` (manuel utilisateur) et `README` tenus à jour en continu ; `COMPRENDRE_*` et `EVOLUTION_CONCEPTUELLE` laissés tels quels (fondations, on-demand).
+
+**Raison** : à la taille actuelle du projet, les snapshots périmés induisent en erreur (humains ET assistant). La mémoire vivante fiable = `MODE_EMPLOI` + `README` + système de mémoire + git ; les docs de référence rattrapent le code.
+
+---
+
 ## 2026-06-15 — Créneaux horaires partout : suppression de « Matin / Après-midi / Soir » côté UI
 
 **Décision** : l'UI ne dit plus jamais « Matin / Après-midi / Soir ». On reste sur des **créneaux horaires** (heure de début/fin, ou ancrage `7h`/`14h`/`19h` à défaut). S'applique aussi à la **vue d'ensemble équipe × semaine**, qui affiche désormais l'heure de la 1re mission par site (ex. `CHU 6h30`, `Banq 18h`).
