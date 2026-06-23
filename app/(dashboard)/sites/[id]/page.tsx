@@ -42,6 +42,7 @@ import {
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ASavoirManager } from './ASavoirManager'
 import { TraceStream } from './TraceStream'
+import { DeclareBlocage } from './DeclareBlocage'
 import { IdentityHeader } from './IdentityHeader'
 import { CurrentState } from './CurrentState'
 import { RecentActivity } from './RecentActivity'
@@ -372,6 +373,9 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       <Card className={cn(tabClass('memoire'))}>
         <CardContent className="pt-6">
           <FoldableSection title="Mémoire du lieu" titleClassName="text-base font-semibold tracking-tight" bodyClassName="mt-4">
+            <div className="mb-3 flex justify-end">
+              <DeclareBlocage siteId={id} />
+            </div>
             <TraceStream events={timeline} meta={memoryMeta} />
           </FoldableSection>
         </CardContent>

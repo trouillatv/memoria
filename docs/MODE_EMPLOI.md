@@ -144,6 +144,9 @@ Chaque livraison enregistrée avec photo du BL, date/heure (opposable). Liste de
 ### Journal du chantier (/sites/[id]/journal)
 Historique jour par jour : entreprises présentes, équipes, anomalies, météo (ajoutable), photos du jour. Export PDF complet.
 
+### Blocages de chantier (mémoire de contexte)
+Un **blocage** = un fait daté qui a empêché d'avancer : **intempéries, grève, accès, livraison, matériel, sous-traitant, administratif, sécurité, autre**. Ce n'est **pas du planning ni un Gantt** — c'est de la mémoire de contexte opposable (« le 12/07, terrassement reporté pour pluie »). Depuis la **Mémoire du lieu**, bouton **« Déclarer un blocage »** (type, ce qui a empêché d'avancer, impact, date) ; le blocage apparaît ensuite dans la ligne de temps en rouge, **« en cours »** tant qu'il n'est pas levé. Descriptif, jamais une imputation de retard à quelqu'un — on décrit le fait, on ne juge personne. Un blocage météo s'appuie sur la météo du jour déjà saisie (journal), il ne la recopie pas.
+
 ### Sujets : l'histoire des problèmes (/sites/[id]/subjects)
 Un **sujet** = l'histoire complète d'un problème ou livrable (DOE, essais, fissure…), jamais une personne. Recherche instantanée (« Taper DOE → tout »). Un indicateur de **santé de rattachement** montre le % d'objets reliés à un sujet (informatif, non bloquant).
 
@@ -176,6 +179,7 @@ Centralise tout :
 - **Préparer cette réunion** : un briefing déterministe (ce qui traîne sur le chantier), zéro IA.
 - **Santé de la mémoire** : couverture audio, état de la transcription. Vous ajoutez des audios de secours (mémo, débrief) fusionnés au corpus. Sur **chaque source** : **Réécouter** (lecteur intégré), **Relancer la transcription** (si elle est revenue vide ou a échoué) et **Supprimer** (un audio inaudible/raté, avec confirmation) — l'audio n'est jamais perdu, une erreur de transcription est toujours rattrapable.
 - **Qui fait quoi, pour quand** : le panneau de curation des actions.
+- **Blocages chantier** : à partir des dépendances/risques détectés dans la réunion, MemorIA **propose** « créer un blocage ? » (type pré-rempli) ; vous validez ou ignorez. Ajout manuel possible. Les blocages enregistrés ici remontent dans la Mémoire du lieu du chantier.
 - **Compte-rendu** : un bouton vers l'écran de validation.
 
 ### Le panneau « Qui fait quoi, pour quand »

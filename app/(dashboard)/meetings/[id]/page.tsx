@@ -6,6 +6,9 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
+import { listBlocagesByReport } from '@/lib/db/site-blocages'
+import { guessBlocageType } from '@/lib/db/blocage-constants'
+import { BlocagesPanel } from './BlocagesPanel'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
@@ -57,7 +60,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const report = await getSiteReport(id)
   if (!report) notFound()
 
-  const [proposals, actions, pvDoc, followup, engagements, finalVersions, actionLots] = await Promise.all([
+  const [proposals, actions, pvDoc, followup, engagements, finalVersions, actionLots, blocages] = await Promise.all([
     listProposals(id),
     listSiteActionsByReport(id),
     getLatestReportDocument(id),
@@ -65,6 +68,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     report.site_id ? getSiteEngagements(report.site_id) : Promise.resolve(null),
     listReportFinalVersions(id),
     listDistributionStatusForReport(id),
+    listBlocagesByReport(id),
   ])
   const isPvValidated = pvDoc?.status === 'validated' || pvDoc?.status === 'exported'
 
@@ -110,6 +114,14 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const openActions = actions.filter((a) => a.status === 'open')
   const blockers = (report.risks ?? []).filter((r) => r.kind === 'dependency' || r.kind === 'risk')
   const otherRisks = (report.risks ?? []).filter((r) => r.kind === 'preparation' || r.kind === 'vigilance')
+
+  // Détection PV → proposition de blocage (l'IA a détecté la dépendance/risque,
+  // on PROPOSE de la matérialiser en blocage ; l'humain valide). Déterministe.
+  const blocageSuggestions = blockers.map((r) => ({
+    label: r.label,
+    rationale: r.rationale ?? null,
+    type: guessBlocageType(`${r.label} ${r.rationale ?? ''}`),
+  }))
 
   // Site routé pour une décision (réunion contrat)
   const proposalSite = (p: DbSiteReportProposal) =>
@@ -180,6 +192,20 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         actions={actions}
         lots={actionLots}
       />
+
+      {/* Blocages chantier (mig 160) — mémoire de contexte datée. Détection PV
+          (l'IA propose, l'humain valide) + ajout manuel. Pas de planning. */}
+      {report.site_id && (
+        <BlocagesPanel
+          reportId={id}
+          siteId={report.site_id}
+          suggestions={blocageSuggestions}
+          blocages={blocages.map((b) => ({
+            id: b.id, type: b.type, title: b.title, impact: b.impact,
+            dateStart: b.dateStart, dateEnd: b.dateEnd,
+          }))}
+        />
+      )}
 
       {/* Compte-rendu de chantier — l'écran de validation est le HUB central
           (corriger → prévisualiser → télécharger → téléverser le final → historique).

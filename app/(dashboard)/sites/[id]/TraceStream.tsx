@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, FileText, Camera, Info, KeyRound, ClipboardList, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, FileText, Camera, Info, KeyRound, ClipboardList, CheckCircle2, Construction } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SiteMemoryEvent } from '@/lib/db/site-memory'
 import type { SiteMemoryMeta } from '@/lib/db/site-cockpit'
@@ -55,6 +55,7 @@ const TYPE_ICON: Record<SiteMemoryEvent['type'], LucideIcon> = {
   access: KeyRound,
   report: ClipboardList,
   action: CheckCircle2,
+  blocage: Construction,
 }
 
 const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
@@ -67,6 +68,8 @@ const TYPE_ICON_COLOR: Record<SiteMemoryEvent['type'], string> = {
   access: 'text-muted-foreground',
   report: 'text-indigo-600',
   action: 'text-emerald-600',
+  // Rouge : blocage = quelque chose empêche d'avancer, saillant.
+  blocage: 'text-rose-600',
 }
 
 // Vincent 2026-05-21 — badge texte explicite pour que l'utilisateur sache
@@ -81,6 +84,7 @@ const TYPE_BADGE_LABEL: Record<SiteMemoryEvent['type'], string> = {
   access: 'Accès',
   report: 'Compte-rendu',
   action: 'Action clôturée',
+  blocage: 'Blocage',
 }
 
 // Palette distincte par type — chaque famille de couleur est franchement
@@ -102,6 +106,8 @@ const TYPE_BADGE_CLASS: Record<SiteMemoryEvent['type'], string> = {
   report: 'bg-indigo-100 text-indigo-900 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-200 dark:border-indigo-800',
   // Vert émeraude : action clôturée = fait accompli (mémoire du chantier)
   action: 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800',
+  // Rouge : blocage = un fait qui a empêché d'avancer (mémoire de contexte)
+  blocage: 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-800',
 }
 
 function badgeLabelFor(event: SiteMemoryEvent): string {
@@ -111,6 +117,9 @@ function badgeLabelFor(event: SiteMemoryEvent): string {
   }
   if (event.type === 'access' && event.meta?.kind === 'incident') {
     return 'Incident d’accès'
+  }
+  if (event.type === 'blocage') {
+    return event.meta?.ongoing === true ? 'Blocage en cours' : 'Blocage levé'
   }
   return TYPE_BADGE_LABEL[event.type]
 }

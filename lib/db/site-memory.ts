@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
+import { listBlocagesBySite, blocagesToMemoryEvents } from './site-blocages'
 
 export type SiteMemoryEventType =
   | 'intervention'
@@ -17,6 +18,9 @@ export type SiteMemoryEventType =
   // Action TERMINÉE uniquement : l'action ouverte pilote (hors mémoire), l'action
   // close raconte le fait accompli. Jamais embeddée (pas de résonance pour un TODO).
   | 'action'
+  // Blocage de chantier (mig 160) : événement de contexte qui empêche d'avancer.
+  // Descriptif niveau SITE, jamais une imputation. En cours = saillant.
+  | 'blocage'
 
 export interface SiteMemoryEvent {
   type: SiteMemoryEventType
@@ -475,6 +479,17 @@ export async function getSiteMemoryTimeline(
           ...(photoUrl ? { photoUrl } : {}),
         },
       })
+    }
+  }
+
+  // Blocages de chantier (mig 160) — événements de contexte qui empêchent
+  // d'avancer. PROJECTION en lecture : on LIT site_blocages, on ne duplique
+  // rien. En cours = saillant, résolu = trace conservée (preuve datée).
+  {
+    const blocages = await listBlocagesBySite(siteId)
+    for (const ev of blocagesToMemoryEvents(blocages)) {
+      if (since && ev.occurredAt < since) continue
+      events.push(ev)
     }
   }
 
