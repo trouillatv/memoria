@@ -1,19 +1,25 @@
 'use client'
 
-// Niveau 2 (Vincent 2026-06-24) — icônes d'événements DATÉS dans une cellule
+// Niveau 2 + 3 (Vincent 2026-06-24) — icônes d'événements DATÉS dans une cellule
 // (jour × site) de la grille semaine : réunion, échéance, livraison.
 //
-// Volontairement minimal : « sans texte, sans clic, sans drawer ». De simples
-// indicateurs. Le détail au survol viendra au Niveau 3.
+// Niveau 2 : de simples indicateurs. 3 icônes max + « +N » d'overflow, ordre de
+// priorité fixe (réunion > échéance > livraison) pour une lecture instantanée.
+// Niveau 3 : le DÉTAIL au survol (tooltip sous/au-dessus, une ligne par
+// événement). Aucun clic, aucune navigation, aucun drawer.
 //
-// Anti-sapin de Noël : 3 icônes max + « +N » d'overflow, ordre de priorité fixe
-// (réunion > échéance > livraison) pour une lecture instantanée.
-//
-// `pointer-events-none` impératif : la cellule (`<td>`) est à la fois drag-source
-// ET drop-target (dnd-kit). Cette couche purement décorative laisse passer tous
-// les événements pointeur vers le `<td>` → le drag existant n'est jamais effleuré.
+// DRAG préservé : la couche passe en `pointer-events-auto` (indispensable pour
+// déclencher le survol), MAIS sans `stopPropagation` — le `pointerdown` remonte
+// donc au `<td>` parent et démarre le drag dnd-kit comme avant. (C'est l'inverse
+// du bouton d'intervention, qui lui stoppe la propagation pour NE PAS dragger.)
 
 import { CalendarClock, Clock, Package } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { WeekDayKind, WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 
 // Ordre de priorité d'affichage (le plus « à discuter » d'abord).
@@ -53,17 +59,47 @@ export function CellDayEventIcons({ events }: { events: WeekOperationalSignal[] 
   )
   const shown = sorted.slice(0, MAX_ICONS)
   const extra = sorted.length - shown.length
+  const summary = summarize(events)
 
   return (
-    <div
-      className="pointer-events-none absolute bottom-1 right-1 flex items-center gap-0.5 text-muted-foreground/70"
-      aria-label={summarize(events)}
-    >
-      {shown.map((e) => {
-        const Icon = KIND_ICON[e.kind as WeekDayKind]
-        return Icon ? <Icon key={e.id} aria-hidden className="h-3 w-3" /> : null
-      })}
-      {extra > 0 && <span className="text-[9px] font-medium leading-none">+{extra}</span>}
-    </div>
+    <TooltipProvider delay={120}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            // pointer-events-auto pour le survol ; PAS de stopPropagation → le
+            // pointerdown remonte au <td> et le drag fonctionne toujours.
+            <span
+              aria-label={summary}
+              className="absolute bottom-1 right-1 flex cursor-default items-center gap-0.5 text-muted-foreground/70"
+            />
+          }
+        >
+          {shown.map((e) => {
+            const Icon = KIND_ICON[e.kind as WeekDayKind]
+            return Icon ? <Icon key={e.id} aria-hidden className="h-3 w-3" /> : null
+          })}
+          {extra > 0 && <span className="text-[9px] font-medium leading-none">+{extra}</span>}
+        </TooltipTrigger>
+        {/* side=top : au-dessus de la cellule, n'est pas masqué par la ligne
+            suivante de la grille. Une ligne par événement, avec son détail. */}
+        <TooltipContent side="top" align="end" className="flex-col items-start gap-1 py-2 text-left">
+          <span className="font-semibold">Ce jour-là</span>
+          <ul className="space-y-0.5">
+            {sorted.map((e) => {
+              const Icon = KIND_ICON[e.kind as WeekDayKind]
+              return (
+                <li key={e.id} className="flex items-center gap-1.5 opacity-90">
+                  {Icon && <Icon aria-hidden className="h-3 w-3 shrink-0" />}
+                  <span>
+                    {e.label}
+                    {e.detail && <span className="opacity-75"> — {e.detail}</span>}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
