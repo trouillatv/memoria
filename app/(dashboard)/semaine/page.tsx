@@ -33,6 +33,11 @@ import {
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
+import {
+  getWeekOperationalSignals,
+  type SiteWeekSignals,
+  type WeekOperationalSignal,
+} from '@/lib/db/week-operational-signals'
 import { collectMemorySignals } from '@/lib/memory/signals/collect'
 import { planningSignalsBySite } from '@/lib/memory/signals/surface'
 import type { MemorySignal } from '@/lib/memory/signals/types'
@@ -190,7 +195,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
-  const [siteRows, teamRows, allTeams, missionOptions, memberCounts, vigilance, memorySignals] =
+  const [siteRows, teamRows, allTeams, missionOptions, memberCounts, vigilance, memorySignals, weekSignals] =
     await Promise.all([
       view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
       view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
@@ -201,11 +206,20 @@ export default async function SemainePage({ searchParams }: PageProps) {
       // Planning-1 : collecte UNE SEULE FOIS au niveau page (vue site uniquement).
       // La vue équipe viendra plus tard (sujet team non activé ici).
       view === 'site' ? collectMemorySignals() : Promise.resolve<MemorySignal[]>([]),
+      // Niveau 1 : signaux opérationnels (standing) par site — vue site uniquement.
+      view === 'site' ? getWeekOperationalSignals(range) : Promise.resolve<SiteWeekSignals[]>([]),
     ])
 
   // Regroupement par site (conflits résolus, fragilité d'abord) — filtrage par
   // site fait ici, jamais un collect par cellule.
   const signalsBySite = planningSignalsBySite(memorySignals)
+  // Niveau 1 : seul le « standing » est surfacé pour l'instant (sous le nom du
+  // site). Les événements datés `days` (réunion/échéance/livraison) attendent le
+  // Niveau 2 (icônes en cellule). On indexe par site pour la grille.
+  const standingBySite: Record<string, WeekOperationalSignal[]> = {}
+  for (const s of weekSignals) {
+    if (s.standing.length > 0) standingBySite[s.siteId] = s.standing
+  }
   const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
   const teams = activeTeams.map((t) => ({ id: t.id, name: t.name, color: t.color }))
   const teamOptions = activeTeams.map((t) => ({
@@ -299,7 +313,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         </p>
         {view === 'site' ? (
           <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite}>
-            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} />
+            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

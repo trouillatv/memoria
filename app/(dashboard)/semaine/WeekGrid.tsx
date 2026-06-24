@@ -12,8 +12,10 @@
 
 import type { SiteRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
+import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 import { WeekGridCell } from './WeekGridCell'
 import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
+import { StandingSignalsBadges } from './StandingSignalsBadges'
 
 const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -44,9 +46,11 @@ export interface WeekGridProps {
   todayIso: string
   /** Signaux mémoire par site (Planning-1) — le 1er = badge prioritaire. */
   signalsBySite?: Record<string, MemorySignal[]>
+  /** Signaux opérationnels EN COURS par site (Niveau 1) — blocages, réserves ouvertes. */
+  standingBySite?: Record<string, WeekOperationalSignal[]>
 }
 
-export function WeekGrid({ range, rows, todayIso, signalsBySite }: WeekGridProps) {
+export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite }: WeekGridProps) {
   const days = enumerateDays(range.weekStart)
 
   return (
@@ -98,6 +102,7 @@ export function WeekGrid({ range, rows, todayIso, signalsBySite }: WeekGridProps
               days={days}
               todayIso={todayIso}
               topSignal={signalsBySite?.[row.site_id]?.[0]}
+              standing={standingBySite?.[row.site_id]}
             />
           ))}
         </tbody>
@@ -111,11 +116,13 @@ function SiteGridRow({
   days,
   todayIso,
   topSignal,
+  standing,
 }: {
   row: SiteRow
   days: string[]
   todayIso: string
   topSignal?: MemorySignal
+  standing?: WeekOperationalSignal[]
 }) {
   return (
     <tr className="border-t" data-site-id={row.site_id}>
@@ -129,6 +136,7 @@ function SiteGridRow({
             {row.contract_name}
           </span>
           {topSignal && <MemorySignalBadge signal={topSignal} />}
+          <StandingSignalsBadges signals={standing} todayIso={todayIso} />
         </div>
       </th>
       {days.map((d) => {
