@@ -217,8 +217,16 @@ export default async function SemainePage({ searchParams }: PageProps) {
   // site). Les événements datés `days` (réunion/échéance/livraison) attendent le
   // Niveau 2 (icônes en cellule). On indexe par site pour la grille.
   const standingBySite: Record<string, WeekOperationalSignal[]> = {}
+  // Niveau 2 : événements datés (réunion/échéance/livraison) par site puis par
+  // jour → icônes discrètes en cellule.
+  const daysBySite: Record<string, Record<string, WeekOperationalSignal[]>> = {}
   for (const s of weekSignals) {
     if (s.standing.length > 0) standingBySite[s.siteId] = s.standing
+    const nonEmpty: Record<string, WeekOperationalSignal[]> = {}
+    for (const [day, evts] of Object.entries(s.days)) {
+      if (evts.length > 0) nonEmpty[day] = evts
+    }
+    if (Object.keys(nonEmpty).length > 0) daysBySite[s.siteId] = nonEmpty
   }
   const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
   const teams = activeTeams.map((t) => ({ id: t.id, name: t.name, color: t.color }))
@@ -313,7 +321,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         </p>
         {view === 'site' ? (
           <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite}>
-            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} />
+            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

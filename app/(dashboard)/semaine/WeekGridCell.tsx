@@ -24,7 +24,9 @@ import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { fmtHourFr } from '@/lib/time/prestation-slot'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
+import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 import type { InterventionSlot } from '@/types/db'
+import { CellDayEventIcons } from './CellDayEventIcons'
 
 // Lettres compactes — JAMAIS d'heure (8h, 14h, etc.).
 const SLOT_LETTER: Record<string, string> = {
@@ -119,9 +121,11 @@ export interface WeekGridCellProps {
   siteName: string
   cells: WeekInterventionCell[]
   todayIso?: string
+  /** Niveau 2 — événements datés du jour (réunion/échéance/livraison) → icônes. */
+  dayEvents?: WeekOperationalSignal[]
 }
 
-export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGridCellProps) {
+export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents }: WeekGridCellProps) {
   const cellKey = `${siteId}::${date}`
   const isPast = !!(todayIso && date < todayIso)
 
@@ -316,6 +320,11 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso }: WeekGr
           aria-hidden
         />
       )}
+
+      {/* Niveau 2 — icônes d'événements datés (réunion/échéance/livraison).
+          Couche non-interactive (pointer-events-none) : laisse passer le drag.
+          Visible même quand la cellule n'a aucune intervention. */}
+      <CellDayEventIcons events={dayEvents} />
 
       {/* Chips m/a/s pendant un drag actif. Drop sur un chip = date + slot.
           Sur la cellule SOURCE, on les rend semi-transparents pour ne pas

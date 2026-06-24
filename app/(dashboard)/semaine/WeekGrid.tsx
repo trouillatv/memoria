@@ -48,9 +48,11 @@ export interface WeekGridProps {
   signalsBySite?: Record<string, MemorySignal[]>
   /** Signaux opérationnels EN COURS par site (Niveau 1) — blocages, réserves ouvertes. */
   standingBySite?: Record<string, WeekOperationalSignal[]>
+  /** Événements datés par site puis par jour (Niveau 2) — réunion/échéance/livraison. */
+  daysBySite?: Record<string, Record<string, WeekOperationalSignal[]>>
 }
 
-export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite }: WeekGridProps) {
+export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite, daysBySite }: WeekGridProps) {
   const days = enumerateDays(range.weekStart)
 
   return (
@@ -103,6 +105,7 @@ export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite 
               todayIso={todayIso}
               topSignal={signalsBySite?.[row.site_id]?.[0]}
               standing={standingBySite?.[row.site_id]}
+              dayEventsByDate={daysBySite?.[row.site_id]}
             />
           ))}
         </tbody>
@@ -117,12 +120,14 @@ function SiteGridRow({
   todayIso,
   topSignal,
   standing,
+  dayEventsByDate,
 }: {
   row: SiteRow
   days: string[]
   todayIso: string
   topSignal?: MemorySignal
   standing?: WeekOperationalSignal[]
+  dayEventsByDate?: Record<string, WeekOperationalSignal[]>
 }) {
   return (
     <tr className="border-t" data-site-id={row.site_id}>
@@ -149,6 +154,7 @@ function SiteGridRow({
             siteName={row.site_name}
             cells={cells}
             todayIso={todayIso}
+            dayEvents={dayEventsByDate?.[d]}
           />
         )
       })}
