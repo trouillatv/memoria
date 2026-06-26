@@ -568,16 +568,17 @@ export async function searchSiteSubjects(siteId: string, term: string, limit = 1
 // (doctrine « santé de la mémoire »). Un objet sans subject_id est invisible à la recherche.
 export interface LinkageStat { total: number; linked: number; pct: number }
 export interface SubjectLinkageHealth {
-  actions: LinkageStat; decisions: LinkageStat; reserves: LinkageStat; obligations: LinkageStat
+  actions: LinkageStat; decisions: LinkageStat; reserves: LinkageStat; obligations: LinkageStat; documents: LinkageStat
   overallPct: number
 }
 export async function getSubjectLinkageHealth(siteId: string): Promise<SubjectLinkageHealth> {
   const supabase = createAdminClient()
-  const [{ data: acts }, { data: decs }, { data: res }, { data: obl }] = await Promise.all([
+  const [{ data: acts }, { data: decs }, { data: res }, { data: obl }, siteDocs] = await Promise.all([
     supabase.from('site_actions').select('subject_id').eq('site_id', siteId).neq('status', 'cancelled'),
     supabase.from('site_decisions').select('subject_id').eq('site_id', siteId),
     supabase.from('site_reserve').select('subject_id').eq('site_id', siteId),
     supabase.from('site_obligation').select('subject_id').eq('site_id', siteId),
+    listDocumentsForTarget('site', siteId).catch(() => []),
   ])
   const stat = (rows: { subject_id: string | null }[] | null): LinkageStat => {
     const all = rows ?? []
@@ -588,9 +589,21 @@ export async function getSubjectLinkageHealth(siteId: string): Promise<SubjectLi
   const decisions = stat(decs as { subject_id: string | null }[])
   const reserves = stat(res as { subject_id: string | null }[])
   const obligations = stat(obl as { subject_id: string | null }[])
-  const sumTotal = [actions, decisions, reserves, obligations].reduce((s, x) => s + x.total, 0)
-  const sumLinked = [actions, decisions, reserves, obligations].reduce((s, x) => s + x.linked, 0)
-  return { actions, decisions, reserves, obligations, overallPct: sumTotal === 0 ? 0 : Math.round((sumLinked / sumTotal) * 100) }
+
+  // Documents : pas de colonne subject_id (rattachement via document_links). On
+  // compte les documents du site qui ont AUSSI un lien vers un sujet.
+  const docIds = siteDocs.map((d) => d.id)
+  let linkedDocs = 0
+  if (docIds.length > 0) {
+    const { data: subLinks } = await supabase.from('document_links').select('document_id').eq('target_type', 'subject').in('document_id', docIds)
+    linkedDocs = new Set(((subLinks ?? []) as { document_id: string }[]).map((r) => r.document_id)).size
+  }
+  const documents: LinkageStat = { total: docIds.length, linked: linkedDocs, pct: docIds.length === 0 ? 0 : Math.round((linkedDocs / docIds.length) * 100) }
+
+  const all = [actions, decisions, reserves, obligations, documents]
+  const sumTotal = all.reduce((s, x) => s + x.total, 0)
+  const sumLinked = all.reduce((s, x) => s + x.linked, 0)
+  return { actions, decisions, reserves, obligations, documents, overallPct: sumTotal === 0 ? 0 : Math.round((sumLinked / sumTotal) * 100) }
 }
 
 /** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et

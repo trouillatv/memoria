@@ -131,11 +131,12 @@ function ExecutiveSummary({ siteId, watch }: { siteId: string; watch: SubjectWat
  *  Un objet sans sujet est invisible à la recherche : ce panneau dit si le chantier
  *  est assez rattaché pour que la recherche démontre bien (avant de la montrer). */
 function LinkageHealthPanel({ h }: { h: SubjectLinkageHealth }) {
-  const total = h.actions.total + h.decisions.total + h.reserves.total + h.obligations.total
+  const total = h.actions.total + h.decisions.total + h.reserves.total + h.obligations.total + h.documents.total
   if (total === 0) return null
   const items: { label: string; s: LinkageStat }[] = [
-    { label: 'Actions', s: h.actions }, { label: 'Décisions', s: h.decisions },
-    { label: 'Réserves', s: h.reserves }, { label: 'Obligations', s: h.obligations },
+    { label: 'Décisions', s: h.decisions }, { label: 'Actions', s: h.actions },
+    { label: 'Réserves', s: h.reserves }, { label: 'Documents', s: h.documents },
+    { label: 'Obligations', s: h.obligations },
   ]
   return (
     <section className="rounded-lg border bg-muted/20 px-3 py-2">
