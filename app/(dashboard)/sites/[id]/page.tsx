@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookOpen, BookText, QrCode, Sparkles, ListTodo, ArrowRightLeft, Truck, ClipboardCheck, Search, Layers, ShieldAlert, Download, ShieldCheck } from 'lucide-react'
+import { MapPin, BookText, Sparkles, ListTodo, ArrowRightLeft, ClipboardCheck, Search, Layers, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -209,96 +209,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
       <ASavoirManager siteId={id} active={aSavoirActive} />
 
-      {/* Accès rapide — toujours visible, avant les onglets */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Link
-          href={`/sites/${id}/recit`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <BookText className="h-3.5 w-3.5" />
-          Récit
-        </Link>
-        <Link
-          href={`/sites/${id}/visites`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <MapPin className="h-3.5 w-3.5" />
-          Visites
-        </Link>
-        <Link
-          href={`/sites/${id}/chronicle`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <BookText className="h-3.5 w-3.5" />
-          Journal du chantier
-        </Link>
-        <Link
-          href={`/sites/${id}/journal`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <BookOpen className="h-3.5 w-3.5" />
-          Journal terrain
-        </Link>
-        <Link
-          href={`/sites/${id}/livraisons`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <Truck className="h-3.5 w-3.5" />
-          Livraisons
-        </Link>
-        <Link
-          href={`/sites/${id}/reserves`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <ClipboardCheck className="h-3.5 w-3.5" />
-          Points à lever
-        </Link>
-        <Link
-          href={`/sites/${id}/subjects`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <Layers className="h-3.5 w-3.5" />
-          Sujets
-        </Link>
-        <Link
-          href={`/sites/${id}/obligations`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <ShieldAlert className="h-3.5 w-3.5" />
-          Obligations
-        </Link>
-        <Link
-          href={`/sites/${id}/preuves`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Dossier de preuve
-        </Link>
-        <Link
-          href={`/sites/${id}/qr`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <QrCode className="h-3.5 w-3.5" />
-          QR Code
-        </Link>
-        <Link
-          href={`/memoire/${id}`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          Atelier mémoire
-        </Link>
-        {/* S2 — Export ZIP « propriété des données » (admin/manager). La donnée et
-            les preuves restent au client, même si MemorIA disparaît. */}
-        {(user.role === 'admin' || user.role === 'manager') && (
-          <a
-            href={`/sites/${id}/export`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Exporter (Excel + photos)
-          </a>
-        )}
+      {/* Actions (AGIR) — boutons primaires, persistants. */}
+      <div className="flex flex-wrap items-center gap-2">
         {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM) */}
         <SiteBriefButton siteId={id} variant="desktop" />
         {/* Compte-rendu multimodal — voix + texte + photos + pièces → décisions */}
@@ -306,6 +218,37 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         {/* ➕ Action standalone — capturer une intention sans compte-rendu */}
         <QuickActionButton source="desktop_site" siteId={id} variant="desktop" />
       </div>
+
+      {/* Navigation (CONSULTER) — 5 entrées (audit menu Vincent 2026-06-26).
+          Visites/Livraisons/Terrain sous Journal ; Obligations sous Actions.
+          Onglets = consulter · Boutons = agir · Filtres = dans les pages. */}
+      <nav className="flex flex-wrap gap-x-5 gap-y-3">
+        <NavGroup label="Vue d'ensemble">
+          <NavChip href={`/sites/${id}`} icon={<Layers className="h-3.5 w-3.5" />} label="Cockpit" />
+        </NavGroup>
+        <NavGroup label="Journal du chantier">
+          <NavChip href={`/sites/${id}/chronicle`} icon={<BookText className="h-3.5 w-3.5" />} label="Journal" />
+          <NavChip href={`/sites/${id}/journal`} label="Terrain" sub />
+          <NavChip href={`/sites/${id}/visites`} label="Visites" sub />
+          <NavChip href={`/sites/${id}/livraisons`} label="Livraisons" sub />
+        </NavGroup>
+        <NavGroup label="Actions">
+          <NavChip href={`/sites/${id}/reserves`} icon={<ClipboardCheck className="h-3.5 w-3.5" />} label="Points à lever" />
+          <NavChip href={`/sites/${id}/obligations`} icon={<ShieldAlert className="h-3.5 w-3.5" />} label="Obligations" />
+        </NavGroup>
+        <NavGroup label="Mémoire">
+          <NavChip href={`/memoire/${id}`} icon={<Sparkles className="h-3.5 w-3.5" />} label="Atelier mémoire" />
+          <NavChip href={`/sites/${id}/subjects`} label="Sujets" sub />
+          <NavChip href={`/sites/${id}/recit`} label="Récit" sub />
+        </NavGroup>
+        <NavGroup label="Documents">
+          <NavChip href={`/sites/${id}/preuves`} icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Dossier de preuve" />
+          <NavChip href={`/sites/${id}/qr`} label="QR Code" sub />
+          {(user.role === 'admin' || user.role === 'manager') && (
+            <NavChip href={`/sites/${id}/export`} label="Exporter" sub />
+          )}
+        </NavGroup>
+      </nav>
 
       {/* Indicateur factuel CR (compteur, jamais un taux %). */}
       {crStats.meetings > 0 && (
@@ -546,5 +489,31 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       </div>
 
     </div>
+  )
+}
+
+// Navigation groupée (audit menu) — un libellé de catégorie + ses entrées.
+function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">{label}</p>
+      <div className="flex flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+function NavChip({ href, label, icon, sub }: { href: string; label: string; icon?: React.ReactNode; sub?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center gap-1.5 rounded-lg transition-[transform,colors] active:scale-[0.97] ${
+        sub
+          ? 'border border-transparent bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted'
+          : 'border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40'
+      }`}
+    >
+      {icon}
+      {label}
+    </Link>
   )
 }
