@@ -89,6 +89,9 @@ function SubjectRow({ siteId, s }: { siteId: string; s: SubjectSummary }) {
 function pctTone(pct: number): string {
   return pct >= 70 ? 'text-emerald-700' : pct >= 40 ? 'text-amber-700' : 'text-rose-700'
 }
+function barTone(pct: number): string {
+  return pct >= 70 ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-500' : 'bg-rose-400'
+}
 
 /** Le « pourquoi » d'un sujet à surveiller, en une ligne (pour la synthèse exécutive). */
 function watchHeadline(w: SubjectWatch): string {
@@ -133,26 +136,39 @@ function ExecutiveSummary({ siteId, watch }: { siteId: string; watch: SubjectWat
 function LinkageHealthPanel({ h }: { h: SubjectLinkageHealth }) {
   const total = h.actions.total + h.decisions.total + h.reserves.total + h.obligations.total + h.documents.total
   if (total === 0) return null
+  // Ordre métier (le plus structurant d'abord). Barres = pilotage objectif :
+  // « la Vue Sujet est vide parce que X % seulement est rattaché », pas « ça marche pas ».
   const items: { label: string; s: LinkageStat }[] = [
     { label: 'Décisions', s: h.decisions }, { label: 'Actions', s: h.actions },
     { label: 'Réserves', s: h.reserves }, { label: 'Documents', s: h.documents },
     { label: 'Obligations', s: h.obligations },
   ]
   return (
-    <section className="rounded-lg border bg-muted/20 px-3 py-2">
+    <section className="rounded-lg border bg-muted/20 px-3 py-2.5 space-y-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Santé de rattachement (interne)</span>
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Couverture du graphe (interne)</span>
         <span className={`text-[11px] font-medium ${pctTone(h.overallPct)}`}>{h.overallPct}% rattaché</span>
       </div>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
+      <div className="space-y-1">
         {items.map((it) => (
-          <span key={it.label} className="text-muted-foreground">
-            {it.label} <strong className={it.s.total === 0 ? 'text-muted-foreground' : pctTone(it.s.pct)}>{it.s.total === 0 ? '—' : `${it.s.pct}%`}</strong>
-            {it.s.total > 0 && <span className="text-muted-foreground/70"> ({it.s.linked}/{it.s.total})</span>}
-          </span>
+          <div key={it.label} className="flex items-center gap-2">
+            <span className="w-24 shrink-0 text-[11px] text-muted-foreground">{it.label}</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              {it.s.total > 0 && <div className={`h-full rounded-full ${barTone(it.s.pct)}`} style={{ width: `${it.s.pct}%` }} />}
+            </div>
+            <span className={`w-20 shrink-0 text-right text-[11px] font-medium ${it.s.total === 0 ? 'text-muted-foreground/60' : pctTone(it.s.pct)}`}>
+              {it.s.total === 0 ? '—' : `${it.s.pct}% (${it.s.linked}/${it.s.total})`}
+            </span>
+          </div>
         ))}
+        {/* Honnête : Photos & interventions ne sont pas encore rattachables (étapes suivantes). */}
+        <div className="flex items-center gap-2 opacity-60">
+          <span className="w-24 shrink-0 text-[11px] text-muted-foreground">Photos · interv.</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted" />
+          <span className="w-20 shrink-0 text-right text-[10px] text-muted-foreground/60">à venir</span>
+        </div>
       </div>
-      <p className="mt-1 text-[10px] text-muted-foreground/70">Plus un objet est rattaché à un sujet, plus la recherche le retrouve. Indicatif, non bloquant.</p>
+      <p className="text-[10px] text-muted-foreground/70">Plus un objet est rattaché à un élément, plus la recherche, le Journal et la Vue Sujet le retrouvent. Indicatif, non bloquant.</p>
     </section>
   )
 }
