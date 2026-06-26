@@ -57,7 +57,7 @@ function SubjectProposals({ reportId, decisions, existingNames }: { reportId: st
   return (
     <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
       <p className="text-[11px] font-medium text-violet-900">
-        Sujets proposés — un seul « Rattacher » suffit (pré-coché, décochez ce qui ne va pas).
+        Éléments à mémoriser — un seul « Rattacher » suffit (pré-coché, décochez ce qui ne va pas).
       </p>
       <ul className="space-y-1.5">
         {groups.map((g) => (
@@ -67,11 +67,11 @@ function SubjectProposals({ reportId, decisions, existingNames }: { reportId: st
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="font-medium">« {g.sujet} »</span>
                 {g.existing ? (
-                  <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">🟢 Sujet existant</span>
+                  <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">✓ Déjà connu</span>
                 ) : g.actionLike ? (
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">🟡 Ressemble à une action — à vérifier</span>
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">⚠ Ressemble à une action — à vérifier</span>
                 ) : (
-                  <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">🔵 Nouveau sujet</span>
+                  <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">➕ Sera ajouté à la mémoire</span>
                 )}
                 {g.ids.length > 1 && <span className="text-[10px] text-muted-foreground">· {g.ids.length} décisions</span>}
               </span>
@@ -89,7 +89,7 @@ function SubjectProposals({ reportId, decisions, existingNames }: { reportId: st
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />} Rattacher{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
         </button>
         {/* #3 — le bénéfice immédiat, pour expliquer POURQUOI on demande cette validation. */}
-        <span className="text-[10px] text-muted-foreground">Les prochaines réunions et l’Atelier mémoire retrouveront ces sujets.</span>
+        <span className="text-[10px] text-muted-foreground">Les prochaines réunions et l’Atelier mémoire retrouveront ces éléments.</span>
         {error && <span className="text-xs text-rose-600">{error}</span>}
       </div>
     </div>
