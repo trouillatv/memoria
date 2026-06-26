@@ -31,15 +31,21 @@ export function AppSidebar({
   actionsCritical?: number
 }) {
   const pathname = usePathname() ?? ''
-  // S10 — Mode simplifié : ne garder que le cœur « chargé d'affaires » pour
-  // réduire la sensation d'usine à gaz. Persisté en localStorage (par appareil),
-  // initialisé après montage pour éviter un écart d'hydratation.
-  const [simplified, setSimplified] = useState(false)
+  // Mode simplifié « chargé d'affaires » : ne garder que le cœur (Sites, Réunions,
+  // Actions, Tableau de bord, Recherche) pour réduire l'usine à gaz. PAR DÉFAUT
+  // pour les MANAGERS (= chargés d'affaires) ; l'admin garde tout (Vincent
+  // 2026-06-27). Le choix explicite est persisté par appareil et prime sur le défaut.
+  const [simplified, setSimplified] = useState(role === 'manager')
   useEffect(() => {
-    // Préférence client-only lue après montage (évite l'écart d'hydratation) :
-    // setState dans l'effet est ici intentionnel et borné au montage.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    try { setSimplified(localStorage.getItem(NAV_MODE_KEY) === 'simple') } catch { /* indisponible */ }
+    // Préférence explicite (client-only, lue après montage) → prime sur le défaut
+    // par rôle. setState dans l'effet, borné au montage.
+    try {
+      const saved = localStorage.getItem(NAV_MODE_KEY)
+      if (saved === 'simple' || saved === 'complet') {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSimplified(saved === 'simple')
+      }
+    } catch { /* indisponible */ }
   }, [])
   function toggleMode() {
     setSimplified((prev) => {
