@@ -168,6 +168,25 @@ function LinkageHealthPanel({ h }: { h: SubjectLinkageHealth }) {
           <span className="w-20 shrink-0 text-right text-[10px] text-muted-foreground/60">à venir</span>
         </div>
       </div>
+      {(() => {
+        // « Où investir » : objets sans élément + prochain gain le plus rentable
+        // (combien de points la couverture globale gagnerait si ce type était rattaché).
+        const gaps = items.map((it) => ({ label: it.label, missing: it.s.total - it.s.linked })).filter((g) => g.missing > 0).sort((a, b) => b.missing - a.missing)
+        if (gaps.length === 0) return null
+        const sumTotal = items.reduce((s, it) => s + it.s.total, 0)
+        const sumLinked = items.reduce((s, it) => s + it.s.linked, 0)
+        const top = gaps[0]
+        const topGain = sumTotal > 0 ? Math.round(((sumLinked + top.missing) / sumTotal) * 100) - h.overallPct : 0
+        return (
+          <div className="space-y-0.5 border-t pt-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">À améliorer</p>
+            <p className="text-[11px] text-muted-foreground">{gaps.map((g) => `${g.missing} ${g.label.toLowerCase()} sans élément`).join(' · ')}</p>
+            {topGain > 0 && (
+              <p className="text-[11px] font-medium">Plus gros gain : rattacher les {top.label.toLowerCase()} <span className="text-emerald-700">(+{topGain} pts)</span></p>
+            )}
+          </div>
+        )
+      })()}
       <p className="text-[10px] text-muted-foreground/70">Plus un objet est rattaché à un élément, plus la recherche, le Journal et la Vue Sujet le retrouvent. Indicatif, non bloquant.</p>
     </section>
   )
