@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { MapPin, FileText, Users, Sparkles, Smartphone, X, Plus, Share } from 'lucide-react'
+import { MapPin, FileText, Users, Smartphone, X, Plus, Share } from 'lucide-react'
 
 const DISMISS_KEY = 'memoria.startbar.dismissed'
 
@@ -19,11 +19,13 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+// « Démarrer » = entrées de création, sobres. PAS « Atelier IA » : c'est le même
+// domaine que « Dossier de démarrage » (les AO), et un espace de travail INTERNE à
+// un dossier, pas une action de démarrage → redondant, retiré (Vincent 2026-06-27).
 const SHORTCUTS = [
   { href: '/sites', label: 'Site', icon: MapPin },
   { href: '/tenders/new', label: 'Dossier de démarrage', icon: FileText },
   { href: '/equipes', label: 'Équipe', icon: Users },
-  { href: '/tenders', label: 'Atelier IA', icon: Sparkles },
 ]
 
 export function StartBar() {
