@@ -215,6 +215,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           Récit
         </Link>
         <Link
+          href={`/sites/${id}/visites`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
+        >
+          <MapPin className="h-3.5 w-3.5" />
+          Visites
+        </Link>
+        <Link
           href={`/sites/${id}/journal`}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
         >

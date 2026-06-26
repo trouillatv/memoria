@@ -383,6 +383,29 @@ export interface SiteReportRisk {
 
 export type SiteReportType = 'contract' | 'site' | 'free'
 
+// ── Visites terrain (mig 162) ────────────────────────────────────────────────
+// Une visite = un site_report orienté objectif. `origin` non-null = visite.
+// MVP : friction zéro au départ ; objectif/sujet/résultat/résolution facultatifs,
+// posés à la clôture. Le motif est facultatif (routera le rail preuve au cran 2).
+export type VisitMotive =
+  | 'inspection'
+  | 'controle'
+  | 'reunion'
+  | 'avancement'
+  | 'reception'
+  | 'levee_reserves'
+  | 'constat'
+  | 'expertise'
+  | 'maintenance'
+  | 'libre'
+export type VisitOrigin = 'planned' | 'spontaneous' | 'qr' | 'gps'
+/** Résultat global — qualifie l'OUVRAGE/ZONE/SUJET, jamais la personne. */
+export type VisitOutcome = 'ras' | 'conforme' | 'conforme_reserves' | 'non_conforme' | 'a_revoir' | 'info'
+/** Résolution du sujet — orthogonale à l'outcome. */
+export type VisitResolution = 'resolue' | 'a_suivre' | 'recontrole'
+/** Motifs routés vers le rail intervention (preuve signée) — utilisé au cran 2. */
+export const VISIT_PROOF_MOTIVES: readonly VisitMotive[] = ['reception', 'levee_reserves', 'maintenance']
+
 export interface DbSiteReport {
   id: string
   type: SiteReportType
@@ -403,6 +426,16 @@ export interface DbSiteReport {
   analysis_error: string | null
   participants: SiteReportParticipant[]
   risks: SiteReportRisk[]
+  // Visites terrain (mig 162) — null pour un compte-rendu/réunion classique.
+  // `origin` non-null = visite terrain. Champs posés à la clôture (facultatifs).
+  origin: VisitOrigin | null
+  started_at: string | null
+  ended_at: string | null
+  visit_motive: VisitMotive | null
+  objective: string | null
+  target_subject_id: string | null
+  outcome: VisitOutcome | null
+  resolution: VisitResolution | null
   created_by: string | null
   created_at: string
   updated_at: string

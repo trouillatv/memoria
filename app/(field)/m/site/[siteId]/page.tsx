@@ -16,6 +16,8 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
+import { VisitLauncher } from './VisitLauncher'
+import { getActiveVisit } from '@/lib/db/visits'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
@@ -122,6 +124,9 @@ export default async function FieldSitePage({
   // Actions ouvertes du site — « à suivre » côté terrain.
   const openActions = await listOpenSiteActions({ siteIds: [siteId] }).catch(() => [])
 
+  // Visite en cours (non terminée) sur ce site, le cas échéant.
+  const activeVisit = await getActiveVisit(siteId).catch(() => null)
+
   // « Aujourd'hui ici » — page d'arrivée terrain. On s'assure des récurrences du
   // jour, puis on agrège interventions du jour + anomalies ouvertes + dernières
   // preuves. Réponse immédiate à « qu'est-ce qui me concerne ici, maintenant ? ».
@@ -185,6 +190,12 @@ export default async function FieldSitePage({
         <h2 className="text-2xl font-bold leading-tight">{site.name}</h2>
         <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
       </section>
+
+      {/* Visite terrain : démarrer / terminer (friction zéro, débrief au bureau). */}
+      <VisitLauncher
+        siteId={siteId}
+        activeVisit={activeVisit ? { id: activeVisit.id, started_at: activeVisit.started_at } : null}
+      />
 
       {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM). */}
       <SiteBriefButton siteId={siteId} variant="mobile" />
