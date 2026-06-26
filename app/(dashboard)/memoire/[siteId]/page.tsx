@@ -14,6 +14,7 @@ import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteById } from '@/lib/db/sites'
 import { findResonance } from '@/lib/ai/memory-resonances'
+import { SiteMemoryChat } from './SiteMemoryChat'
 
 interface PageProps {
   params: Promise<{ siteId: string }>
@@ -51,6 +52,9 @@ export default async function MemoireSitePage({ params }: PageProps) {
         </Link>
         <h1 className="text-2xl font-semibold">Atelier mémoire</h1>
       </header>
+
+      {/* Interroger la mémoire du chantier (agent scopé site, digest-driven). */}
+      <SiteMemoryChat siteId={siteId} />
 
       {resonance ? (
         <section className="space-y-4">
