@@ -51,6 +51,33 @@ export function applyGlossaryCorrections(text: string, terms: GlossaryTerm[]): s
   return out
 }
 
+/**
+ * Bloc « vocabulaire métier » compact pour les prompts LLM : le glossaire ne sert
+ * plus seulement à corriger l'orthographe (déterministe), il DONNE LE SENS des
+ * termes au modèle (acronymes, jargon, vocabulaire maison) → il les comprend, ne
+ * les redéfinit pas. Org-scopé, BORNÉ (coût), best-effort (jamais bloquant).
+ * Priorité aux termes définis ; alias inclus pour que le modèle relie les variantes.
+ */
+export async function buildGlossaryPromptBlock(maxChars = 2500): Promise<string> {
+  let terms: GlossaryTerm[]
+  try { terms = await listGlossaryTerms() } catch { return '' }
+  if (terms.length === 0) return ''
+  // Termes définis d'abord (sens le plus utile au modèle).
+  const ordered = [...terms].sort((a, b) => (b.definition ? 1 : 0) - (a.definition ? 1 : 0))
+  const lines: string[] = []
+  let used = 0
+  for (const t of ordered) {
+    const def = (t.definition ?? '').trim()
+    const defShort = def.length > 120 ? `${def.slice(0, 119)}…` : def
+    const aliasPart = t.aliases.length ? ` (variantes : ${t.aliases.slice(0, 4).join(', ')})` : ''
+    const line = defShort ? `- ${t.term}${aliasPart} : ${defShort}` : `- ${t.term}${aliasPart}`
+    if (used + line.length + 1 > maxChars) break
+    lines.push(line); used += line.length + 1
+  }
+  if (lines.length === 0) return ''
+  return `Vocabulaire métier de l'entreprise (comprends ces termes et leurs variantes, ne les redéfinis pas) :\n${lines.join('\n')}`
+}
+
 export async function listGlossaryTerms(): Promise<GlossaryTerm[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()

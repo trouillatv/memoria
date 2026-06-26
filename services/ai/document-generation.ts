@@ -9,6 +9,7 @@
 import { z } from 'zod'
 import { getAIProvider } from './factory'
 import { withAITracking } from './tracking'
+import { buildGlossaryPromptBlock } from '@/lib/db/glossary'
 import type { AIProviderName } from './index'
 import type {
   ReportDocumentSection,
@@ -128,7 +129,9 @@ export async function generatePv(input: GeneratePvInput): Promise<GeneratePvResu
       const sectionsBrief = generativeSections
         .map((s) => `- key="${s.key}" · ${s.title}${s.guidance ? ` : ${s.guidance}` : ''}`)
         .join('\n')
+      const glossaryBlock = await buildGlossaryPromptBlock().catch(() => '')
       userMessage = [
+        glossaryBlock ? `${glossaryBlock}\n` : '',
         `Réunion : ${input.meetingTitle ?? '(sans titre)'} — ${input.meetingDateLabel}`,
         '',
         '=== Transcription ===',

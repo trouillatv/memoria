@@ -8,6 +8,7 @@ import type {
   SiteReportRisk,
 } from '@/types/db'
 import { SITE_REPORT_ANALYZER_V1 } from './prompts/site-report-analyzer.v1'
+import { buildGlossaryPromptBlock } from '@/lib/db/glossary'
 
 // ---------------------------------------------------------------------------
 // Output schema — tolérant (Gemini dérive) : .catch() partout.
@@ -292,6 +293,9 @@ export async function runSiteReportAnalysisAgent(
   const provider = getAIProvider()
   const feature = 'site_report_analysis'
 
+  // Vocabulaire métier (glossaire) → le modèle COMPREND les termes/acronymes/jargon.
+  const glossaryBlock = await buildGlossaryPromptBlock().catch(() => '')
+
   const parsed = await withAITracking(feature, input.userId, async () => {
     let userMessage: string
 
@@ -307,6 +311,7 @@ export async function runSiteReportAnalysisAgent(
         ? input.candidateSites.map((s, i) => `[${i}] ${s.name}`).join('\n')
         : '(réunion mono-site — ne pas router)'
       userMessage = [
+        glossaryBlock ? `${glossaryBlock}\n` : '',
         `Date de la réunion : ${input.meetingDateLabel ?? '(non précisée — ne pas résoudre de date relative)'}`,
         '',
         '=== Transcription corrigée ===',

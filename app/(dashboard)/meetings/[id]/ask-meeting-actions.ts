@@ -13,6 +13,7 @@ import { withAITracking } from '@/services/ai/tracking'
 import { getSiteReport, listProposals } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
+import { buildGlossaryPromptBlock } from '@/lib/db/glossary'
 
 const TRANSCRIPT_CAP = 16000 // borne de coût : un transcript de réunion tient largement.
 
@@ -98,7 +99,9 @@ export async function askMeetingAction(
         const actionLines = liveActions.length > 0
           ? liveActions.map((a) => `- ${a.title}${a.assigned_to ? ` → ${a.assigned_to}` : ''}${a.due_date ? ` (échéance ${a.due_date})` : ''}`).join('\n')
           : '(aucune)'
+        const glossaryBlock = await buildGlossaryPromptBlock().catch(() => '')
         userMessage = [
+          glossaryBlock ? `${glossaryBlock}\n` : '',
           `Question : ${q}`,
           '',
           `=== Participants ===\n${participants.length > 0 ? participants.join(', ') : '(non renseignés)'}`,
