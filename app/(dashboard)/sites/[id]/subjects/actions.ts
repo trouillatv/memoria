@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { createSubject, setSubjectStatus, attachToSubject, findSubjectByName } from '@/lib/db/subjects'
+import { createSubject, setSubjectStatus, attachToSubject, findSubjectByName, renameSubject } from '@/lib/db/subjects'
 import { createSubjectRelation, deleteSubjectRelation } from '@/lib/db/subject-relations'
 import { addDocumentLink } from '@/lib/db/documents'
 import type { SubjectStatus } from '@/types/db'
@@ -40,6 +40,30 @@ export async function createSubjectAction(formData: FormData): Promise<Result> {
   })
   revalidatePath(`/sites/${parsed.data.siteId}/subjects`)
   return { ok: true, id }
+}
+
+const renameSchema = z.object({
+  siteId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  name: z.string().trim().min(1, 'Nom requis').max(160),
+})
+
+/** Renomme un point suivi (anti-doublon : un autre point ne doit pas déjà porter ce nom). */
+export async function renameSubjectAction(formData: FormData): Promise<Result> {
+  const operator = await getOperator()
+  if (!operator) return { error: 'Non autorisé' }
+  const parsed = renameSchema.safeParse({
+    siteId: formData.get('siteId'),
+    subjectId: formData.get('subjectId'),
+    name: formData.get('name'),
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  const existing = await findSubjectByName(parsed.data.siteId, parsed.data.name)
+  if (existing && existing.id !== parsed.data.subjectId) return { error: `Un point « ${existing.name} » existe déjà sur ce chantier.` }
+  await renameSubject(parsed.data.subjectId, parsed.data.name)
+  revalidatePath(`/sites/${parsed.data.siteId}/subjects/${parsed.data.subjectId}`)
+  revalidatePath(`/sites/${parsed.data.siteId}/subjects`)
+  return { ok: true }
 }
 
 const statusSchema = z.object({

@@ -251,7 +251,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
         </section>
       )}
 
-      <SubjectDetailControls siteId={id} subjectId={subjectId} status={subject.status} candidates={candidates} />
+      <SubjectDetailControls siteId={id} subjectId={subjectId} name={subject.name} status={subject.status} candidates={candidates} />
 
       {/* DÉPENDANCES entre sujets (mig 145) — « ce sujet bloque … » / « en attente de … ».
           Arête dirigée, raison obligatoire, acte humain. Pas de cascade, pas de graphe. */}

@@ -127,6 +127,16 @@ export async function setSubjectStatus(id: string, status: SubjectStatus): Promi
   if (error) throw error
 }
 
+/** Renomme un point suivi (forme canonique). L'anti-doublon est vérifié côté action. */
+export async function renameSubject(id: string, name: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('subjects')
+    .update({ name: normalizeSubjectName(name), updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 /** Rattache (ou détache si subjectId=null) un objet à un sujet. */
 export async function attachToSubject(
   table: 'site_actions' | 'site_reserve' | 'site_report_proposals' | 'site_decisions' | 'intervention_anomalies' | 'report_added_points' | 'site_obligation',

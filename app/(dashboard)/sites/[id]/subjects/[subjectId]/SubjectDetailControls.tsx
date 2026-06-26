@@ -1,10 +1,10 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Check, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
-import { setSubjectStatusAction, attachToSubjectAction } from '../actions'
+import { setSubjectStatusAction, attachToSubjectAction, renameSubjectAction } from '../actions'
 import type { SubjectStatus } from '@/types/db'
 
 type Candidate = { id: string; label: string }
@@ -13,6 +13,7 @@ type Kind = 'action' | 'reserve' | 'decision' | 'document' | 'anomaly' | 'added_
 interface Props {
   siteId: string
   subjectId: string
+  name: string
   status: SubjectStatus
   candidates: { actions: Candidate[]; reserves: Candidate[]; decisions: Candidate[]; documents: Candidate[]; anomalies: Candidate[]; addedAnomalies: Candidate[] }
 }
@@ -32,9 +33,25 @@ const ATTACH: { kind: Kind; label: string; key: keyof Props['candidates'] }[] = 
   { kind: 'document', label: 'un document', key: 'documents' },
 ]
 
-export function SubjectDetailControls({ siteId, subjectId, status, candidates }: Props) {
+export function SubjectDetailControls({ siteId, subjectId, name, status, candidates }: Props) {
   const router = useRouter()
   const [pending, start] = useTransition()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(name)
+
+  function rename() {
+    const v = draft.trim()
+    if (!v || v === name) { setEditing(false); return }
+    const fd = new FormData()
+    fd.set('siteId', siteId); fd.set('subjectId', subjectId); fd.set('name', v)
+    start(async () => {
+      const r = await renameSubjectAction(fd)
+      if ('error' in r) { toast.error(r.error); return }
+      toast.success('Point renommé')
+      setEditing(false)
+      router.refresh()
+    })
+  }
 
   function changeStatus(next: SubjectStatus) {
     if (next === status) return
@@ -62,6 +79,27 @@ export function SubjectDetailControls({ siteId, subjectId, status, candidates }:
 
   return (
     <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium text-muted-foreground">Nom du point</span>
+        {editing ? (
+          <span className="inline-flex items-center gap-1.5">
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={160} autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') rename(); if (e.key === 'Escape') { setDraft(name); setEditing(false) } }}
+              className="rounded border bg-background px-2 py-1 text-xs min-w-[200px]" />
+            <button type="button" disabled={pending} onClick={rename}
+              className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50">
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Enregistrer
+            </button>
+            <button type="button" onClick={() => { setDraft(name); setEditing(false) }} className="text-xs text-muted-foreground">Annuler</button>
+          </span>
+        ) : (
+          <button type="button" onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs hover:bg-muted/40">
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground" /> Renommer
+          </button>
+        )}
+      </div>
+
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-medium text-muted-foreground">Statut</span>
         {STATUS.map((s) => (
