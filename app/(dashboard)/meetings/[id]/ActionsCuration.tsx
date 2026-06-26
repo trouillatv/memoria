@@ -150,7 +150,7 @@ type ActionKind = 'one_shot' | 'deadline' | 'recurring_until_done'
 const KIND_LABEL: Record<ActionKind, string> = {
   one_shot: 'Ponctuelle',
   deadline: 'Pour une échéance',
-  recurring_until_done: 'Récurrente jusqu’à clôture',
+  recurring_until_done: 'À reprendre jusqu’à clôture',
 }
 
 function ActionRow({ reportId, action }: { reportId: string; action: DbSiteAction }) {

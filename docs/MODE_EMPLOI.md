@@ -113,7 +113,7 @@ Consulté vers 18 h pour **préparer demain** : quatre chiffres (interventions p
 Couverture du lundi au dimanche. Deux perspectives : **Site × Jour** (chaque ligne un chantier ; heure de la 1ʳᵉ intervention, points ● par intervention, ambre discret si non-affecté) et **Équipe × Jour**. Un bandeau **Vigilance** remonte si des interventions sont sans équipe ou en chevauchement. Vous créez une intervention ponctuelle, exportez en Excel. Pour modifier une mission complète (récurrence, équipe titulaire), passez par **Missions**.
 
 ### Cockpit des actions (/actions)
-Vue transverse de toutes les actions ouvertes, tous chantiers confondus. Une **action ≠ intervention** : c'est une tâche née d'une réunion, qui n'entre au planning que si vous la **planifiez**. Filtres par statut (ouvertes / planifiées / terminées) et par ancienneté (🔴 critique > 7 j · 🟠 à surveiller 3-7 j · 🟢 en rythme). Chaque action affiche son **type** (Ponctuelle / Pour une échéance / Récurrente jusqu'à clôture), sa **durée en clair** (« Ouverte depuis 143 j »), et l'**écho de la déclaration entreprise** si elle a répondu via QR. Deux gestes : **Clôturer** (commentaire + photo) ou **Planifier** (en intervention).
+Vue transverse de toutes les actions ouvertes, tous chantiers confondus. Une **action ≠ intervention** : c'est une tâche née d'une réunion, qui n'entre au planning que si vous la **planifiez**. Filtres par statut (ouvertes / planifiées / terminées) et par ancienneté (🔴 critique > 7 j · 🟠 à surveiller 3-7 j · 🟢 en rythme). Chaque action affiche son **type** (Ponctuelle / Pour une échéance / À reprendre jusqu'à clôture), sa **durée en clair** (« Ouverte depuis 143 j »), et l'**écho de la déclaration entreprise** si elle a répondu via QR. Deux gestes : **Clôturer** (commentaire + photo) ou **Planifier** (en intervention).
 
 ### Doctrine du cockpit
 Pas de notation de personnes ; pas de wording alarmiste ; silence positif assumé ; contexte avant le nombre ; agrégats jamais des noms. Le cockpit répond à trois questions : qu'est-ce qui se passe, d'où ça vient, que dois-je faire.
@@ -186,7 +186,7 @@ Centralise tout :
 - **Compte-rendu** : un bouton vers l'écran de validation.
 
 ### Le panneau « Qui fait quoi, pour quand »
-L'IA **propose** des actions ; vous **acceptez / modifiez / ignorez**. Chaque action validée porte : titre, responsable, échéance (badge « à confirmer » si estimée), **type** (Ponctuelle / Pour une échéance / Récurrente jusqu'à clôture), **narration de durée** (« Ouverte depuis 143 j »), et l'**écho** de la déclaration entreprise.
+L'IA **propose** des actions ; vous **acceptez / modifiez / ignorez**. Chaque action validée porte : titre, responsable, échéance (badge « à confirmer » si estimée), **type** (Ponctuelle / Pour une échéance / À reprendre jusqu'à clôture), **narration de durée** (« Ouverte depuis 143 j »), et l'**écho** de la déclaration entreprise.
 
 **Confier à une entreprise** : sélectionnez le destinataire (ex. Colas), les actions du lot, et pour chacune si une **photo de preuve est requise** (« montre-moi »). Vous générez un **QR + lien public** (à envoyer par WhatsApp). Le **statut du lot** affiche le parcours **Envoyé → Lu → Rempli**, le décompte Faites/Bloquées, et un bouton **révoquer**.
 
@@ -204,7 +204,7 @@ Le **hub** complet pour préparer et finaliser le compte-rendu, en un seul écra
 - **Éléments à mémoriser** (bloc Décisions) : quand vous validez un PV, MemorIA peut proposer des « éléments à mémoriser ». **Laissez cochés** les vrais éléments du chantier (porte, local, DOE, toiture, réseau, réserve récurrente) ; **décochez** ce qui ressemble à une action ponctuelle (relancer, envoyer, faire, demander — signalé ⚠) ; puis **Rattacher**. Chaque élément validé devient interrogeable au Journal, à la Vue Sujet et à l'Atelier mémoire ; l'action liée à la décision en hérite automatiquement.
 
 ### Briefing de préparation (/meetings/[id]/briefing)
-Sujets à surveiller + **détecteurs déterministes** (actions en retard, décisions non appliquées, acteur absent, réserves ouvertes, obligations négligées, congestion d'acteur, sujets récurrents, **actions récurrentes à reprendre**) + **questions à poser** dérivées. Zéro IA créative.
+Sujets à surveiller + **détecteurs déterministes** (actions en retard, décisions non appliquées, acteur absent, réserves ouvertes, obligations négligées, congestion d'acteur, sujets récurrents, **actions à reprendre**) + **questions à poser** dérivées. Zéro IA créative.
 
 > Garde-fous : IA propose / vous validez ; données brutes conservées même si l'analyse échoue ; distribution = capter une déclaration, jamais gérer le travail ; décisions et sujets traversent les réunions suivantes.
 

@@ -288,8 +288,10 @@ export async function detectRepeatedAbsences(siteId: string, threshold = 3, wind
  *  reste pour une V2 fondée sur des OBJETS RÉOUVERTS (actions/décisions/réserves
  *  rouvertes), qui demande un historique de statut (à instrumenter). Une réunion mal
  *  détectée est gênante ; une réunion perdue est catastrophique → priorité ailleurs. */
-/** ACTIONS RÉCURRENTES À REPRENDRE (S3-ter) : kind = recurring_until_done et pas
- *  clôturées. Une action récurrente ne porte pas forcément d'échéance, donc le
+/** ACTIONS À REPRENDRE (S3-ter) : kind = recurring_until_done et pas clôturées.
+ *  NB doctrine (Vincent) : ce n'est PAS une « action récurrente » au sens analytique
+ *  (= recréée N fois / problème de fond) — c'est une action LONGUE à reprendre jusqu'à
+ *  clôture (flag manuel). Une telle action ne porte pas forcément d'échéance, donc le
  *  détecteur « en retard » ne la voit pas — celui-ci la fait revenir à CHAQUE
  *  préparation de réunion, jusqu'à clôture (sans la transformer en obligation). */
 export async function detectRecurringActions(siteId: string, asOf = todayIso()): Promise<MemorySignal | null> {
@@ -304,17 +306,17 @@ export async function detectRecurringActions(siteId: string, asOf = todayIso()):
   if (rows.length === 0) return null
   return {
     kind: 'action_recurring',
-    title: `${rows.length} action${rows.length > 1 ? 's' : ''} récurrente${rows.length > 1 ? 's' : ''} à reprendre`,
+    title: `${rows.length} action${rows.length > 1 ? 's' : ''} à reprendre`,
     items: rows.map((a) => {
       const openSince = daysSince(a.created_at as string | null, asOf)
       return {
         id: a.id as string,
         label: a.title as string,
         meta: [a.assigned_to as string | null, a.corps_etat as string | null].filter(Boolean).join(' · ') || null,
-        context: [openSince != null ? `Ouverte depuis ${openSince} j — récurrente jusqu'à clôture` : null].filter((x): x is string => !!x),
+        context: [openSince != null ? `Ouverte depuis ${openSince} j — à reprendre jusqu'à clôture` : null].filter((x): x is string => !!x),
       }
     }),
-    source: 'Actions « récurrentes jusqu’à clôture » (site_actions, kind=recurring_until_done) encore ouvertes.',
+    source: 'Actions « à reprendre jusqu’à clôture » (site_actions, kind=recurring_until_done) encore ouvertes.',
   }
 }
 
@@ -352,7 +354,7 @@ export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): S
         case 'actor_absent': question = `${it.label} est absente — qui reprend ses actions en attente ?`; break
         case 'reserve_open': question = `La réserve « ${it.label} » est-elle levée ?`; break
         case 'obligation_neglected': question = `Obligation « ${it.label} » — où en est-on ? (à rappeler à ${it.meta ?? 'l\'entreprise'})`; break
-        case 'action_recurring': question = `Action récurrente « ${it.label} » — point d'avancement de la semaine ?`; break
+        case 'action_recurring': question = `Action à reprendre « ${it.label} » — point d'avancement de la semaine ?`; break
       }
       if (question) out.push({ question, why })
     }
