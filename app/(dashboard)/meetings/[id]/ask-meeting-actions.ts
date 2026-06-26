@@ -75,8 +75,11 @@ export async function askMeetingAction(
   }
 
   // Sources mobilisées — déterministes (affichées « Réponse basée sur »).
+  // Honnêteté : si on a tronqué le transcript, on le DIT (ne pas laisser croire
+  // que toute la réunion a été lue).
+  const truncated = transcriptFull.length > TRANSCRIPT_CAP
   const basedOn: string[] = []
-  if (transcript) basedOn.push('Transcription / CR brut')
+  if (transcript) basedOn.push(truncated ? 'Transcription (extrait analysé)' : 'Transcription / CR brut')
   if (decisions.length > 0) basedOn.push(`Décisions détectées (${decisions.length})`)
   if (liveActions.length > 0) basedOn.push(`Actions créées (${liveActions.length})`)
   if (participants.length > 0) basedOn.push(`Participants (${participants.length})`)
