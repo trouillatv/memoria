@@ -1224,6 +1224,7 @@ const FR_WEEKDAYS_SHORT = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.
 export async function getSiteRecentRhythm(
   siteId: string,
   daysBack = 14,
+  opts: { broadActivity?: boolean } = {},
 ): Promise<SiteRhythmDay[]> {
   const supabase = createAdminClient()
 
@@ -1255,10 +1256,18 @@ export async function getSiteRecentRhythm(
   }
   const indexByDate = new Map(days.map((d, idx) => [d.date, idx]))
 
-  if (missionIds.length === 0) return days
-
   const sinceIso = days[0].date + 'T00:00:00.000Z'
 
+  // Helper : densité d'un jour + ligne de tooltip (cap à 6 lignes).
+  const bump = (dateIso: string, line: string) => {
+    const idx = indexByDate.get(dateIso)
+    if (idx === undefined) return
+    days[idx].count += 1
+    if (days[idx].tooltipLines.length < 6) days[idx].tooltipLines.push(line)
+  }
+
+  // Passages : interventions EXÉCUTÉES (avec équipe en tooltip). Seulement si missions.
+  if (missionIds.length > 0) {
   const { data: interventionsAll } = await supabase
     .from('interventions')
     .select('id, executed_at, assigned_team_id')
@@ -1324,6 +1333,33 @@ export async function getSiteRecentRhythm(
           return members.length > 0 ? `${tName} — ${members.join(', ')}` : tName
         })
         .sort()
+    }
+  }
+  }
+
+  // Densité LARGE (90 j) : planning + actions + CR/réunions/visites — pour que la
+  // « densité » reflète l'ACTIVITÉ réelle du site, pas seulement les passages
+  // exécutés. Le rythme 14 j (sans broadActivity) reste centré sur les passages.
+  if (opts.broadActivity) {
+    const lastDate = days[days.length - 1].date
+    if (missionIds.length > 0) {
+      const { data: planned } = await supabase
+        .from('interventions')
+        .select('scheduled_for')
+        .in('mission_id', missionIds)
+        .gte('scheduled_for', days[0].date)
+        .lte('scheduled_for', lastDate)
+      for (const p of (planned ?? []) as Array<{ scheduled_for: string | null }>) {
+        if (p.scheduled_for) bump(p.scheduled_for.slice(0, 10), 'Intervention planifiée')
+      }
+    }
+    const [actsRes, repsRes] = await Promise.all([
+      supabase.from('site_actions').select('created_at').eq('site_id', siteId).gte('created_at', sinceIso),
+      supabase.from('site_reports').select('created_at, origin').eq('site_id', siteId).gte('created_at', sinceIso),
+    ])
+    for (const a of (actsRes.data ?? []) as Array<{ created_at: string }>) bump(a.created_at.slice(0, 10), 'Action créée')
+    for (const r of (repsRes.data ?? []) as Array<{ created_at: string; origin: string | null }>) {
+      bump(r.created_at.slice(0, 10), r.origin ? 'Visite terrain' : 'Compte-rendu')
     }
   }
 

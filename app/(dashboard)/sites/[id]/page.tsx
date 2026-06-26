@@ -117,7 +117,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     getSiteMemoryMeta(id),
     getSiteRecentPhotos(id, 9),
     listDocumentsForTarget('site', id),
-    getSiteRecentRhythm(id, 90),
+    getSiteRecentRhythm(id, 90, { broadActivity: true }),
   ])
 
   // Actions ouvertes du site (issues des réunions) — « ce qui reste à faire ».
