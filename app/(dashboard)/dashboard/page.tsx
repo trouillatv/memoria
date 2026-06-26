@@ -68,6 +68,8 @@ import { ContinuityWidget } from '@/components/dashboard/ContinuityWidget'
 import { getTenantTopMorningReading, type TenantMorningReading } from '@/lib/db/site-cockpit'
 import { WelcomeCard } from './WelcomeCard'
 import { DashboardHeader } from './DashboardHeader'
+import { AttentionBlock } from './AttentionBlock'
+import { getAttentionDigest } from '@/lib/db/attention'
 import { StartBar } from './StartBar'
 import { NotificationsBar } from './NotificationsBar'
 import { getMyUnreadNotifications } from '@/lib/db/notifications'
@@ -205,6 +207,10 @@ export default async function DashboardPage() {
   const firstName = user.full_name?.split(' ')[0] ?? 'là'
   const active = contracts.filter((c) => c.status === 'active')
 
+  // Temps 2 — bloc « Ce qui mérite votre attention » : agrégation déterministe
+  // transverse des détecteurs (actions en retard/anciennes, réserves), plafonnée.
+  const attention = await getAttentionDigest(5)
+
   return (
     <div className="space-y-6 w-full">
       <DashboardHeader
@@ -212,6 +218,10 @@ export default async function DashboardPage() {
         activeContractsCount={active.length}
         activeContracts={active.map((c) => ({ id: c.id, name: c.name }))}
       />
+
+      {/* Temps 2 — « Ce qui mérite votre attention » : le système décide des
+          priorités du jour (5 max), l'utilisateur ne fouille pas. Déterministe. */}
+      <AttentionBlock digest={attention} />
 
       {/* Notifications (socle mig 159) — réponse à un retour, etc. Au chargement,
           pas seulement si l'utilisateur ouvre le bouton feedback. */}
