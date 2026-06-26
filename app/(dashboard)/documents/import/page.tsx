@@ -8,6 +8,7 @@ import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
 import { listTeams } from '@/lib/db/teams'
+import { getSiteReport } from '@/lib/db/site-reports'
 import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
 import { BatchImportForm } from './BatchImportForm'
 
@@ -47,6 +48,13 @@ export default async function DocumentsImportPage({
     client: clients.map((c) => ({ id: c.id, label: c.name })),
     tender: tenders.map((t) => ({ id: t.id, label: t.title })),
     team: teams.map((t) => ({ id: t.id, label: t.name })),
+  }
+
+  // Cible « réunion » (mig 164) : on n'expose pas TOUTES les réunions ; on résout
+  // seulement celle préfixée par le lien « Ajouter un document mémoire ».
+  if (sp.target_type === 'site_report' && sp.target_id) {
+    const r = await getSiteReport(sp.target_id).catch(() => null)
+    if (r) linkTargets.site_report = [{ id: r.id, label: r.title || `Réunion du ${new Date(r.created_at).toLocaleDateString('fr-FR')}` }]
   }
 
   return (

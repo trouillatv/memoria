@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals, getSiteAttendanceStats } from '@/lib/db/site-reports'
+import { getMeetingEnrichments } from '@/lib/db/meeting-enrichments'
+import { MeetingMemoryPanel } from './MeetingMemoryPanel'
 import { listBlocagesByReport } from '@/lib/db/site-blocages'
 import { guessBlocageType } from '@/lib/db/blocage-constants'
 import { BlocagesPanel } from './BlocagesPanel'
@@ -87,6 +89,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const attendance = report.site_id
     ? await getSiteAttendanceStats(report.site_id, id).catch(() => ({ totalMeetings: 0, present: {}, lastMeetingContactIds: [] }))
     : { totalMeetings: 0, present: {}, lastMeetingContactIds: [] }
+
+  // Historique des enrichissements de la réunion (PJ + participants + documents).
+  const enrichments = await getMeetingEnrichments(id).catch(() => [])
 
   const supabase = createAdminClient()
 
@@ -243,6 +248,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         participants={report.participants ?? []}
         castingContacts={castingContacts}
         attendance={attendance}
+      />
+
+      {/* Mémoire de la réunion : PV figé inchangé, enrichissements tracés (A+B). */}
+      <MeetingMemoryPanel
+        reportId={id}
+        hasFinalPv={finalVersions.length > 0}
+        enrichments={enrichments}
       />
 
       {/* Décisions */}

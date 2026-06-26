@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { getSiteReport } from '@/lib/db/site-reports'
+import { getSiteReport, addReportAttachment } from '@/lib/db/site-reports'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteActionsByReport, createSiteAction, updateSiteAction } from '@/lib/db/site-actions'
 import { getMeetingFollowup, formatFollowupForPv } from '@/lib/db/meeting-followup'
@@ -244,6 +244,51 @@ export async function setPhotoCaptionAction(
 // (≠ « exclure » réversible des photos intervention/action, qui sont des artefacts).
 const PHOTO_MAX_BYTES = 12 * 1024 * 1024 // 12 Mo
 const PHOTO_TYPES = /^image\/(jpe?g|png|webp|gif|heic|heif)$/i
+
+/**
+ * Pièce jointe d'une réunion → site_report_attachments. UN SEUL geste utilisateur :
+ * le BACKEND décide si c'est un enrichissement post-réunion (la réunion a déjà été
+ * DIFFUSÉE = un PV figé existe). Le PV figé ne bouge pas, la mémoire s'enrichit.
+ */
+const POST_PJ_MAX_BYTES = 20 * 1024 * 1024
+export async function addMeetingAttachmentAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const reportId = String(formData.get('report_id') ?? '')
+  const file = formData.get('file')
+  if (!reportId) return { ok: false, error: 'Réunion inconnue.' }
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Aucun fichier.' }
+  if (file.size > POST_PJ_MAX_BYTES) return { ok: false, error: 'Fichier trop lourd (max 20 Mo).' }
+  const isImage = file.type.startsWith('image/')
+  const isPdf = file.type === 'application/pdf'
+  if (!isImage && !isPdf) return { ok: false, error: 'Format non supporté (image ou PDF).' }
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Réunion introuvable' }
+    const sb = createAdminClient()
+    // Diffusée ? → un PV figé existe. C'est le backend qui tranche, pas l'UX.
+    const { count } = await sb.from('report_final_versions').select('report_id', { count: 'exact', head: true }).eq('report_id', reportId)
+    const afterMeeting = (count ?? 0) > 0
+
+    const ext = (file.name.split('.').pop() ?? (isPdf ? 'pdf' : 'jpg')).toLowerCase().slice(0, 5)
+    const safeExt = /^[a-z0-9]+$/.test(ext) ? ext : (isPdf ? 'pdf' : 'jpg')
+    const storagePath = `${report.tenant_id}/${reportId}/att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const { error: upErr } = await sb.storage.from('site-reports').upload(storagePath, buffer, { contentType: file.type, upsert: false })
+    if (upErr) return { ok: false, error: `Upload échoué : ${upErr.message}` }
+    await addReportAttachment({
+      report_id: reportId, kind: isImage ? 'photo' : 'file', storage_path: storagePath,
+      filename: file.name, mime_type: file.type, size_bytes: file.size,
+      uploaded_after_meeting: afterMeeting, added_by: user.id,
+    })
+    revalidatePath(`/meetings/${reportId}`)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
 
 export async function addReportPhotoAction(
   formData: FormData,

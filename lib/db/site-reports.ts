@@ -81,6 +81,9 @@ export async function addReportAttachment(input: {
   size_bytes?: number | null
   sha256?: string | null
   client_uuid?: string | null
+  // Mémoire enrichissable après réunion (mig 163) — PJ post-réunion tracée.
+  uploaded_after_meeting?: boolean
+  added_by?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -94,6 +97,9 @@ export async function addReportAttachment(input: {
       size_bytes: input.size_bytes ?? null,
       sha256: input.sha256 ?? null,
       client_uuid: input.client_uuid ?? null,
+      uploaded_after_meeting: input.uploaded_after_meeting ?? false,
+      added_by: input.added_by ?? null,
+      added_at: input.uploaded_after_meeting ? new Date().toISOString() : null,
     })
     .select('id')
     .single()

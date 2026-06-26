@@ -460,6 +460,10 @@ export interface DbSiteReportAttachment {
   sha256: string | null
   client_uuid: string | null
   created_at: string
+  // Mémoire enrichissable après réunion (mig 163) — PJ ajoutée post-réunion, tracée.
+  uploaded_after_meeting?: boolean
+  added_by?: string | null
+  added_at?: string | null
 }
 
 // Une proposition = une DÉCISION détectée dans le compte-rendu, routée selon
@@ -924,6 +928,8 @@ export type DocumentTargetType =
   | 'subject'
   // Obligations (migration 151) — rattacher le CCTP/PAQ source à l'obligation.
   | 'obligation'
+  // Réunion (migration 164) — vrai document métier reçu après coup (DOE, marché…).
+  | 'site_report'
 
 export interface DbDocumentCollection {
   id: string

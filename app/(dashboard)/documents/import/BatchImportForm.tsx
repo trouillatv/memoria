@@ -34,6 +34,7 @@ interface Row {
 
 const TARGET_LABELS: Record<string, string> = {
   contract: 'Contrat', site: 'Site', tender: 'Dossier de démarrage', client: 'Client', team: 'Équipe',
+  site_report: 'Réunion',
 }
 const selectCls = 'rounded-md border bg-background px-2 py-1.5 text-sm'
 
