@@ -250,10 +250,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         attendance={attendance}
       />
 
-      {/* Mémoire de la réunion : PV figé inchangé, enrichissements tracés (A+B). */}
+      {/* Mémoire du chantier : PV figé inchangé, nouveautés à intégrer, journal. */}
       <MeetingMemoryPanel
         reportId={id}
         hasFinalPv={finalVersions.length > 0}
+        lastPvAt={finalVersions.reduce<string | null>((m, v) => (!m || v.finalizedAt > m ? v.finalizedAt : m), null)}
         enrichments={enrichments}
       />
 

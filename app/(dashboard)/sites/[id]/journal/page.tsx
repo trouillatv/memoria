@@ -33,7 +33,7 @@ export default async function SiteJournalPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 w-full">
-      <DynamicCrumb segmentId="journal" label="Journal" />
+      <DynamicCrumb segmentId="journal" label="Journal terrain" />
       <BreadcrumbPrefix crumbs={[
         { href: '/sites', label: 'Sites' },
         { href: `/sites/${id}`, label: identity.name },
@@ -50,7 +50,7 @@ export default async function SiteJournalPage({ params }: PageProps) {
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
             <BookOpen className="h-5 w-5 text-muted-foreground" />
-            Journal du chantier
+            Journal terrain
           </h1>
           <a
             href={`/sites/${id}/journal/pdf`}

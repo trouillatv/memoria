@@ -9,8 +9,14 @@ import { gatherSiteHistory } from '@/lib/db/visits'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { getSiteAttendanceStats } from '@/lib/db/site-reports'
 import { listSiteContacts } from '@/lib/db/site-intervenants'
+import { getSiteRecentEnrichments } from '@/lib/db/meeting-enrichments'
 
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000'
+
+function frShort(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+}
 
 export interface SiteMemoryDigest {
   siteName: string
@@ -24,11 +30,12 @@ export async function getSiteMemoryDigest(siteId: string): Promise<SiteMemoryDig
   const identity = await getSiteIdentity(siteId)
   if (!identity) return null
 
-  const [history, signals, attendance, contacts] = await Promise.all([
+  const [history, signals, attendance, contacts, enrichments] = await Promise.all([
     gatherSiteHistory(siteId, ZERO_UUID),
     buildSiteMemorySignals(siteId).catch(() => []),
     getSiteAttendanceStats(siteId, ZERO_UUID).catch(() => ({ totalMeetings: 0, present: {} as Record<string, number>, lastMeetingContactIds: [] as string[] })),
     listSiteContacts(siteId).catch(() => []),
+    getSiteRecentEnrichments(siteId, 8).catch(() => []),
   ])
 
   const sections: string[] = []
@@ -56,6 +63,11 @@ export async function getSiteMemoryDigest(siteId: string): Promise<SiteMemoryDig
     .map(([id, n]) => `- ${nameById.get(id) ?? 'contact'} (${n} réunion${n > 1 ? 's' : ''})`)
   if (topIntervenants.length > 0) {
     sections.push('Intervenants fréquents :\n' + topIntervenants.join('\n'))
+  }
+
+  // Enrichissements récents (ajoutés APRÈS diffusion) — « qu'est-ce qui a changé ».
+  if (enrichments.length > 0) {
+    sections.push('Enrichissements récents (après diffusion) :\n' + enrichments.map((e) => `- ${frShort(e.date)} : ${e.what}`).join('\n'))
   }
 
   return {

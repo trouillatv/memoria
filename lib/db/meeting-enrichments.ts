@@ -53,3 +53,23 @@ export async function getMeetingEnrichments(reportId: string): Promise<MeetingEn
     .sort((a, b) => (a.date < b.date ? -1 : 1))
     .map((r) => ({ date: r.date, who: r.byId ? (nameById.get(r.byId) ?? null) : null, what: r.what }))
 }
+
+/**
+ * Enrichissements récents au niveau CHANTIER (toutes réunions confondues) : les
+ * pièces ajoutées après diffusion. Sert le digest de l'Atelier mémoire → l'agent
+ * peut répondre « qu'est-ce qui a changé depuis la dernière réunion ? ».
+ */
+export async function getSiteRecentEnrichments(siteId: string, limit = 8): Promise<MeetingEnrichment[]> {
+  const sb = createAdminClient()
+  const { data: reps } = await sb.from('site_reports').select('id').eq('site_id', siteId)
+  const reportIds = ((reps ?? []) as Array<{ id: string }>).map((r) => r.id)
+  if (reportIds.length === 0) return []
+
+  const { data: atts } = await sb.from('site_report_attachments')
+    .select('filename, kind, created_at')
+    .in('report_id', reportIds).eq('uploaded_after_meeting', true)
+    .order('created_at', { ascending: false }).limit(limit)
+
+  return ((atts ?? []) as Array<{ filename: string | null; kind: string; created_at: string }>)
+    .map((a) => ({ date: a.created_at, who: null, what: `${a.kind === 'photo' ? 'Photo' : 'Pièce'} ajoutée après diffusion${a.filename ? ` : ${a.filename}` : ''}` }))
+}
