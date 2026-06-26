@@ -10,7 +10,7 @@ import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2, Link2 } from 'lucide-re
 import { addDecisionAction, editDecisionAction, deleteDecisionAction, attachDecisionToSubjectAction, attachDecisionSubjectsAction } from '../../pv-actions'
 import { ACTION_CODES } from '@/lib/db/action-codes'
 import { DECISION_STATUTS, DECISION_IMPACTS, STATUT_LABEL, IMPACT_LABEL, type DecisionImpact } from '@/lib/db/decision-constants'
-import { subjectDedupKey } from '@/lib/db/subject-doctrine'
+import { subjectDedupKey, looksLikeAction } from '@/lib/db/subject-doctrine'
 import type { SiteDecision } from '@/lib/db/site-decisions'
 
 // PROPOSITION PRÉ-COCHÉE (choix B, Vincent) : à la validation du PV, on propose de
@@ -24,22 +24,26 @@ function SubjectProposals({ reportId, decisions, existingNames }: { reportId: st
 
   const existingKeys = useMemo(() => new Set(existingNames.map(subjectDedupKey)), [existingNames])
   // Une décision avec un `sujet` saisi mais pas encore rattachée = une proposition.
+  // État DÉTERMINISTE (jamais un % inventé) : existant / nouveau / ressemble-à-action.
   const groups = useMemo(() => {
-    const m = new Map<string, { sujet: string; existing: boolean; ids: string[] }>()
+    const m = new Map<string, { sujet: string; existing: boolean; actionLike: boolean; hasAction: boolean; ids: string[] }>()
     for (const d of decisions) {
       const name = (d.sujet ?? '').trim()
       if (!name || d.subjectId) continue
       const key = subjectDedupKey(name)
-      const g = m.get(key) ?? { sujet: name, existing: existingKeys.has(key), ids: [] as string[] }
+      const g = m.get(key) ?? { sujet: name, existing: existingKeys.has(key), actionLike: looksLikeAction(name), hasAction: false, ids: [] as string[] }
       g.ids.push(d.id)
+      if (d.actionId) g.hasAction = true
       m.set(key, g)
     }
     return [...m.entries()].map(([key, g]) => ({ key, ...g }))
   }, [decisions, existingKeys])
 
   if (groups.length === 0) return null
-  const isChecked = (key: string) => checked[key] ?? true // pré-coché par défaut
-  const selectedIds = groups.filter((g) => isChecked(g.key)).flatMap((g) => g.ids)
+  // Pré-coché par défaut SAUF si « ressemble à une action » (on ne crée pas de sujet
+  // douteux sans regard) → l'humain coche explicitement ceux-là.
+  const isChecked = (g: { key: string; actionLike: boolean }) => checked[g.key] ?? !g.actionLike
+  const selectedIds = groups.filter(isChecked).flatMap((g) => g.ids)
 
   function validate() {
     setError(null)
@@ -53,24 +57,39 @@ function SubjectProposals({ reportId, decisions, existingNames }: { reportId: st
   return (
     <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
       <p className="text-[11px] font-medium text-violet-900">
-        Sujets proposés — rattachez ces décisions à leur sujet (pré-coché, décochez ce qui ne va pas).
+        Sujets proposés — un seul « Rattacher » suffit (pré-coché, décochez ce qui ne va pas).
       </p>
-      <ul className="space-y-1">
+      <ul className="space-y-1.5">
         {groups.map((g) => (
-          <li key={g.key} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isChecked(g.key)} onChange={() => setChecked((c) => ({ ...c, [g.key]: !isChecked(g.key) }))} className="accent-violet-600" />
-            <span className="font-medium">« {g.sujet} »</span>
-            <span className="text-[11px] text-muted-foreground">
-              {g.existing ? 'sujet existant' : 'nouveau sujet'}{g.ids.length > 1 ? ` · ${g.ids.length} décisions` : ''}
+          <li key={g.key} className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={isChecked(g)} onChange={() => setChecked((c) => ({ ...c, [g.key]: !isChecked(g) }))} className="mt-1 accent-violet-600" />
+            <span className="min-w-0">
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium">« {g.sujet} »</span>
+                {g.existing ? (
+                  <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">🟢 Sujet existant</span>
+                ) : g.actionLike ? (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">🟡 Ressemble à une action — à vérifier</span>
+                ) : (
+                  <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700">🔵 Nouveau sujet</span>
+                )}
+                {g.ids.length > 1 && <span className="text-[10px] text-muted-foreground">· {g.ids.length} décisions</span>}
+              </span>
+              {/* #2 — ce que ça enrichit réellement (pas juste une ligne). */}
+              <span className="block text-[10px] text-muted-foreground">
+                Décision{g.hasAction ? ' · Action liée' : ''} · apparaît au Journal et à la Vue Sujet
+              </span>
             </span>
           </li>
         ))}
       </ul>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={pending || selectedIds.length === 0} onClick={validate}
           className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50">
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />} Rattacher{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
         </button>
+        {/* #3 — le bénéfice immédiat, pour expliquer POURQUOI on demande cette validation. */}
+        <span className="text-[10px] text-muted-foreground">Les prochaines réunions et l’Atelier mémoire retrouveront ces sujets.</span>
         {error && <span className="text-xs text-rose-600">{error}</span>}
       </div>
     </div>
