@@ -26,6 +26,7 @@ import { MeetingParticipantsEditor } from './MeetingParticipantsEditor'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
 import { AssignResponsibleList } from './AssignResponsibleList'
+import { MeetingChat } from './MeetingChat'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SiteReportProposalType, SiteReportStatus, DbSiteReportProposal } from '@/types/db'
 
@@ -288,6 +289,9 @@ async function PvTab({ reportId, siteId }: { reportId: string; siteId: string | 
 
   return (
     <div className="space-y-6">
+      {/* Interroger cette réunion — Q&A scopé à cette réunion (≠ Atelier site). */}
+      <MeetingChat reportId={reportId} />
+
       {/* Compte-rendu de chantier — hub de création/validation du PV. */}
       <Link
         href={`/meetings/${reportId}/pv/validation`}
