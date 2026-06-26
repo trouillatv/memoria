@@ -131,7 +131,7 @@ export function OpenActionsList({
                         href={`/sites/${a.site_id}/subjects/${a.subject_id}`}
                         className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-100"
                       >
-                        <Link2 className="h-3.5 w-3.5" />Élément lié
+                        <Link2 className="h-3.5 w-3.5" />Point mémorisé
                       </Link>
                     ) : (
                       <button
@@ -139,7 +139,7 @@ export function OpenActionsList({
                         onClick={() => setMode({ id: a.id, kind: 'associate' })}
                         className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-violet-300 hover:text-violet-700"
                       >
-                        <Link2 className="h-3.5 w-3.5" />Associer à la mémoire
+                        <Link2 className="h-3.5 w-3.5" />Mémoriser ce point
                       </button>
                     ))}
                     <Link
@@ -431,7 +431,7 @@ function AssociateForm({
     else fd.set('name', name.trim())
     startTransition(async () => {
       const r = await associateActionToElementAction(fd)
-      if (r.ok) { toast.success('Action rattachée à un élément'); onDone() }
+      if (r.ok) { toast.success('Point mémorisé'); onDone() }
       else toast.error(r.error)
     })
   }
@@ -439,14 +439,14 @@ function AssociateForm({
   return (
     <div className="mt-2 rounded-lg border bg-muted/20 p-2.5 space-y-2">
       <p className="text-[11px] font-medium text-foreground/80 inline-flex items-center gap-1.5">
-        <Link2 className="h-3.5 w-3.5" />Cette action concerne-t-elle un élément durable&nbsp;?
+        <Link2 className="h-3.5 w-3.5" />Mémoriser ce point pour la suite du chantier&nbsp;?
       </p>
 
       {subjects.length > 0 && (
         <label className="flex items-start gap-2 text-sm">
           <input type="radio" checked={mode === 'existing'} onChange={() => setMode('existing')} className="mt-1 accent-violet-600" />
           <span className="min-w-0 flex-1">
-            <span className="text-[11px] text-muted-foreground">Utiliser un élément existant</span>
+            <span className="text-[11px] text-muted-foreground">Rattacher à un point déjà mémorisé</span>
             <select value={subjectId} onChange={(e) => { setSubjectId(e.target.value); setMode('existing') }}
               className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-sm">
               {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -458,13 +458,13 @@ function AssociateForm({
       <label className="flex items-start gap-2 text-sm">
         <input type="radio" checked={mode === 'create'} onChange={() => setMode('create')} className="mt-1 accent-violet-600" />
         <span className="min-w-0 flex-1">
-          <span className="text-[11px] text-muted-foreground">Créer un élément {loading ? '' : '(titre proposé, à raccourcir)'}</span>
+          <span className="text-[11px] text-muted-foreground">Nouveau point {loading ? '' : '(titre proposé, à raccourcir)'}</span>
           <input value={name} onChange={(e) => { setName(e.target.value); setMode('create') }} maxLength={160}
             placeholder="Ex. Motricité sur échelle, DOE porte coupe-feu"
             className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-sm" />
           {actionLike && (
             <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-amber-700">
-              <AlertTriangle className="h-3 w-3" /> Ça ressemble à une action — nomme plutôt l’élément durable derrière (le « pourquoi »).
+              <AlertTriangle className="h-3 w-3" /> Ça ressemble à une action — nomme plutôt le point durable derrière (le « pourquoi »).
             </span>
           )}
         </span>
