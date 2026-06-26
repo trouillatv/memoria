@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
   Mic, Building2, MapPin, AlertTriangle, ListTodo, CalendarClock, ClipboardList,
-  Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass, Users, UserX,
+  Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass, Users,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport, listProposals, getSiteAttendanceStats } from '@/lib/db/site-reports'
@@ -25,6 +25,7 @@ import { MeetingMemoryHealth } from './MeetingMemoryHealth'
 import { MeetingParticipantsEditor } from './MeetingParticipantsEditor'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
+import { AssignResponsibleList } from './AssignResponsibleList'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { SiteReportProposalType, SiteReportStatus, DbSiteReportProposal } from '@/types/db'
 
@@ -348,6 +349,10 @@ async function DecisionsTab({
     getMeetingFollowup({ id: report.id, site_id: report.site_id, created_at: report.created_at }),
   ])
   const byResponsible = groupByResponsible(actions)
+  // Actions ouvertes sans responsable — matière du bucket actionnable « Sans responsable ».
+  const unassignedOpen = actions
+    .filter((a) => a.status !== 'cancelled' && (a.status === 'open' || a.status === 'planned') && !(a.assigned_to ?? '').trim())
+    .map((a) => ({ id: a.id, title: a.title }))
 
   return (
     <div className="space-y-6">
@@ -437,14 +442,11 @@ async function DecisionsTab({
             <Users className="h-3.5 w-3.5" /> Par responsable
           </h2>
           <div className="rounded-xl border bg-card p-4 space-y-3">
-            {byResponsible.sansResponsable > 0 && (
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm">
-                <span className="inline-flex items-center gap-2 font-medium text-amber-900">
-                  <UserX className="h-4 w-4 text-amber-600" /> Sans responsable
-                </span>
-                <span className="tabular-nums text-amber-800">{byResponsible.sansResponsable} à attribuer</span>
-              </div>
-            )}
+            <AssignResponsibleList
+              reportId={reportId}
+              actions={unassignedOpen}
+              suggestions={byResponsible.responsables.map((g) => g.label)}
+            />
             {byResponsible.responsables.length > 0 && (
               <ul className="divide-y">
                 {byResponsible.responsables.map((g) => (
