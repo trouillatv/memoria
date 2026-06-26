@@ -2,6 +2,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { MemorySignal } from '../types'
 import type { HandoverPayload } from '@/types/db'
 import {
@@ -12,11 +13,14 @@ import {
 
 export async function detectHandoverAcknowledged(): Promise<MemorySignal[]> {
   const sb = createAdminClient()
+  const orgId = await getOrgId().catch(() => null)
+  if (!orgId) return []
   const sinceIso = new Date(Date.now() - ACK_WINDOW_DAYS * 86_400_000).toISOString()
 
   const { data } = await sb
     .from('handover_briefs')
     .select('id, acknowledged_at, payload')
+    .eq('organization_id', orgId)
     .eq('status', 'acknowledged')
     .gte('acknowledged_at', sinceIso)
 

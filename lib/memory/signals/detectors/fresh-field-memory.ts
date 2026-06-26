@@ -2,6 +2,7 @@
 
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type { MemorySignal } from '../types'
 import {
   buildFreshFieldMemorySignals,
@@ -16,11 +17,14 @@ function pickOne<T>(v: T | T[] | null | undefined): T | null {
 
 export async function detectFreshFieldMemory(): Promise<MemorySignal[]> {
   const sb = createAdminClient()
+  const orgId = await getOrgId().catch(() => null)
+  if (!orgId) return []
   const sinceIso = new Date(Date.now() - FRESH_WINDOW_DAYS * 86_400_000).toISOString()
 
   const { data } = await sb
     .from('site_notes')
     .select('id, site_id, created_at, kind, site:sites!inner(id, name, deleted_at)')
+    .eq('organization_id', orgId)
     .eq('kind', 'a_savoir')
     .is('deleted_at', null)
     .gte('created_at', sinceIso)

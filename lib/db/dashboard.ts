@@ -315,13 +315,14 @@ export async function listTendersDueSoon(days: number = 7): Promise<TenderDueSoo
 
 export async function getOpenAnomaliesStats(): Promise<OpenAnomaliesStats> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId() // scope ORG (admin client bypasse les RLS)
   const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [totalRes, oldRes] = await Promise.all([
-    supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true }).is('resolved_at', null),
-    supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
-      .is('resolved_at', null).lt('created_at', threeDaysAgo),
-  ])
+  let totalQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true }).is('resolved_at', null)
+  let oldQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
+    .is('resolved_at', null).lt('created_at', threeDaysAgo)
+  if (orgId) { totalQ = totalQ.eq('organization_id', orgId); oldQ = oldQ.eq('organization_id', orgId) }
+  const [totalRes, oldRes] = await Promise.all([totalQ, oldQ])
   if (totalRes.error) throw totalRes.error
   if (oldRes.error) throw oldRes.error
   return { total: totalRes.count ?? 0, oldCount: oldRes.count ?? 0 }
@@ -329,12 +330,13 @@ export async function getOpenAnomaliesStats(): Promise<OpenAnomaliesStats> {
 
 export async function getOpenAnomaliesStrict(): Promise<OpenAnomaliesStats> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId() // scope ORG (admin client bypasse les RLS)
   const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-  const [totalRes, oldRes] = await Promise.all([
-    supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-    supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
-      .eq('status', 'open').lt('created_at', threeDaysAgo),
-  ])
+  let totalQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true }).eq('status', 'open')
+  let oldQ = supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
+    .eq('status', 'open').lt('created_at', threeDaysAgo)
+  if (orgId) { totalQ = totalQ.eq('organization_id', orgId); oldQ = oldQ.eq('organization_id', orgId) }
+  const [totalRes, oldRes] = await Promise.all([totalQ, oldQ])
   if (totalRes.error) throw totalRes.error
   if (oldRes.error) throw oldRes.error
   return { total: totalRes.count ?? 0, oldCount: oldRes.count ?? 0 }
