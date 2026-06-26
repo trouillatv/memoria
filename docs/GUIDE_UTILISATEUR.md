@@ -58,8 +58,10 @@ MemorIA est la **mémoire opérationnelle d'un chantier**. Elle écoute ce qui s
 💡 **Conseils** — restez en simplifié au quotidien ; basculez en complet ponctuellement.
 ⚠️ **Erreurs fréquentes** — « il me manque un menu ! » → vous êtes en mode simplifié, cliquez **Tout afficher**.
 
+**Barre du haut & apparence.** À droite de chaque page : **Recherche** (raccourci ⌘K / Ctrl-K), le **sélecteur de thème** (icône soleil/lune) et la **déconnexion**. MemorIA propose plusieurs thèmes d'apparence (clair, sombre, et variantes chaudes/minérales) — purement visuels, sans impact sur les données.
+
 > 📸 **C4** — barre latérale (mode simplifié). ① le bouton de bascule.
-> 📸 **C5** — barre latérale (tout afficher).
+> 📸 **C5** — barre latérale (tout afficher) + barre du haut (recherche, thème, déconnexion).
 
 ---
 
@@ -67,13 +69,13 @@ MemorIA est la **mémoire opérationnelle d'un chantier**. Elle écoute ce qui s
 
 🎯 **Objectif** — piloter une opération depuis un **cockpit unique**.
 🕒 **Quand** — pour suivre un chantier précis.
-🔘 **Boutons** — 4 domaines (**Journal du chantier · Actions · Mémoire · Documents**) + actions rapides (**Préparer le brief · Compte-rendu · + Action**).
-🧭 **Parcours** — `/sites` (annuaire) → ouvrez un chantier → la fiche affiche les signaux du jour + les 4 domaines.
-💡 **Conseils** — les 4 domaines sont des **mini tableaux de bord** (compteurs) : un coup d'œil suffit.
+🔘 **Boutons** *(vérifiés sur l'app)* — en haut un bloc **« À savoir sur ce lieu »** (notes/vigilances persistantes) ; trois actions rapides **« Préparer ma visite » · « Compte-rendu chantier » · « + Action »** ; puis les **4 domaines : Journal du chantier · Actions · Mémoire · Documents**.
+🧭 **Parcours** — `/sites` (annuaire) → ouvrez un chantier → l'en-tête rappelle l'identité (lieu, ancienneté, « N équipes se sont succédé ici »), le bloc « À savoir » alerte, puis on entre par un des 4 domaines.
+💡 **Conseils** — les 4 domaines sont des **mini tableaux de bord** ; « À savoir sur ce lieu » = ce qu'il ne faut pas oublier en arrivant (ex. « SOCOTEC demande photo du ferraillage avant fermeture coffrage »).
 ⚠️ **Erreurs fréquentes** — ne cherchez pas un fichier ici : passez par **Documents** ou la recherche.
 
 > 📸 **C6** — `/sites` (annuaire).
-> 📸 **C7** — fiche site (cockpit). ① Journal · ② Actions · ③ Mémoire · ④ Documents · ⑤ boutons d'action.
+> 📸 **C7** — fiche site (cockpit). ① « À savoir sur ce lieu » · ② Préparer ma visite · ③ Compte-rendu chantier · ④ les 4 domaines.
 
 ---
 
@@ -249,6 +251,20 @@ MemorIA est la **mémoire opérationnelle d'un chantier**. Elle écoute ce qui s
 | **Tout le chantier** | tout ce qu'on sait sur le site | Atelier mémoire (`/memoire/[siteId]`) |
 
 > 💡 *« Teams répond sur la réunion ; MemorIA répond sur la réunion, puis relie à la mémoire du chantier. »*
+
+---
+
+## 18 bis. Dossiers de démarrage (AO) & Atelier IA
+
+🎯 **Objectif** — préparer une réponse à un **appel d'offres** : analyser le dossier, mobiliser la mémoire de l'entreprise, générer la **mémoire technique**.
+🕒 **Quand** — à l'arrivée d'un AO.
+🔘 **Boutons** *(vérifiés sur l'app)* — **« + Nouveau »** (créer/importer un dossier), **« Mémoire »** (AO similaires passés), filtre **Statut**, **« Voir »** (ouvrir un dossier).
+🧭 **Parcours** — `/tenders` « **Dossiers de démarrage** » (liste : Titre · Donneur d'ordre · Échéance · Statut) → **+ Nouveau** → importez les pièces → l'IA analyse → ouvrez le dossier → **l'Atelier IA** (agents) aide à comprendre, contredire et produire la mémoire technique.
+💡 **Conseils** — « Mémoire » rappelle les AO similaires déjà traités (capital commercial réutilisable).
+⚠️ **Erreurs fréquentes** — un statut **« Échec »** = l'analyse a échoué (pièces illisibles) ; les pièces restent conservées, relancez.
+
+> 📸 **C28** — `/tenders` (liste). ① + Nouveau · ② Statut · ③ Mémoire.
+> 📸 **C29** — un dossier ouvert (Atelier IA, agents + mémoire technique générée).
 
 ---
 
