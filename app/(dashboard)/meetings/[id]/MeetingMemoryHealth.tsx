@@ -66,7 +66,7 @@ function Reanalyze({ reportId, runs }: { reportId: string; runs: AnalysisRun[] }
 }
 
 // Une source audio : réécoute (URL signée) + relance de transcription si échec/vide.
-function SourceRow({ source }: { source: AudioSource }) {
+function SourceRow({ source, isPrincipal, reportHasTranscript }: { source: AudioSource; isPrincipal: boolean; reportHasTranscript: boolean }) {
   const router = useRouter()
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [loadingUrl, startLoadUrl] = useTransition()
@@ -74,7 +74,11 @@ function SourceRow({ source }: { source: AudioSource }) {
   const [deleting, startDelete] = useTransition()
   const [confirmDel, setConfirmDel] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const needsTranscript = source.transcriptStatus === 'failed' || source.transcriptStatus === 'none' || !source.hasTranscript
+  // L'ancien chemin mono-source garde le transcript au niveau réunion : pour la
+  // pièce PRINCIPALE, ce transcript fait foi → pas de faux « manquante ».
+  const coveredByReport = isPrincipal && reportHasTranscript
+  const needsTranscript = !coveredByReport
+    && (source.transcriptStatus === 'failed' || source.transcriptStatus === 'none' || !source.hasTranscript)
 
   function toggleListen() {
     setMsg(null)
@@ -110,6 +114,7 @@ function SourceRow({ source }: { source: AudioSource }) {
         {source.transcriptStatus === 'pending' && <span className="inline-flex items-center gap-1 text-[10px] text-amber-700"><Loader2 className="h-3 w-3 animate-spin" /> en cours</span>}
         {needsTranscript && source.transcriptStatus !== 'pending' && <span className="inline-flex items-center gap-1 text-[10px] text-rose-600"><AlertTriangle className="h-3 w-3" /> transcription manquante</span>}
         {!needsTranscript && source.transcriptStatus === 'done' && <span className="text-[10px] text-emerald-700">transcrit</span>}
+        {!needsTranscript && source.transcriptStatus !== 'done' && coveredByReport && <span className="text-[10px] text-emerald-700" title="Transcription conservée au niveau de la réunion">transcrit (réunion)</span>}
         <span className="shrink-0 tabular-nums text-muted-foreground">{fmtDuration(source.durationSeconds)}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -265,7 +270,7 @@ export function MeetingMemoryHealth({ reportId, sources, health, analysisRuns = 
       {sources.length > 0 && (
         <div className="space-y-1">
           <ul className="space-y-1">
-            {sources.map((s) => <SourceRow key={s.id} source={s} />)}
+            {sources.map((s, i) => <SourceRow key={s.id} source={s} isPrincipal={i === 0} reportHasTranscript={health.reportHasTranscript} />)}
           </ul>
           <p className="text-[11px] text-muted-foreground">Total corpus : {fmtDuration(health.capturedSeconds)} · {sources.length} source{sources.length > 1 ? 's' : ''}</p>
         </div>
