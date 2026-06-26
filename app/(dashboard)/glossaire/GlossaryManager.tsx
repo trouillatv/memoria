@@ -8,7 +8,7 @@ import { GLOSSARY_CATEGORIES } from '@/lib/db/glossary-constants'
 import { DEFAULT_GLOSSARY } from '@/lib/db/glossary-seed'
 import type { GlossaryTerm } from '@/lib/db/glossary'
 
-export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
+export function GlossaryManager({ terms, canEdit = false }: { terms: GlossaryTerm[]; canEdit?: boolean }) {
   const router = useRouter()
   const [term, setTerm] = useState('')
   const [definition, setDefinition] = useState('')
@@ -44,6 +44,7 @@ export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
 
   return (
     <div className="space-y-5">
+      {canEdit && (<>
       {/* Vocabulaire de démarrage (BTP/VRD + MOE) — idempotent, n'écrase rien. */}
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed bg-muted/20 p-3">
         <p className="text-xs text-muted-foreground">
@@ -95,6 +96,7 @@ export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Ajouter
         </button>
       </section>
+      </>)}
 
       {/* Liste */}
       {terms.length === 0 ? (
@@ -124,13 +126,15 @@ export function GlossaryManager({ terms }: { terms: GlossaryTerm[] }) {
                   </div>
                 )}
               </div>
-              <button
-                type="button" onClick={() => remove(t.id)} disabled={pending}
-                className="shrink-0 text-muted-foreground hover:text-rose-700 disabled:opacity-50"
-                aria-label="Supprimer"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {canEdit && (
+                <button
+                  type="button" onClick={() => remove(t.id)} disabled={pending}
+                  className="shrink-0 text-muted-foreground hover:text-rose-700 disabled:opacity-50"
+                  aria-label="Supprimer"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </li>
           ))}
         </ul>

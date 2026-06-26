@@ -11,8 +11,9 @@ import { GlossaryManager } from './GlossaryManager'
 export default async function GlossairePage() {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
-  // Admin uniquement (Vincent 2026-06-24) — référentiel sensible, sous Admin.
-  if (user.role !== 'admin') redirect('/dashboard')
+  // LECTURE pour tous (Vincent 2026-06-27) : le glossaire aide tout le monde à
+  // parler le même vocabulaire. ÉDITION réservée aux admins (référentiel partagé).
+  const canEdit = user.role === 'admin'
 
   const terms = await listGlossaryTerms()
 
@@ -27,10 +28,12 @@ export default async function GlossairePage() {
           travers ses variantes (DOE = « Dossier des ouvrages exécutés »).
         </p>
         <p className="text-xs text-muted-foreground/80">
-          Termes de démarrage fournis — à adapter, compléter ou supprimer selon votre vocabulaire.
+          {canEdit
+            ? 'Termes de démarrage fournis — à adapter, compléter ou supprimer selon votre vocabulaire.'
+            : 'Consultable par tous ; l’édition est réservée aux administrateurs.'}
         </p>
       </header>
-      <GlossaryManager terms={terms} />
+      <GlossaryManager terms={terms} canEdit={canEdit} />
     </div>
   )
 }

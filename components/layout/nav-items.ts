@@ -83,14 +83,14 @@ export const NAV: NavItem[] = [
   { href: '/documents',  label: 'Bibliothèque',           icon: BookOpen,      roles: ['admin', 'manager'] },
   // — Guides (les 3 regroupés sous l'en-tête « Guides ») —
   { href: '/manuel',     label: 'Manuel',                 icon: BookMarked,    roles: ['admin', 'manager'], groupStart: 'Guides' },
+  // Glossaire métier (mig 150) — vocabulaire + alias. LECTURE pour tous (Vincent
+  // 2026-06-27) : tout le monde parle le même langage ; édition réservée admin (page).
+  { href: '/glossaire',  label: 'Glossaire métier',       icon: BookA,         roles: ['admin', 'manager', 'chef_equipe'] },
   { href: '/comprendre/memoire-ia',   label: 'Comprendre la mémoire', icon: Brain, roles: ['admin', 'manager'] },
   { href: '/comprendre/architecture', label: 'Comprendre l’archi',    icon: Boxes, roles: ['admin'] },
   // — Admin —
   { href: '/admin',          label: 'Administration', icon: ShieldAlert, roles: ['admin'], groupStart: 'Admin' },
   { href: '/admin/depenses-ia', label: 'Dépenses IA', icon: Eye,         roles: ['admin'] },
-  // Glossaire métier (mig 150) — vocabulaire + alias, nourrit les corrections de
-  // transcription. Admin uniquement (référentiel sensible, géré au sommet).
-  { href: '/glossaire',      label: 'Glossaire métier', icon: BookA,     roles: ['admin'] },
 ]
 
 export function isActive(pathname: string, href: string): boolean {

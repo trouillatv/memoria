@@ -3,4 +3,4 @@
 //  composant client ne doit PAS en importer une valeur.)
 
 /** Catégories suggérées (libre — l'utilisateur peut en saisir d'autres). */
-export const GLOSSARY_CATEGORIES = ['engin', 'équipement', 'matériau', 'document', 'processus', 'contrôle', 'acteur', 'lot'] as const
+export const GLOSSARY_CATEGORIES = ['engin', 'équipement', 'matériau', 'ouvrage', 'document', 'processus', 'contrôle', 'acteur', 'lot'] as const
