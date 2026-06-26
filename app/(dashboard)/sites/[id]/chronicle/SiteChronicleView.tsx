@@ -44,30 +44,41 @@ const CAT_ORDER: ChronicleCategory[] = [
 ]
 
 const plural = (n: number) => (n > 1 ? 's' : '')
-function summaryLabel(c: ChronicleCategory, n: number): string {
-  switch (c) {
-    case 'meeting': return n === 1 ? 'Réunion' : `${n} réunions`
-    case 'decision': return `${n} décision${plural(n)}`
-    case 'blocage': return `${n} blocage${plural(n)}`
-    case 'reserve': return `${n} réserve${plural(n)}`
-    case 'anomaly': return `${n} anomalie${plural(n)}`
-    case 'action': return `${n} action${plural(n)}`
-    case 'intervention': return `${n} intervention${plural(n)}`
-    case 'document': return `${n} document${plural(n)}`
-    case 'photo': return `${n} photo${plural(n)}`
-    case 'note': return `${n} note${plural(n)}`
-    case 'ai': return `${n} résonance${plural(n)}`
-    case 'enrichment': return `${n} enrichissement${plural(n)}`
-  }
-}
+const trunc = (s: string, n = 44) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
 
+// RÉSUMÉ NARRATIF (déterministe, zéro IA) : raconter CE QUI A CHANGÉ, pas combien
+// d'objets ont été créés (Vincent 2026-06-26). Les événements IMPORTANTS sont
+// NOMMÉS (sujet rattaché ou titre) ; les volumes (actions, photos) restent comptés.
+// IA / enrichissements / notes : exclus du titre (ce n'est pas l'évolution du chantier).
 function daySummary(items: ChronicleEvent[]): string {
-  const counts = new Map<ChronicleCategory, number>()
-  for (const e of items) counts.set(e.category, (counts.get(e.category) ?? 0) + 1)
-  return [...counts.entries()]
-    .sort((a, b) => RANK[a[0]] - RANK[b[0]])
-    .map(([c, n]) => summaryLabel(c, n))
-    .join(' · ')
+  const by = new Map<ChronicleCategory, ChronicleEvent[]>()
+  for (const e of items) { if (!by.has(e.category)) by.set(e.category, []); by.get(e.category)!.push(e) }
+  const seg: string[] = []
+
+  // « Nommé » : 1er élément (sujet rattaché de préférence, sinon titre) + « +N ».
+  const named = (cat: ChronicleCategory, prefix: string) => {
+    const arr = by.get(cat)
+    if (!arr || arr.length === 0) return
+    const first = arr[0]
+    const name = (first.subjectLabel || first.title || '').trim()
+    const extra = arr.length > 1 ? ` +${arr.length - 1}` : ''
+    seg.push(name ? `${prefix} : ${trunc(name)}${extra}` : `${arr.length} ${prefix.toLowerCase()}${plural(arr.length)}`)
+  }
+  const counted = (cat: ChronicleCategory, build: (n: number) => string) => {
+    const n = by.get(cat)?.length ?? 0
+    if (n > 0) seg.push(build(n))
+  }
+
+  counted('meeting', (n) => (n === 1 ? 'Réunion' : `${n} réunions`))
+  named('decision', 'Décision')
+  named('blocage', 'Blocage')
+  counted('reserve', (n) => (n === 1 ? 'Nouvelle réserve' : `${n} nouvelles réserves`))
+  named('anomaly', 'Anomalie')
+  counted('action', (n) => `${n} action${plural(n)} créée${plural(n)}`)
+  named('intervention', 'Intervention')
+  named('document', 'Document')
+  counted('photo', (n) => `${n} photo${plural(n)}`)
+  return seg.join(' • ')
 }
 
 function frDay(dayIso: string): string {
