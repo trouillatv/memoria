@@ -14,6 +14,7 @@ import { logUsageEvent } from '@/lib/db/usage-events'
 import { createSiteAction, markSiteActionDone, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
+import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 
 const IdSchema = z.string().uuid()
 const CommentSchema = z.string().trim().min(1, 'Un commentaire est requis').max(1000)
@@ -37,6 +38,66 @@ function revalidateActionSurfaces(siteId?: string) {
   if (siteId) {
     revalidatePath(`/sites/${siteId}`)
     revalidatePath(`/m/site/${siteId}`)
+  }
+}
+
+// ── Associer une action à un ÉLÉMENT à mémoriser (chemin direct Action → Élément) ──
+// Hors décisions, le graphe ne se remplit pas : beaucoup d'actions naissent à la
+// volée. On NE demande PAS « est-ce un sujet ? » mais « concerne-t-elle un élément
+// durable ? ». Déterministe (humain choisit/crée), anti-doublon réutilisé, jamais auto.
+// Manager/admin seulement (cohérent avec la doctrine sujets).
+async function requireManagerOrAdmin(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager') return { ok: false, error: 'Accès refusé' }
+  return { ok: true, userId: user.id }
+}
+
+/** Éléments à mémoriser (sujets non clos) d'un site — pour « utiliser un élément existant ». */
+export async function listSiteSubjectsForAssociationAction(siteId: string): Promise<Array<{ id: string; name: string }>> {
+  const auth = await requireManagerOrAdmin()
+  if (!auth.ok || !IdSchema.safeParse(siteId).success) return []
+  const { data } = await createAdminClient().from('subjects').select('id, name').eq('site_id', siteId).neq('status', 'closed').order('name')
+  return (data ?? []) as Array<{ id: string; name: string }>
+}
+
+const AssociateSchema = z.object({
+  actionId: z.string().uuid(),
+  siteId: z.string().uuid(),
+  mode: z.enum(['existing', 'create']),
+  subjectId: z.string().uuid().nullable(),
+  name: z.string().trim().max(160).nullable(),
+})
+
+/** Rattache une action à un élément : existant (subjectId) ou nouveau (name, anti-doublon). */
+export async function associateActionToElementAction(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireManagerOrAdmin()
+  if (!auth.ok) return auth
+  const parsed = AssociateSchema.safeParse({
+    actionId: formData.get('actionId'),
+    siteId: formData.get('siteId'),
+    mode: formData.get('mode'),
+    subjectId: ((formData.get('subjectId') as string | null) ?? '') || null,
+    name: ((formData.get('name') as string | null) ?? '') || null,
+  })
+  if (!parsed.success) return { ok: false, error: 'Saisie invalide' }
+  const { actionId, siteId, mode, subjectId, name } = parsed.data
+  try {
+    let targetSubjectId: string
+    if (mode === 'existing') {
+      if (!subjectId) return { ok: false, error: 'Choisissez un élément existant.' }
+      targetSubjectId = subjectId
+    } else {
+      const clean = (name ?? '').trim()
+      if (!clean) return { ok: false, error: 'Nom de l’élément requis.' }
+      targetSubjectId = await findOrCreateSubjectByName(siteId, clean, auth.userId)
+    }
+    await attachToSubject('site_actions', actionId, targetSubjectId)
+    revalidateActionSurfaces(siteId)
+    revalidatePath(`/sites/${siteId}/subjects`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
   }
 }
 

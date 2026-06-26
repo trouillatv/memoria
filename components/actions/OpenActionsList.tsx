@@ -9,10 +9,11 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock } from 'lucide-react'
+import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock, Link2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction, associateActionToElementAction, listSiteSubjectsForAssociationAction } from '@/app/(dashboard)/actions/actions'
 import { actionHealth } from '@/lib/actions/health'
+import { looksLikeAction } from '@/lib/db/subject-doctrine'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 
 function ageDays(iso: string): number {
@@ -28,7 +29,7 @@ function tomorrowIso(): string {
   return new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA')
 }
 
-type Mode = { id: string; kind: 'close' | 'plan' } | null
+type Mode = { id: string; kind: 'close' | 'plan' | 'associate' } | null
 
 export function OpenActionsList({
   actions,
@@ -64,6 +65,7 @@ export function OpenActionsList({
           health === 'critique' ? 'text-red-700 font-medium' : health === 'surveiller' ? 'text-amber-700 font-medium' : ''
         const isClosing = mode?.id === a.id && mode.kind === 'close'
         const isPlanning = mode?.id === a.id && mode.kind === 'plan'
+        const isAssociating = mode?.id === a.id && mode.kind === 'associate'
         return (
           <li key={a.id} className={`rounded-lg border bg-card ${compact ? 'p-2.5' : 'p-3'} ${borderCls}`}>
             <div className="flex items-start gap-2.5">
@@ -108,6 +110,8 @@ export function OpenActionsList({
                   <CloseForm action={a} onCancel={() => setMode(null)} onDone={() => dropAndRefresh(a.id)} />
                 ) : isPlanning ? (
                   <PlanForm action={a} onCancel={() => setMode(null)} onDone={() => dropAndRefresh(a.id)} />
+                ) : isAssociating ? (
+                  <AssociateForm action={a} onCancel={() => setMode(null)} onDone={() => { setMode(null); router.refresh() }} />
                 ) : (
                   // Actions cliquables en BADGES (sinon trop discret) — « Planifier »
                   // mise en avant, les autres en pilules contour.
@@ -121,6 +125,23 @@ export function OpenActionsList({
                         <CalendarClock className="h-3.5 w-3.5" />Planifier
                       </button>
                     )}
+                    {/* Chemin direct Action → Élément (alimentation du graphe hors décisions). */}
+                    {!compact && (a.subject_id ? (
+                      <Link
+                        href={`/sites/${a.site_id}/subjects/${a.subject_id}`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-100"
+                      >
+                        <Link2 className="h-3.5 w-3.5" />Élément lié
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setMode({ id: a.id, kind: 'associate' })}
+                        className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-violet-300 hover:text-violet-700"
+                      >
+                        <Link2 className="h-3.5 w-3.5" />Associer à la mémoire
+                      </button>
+                    ))}
                     <Link
                       href={`/sites/${a.site_id}`}
                       className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
@@ -360,6 +381,103 @@ function PlanForm({
           className="inline-flex items-center gap-1.5 rounded-md border-2 border-foreground bg-foreground text-background px-3 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-50 active:scale-[0.98]">
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
           Planifier
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Associer une action à un ÉLÉMENT à mémoriser. On ne demande PAS « est-ce un sujet ? »
+// mais « concerne-t-elle un élément durable ? ». Existant (réutilise) ou créer (titre
+// pré-rempli, modifiable). Déterministe, anti-doublon côté serveur, jamais auto.
+function AssociateForm({
+  action,
+  onCancel,
+  onDone,
+}: {
+  action: SiteActionRow
+  onCancel: () => void
+  onDone: () => void
+}) {
+  const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([])
+  const [loading, setLoading] = useState(true)
+  const [mode, setMode] = useState<'existing' | 'create'>('create')
+  const [subjectId, setSubjectId] = useState('')
+  const [name, setName] = useState(action.title)
+  const [pending, startTransition] = useTransition()
+
+  useEffect(() => {
+    let alive = true
+    listSiteSubjectsForAssociationAction(action.site_id)
+      .then((s) => {
+        if (!alive) return
+        setSubjects(s)
+        if (s.length > 0) { setMode('existing'); setSubjectId(s[0].id) }
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+    return () => { alive = false }
+  }, [action.site_id])
+
+  const actionLike = mode === 'create' && looksLikeAction(name)
+  const canSubmit = mode === 'existing' ? !!subjectId : name.trim().length > 0
+
+  function submit() {
+    const fd = new FormData()
+    fd.set('actionId', action.id)
+    fd.set('siteId', action.site_id)
+    fd.set('mode', mode)
+    if (mode === 'existing') fd.set('subjectId', subjectId)
+    else fd.set('name', name.trim())
+    startTransition(async () => {
+      const r = await associateActionToElementAction(fd)
+      if (r.ok) { toast.success('Action rattachée à un élément'); onDone() }
+      else toast.error(r.error)
+    })
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border bg-muted/20 p-2.5 space-y-2">
+      <p className="text-[11px] font-medium text-foreground/80 inline-flex items-center gap-1.5">
+        <Link2 className="h-3.5 w-3.5" />Cette action concerne-t-elle un élément durable&nbsp;?
+      </p>
+
+      {subjects.length > 0 && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="radio" checked={mode === 'existing'} onChange={() => setMode('existing')} className="mt-1 accent-violet-600" />
+          <span className="min-w-0 flex-1">
+            <span className="text-[11px] text-muted-foreground">Utiliser un élément existant</span>
+            <select value={subjectId} onChange={(e) => { setSubjectId(e.target.value); setMode('existing') }}
+              className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-sm">
+              {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </span>
+        </label>
+      )}
+
+      <label className="flex items-start gap-2 text-sm">
+        <input type="radio" checked={mode === 'create'} onChange={() => setMode('create')} className="mt-1 accent-violet-600" />
+        <span className="min-w-0 flex-1">
+          <span className="text-[11px] text-muted-foreground">Créer un élément {loading ? '' : '(titre proposé, à raccourcir)'}</span>
+          <input value={name} onChange={(e) => { setName(e.target.value); setMode('create') }} maxLength={160}
+            placeholder="Ex. Motricité sur échelle, DOE porte coupe-feu"
+            className="mt-0.5 w-full rounded-md border bg-background px-2 py-1.5 text-sm" />
+          {actionLike && (
+            <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-amber-700">
+              <AlertTriangle className="h-3 w-3" /> Ça ressemble à une action — nomme plutôt l’élément durable derrière (le « pourquoi »).
+            </span>
+          )}
+        </span>
+      </label>
+
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <X className="h-3.5 w-3.5" />Annuler
+        </button>
+        <button type="button" onClick={submit} disabled={pending || !canSubmit}
+          className="inline-flex items-center gap-1.5 rounded-md border-2 border-violet-600 bg-violet-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-violet-700 disabled:opacity-50 active:scale-[0.98]">
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          Valider
         </button>
       </div>
     </div>

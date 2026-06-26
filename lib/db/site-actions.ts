@@ -149,6 +149,8 @@ export interface SiteActionRow {
   site_name: string
   contract_id: string | null
   contract_name: string | null
+  /** Élément à mémoriser rattaché (mig 124). null = action orpheline. */
+  subject_id: string | null
 }
 
 /**
@@ -210,6 +212,7 @@ export async function listOpenSiteActions(opts?: {
       site_name: s?.name ?? '—',
       contract_id: s?.contract_id ?? null,
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
+      subject_id: a.subject_id ?? null,
     }
   })
 }
@@ -258,6 +261,7 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       site_name: s?.name ?? '—',
       contract_id: s?.contract_id ?? null,
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
+      subject_id: a.subject_id ?? null,
     }
   })
 }
