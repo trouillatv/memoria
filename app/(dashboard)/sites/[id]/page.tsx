@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookText, Sparkles, ListTodo, ArrowRightLeft, ClipboardCheck, Search, Layers, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { MapPin, BookText, Sparkles, ListTodo, ArrowRightLeft, ClipboardCheck, Search, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -219,35 +219,16 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <QuickActionButton source="desktop_site" siteId={id} variant="desktop" />
       </div>
 
-      {/* Navigation (CONSULTER) — 5 entrées (audit menu Vincent 2026-06-26).
-          Visites/Livraisons/Terrain sous Journal ; Obligations sous Actions.
-          Onglets = consulter · Boutons = agir · Filtres = dans les pages. */}
-      <nav className="flex flex-wrap gap-x-5 gap-y-3">
-        <NavGroup label="Vue d'ensemble">
-          <NavChip href={`/sites/${id}`} icon={<Layers className="h-3.5 w-3.5" />} label="Cockpit" />
-        </NavGroup>
-        <NavGroup label="Journal du chantier">
-          <NavChip href={`/sites/${id}/chronicle`} icon={<BookText className="h-3.5 w-3.5" />} label="Journal" />
-          <NavChip href={`/sites/${id}/journal`} label="Terrain" sub />
-          <NavChip href={`/sites/${id}/visites`} label="Visites" sub />
-          <NavChip href={`/sites/${id}/livraisons`} label="Livraisons" sub />
-        </NavGroup>
-        <NavGroup label="Actions">
-          <NavChip href={`/sites/${id}/reserves`} icon={<ClipboardCheck className="h-3.5 w-3.5" />} label="Points à lever" />
-          <NavChip href={`/sites/${id}/obligations`} icon={<ShieldAlert className="h-3.5 w-3.5" />} label="Obligations" />
-        </NavGroup>
-        <NavGroup label="Mémoire">
-          <NavChip href={`/memoire/${id}`} icon={<Sparkles className="h-3.5 w-3.5" />} label="Atelier mémoire" />
-          <NavChip href={`/sites/${id}/subjects`} label="Sujets" sub />
-          <NavChip href={`/sites/${id}/recit`} label="Récit" sub />
-        </NavGroup>
-        <NavGroup label="Documents">
-          <NavChip href={`/sites/${id}/preuves`} icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Dossier de preuve" />
-          <NavChip href={`/sites/${id}/qr`} label="QR Code" sub />
-          {(user.role === 'admin' || user.role === 'manager') && (
-            <NavChip href={`/sites/${id}/export`} label="Exporter" sub />
-          )}
-        </NavGroup>
+      {/* Navigation (CONSULTER) — 5 DOMAINES, et rien d'autre (audit menu Vincent
+          2026-06-26). 5 usages cognitifs distincts, jamais fusionnés ; les
+          sous-vues (Terrain/Visites/Livraisons, Sujets/Récit, QR/Export…) se
+          découvrent EN ENTRANT dans la rubrique. Boutons = agir · Onglets = consulter. */}
+      {/* Vue d'ensemble = la page actuelle → pas d'entrée. 4 domaines à explorer. */}
+      <nav className="flex flex-wrap gap-2">
+        <NavChip href={`/sites/${id}/chronicle`} icon={<BookText className="h-4 w-4" />} label="Journal du chantier" />
+        <NavChip href={`/sites/${id}/actions`} icon={<ListTodo className="h-4 w-4" />} label="Actions" />
+        <NavChip href={`/sites/${id}/memoire`} icon={<Sparkles className="h-4 w-4" />} label="Mémoire" />
+        <NavChip href={`/sites/${id}/documents`} icon={<ShieldCheck className="h-4 w-4" />} label="Documents" />
       </nav>
 
       {/* Indicateur factuel CR (compteur, jamais un taux %). */}
@@ -492,25 +473,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   )
 }
 
-// Navigation groupée (audit menu) — un libellé de catégorie + ses entrées.
-function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">{label}</p>
-      <div className="flex flex-wrap items-center gap-1.5">{children}</div>
-    </div>
-  )
-}
-
-function NavChip({ href, label, icon, sub }: { href: string; label: string; icon?: React.ReactNode; sub?: boolean }) {
+// Une entrée de domaine de la fiche chantier (5 et rien d'autre).
+function NavChip({ href, label, icon }: { href: string; label: string; icon?: React.ReactNode }) {
   return (
     <Link
       href={href}
-      className={`inline-flex items-center gap-1.5 rounded-lg transition-[transform,colors] active:scale-[0.97] ${
-        sub
-          ? 'border border-transparent bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted'
-          : 'border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40'
-      }`}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
     >
       {icon}
       {label}
