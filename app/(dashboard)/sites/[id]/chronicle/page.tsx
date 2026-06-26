@@ -26,7 +26,7 @@ export default async function SiteChroniclePage({ params }: { params: Promise<{ 
       <header className="space-y-1">
         <h1 className="inline-flex items-center gap-2 text-2xl font-bold"><BookText className="h-5 w-5" /> Journal du chantier</h1>
         <p className="text-sm text-muted-foreground">
-          Toute l’histoire du chantier — réunions, interventions, décisions, réserves, documents, photos, enrichissements — en une seule chronologie.
+          L’histoire du chantier au fil des jours — chaque journée résumée, ce qui l’a fait évoluer (réunions, décisions, réserves) en premier.
         </p>
       </header>
 

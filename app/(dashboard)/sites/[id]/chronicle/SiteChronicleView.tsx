@@ -1,7 +1,10 @@
 'use client'
 
-// Journal du chantier — UNE seule chronologie consolidée. Défaut « Tout »,
-// filtres par catégorie, chaque événement ouvrable vers sa source.
+// Journal du chantier — LECTURE CHRONOLOGIQUE INTELLIGENTE (pas une liste).
+// UNE seule source (getSiteChronicle). Chaque journée : un RÉSUMÉ (« Réunion ·
+// 3 décisions · 4 actions »), puis les événements triés par IMPORTANCE (ce qui a
+// fait évoluer le chantier d'abord), pas par ordre d'ajout. Filtres sur la même
+// source. Les décisions/réserves rattachées à un sujet pointent vers son histoire.
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -25,15 +28,53 @@ const CAT_META: Record<ChronicleCategory, { label: string; Icon: typeof ListTodo
   note: { label: 'Notes', Icon: StickyNote, cls: 'text-muted-foreground' },
   blocage: { label: 'Blocages', Icon: ShieldAlert, cls: 'text-rose-700' },
 }
-// Ordre des filtres (proche de la demande Vincent).
+
+// IMPORTANCE intra-journée (Vincent 2026-06-26) : « ce qui a fait évoluer le
+// chantier » d'abord. Réunion → Décision → Blocage/Réserve/Anomalie → Action →
+// Intervention → Document → Photo/Note → IA/Enrichissement.
+const RANK: Record<ChronicleCategory, number> = {
+  meeting: 1, decision: 2, blocage: 3, reserve: 3, anomaly: 3,
+  action: 4, intervention: 5, document: 6, photo: 7, note: 7, ai: 8, enrichment: 8,
+}
+
+// Ordre des filtres (= ordre d'importance).
 const CAT_ORDER: ChronicleCategory[] = [
-  'meeting', 'intervention', 'photo', 'document', 'action', 'decision',
-  'reserve', 'enrichment', 'ai', 'anomaly', 'note', 'blocage',
+  'meeting', 'decision', 'blocage', 'reserve', 'anomaly', 'action',
+  'intervention', 'document', 'photo', 'note', 'ai', 'enrichment',
 ]
+
+const plural = (n: number) => (n > 1 ? 's' : '')
+function summaryLabel(c: ChronicleCategory, n: number): string {
+  switch (c) {
+    case 'meeting': return n === 1 ? 'Réunion' : `${n} réunions`
+    case 'decision': return `${n} décision${plural(n)}`
+    case 'blocage': return `${n} blocage${plural(n)}`
+    case 'reserve': return `${n} réserve${plural(n)}`
+    case 'anomaly': return `${n} anomalie${plural(n)}`
+    case 'action': return `${n} action${plural(n)}`
+    case 'intervention': return `${n} intervention${plural(n)}`
+    case 'document': return `${n} document${plural(n)}`
+    case 'photo': return `${n} photo${plural(n)}`
+    case 'note': return `${n} note${plural(n)}`
+    case 'ai': return `${n} résonance${plural(n)}`
+    case 'enrichment': return `${n} enrichissement${plural(n)}`
+  }
+}
+
+function daySummary(items: ChronicleEvent[]): string {
+  const counts = new Map<ChronicleCategory, number>()
+  for (const e of items) counts.set(e.category, (counts.get(e.category) ?? 0) + 1)
+  return [...counts.entries()]
+    .sort((a, b) => RANK[a[0]] - RANK[b[0]])
+    .map(([c, n]) => summaryLabel(c, n))
+    .join(' · ')
+}
 
 function frDay(dayIso: string): string {
   const d = new Date(dayIso)
-  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  if (isNaN(d.getTime())) return ''
+  const s = d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 export function SiteChronicleView({ events }: { siteId: string; events: ChronicleEvent[] }) {
@@ -46,7 +87,7 @@ export function SiteChronicleView({ events }: { siteId: string; events: Chronicl
 
   const visible = filter ? events.filter((e) => e.category === filter) : events
 
-  // Regroupe par jour (events déjà triés du plus récent au plus ancien).
+  // Regroupe par jour, puis trie CHAQUE journée par importance (et heure ensuite).
   const days = useMemo(() => {
     const map = new Map<string, ChronicleEvent[]>()
     for (const e of visible) {
@@ -54,12 +95,15 @@ export function SiteChronicleView({ events }: { siteId: string; events: Chronicl
       if (!map.has(day)) map.set(day, [])
       map.get(day)!.push(e)
     }
-    return [...map.entries()]
+    for (const items of map.values()) {
+      items.sort((a, b) => RANK[a.category] - RANK[b.category] || (a.date < b.date ? 1 : -1))
+    }
+    return [...map.entries()] // déjà du jour le plus récent au plus ancien (events triés)
   }, [visible])
 
   return (
     <div className="space-y-4">
-      {/* Filtres — défaut « Tout ». */}
+      {/* Filtres — défaut « Tout », sur la même source. */}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" onClick={() => setFilter(null)}
           className={`rounded-full px-2.5 py-1 text-xs font-medium ${filter === null ? 'bg-foreground text-background' : 'bg-muted hover:bg-muted/70'}`}>
@@ -79,10 +123,14 @@ export function SiteChronicleView({ events }: { siteId: string; events: Chronicl
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">Rien à afficher pour ce filtre.</p>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {days.map(([day, items]) => (
-            <div key={day} className="space-y-1.5">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{frDay(day)}</h3>
+            <div key={day} className="space-y-2">
+              {/* En-tête de journée : date + résumé de ce qui s'est passé. */}
+              <div className="space-y-0.5">
+                <h3 className="text-sm font-semibold">{frDay(day)}</h3>
+                <p className="text-xs text-muted-foreground">{daySummary(items)}</p>
+              </div>
               <ol className="space-y-0 border-l-2 border-muted pl-3">
                 {items.map((e) => {
                   const meta = CAT_META[e.category]
@@ -93,7 +141,9 @@ export function SiteChronicleView({ events }: { siteId: string; events: Chronicl
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">{e.title}</p>
                         {e.detail && <p className="truncate text-xs text-muted-foreground">{e.detail}</p>}
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{meta.label.replace(/s$/, '')}</span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                          {meta.label.replace(/s$/, '')}{e.subjectLabel ? ` · ${e.subjectLabel}` : ''}
+                        </span>
                       </div>
                       {e.href && <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />}
                     </div>

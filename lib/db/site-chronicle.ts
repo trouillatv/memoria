@@ -23,6 +23,8 @@ export interface ChronicleEvent {
   detail?: string | null
   href?: string
   subjectIds?: string[]
+  /** Nom du sujet rattaché (pont vers l'histoire du sujet, affiché en contexte). */
+  subjectLabel?: string | null
   source?: string
 }
 
@@ -44,6 +46,20 @@ export async function getSiteChronicle(siteId: string, opts: { limit?: number } 
     getSiteRecentEnrichments(siteId, 20).catch(() => []),
   ])
 
+  // Noms des sujets rattachés (décisions/réserves) — le Journal NOMME le sujet et
+  // pointe vers son histoire. Pont vers le graphe métier, posé sans le construire.
+  const decRows = (decRes.data ?? []) as Array<{ id: string; titre: string; description: string | null; date_decision: string | null; created_at: string; subject_id: string | null }>
+  const resRows = (resRes.data ?? []) as Array<{ id: string; label: string; location: string | null; created_at: string; subject_id: string | null }>
+  const subjectIds = new Set<string>()
+  for (const d of decRows) if (d.subject_id) subjectIds.add(d.subject_id)
+  for (const r of resRows) if (r.subject_id) subjectIds.add(r.subject_id)
+  const subjectName = new Map<string, string>()
+  if (subjectIds.size > 0) {
+    const { data: subs } = await sb.from('subjects').select('id, name').in('id', [...subjectIds])
+    for (const s of (subs ?? []) as Array<{ id: string; name: string }>) subjectName.set(s.id, s.name)
+  }
+  const subjectHref = (sid: string) => `/sites/${siteId}/subjects/${sid}`
+
   const events: ChronicleEvent[] = []
 
   for (const e of memEvents) {
@@ -55,12 +71,12 @@ export async function getSiteChronicle(siteId: string, opts: { limit?: number } 
     events.push({ id: `mem-${e.type}-${e.id}`, category: cat, date: e.occurredAt, title: e.title, detail: e.detail, href, source: 'memory' })
   }
 
-  for (const d of (decRes.data ?? []) as Array<{ id: string; titre: string; description: string | null; date_decision: string | null; created_at: string; subject_id: string | null }>) {
-    events.push({ id: `dec-${d.id}`, category: 'decision', date: d.date_decision ?? d.created_at, title: d.titre, detail: d.description, href: `/sites/${siteId}/subjects`, subjectIds: d.subject_id ? [d.subject_id] : undefined, source: 'site_decision' })
+  for (const d of decRows) {
+    events.push({ id: `dec-${d.id}`, category: 'decision', date: d.date_decision ?? d.created_at, title: d.titre, detail: d.description, href: d.subject_id ? subjectHref(d.subject_id) : `/sites/${siteId}/subjects`, subjectIds: d.subject_id ? [d.subject_id] : undefined, subjectLabel: d.subject_id ? subjectName.get(d.subject_id) ?? null : null, source: 'site_decision' })
   }
 
-  for (const r of (resRes.data ?? []) as Array<{ id: string; label: string; location: string | null; created_at: string; subject_id: string | null }>) {
-    events.push({ id: `res-${r.id}`, category: 'reserve', date: r.created_at, title: r.label, detail: r.location, href: `/sites/${siteId}/reserves`, subjectIds: r.subject_id ? [r.subject_id] : undefined, source: 'site_reserve' })
+  for (const r of resRows) {
+    events.push({ id: `res-${r.id}`, category: 'reserve', date: r.created_at, title: r.label, detail: r.location, href: r.subject_id ? subjectHref(r.subject_id) : `/sites/${siteId}/reserves`, subjectIds: r.subject_id ? [r.subject_id] : undefined, subjectLabel: r.subject_id ? subjectName.get(r.subject_id) ?? null : null, source: 'site_reserve' })
   }
 
   for (const doc of docs) {
