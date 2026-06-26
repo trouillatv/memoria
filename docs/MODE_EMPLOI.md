@@ -201,6 +201,7 @@ Le **hub** complet pour préparer et finaliser le compte-rendu, en un seul écra
 - **Blocs éditables** : participants, casting du chantier (rôle→entreprise→contact), actions, décisions, remarques/ajouts, photos (couverture, ordre, légendes, exclusion).
 - **Aperçu vivant** du CR à droite (le vrai PDF, rechargé à chaque modif).
 - **⑤ Téléverser la version finale diffusée** = la **preuve** (conservée, jamais écrasée) ; **⑥ Figer la version générée** = la **référence** MemorIA (optionnelle, distincte de la preuve).
+- **Éléments à mémoriser** (bloc Décisions) : quand vous validez un PV, MemorIA peut proposer des « éléments à mémoriser ». **Laissez cochés** les vrais éléments du chantier (porte, local, DOE, toiture, réseau, réserve récurrente) ; **décochez** ce qui ressemble à une action ponctuelle (relancer, envoyer, faire, demander — signalé ⚠) ; puis **Rattacher**. Chaque élément validé devient interrogeable au Journal, à la Vue Sujet et à l'Atelier mémoire ; l'action liée à la décision en hérite automatiquement.
 
 ### Briefing de préparation (/meetings/[id]/briefing)
 Sujets à surveiller + **détecteurs déterministes** (actions en retard, décisions non appliquées, acteur absent, réserves ouvertes, obligations négligées, congestion d'acteur, sujets récurrents, **actions récurrentes à reprendre**) + **questions à poser** dérivées. Zéro IA créative.
