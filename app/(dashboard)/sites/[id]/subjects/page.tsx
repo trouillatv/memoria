@@ -215,7 +215,7 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
         </section>
       ) : (
       <>
-      <SubjectCreateForm siteId={id} scopes={scopes} />
+      <SubjectCreateForm siteId={id} scopes={scopes} existingNames={subjects.map((s) => s.name)} />
 
       {subjects.length === 0 ? (
         <p className="text-sm text-muted-foreground italic py-6 text-center">

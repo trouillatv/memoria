@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getSubjectImpactCounts, type SubjectImpact } from '@/lib/db/subject-relations'
+import { normalizeSubjectName, subjectDedupKey } from '@/lib/db/subject-doctrine'
 import type { DbSubject, SubjectStatus, DbSiteAction, DbSiteReportProposal } from '@/types/db'
 
 export type SubjectCriticality = 'basse' | 'moyenne' | 'haute'
@@ -94,7 +95,7 @@ export async function createSubject(input: {
       organization_id,
       site_id: input.siteId,
       scope_id: input.scopeId,
-      name: input.name,
+      name: normalizeSubjectName(input.name), // forme canonique à l'écriture (anti-doublon)
       status: 'open',
       created_by: input.userId,
     })
@@ -102,6 +103,19 @@ export async function createSubject(input: {
     .single()
   if (error || !data) throw error ?? new Error('No id')
   return data.id as string
+}
+
+/** Sujet existant du site dont le nom est identique (normalisé, insensible casse).
+ *  Base de l'anti-doublon : un même objet métier ne doit pas exister en double. */
+export async function findSubjectByName(siteId: string, name: string): Promise<{ id: string; name: string } | null> {
+  const key = subjectDedupKey(name)
+  if (!key) return null
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('subjects').select('id, name').eq('site_id', siteId)
+  for (const s of (data ?? []) as { id: string; name: string }[]) {
+    if (subjectDedupKey(s.name) === key) return s
+  }
+  return null
 }
 
 export async function setSubjectStatus(id: string, status: SubjectStatus): Promise<void> {
@@ -127,11 +141,10 @@ export async function attachToSubject(
 /** Trouve (insensible à la casse, dans le site) ou crée un sujet par son nom. C'est le
  *  PONT de peuplement : le champ `sujet` d'une décision devient une entité Subject. */
 export async function findOrCreateSubjectByName(siteId: string, name: string, userId: string | null): Promise<string> {
-  const clean = name.trim()
+  const clean = normalizeSubjectName(name)
   if (!clean) throw new Error('Nom de sujet vide.')
-  const supabase = createAdminClient()
-  const { data } = await supabase.from('subjects').select('id').eq('site_id', siteId).ilike('name', clean).limit(1).maybeSingle()
-  if (data?.id) return data.id as string
+  const existing = await findSubjectByName(siteId, clean)
+  if (existing) return existing.id
   return createSubject({ siteId, name: clean, scopeId: null, userId })
 }
 

@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { createSubject, setSubjectStatus, attachToSubject } from '@/lib/db/subjects'
+import { createSubject, setSubjectStatus, attachToSubject, findSubjectByName } from '@/lib/db/subjects'
 import { createSubjectRelation, deleteSubjectRelation } from '@/lib/db/subject-relations'
 import { addDocumentLink } from '@/lib/db/documents'
 import type { SubjectStatus } from '@/types/db'
@@ -32,6 +32,9 @@ export async function createSubjectAction(formData: FormData): Promise<Result> {
     scopeId: ((formData.get('scopeId') as string | null) ?? '') || null,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  // Anti-doublon (doctrine sujet) : un même objet métier ne doit pas exister deux fois.
+  const existing = await findSubjectByName(parsed.data.siteId, parsed.data.name)
+  if (existing) return { error: `Un sujet « ${existing.name} » existe déjà sur ce chantier.` }
   const id = await createSubject({
     siteId: parsed.data.siteId, name: parsed.data.name, scopeId: parsed.data.scopeId, userId: operator.id,
   })
