@@ -19,13 +19,29 @@ function todayNoumea(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Pacific/Noumea' })
 }
 
+// Saisie par LOCALITÉ (Grand Nouméa, Nouvelle-Calédonie) plutôt que par
+// coordonnées brutes. Nouméa par défaut. Les coordonnées restent ajustables à la
+// main pour un point précis ; « Localiser via l'adresse » affine si besoin.
+const NC_LOCALITIES: Array<{ name: string; lat: string; lon: string }> = [
+  { name: 'Nouméa – Centre', lat: '-22.27580', lon: '166.45800' },
+  { name: 'Nouméa – Centre-ville', lat: '-22.27100', lon: '166.44160' },
+  { name: 'Nouméa – Ducos', lat: '-22.24700', lon: '166.43600' },
+  { name: 'Nouméa – Magenta', lat: '-22.26400', lon: '166.47300' },
+  { name: 'Nouméa – Rivière-Salée', lat: '-22.23500', lon: '166.45600' },
+  { name: 'Nouméa – Anse Vata', lat: '-22.30500', lon: '166.44300' },
+  { name: 'Dumbéa', lat: '-22.15250', lon: '166.45200' },
+  { name: 'Mont-Dore', lat: '-22.20800', lon: '166.57200' },
+  { name: 'Païta', lat: '-22.13000', lon: '166.35000' },
+]
+const NOUMEA = NC_LOCALITIES[0]
+
 export function SiteWeatherFetch({ siteId }: { siteId: string }) {
   const router = useRouter()
   const [date, setDate] = useState(todayNoumea())
   const [pending, start] = useTransition()
   const [needCoords, setNeedCoords] = useState(false)
-  const [lat, setLat] = useState('')
-  const [lon, setLon] = useState('')
+  const [lat, setLat] = useState(NOUMEA.lat)
+  const [lon, setLon] = useState(NOUMEA.lon)
 
   function describe(weather: WeatherCode | null, precip: number | null, wind: number | null, tmax: number | null): string {
     const parts: string[] = []
@@ -127,11 +143,21 @@ export function SiteWeatherFetch({ siteId }: { siteId: string }) {
       {needCoords && (
         <div className="rounded-md border border-dashed p-3 space-y-2">
           <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
-            <MapPin className="h-3.5 w-3.5" /> Coordonnées du chantier (une seule fois)
+            <MapPin className="h-3.5 w-3.5" /> Localité du chantier (une seule fois)
           </p>
           <div className="flex flex-wrap items-end gap-2">
-            <input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude (-22.27)" className="w-32 rounded border px-2 py-1 text-sm" />
-            <input value={lon} onChange={(e) => setLon(e.target.value)} placeholder="Longitude (166.45)" className="w-32 rounded border px-2 py-1 text-sm" />
+            <select
+              defaultValue={NOUMEA.name}
+              onChange={(e) => {
+                const loc = NC_LOCALITIES.find((l) => l.name === e.target.value)
+                if (loc) { setLat(loc.lat); setLon(loc.lon) }
+              }}
+              className="rounded border bg-background px-2 py-1 text-sm"
+            >
+              {NC_LOCALITIES.map((l) => <option key={l.name} value={l.name}>{l.name}</option>)}
+            </select>
+            <input value={lat} onChange={(e) => setLat(e.target.value)} placeholder="Latitude" title="Coordonnée fine (optionnel)" className="w-28 rounded border px-2 py-1 text-sm" />
+            <input value={lon} onChange={(e) => setLon(e.target.value)} placeholder="Longitude" title="Coordonnée fine (optionnel)" className="w-28 rounded border px-2 py-1 text-sm" />
             <button type="button" onClick={geolocate} disabled={pending} className="rounded border px-2.5 py-1 text-xs hover:bg-muted/40 disabled:opacity-50">
               Localiser via l’adresse
             </button>

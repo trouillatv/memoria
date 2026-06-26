@@ -660,6 +660,120 @@ export async function addParticipantAction(
   }
 }
 
+/**
+ * Ajoute un intervenant DÉJÀ EXISTANT (company_contacts) aux présents de cette
+ * réunion — cas « on a oublié M. Dupont ». Marque `added_after_meeting` pour la
+ * traçabilité de la mémoire (jamais un reproche). Dédup par contactId.
+ */
+export async function addExistingParticipantAction(
+  reportId: string,
+  contactId: string,
+  presence: ParticipantPresence = 'P',
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const user = await getCurrentUserWithProfile()
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Réunion introuvable' }
+
+    const sb = createAdminClient()
+    const { data: contact } = await sb
+      .from('company_contacts')
+      .select('id, full_name, function, company_id')
+      .eq('id', contactId)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (!contact) return { ok: false, error: 'Contact introuvable' }
+    const c = contact as { id: string; full_name: string; function: string | null; company_id: string }
+
+    if ((report.participants ?? []).some((p) => p.contactId === c.id)) {
+      return { ok: false, error: 'Déjà dans les présents' }
+    }
+
+    // Rôle = celui du casting du site si renseigné, sinon la fonction du contact.
+    // (On ne fige PAS entreprise/fonction dans le JSON : résolus par contactId.)
+    let role: string | null = c.function
+    if (report.site_id) {
+      const { data: iv } = await sb.from('site_intervenants').select('role').eq('site_id', report.site_id).eq('company_id', c.company_id).limit(1).maybeSingle()
+      if (iv) role = (iv as { role: string }).role
+    }
+
+    const participant = {
+      name: c.full_name,
+      role,
+      kind: 'person' as const,
+      presence,
+      invite: true,
+      diffusion: false,
+      contactId: c.id,
+      addedAfterMeeting: true,
+      addedAt: new Date().toISOString(),
+      addedBy: user?.id ?? null,
+    }
+    const participants = [...(report.participants ?? []), participant]
+    const { error } = await sb.from('site_reports').update({ participants }).eq('id', reportId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/**
+ * « Reprendre la dernière réunion » : copie les présents (liés à un contact) de la
+ * réunion précédente du même chantier dans celle-ci. Dédup, marque added_after_meeting.
+ */
+export async function copyParticipantsFromLastMeetingAction(reportId: string): Promise<{ ok: true; added: number } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  const user = await getCurrentUserWithProfile()
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report || !report.site_id) return { ok: false, error: 'Réunion introuvable' }
+    const sb = createAdminClient()
+    const { data } = await sb
+      .from('site_reports').select('participants').eq('site_id', report.site_id).is('origin', null).neq('id', reportId)
+      .order('created_at', { ascending: false }).limit(1)
+    const last = ((data ?? [])[0] as { participants: Array<{ name: string; role: string | null; contactId?: string; presence?: string }> | null } | undefined)
+    if (!last) return { ok: false, error: 'Aucune réunion précédente' }
+    const existing = new Set((report.participants ?? []).filter((p) => p.contactId).map((p) => p.contactId))
+    const toAdd = (last.participants ?? []).filter((p) => p.contactId && !existing.has(p.contactId) && p.presence !== 'AE' && p.presence !== 'AN')
+    if (toAdd.length === 0) return { ok: true, added: 0 }
+    const now = new Date().toISOString()
+    const newParts = toAdd.map((p) => ({
+      name: p.name, role: p.role, kind: 'person' as const, presence: 'P' as ParticipantPresence,
+      invite: true, diffusion: false, contactId: p.contactId,
+      addedAfterMeeting: true, addedAt: now, addedBy: user?.id ?? null,
+    }))
+    const participants = [...(report.participants ?? []), ...newParts]
+    const { error } = await sb.from('site_reports').update({ participants }).eq('id', reportId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true, added: toAdd.length }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
+/** Retire des présents le participant lié à ce contact (décocher une case casting). */
+export async function removeParticipantByContactAction(reportId: string, contactId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireManagerOrAdmin()
+  try {
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Réunion introuvable' }
+    const participants = (report.participants ?? []).filter((p) => p.contactId !== contactId)
+    const { error } = await createAdminClient().from('site_reports').update({ participants }).eq('id', reportId)
+    if (error) throw new Error(error.message)
+    revalidatePath(`/meetings/${reportId}/pv/validation`)
+    revalidatePath(`/meetings/${reportId}`)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
+  }
+}
+
 export async function removeParticipantAction(reportId: string, index: number): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireManagerOrAdmin()
   try {

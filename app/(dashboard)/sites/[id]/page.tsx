@@ -22,6 +22,7 @@ import { listSiteASavoirActive } from '@/lib/db/sites'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
+import { getSiteCrStats } from '@/lib/db/site-reports'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
 import { LinkedDocumentsList } from '@/components/documents/LinkedDocumentsList'
@@ -121,6 +122,9 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Actions ouvertes du site (issues des réunions) — « ce qui reste à faire ».
   const openActions = await listOpenSiteActions({ siteIds: [id] }).catch(() => [])
+
+  // Indicateur factuel « CR réalisés » (jamais un % — cf. refus des taux d'avancement).
+  const crStats = await getSiteCrStats(id).catch(() => ({ meetings: 0, crDone: 0, lastCrDate: null }))
 
   // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
   const orgId = user.organization_id
@@ -295,6 +299,23 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         {/* ➕ Action standalone — capturer une intention sans compte-rendu */}
         <QuickActionButton source="desktop_site" siteId={id} variant="desktop" />
       </div>
+
+      {/* Indicateur factuel CR (compteur, jamais un taux %). */}
+      {crStats.meetings > 0 && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+          <span className="inline-flex items-center gap-1.5">
+            <BookText className="h-4 w-4 text-muted-foreground" />
+            <span className="font-semibold tabular-nums">{crStats.meetings}</span> réunion{crStats.meetings > 1 ? 's' : ''}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+            <span className="font-semibold tabular-nums">{crStats.crDone}</span> CR réalisé{crStats.crDone > 1 ? 's' : ''}
+          </span>
+          {crStats.lastCrDate && (
+            <span className="text-muted-foreground">Dernier CR : {new Date(crStats.lastCrDate).toLocaleDateString('fr-FR')}</span>
+          )}
+        </div>
+      )}
 
       {/* Navigation onglets — mobile uniquement */}
       <SiteTabsNav active={tab} siteId={id} />

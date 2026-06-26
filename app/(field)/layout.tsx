@@ -26,7 +26,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   const actionsHealth = await getOpenActionsHealth()
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-dvh overflow-x-hidden bg-background text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
         <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
           {/* Retour accueil + identité produit (remplace le « Bonjour <prénom> »

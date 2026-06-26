@@ -103,6 +103,62 @@ export async function addReportAttachment(input: {
 
 // ── Lecture ─────────────────────────────────────────────────────────────────
 
+/**
+ * Indicateur factuel « CR réalisés » d'un site (jamais un % ni un score).
+ *   - meetings  : réunions = comptes-rendus classiques (origin null, pas les visites).
+ *   - crDone    : réunions avec ≥1 version finale FIGÉE (report_final_versions, mig 127).
+ *   - lastCrDate: date du dernier CR figé.
+ */
+export async function getSiteCrStats(siteId: string): Promise<{ meetings: number; crDone: number; lastCrDate: string | null }> {
+  const supabase = createAdminClient()
+  const { data: meetingRows } = await supabase
+    .from('site_reports').select('id').eq('site_id', siteId).is('origin', null)
+  const ids = ((meetingRows ?? []) as Array<{ id: string }>).map((r) => r.id)
+  if (ids.length === 0) return { meetings: 0, crDone: 0, lastCrDate: null }
+  const { data: fvRows } = await supabase
+    .from('report_final_versions').select('report_id, finalized_at').in('report_id', ids)
+  const fv = (fvRows ?? []) as Array<{ report_id: string; finalized_at: string }>
+  const crDone = new Set(fv.map((r) => r.report_id)).size
+  const lastCrDate = fv.reduce<string | null>((max, r) => (!max || r.finalized_at > max ? r.finalized_at : max), null)
+  return { meetings: ids.length, crDone, lastCrDate }
+}
+
+/**
+ * Mémoire de présence du chantier : sur les réunions PASSÉES, combien de fois
+ * chaque contact a été présent + qui était à la dernière réunion. Déterministe
+ * (pas d'IA). Sert « habituels / occasionnels / nouveaux » et « reprendre la
+ * dernière réunion ». « Présent » = présence P ou non renseignée (pas AE/AN).
+ */
+export interface SiteAttendanceStats {
+  totalMeetings: number
+  present: Record<string, number>   // contactId → nb de réunions où présent
+  lastMeetingContactIds: string[]
+}
+
+export async function getSiteAttendanceStats(siteId: string, excludeReportId: string): Promise<SiteAttendanceStats> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('site_reports')
+    .select('participants, created_at')
+    .eq('site_id', siteId)
+    .is('origin', null)
+    .neq('id', excludeReportId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  const rows = (data ?? []) as Array<{ participants: SiteReportParticipant[] | null; created_at: string }>
+  const wasPresent = (p: SiteReportParticipant) => !!p.contactId && p.presence !== 'AE' && p.presence !== 'AN'
+  const present: Record<string, number> = {}
+  for (const r of rows) {
+    for (const p of r.participants ?? []) {
+      if (wasPresent(p)) present[p.contactId as string] = (present[p.contactId as string] ?? 0) + 1
+    }
+  }
+  const lastMeetingContactIds = rows.length > 0
+    ? (rows[0].participants ?? []).filter(wasPresent).map((p) => p.contactId as string)
+    : []
+  return { totalMeetings: rows.length, present, lastMeetingContactIds }
+}
+
 export async function getSiteReport(id: string): Promise<DbSiteReport | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase

@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
-  Mic, Building2, MapPin, Users, AlertTriangle, ListTodo, CalendarClock, ClipboardList,
+  Mic, Building2, MapPin, AlertTriangle, ListTodo, CalendarClock, ClipboardList,
   Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { getSiteReport, listProposals } from '@/lib/db/site-reports'
+import { getSiteReport, listProposals, getSiteAttendanceStats } from '@/lib/db/site-reports'
 import { listBlocagesByReport } from '@/lib/db/site-blocages'
 import { guessBlocageType } from '@/lib/db/blocage-constants'
 import { BlocagesPanel } from './BlocagesPanel'
@@ -18,7 +18,9 @@ import { getSiteEngagements } from '@/lib/db/site-engagements'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listAudioSources, computeMemoryHealth } from '@/lib/db/report-audio-sources'
 import { listAnalysisRuns } from '@/lib/db/report-analysis-runs'
+import { listSiteContacts } from '@/lib/db/site-intervenants'
 import { MeetingMemoryHealth } from './MeetingMemoryHealth'
+import { MeetingParticipantsEditor } from './MeetingParticipantsEditor'
 import { ActionsCuration } from './ActionsCuration'
 import { MeetingFollowup } from './MeetingFollowup'
 import { EngagementsTable } from './EngagementsTable'
@@ -79,6 +81,12 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   // Santé de la mémoire (P2a) : sources audio + couverture. Zone SÉPARÉE des détecteurs.
   const [audioSources, memoryHealth, analysisRuns] = await Promise.all([listAudioSources(id), computeMemoryHealth(id), listAnalysisRuns(id)])
+
+  // Casting du chantier + mémoire de présence (habituels / dernière réunion).
+  const castingContacts = report.site_id ? await listSiteContacts(report.site_id).catch(() => []) : []
+  const attendance = report.site_id
+    ? await getSiteAttendanceStats(report.site_id, id).catch(() => ({ totalMeetings: 0, present: {}, lastMeetingContactIds: [] }))
+    : { totalMeetings: 0, present: {}, lastMeetingContactIds: [] }
 
   const supabase = createAdminClient()
 
@@ -229,20 +237,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <span className="ml-auto text-xs text-muted-foreground">Préparer / finaliser →</span>
       </Link>
 
-      {/* Participants détectés */}
-      {report.participants && report.participants.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Présents</h2>
-          <div className="flex flex-wrap gap-1.5">
-            {report.participants.map((p, i) => (
-              <span key={i} className="inline-flex items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-xs">
-                <Users className="h-3 w-3 text-muted-foreground" />
-                {p.name}{p.role ? <span className="text-muted-foreground"> · {p.role}</span> : null}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Présents — gérés au niveau réunion : casting en cases à cocher + ajout libre. */}
+      <MeetingParticipantsEditor
+        reportId={id}
+        participants={report.participants ?? []}
+        castingContacts={castingContacts}
+        attendance={attendance}
+      />
 
       {/* Décisions */}
       <section className="space-y-2">

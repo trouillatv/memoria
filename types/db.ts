@@ -369,6 +369,12 @@ export interface SiteReportParticipant {
   /** Lien OPTIONNEL vers un contact réel (company_contacts, mig 137/138). Le nom libre
    *  reste possible pour un participant non répertorié — souplesse terrain voulue. */
   contactId?: string
+  /** Ajouté APRÈS la capture initiale (feuille de présence tardive, oubli…) — tracé
+   *  discrètement, jamais un reproche. Le reste (entreprise, fonction) se résout par
+   *  jointure via contactId : on ne fige pas de libellés dans le JSON. */
+  addedAfterMeeting?: boolean
+  addedAt?: string
+  addedBy?: string | null
 }
 
 // Risque / dépendance proposé par l'IA (conducteur de travaux assistant).
