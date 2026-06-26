@@ -19,6 +19,7 @@
 //   - Pas de cards colorées, pas de donuts — typographie + blanc + hiérarchie + silence
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { anomalyLabel } from '@/lib/anomaly-labels'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
@@ -2219,11 +2220,16 @@ export async function getContractTopReadings(
 
 export async function getTenantTopMorningReading(): Promise<TenantMorningReading> {
   const supabase = createAdminClient()
+  // Scope ORG (admin client bypasse les RLS → re-filtrer, sinon fuite cross-org
+  // sur le hero « Mémoire active ce matin »).
+  const orgId = await getOrgId().catch(() => null)
+  if (!orgId) return { reading: null, siteName: null, siteId: null }
 
   // Sites des contrats actifs (cap 15 sites pour V1 pilote).
   const { data: sites } = await supabase
     .from('sites')
     .select('id, name, contract:contracts(status)')
+    .eq('organization_id', orgId)
     .is('deleted_at', null)
     .limit(50) // cap dur pour éviter d'imploser à scale
 
