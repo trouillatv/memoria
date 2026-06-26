@@ -579,9 +579,22 @@ export async function editDecisionAction(
   }
 }
 
+/** Rattache UNE décision à son sujet (find-or-create) PUIS fait hériter l'action
+ *  engendrée (decision.action_id) du même sujet — une attache en propage deux.
+ *  Étapes #3 (décisions) + #4 (héritage actions) de l'alimentation du graphe. */
+async function attachDecisionAndInheritedAction(siteId: string, decisionId: string, subjectName: string, userId: string | null): Promise<void> {
+  const subjectId = await findOrCreateSubjectByName(siteId, subjectName, userId)
+  await attachToSubject('site_decisions', decisionId, subjectId)
+  // #4 héritage : l'action liée à la décision rejoint le MÊME sujet (objet métier).
+  const sb = createAdminClient()
+  const { data: dec } = await sb.from('site_decisions').select('action_id').eq('id', decisionId).maybeSingle()
+  const actionId = (dec as { action_id: string | null } | null)?.action_id
+  if (actionId) await attachToSubject('site_actions', actionId, subjectId).catch(() => {})
+}
+
 /** PONT VUE SUJET (mig 143) : rattache une décision à un SUJET (find-or-create par
  *  nom). Le champ texte `sujet` de la décision devient une entité Subject vivante →
- *  la décision entre dans l'histoire chronologique du sujet. */
+ *  la décision entre dans l'histoire chronologique du sujet (+ son action héritée). */
 export async function attachDecisionToSubjectAction(
   reportId: string,
   decisionId: string,
@@ -593,14 +606,39 @@ export async function attachDecisionToSubjectAction(
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
   try {
-    const subjectId = await findOrCreateSubjectByName(report.site_id, name, user.id)
-    await attachToSubject('site_decisions', decisionId, subjectId)
+    await attachDecisionAndInheritedAction(report.site_id, decisionId, name, user.id)
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/sites/${report.site_id}/subjects`)
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
   }
+}
+
+/** BATCH (proposition pré-cochée à la validation) : rattache d'un coup les décisions
+ *  cochées à leur sujet (champ `sujet`), avec héritage de l'action liée. L'humain
+ *  valide en un clic ce que la décision portait déjà ; rien n'est inventé. */
+export async function attachDecisionSubjectsAction(
+  reportId: string,
+  decisionIds: string[],
+): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const user = await requireManagerOrAdmin()
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
+  const ids = [...new Set((decisionIds ?? []).filter((s) => typeof s === 'string'))].slice(0, 100)
+  if (ids.length === 0) return { ok: true, count: 0 }
+  const sb = createAdminClient()
+  const { data: decs } = await sb.from('site_decisions').select('id, sujet').in('id', ids).eq('site_id', report.site_id)
+  let count = 0
+  for (const d of (decs ?? []) as Array<{ id: string; sujet: string | null }>) {
+    const name = (d.sujet ?? '').trim()
+    if (!name) continue
+    try { await attachDecisionAndInheritedAction(report.site_id, d.id, name, user.id); count++ } catch { /* on continue les autres */ }
+  }
+  revalidatePath(`/meetings/${reportId}/pv/validation`)
+  revalidatePath(`/meetings/${reportId}`)
+  revalidatePath(`/sites/${report.site_id}/subjects`)
+  return { ok: true, count }
 }
 
 export async function deleteDecisionAction(

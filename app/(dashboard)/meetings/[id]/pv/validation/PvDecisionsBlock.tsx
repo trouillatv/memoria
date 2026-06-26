@@ -4,13 +4,78 @@
 // mémoire du site, ni action ni prévision. Saisie + cycle de vie (actée → appliquée
 // → caduque/contredite) ici même ; la décision est PROJETÉE dans le CR (Points
 // administratifs) via le spine, pas dans un écran parallèle. MVP : ajout = human/sûr/actée.
-import { useRef, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2 } from 'lucide-react'
-import { addDecisionAction, editDecisionAction, deleteDecisionAction, attachDecisionToSubjectAction } from '../../pv-actions'
+import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2, Link2 } from 'lucide-react'
+import { addDecisionAction, editDecisionAction, deleteDecisionAction, attachDecisionToSubjectAction, attachDecisionSubjectsAction } from '../../pv-actions'
 import { ACTION_CODES } from '@/lib/db/action-codes'
 import { DECISION_STATUTS, DECISION_IMPACTS, STATUT_LABEL, IMPACT_LABEL, type DecisionImpact } from '@/lib/db/decision-constants'
+import { subjectDedupKey } from '@/lib/db/subject-doctrine'
 import type { SiteDecision } from '@/lib/db/site-decisions'
+
+// PROPOSITION PRÉ-COCHÉE (choix B, Vincent) : à la validation du PV, on propose de
+// rattacher d'un clic les décisions à leur sujet (champ `sujet` déjà saisi). Visible,
+// défaisable (cases décochables), un seul « Rattacher ». L'humain valide, rien d'inventé.
+function SubjectProposals({ reportId, decisions, existingNames }: { reportId: string; decisions: SiteDecision[]; existingNames: string[] }) {
+  const router = useRouter()
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  const [checked, setChecked] = useState<Record<string, boolean>>({})
+
+  const existingKeys = useMemo(() => new Set(existingNames.map(subjectDedupKey)), [existingNames])
+  // Une décision avec un `sujet` saisi mais pas encore rattachée = une proposition.
+  const groups = useMemo(() => {
+    const m = new Map<string, { sujet: string; existing: boolean; ids: string[] }>()
+    for (const d of decisions) {
+      const name = (d.sujet ?? '').trim()
+      if (!name || d.subjectId) continue
+      const key = subjectDedupKey(name)
+      const g = m.get(key) ?? { sujet: name, existing: existingKeys.has(key), ids: [] as string[] }
+      g.ids.push(d.id)
+      m.set(key, g)
+    }
+    return [...m.entries()].map(([key, g]) => ({ key, ...g }))
+  }, [decisions, existingKeys])
+
+  if (groups.length === 0) return null
+  const isChecked = (key: string) => checked[key] ?? true // pré-coché par défaut
+  const selectedIds = groups.filter((g) => isChecked(g.key)).flatMap((g) => g.ids)
+
+  function validate() {
+    setError(null)
+    start(async () => {
+      const r = await attachDecisionSubjectsAction(reportId, selectedIds)
+      if (r.ok) router.refresh()
+      else setError(r.error)
+    })
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+      <p className="text-[11px] font-medium text-violet-900">
+        Sujets proposés — rattachez ces décisions à leur sujet (pré-coché, décochez ce qui ne va pas).
+      </p>
+      <ul className="space-y-1">
+        {groups.map((g) => (
+          <li key={g.key} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={isChecked(g.key)} onChange={() => setChecked((c) => ({ ...c, [g.key]: !isChecked(g.key) }))} className="accent-violet-600" />
+            <span className="font-medium">« {g.sujet} »</span>
+            <span className="text-[11px] text-muted-foreground">
+              {g.existing ? 'sujet existant' : 'nouveau sujet'}{g.ids.length > 1 ? ` · ${g.ids.length} décisions` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={pending || selectedIds.length === 0} onClick={validate}
+          className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50">
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />} Rattacher{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+        </button>
+        {error && <span className="text-xs text-rose-600">{error}</span>}
+      </div>
+    </div>
+  )
+}
 
 type Res = { ok: true } | { ok: false; error: string }
 export interface DecisionOption { id: string; label: string }
@@ -196,14 +261,15 @@ function AddDecision({ reportId, contacts }: { reportId: string; contacts: Decis
   )
 }
 
-export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions = [] }: {
-  reportId: string; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]
+export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions = [], existingSubjectNames = [] }: {
+  reportId: string; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]; existingSubjectNames?: string[]
 }) {
   return (
     <section className="space-y-2">
       <h2 className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
         <Gavel className="h-3.5 w-3.5" /> Décisions ({decisions.length})
       </h2>
+      <SubjectProposals reportId={reportId} decisions={decisions} existingNames={existingSubjectNames} />
       {decisions.length > 0 && (
         <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} d={d} contacts={contacts} actions={actions} />)}</ul>
       )}

@@ -16,6 +16,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteIntervenants, getRoleActorMap, listSiteContacts } from '@/lib/db/site-intervenants'
 import { getLatestReportDocument } from '@/lib/db/report-documents'
 import { listReportFinalVersions } from '@/lib/db/report-final-versions'
@@ -75,6 +76,12 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
 
   // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
   const decisions = await listDecisionsByReport(id)
+
+  // Noms des sujets existants du site → étiquette « existant » vs « nouveau » dans
+  // la proposition pré-cochée de rattachement des décisions (alimentation du graphe).
+  const existingSubjectNames = report.site_id
+    ? (((await createAdminClient().from('subjects').select('name').eq('site_id', report.site_id)).data ?? []) as { name: string }[]).map((s) => s.name)
+    : []
 
   // CASTING DU CHANTIER (mig 137) : rôle → entreprise → contact. Sert le bloc casting
   // ET l'enrichissement « ETV · BatiSud » des codes ACTION. Donnée SITE.
@@ -271,7 +278,7 @@ export default async function PvValidationPage({ params }: { params: Promise<{ i
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
           les Points administratifs du CR (spine), gérée ici (pas d'écran parallèle). */}
       <div className="border-t pt-5">
-        <PvDecisionsBlock reportId={id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} />
+        <PvDecisionsBlock reportId={id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} />
       </div>
 
       {/* Ajouts STRUCTURÉS en séance (anomalie / prévision) — objets typés mémorisés. */}
