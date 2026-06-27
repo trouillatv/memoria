@@ -34,6 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin/depenses-ia" className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Dépenses IA</Link>
             <Link href="/admin/analyse-ao"  className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Analyse AO</Link>
             <Link href="/admin/usage"       className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Usage</Link>
+            <Link href="/admin/test-terrain" className="text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">Test terrain</Link>
             <Link href="/admin/feedback"    className="inline-flex items-center justify-center md:justify-start gap-1.5 text-center md:text-left text-sm font-medium text-slate-200 hover:text-white bg-slate-800 md:bg-transparent rounded px-2 py-2 md:p-0">
               Retours
               {openFeedback ? (
