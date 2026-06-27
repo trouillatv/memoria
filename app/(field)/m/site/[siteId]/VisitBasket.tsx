@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check,
+  Camera, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -20,6 +20,18 @@ import {
 } from './capture-actions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
+// Mémoire LITE d'un point suivi (read-only), surfacée pendant la vérification :
+// « voilà ce qu'on sait déjà sur ce point ». Aucune donnée nouvelle, agrégée par
+// listSubjectsBySite côté serveur.
+export type SubjectMemoryLite = {
+  lastActivityDays: number | null
+  openReserves: number
+  openActions: number
+  lateActions: number
+  decisions: number
+  criticality: string
+}
+
 /**
  * « Visite en cours » — le PANIER terrain (temps 1 des 3, cf. [[visite-trois-temps]]).
  * On ne réfléchit pas : on collecte. 4 gestes + position, une pression, retour
@@ -31,20 +43,23 @@ export function VisitBasket({
   siteId,
   startedAt,
   subjects,
+  subjectMemory,
   initialCaptures,
 }: {
   reportId: string
   siteId: string
   startedAt: string | null
   subjects: Array<{ id: string; name: string }>
+  subjectMemory: Record<string, SubjectMemoryLite>
   initialCaptures: VisitCaptureRow[]
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
   const [overlay, setOverlay] = useState<'none' | 'note' | 'verify'>('none')
   const [note, setNote] = useState('')
-  const [verifSubject, setVerifSubject] = useState<{ id: string; name: string } | null>(null)
+  const [verifIndex, setVerifIndex] = useState(0)
   const [verifNote, setVerifNote] = useState('')
+  const touchStartX = useRef<number | null>(null)
   const [busy, startBusy] = useTransition()
   const [recording, setRecording] = useState(false)
   const [elapsed, setElapsed] = useState('')
@@ -54,6 +69,11 @@ export function VisitBasket({
 
   const subjectName = (id: string | null) => subjects.find((s) => s.id === id)?.name ?? 'point suivi'
   const kept = captures.filter((c) => c.status !== 'discarded')
+  // Points suivis déjà vérifiés pendant CETTE visite (progression + ✓). Dérivé des
+  // captures : aucune donnée nouvelle.
+  const verifiedSubjectIds = new Set(
+    kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => c.subject_id as string),
+  )
 
   // Chrono de la visite.
   useEffect(() => {
@@ -166,17 +186,35 @@ export function VisitBasket({
     })
   }
 
-  // ── Vérifier un point ──────────────────────────────────────────────────────
+  // ── Vérifier les points suivis — parcours séquentiel ────────────────────────
+  // ERGONOMIE seulement : on enchaîne les points (suivant/suivant…, swipe) au lieu
+  // de revenir à la liste. MÉTIER INCHANGÉ : même capture de vérification ; aucun
+  // statut conforme/non-conforme, aucun constat ici (gated, cf. [[visite-trois-temps]]).
+  function openVerify() {
+    const firstTodo = subjects.findIndex((s) => !verifiedSubjectIds.has(s.id))
+    setVerifIndex(firstTodo >= 0 ? firstTodo : 0)
+    setVerifNote('')
+    setOverlay('verify')
+  }
+  function gotoVerif(i: number) {
+    if (i < 0 || i >= subjects.length) return
+    setVerifIndex(i)
+    setVerifNote('')
+  }
   function saveVerification() {
-    if (!verifSubject) return
+    const subject = subjects[verifIndex]
+    if (!subject) return
     startBusy(async () => {
       const r = await addVerificationCaptureAction({
-        report_id: reportId, site_id: siteId, subject_id: verifSubject.id,
+        report_id: reportId, site_id: siteId, subject_id: subject.id,
         body: verifNote.trim() || undefined,
       })
       if (r.ok) {
-        setVerifSubject(null); setVerifNote(''); setOverlay('none')
-        toast.success('Point vérifié', { duration: 1200 }); refresh()
+        toast.success('Point vérifié', { duration: 1000 })
+        setVerifNote('')
+        refresh()
+        // Fluide : on enchaîne sur le point suivant s'il en reste.
+        if (verifIndex < subjects.length - 1) setVerifIndex(verifIndex + 1)
       } else toast.error(r.error)
     })
   }
@@ -280,7 +318,7 @@ export function VisitBasket({
           onClick={recording ? stopRec : startRec}
         />
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
-        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={() => setOverlay('verify')} />
+        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={openVerify} />
       </div>
       <button
         type="button" onClick={capturePosition} disabled={busy}
@@ -342,40 +380,104 @@ export function VisitBasket({
         </Overlay>
       )}
 
-      {/* Overlay : Vérifier un point */}
+      {/* Overlay : Vérifier les points suivis — PARCOURS séquentiel (swipe / suivant).
+          Ergonomie pure ; aucun changement de données ni de métier. */}
       {overlay === 'verify' && (
-        <Overlay title="Vérifier un point suivi" icon={<Target className="h-4 w-4" />} onClose={() => { setOverlay('none'); setVerifSubject(null); setVerifNote('') }}>
+        <Overlay title="Vérifier les points suivis" icon={<Target className="h-4 w-4" />} onClose={() => { setOverlay('none'); setVerifNote('') }}>
           {subjects.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">Aucun point suivi sur ce chantier pour l&apos;instant.</p>
-          ) : !verifSubject ? (
-            <ul className="max-h-56 overflow-y-auto space-y-1">
-              {subjects.map((s) => (
-                <li key={s.id}>
-                  <button type="button" onClick={() => setVerifSubject(s)}
-                    className="w-full text-left rounded-lg border bg-background px-3 py-2 text-sm active:bg-muted/40">
-                    {s.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
           ) : (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{verifSubject.name}</p>
-              <textarea
-                value={verifNote} onChange={(e) => setVerifNote(e.target.value)} rows={2} maxLength={2000}
-                placeholder="Constat (facultatif)…"
-                className="w-full rounded-lg border bg-background px-3 py-2 text-base resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setVerifSubject(null)} className="rounded-lg border px-3 py-2 text-sm">Changer</button>
+            <div
+              className="space-y-3"
+              onTouchStart={(e) => { touchStartX.current = e.touches[0]?.clientX ?? null }}
+              onTouchEnd={(e) => {
+                if (touchStartX.current == null) return
+                const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current
+                touchStartX.current = null
+                if (dx <= -50) gotoVerif(verifIndex + 1)
+                else if (dx >= 50) gotoVerif(verifIndex - 1)
+              }}
+            >
+              {/* Compteur + barre de progression */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="tabular-nums">{verifIndex + 1} / {subjects.length}</span>
+                  <span className="tabular-nums">{verifiedSubjectIds.size} / {subjects.length} vérifiés</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-emerald-600 transition-all"
+                    style={{ width: `${subjects.length ? (verifiedSubjectIds.size / subjects.length) * 100 : 0}%` }} />
+                </div>
+              </div>
+
+              {/* Le point courant */}
+              <div className="rounded-xl border bg-background p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <Target className="h-4 w-4 shrink-0 mt-0.5 text-emerald-700/80" />
+                  <p className="min-w-0 flex-1 text-sm font-medium leading-snug">{subjects[verifIndex]?.name}</p>
+                  {verifiedSubjectIds.has(subjects[verifIndex]?.id) && (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-700">
+                      <Check className="h-3.5 w-3.5" /> vérifié
+                    </span>
+                  )}
+                </div>
+                {/* La mémoire du point — « ce qu'on sait déjà » au moment d'agir. */}
+                <SubjectMemoryBlock mem={subjectMemory[subjects[verifIndex]?.id ?? '']} />
+                <textarea
+                  value={verifNote} onChange={(e) => setVerifNote(e.target.value)} rows={2} maxLength={2000}
+                  placeholder="Constat (facultatif)…"
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-base resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                />
                 <button type="button" onClick={saveVerification} disabled={busy}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 disabled:opacity-50">
-                  <Check className="h-4 w-4" /> Marquer vérifié
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 disabled:opacity-50">
+                  <Check className="h-4 w-4" />
+                  {verifIndex >= subjects.length - 1 ? 'Valider' : 'Valider et suivant'}
+                  {verifIndex < subjects.length - 1 && <ChevronRight className="h-4 w-4" />}
+                </button>
+              </div>
+
+              {/* Navigation séquentielle */}
+              <div className="flex items-center justify-between gap-2">
+                <button type="button" onClick={() => gotoVerif(verifIndex - 1)} disabled={verifIndex === 0}
+                  className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm disabled:opacity-40">
+                  <ChevronLeft className="h-4 w-4" /> Précédent
+                </button>
+                <button type="button" onClick={() => gotoVerif(verifIndex + 1)} disabled={verifIndex >= subjects.length - 1}
+                  className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm disabled:opacity-40">
+                  Suivant <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
           )}
         </Overlay>
+      )}
+    </div>
+  )
+}
+
+// La mémoire d'un point suivi pendant la vérification (read-only). NARRATIF, pas
+// tableau de bord : une seule ligne de SENS (« pourquoi je reviens voir ce point »)
+// + l'ancienneté. Pas de pastilles façon dashboard.
+function SubjectMemoryBlock({ mem }: { mem: SubjectMemoryLite | undefined }) {
+  if (!mem) return null
+  const empty = mem.lastActivityDays == null && !mem.openReserves && !mem.openActions && !mem.lateActions && !mem.decisions
+  if (empty) {
+    return <p className="text-xs italic text-muted-foreground">Première fois sur ce point — aucune trace antérieure.</p>
+  }
+  let lead: string | null = null
+  if (mem.openReserves) lead = mem.openReserves > 1 ? `${mem.openReserves} réserves non levées` : 'Réserve non levée'
+  else if (mem.lateActions) lead = mem.lateActions > 1 ? `${mem.lateActions} actions en retard` : 'Action en retard'
+  else if (mem.openActions) lead = mem.openActions > 1 ? `${mem.openActions} actions en cours` : 'Action en cours'
+  else if (mem.decisions) lead = 'Déjà documenté'
+  const stale = mem.lastActivityDays != null && mem.lastActivityDays >= 30
+  const hot = mem.criticality === 'haute'
+  return (
+    <div className={`rounded-lg px-2.5 py-2 text-xs space-y-0.5 ${hot ? 'bg-red-50 dark:bg-red-950/30' : 'bg-muted/40'}`}>
+      {lead && <p className={`font-medium ${hot ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>{lead}</p>}
+      {mem.lastActivityDays != null && (
+        <p className="text-muted-foreground">
+          {stale ? '⚠ ' : ''}Dernière trace il y a {mem.lastActivityDays} j{stale ? ' — à reconfirmer' : ''}
+        </p>
       )}
     </div>
   )
