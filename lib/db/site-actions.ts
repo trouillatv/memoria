@@ -151,6 +151,8 @@ export interface SiteActionRow {
   contract_name: string | null
   /** Élément à mémoriser rattaché (mig 124). null = action orpheline. */
   subject_id: string | null
+  /** Dernière avancée « Fait aujourd'hui » (mig 169) — PAS une clôture. */
+  last_progress_at: string | null
 }
 
 /**
@@ -213,6 +215,7 @@ export async function listOpenSiteActions(opts?: {
       contract_id: s?.contract_id ?? null,
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
       subject_id: a.subject_id ?? null,
+      last_progress_at: a.last_progress_at ?? null,
     }
   })
 }
@@ -262,6 +265,7 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       contract_id: s?.contract_id ?? null,
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
       subject_id: a.subject_id ?? null,
+      last_progress_at: a.last_progress_at ?? null,
     }
   })
 }
@@ -316,6 +320,20 @@ export async function markSiteActionDone(
       completed_comment: closure?.comment ?? null,
       completed_photo_path: closure?.photoPath ?? null,
     })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * « Fait aujourd'hui » — marque une AVANCÉE terrain sans clôturer. status reste
+ * 'open' : l'action est vivante, elle réapparaîtra dans « à faire » dès demain.
+ * on=false annule la marque du jour.
+ */
+export async function markSiteActionProgress(id: string, on: boolean): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('site_actions')
+    .update({ last_progress_at: on ? new Date().toISOString() : null })
     .eq('id', id)
   if (error) throw error
 }

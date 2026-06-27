@@ -542,6 +542,8 @@ export interface DbSiteAction {
   reserve_id: string | null
   // Rattachement à un sujet vivant (migration 124). NULL = action non rattachée.
   subject_id: string | null
+  // Dernière avancée « Fait aujourd'hui » (migration 169). NULL = pas avancée ; jamais une clôture.
+  last_progress_at: string | null
   // Type d'action (migration 149) : one_shot (ponctuelle, défaut) | deadline (pour
   // une échéance) | recurring_until_done (récurrente jusqu'à clôture du chantier).
   kind: 'one_shot' | 'deadline' | 'recurring_until_done'

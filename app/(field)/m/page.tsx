@@ -382,6 +382,7 @@ export default async function FieldHomePage({
   return (
     <div className="space-y-6 max-w-md pb-32">
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
+      <p className="-mt-2 text-xs text-muted-foreground">Aujourd&apos;hui sur le terrain · interventions, visites, captures.</p>
       <MeetingLauncher />
       <VisitLauncherHome />
 
