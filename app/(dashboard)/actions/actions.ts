@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, markSiteActionDone, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import { createSiteAction, markSiteActionDone, markSiteActionProgress, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -38,6 +38,29 @@ function revalidateActionSurfaces(siteId?: string) {
   if (siteId) {
     revalidatePath(`/sites/${siteId}`)
     revalidatePath(`/m/site/${siteId}`)
+  }
+}
+
+// « Fait aujourd'hui » — avancée terrain, PAS une clôture (l'action reste open).
+const ProgressSchema = z.object({
+  id: z.string().uuid(),
+  site_id: z.string().uuid().optional(),
+  on: z.boolean(),
+})
+
+export async function markActionProgressAction(
+  input: z.input<typeof ProgressSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireOperator()
+  if (!auth.ok) return auth
+  const parsed = ProgressSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await markSiteActionProgress(parsed.data.id, parsed.data.on)
+    revalidateActionSurfaces(parsed.data.site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
   }
 }
 

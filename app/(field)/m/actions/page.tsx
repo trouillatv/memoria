@@ -30,10 +30,10 @@ export default async function FieldActionsPage() {
       <header className="space-y-1">
         <h1 className="text-xl font-semibold inline-flex items-center gap-2">
           <ListTodo className="h-5 w-5 text-muted-foreground" />
-          Actions ouvertes
+          Actions du chantier
         </h1>
         <p className="text-sm text-muted-foreground">
-          Ce qui reste à faire. Clôturez avec un mot (et une photo si utile).
+          Les points à suivre dans le temps — distinct de la mission du jour. Marquez « traitée » quand il n&apos;y a plus rien à suivre.
         </p>
       </header>
 

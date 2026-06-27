@@ -11,7 +11,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock, Link2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction, associateActionToElementAction, listSiteSubjectsForAssociationAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, markActionProgressAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction, associateActionToElementAction, listSiteSubjectsForAssociationAction } from '@/app/(dashboard)/actions/actions'
 import { actionHealth } from '@/lib/actions/health'
 import { looksLikeAction } from '@/lib/db/subject-doctrine'
 import type { SiteActionRow } from '@/lib/db/site-actions'
@@ -28,6 +28,10 @@ function ageLabel(iso: string): string {
 function tomorrowIso(): string {
   return new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA')
 }
+function isTodayLocal(iso: string | null): boolean {
+  if (!iso) return false
+  return new Date(iso).toDateString() === new Date().toDateString()
+}
 
 type Mode = { id: string; kind: 'close' | 'plan' | 'associate' } | null
 
@@ -43,6 +47,9 @@ export function OpenActionsList({
   const router = useRouter()
   const [removed, setRemoved] = useState<Set<string>>(new Set())
   const [mode, setMode] = useState<Mode>(null)
+  // « Fait aujourd'hui » — override local optimiste (id → fait aujourd'hui ?).
+  const [progress, setProgress] = useState<Map<string, boolean>>(new Map())
+  const [, startProgress] = useTransition()
 
   function dropAndRefresh(id: string) {
     setRemoved((prev) => new Set(prev).add(id))
@@ -55,9 +62,28 @@ export function OpenActionsList({
     return <p className="text-sm text-muted-foreground italic px-1 py-2">Aucune action ouverte.</p>
   }
 
+  const isDoneToday = (a: SiteActionRow) => (progress.has(a.id) ? progress.get(a.id)! : isTodayLocal(a.last_progress_at))
+  const todo = visible.filter((a) => !isDoneToday(a))
+  const doneToday = visible.filter((a) => isDoneToday(a))
+
+  function markProgress(a: SiteActionRow, on: boolean) {
+    setProgress((prev) => new Map(prev).set(a.id, on))
+    startProgress(async () => {
+      const r = await markActionProgressAction({ id: a.id, site_id: a.site_id, on })
+      if (!r.ok) {
+        setProgress((prev) => new Map(prev).set(a.id, !on))
+        toast.error(r.error)
+      }
+    })
+  }
+
   return (
-    <ul className="space-y-2">
-      {visible.map((a) => {
+    <div className="space-y-3">
+      {todo.length === 0 ? (
+        <p className="px-1 py-1 text-sm italic text-muted-foreground">Rien de plus à faire aujourd&apos;hui. 🎉</p>
+      ) : (
+      <ul className="space-y-2">
+        {todo.map((a) => {
         const health = actionHealth(a.created_at)
         const borderCls =
           health === 'critique' ? 'border-red-300' : health === 'surveiller' ? 'border-amber-200' : 'border-border'
@@ -72,7 +98,7 @@ export function OpenActionsList({
               <button
                 type="button"
                 onClick={() => setMode(isClosing ? null : { id: a.id, kind: 'close' })}
-                aria-label="Clôturer l'action"
+                aria-label="Marquer l'action comme définitivement traitée"
                 aria-expanded={isClosing}
                 className={`mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors active:scale-95 ${
                   isClosing ? 'border-emerald-500 bg-emerald-50' : 'border-foreground/30 hover:border-emerald-500 hover:bg-emerald-50'
@@ -113,9 +139,17 @@ export function OpenActionsList({
                 ) : isAssociating ? (
                   <AssociateForm action={a} onCancel={() => setMode(null)} onDone={() => { setMode(null); router.refresh() }} />
                 ) : (
-                  // Actions cliquables en BADGES (sinon trop discret) — « Planifier »
-                  // mise en avant, les autres en pilules contour.
-                  <div className={`mt-2 items-center gap-2 ${compact ? 'hidden' : 'flex flex-wrap'}`}>
+                  <>
+                    {/* « Fait aujourd'hui » — avancée terrain, NE clôture PAS l'action (elle reste vivante). */}
+                    <button
+                      type="button"
+                      onClick={() => markProgress(a, true)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 active:scale-[0.98] dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    >
+                      <Check className="h-3.5 w-3.5" /> Fait aujourd&apos;hui
+                    </button>
+                    {/* Actions cliquables en BADGES (desktop) — « Planifier » mise en avant. */}
+                    <div className={`mt-2 items-center gap-2 ${compact ? 'hidden' : 'flex flex-wrap'}`}>
                     {!compact && (
                       <button
                         type="button"
@@ -156,14 +190,35 @@ export function OpenActionsList({
                         <Mic className="h-3.5 w-3.5" />Réunion source
                       </Link>
                     )}
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
           </li>
         )
       })}
-    </ul>
+      </ul>
+      )}
+
+      {doneToday.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fait aujourd&apos;hui</p>
+          <ul className="space-y-1">
+            {doneToday.map((a) => (
+              <li key={a.id} className="flex items-center gap-2 rounded-lg border bg-muted/20 px-2.5 py-1.5">
+                <Check className="h-4 w-4 shrink-0 text-emerald-600" />
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{a.title}</span>
+                <button type="button" onClick={() => markProgress(a, false)} className="shrink-0 text-xs text-muted-foreground hover:text-foreground">
+                  Annuler
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[10px] text-muted-foreground">Restent ouvertes — elles réapparaîtront tant qu&apos;elles ne sont pas définitivement traitées.</p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -196,7 +251,7 @@ function CloseForm({
       const r = await closeActionAction(fd)
       if (!r.ok) toast.error(r.error)
       else {
-        toast.success('Action clôturée')
+        toast.success('Action traitée')
         onDone()
       }
     })
@@ -204,14 +259,15 @@ function CloseForm({
 
   return (
     <div className="mt-2 rounded-lg border bg-muted/20 p-2.5 space-y-2">
-      <p className="text-[11px] font-medium text-foreground/80">Clôturer l&apos;action</p>
+      <p className="text-[11px] font-medium text-foreground/80">Cette action est-elle complètement traitée&nbsp;?</p>
+      <p className="text-[10px] text-muted-foreground -mt-1">Pas « j&apos;ai fini ma mission du jour » : « ce point ne nécessite plus de suivi ».</p>
       <textarea
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         rows={2}
         autoFocus
         maxLength={1000}
-        placeholder="Ex : SudÉlec relancé, intervention prévue jeudi matin."
+        placeholder="Ex : joints repris et vérifiés — plus rien à suivre."
         className="w-full rounded-md border bg-background px-2.5 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
       />
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -228,7 +284,7 @@ function CloseForm({
           <button type="button" onClick={submit} disabled={pending || !comment.trim()}
             className="inline-flex items-center gap-1.5 rounded-md border-2 border-emerald-600 bg-emerald-600 text-white px-3 py-1.5 text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98]">
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            Clôturer
+            Définitivement traitée
           </button>
         </div>
       </div>
