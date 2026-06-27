@@ -26,6 +26,9 @@ export function SiteTabsNav({ active, siteId }: { active: SiteTabKey; siteId: st
       {SITE_TABS.map((t) => (
         <Link
           key={t.key}
+          // scroll={false} : changer d'onglet ne doit PAS faire remonter la page
+          // en haut — on reste au même niveau (la barre d'onglets).
+          scroll={false}
           href={t.key === 'apercu' ? `/sites/${siteId}` : `/sites/${siteId}?tab=${t.key}`}
           className={cn(
             'shrink-0 px-3 py-2 text-sm border-b-2 -mb-px whitespace-nowrap transition-colors',

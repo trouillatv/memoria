@@ -22,6 +22,7 @@ import { listSiteASavoirActive } from '@/lib/db/sites'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
+import { listSiteVisitsWithCounts } from '@/lib/db/visits'
 import { getSiteCrStats } from '@/lib/db/site-reports'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
@@ -53,6 +54,7 @@ import { WhatReturnsHere } from './WhatReturnsHere'
 import { SiteRhythm } from './SiteRhythm'
 import { TeamPresencesList } from './TeamPresencesList'
 import { SiteTeamsKnowledgeSection } from './SiteTeamsKnowledgeSection'
+import { SiteVisitsList } from './SiteVisitsList'
 import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { SiteReadingsList } from './SiteReadingsList'
 import { SitePhotoGallery } from './SitePhotoGallery'
@@ -164,21 +166,27 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     canViewDocument(user.role, d.visibility_level),
   )
 
+  // Visites effectuées sur ce site (onglet Activité) — chaque ligne mène au débrief.
+  const siteVisits = await listSiteVisitsWithCounts(id, 30).catch(() => [])
+
   // Helpers de visibilité : sur desktop (md+), tout est toujours visible.
   // Sur mobile, seul l'onglet actif s'affiche.
   // Utilise hidden/md:block (ou md:grid) pour éviter tout JS client.
   function tabClass(thisTab: SiteTabKey, displayClass = 'md:block') {
     return tab !== thisTab ? `hidden ${displayClass}` : ''
   }
+  // [&>*]:min-w-0 : les items de grille doivent pouvoir RÉTRÉCIR sous la largeur de
+  // leur contenu (sinon un enfant large — ex. SiteRhythm ~600px — force la largeur
+  // de page et crée un scroll horizontal sur mobile au lieu de scroller en interne).
   function gridTabClass(thisTab: SiteTabKey) {
     // Wrapper de grille : caché sur mobile si mauvais onglet, grid 2-col sur desktop.
-    if (tab !== thisTab) return 'hidden md:grid md:grid-cols-2 md:gap-4'
-    return 'grid grid-cols-1 md:grid-cols-2 gap-4'
+    if (tab !== thisTab) return 'hidden md:grid md:grid-cols-2 md:gap-4 [&>*]:min-w-0'
+    return 'grid grid-cols-1 md:grid-cols-2 gap-4 [&>*]:min-w-0'
   }
   // Pour la grille mixte Rythme|Équipes : visible si activite OU equipe.
   function mixedGridClass() {
-    if (tab !== 'activite' && tab !== 'equipe') return 'hidden md:grid md:grid-cols-2 md:gap-4'
-    return 'grid grid-cols-1 md:grid-cols-2 gap-4'
+    if (tab !== 'activite' && tab !== 'equipe') return 'hidden md:grid md:grid-cols-2 md:gap-4 [&>*]:min-w-0'
+    return 'grid grid-cols-1 md:grid-cols-2 gap-4 [&>*]:min-w-0'
   }
 
   return (
@@ -374,6 +382,16 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── ACTIVITÉ — Visites effectuées ───────────────────────────────── */}
+      <Card className={cn(tabClass('activite'))}>
+        <CardHeader>
+          <CardTitle>Visites</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SiteVisitsList siteId={id} visits={siteVisits} />
+        </CardContent>
+      </Card>
 
       {/* ── ACTIVITÉ — Densité 90 jours (heatmap) ───────────────────────── */}
       <Card className={cn(tabClass('activite'))}>
