@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/sweep-stuck-tenders",
       "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/sweep-visit-captures",
+      "schedule": "0 18 * * *"
     }
   ]
 }

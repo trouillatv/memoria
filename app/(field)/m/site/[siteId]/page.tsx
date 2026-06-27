@@ -17,7 +17,10 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
+import { VisitBasket } from './VisitBasket'
 import { getActiveVisit } from '@/lib/db/visits'
+import { listVisitCaptures } from '@/lib/db/visit-captures'
+import { listOpenSiteSubjectsLite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
@@ -126,6 +129,14 @@ export default async function FieldSitePage({
 
   // Visite en cours (non terminée) sur ce site, le cas échéant.
   const activeVisit = await getActiveVisit(siteId).catch(() => null)
+  // Panier terrain : si une visite est ouverte, on charge ses captures + les points
+  // suivis (pour le geste « Vérifier un point »).
+  const [visitSubjects, visitCaptures] = activeVisit
+    ? await Promise.all([
+        listOpenSiteSubjectsLite(siteId).catch(() => []),
+        listVisitCaptures(activeVisit.id).catch(() => []),
+      ])
+    : [[] as Array<{ id: string; name: string }>, []]
 
   // « Aujourd'hui ici » — page d'arrivée terrain. On s'assure des récurrences du
   // jour, puis on agrège interventions du jour + anomalies ouvertes + dernières
@@ -191,11 +202,19 @@ export default async function FieldSitePage({
         <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
       </section>
 
-      {/* Visite terrain : démarrer / terminer (friction zéro, débrief au bureau). */}
-      <VisitLauncher
-        siteId={siteId}
-        activeVisit={activeVisit ? { id: activeVisit.id, started_at: activeVisit.started_at } : null}
-      />
+      {/* Visite terrain. Visite ouverte → le PANIER (collecte focalisée, temps 1) ;
+          sinon → le bouton « Démarrer une visite » (friction zéro). */}
+      {activeVisit ? (
+        <VisitBasket
+          reportId={activeVisit.id}
+          siteId={siteId}
+          startedAt={activeVisit.started_at}
+          subjects={visitSubjects}
+          initialCaptures={visitCaptures}
+        />
+      ) : (
+        <VisitLauncher siteId={siteId} activeVisit={null} />
+      )}
 
       {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM). */}
       <SiteBriefButton siteId={siteId} variant="mobile" />

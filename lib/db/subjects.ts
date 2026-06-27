@@ -523,6 +523,23 @@ export async function listSiteSubjectsToWatch(siteId: string, limit = 6): Promis
     .map(({ s, ins }) => ({ id: s.id, name: s.name, state: ins.state, ageDays: ins.ageDays, energy: ins.energy, cause: ins.cause?.text ?? null, lastEvolution: ins.lastEvolution, openQuestion: ins.openQuestion, blocksCount: ins.blocksCount, criticalImpact: ins.criticalImpact }))
 }
 
+/** Liste légère des points suivis ouverts d'un site (id + nom) — pour « Vérifier
+ *  un point » du panier de visite. Aucun calcul d'insight, juste de quoi choisir. */
+export async function listOpenSiteSubjectsLite(
+  siteId: string,
+  limit = 40,
+): Promise<Array<{ id: string; name: string }>> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('subjects')
+    .select('id, name')
+    .eq('site_id', siteId)
+    .neq('status', 'closed')
+    .order('updated_at', { ascending: false })
+    .limit(limit)
+  return ((data ?? []) as Array<{ id: string; name: string }>).map((s) => ({ id: s.id, name: s.name }))
+}
+
 // RECHERCHE PAR SUJET (Build A) — Vincent : « taper DOE → la fiche du sujet, pas 54
 // résultats ». Une VUE sur le graphe déjà relié : on résout un terme vers des SUJETS
 // (par nom OU par contenu rattaché) et on rend la fiche riche de chacun. Déterministe.
