@@ -17,10 +17,10 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
-import { VisitBasket } from './VisitBasket'
+import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { getActiveVisit } from '@/lib/db/visits'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
-import { listOpenSiteSubjectsLite } from '@/lib/db/subjects'
+import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
@@ -131,12 +131,33 @@ export default async function FieldSitePage({
   const activeVisit = await getActiveVisit(siteId).catch(() => null)
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
-  const [visitSubjects, visitCaptures] = activeVisit
-    ? await Promise.all([
-        listOpenSiteSubjectsLite(siteId).catch(() => []),
-        listVisitCaptures(activeVisit.id).catch(() => []),
-      ])
-    : [[] as Array<{ id: string; name: string }>, []]
+  let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
+  let visitCaptures: Awaited<ReturnType<typeof listVisitCaptures>> = []
+  // Mémoire LITE par sujet (read-only) — surfacée au moment où on vérifie un point :
+  // « voilà ce qu'on sait déjà dessus ». Une seule requête (listSubjectsBySite).
+  const subjectMemory: Record<string, SubjectMemoryLite> = {}
+  if (activeVisit) {
+    const [subs, caps, summaries] = await Promise.all([
+      listOpenSiteSubjectsLite(siteId).catch(() => []),
+      listVisitCaptures(activeVisit.id).catch(() => []),
+      listSubjectsBySite(siteId).catch(() => []),
+    ])
+    visitSubjects = subs
+    visitCaptures = caps
+    for (const s of summaries) {
+      subjectMemory[s.id] = {
+        // Âge calculé côté serveur (évite Date.now() en rendu client).
+        lastActivityDays: s.lastActivity
+          ? Math.max(0, Math.round((Date.now() - new Date(s.lastActivity).getTime()) / 86_400_000))
+          : null,
+        openReserves: s.openReserves,
+        openActions: s.openActions,
+        lateActions: s.lateActions,
+        decisions: s.decisions,
+        criticality: s.criticality,
+      }
+    }
+  }
 
   // « Aujourd'hui ici » — page d'arrivée terrain. On s'assure des récurrences du
   // jour, puis on agrège interventions du jour + anomalies ouvertes + dernières
@@ -210,6 +231,7 @@ export default async function FieldSitePage({
           siteId={siteId}
           startedAt={activeVisit.started_at}
           subjects={visitSubjects}
+          subjectMemory={subjectMemory}
           initialCaptures={visitCaptures}
         />
       ) : (

@@ -13,6 +13,7 @@ import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { MeetingLauncher } from './MeetingLauncher'
+import { VisitLauncherHome } from './VisitLauncherHome'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -345,6 +346,7 @@ export default async function FieldHomePage({
       <div className="space-y-6 max-w-md pb-32">
         <DateNav todayIso={todayIso} selectedIso={selectedDate} />
         <MeetingLauncher />
+        <VisitLauncherHome />
         <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
         <FreePhotoFab sites={fabSites} />
       </div>
@@ -356,6 +358,7 @@ export default async function FieldHomePage({
       <div className="space-y-6 max-w-md pb-32">
         <DateNav todayIso={todayIso} selectedIso={selectedDate} />
         <MeetingLauncher />
+        <VisitLauncherHome />
         <div className="rounded-lg border bg-card max-w-md">
           <EmptyState
             icon={CheckCircle2}
@@ -380,6 +383,7 @@ export default async function FieldHomePage({
     <div className="space-y-6 max-w-md pb-32">
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
       <MeetingLauncher />
+      <VisitLauncherHome />
 
       {/* V6.2 (Vincent 2026-05-20) — alertes mobile chef d'équipe au ROUGE.
           Position déjà en haut (juste après DateNav), couleurs renforcées.
