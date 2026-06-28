@@ -1,9 +1,10 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, ClipboardCheck, AlertTriangle, Smartphone } from 'lucide-react'
+import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
+import { setDossierPhaseAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +51,10 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
           Ce que la prévisite a capté, organisé pour chiffrer. Restitution de la mémoire terrain — aucune IA.
         </p>
       </header>
+
+      {/* Cycle de vie du dossier — la soudure arrière. « Marché gagné » fait du
+          dossier un chantier SANS copie : la mémoire de prévisite suit. */}
+      <PhaseBar dossierId={dossier.id} siteId={dossier.site_id} phase={dossier.phase} />
 
       {/* Continuer la collecte sur le terrain (mobile). La prévisite = une visite sur le LIEU. */}
       <Link
@@ -142,6 +147,60 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
           </p>
         </>
       )}
+    </div>
+  )
+}
+
+function PhaseBtn({ dossierId, phase, label, icon, tone }: {
+  dossierId: string; phase: string; label: string; icon: React.ReactNode
+  tone: 'success' | 'primary' | 'ghost'
+}) {
+  const cls = {
+    success: 'bg-emerald-600 text-white hover:bg-emerald-700',
+    primary: 'bg-foreground text-background hover:opacity-90',
+    ghost: 'border bg-card text-muted-foreground hover:bg-muted',
+  }[tone]
+  return (
+    <form action={setDossierPhaseAction}>
+      <input type="hidden" name="dossierId" value={dossierId} />
+      <input type="hidden" name="phase" value={phase} />
+      <button type="submit" className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium ${cls}`}>
+        {icon} {label}
+      </button>
+    </form>
+  )
+}
+
+function PhaseBar({ dossierId, siteId, phase }: { dossierId: string; siteId: string; phase: string }) {
+  if (phase === 'actif') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+        <Trophy className="h-4 w-4 shrink-0 text-emerald-600" />
+        <span className="font-medium text-emerald-800">Marché gagné — c&apos;est un chantier.</span>
+        <Link href={`/sites/${siteId}`} className="ml-auto inline-flex items-center gap-1 font-medium text-emerald-700 hover:underline">
+          <Building2 className="h-4 w-4" /> Voir le chantier
+        </Link>
+      </div>
+    )
+  }
+  if (phase === 'perdu') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <XCircle className="h-4 w-4 shrink-0" /> Marché perdu — la mémoire reste conservée.
+        <span className="ml-auto">
+          <PhaseBtn dossierId={dossierId} phase="en_ao" label="Rouvrir" icon={<RotateCcw className="h-3.5 w-3.5" />} tone="ghost" />
+        </span>
+      </div>
+    )
+  }
+  // prospect | en_ao : on avance dans le cycle.
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {phase === 'prospect' && (
+        <PhaseBtn dossierId={dossierId} phase="en_ao" label="Je réponds à l'AO" icon={<Send className="h-4 w-4" />} tone="primary" />
+      )}
+      <PhaseBtn dossierId={dossierId} phase="actif" label="Marché gagné" icon={<Trophy className="h-4 w-4" />} tone="success" />
+      <PhaseBtn dossierId={dossierId} phase="perdu" label="Marché perdu" icon={<XCircle className="h-4 w-4" />} tone="ghost" />
     </div>
   )
 }
