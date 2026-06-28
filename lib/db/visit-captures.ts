@@ -112,6 +112,23 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   return (data ?? []) as VisitCaptureRow[]
 }
 
+/**
+ * Toutes les captures non écartées d'un SITE (toutes visites confondues) — la
+ * matière brute pour la lecture AO d'une prévisite. Plus récentes d'abord.
+ */
+export async function listVisitCapturesBySite(siteId: string, limit = 300): Promise<VisitCaptureRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, lat, lng, created_at')
+    .eq('site_id', siteId)
+    .neq('status', 'discarded')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
 /** Combien de captures non écartées dans le panier (badge « N éléments »). */
 export async function countVisitCaptures(reportId: string): Promise<number> {
   const supabase = createAdminClient()

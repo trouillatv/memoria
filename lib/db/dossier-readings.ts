@@ -12,6 +12,7 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
 import { listActiveCapturedKnowledgeBySite } from '@/lib/db/captured-knowledge'
 import { listSiteASavoirActive } from '@/lib/db/sites'
+import { listVisitCapturesBySite } from '@/lib/db/visit-captures'
 
 export interface TakeoverDossier {
   id: string
@@ -71,5 +72,98 @@ export async function readForTakeover(siteId: string): Promise<TakeoverReading> 
     isEmpty:
       mustKnow.length === 0 && promises.length === 0 && risks.length === 0 &&
       pitfalls.length === 0 && missingDocuments.length === 0,
+  }
+}
+
+// ── readForTender ────────────────────────────────────────────────────────────
+// « Aide-moi à répondre à cet appel d'offre. » LECTURE métier d'une PRÉVISITE,
+// orientée réponse AO (Vincent 2026-06-29). DÉTERMINISTE — même invariant que le
+// PV (cf. [[pv-reconstruction-manuelle]]) : Guillaume obtient son dossier AO
+// MÊME si l'IA n'a rien compris. La couche « voilà ce que j'ai compris » (IA)
+// viendra PAR-DESSUS, gated. Ici : on restitue la matière captée, organisée pour
+// chiffrer — observé sur site / engagements entendus / risques / pièges & contraintes
+// / documents attendus. Frère de readForTakeover : même moteur, autre angle.
+
+export interface TenderObserved {
+  photos: number
+  verifications: number
+  /** Vocaux transcrits — la parole du terrain, brute. */
+  vocals: { id: string; text: string }[]
+  /** Notes dictées/écrites sur site. */
+  notes: { id: string; text: string }[]
+  capturesTotal: number
+}
+
+export interface TenderReading {
+  siteName: string
+  clientName: string | null
+  address: string | null
+  /** Ce qu'on a observé sur site (matière brute à transformer en postes). */
+  observed: TenderObserved
+  /** Engagements entendus (client / BET) — kind=promise. */
+  promises: TakeoverItem[]
+  /** Risques de chiffrage identifiés — kind=risk. */
+  risks: TakeoverItem[]
+  /** Pièges & contraintes du lieu — à-savoir + attention/context/preference. */
+  pitfalls: TakeoverItem[]
+  /** Documents manquants / attendus — kind=missing_document. */
+  missingDocuments: TakeoverItem[]
+  /** Points déjà suivis qui appellent l'attention (rare sur une 1ʳᵉ prévisite). */
+  toWatch: TakeoverDossier[]
+  isEmpty: boolean
+}
+
+export async function readForTender(siteId: string): Promise<TenderReading> {
+  const [identity, captures, knowledge, aSavoir, watched] = await Promise.all([
+    getSiteIdentity(siteId).catch(() => null),
+    listVisitCapturesBySite(siteId).catch(() => []),
+    listActiveCapturedKnowledgeBySite(siteId, 200).catch(() => []),
+    listSiteASavoirActive(siteId).catch(() => []),
+    listSiteSubjectsToWatch(siteId, 12).catch(() => []),
+  ])
+
+  const byKind = (kind: string): TakeoverItem[] =>
+    knowledge.filter((k) => k.kind === kind).map((k) => ({ id: k.id, text: k.title, subjectId: k.subject_id }))
+
+  const hasText = (s: string | null): s is string => !!s && s.trim().length > 0
+  const observed: TenderObserved = {
+    photos: captures.filter((c) => c.kind === 'photo').length,
+    verifications: captures.filter((c) => c.kind === 'verification').length,
+    // Un vocal n'est exploitable que transcrit ; sinon il n'a pas de texte à lire.
+    vocals: captures
+      .filter((c) => c.kind === 'vocal' && hasText(c.body))
+      .map((c) => ({ id: c.id, text: (c.body as string).trim() })),
+    notes: captures
+      .filter((c) => c.kind === 'note' && hasText(c.body))
+      .map((c) => ({ id: c.id, text: (c.body as string).trim() })),
+    capturesTotal: captures.length,
+  }
+
+  const promises = byKind('promise')
+  const risks = byKind('risk')
+  const pitfalls: TakeoverItem[] = [
+    ...((aSavoir ?? []) as Array<{ id: string; body: string }>).map((n) => ({ id: n.id, text: n.body, subjectId: null })),
+    ...byKind('attention'),
+    ...byKind('context'),
+    ...byKind('preference'),
+  ]
+  const missingDocuments = byKind('missing_document')
+  const toWatch: TakeoverDossier[] = watched.map((w) => ({
+    id: w.id, name: w.name, state: w.state, cause: w.cause, openQuestion: w.openQuestion,
+  }))
+
+  return {
+    siteName: identity?.name ?? 'Dossier',
+    clientName: identity?.clientName ?? null,
+    address: identity?.address ?? null,
+    observed,
+    promises,
+    risks,
+    pitfalls,
+    missingDocuments,
+    toWatch,
+    isEmpty:
+      observed.capturesTotal === 0 && promises.length === 0 && risks.length === 0 &&
+      pitfalls.length === 0 && missingDocuments.length === 0 && toWatch.length === 0,
   }
 }
