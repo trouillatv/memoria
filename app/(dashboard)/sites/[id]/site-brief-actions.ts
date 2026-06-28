@@ -23,6 +23,7 @@ import { logUsageEvent } from '@/lib/db/usage-events'
 import { listOpenSiteActions, listSiteActionsBySite, listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { listSiteASavoirActive } from '@/lib/db/sites'
+import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
 import {
   getSiteAnomalies,
   getSiteCurrentState,
@@ -129,6 +130,17 @@ export interface SiteBriefChange {
   stillOpen: string[]
 }
 
+/** Point suivi qui appelle l'attention (dossier vivant) — état lu du MÊME moteur
+ *  d'insights que la page point suivi (listSiteSubjectsToWatch). Une seule vérité. */
+export interface SiteBriefFollowedPoint {
+  id: string
+  name: string
+  state: string
+  cause: string | null
+  lastEvolution: string | null
+  openQuestion: string | null
+}
+
 export interface SiteBrief {
   siteName: string
   contractName: string | null
@@ -148,6 +160,8 @@ export interface SiteBrief {
   lastReport: SiteBriefLastReport | null
   // V2a — diff déterministe depuis la dernière réunion (null si aucun CR).
   changeSinceLastReport: SiteBriefChange | null
+  // Points suivis (dossiers vivants) qui appellent l'attention — pour la réunion.
+  followedPoints: SiteBriefFollowedPoint[]
 }
 
 export type SiteBriefResult =
@@ -202,6 +216,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     photos,
     meetings,
     reserves,
+    watched,
   ] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     getSiteCurrentState(siteId).catch(() => null),
@@ -215,9 +230,14 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     getSiteRecentPhotos(siteId, 12).catch(() => []),
     listReportsBySite(siteId).catch(() => []),
     getSiteReserves(siteId).catch(() => []),
+    listSiteSubjectsToWatch(siteId, 5).catch(() => []),
   ])
 
   const openAnomalies = anomalies.filter((a) => a.status === 'open')
+  const followedPoints: SiteBriefFollowedPoint[] = watched.map((w) => ({
+    id: w.id, name: w.name, state: w.state, cause: w.cause,
+    lastEvolution: w.lastEvolution, openQuestion: w.openQuestion,
+  }))
 
   const situation: SiteBriefSituation = {
     openActions: openActionRows.length,
@@ -368,6 +388,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       openReserves,
       lastReport,
       changeSinceLastReport,
+      followedPoints,
     },
   }
 }
@@ -421,6 +442,7 @@ export async function generateDiscussionPointsAction(
   // Élargi (retour Vincent 2026-06-16) : le LLM doit AUSSI voir le « À savoir »
   // (notes sensibles du site : nappe d'eau, accès camion…) et les sujets
   // récurrents — sans eux l'analyse paraît pauvre car elle ignore ces signaux.
+  if (b.followedPoints.length) lines.push(`Points suivis : ${b.followedPoints.map((p) => `${p.name} (${p.state}${p.openQuestion ? ` — ${p.openQuestion}` : ''})`).join(' ; ')}`)
   if (b.aSavoir.length) lines.push(`À savoir (notes du site) : ${b.aSavoir.map((n) => n.body).join(' ; ')}`)
   if (b.recurring.length) lines.push(`Sujets récurrents (reviennent souvent) : ${b.recurring.map((r) => r.text).join(' ; ')}`)
 
