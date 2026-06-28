@@ -43,6 +43,7 @@ import {
   getSiteHubCounts,
 } from '@/lib/db/site-cockpit'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
 import { SiteDomainHub } from './SiteDomainHub'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ASavoirManager } from './ASavoirManager'
@@ -175,19 +176,26 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // HUB chantier — compteurs vivants pour rendre les 4 domaines + leurs sous-fonctions
   // directement cliquables (plus de « tiroirs »). Bornés : 3 head-counts, le reste
   // réutilise des données déjà chargées.
-  const hubCounts = await getSiteHubCounts(id).catch(() => ({ reservesOpen: 0, oblToDo: 0, subjectsOpen: 0 }))
+  const [hubCounts, watched] = await Promise.all([
+    getSiteHubCounts(id).catch(() => ({ reservesOpen: 0, oblToDo: 0, subjectsOpen: 0 })),
+    listSiteSubjectsToWatch(id, 20).catch(() => []),
+  ])
+  const blockedDossiers = watched.filter((w) => w.state === 'bloqué').length
   const todayIso = todayLocalIso()
   const overdueActions = openActions.filter(
     (a) => (a as { due_date?: string | null }).due_date && (a as { due_date: string }).due_date < todayIso,
   ).length
+  const lastVisit = siteVisits[0] as { started_at?: string | null; created_at?: string | null } | undefined
   const hubData = {
     openActions: openActions.length,
     overdueActions,
     reservesOpen: hubCounts.reservesOpen,
     oblToDo: hubCounts.oblToDo,
     subjectsOpen: hubCounts.subjectsOpen,
+    blockedDossiers,
     visits: siteVisits.length,
     docs: visibleSiteDocs.length,
+    lastVisitAt: lastVisit?.started_at ?? lastVisit?.created_at ?? null,
     canExport: user.role === 'admin' || user.role === 'manager',
   }
 
