@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic'
 
 const STATUS_LABEL: Record<string, string> = { open: 'Ouvert', dormant: 'En sommeil', closed: 'Clos' }
 const ACTION_STATUS_FR: Record<string, string> = { open: 'à faire', planned: 'planifiée', done: 'faite', cancelled: 'annulée' }
+const OPENLOOP_FR: Record<string, string> = { action: 'Action', reserve: 'Réserve', obligation: 'Obligation', promise: 'Promesse' }
 
 export default async function SubjectDetailPage({ params }: { params: Promise<{ id: string; subjectId: string }> }) {
   const user = await getCurrentUserWithProfile()
@@ -28,7 +29,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   if (!dossier) notFound()
   // Contrat sémantique (identity/timeline/relations) ; le substrat brut (thread/
   // insights) reste réservé à cette page détaillée, via `detail`.
-  const { identity, timeline, relations } = dossier
+  const { identity, timeline, relations, openLoops, evidence } = dossier
   const { thread, insights } = dossier.detail
   // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
   const orgHistory = await getSubjectOrgHistory(await getOrgId().catch(() => null), thread.subject.name).catch(() => null)
@@ -126,7 +127,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
       <header className="space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
           <Layers className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-2xl font-semibold">{subject.name}</h1>
+          <h1 className="text-2xl font-semibold">Dossier — {subject.name}</h1>
           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
             {STATUS_LABEL[subject.status] ?? subject.status}
           </span>
@@ -189,6 +190,32 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
               </div>
             )}
           </dl>
+
+          {/* Ce qui reste ouvert (openLoops) + Preuves (evidence) — lus du contrat
+              du dossier. Les 2 lectures qui manquaient pour répondre en 5 s. */}
+          {openLoops.length > 0 && (
+            <div className="border-t pt-2">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ce qui reste ouvert</p>
+              <ul className="space-y-0.5">
+                {openLoops.slice(0, 6).map((l, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-sm">
+                    <span className="mt-1 text-muted-foreground/50">•</span>
+                    <span><span className="text-muted-foreground">{OPENLOOP_FR[l.kind] ?? l.kind} :</span> {l.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(evidence.captures > 0 || evidence.documents > 0) && (
+            <p className="border-t pt-2 text-[11px] text-muted-foreground">
+              <span className="font-medium">Preuves :</span>{' '}
+              {[
+                evidence.captures ? `${evidence.captures} capture${evidence.captures > 1 ? 's' : ''}` : null,
+                evidence.documents ? `${evidence.documents} document${evidence.documents > 1 ? 's' : ''}` : null,
+                evidence.vocals ? `${evidence.vocals} vocal${evidence.vocals > 1 ? 'aux' : ''}` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </section>
       )}
 
@@ -268,7 +295,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
           l'histoire d'un problème, pas une liste d'occurrences »). Tous les objets
           rattachés, datés, situés à leur réunion. Du plus ancien au plus récent. */}
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold inline-flex items-center gap-2"><History className="h-4 w-4 text-muted-foreground" /> Historique du sujet ({timeline.length})</h2>
+        <h2 className="text-sm font-semibold inline-flex items-center gap-2"><History className="h-4 w-4 text-muted-foreground" /> Historique complet ({timeline.length})</h2>
         {timeline.length === 0 ? (
           <p className="text-xs text-muted-foreground/80 italic">Rien de rattaché pour l&apos;instant — rattachez des décisions, actions ou réserves ci-dessous, ou depuis l&apos;écran de validation du PV.</p>
         ) : (
