@@ -48,7 +48,7 @@ export interface SubjectThread {
 
 // HISTOIRE du sujet (Vincent : « un sujet = l'histoire complète d'un problème, pas
 // une liste d'occurrences »). Un événement = un objet rattaché, daté, situé à sa réunion.
-export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document' | 'obligation' | 'origin'
+export type SubjectEventKind = 'decision' | 'action' | 'reserve' | 'cr_decision' | 'anomaly' | 'document' | 'obligation' | 'origin' | 'knowledge' | 'capture'
 export interface SubjectEvent {
   date: string                 // ISO (tri + affichage)
   kind: SubjectEventKind
@@ -718,6 +718,33 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
     const at = (doc as { created_at?: string }).created_at
     events.push({ date: at ? at.slice(0, 10) : '', kind: 'document', label: (doc as { filename?: string }).filename ?? 'Document', meta: 'document', reportLabel: null })
   }
+
+  // ── Dossier vivant : infos RETENUES + captures de VISITE rattachées à ce point.
+  // C'est ce qui transforme un point suivi en HISTOIRE complète (Vincent 2026-06-28). ──
+  const KNOWLEDGE_FR: Record<string, string> = {
+    promise: 'promesse', risk: 'risque', attention: "point d'attention",
+    missing_document: 'document manquant', context: 'contexte', other: 'à retenir',
+  }
+  const [{ data: knowledge }, { data: captures }] = await Promise.all([
+    supabase.from('captured_knowledge').select('id, title, kind, created_at').eq('subject_id', subjectId),
+    supabase.from('visit_capture').select('id, kind, body, created_at').eq('subject_id', subjectId).neq('status', 'discarded'),
+  ])
+  for (const k of (knowledge ?? []) as Array<{ title: string; kind: string; created_at: string }>) {
+    events.push({ date: k.created_at.slice(0, 10), kind: 'knowledge', label: k.title,
+      meta: `à retenir · ${KNOWLEDGE_FR[k.kind] ?? k.kind}`, reportLabel: null })
+  }
+  for (const c of (captures ?? []) as Array<{ kind: string; body: string | null; created_at: string }>) {
+    const body = c.body?.trim() || null
+    const label =
+      c.kind === 'verification' ? `Vérification${body ? ` : ${body}` : ''}`
+      : c.kind === 'vocal' ? (body ? `« ${body} »` : 'Mémo vocal')
+      : c.kind === 'note' ? (body ?? 'Note')
+      : c.kind === 'photo' ? 'Photo'
+      : c.kind === 'position' ? 'Position' : 'Capture'
+    events.push({ date: c.created_at.slice(0, 10), kind: 'capture', label,
+      meta: c.kind === 'verification' ? 'vérification de visite' : `capture de visite · ${c.kind}`, reportLabel: null })
+  }
+
   // Ordre CHRONOLOGIQUE (du plus ancien au plus récent) = l'histoire qui se déroule.
   return events.filter((e) => e.date).sort((a, b) => a.date.localeCompare(b.date))
 }
