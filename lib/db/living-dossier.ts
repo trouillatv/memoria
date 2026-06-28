@@ -32,10 +32,15 @@ export type OpenLoopKind = 'action' | 'reserve' | 'obligation' | 'promise'
 export interface OpenLoop { kind: OpenLoopKind; label: string }
 export interface DossierNextStep { label: string; due: string | null }
 export interface DossierCurrentState {
-  status: string                 // statut du point (open/dormant/closed)
+  /** Situation MÉTIER, dérivée du moteur UNIQUE computeSubjectInsights
+   *  (ouvert/en_attente/bloqué/dormant/clos) — pas de re-dérivation parallèle. */
+  state: string
+  /** Pourquoi on en est là (cause déduite), null si non déduite. */
+  cause: string | null
+  /** Statut de cycle de vie brut du point (open/dormant/closed). */
+  lifecycle: string
   lastActivity: string | null    // date de la dernière trace
   openCount: number              // nombre de boucles ouvertes
-  label: string                  // résumé FR d'une ligne
 }
 export interface DossierEvidence {
   captures: number
@@ -62,8 +67,6 @@ export interface LivingDossier {
     visitCaptures: VisitCaptureRow[]
   }
 }
-
-const STATUS_FR: Record<string, string> = { open: 'Ouvert', dormant: 'En sommeil', closed: 'Clos' }
 
 /**
  * Assemble le dossier vivant d'un point suivi. Renvoie null si le point n'existe
@@ -113,14 +116,15 @@ export async function getLivingDossier(siteId: string, subjectId: string): Promi
     documents: thread.documents.length,
   }
 
-  // ── currentState : où on en est, en une ligne ──
+  // ── currentState : la SITUATION lue du moteur unique (computeSubjectInsights),
+  //    jamais re-dérivée ici. C'est la même vérité que la page point suivi et le brief. ──
   const lastActivity = timeline.length > 0 ? timeline[timeline.length - 1].date : null
-  const status = thread.subject.status as string
   const currentState: DossierCurrentState = {
-    status,
+    state: insights?.state ?? 'ouvert',
+    cause: insights?.cause?.text ?? null,
+    lifecycle: thread.subject.status as string,
     lastActivity,
     openCount: openLoops.length,
-    label: `${STATUS_FR[status] ?? status}${openLoops.length ? ` · ${openLoops.length} ouvert${openLoops.length > 1 ? 's' : ''}` : ''}`,
   }
 
   return {
