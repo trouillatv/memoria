@@ -8,10 +8,16 @@ import { VisitDebriefPanel } from './VisitDebriefPanel'
 import { CapturedKnowledgePanel } from './CapturedKnowledgePanel'
 import { GenerateCrButton } from './GenerateCrButton'
 import { listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
+import { listVisitTouchedDossiers } from '@/lib/db/living-dossier'
 
 export const dynamic = 'force-dynamic'
 
 const ORIGIN_LABEL: Record<string, string> = { planned: 'Planifiée', spontaneous: 'Spontanée', qr: 'QR', gps: 'GPS' }
+const STATE_FR: Record<string, string> = { bloqué: 'Bloqué', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
+const STATE_CLS: Record<string, string> = {
+  bloqué: 'bg-rose-100 text-rose-700', en_attente: 'bg-amber-100 text-amber-800',
+  dormant: 'bg-slate-100 text-slate-600', ouvert: 'bg-sky-100 text-sky-700', clos: 'bg-emerald-100 text-emerald-700',
+}
 
 export default async function VisitDebriefPage({ params }: { params: Promise<{ id: string; visitId: string }> }) {
   const user = await getCurrentUserWithProfile()
@@ -23,6 +29,9 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
   if (!identity || !ctx || ctx.visit.site_id !== id) notFound()
   const { visit } = ctx
   const knowledge = await listCapturedKnowledgeBySource(visit.id).catch(() => [])
+  // Les dossiers (points suivis) touchés par cette visite, avec leur état actuel
+  // — lu du même moteur que la page point suivi et le brief (une seule vérité).
+  const touchedDossiers = await listVisitTouchedDossiers(visit.id).catch(() => [])
 
   const fr = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -74,6 +83,39 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
           <p className="text-sm text-muted-foreground">Rien n’a encore été capturé pour cette visite.</p>
         )}
       </section>
+
+      {/* Dossiers touchés — « tu as vérifié ces points : voici où en sont leurs
+          dossiers » (état lu du moteur unique). La visite parle aux dossiers. */}
+      {touchedDossiers.length > 0 && (
+        <section className="rounded-2xl border bg-card p-4 space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Dossiers touchés par cette visite
+          </h2>
+          <ul className="space-y-1.5">
+            {touchedDossiers.map((d) => (
+              <li key={d.id} className="rounded-lg border bg-background px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href={`/sites/${id}/subjects/${d.id}`} className="min-w-0 truncate text-sm font-medium hover:underline">
+                    {d.name}
+                  </Link>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATE_CLS[d.state] ?? 'bg-muted text-muted-foreground'}`}>
+                    {STATE_FR[d.state] ?? d.state}
+                  </span>
+                </div>
+                {d.cause && <p className="mt-0.5 text-[11px] text-muted-foreground">{d.cause}</p>}
+                {(d.openActions > 0 || d.openReserves > 0) && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {[
+                      d.openActions ? `${d.openActions} action${d.openActions > 1 ? 's' : ''}` : null,
+                      d.openReserves ? `${d.openReserves} réserve${d.openReserves > 1 ? 's' : ''}` : null,
+                    ].filter(Boolean).join(' · ')} ouvert{d.openActions + d.openReserves > 1 ? 'es' : 'e'}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* À retenir — capter la connaissance utile (promesses, risques, pièges…),
           reliée à un point pour ressortir plus tard. Saisie manuelle (l'IA viendra). */}

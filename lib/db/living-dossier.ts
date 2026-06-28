@@ -15,6 +15,7 @@
 // que l'IA pense » — l'inférence viendra plus tard (gated). Cf. [[vue-sujet-unite-memoire]],
 // [[continuite-operationnelle-2026-05-22]].
 
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import {
   getSubjectThread,
@@ -137,4 +138,50 @@ export async function getLivingDossier(siteId: string, subjectId: string): Promi
     relations,
     detail: { thread, insights, capturedKnowledge, visitCaptures },
   }
+}
+
+// ── Lecture LÉGÈRE : les dossiers TOUCHÉS par une visite ─────────────────────
+// Pour le débrief : « tu as vérifié ces points aujourd'hui — voici où en sont
+// leurs dossiers ». Lit le MÊME moteur (getSubjectInsights = ce que getLivingDossier
+// enveloppe), batché — pas N× getLivingDossier complet (timeline/relations/detail).
+
+export interface VisitTouchedDossier {
+  id: string
+  name: string
+  state: string
+  cause: string | null
+  openActions: number
+  openReserves: number
+  openQuestion: string | null
+}
+
+export async function listVisitTouchedDossiers(reportId: string): Promise<VisitTouchedDossier[]> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('visit_capture')
+    .select('subject_id')
+    .eq('report_id', reportId)
+    .not('subject_id', 'is', null)
+    .neq('status', 'discarded')
+  const ids = [...new Set(
+    ((data ?? []) as Array<{ subject_id: string | null }>).map((r) => r.subject_id).filter((x): x is string => !!x),
+  )]
+  if (ids.length === 0) return []
+
+  const { data: subjRows } = await supabase.from('subjects').select('id, name').in('id', ids)
+  const nameById = new Map(((subjRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
+  const insightsList = await Promise.all(ids.map((id) => getSubjectInsights(id).catch(() => null)))
+
+  return ids.map((id, i) => {
+    const ins = insightsList[i]
+    return {
+      id,
+      name: nameById.get(id) ?? '—',
+      state: ins?.state ?? 'ouvert',
+      cause: ins?.cause?.text ?? null,
+      openActions: ins?.openActions ?? 0,
+      openReserves: ins?.openReserves ?? 0,
+      openQuestion: ins?.openQuestion ?? null,
+    }
+  })
 }
