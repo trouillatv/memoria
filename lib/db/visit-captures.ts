@@ -99,6 +99,19 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   return (data ?? []) as VisitCaptureRow[]
 }
 
+/** Les captures de visite rattachées à un point suivi — pour le dossier vivant. */
+export async function listVisitCapturesBySubject(subjectId: string): Promise<VisitCaptureRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, lat, lng, created_at')
+    .eq('subject_id', subjectId)
+    .neq('status', 'discarded')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
 /** Combien de captures non écartées dans le panier (badge « N éléments »). */
 export async function countVisitCaptures(reportId: string): Promise<number> {
   const supabase = createAdminClient()

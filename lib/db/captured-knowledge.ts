@@ -79,6 +79,18 @@ export async function listCapturedKnowledgeBySource(sourceId: string): Promise<C
   return (data ?? []) as CapturedKnowledgeRow[]
 }
 
+/** Les infos utiles rattachées à un point suivi — pour le dossier vivant. */
+export async function listCapturedKnowledgeBySubject(subjectId: string): Promise<CapturedKnowledgeRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('captured_knowledge')
+    .select(SELECT)
+    .eq('subject_id', subjectId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as CapturedKnowledgeRow[]
+}
+
 /** Les infos utiles actives d'un site (pour le futur « ressortir », plus tard). */
 export async function listActiveCapturedKnowledgeBySite(siteId: string, limit = 100): Promise<CapturedKnowledgeRow[]> {
   const supabase = createAdminClient()
