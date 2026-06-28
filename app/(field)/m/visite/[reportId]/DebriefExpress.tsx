@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, ArrowRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, ArrowRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
@@ -123,6 +123,7 @@ export function DebriefExpress({
 
 const KIND_ICON: Record<VisitCaptureKind, React.ReactNode> = {
   photo: <Camera className="h-4 w-4" />,
+  video: <Video className="h-4 w-4" />,
   vocal: <Mic className="h-4 w-4" />,
   note: <Pencil className="h-4 w-4" />,
   verification: <Target className="h-4 w-4" />,
@@ -132,6 +133,7 @@ const KIND_ICON: Record<VisitCaptureKind, React.ReactNode> = {
 function captureLabel(c: VisitCaptureRow): string {
   switch (c.kind) {
     case 'photo': return 'Photo'
+    case 'video': return 'Vidéo'
     case 'vocal': return c.body?.trim() ? `« ${c.body.trim()} »` : 'Mémo vocal'
     case 'note': return c.body ?? 'Note'
     case 'verification': return c.body?.trim() ? `Point vérifié — ${c.body.trim()}` : 'Point vérifié'

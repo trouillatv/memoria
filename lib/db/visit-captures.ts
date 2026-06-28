@@ -13,7 +13,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 
-export type VisitCaptureKind = 'photo' | 'vocal' | 'note' | 'verification' | 'position'
+export type VisitCaptureKind = 'photo' | 'vocal' | 'note' | 'verification' | 'position' | 'video'
 export type VisitCaptureStatus = 'captured' | 'kept' | 'discarded' | 'processed'
 export type CaptureTranscriptStatus = 'pending' | 'done' | 'failed'
 // Roll-up technique d'orchestration de l'enrichissement (mig 167). PAS un pipeline

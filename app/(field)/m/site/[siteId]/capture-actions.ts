@@ -114,6 +114,35 @@ export async function addPhotoCaptureAction(
   }
 }
 
+// ── Vidéo (la pièce est déjà uploadée via uploadReportAttachmentAction) ──────
+
+const videoSchema = z.object({
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid(),
+  attachment_id: z.string().uuid(),
+})
+
+export async function addVideoCaptureAction(
+  input: z.input<typeof videoSchema>,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = videoSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const id = await addVisitCapture({
+      reportId: parsed.data.report_id,
+      siteId: parsed.data.site_id,
+      kind: 'video',
+      attachmentId: parsed.data.attachment_id,
+      createdBy: auth.userId,
+    })
+    return { ok: true, id }
+  } catch {
+    return { ok: false, error: 'Échec de la capture' }
+  }
+}
+
 // ── Position (one-shot, opt-in) ──────────────────────────────────────────────
 
 const positionSchema = z.object({

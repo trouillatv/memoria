@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2 } from 'lucide-react'
+import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
@@ -75,6 +75,7 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
           <Block icon={<Eye className="h-4 w-4 text-sky-600" />} title="Ce qu'on a observé sur site">
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <Stat icon={<Camera className="h-3.5 w-3.5" />} n={r.observed.photos} label="photo" />
+              <Stat icon={<Video className="h-3.5 w-3.5" />} n={r.observed.videos} label="vidéo" />
               <Stat icon={<Mic className="h-3.5 w-3.5" />} n={r.observed.vocals.length} label="vocal" />
               <Stat icon={<StickyNote className="h-3.5 w-3.5" />} n={r.observed.notes.length} label="note" />
               <Stat icon={<ClipboardCheck className="h-3.5 w-3.5" />} n={r.observed.verifications} label="vérification" />

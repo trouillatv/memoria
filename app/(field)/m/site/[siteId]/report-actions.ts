@@ -191,7 +191,7 @@ export async function createReportDraftAction(formData: FormData): Promise<
 
 const attachmentSchema = z.object({
   report_id: z.string().uuid(),
-  kind: z.enum(['photo', 'file']),
+  kind: z.enum(['photo', 'file', 'video']),
   client_uuid: z.string().uuid().optional(),
 })
 
@@ -213,7 +213,8 @@ export async function uploadReportAttachmentAction(formData: FormData): Promise<
   if (file.size > MAX_FILE_BYTES) return { ok: false, error: 'Fichier trop lourd (max 20 Mo)' }
   const isImage = file.type.startsWith('image/')
   const isPdf = file.type === 'application/pdf'
-  if (!isImage && !isPdf) return { ok: false, error: 'Format non supporté (image ou PDF)' }
+  const isVideo = file.type.startsWith('video/')
+  if (!isImage && !isPdf && !isVideo) return { ok: false, error: 'Format non supporté (image, PDF ou vidéo)' }
 
   const supabase = createAdminClient()
   const report = await getSiteReport(parsed.data.report_id)
@@ -231,8 +232,9 @@ export async function uploadReportAttachmentAction(formData: FormData): Promise<
     }
   }
 
-  const rawExt = (file.name.split('.').pop() ?? (isPdf ? 'pdf' : 'jpg')).toLowerCase().slice(0, 5)
-  const safeExt = /^[a-z0-9]+$/.test(rawExt) ? rawExt : isPdf ? 'pdf' : 'jpg'
+  const fallbackExt = isPdf ? 'pdf' : isVideo ? 'mp4' : 'jpg'
+  const rawExt = (file.name.split('.').pop() ?? fallbackExt).toLowerCase().slice(0, 5)
+  const safeExt = /^[a-z0-9]+$/.test(rawExt) ? rawExt : fallbackExt
   const attId = crypto.randomUUID()
   const storagePath = `${report.tenant_id}/${report.id}/${attId}.${safeExt}`
 
