@@ -5,7 +5,9 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { gatherVisitDebriefContext } from '@/lib/db/visits'
 import { VisitDebriefPanel } from './VisitDebriefPanel'
+import { CapturedKnowledgePanel } from './CapturedKnowledgePanel'
 import { GenerateCrButton } from './GenerateCrButton'
+import { listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +22,7 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
   const [identity, ctx] = await Promise.all([getSiteIdentity(id), gatherVisitDebriefContext(visitId)])
   if (!identity || !ctx || ctx.visit.site_id !== id) notFound()
   const { visit } = ctx
+  const knowledge = await listCapturedKnowledgeBySource(visit.id).catch(() => [])
 
   const fr = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -71,6 +74,15 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
           <p className="text-sm text-muted-foreground">Rien n’a encore été capturé pour cette visite.</p>
         )}
       </section>
+
+      {/* À retenir — capter la connaissance utile (promesses, risques, pièges…),
+          reliée à un point pour ressortir plus tard. Saisie manuelle (l'IA viendra). */}
+      <CapturedKnowledgePanel
+        siteId={id}
+        reportId={visit.id}
+        openSubjects={ctx.openSubjects}
+        initial={knowledge}
+      />
 
       {/* Débrief IA : propose, l'humain valide. Rien n'est écrit sans validation. */}
       <VisitDebriefPanel
