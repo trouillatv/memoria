@@ -69,6 +69,21 @@ export function VisitBasket({
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
+  // Géoloc OPT-IN (éteinte par défaut) : on localise l'OBSERVATION, pas la personne.
+  // Position PONCTUELLE par capture, best-effort — jamais de trace continue, jamais
+  // bloquante. Cf. [[ouverture-contextuelle-gps]].
+  const [geoTag, setGeoTag] = useState(false)
+  function getOneShotPosition(): Promise<{ lat: number; lng: number } | null> {
+    if (!geoTag || typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 },
+      )
+    })
+  }
+
   const subjectName = (id: string | null) => subjects.find((s) => s.id === id)?.name ?? 'point suivi'
   const kept = captures.filter((c) => c.status !== 'discarded')
   // Points suivis déjà vérifiés pendant CETTE visite (progression + ✓). Dérivé des
@@ -128,9 +143,9 @@ export function VisitBasket({
       fd.set('kind', 'photo')
       fd.set('file', file)
       fd.set('client_uuid', crypto.randomUUID())
-      const up = await uploadReportAttachmentAction(fd)
+      const [up, pos] = await Promise.all([uploadReportAttachmentAction(fd), getOneShotPosition()])
       if (!up.ok) { toast.error(up.error); return }
-      const r = await addPhotoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId })
+      const r = await addPhotoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId, lat: pos?.lat, lng: pos?.lng })
       if (r.ok) { toast.success('Photo ajoutée', { duration: 1200 }); refresh() }
       else toast.error(r.error)
     })
@@ -149,9 +164,9 @@ export function VisitBasket({
       fd.set('kind', 'video')
       fd.set('file', file)
       fd.set('client_uuid', crypto.randomUUID())
-      const up = await uploadReportAttachmentAction(fd)
+      const [up, pos] = await Promise.all([uploadReportAttachmentAction(fd), getOneShotPosition()])
       if (!up.ok) { toast.error(up.error); return }
-      const r = await addVideoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId })
+      const r = await addVideoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId, lat: pos?.lat, lng: pos?.lng })
       if (r.ok) { toast.success('Vidéo ajoutée', { duration: 1200 }); refresh() }
       else toast.error(r.error)
     })
@@ -168,11 +183,13 @@ export function VisitBasket({
         stream.getTracks().forEach((t) => t.stop())
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' })
         startBusy(async () => {
+          const pos = await getOneShotPosition()
           const fd = new FormData()
           fd.set('report_id', reportId)
           fd.set('site_id', siteId)
           fd.set('audio', blob, 'memo.webm')
           fd.set('audio_mime', blob.type || 'audio/webm')
+          if (pos) { fd.set('lat', String(pos.lat)); fd.set('lng', String(pos.lng)) }
           const r = await addVocalCaptureAction(fd)
           if (r.ok) {
             toast.success('Mémo vocal ajouté', { duration: 1200 })
@@ -203,7 +220,8 @@ export function VisitBasket({
     const body = note.trim()
     if (body.length < 1) return
     startBusy(async () => {
-      const r = await addNoteCaptureAction({ report_id: reportId, site_id: siteId, body })
+      const pos = await getOneShotPosition()
+      const r = await addNoteCaptureAction({ report_id: reportId, site_id: siteId, body, lat: pos?.lat, lng: pos?.lng })
       if (r.ok) { setNote(''); setOverlay('none'); toast.success('Note ajoutée', { duration: 1200 }); refresh() }
       else toast.error(r.error)
     })
@@ -352,6 +370,15 @@ export function VisitBasket({
       >
         <MapPin className="h-3.5 w-3.5" /> Enregistrer ma position (facultatif)
       </button>
+      {/* Géoloc OPT-IN : on localise l'OBSERVATION, jamais la personne, jamais en continu. */}
+      <label className="flex items-start gap-2 rounded-lg px-1 text-xs text-emerald-800/90 dark:text-emerald-300/90">
+        <input type="checkbox" checked={geoTag} onChange={(e) => setGeoTag(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-emerald-600" />
+        <span className="min-w-0">
+          Géolocaliser les captures
+          <span className="block text-[10px] text-muted-foreground">Associe une position aux photos, vidéos, notes et vocaux de cette visite.</span>
+        </span>
+      </label>
+
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" onChange={onVideoFile} className="hidden" />
 
