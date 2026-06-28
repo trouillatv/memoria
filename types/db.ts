@@ -302,6 +302,9 @@ export interface EngagementComplianceRatios {
 // Field MVP — Phase 2 (Sites enrichi + Missions + Interventions + ...)
 // =================================
 
+/** Phase de vie du dossier (mig 171) — le site change de phase, jamais d'identité. */
+export type SitePhase = 'prospect' | 'en_ao' | 'actif' | 'perdu' | 'archive'
+
 export interface DbSite {
   id: string
   client_id: string
@@ -309,6 +312,8 @@ export interface DbSite {
   name: string
   address: string | null
   notes: string | null
+  /** Phase de vie (mig 171) : prospect → en_ao → actif → perdu → archive. */
+  phase: SitePhase
   // Champs structurés "fiche site" (migration 036). Tous facultatifs.
   access_code: string | null
   alarm_code: string | null
