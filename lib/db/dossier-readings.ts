@@ -1,12 +1,21 @@
 // lib/db/dossier-readings.ts
-// LECTURES MÉTIER du dossier vivant (Vincent 2026-06-28). On ne change jamais les
-// données — on change la FAÇON de raconter l'histoire selon le contexte.
+// READ-MODEL scopé DOSSIER + LENTILLES (Vincent 2026-06-29).
 //
-// `readForTakeover` = « si un nouveau chargé d'affaires reprend ce chantier demain,
-// voilà ce qu'il doit savoir ». DÉTERMINISTE (zéro IA) : agrège ce qui appelle
-// l'attention (dossiers bloqués/en attente) + les infos retenues (promesses /
-// risques / pièges) + les à-savoir du lieu. L'IA, plus tard, INTERPRÉTERA ces
-// lectures — elle ne les produit pas. Cf. [[continuite-operationnelle-2026-05-22]].
+// Principe (CQRS read-model, cf. [[moteur-de-contexte-chantier]]) : UN SEUL endroit
+// connaît le modèle et lit la base → getDossierReadModel(). Les LECTURES métier
+// (reprise / AO / demain réunion / direction…) ne sont plus des agrégateurs qui
+// relisent chacun la DB, mais des LENTILLES PURES au-dessus du read-model — zéro
+// accès base, donc testables et sans duplication.
+//
+//   getDossierReadModel(scope)   ← lit la DB UNE fois, BORNÉ (1 site + 1 opération)
+//        ↓
+//   lensTakeover / lensTender    ← fonctions PURES, lisent seulement le read-model
+//
+// BORNES (anti god-object, cf. [[ai-cost-discipline]]) : le read-model est scopé à
+// un dossier (+ son lieu), PAS « toute la mémoire ». On n'y met QUE ce que les
+// lentilles consomment — il grandit par besoin de lentille, jamais spéculativement.
+// DÉTERMINISTE : zéro IA. L'IA interprétera les lectures plus tard, gated.
+// Cf. [[dossier-opportunite-colonne-vertebrale]], [[pv-reconstruction-manuelle]].
 
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
@@ -14,6 +23,62 @@ import { listActiveCapturedKnowledgeBySite, listActiveCapturedKnowledgeByDossier
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { listVisitCapturesByDossier } from '@/lib/db/visit-captures'
 import { getDossier } from '@/lib/db/dossiers'
+
+// ── LE READ-MODEL : substrat scopé Dossier (la seule chose qui lit la DB) ─────────
+
+export interface DossierReadModel {
+  identity: {
+    dossier: Awaited<ReturnType<typeof getDossier>>
+    site: Awaited<ReturnType<typeof getSiteIdentity>>
+  }
+  /** Mémoire de LIEU — permanente, partagée entre toutes les opérations du site. */
+  siteMemory: {
+    aSavoir: Awaited<ReturnType<typeof listSiteASavoirActive>>
+    subjectsToWatch: Awaited<ReturnType<typeof listSiteSubjectsToWatch>>
+    knowledge: Awaited<ReturnType<typeof listActiveCapturedKnowledgeBySite>>
+  }
+  /** Mémoire d'OPÉRATION — scopée au dossier (vide si lecture au scope lieu seul). */
+  operationMemory: {
+    captures: Awaited<ReturnType<typeof listVisitCapturesByDossier>>
+    knowledge: Awaited<ReturnType<typeof listActiveCapturedKnowledgeByDossier>>
+  }
+}
+
+/**
+ * Assemble le read-model d'un dossier (ou d'un lieu seul, pour la reprise d'un
+ * chantier legacy sans dossier). Lecture seule, déterministe, BORNÉE à un site +
+ * une opération. C'est le SEUL point qui connaît les tables ; les lentilles ne
+ * voient que l'objet retourné.
+ */
+export async function getDossierReadModel(input: { dossierId?: string; siteId?: string }): Promise<DossierReadModel> {
+  const dossier = input.dossierId ? await getDossier(input.dossierId) : null
+  const siteId = dossier?.site_id ?? input.siteId ?? null
+  if (!siteId) {
+    return {
+      identity: { dossier, site: null },
+      siteMemory: { aSavoir: [], subjectsToWatch: [], knowledge: [] },
+      operationMemory: { captures: [], knowledge: [] },
+    }
+  }
+  const dossierId = dossier?.id ?? null
+
+  const [site, aSavoir, subjectsToWatch, siteKnowledge, opCaptures, opKnowledge] = await Promise.all([
+    getSiteIdentity(siteId).catch(() => null),
+    listSiteASavoirActive(siteId).catch(() => []),
+    listSiteSubjectsToWatch(siteId, 12).catch(() => []),
+    listActiveCapturedKnowledgeBySite(siteId, 200).catch(() => []),
+    dossierId ? listVisitCapturesByDossier(dossierId).catch(() => []) : Promise.resolve([]),
+    dossierId ? listActiveCapturedKnowledgeByDossier(dossierId).catch(() => []) : Promise.resolve([]),
+  ])
+
+  return {
+    identity: { dossier, site },
+    siteMemory: { aSavoir, subjectsToWatch, knowledge: siteKnowledge },
+    operationMemory: { captures: opCaptures, knowledge: opKnowledge },
+  }
+}
+
+// ── Types des lectures (sorties métier, inchangées) ──────────────────────────────
 
 export interface TakeoverDossier {
   id: string
@@ -38,52 +103,6 @@ export interface TakeoverReading {
   missingDocuments: TakeoverItem[]
   isEmpty: boolean
 }
-
-export async function readForTakeover(siteId: string): Promise<TakeoverReading> {
-  const [identity, watched, knowledge, aSavoir] = await Promise.all([
-    getSiteIdentity(siteId).catch(() => null),
-    listSiteSubjectsToWatch(siteId, 12).catch(() => []),
-    listActiveCapturedKnowledgeBySite(siteId, 200).catch(() => []),
-    listSiteASavoirActive(siteId).catch(() => []),
-  ])
-
-  const byKind = (kind: string): TakeoverItem[] =>
-    knowledge.filter((k) => k.kind === kind).map((k) => ({ id: k.id, text: k.title, subjectId: k.subject_id }))
-
-  const mustKnow: TakeoverDossier[] = watched.map((w) => ({
-    id: w.id, name: w.name, state: w.state, cause: w.cause, openQuestion: w.openQuestion,
-  }))
-  const promises = byKind('promise')
-  const risks = byKind('risk')
-  const pitfalls: TakeoverItem[] = [
-    ...((aSavoir ?? []) as Array<{ id: string; body: string }>).map((n) => ({ id: n.id, text: n.body, subjectId: null })),
-    ...byKind('attention'),
-    ...byKind('context'),
-    ...byKind('preference'),
-  ]
-  const missingDocuments = byKind('missing_document')
-
-  return {
-    siteName: identity?.name ?? 'Chantier',
-    mustKnow,
-    promises,
-    risks,
-    pitfalls,
-    missingDocuments,
-    isEmpty:
-      mustKnow.length === 0 && promises.length === 0 && risks.length === 0 &&
-      pitfalls.length === 0 && missingDocuments.length === 0,
-  }
-}
-
-// ── readForTender ────────────────────────────────────────────────────────────
-// « Aide-moi à répondre à cet appel d'offre. » LECTURE métier d'une PRÉVISITE,
-// orientée réponse AO (Vincent 2026-06-29). DÉTERMINISTE — même invariant que le
-// PV (cf. [[pv-reconstruction-manuelle]]) : Guillaume obtient son dossier AO
-// MÊME si l'IA n'a rien compris. La couche « voilà ce que j'ai compris » (IA)
-// viendra PAR-DESSUS, gated. Ici : on restitue la matière captée, organisée pour
-// chiffrer — observé sur site / engagements entendus / risques / pièges & contraintes
-// / documents attendus. Frère de readForTakeover : même moteur, autre angle.
 
 export interface TenderObserved {
   photos: number
@@ -114,30 +133,54 @@ export interface TenderReading {
   isEmpty: boolean
 }
 
-export async function readForTender(dossierId: string): Promise<TenderReading> {
-  const dossier = await getDossier(dossierId)
-  if (!dossier) {
-    return {
-      siteName: 'Dossier', clientName: null, address: null,
-      observed: { photos: 0, verifications: 0, vocals: [], notes: [], capturesTotal: 0 },
-      promises: [], risks: [], pitfalls: [], missingDocuments: [], toWatch: [], isEmpty: true,
-    }
+// ── LES LENTILLES : fonctions PURES sur le read-model (aucun accès DB) ────────────
+
+/** Helper pur : projette les infos retenues d'un kind donné en items. */
+function itemsByKind(knowledge: DossierReadModel['siteMemory']['knowledge'], kind: string): TakeoverItem[] {
+  return knowledge.filter((k) => k.kind === kind).map((k) => ({ id: k.id, text: k.title, subjectId: k.subject_id }))
+}
+
+/**
+ * « Si un nouveau chargé d'affaires reprend ce chantier demain, voilà ce qu'il
+ * doit savoir. » Lit la mémoire de LIEU (chantier entier). Pure.
+ */
+export function lensTakeover(rm: DossierReadModel): TakeoverReading {
+  const knowledge = rm.siteMemory.knowledge
+  const mustKnow: TakeoverDossier[] = rm.siteMemory.subjectsToWatch.map((w) => ({
+    id: w.id, name: w.name, state: w.state, cause: w.cause, openQuestion: w.openQuestion,
+  }))
+  const promises = itemsByKind(knowledge, 'promise')
+  const risks = itemsByKind(knowledge, 'risk')
+  const pitfalls: TakeoverItem[] = [
+    ...rm.siteMemory.aSavoir.map((n) => ({ id: n.id, text: n.body, subjectId: null })),
+    ...itemsByKind(knowledge, 'attention'),
+    ...itemsByKind(knowledge, 'context'),
+    ...itemsByKind(knowledge, 'preference'),
+  ]
+  const missingDocuments = itemsByKind(knowledge, 'missing_document')
+
+  return {
+    siteName: rm.identity.site?.name ?? 'Chantier',
+    mustKnow,
+    promises,
+    risks,
+    pitfalls,
+    missingDocuments,
+    isEmpty:
+      mustKnow.length === 0 && promises.length === 0 && risks.length === 0 &&
+      pitfalls.length === 0 && missingDocuments.length === 0,
   }
-  const siteId = dossier.site_id
-  const [identity, captures, knowledge, aSavoir, watched] = await Promise.all([
-    getSiteIdentity(siteId).catch(() => null),
-    // Matière d'OPÉRATION : scopée au dossier (un lieu peut en porter plusieurs).
-    listVisitCapturesByDossier(dossierId).catch(() => []),
-    listActiveCapturedKnowledgeByDossier(dossierId).catch(() => []),
-    // Mémoire de LIEU : héritée du site, partagée entre tous ses dossiers (le moat).
-    listSiteASavoirActive(siteId).catch(() => []),
-    listSiteSubjectsToWatch(siteId, 12).catch(() => []),
-  ])
+}
 
-  const byKind = (kind: string): TakeoverItem[] =>
-    knowledge.filter((k) => k.kind === kind).map((k) => ({ id: k.id, text: k.title, subjectId: k.subject_id }))
-
+/**
+ * « Aide-moi à répondre à cet appel d'offre. » Lit la mémoire d'OPÉRATION (captures
+ * + infos retenues du dossier) + la mémoire de LIEU héritée (à-savoir). Pure.
+ */
+export function lensTender(rm: DossierReadModel): TenderReading {
+  const captures = rm.operationMemory.captures
+  const knowledge = rm.operationMemory.knowledge
   const hasText = (s: string | null): s is string => !!s && s.trim().length > 0
+
   const observed: TenderObserved = {
     photos: captures.filter((c) => c.kind === 'photo').length,
     verifications: captures.filter((c) => c.kind === 'verification').length,
@@ -151,23 +194,23 @@ export async function readForTender(dossierId: string): Promise<TenderReading> {
     capturesTotal: captures.length,
   }
 
-  const promises = byKind('promise')
-  const risks = byKind('risk')
+  const promises = itemsByKind(knowledge, 'promise')
+  const risks = itemsByKind(knowledge, 'risk')
   const pitfalls: TakeoverItem[] = [
-    ...((aSavoir ?? []) as Array<{ id: string; body: string }>).map((n) => ({ id: n.id, text: n.body, subjectId: null })),
-    ...byKind('attention'),
-    ...byKind('context'),
-    ...byKind('preference'),
+    ...rm.siteMemory.aSavoir.map((n) => ({ id: n.id, text: n.body, subjectId: null })),
+    ...itemsByKind(knowledge, 'attention'),
+    ...itemsByKind(knowledge, 'context'),
+    ...itemsByKind(knowledge, 'preference'),
   ]
-  const missingDocuments = byKind('missing_document')
-  const toWatch: TakeoverDossier[] = watched.map((w) => ({
+  const missingDocuments = itemsByKind(knowledge, 'missing_document')
+  const toWatch: TakeoverDossier[] = rm.siteMemory.subjectsToWatch.map((w) => ({
     id: w.id, name: w.name, state: w.state, cause: w.cause, openQuestion: w.openQuestion,
   }))
 
   return {
-    siteName: dossier.label ?? identity?.name ?? 'Dossier',
-    clientName: identity?.clientName ?? null,
-    address: identity?.address ?? null,
+    siteName: rm.identity.dossier?.label ?? rm.identity.site?.name ?? 'Dossier',
+    clientName: rm.identity.site?.clientName ?? null,
+    address: rm.identity.site?.address ?? null,
     observed,
     promises,
     risks,
@@ -178,4 +221,16 @@ export async function readForTender(dossierId: string): Promise<TenderReading> {
       observed.capturesTotal === 0 && promises.length === 0 && risks.length === 0 &&
       pitfalls.length === 0 && missingDocuments.length === 0 && toWatch.length === 0,
   }
+}
+
+// ── Fines enveloppes : gardent les appels de page inchangés (mêmes sorties) ───────
+
+/** Reprise au scope LIEU (chantier) — résout le read-model puis applique la lentille. */
+export async function readForTakeover(siteId: string): Promise<TakeoverReading> {
+  return lensTakeover(await getDossierReadModel({ siteId }))
+}
+
+/** Lecture AO au scope OPÉRATION (dossier) — read-model puis lentille. */
+export async function readForTender(dossierId: string): Promise<TenderReading> {
+  return lensTender(await getDossierReadModel({ dossierId }))
 }
