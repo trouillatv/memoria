@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2 } from 'lucide-react'
+import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
@@ -57,12 +57,20 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
       <PhaseBar dossierId={dossier.id} siteId={dossier.site_id} phase={dossier.phase} />
 
       {/* Continuer la collecte sur le terrain (mobile). La prévisite = une visite sur le LIEU. */}
-      <Link
-        href={`/m/site/${dossier.site_id}`}
-        className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-      >
-        <Smartphone className="h-4 w-4 text-sky-600" /> Continuer la prévisite sur le terrain
-      </Link>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={`/m/site/${dossier.site_id}`}
+          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+        >
+          <Smartphone className="h-4 w-4 text-sky-600" /> Continuer la prévisite sur le terrain
+        </Link>
+        <Link
+          href={`/sites/${dossier.site_id}/carte`}
+          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+        >
+          <MapIcon className="h-4 w-4 text-sky-600" /> Carte des captures
+        </Link>
+      </div>
 
       {r.isEmpty ? (
         <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">

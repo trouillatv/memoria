@@ -27,10 +27,18 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 // ── Note ─────────────────────────────────────────────────────────────────────
 
+// Position PONCTUELLE d'une OBSERVATION (opt-in, jamais de trace continue ; cf.
+// [[ouverture-contextuelle-gps]]). On localise ce qui est vu, pas la personne.
+const coords = {
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+}
+
 const noteSchema = z.object({
   report_id: z.string().uuid(),
   site_id: z.string().uuid(),
   body: z.string().trim().min(1).max(2000),
+  ...coords,
 })
 
 export async function addNoteCaptureAction(
@@ -46,6 +54,8 @@ export async function addNoteCaptureAction(
       siteId: parsed.data.site_id,
       kind: 'note',
       body: parsed.data.body,
+      lat: parsed.data.lat ?? null,
+      lng: parsed.data.lng ?? null,
       createdBy: auth.userId,
     })
     return { ok: true, id }
@@ -91,6 +101,7 @@ const photoSchema = z.object({
   report_id: z.string().uuid(),
   site_id: z.string().uuid(),
   attachment_id: z.string().uuid(),
+  ...coords,
 })
 
 export async function addPhotoCaptureAction(
@@ -106,6 +117,8 @@ export async function addPhotoCaptureAction(
       siteId: parsed.data.site_id,
       kind: 'photo',
       attachmentId: parsed.data.attachment_id,
+      lat: parsed.data.lat ?? null,
+      lng: parsed.data.lng ?? null,
       createdBy: auth.userId,
     })
     return { ok: true, id }
@@ -120,6 +133,7 @@ const videoSchema = z.object({
   report_id: z.string().uuid(),
   site_id: z.string().uuid(),
   attachment_id: z.string().uuid(),
+  ...coords,
 })
 
 export async function addVideoCaptureAction(
@@ -135,6 +149,8 @@ export async function addVideoCaptureAction(
       siteId: parsed.data.site_id,
       kind: 'video',
       attachmentId: parsed.data.attachment_id,
+      lat: parsed.data.lat ?? null,
+      lng: parsed.data.lng ?? null,
       createdBy: auth.userId,
     })
     return { ok: true, id }
@@ -221,12 +237,20 @@ export async function addVocalCaptureAction(
     // Capture brute : déposée en 'pending'. L'enrichissement (transcription) est
     // fait par la route worker, que le client DÉCLENCHE juste après. La vérité de
     // l'avancement est en base ; si le déclenchement échoue, le cron rattrape.
+    // Position ponctuelle optionnelle (opt-in), best-effort : jamais bloquante.
+    const latRaw = formData.get('lat'); const lngRaw = formData.get('lng')
+    const geo = z.object(coords).safeParse({
+      lat: typeof latRaw === 'string' && latRaw ? latRaw : undefined,
+      lng: typeof lngRaw === 'string' && lngRaw ? lngRaw : undefined,
+    })
     const id = await addVisitCapture({
       reportId: report.id,
       siteId,
       kind: 'vocal',
       attachmentId,
       transcriptStatus: 'pending',
+      lat: geo.success ? geo.data.lat ?? null : null,
+      lng: geo.success ? geo.data.lng ?? null : null,
       createdBy: auth.userId,
     })
     return { ok: true, id }

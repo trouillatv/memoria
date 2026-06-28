@@ -56,6 +56,7 @@ export function SiteDomainHub({ siteId, data, signals }: { siteId: string; data:
       children: [
         { label: 'Le journal', href: `/sites/${siteId}/chronicle` },
         { label: 'Visites', href: `/sites/${siteId}/visites`, count: data.visits },
+        { label: 'Carte', href: `/sites/${siteId}/carte` },
       ],
     },
     {
