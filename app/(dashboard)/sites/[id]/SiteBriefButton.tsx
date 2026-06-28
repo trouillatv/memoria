@@ -30,6 +30,7 @@ import {
   History,
   Check,
   Sparkles,
+  Layers,
 } from 'lucide-react'
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type DiscussionPoint } from './site-brief-actions'
 
@@ -47,6 +48,10 @@ const MODE_META = {
   visit:   { label: 'Préparer ma visite',  panel: "À savoir avant d'y aller", Icon: Brain },
   meeting: { label: 'Préparer ma réunion', panel: 'À aborder en réunion',     Icon: MessagesSquare },
 } as const
+
+const STATE_FR: Record<string, string> = {
+  bloqué: 'Bloqué', en_attente: 'En attente', actif: 'Actif', résolu: 'Résolu', dormant: 'En sommeil',
+}
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null
@@ -320,14 +325,14 @@ function SectionTitle({
 //    changé depuis la dernière réunion + réserves + actions (qui doit quoi) en tête.
 type Tier = { label: string; dot: string; keys: string[] }
 const TIERS_VISIT: Tier[] = [
-  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['vigilance', 'anomalies', 'reserves', 'actions'] },
+  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'vigilance', 'anomalies', 'reserves', 'actions'] },
   { label: 'Ce qui a changé',                dot: 'bg-amber-500',   keys: ['change'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
   { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
 ]
 const TIERS_MEETING: Tier[] = [
-  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['change', 'reserves', 'actions'] },
+  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'change', 'reserves', 'actions'] },
   { label: 'Points de vigilance',            dot: 'bg-amber-500',   keys: ['vigilance', 'anomalies'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
@@ -351,11 +356,13 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
     openReserves,
     lastReport,
     changeSinceLastReport,
+    followedPoints,
   } = brief
 
   const nextLabel = formatDate(situation.nextScheduledAt)
 
   const hasAnyDetail =
+    followedPoints.length > 0 ||
     changeSinceLastReport != null ||
     vigilance.length > 0 ||
     openReserves.length > 0 ||
@@ -371,6 +378,28 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
     meetings.length > 0
 
   const sections: Record<string, React.ReactNode> = {
+    followedPoints: followedPoints.length === 0 ? null : (
+      <section className="space-y-2">
+        <SectionTitle icon={<Layers className="h-3.5 w-3.5 text-violet-600" />} count={followedPoints.length}>
+          Points suivis à aborder
+        </SectionTitle>
+        <ul className="space-y-1.5">
+          {followedPoints.map((p) => (
+            <li key={p.id} className="rounded-lg border bg-background px-3 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 text-sm font-medium">{p.name}</span>
+                <span className="shrink-0 whitespace-nowrap text-[11px] font-medium text-violet-700">
+                  {STATE_FR[p.state] ?? p.state}
+                </span>
+              </div>
+              {(p.openQuestion ?? p.cause) && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">{p.openQuestion ?? p.cause}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+    ),
     change: !changeSinceLastReport ? null : (
       <section className="space-y-2.5 rounded-xl border bg-muted/30 p-3">
         <SectionTitle icon={<History className="h-3.5 w-3.5" />}>
