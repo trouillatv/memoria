@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 
 export type KnowledgeSourceType = 'visit' | 'meeting' | 'call' | 'manual'
 export type KnowledgeStatus = 'active' | 'resolved' | 'obsolete' | 'dismissed'
@@ -42,11 +43,14 @@ export interface AddCapturedKnowledgeInput {
 export async function addCapturedKnowledge(input: AddCapturedKnowledgeInput): Promise<string> {
   const supabase = createAdminClient()
   const orgId = await getOrgId().catch(() => null)
+  // Rattache l'info au dossier d'opération ouvert du lieu (null si lieu legacy).
+  const dossierId = await getOpenDossierIdForSite(input.siteId).catch(() => null)
   const { data, error } = await supabase
     .from('captured_knowledge')
     .insert({
       organization_id: orgId,
       site_id: input.siteId,
+      dossier_id: dossierId,
       source_type: input.sourceType,
       source_id: input.sourceId ?? null,
       kind: input.kind,
@@ -87,6 +91,20 @@ export async function listCapturedKnowledgeBySubject(subjectId: string): Promise
     .select(SELECT)
     .eq('subject_id', subjectId)
     .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as CapturedKnowledgeRow[]
+}
+
+/** Les infos utiles actives d'un DOSSIER (opération) — scopées à l'opération. */
+export async function listActiveCapturedKnowledgeByDossier(dossierId: string, limit = 200): Promise<CapturedKnowledgeRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('captured_knowledge')
+    .select(SELECT)
+    .eq('dossier_id', dossierId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(limit)
   if (error) throw error
   return (data ?? []) as CapturedKnowledgeRow[]
 }

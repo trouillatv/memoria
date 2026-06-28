@@ -14,6 +14,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
+import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import type {
@@ -55,12 +56,15 @@ export async function createVisit(input: CreateVisitInput): Promise<string> {
   if (!tenantId) throw new Error('Site introuvable ou sans tenant')
 
   const orgId = await getOrgId()
+  // Rattache la visite au dossier d'opération ouvert du lieu (null si lieu legacy).
+  const dossierId = await getOpenDossierIdForSite(input.siteId).catch(() => null)
 
   const { data, error } = await supabase
     .from('site_reports')
     .insert({
       type: 'site',
       site_id: input.siteId,
+      dossier_id: dossierId,
       tenant_id: tenantId,
       organization_id: orgId,
       status: 'draft',

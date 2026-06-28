@@ -10,9 +10,10 @@
 
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
-import { listActiveCapturedKnowledgeBySite } from '@/lib/db/captured-knowledge'
+import { listActiveCapturedKnowledgeBySite, listActiveCapturedKnowledgeByDossier } from '@/lib/db/captured-knowledge'
 import { listSiteASavoirActive } from '@/lib/db/sites'
-import { listVisitCapturesBySite } from '@/lib/db/visit-captures'
+import { listVisitCapturesByDossier } from '@/lib/db/visit-captures'
+import { getDossier } from '@/lib/db/dossiers'
 
 export interface TakeoverDossier {
   id: string
@@ -113,11 +114,22 @@ export interface TenderReading {
   isEmpty: boolean
 }
 
-export async function readForTender(siteId: string): Promise<TenderReading> {
+export async function readForTender(dossierId: string): Promise<TenderReading> {
+  const dossier = await getDossier(dossierId)
+  if (!dossier) {
+    return {
+      siteName: 'Dossier', clientName: null, address: null,
+      observed: { photos: 0, verifications: 0, vocals: [], notes: [], capturesTotal: 0 },
+      promises: [], risks: [], pitfalls: [], missingDocuments: [], toWatch: [], isEmpty: true,
+    }
+  }
+  const siteId = dossier.site_id
   const [identity, captures, knowledge, aSavoir, watched] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
-    listVisitCapturesBySite(siteId).catch(() => []),
-    listActiveCapturedKnowledgeBySite(siteId, 200).catch(() => []),
+    // Matière d'OPÉRATION : scopée au dossier (un lieu peut en porter plusieurs).
+    listVisitCapturesByDossier(dossierId).catch(() => []),
+    listActiveCapturedKnowledgeByDossier(dossierId).catch(() => []),
+    // Mémoire de LIEU : héritée du site, partagée entre tous ses dossiers (le moat).
     listSiteASavoirActive(siteId).catch(() => []),
     listSiteSubjectsToWatch(siteId, 12).catch(() => []),
   ])
@@ -153,7 +165,7 @@ export async function readForTender(siteId: string): Promise<TenderReading> {
   }))
 
   return {
-    siteName: identity?.name ?? 'Dossier',
+    siteName: dossier.label ?? identity?.name ?? 'Dossier',
     clientName: identity?.clientName ?? null,
     address: identity?.address ?? null,
     observed,

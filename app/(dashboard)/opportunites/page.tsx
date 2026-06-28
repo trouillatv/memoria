@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Compass, MapPin, ChevronRight, Plus } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listOpportunitySites } from '@/lib/db/sites'
+import { listOpportunityDossiers } from '@/lib/db/dossiers'
 import { createProspectAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -19,7 +19,7 @@ export default async function OpportunitesPage() {
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/m')
 
-  const opportunities = await listOpportunitySites()
+  const opportunities = await listOpportunityDossiers()
 
   return (
     <div className="max-w-3xl space-y-8 py-6">
@@ -77,12 +77,12 @@ export default async function OpportunitesPage() {
           {opportunities.map((o) => (
             <li key={o.id}>
               <Link
-                href={`/sites/${o.id}/ao`}
+                href={`/dossiers/${o.id}`}
                 className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 hover:bg-muted"
               >
                 <MapPin className="h-4 w-4 shrink-0 text-sky-600" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{o.name}</span>
+                  <span className="block truncate text-sm font-medium">{o.label ?? o.site_name ?? 'Dossier'}</span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {o.client_name ?? 'Donneur d’ordre à préciser'}
                   </span>

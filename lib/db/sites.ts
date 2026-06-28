@@ -503,17 +503,15 @@ export async function createSite(input: {
 }
 
 // =================================
-// Dossiers d'opportunité — la prévisite AO (mig 171)
+// Lieu partagé — support des dossiers d'opération (mig 172)
 //
-// « Le chantier existe avant le contrat. » Guillaume visite un site qu'AGP veut
-// gagner : on crée un dossier en phase 'prospect' (donc HORS grille chantier),
-// rattaché à son donneur d'ordre. La prévisite = une visite ordinaire sur ce
-// site → toute la capture est réutilisée telle quelle. Si l'affaire est gagnée,
-// le MÊME site passera en 'actif' : la mémoire ne redémarre jamais.
+// L'identité de mémoire est le DOSSIER (lib/db/dossiers.ts), pas le site. Le site
+// reste le LIEU : créé/réutilisé, il porte la mémoire permanente (à-savoir, pièges,
+// accès) qui s'injecte dans chaque nouveau dossier.
 // =================================
 
 /** Trouve (par nom, dans l'org) ou crée un client léger. Pour le donneur d'ordre d'un AO. */
-async function findOrCreateClientByName(name: string): Promise<string> {
+export async function findOrCreateClientByName(name: string): Promise<string> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
   const trimmed = name.trim()
@@ -530,62 +528,6 @@ async function findOrCreateClientByName(name: string): Promise<string> {
     .single()
   if (error) throw error
   return (data as { id: string }).id
-}
-
-/**
- * Crée un dossier d'opportunité (site en phase 'prospect', sans contrat).
- * `clientName` = le donneur d'ordre de l'AO (trouvé ou créé). Renvoie le site_id.
- */
-export async function createProspectSite(input: {
-  name: string
-  clientName: string
-  address?: string | null
-  notes?: string | null
-}): Promise<string> {
-  const clientId = await findOrCreateClientByName(input.clientName)
-  return createSite({
-    client_id: clientId,
-    contract_id: null,
-    name: input.name.trim(),
-    address: input.address ?? null,
-    notes: input.notes ?? null,
-    phase: 'prospect',
-  })
-}
-
-export interface OpportunitySite {
-  id: string
-  name: string
-  phase: SitePhase
-  client_name: string | null
-  address: string | null
-  created_at: string
-}
-
-/** Les dossiers d'opportunité du tenant (prospect/en_ao), les plus récents d'abord. */
-export async function listOpportunitySites(): Promise<OpportunitySite[]> {
-  const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  let q = supabase
-    .from('sites')
-    .select('id, name, phase, address, created_at, client:clients(name)')
-    .is('deleted_at', null)
-    .in('phase', ['prospect', 'en_ao'])
-    .order('created_at', { ascending: false })
-  if (orgId) q = q.eq('organization_id', orgId)
-  const { data, error } = await q
-  if (error) throw error
-  return ((data ?? []) as Array<{
-    id: string; name: string; phase: SitePhase; address: string | null; created_at: string
-    client: { name: string } | { name: string }[] | null
-  }>).map((s) => ({
-    id: s.id,
-    name: s.name,
-    phase: s.phase,
-    address: s.address,
-    created_at: s.created_at,
-    client_name: Array.isArray(s.client) ? (s.client[0]?.name ?? null) : (s.client?.name ?? null),
-  }))
 }
 
 // =================================
