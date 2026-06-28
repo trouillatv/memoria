@@ -61,6 +61,13 @@ export interface AddVisitCaptureInput {
 export async function addVisitCapture(input: AddVisitCaptureInput): Promise<string> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
+  // Hérite le dossier d'opération de la visite (un seul point de vérité : le report).
+  const { data: rep } = await supabase
+    .from('site_reports')
+    .select('dossier_id')
+    .eq('id', input.reportId)
+    .maybeSingle()
+  const dossierId = (rep as { dossier_id: string | null } | null)?.dossier_id ?? null
 
   const { data, error } = await supabase
     .from('visit_capture')
@@ -68,6 +75,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       organization_id: orgId,
       report_id: input.reportId,
       site_id: input.siteId,
+      dossier_id: dossierId,
       kind: input.kind,
       status: 'captured',
       // Seul le vocal a une couche à poser aujourd'hui (transcription) → 'pending' ;
@@ -122,6 +130,24 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
     .from('visit_capture')
     .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, lat, lng, created_at')
     .eq('site_id', siteId)
+    .neq('status', 'discarded')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
+/**
+ * Les captures non écartées d'un DOSSIER (opération) — la matière brute d'une
+ * prévisite, scopée à l'opération et non au lieu (un même site peut porter
+ * plusieurs dossiers). Plus récentes d'abord.
+ */
+export async function listVisitCapturesByDossier(dossierId: string, limit = 300): Promise<VisitCaptureRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, lat, lng, created_at')
+    .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
     .limit(limit)

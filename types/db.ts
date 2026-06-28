@@ -302,8 +302,27 @@ export interface EngagementComplianceRatios {
 // Field MVP — Phase 2 (Sites enrichi + Missions + Interventions + ...)
 // =================================
 
-/** Phase de vie du dossier (mig 171) — le site change de phase, jamais d'identité. */
+/** Phase de vie — vocabulaire commun. La phase vit sur le DOSSIER (mig 172) ;
+ *  sur sites (mig 171) elle reste un garde transitoire, non identitaire. */
 export type SitePhase = 'prospect' | 'en_ao' | 'actif' | 'perdu' | 'archive'
+export type DossierPhase = SitePhase
+
+/** Dossier = opération métier (mig 172), identité entre le Site (lieu) et le Sujet. */
+export interface DbDossier {
+  id: string
+  organization_id: string | null
+  site_id: string
+  client_id: string | null
+  /** Nature de l'opération — label extensible (ao | operation | maintenance …). */
+  type: string
+  phase: DossierPhase
+  label: string | null
+  opened_at: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
 
 export interface DbSite {
   id: string
