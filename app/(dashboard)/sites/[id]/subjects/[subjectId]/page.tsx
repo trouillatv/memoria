@@ -26,7 +26,10 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   // insights + relations + infos retenues + captures). Affichage inchangé.
   const dossier = await getLivingDossier(id, subjectId)
   if (!dossier) notFound()
-  const { identity, thread, timeline, insights, relations } = dossier
+  // Contrat sémantique (identity/timeline/relations) ; le substrat brut (thread/
+  // insights) reste réservé à cette page détaillée, via `detail`.
+  const { identity, timeline, relations } = dossier
+  const { thread, insights } = dossier.detail
   // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
   const orgHistory = await getSubjectOrgHistory(await getOrgId().catch(() => null), thread.subject.name).catch(() => null)
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
