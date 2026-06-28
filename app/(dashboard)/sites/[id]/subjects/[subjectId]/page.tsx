@@ -2,11 +2,9 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Layers, ListTodo, ClipboardCheck, FileCheck2, FileText, Gavel, History, CalendarClock, AlertTriangle, Target, Quote, Lightbulb, Camera } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSubjectThread, getSubjectTimeline, getSubjectInsights } from '@/lib/db/subjects'
+import { getLivingDossier } from '@/lib/db/living-dossier'
 import { getOrgId } from '@/lib/db/users'
 import { getSubjectOrgHistory } from '@/lib/db/ao-experience'
-import { getSubjectRelations } from '@/lib/db/subject-relations'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -24,8 +22,11 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, subjectId } = await params
-  const [identity, thread, timeline, insights, relations] = await Promise.all([getSiteIdentity(id), getSubjectThread(subjectId), getSubjectTimeline(subjectId), getSubjectInsights(subjectId), getSubjectRelations(subjectId)])
-  if (!identity || !thread || thread.subject.site_id !== id) notFound()
+  // Source CANONIQUE unique du dossier vivant (identité + thread + timeline +
+  // insights + relations + infos retenues + captures). Affichage inchangé.
+  const dossier = await getLivingDossier(id, subjectId)
+  if (!dossier) notFound()
+  const { identity, thread, timeline, insights, relations } = dossier
   // Niveau 3 — le même sujet canonique à l'échelle de l'org (du local au collectif).
   const orgHistory = await getSubjectOrgHistory(await getOrgId().catch(() => null), thread.subject.name).catch(() => null)
   const { subject, actions, reserves, decisions, siteDecisions, anomalies, documents } = thread
