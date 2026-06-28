@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookText, Sparkles, ListTodo, ArrowRightLeft, ClipboardCheck, Search, ShieldCheck } from 'lucide-react'
+import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -40,7 +40,10 @@ import {
   getSiteMemoryMeta,
   getSiteTransmissionReadings,
   getSiteRecentPhotos,
+  getSiteHubCounts,
 } from '@/lib/db/site-cockpit'
+import { todayLocalIso } from '@/lib/time/local-date'
+import { SiteDomainHub } from './SiteDomainHub'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ASavoirManager } from './ASavoirManager'
 import { TraceStream } from './TraceStream'
@@ -169,6 +172,25 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // Visites effectuées sur ce site (onglet Activité) — chaque ligne mène au débrief.
   const siteVisits = await listSiteVisitsWithCounts(id, 30).catch(() => [])
 
+  // HUB chantier — compteurs vivants pour rendre les 4 domaines + leurs sous-fonctions
+  // directement cliquables (plus de « tiroirs »). Bornés : 3 head-counts, le reste
+  // réutilise des données déjà chargées.
+  const hubCounts = await getSiteHubCounts(id).catch(() => ({ reservesOpen: 0, oblToDo: 0, subjectsOpen: 0 }))
+  const todayIso = todayLocalIso()
+  const overdueActions = openActions.filter(
+    (a) => (a as { due_date?: string | null }).due_date && (a as { due_date: string }).due_date < todayIso,
+  ).length
+  const hubData = {
+    openActions: openActions.length,
+    overdueActions,
+    reservesOpen: hubCounts.reservesOpen,
+    oblToDo: hubCounts.oblToDo,
+    subjectsOpen: hubCounts.subjectsOpen,
+    visits: siteVisits.length,
+    docs: visibleSiteDocs.length,
+    canExport: user.role === 'admin' || user.role === 'manager',
+  }
+
   // Helpers de visibilité : sur desktop (md+), tout est toujours visible.
   // Sur mobile, seul l'onglet actif s'affiche.
   // Utilise hidden/md:block (ou md:grid) pour éviter tout JS client.
@@ -227,17 +249,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <QuickActionButton source="desktop_site" siteId={id} variant="desktop" />
       </div>
 
-      {/* Navigation (CONSULTER) — 5 DOMAINES, et rien d'autre (audit menu Vincent
-          2026-06-26). 5 usages cognitifs distincts, jamais fusionnés ; les
-          sous-vues (Terrain/Visites/Livraisons, Sujets/Récit, QR/Export…) se
-          découvrent EN ENTRANT dans la rubrique. Boutons = agir · Onglets = consulter. */}
-      {/* Vue d'ensemble = la page actuelle → pas d'entrée. 4 domaines à explorer. */}
-      <nav className="flex flex-wrap gap-2">
-        <NavChip href={`/sites/${id}/chronicle`} icon={<BookText className="h-4 w-4" />} label="Journal du chantier" />
-        <NavChip href={`/sites/${id}/actions`} icon={<ListTodo className="h-4 w-4" />} label="Actions" />
-        <NavChip href={`/sites/${id}/memoire`} icon={<Sparkles className="h-4 w-4" />} label="Mémoire" />
-        <NavChip href={`/sites/${id}/documents`} icon={<ShieldCheck className="h-4 w-4" />} label="Documents" />
-      </nav>
+      {/* Navigation (CONSULTER) — HUB chantier. Les 4 domaines restent visibles, mais
+          leurs sous-fonctions sont DIRECTEMENT cliquables ici (plus de page-tiroir à
+          clic mort), enrichies de compteurs. Cockpit, pas menu. Refonte 2026-06-29.
+          Les pages intermédiaires (/actions, /memoire, /documents) restent accessibles
+          par URL — elles ne sont plus un passage obligé. */}
+      <SiteDomainHub siteId={id} data={hubData} />
 
       {/* Indicateur factuel CR (compteur, jamais un taux %). */}
       {crStats.meetings > 0 && (
@@ -488,18 +505,5 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       </div>
 
     </div>
-  )
-}
-
-// Une entrée de domaine de la fiche chantier (5 et rien d'autre).
-function NavChip({ href, label, icon }: { href: string; label: string; icon?: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3.5 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]"
-    >
-      {icon}
-      {label}
-    </Link>
   )
 }

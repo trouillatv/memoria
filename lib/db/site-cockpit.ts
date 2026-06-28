@@ -292,6 +292,29 @@ function extractFirstPlace(...texts: (string | null | undefined)[]): string | nu
 }
 
 // =============================================================================
+// HUB chantier — compteurs vivants (cartes de la page chantier)
+// =============================================================================
+
+/**
+ * Compteurs BORNÉS pour les cartes du hub chantier (head-counts, pas de données).
+ * Surface l'état des sous-domaines DIRECTEMENT sur la page chantier → plus de
+ * « tiroirs » (clic mort vers un hub de 2-3 cartes). Cf. refonte IA 2026-06-29.
+ */
+export async function getSiteHubCounts(siteId: string): Promise<{
+  reservesOpen: number
+  oblToDo: number
+  subjectsOpen: number
+}> {
+  const sb = createAdminClient()
+  const [r, o, s] = await Promise.all([
+    sb.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'open'),
+    sb.from('site_obligation').select('id', { count: 'exact', head: true }).eq('site_id', siteId).in('status', ['a_produire', 'en_cours']),
+    sb.from('subjects').select('id', { count: 'exact', head: true }).eq('site_id', siteId).neq('status', 'closed'),
+  ])
+  return { reservesOpen: r.count ?? 0, oblToDo: o.count ?? 0, subjectsOpen: s.count ?? 0 }
+}
+
+// =============================================================================
 // SECTION 1 — IDENTITÉ
 // =============================================================================
 
