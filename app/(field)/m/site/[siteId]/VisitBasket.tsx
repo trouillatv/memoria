@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -12,6 +12,7 @@ import {
   addNoteCaptureAction,
   addVerificationCaptureAction,
   addPhotoCaptureAction,
+  addVideoCaptureAction,
   addPositionCaptureAction,
   addVocalCaptureAction,
   removeCaptureAction,
@@ -64,6 +65,7 @@ export function VisitBasket({
   const [recording, setRecording] = useState(false)
   const [elapsed, setElapsed] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
@@ -130,6 +132,27 @@ export function VisitBasket({
       if (!up.ok) { toast.error(up.error); return }
       const r = await addPhotoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId })
       if (r.ok) { toast.success('Photo ajoutée', { duration: 1200 }); refresh() }
+      else toast.error(r.error)
+    })
+  }
+
+  // ── Vidéo ──────────────────────────────────────────────────────────────────
+  // Calque exact de la photo : capture native du téléphone → upload (≤20 Mo) →
+  // capture 'video'. Pas de transcription au V1 (l'enrichissement viendra, gated).
+  function onVideoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    startBusy(async () => {
+      const fd = new FormData()
+      fd.set('report_id', reportId)
+      fd.set('kind', 'video')
+      fd.set('file', file)
+      fd.set('client_uuid', crypto.randomUUID())
+      const up = await uploadReportAttachmentAction(fd)
+      if (!up.ok) { toast.error(up.error); return }
+      const r = await addVideoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId })
+      if (r.ok) { toast.success('Vidéo ajoutée', { duration: 1200 }); refresh() }
       else toast.error(r.error)
     })
   }
@@ -262,6 +285,7 @@ export function VisitBasket({
 
   const KIND_ICON: Record<VisitCaptureKind, React.ReactNode> = {
     photo: <Camera className="h-4 w-4" />,
+    video: <Video className="h-4 w-4" />,
     vocal: <Mic className="h-4 w-4" />,
     note: <Pencil className="h-4 w-4" />,
     verification: <Target className="h-4 w-4" />,
@@ -271,6 +295,7 @@ export function VisitBasket({
   function captureLabel(c: VisitCaptureRow): string {
     switch (c.kind) {
       case 'photo': return 'Photo'
+      case 'video': return 'Vidéo'
       // Dès qu'il est transcrit, le vocal SE LIT (ce qui a été dit), il ne se nomme plus.
       case 'vocal': return c.body?.trim() ? `« ${c.body.trim()} »` : 'Mémo vocal'
       case 'note': return c.body ?? 'Note'
@@ -308,9 +333,10 @@ export function VisitBasket({
         </button>
       </div>
 
-      {/* Les 4 gestes (collecte sans friction) */}
-      <div className="grid grid-cols-4 gap-2">
+      {/* Les gestes de collecte sans friction */}
+      <div className="grid grid-cols-5 gap-2">
         <GestureButton icon={<Camera className="h-5 w-5" />} label="Photo" disabled={busy} onClick={() => fileRef.current?.click()} />
+        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" disabled={busy} onClick={() => videoRef.current?.click()} />
         <GestureButton
           icon={recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           label={recording ? 'Stop' : 'Vocal'}
@@ -327,6 +353,7 @@ export function VisitBasket({
         <MapPin className="h-3.5 w-3.5" /> Enregistrer ma position (facultatif)
       </button>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
+      <input ref={videoRef} type="file" accept="video/*" capture="environment" onChange={onVideoFile} className="hidden" />
 
       {/* Journal de terrain — « ce que j'ai vu », pas « mes captures ».
           L'heure est le fil du temps ; chaque ligne se lit comme un récit. */}

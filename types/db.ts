@@ -471,7 +471,7 @@ export interface DbSiteReport {
   updated_at: string
 }
 
-export type SiteReportAttachmentKind = 'audio' | 'photo' | 'file'
+export type SiteReportAttachmentKind = 'audio' | 'photo' | 'file' | 'video'
 
 export interface DbSiteReportAttachment {
   id: string

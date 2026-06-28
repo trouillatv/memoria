@@ -106,6 +106,7 @@ export interface TakeoverReading {
 
 export interface TenderObserved {
   photos: number
+  videos: number
   verifications: number
   /** Vocaux transcrits — la parole du terrain, brute. */
   vocals: { id: string; text: string }[]
@@ -183,6 +184,7 @@ export function lensTender(rm: DossierReadModel): TenderReading {
 
   const observed: TenderObserved = {
     photos: captures.filter((c) => c.kind === 'photo').length,
+    videos: captures.filter((c) => c.kind === 'video').length,
     verifications: captures.filter((c) => c.kind === 'verification').length,
     // Un vocal n'est exploitable que transcrit ; sinon il n'a pas de texte à lire.
     vocals: captures
