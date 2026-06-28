@@ -325,13 +325,22 @@ export default async function FieldSitePage({
         <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
       )}
 
-      {/* À suivre — actions ouvertes du site (issues des réunions). */}
+      {/* À suivre — APERÇU BORNÉ (top 3). La liste complète vit sur /m/actions :
+          la fiche site raconte le LIEU, elle ne doit pas être écrasée par la todo. */}
       {openActions.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
             <ListTodo className="h-4 w-4" /> À suivre ({openActions.length})
           </h2>
-          <OpenActionsList actions={openActions} compact />
+          <OpenActionsList actions={openActions.slice(0, 3)} compact />
+          {openActions.length > 3 && (
+            <Link
+              href="/m/actions"
+              className="inline-flex items-center gap-1 text-sm font-medium text-foreground/80 hover:text-foreground"
+            >
+              Voir les {openActions.length} actions <ChevronRight className="h-4 w-4" />
+            </Link>
+          )}
         </section>
       )}
 
