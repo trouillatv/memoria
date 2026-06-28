@@ -44,6 +44,7 @@ import {
 } from '@/lib/db/site-cockpit'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
+import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { SiteDomainHub } from './SiteDomainHub'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { ASavoirManager } from './ASavoirManager'
@@ -176,9 +177,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // HUB chantier — compteurs vivants pour rendre les 4 domaines + leurs sous-fonctions
   // directement cliquables (plus de « tiroirs »). Bornés : 3 head-counts, le reste
   // réutilise des données déjà chargées.
-  const [hubCounts, watched] = await Promise.all([
+  const [hubCounts, watched, attentionSignals] = await Promise.all([
     getSiteHubCounts(id).catch(() => ({ reservesOpen: 0, oblToDo: 0, subjectsOpen: 0 })),
     listSiteSubjectsToWatch(id, 20).catch(() => []),
+    buildSiteMemorySignals(id).catch(() => []),
   ])
   const blockedDossiers = watched.filter((w) => w.state === 'bloqué').length
   const todayIso = todayLocalIso()
@@ -262,7 +264,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           clic mort), enrichies de compteurs. Cockpit, pas menu. Refonte 2026-06-29.
           Les pages intermédiaires (/actions, /memoire, /documents) restent accessibles
           par URL — elles ne sont plus un passage obligé. */}
-      <SiteDomainHub siteId={id} data={hubData} />
+      <SiteDomainHub siteId={id} data={hubData} signals={attentionSignals} />
 
       {/* Indicateur factuel CR (compteur, jamais un taux %). */}
       {crStats.meetings > 0 && (

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { BookText, ListTodo, Sparkles, ShieldCheck, Clock, AlertTriangle, ClipboardCheck, Layers } from 'lucide-react'
+import type { MemorySignal } from '@/lib/db/site-memory-signals'
 
 // HUB chantier organisé par QUESTIONS métier, pas par modules (refonte IA 2026-06-29).
 // Guillaume ne pense pas « je vais dans Mémoire » mais « qu'est-ce que je dois
@@ -44,7 +45,7 @@ function relDate(iso: string | null): string | null {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
-export function SiteDomainHub({ siteId, data }: { siteId: string; data: SiteHubData }) {
+export function SiteDomainHub({ siteId, data, signals }: { siteId: string; data: SiteHubData; signals: MemorySignal[] }) {
   const lastVisit = relDate(data.lastVisitAt)
 
   const domains: HubDomain[] = [
@@ -116,7 +117,41 @@ export function SiteDomainHub({ siteId, data }: { siteId: string; data: SiteHubD
         )}
       </div>
 
-      {/* Les 4 lectures métier. */}
+      {/* Ce qui demande ton attention — la SYNTHÈSE (signaux mémoire déterministes).
+          La page RÉPOND avant de faire naviguer. Wording calme et descriptif ; le
+          détail s'approfondit dans les sections ci-dessous. */}
+      <div className="rounded-xl border border-amber-200/70 bg-amber-50/50 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+        <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800/80 dark:text-amber-300/80">
+          Ce qui demande ton attention
+        </div>
+        {signals.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Rien ne demande ton attention pour l&apos;instant.</p>
+        ) : (
+          <ul className="space-y-2">
+            {signals.slice(0, 5).map((s) => (
+              <li key={s.kind}>
+                <div className="text-sm font-medium">{s.title}</div>
+                <ul className="mt-0.5 space-y-0.5">
+                  {s.items.slice(0, 3).map((it) => (
+                    <li key={it.id} className="flex gap-1.5 text-xs text-muted-foreground">
+                      <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-amber-500/70" aria-hidden />
+                      <span className="min-w-0">
+                        {it.label}
+                        {it.meta && <span className="text-muted-foreground/70"> — {it.meta}</span>}
+                      </span>
+                    </li>
+                  ))}
+                  {s.items.length > 3 && (
+                    <li className="pl-2.5 text-xs text-muted-foreground/70">+{s.items.length - 3} autre{s.items.length - 3 > 1 ? 's' : ''}</li>
+                  )}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Les 4 lectures métier — pour APPROFONDIR, plus pour découvrir. */}
       <div className="grid gap-3 md:grid-cols-2">
         {domains.map((d) => (
           <section key={d.question} className="rounded-xl border border-border bg-card p-3.5 space-y-2.5">
