@@ -4,6 +4,8 @@ import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, 
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
+import { listGeolocatedCapturesBySite } from '@/lib/db/visit-captures'
+import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { setDossierPhaseAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +33,11 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
   const dossier = await getDossier(id)
   if (!dossier) notFound()
   const r = await readForTender(id)
+  const geoCaps = await listGeolocatedCapturesBySite(dossier.site_id).catch(() => [])
+  const mapCaps: MapCapture[] = geoCaps.map((c) => ({
+    id: c.id, kind: c.kind, lat: c.lat, lng: c.lng, created_at: c.created_at,
+    body: c.body, reportId: c.report_id, subjectName: c.subject_name,
+  }))
 
   return (
     <div className="max-w-3xl space-y-6 py-6">
@@ -57,20 +64,12 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
       <PhaseBar dossierId={dossier.id} siteId={dossier.site_id} phase={dossier.phase} />
 
       {/* Continuer la collecte sur le terrain (mobile). La prévisite = une visite sur le LIEU. */}
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={`/m/site/${dossier.site_id}`}
-          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-        >
-          <Smartphone className="h-4 w-4 text-sky-600" /> Continuer la prévisite sur le terrain
-        </Link>
-        <Link
-          href={`/sites/${dossier.site_id}/carte`}
-          className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
-        >
-          <MapIcon className="h-4 w-4 text-sky-600" /> Carte des captures
-        </Link>
-      </div>
+      <Link
+        href={`/m/site/${dossier.site_id}`}
+        className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm font-medium hover:bg-muted"
+      >
+        <Smartphone className="h-4 w-4 text-sky-600" /> Continuer la prévisite sur le terrain
+      </Link>
 
       {r.isEmpty ? (
         <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
@@ -105,6 +104,12 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
               </ul>
             )}
           </Block>
+
+          {mapCaps.length > 0 && (
+            <Block icon={<MapIcon className="h-4 w-4 text-sky-600" />} title="Carte des observations">
+              <CaptureMap siteId={dossier.site_id} captures={mapCaps} heightClass="h-[360px]" />
+            </Block>
+          )}
 
           {r.toWatch.length > 0 && (
             <Block icon={<AlertTriangle className="h-4 w-4 text-rose-600" />} title="Points à creuser">
