@@ -60,6 +60,28 @@ export async function createDossier(input: {
 }
 
 /**
+ * Fait avancer un dossier dans son cycle de vie (prospect→en_ao→actif/perdu).
+ * SOUDURE ARRIÈRE : « marché gagné » (phase 'actif') ne COPIE rien — c'est le même
+ * dossier, le même lieu, la même mémoire de prévisite. On démasque alors le lieu de
+ * la grille chantier (site.phase='actif', garde transitoire mig 171). Zéro rupture.
+ */
+export async function updateDossierPhase(dossierId: string, phase: DossierPhase): Promise<void> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('dossiers')
+    .update({ phase, updated_at: new Date().toISOString() })
+    .eq('id', dossierId)
+    .is('deleted_at', null)
+    .select('site_id')
+    .maybeSingle()
+  if (error) throw error
+  // Marché gagné → le lieu devient un chantier visible (la mémoire suit, par construction).
+  if (phase === 'actif' && data) {
+    await supabase.from('sites').update({ phase: 'actif' }).eq('id', (data as { site_id: string }).site_id)
+  }
+}
+
+/**
  * Le dossier d'opération OUVERT d'un lieu (le plus récent non perdu/archivé), ou
  * null. Point de résolution unique pour stamper dossier_id sur les captures/infos
  * créées sur ce site. Un lieu sans dossier (chantier legacy) renvoie null → la
