@@ -155,6 +155,49 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   return (data ?? []) as VisitCaptureRow[]
 }
 
+/**
+ * Captures GÉOLOCALISÉES d'un site (lat/lng non nuls), avec le nom du point suivi
+ * concerné s'il existe — pour la carte des observations (« où ET quoi »). La carte
+ * est une LECTURE du journal, pas un module ; ce loader la nourrit.
+ */
+export interface GeoCapture {
+  id: string
+  kind: VisitCaptureKind
+  lat: number
+  lng: number
+  created_at: string
+  body: string | null
+  report_id: string
+  subject_name: string | null
+}
+
+export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000): Promise<GeoCapture[]> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('visit_capture')
+    .select('id, kind, lat, lng, created_at, body, report_id, subject_id')
+    .eq('site_id', siteId)
+    .neq('status', 'discarded')
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  const rows = (data ?? []) as Array<{
+    id: string; kind: VisitCaptureKind; lat: number; lng: number; created_at: string
+    body: string | null; report_id: string; subject_id: string | null
+  }>
+  const subjectIds = [...new Set(rows.map((r) => r.subject_id).filter((x): x is string => !!x))]
+  const nameById = new Map<string, string>()
+  if (subjectIds.length > 0) {
+    const { data: subs } = await supabase.from('subjects').select('id, name').in('id', subjectIds)
+    for (const s of (subs ?? []) as Array<{ id: string; name: string }>) nameById.set(s.id, s.name)
+  }
+  return rows.map((r) => ({
+    id: r.id, kind: r.kind, lat: r.lat, lng: r.lng, created_at: r.created_at, body: r.body,
+    report_id: r.report_id, subject_name: r.subject_id ? nameById.get(r.subject_id) ?? null : null,
+  }))
+}
+
 /** Combien de captures non écartées dans le panier (badge « N éléments »). */
 export async function countVisitCaptures(reportId: string): Promise<number> {
   const supabase = createAdminClient()
