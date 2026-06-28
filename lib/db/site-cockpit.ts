@@ -20,7 +20,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
-import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
+import { todayLocalIso, addDaysLocal, localDateOf } from '@/lib/time/local-date'
 import { anomalyLabel } from '@/lib/anomaly-labels'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 import {
@@ -1306,7 +1306,9 @@ export async function getSiteRecentRhythm(
   const teamsByDate = new Map<string, Set<string>>()
   for (const i of interventionRows) {
     if (!i.executed_at) continue
-    const day = i.executed_at.slice(0, 10)
+    // Date civile NOUMÉA, pas UTC : un passage du matin NC (= la veille en UTC)
+    // doit tomber dans la bonne case, sinon le heatmap a « un jour de retard ».
+    const day = localDateOf(new Date(i.executed_at))
     const idx = indexByDate.get(day)
     if (idx !== undefined) days[idx].count += 1
     if (i.assigned_team_id) {
@@ -1381,9 +1383,10 @@ export async function getSiteRecentRhythm(
       supabase.from('site_actions').select('created_at').eq('site_id', siteId).gte('created_at', sinceIso),
       supabase.from('site_reports').select('created_at, origin').eq('site_id', siteId).gte('created_at', sinceIso),
     ])
-    for (const a of (actsRes.data ?? []) as Array<{ created_at: string }>) bump(a.created_at.slice(0, 10), 'Action créée')
+    // Date civile NOUMÉA (timestamptz UTC → jour NC), même raison que ci-dessus.
+    for (const a of (actsRes.data ?? []) as Array<{ created_at: string }>) bump(localDateOf(new Date(a.created_at)), 'Action créée')
     for (const r of (repsRes.data ?? []) as Array<{ created_at: string; origin: string | null }>) {
-      bump(r.created_at.slice(0, 10), r.origin ? 'Visite terrain' : 'Compte-rendu')
+      bump(localDateOf(new Date(r.created_at)), r.origin ? 'Visite terrain' : 'Compte-rendu')
     }
   }
 
