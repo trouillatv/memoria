@@ -14,6 +14,7 @@ import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
+import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -347,6 +348,7 @@ export default async function FieldHomePage({
         <DateNav todayIso={todayIso} selectedIso={selectedDate} />
         <MeetingLauncher />
         <VisitLauncherHome />
+        <PrevisiteAoLauncher />
         <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
         <FreePhotoFab sites={fabSites} />
       </div>
@@ -359,6 +361,7 @@ export default async function FieldHomePage({
         <DateNav todayIso={todayIso} selectedIso={selectedDate} />
         <MeetingLauncher />
         <VisitLauncherHome />
+        <PrevisiteAoLauncher />
         <div className="rounded-lg border bg-card max-w-md">
           <EmptyState
             icon={CheckCircle2}
@@ -385,6 +388,7 @@ export default async function FieldHomePage({
       <p className="-mt-2 text-xs text-muted-foreground">Aujourd&apos;hui sur le terrain · interventions, visites, captures.</p>
       <MeetingLauncher />
       <VisitLauncherHome />
+      <PrevisiteAoLauncher />
 
       {/* V6.2 (Vincent 2026-05-20) — alertes mobile chef d'équipe au ROUGE.
           Position déjà en haut (juste après DateNav), couleurs renforcées.
