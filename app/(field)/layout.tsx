@@ -95,7 +95,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           pilote vit côté chef. Niveau route/feature, pas de surveillance. */}
       <PageViewLogger />
       <SyncToastBridge />
-      <FieldSyncDrainer />
+      <FieldSyncDrainer userId={user.id} />
     </div>
   )
 }

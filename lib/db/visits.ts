@@ -191,6 +191,9 @@ export interface ActiveVisitSummary {
   siteName: string
   startedAt: string | null
   captureCount: number
+  /** Horodatage de la capture la plus récente (fallback started_at) — « dernière
+   *  activité » : aide l'agent qui revient à reconnaître SA visite d'un coup d'œil. */
+  lastActivityAt: string | null
 }
 
 export async function listActiveVisitsForUser(userId: string, limit = 5): Promise<ActiveVisitSummary[]> {
@@ -215,17 +218,29 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
 
   return Promise.all(
     rows.map(async (r) => {
-      const { count } = await supabase
-        .from('visit_capture')
-        .select('id', { count: 'exact', head: true })
-        .eq('report_id', r.id)
-        .neq('status', 'discarded')
+      const [{ count }, { data: last }] = await Promise.all([
+        supabase
+          .from('visit_capture')
+          .select('id', { count: 'exact', head: true })
+          .eq('report_id', r.id)
+          .neq('status', 'discarded'),
+        supabase
+          .from('visit_capture')
+          .select('created_at')
+          .eq('report_id', r.id)
+          .neq('status', 'discarded')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+      const lastCaptureAt = (last as { created_at: string } | null)?.created_at ?? null
       return {
         reportId: r.id,
         siteId: r.site_id,
         siteName: nameById.get(r.site_id) ?? 'Chantier',
         startedAt: r.started_at,
         captureCount: count ?? 0,
+        lastActivityAt: lastCaptureAt ?? r.started_at,
       }
     }),
   )

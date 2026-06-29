@@ -34,6 +34,10 @@ export interface QueuedVisitCapture {
   tempId: string
   /** Identité idempotente (uuid v4) — portée jusqu'à visit_capture.client_uuid. */
   clientUuid: string
+  /** L'agent qui a déposé (anti cross-compte sur appareil partagé) : le drainer
+   *  ne monte QUE les dépôts du compte actuellement connecté. Optionnel pour
+   *  rétrocompat avec d'éventuelles entries déposées avant ce champ. */
+  userId?: string
   reportId: string
   siteId: string
   kind: QueuedVisitKind

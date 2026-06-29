@@ -26,19 +26,26 @@ import {
  */
 export function useVisitCaptureUploader(opts?: {
   reportId?: string
+  /** Si fourni, on ne draine QUE les dépôts de ce compte (appareil partagé). */
+  userId?: string
   onUploaded?: (clientUuid: string, captureId: string) => void
 }): { queued: QueuedVisitCapture[]; uploadingUuid: string | null; syncNow: () => Promise<void> } {
   const router = useRouter()
   const reportId = opts?.reportId
+  const userId = opts?.userId
   const onUploaded = opts?.onUploaded
   const [queued, setQueued] = useState<QueuedVisitCapture[]>([])
   const [uploadingUuid, setUploadingUuid] = useState<string | null>(null)
   const isUploadingRef = useRef(false)
 
-  const readList = useCallback(
-    () => (reportId ? listQueuedVisitCapturesByReport(reportId) : listQueuedVisitCaptures()),
-    [reportId],
-  )
+  const readList = useCallback(async () => {
+    const all = reportId
+      ? await listQueuedVisitCapturesByReport(reportId)
+      : await listQueuedVisitCaptures()
+    // Anti cross-compte : on ignore les dépôts d'un autre agent (les siens
+    // attendront son retour). Les entries non taguées (rétrocompat) passent.
+    return userId ? all.filter((e) => !e.userId || e.userId === userId) : all
+  }, [reportId, userId])
 
   const sync = useCallback(async () => {
     if (isUploadingRef.current) return
@@ -77,6 +84,10 @@ export function useVisitCaptureUploader(opts?: {
               }).catch(() => { /* le cron rattrapera */ })
             }
             onUploaded?.(item.clientUuid, r.captureId)
+          } else if (r.drop) {
+            // Irrécupérable (visite supprimée, params invalides) : on retire de la
+            // file plutôt que de re-tenter indéfiniment une entry condamnée.
+            await removeQueuedVisitCapture(item.tempId)
           } else {
             await updateQueuedVisitCapture(item.tempId, {
               attempts: item.attempts + 1,
