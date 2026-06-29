@@ -133,6 +133,8 @@ export interface TenderReading {
   toWatch: TakeoverDossier[]
   /** Éléments ⭐ marqués sur le terrain « à réutiliser dans le mémoire technique » (mig 174). */
   starred: { id: string; kind: string; text: string }[]
+  /** ❓ Questions ouvertes (captured_knowledge kind='question', active) — à résoudre au bureau. */
+  questions: { id: string; text: string }[]
   isEmpty: boolean
 }
 
@@ -221,6 +223,7 @@ export function lensTender(rm: DossierReadModel): TenderReading {
       kind: c.kind,
       text: (c.kind === 'note' || c.kind === 'vocal') && c.body?.trim() ? c.body.trim() : (KIND_LABEL_FR[c.kind] ?? c.kind),
     }))
+  const questions = knowledge.filter((k) => k.kind === 'question').map((k) => ({ id: k.id, text: k.title }))
 
   return {
     siteName: rm.identity.dossier?.label ?? rm.identity.site?.name ?? 'Dossier',
@@ -233,9 +236,11 @@ export function lensTender(rm: DossierReadModel): TenderReading {
     missingDocuments,
     toWatch,
     starred,
+    questions,
     isEmpty:
       observed.capturesTotal === 0 && promises.length === 0 && risks.length === 0 &&
-      pitfalls.length === 0 && missingDocuments.length === 0 && toWatch.length === 0,
+      pitfalls.length === 0 && missingDocuments.length === 0 && toWatch.length === 0 &&
+      questions.length === 0,
   }
 }
 

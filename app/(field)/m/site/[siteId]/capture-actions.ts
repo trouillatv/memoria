@@ -15,6 +15,7 @@ import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mimeToExt } from '@/lib/ai/transcribe'
 import { getSiteReport, addReportAttachment } from '@/lib/db/site-reports'
+import { addCapturedKnowledge } from '@/lib/db/captured-knowledge'
 import {
   addVisitCapture,
   listVisitCaptures,
@@ -262,6 +263,41 @@ export async function addVocalCaptureAction(
 }
 
 // ── Retirer une capture (faux geste, pendant la collecte) ────────────────────
+
+// ── Question ouverte / « à vérifier au retour » (❓) ──────────────────────────
+// La 2ᵉ primitive terrain (avec ⭐) : « je ne sais pas encore ». Réutilise
+// captured_knowledge (kind='question', active→resolved) — pas un outil de tâches
+// (ni assignation, ni échéance, ni priorité). Sur une capture ou libre.
+
+const questionSchema = z.object({
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid(),
+  body: z.string().trim().min(1).max(500),
+  capture_id: z.string().uuid().optional(),
+})
+
+export async function addQuestionCaptureAction(
+  input: z.input<typeof questionSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = questionSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await addCapturedKnowledge({
+      siteId: parsed.data.site_id,
+      sourceType: 'visit',
+      sourceId: parsed.data.report_id,
+      kind: 'question',
+      title: parsed.data.body,
+      sourceCaptureIds: parsed.data.capture_id ? [parsed.data.capture_id] : [],
+      createdBy: auth.userId,
+    })
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
 
 // ── Marquer pour le mémoire technique (⭐, optionnel) ─────────────────────────
 
