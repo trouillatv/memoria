@@ -12,7 +12,7 @@ export const revalidate = 0
 // vivent ici, hors de la grille chantier, tant qu'ils ne sont pas gagnés. Prototype :
 // accessible par URL, pas encore dans la navigation principale. Cf. mig 171.
 
-const PHASE_FR: Record<string, string> = { prospect: 'Prospection', en_ao: 'Appel d’offres' }
+const PHASE_FR: Record<string, string> = { prospect: 'Prospection', en_ao: 'Préparation AO' }
 
 export default async function OpportunitesPage() {
   const user = await getCurrentUserWithProfile()
