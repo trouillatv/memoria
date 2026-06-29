@@ -1,5 +1,5 @@
 ﻿import { notFound } from 'next/navigation'
-import { AlertTriangle, FileX } from 'lucide-react'
+import { AlertTriangle, FileX, Compass } from 'lucide-react'
 import Link from 'next/link'
 import {
   getTender,
@@ -14,6 +14,8 @@ import { listTenderDocumentSources } from '@/lib/db/tender-document-sources'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getTenderClientCapital } from '@/lib/db/tender-client-capital'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getDossier, listDossiersLite } from '@/lib/db/dossiers'
+import { setTenderDossierAction } from './actions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TenderAnalysisLoader } from './TenderAnalysisLoader'
 import { TenderSynthese } from './TenderSynthese'
@@ -47,6 +49,11 @@ export default async function TenderDetailPage({
 
   const tender = await getTender(id)
   if (!tender) notFound()
+
+  // Soudure AVANT : l'opportunité (dossier) à laquelle l'AO est rattaché, ou le
+  // sélecteur pour l'y rattacher. L'AO est un épisode ; la mémoire vit dans le dossier.
+  const attachedDossier = tender.dossier_id ? await getDossier(tender.dossier_id) : null
+  const dossiersForPicker = attachedDossier ? [] : await listDossiersLite().catch(() => [])
 
   const isInProgress =
     tender.status === 'analyzing' || tender.status === 'extracting'
@@ -179,18 +186,41 @@ export default async function TenderDetailPage({
                 </h1>
                 <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
               </div>
-              {/* Doctrine V5 — mémoire commerciale. Visible si l'AO est soumis
-                  OU déjà marqué (pour modifier). Jamais en push, jamais d'alerte. */}
-              {(tender.status === 'submitted' || tender.outcome !== null) && (
-                <div className="shrink-0">
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                {/* Soudure AVANT — rattacher l'AO à une opportunité (ou y naviguer). */}
+                {attachedDossier ? (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Link href={`/dossiers/${attachedDossier.id}`} className="inline-flex items-center gap-1 font-medium text-sky-700 hover:underline">
+                      <Compass className="h-3.5 w-3.5" /> {attachedDossier.label ?? 'Opportunité'}
+                    </Link>
+                    <form action={setTenderDossierAction}>
+                      <input type="hidden" name="tenderId" value={id} />
+                      <input type="hidden" name="dossierId" value="" />
+                      <button type="submit" className="text-muted-foreground hover:text-destructive">détacher</button>
+                    </form>
+                  </div>
+                ) : dossiersForPicker.length > 0 ? (
+                  <form action={setTenderDossierAction} className="flex items-center gap-1.5">
+                    <input type="hidden" name="tenderId" value={id} />
+                    <select name="dossierId" required defaultValue="" className="rounded-md border bg-background px-2 py-1 text-xs">
+                      <option value="" disabled>Rattacher à une opportunité…</option>
+                      {dossiersForPicker.map((d) => <option key={d.id} value={d.id}>{d.label ?? d.site_name ?? 'Opportunité'}</option>)}
+                    </select>
+                    <button type="submit" className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Rattacher</button>
+                  </form>
+                ) : null}
+
+                {/* Doctrine V5 — mémoire commerciale. Visible si l'AO est soumis
+                    OU déjà marqué (pour modifier). Jamais en push, jamais d'alerte. */}
+                {(tender.status === 'submitted' || tender.outcome !== null) && (
                   <OutcomeTrigger
                     tenderId={id}
                     currentOutcome={tender.outcome}
                     currentReason={tender.outcome_reason}
                     currentTag={tender.outcome_tag}
                   />
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </header>
         )}

@@ -1,12 +1,13 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon, Star, HelpCircle, Check } from 'lucide-react'
+import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon, Star, HelpCircle, Check, FileText } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
 import { listGeolocatedCapturesBySite } from '@/lib/db/visit-captures'
+import { listTendersByDossier, listAttachableTenders } from '@/lib/db/tenders'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
-import { setDossierPhaseAction, resolveQuestionAction } from './actions'
+import { setDossierPhaseAction, resolveQuestionAction, attachTenderToDossierAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,11 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
   const dossier = await getDossier(id)
   if (!dossier) notFound()
   const r = await readForTender(id)
-  const geoCaps = await listGeolocatedCapturesBySite(dossier.site_id).catch(() => [])
+  const [geoCaps, attachedTenders, attachableTenders] = await Promise.all([
+    listGeolocatedCapturesBySite(dossier.site_id).catch(() => []),
+    listTendersByDossier(dossier.id).catch(() => []),
+    listAttachableTenders().catch(() => []),
+  ])
   const mapCaps: MapCapture[] = geoCaps.map((c) => ({
     id: c.id, kind: c.kind, lat: c.lat, lng: c.lng, created_at: c.created_at,
     body: c.body, reportId: c.report_id, subjectName: c.subject_name,
@@ -71,6 +76,41 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
       >
         <Smartphone className="h-4 w-4 text-sky-600" /> Continuer la prévisite sur le terrain
       </Link>
+
+      {/* Soudure AVANT : les AO rattachés à cette opportunité (0..N, souvent 1). Le
+          tender est un ÉPISODE rattaché — la mémoire reste portée par le dossier. */}
+      <section className="rounded-2xl border bg-card p-4 space-y-2">
+        <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <FileText className="h-4 w-4" /> Appels d&apos;offres rattachés
+        </h2>
+        {attachedTenders.length > 0 ? (
+          <ul className="space-y-1.5">
+            {attachedTenders.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2">
+                <Link href={`/tenders/${t.id}`} className="min-w-0 truncate text-sm font-medium hover:underline">{t.title}</Link>
+                <form action={attachTenderToDossierAction} className="shrink-0">
+                  <input type="hidden" name="tenderId" value={t.id} />
+                  <input type="hidden" name="dossierId" value={dossier.id} />
+                  <input type="hidden" name="detach" value="1" />
+                  <button type="submit" className="text-[11px] text-muted-foreground hover:text-destructive">Détacher</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">Aucun AO rattaché. Quand l&apos;appel d&apos;offres arrive, relie-le ici.</p>
+        )}
+        {attachableTenders.length > 0 && (
+          <form action={attachTenderToDossierAction} className="flex items-center gap-2 pt-1">
+            <input type="hidden" name="dossierId" value={dossier.id} />
+            <select name="tenderId" required defaultValue="" className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm">
+              <option value="" disabled>Rattacher un appel d&apos;offres…</option>
+              {attachableTenders.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+            </select>
+            <button type="submit" className="shrink-0 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted">Rattacher</button>
+          </form>
+        )}
+      </section>
 
       {r.isEmpty ? (
         <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">

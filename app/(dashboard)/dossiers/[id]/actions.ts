@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { updateDossierPhase } from '@/lib/db/dossiers'
 import { setCapturedKnowledgeStatus } from '@/lib/db/captured-knowledge'
+import { attachTenderToDossier } from '@/lib/db/tenders'
 import type { DossierPhase } from '@/types/db'
 
 const ALLOWED: DossierPhase[] = ['prospect', 'en_ao', 'actif', 'perdu', 'archive']
@@ -31,5 +32,17 @@ export async function resolveQuestionAction(formData: FormData): Promise<void> {
   const dossierId = String(formData.get('dossierId') ?? '')
   if (!id) throw new Error('Paramètres invalides')
   await setCapturedKnowledgeStatus(id, 'resolved')
+  revalidatePath(`/dossiers/${dossierId}`)
+}
+
+// Soudure AVANT (côté opportunité) : rattacher / détacher un AO à ce dossier.
+export async function attachTenderToDossierAction(formData: FormData): Promise<void> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) throw new Error('Non autorisé')
+  const tenderId = String(formData.get('tenderId') ?? '')
+  const dossierId = String(formData.get('dossierId') ?? '')
+  const detach = formData.get('detach') === '1'
+  if (!tenderId || !dossierId) throw new Error('Paramètres invalides')
+  await attachTenderToDossier(tenderId, detach ? null : dossierId)
   revalidatePath(`/dossiers/${dossierId}`)
 }
