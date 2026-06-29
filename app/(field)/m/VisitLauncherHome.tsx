@@ -42,9 +42,12 @@ export function VisitLauncherHome() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium active:scale-[0.99] transition-transform"
+        className="flex h-full w-full items-center gap-2 rounded-xl bg-emerald-50 px-2.5 py-3 text-left text-[13px] font-semibold leading-tight text-emerald-700 active:scale-[0.97] transition-transform dark:bg-emerald-950/30 dark:text-emerald-300"
       >
-        <Play className="h-4 w-4" /> Démarrer une visite
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-emerald-600 dark:bg-white/10 dark:text-emerald-300">
+          <Play className="h-4 w-4" />
+        </span>
+        Démarrer une visite
       </button>
 
       {open && (
