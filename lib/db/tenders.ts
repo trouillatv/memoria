@@ -80,11 +80,55 @@ export async function getTender(id: string): Promise<DbTender | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('tenders')
-    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, created_by, created_at, updated_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
+    .select('id, title, client_name, deadline, status, opportunity_score, error_msg, dossier_id, created_by, created_at, updated_at, deleted_at, outcome, outcome_at, outcome_reason, outcome_tag, outcome_set_by, voice_note_path, voice_note_duration_seconds, voice_note_recorded_at, voice_note_recorded_by')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
   return data as DbTender
+}
+
+// ── Soudure AVANT : rattacher un AO à une opportunité (dossier) — mig 175 ─────
+
+/** Rattache (ou détache si null) un AO à une opportunité. Aucune copie de données. */
+export async function attachTenderToDossier(tenderId: string, dossierId: string | null): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('tenders')
+    .update({ dossier_id: dossierId, updated_at: new Date().toISOString() })
+    .eq('id', tenderId)
+  if (error) throw error
+}
+
+export interface TenderLite { id: string; title: string; status: string; deadline: string | null }
+
+/** Les AO rattachés à une opportunité (0..N, souvent 1) — pour l'écran dossier. */
+export async function listTendersByDossier(dossierId: string): Promise<TenderLite[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('tenders')
+    .select('id, title, status, deadline')
+    .eq('dossier_id', dossierId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as TenderLite[]
+}
+
+/** Les AO non encore rattachés (pour le sélecteur « Rattacher un AO » côté dossier). */
+export async function listAttachableTenders(limit = 50): Promise<TenderLite[]> {
+  const supabase = createAdminClient()
+  let q = supabase
+    .from('tenders')
+    .select('id, title, status, deadline')
+    .is('deleted_at', null)
+    .is('dossier_id', null)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  const orgId = await getOrgId().catch(() => null)
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
+  if (error) throw error
+  return (data ?? []) as TenderLite[]
 }
 
 export async function createTender(input: {

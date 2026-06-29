@@ -142,6 +142,27 @@ export async function listOpportunityDossiers(): Promise<OpportunityDossier[]> {
   }))
 }
 
+export interface DossierLite { id: string; label: string | null; site_name: string | null; phase: DossierPhase }
+
+/** Toutes les opportunités du tenant (léger) — pour rattacher un AO depuis l'écran tender. */
+export async function listDossiersLite(): Promise<DossierLite[]> {
+  const supabase = createAdminClient()
+  const orgId = await getOrgId()
+  let q = supabase
+    .from('dossiers')
+    .select('id, label, phase, site:sites(name)')
+    .is('deleted_at', null)
+    .order('opened_at', { ascending: false })
+  if (orgId) q = q.eq('organization_id', orgId)
+  const { data, error } = await q
+  if (error) throw error
+  return ((data ?? []) as Array<{ id: string; label: string | null; phase: DossierPhase; site: { name: string } | { name: string }[] | null }>)
+    .map((d) => ({
+      id: d.id, label: d.label, phase: d.phase,
+      site_name: Array.isArray(d.site) ? (d.site[0]?.name ?? null) : (d.site?.name ?? null),
+    }))
+}
+
 /**
  * Crée une opportunité = un LIEU (site) + un DOSSIER en phase 'prospect'. Le site
  * porte phase='prospect' (garde transitoire mig 171 : le masque hors grille

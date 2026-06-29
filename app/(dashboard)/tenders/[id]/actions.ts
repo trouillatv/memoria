@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday } from '@/lib/db/tenders'
+import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday, attachTenderToDossier } from '@/lib/db/tenders'
 import { getEvidenceForEngagement } from '@/lib/db/engagements'
 
 async function requireManagerOrAdmin() {
@@ -19,6 +19,17 @@ async function requireManagerOrAdmin() {
 }
 
 const idSchema = z.object({ id: z.string().uuid() })
+
+// Soudure AVANT : rattacher/détacher cet AO à une opportunité (dossier). dossierId
+// vide = détacher. Aucune copie de données — simple référence. Cf. mig 175.
+export async function setTenderDossierAction(formData: FormData): Promise<void> {
+  await requireManagerOrAdmin()
+  const tenderId = String(formData.get('tenderId') ?? '')
+  const dossierId = String(formData.get('dossierId') ?? '')
+  if (!z.string().uuid().safeParse(tenderId).success) throw new Error('AO invalide')
+  await attachTenderToDossier(tenderId, dossierId || null)
+  revalidatePath(`/tenders/${tenderId}`)
+}
 
 export async function relaunchAnalysisAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()

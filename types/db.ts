@@ -84,6 +84,8 @@ export interface DbTender {
   status: TenderStatus
   opportunity_score: number | null
   error_msg: string | null
+  /** Opportunité (dossier) à laquelle l'AO est rattaché (mig 175) — 0..1. */
+  dossier_id: string | null
   created_by: string
   created_at: string
   updated_at: string | null
