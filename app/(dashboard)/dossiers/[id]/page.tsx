@@ -53,10 +53,10 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
     { label: 'Prospection', done: true },
     { label: 'Prévisite', done: r.observed.capturesTotal > 0 },
     { label: 'AO reçu', done: attachedTenders.length > 0 },
-    { label: 'Analyse', done: attachedTenders.some((t) => ['ready', 'submitted', 'archived'].includes(t.status)) },
+    { label: 'Analyse de l’AO', done: attachedTenders.some((t) => ['ready', 'submitted', 'archived'].includes(t.status)) },
     { label: 'Réponse envoyée', done: attachedTenders.some((t) => t.status === 'submitted') },
     lost ? { label: 'Perdu', done: true, lost: true } : { label: 'Marché gagné', done: advanced },
-    { label: 'Travaux', done: advanced },
+    { label: 'Chantier actif', done: advanced },
   ]
 
   return (
