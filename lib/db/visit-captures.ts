@@ -38,6 +38,8 @@ export interface VisitCaptureRow {
   triage_intent: CaptureTriageIntent
   /** Marqué « à réutiliser dans le mémoire technique » (mig 174) — optionnel, terrain. */
   starred: boolean
+  /** Identité idempotente d'un dépôt offline-first (mig 177) — null pour les gestes serveur. */
+  client_uuid: string | null
   lat: number | null
   lng: number | null
   created_at: string
@@ -54,14 +56,30 @@ export interface AddVisitCaptureInput {
   attachmentId?: string | null
   /** Pour 'verification' : le point suivi recontrôlé. */
   subjectId?: string | null
+  /** Identité idempotente d'un dépôt offline-first (mig 177). Si une capture
+   *  existe déjà pour ce client_uuid, on la retourne au lieu d'en créer une 2ᵉ. */
+  clientUuid?: string | null
   lat?: number | null
   lng?: number | null
   createdBy: string | null
 }
 
-/** Dépose une capture brute dans le panier de la visite (statut 'captured'). */
+/** Dépose une capture brute dans le panier de la visite (statut 'captured').
+ *  Idempotent si `clientUuid` est fourni : un re-drain (réseau rejoué) renvoie
+ *  la capture déjà créée plutôt que d'en dupliquer une. */
 export async function addVisitCapture(input: AddVisitCaptureInput): Promise<string> {
   const supabase = createAdminClient()
+
+  // Court-circuit idempotent : si ce dépôt a déjà abouti, on renvoie l'existant.
+  if (input.clientUuid) {
+    const { data: existing } = await supabase
+      .from('visit_capture')
+      .select('id')
+      .eq('client_uuid', input.clientUuid)
+      .maybeSingle()
+    if (existing) return (existing as { id: string }).id
+  }
+
   const orgId = await getOrgId()
   // Hérite le dossier d'opération de la visite (un seul point de vérité : le report).
   const { data: rep } = await supabase
@@ -87,14 +105,38 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       transcript_status: input.transcriptStatus ?? null,
       attachment_id: input.attachmentId ?? null,
       subject_id: input.subjectId ?? null,
+      client_uuid: input.clientUuid ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
       created_by: input.createdBy,
     })
     .select('id')
     .single()
-  if (error) throw error
+  if (error) {
+    // Course idempotente : un re-drain concurrent a inséré entre-temps (mig 177).
+    if ((error as { code?: string }).code === '23505' && input.clientUuid) {
+      const { data: raced } = await supabase
+        .from('visit_capture')
+        .select('id')
+        .eq('client_uuid', input.clientUuid)
+        .maybeSingle()
+      if (raced) return (raced as { id: string }).id
+    }
+    throw error
+  }
   return (data as { id: string }).id
+}
+
+/** L'id d'une capture déjà déposée pour ce client_uuid, s'il existe (idempotence
+ *  du drain : évite de ré-uploader un média dont la capture est déjà acquise). */
+export async function findVisitCaptureIdByClientUuid(clientUuid: string): Promise<string | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('visit_capture')
+    .select('id')
+    .eq('client_uuid', clientUuid)
+    .maybeSingle()
+  return (data as { id: string } | null)?.id ?? null
 }
 
 /** Les captures d'une visite, dans l'ordre du terrain (timeline du panier). */
@@ -102,7 +144,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
     .eq('report_id', reportId)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -114,7 +156,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -130,7 +172,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -148,7 +190,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })

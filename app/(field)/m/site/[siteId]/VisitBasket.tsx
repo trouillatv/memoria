@@ -1,26 +1,24 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
-import { uploadReportAttachmentAction } from './report-actions'
 import {
   addNoteCaptureAction,
   addVerificationCaptureAction,
-  addPhotoCaptureAction,
-  addVideoCaptureAction,
   addPositionCaptureAction,
-  addVocalCaptureAction,
   removeCaptureAction,
   setCaptureStarAction,
   addQuestionCaptureAction,
   listVisitCapturesAction,
   revalidateSiteMobile,
 } from './capture-actions'
+import { queueVisitCapture } from '@/lib/field/visit-capture-queue'
+import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 // Mémoire LITE d'un point suivi (read-only), surfacée pendant la vérification :
@@ -33,6 +31,15 @@ export type SubjectMemoryLite = {
   lateActions: number
   decisions: number
   criticality: string
+}
+
+// Une capture média déposée localement, en attente de confirmation serveur (Lot B).
+// previewUrl = objectURL pour la vignette photo/vidéo (null pour un vocal).
+type PendingCapture = {
+  clientUuid: string
+  kind: 'photo' | 'video' | 'vocal'
+  previewUrl: string | null
+  takenAt: number
 }
 
 /**
@@ -58,6 +65,9 @@ export function VisitBasket({
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
+  // Lot B — captures déposées localement, pas encore confirmées par le serveur.
+  // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
+  const [pending, setPending] = useState<PendingCapture[]>([])
   const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question'>('none')
   const [note, setNote] = useState('')
   // ❓ Question ouverte (« à vérifier ») : sur une capture (questionCaptureId) ou libre.
@@ -92,6 +102,20 @@ export function VisitBasket({
 
   const subjectName = (id: string | null) => subjects.find((s) => s.id === id)?.name ?? 'point suivi'
   const kept = captures.filter((c) => c.status !== 'discarded')
+  // Dé-doublonnage optimiste : une capture en attente disparaît dès que sa vraie
+  // ligne (même client_uuid) revient du serveur.
+  const serverUuids = new Set(kept.map((c) => c.client_uuid).filter((u): u is string => !!u))
+  const visiblePending = pending.filter((p) => !serverUuids.has(p.clientUuid))
+  const pendingSyncCount = visiblePending.length
+
+  // État d'un dépôt en attente, lu sur la file + le drain en cours.
+  function pendingStatus(p: PendingCapture): 'uploading' | 'failed' | 'queued' {
+    if (uploadingUuid === p.clientUuid) return 'uploading'
+    const q = queued.find((x) => x.clientUuid === p.clientUuid)
+    if (q && q.attempts > 0) return 'failed'
+    if (!q) return 'uploading' // retiré de la file : confirmation serveur imminente
+    return 'queued'
+  }
   // Points suivis déjà vérifiés pendant CETTE visite (progression + ✓). Dérivé des
   // captures : aucune donnée nouvelle.
   const verifiedSubjectIds = new Set(
@@ -111,21 +135,31 @@ export function VisitBasket({
     return () => clearInterval(id)
   }, [startedAt])
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try { setCaptures(await listVisitCapturesAction(reportId)) } catch { /* silencieux */ }
-  }
+  }, [reportId])
 
-  // Le client DÉCLENCHE le worker, il ne traite jamais. `keepalive` : la requête
-  // survit même si l'utilisateur quitte l'écran. Si elle n'aboutit pas, la capture
-  // reste 'pending' en base et le cron de rattrapage s'en charge plus tard.
-  function kickCaptureProcessing(captureId: string) {
-    fetch('/api/visit-captures/process', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ captureId }),
-      keepalive: true,
-    }).catch(() => { /* silencieux : le cron rattrapera */ })
-  }
+  // Dès que le serveur a confirmé une capture (drain réussi), on retire sa
+  // vignette « en attente » et on tire la vraie ligne depuis la base. Le drain
+  // (file IndexedDB → serveur) tourne en fond ici ET globalement (layout).
+  const onUploaded = useCallback((clientUuid: string) => {
+    setPending((prev) => {
+      const found = prev.find((p) => p.clientUuid === clientUuid)
+      if (found?.previewUrl) URL.revokeObjectURL(found.previewUrl)
+      return prev.filter((p) => p.clientUuid !== clientUuid)
+    })
+    void refresh()
+  }, [refresh])
+
+  const { queued, uploadingUuid, syncNow } = useVisitCaptureUploader({ reportId, onUploaded })
+
+  // Libère les object URLs des vignettes encore en attente quand on quitte le
+  // panier (la file IndexedDB, elle, persiste : le drain global continue).
+  const pendingRef = useRef<PendingCapture[]>([])
+  useEffect(() => { pendingRef.current = pending }, [pending])
+  useEffect(() => () => {
+    pendingRef.current.forEach((p) => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl) })
+  }, [])
 
   // Le transcript d'un vocal arrive en arrière-plan : tant qu'un mémo est en cours
   // de transcription, on rafraîchit doucement pour le faire apparaître tout seul.
@@ -138,44 +172,50 @@ export function VisitBasket({
     return () => clearInterval(id)
   }, [hasPendingTranscript, reportId])
 
+  // ── Dépôt local d'un média (photo/vidéo/vocal) — LA CAPTURE NE BLOQUE JAMAIS ──
+  // Règle d'or du Lot B : on affiche la capture immédiatement (optimiste), on la
+  // pousse dans la file IndexedDB, et le drain de fond la monte avec retry réseau.
+  // Aucun `await` réseau dans le geste : on rend la main tout de suite.
+  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal') {
+    const clientUuid = crypto.randomUUID()
+    const previewUrl = kind === 'vocal' ? null : URL.createObjectURL(file)
+    // 1) Optimiste, SYNCHRONE : la vignette apparaît dans la timeline sur-le-champ.
+    setPending((prev) => [...prev, { clientUuid, kind, previewUrl, takenAt: Date.now() }])
+    // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
+    ;(async () => {
+      const pos = await getOneShotPosition()
+      const ext = kind === 'photo' ? 'jpg' : kind === 'video' ? 'mp4' : 'webm'
+      await queueVisitCapture({
+        clientUuid, reportId, siteId, kind,
+        blob: file,
+        filename: `${kind}-${clientUuid}.${ext}`,
+        mimeType: file.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
+        lat: pos?.lat ?? null,
+        lng: pos?.lng ?? null,
+      })
+      void syncNow()
+    })().catch(() => {
+      // Échec d'écriture locale (très rare) : on retire l'optimiste et on prévient.
+      setPending((prev) => prev.filter((p) => p.clientUuid !== clientUuid))
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      toast.error('Échec de l’enregistrement local')
+    })
+  }
+
   // ── Photo ──────────────────────────────────────────────────────────────────
   function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    startBusy(async () => {
-      const fd = new FormData()
-      fd.set('report_id', reportId)
-      fd.set('kind', 'photo')
-      fd.set('file', file)
-      fd.set('client_uuid', crypto.randomUUID())
-      const [up, pos] = await Promise.all([uploadReportAttachmentAction(fd), getOneShotPosition()])
-      if (!up.ok) { toast.error(up.error); return }
-      const r = await addPhotoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId, lat: pos?.lat, lng: pos?.lng })
-      if (r.ok) { toast.success('Photo ajoutée', { duration: 1200 }); refresh() }
-      else toast.error(r.error)
-    })
+    enqueueMedia(file, 'photo')
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
-  // Calque exact de la photo : capture native du téléphone → upload (≤20 Mo) →
-  // capture 'video'. Pas de transcription au V1 (l'enrichissement viendra, gated).
   function onVideoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    startBusy(async () => {
-      const fd = new FormData()
-      fd.set('report_id', reportId)
-      fd.set('kind', 'video')
-      fd.set('file', file)
-      fd.set('client_uuid', crypto.randomUUID())
-      const [up, pos] = await Promise.all([uploadReportAttachmentAction(fd), getOneShotPosition()])
-      if (!up.ok) { toast.error(up.error); return }
-      const r = await addVideoCaptureAction({ report_id: reportId, site_id: siteId, attachment_id: up.attachmentId, lat: pos?.lat, lng: pos?.lng })
-      if (r.ok) { toast.success('Vidéo ajoutée', { duration: 1200 }); refresh() }
-      else toast.error(r.error)
-    })
+    enqueueMedia(file, 'video')
   }
 
   // ── Vocal ──────────────────────────────────────────────────────────────────
@@ -187,26 +227,11 @@ export function VisitBasket({
       rec.ondataavailable = (ev) => { if (ev.data.size) chunksRef.current.push(ev.data) }
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' })
-        startBusy(async () => {
-          const pos = await getOneShotPosition()
-          const fd = new FormData()
-          fd.set('report_id', reportId)
-          fd.set('site_id', siteId)
-          fd.set('audio', blob, 'memo.webm')
-          fd.set('audio_mime', blob.type || 'audio/webm')
-          if (pos) { fd.set('lat', String(pos.lat)); fd.set('lng', String(pos.lng)) }
-          const r = await addVocalCaptureAction(fd)
-          if (r.ok) {
-            toast.success('Mémo vocal ajouté', { duration: 1200 })
-            // Le client DÉCLENCHE le worker (il ne transcrit pas) : la route fait le
-            // travail dans sa requête, la vérité est en base. Si ça échoue (app
-            // fermée, réseau coupé), la capture reste 'pending' et le cron rattrape.
-            // Le texte apparaîtra seul dans le journal (cf. polling ci-dessous).
-            kickCaptureProcessing(r.id)
-            refresh()
-          } else toast.error(r.error)
-        })
+        const mime = rec.mimeType || 'audio/webm'
+        const blob = new Blob(chunksRef.current, { type: mime })
+        // Même règle que photo/vidéo : dépôt local immédiat, montée en fond. La
+        // transcription est déclenchée par le drain après confirmation serveur.
+        enqueueMedia(new File([blob], 'memo.webm', { type: mime }), 'vocal')
       }
       rec.start()
       recorderRef.current = rec
@@ -390,12 +415,13 @@ export function VisitBasket({
 
       {/* Les gestes de collecte sans friction */}
       <div className="grid grid-cols-5 gap-2">
-        <GestureButton icon={<Camera className="h-5 w-5" />} label="Photo" disabled={busy} onClick={() => fileRef.current?.click()} />
-        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" disabled={busy} onClick={() => videoRef.current?.click()} />
+        {/* Médias : JAMAIS désactivés — la capture ne s'arrête pas pour un envoi. */}
+        <GestureButton icon={<Camera className="h-5 w-5" />} label="Photo" onClick={() => fileRef.current?.click()} />
+        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" onClick={() => videoRef.current?.click()} />
         <GestureButton
           icon={recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           label={recording ? 'Stop' : 'Vocal'}
-          active={recording} disabled={busy && !recording}
+          active={recording}
           onClick={recording ? stopRec : startRec}
         />
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
@@ -428,11 +454,22 @@ export function VisitBasket({
       {/* Journal de terrain — « ce que j'ai vu », pas « mes captures ».
           L'heure est le fil du temps ; chaque ligne se lit comme un récit. */}
       <div className="space-y-2 pt-1">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-medium text-emerald-900/80 dark:text-emerald-200/80">
-            {kept.length === 0 ? 'Rien encore — capturez en marchant.' : 'Pendant cette visite'}
+            {kept.length === 0 && visiblePending.length === 0 ? 'Rien encore — capturez en marchant.' : 'Pendant cette visite'}
           </span>
-          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-700" />}
+          {pendingSyncCount > 0 ? (
+            <button
+              type="button" onClick={() => { void syncNow() }}
+              className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+              title="Synchroniser maintenant"
+            >
+              <CloudUpload className="h-3.5 w-3.5" />
+              {pendingSyncCount} en attente d&apos;envoi
+            </button>
+          ) : busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-700" />
+          ) : null}
         </div>
         {kept.length > 0 && (
           <ul className="space-y-px">
@@ -466,6 +503,42 @@ export function VisitBasket({
                   <button type="button" onClick={() => remove(c.id)} disabled={busy} aria-label="Retirer" className="shrink-0 pt-0.5 text-muted-foreground/50 hover:text-destructive">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {/* Captures encore en attente d'envoi — affichées en optimiste, elles
+            laissent place à la vraie ligne dès que le serveur confirme. */}
+        {visiblePending.length > 0 && (
+          <ul className="space-y-px">
+            {visiblePending.map((p) => {
+              const st = pendingStatus(p)
+              return (
+                <li key={p.clientUuid} className="flex items-start gap-2.5 rounded-lg px-1.5 py-1.5">
+                  <span className="w-9 shrink-0 pt-0.5 text-[11px] tabular-nums font-medium text-emerald-800/70 dark:text-emerald-300/70">
+                    {hhmm(new Date(p.takenAt).toISOString())}
+                  </span>
+                  <span className="shrink-0 pt-0.5 text-emerald-700/80 dark:text-emerald-300/80">{KIND_ICON[p.kind]}</span>
+                  <span className="min-w-0 flex-1 text-sm leading-snug">
+                    {p.kind === 'photo' ? 'Photo' : p.kind === 'video' ? 'Vidéo' : 'Mémo vocal'}
+                    <span className="mt-0.5 flex items-center gap-1 text-[11px]">
+                      {st === 'uploading' ? (
+                        <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> envoi…</span>
+                      ) : st === 'failed' ? (
+                        <button type="button" onClick={() => { void syncNow() }} className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+                          <AlertCircle className="h-3 w-3" /> à renvoyer — réessayer
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-amber-700/90 dark:text-amber-300/80"><CloudUpload className="h-3 w-3" /> en attente d&apos;envoi</span>
+                      )}
+                    </span>
+                  </span>
+                  {p.previewUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.previewUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border border-emerald-500/20 object-cover" />
+                  )}
                 </li>
               )
             })}

@@ -178,6 +178,59 @@ export async function getActiveVisit(siteId: string): Promise<DbSiteReport | nul
   return (data as DbSiteReport | null) ?? null
 }
 
+/**
+ * Les visites OUVERTES (non terminées) démarrées par l'agent, tous sites
+ * confondus — pour la carte « Visite en cours » de l'accueil (Lot A). Une visite
+ * est un objet vivant : on doit pouvoir la REPRENDRE sans la chercher. Renvoie de
+ * quoi peindre la carte (lieu, ancienneté, nombre de captures déjà au panier).
+ * Le « N en attente d'envoi » est un état CLIENT (file IndexedDB), ajouté à l'UI.
+ */
+export interface ActiveVisitSummary {
+  reportId: string
+  siteId: string
+  siteName: string
+  startedAt: string | null
+  captureCount: number
+}
+
+export async function listActiveVisitsForUser(userId: string, limit = 5): Promise<ActiveVisitSummary[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_reports')
+    .select('id, site_id, started_at')
+    .eq('created_by', userId)
+    .not('origin', 'is', null)
+    .is('ended_at', null)
+    .not('site_id', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ id: string; site_id: string; started_at: string | null }>
+  if (rows.length === 0) return []
+
+  // Noms de sites + compteurs de captures, batchés.
+  const siteIds = [...new Set(rows.map((r) => r.site_id))]
+  const { data: sites } = await supabase.from('sites').select('id, name').in('id', siteIds)
+  const nameById = new Map((sites ?? []).map((s) => [s.id as string, s.name as string]))
+
+  return Promise.all(
+    rows.map(async (r) => {
+      const { count } = await supabase
+        .from('visit_capture')
+        .select('id', { count: 'exact', head: true })
+        .eq('report_id', r.id)
+        .neq('status', 'discarded')
+      return {
+        reportId: r.id,
+        siteId: r.site_id,
+        siteName: nameById.get(r.site_id) ?? 'Chantier',
+        startedAt: r.started_at,
+        captureCount: count ?? 0,
+      }
+    }),
+  )
+}
+
 /** Une visite par son id. */
 export async function getVisit(reportId: string): Promise<DbSiteReport | null> {
   const supabase = createAdminClient()
