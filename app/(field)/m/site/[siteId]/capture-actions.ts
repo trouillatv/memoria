@@ -19,6 +19,7 @@ import {
   addVisitCapture,
   listVisitCaptures,
   removeCaptureWhileCollecting,
+  setCaptureStarred,
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
 
@@ -261,6 +262,25 @@ export async function addVocalCaptureAction(
 }
 
 // ── Retirer une capture (faux geste, pendant la collecte) ────────────────────
+
+// ── Marquer pour le mémoire technique (⭐, optionnel) ─────────────────────────
+
+const starSchema = z.object({ capture_id: z.string().uuid(), starred: z.boolean() })
+
+export async function setCaptureStarAction(
+  input: z.input<typeof starSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = starSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setCaptureStarred(parsed.data.capture_id, parsed.data.starred)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
 
 const removeSchema = z.object({ capture_id: z.string().uuid() })
 

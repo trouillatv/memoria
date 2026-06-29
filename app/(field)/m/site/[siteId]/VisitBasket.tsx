@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -16,6 +16,7 @@ import {
   addPositionCaptureAction,
   addVocalCaptureAction,
   removeCaptureAction,
+  setCaptureStarAction,
   listVisitCapturesAction,
   revalidateSiteMobile,
 } from './capture-actions'
@@ -279,6 +280,15 @@ export function VisitBasket({
     )
   }
 
+  // ── Marquer ⭐ « à réutiliser dans le mémoire technique » (optimiste, optionnel) ──
+  function toggleStar(c: VisitCaptureRow) {
+    const next = !c.starred
+    setCaptures((prev) => prev.map((x) => (x.id === c.id ? { ...x, starred: next } : x)))
+    setCaptureStarAction({ capture_id: c.id, starred: next })
+      .then((r) => { if (!r.ok) { toast.error(r.error); refresh() } })
+      .catch(() => refresh())
+  }
+
   // ── Retirer une capture (faux geste) ────────────────────────────────────────
   function remove(id: string) {
     startBusy(async () => {
@@ -405,6 +415,13 @@ export function VisitBasket({
                     {captureLabel(c)}
                     {hint && <span className="block text-[11px] text-muted-foreground">{hint}</span>}
                   </span>
+                  <button
+                    type="button" onClick={() => toggleStar(c)}
+                    aria-label={c.starred ? 'Retirer du mémoire technique' : 'Marquer pour le mémoire technique'}
+                    className="shrink-0 pt-0.5"
+                  >
+                    <Star className={`h-3.5 w-3.5 ${c.starred ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground/40 hover:text-amber-500'}`} />
+                  </button>
                   <button type="button" onClick={() => remove(c.id)} disabled={busy} aria-label="Retirer" className="shrink-0 pt-0.5 text-muted-foreground/50 hover:text-destructive">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
