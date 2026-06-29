@@ -40,12 +40,12 @@ export function PrevisiteAoLauncher() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-full w-full items-center gap-2 rounded-xl bg-violet-50 px-2.5 py-3 text-left text-[13px] font-semibold leading-tight text-violet-700 active:scale-[0.97] transition-transform dark:bg-violet-950/30 dark:text-violet-300"
+        className="flex h-full w-full flex-col items-center justify-start gap-2.5 rounded-2xl bg-violet-50 px-2 py-5 text-center text-[13px] font-medium leading-snug text-violet-700 active:scale-[0.97] transition-transform dark:bg-violet-950/30 dark:text-violet-300"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-violet-600 dark:bg-white/10 dark:text-violet-300">
-          <Compass className="h-4 w-4" />
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-violet-600 dark:bg-white/10 dark:text-violet-300">
+          <Compass className="h-7 w-7" />
         </span>
-        Nouvelle prévisite AO
+        <span className="break-words">Nouvelle prévisite AO</span>
       </button>
 
       {open && (
