@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -51,6 +51,7 @@ type PendingCapture = {
 export function VisitBasket({
   reportId,
   siteId,
+  userId,
   startedAt,
   subjects,
   subjectMemory,
@@ -58,6 +59,8 @@ export function VisitBasket({
 }: {
   reportId: string
   siteId: string
+  /** L'agent courant — tague les dépôts locaux (anti cross-compte au drain). */
+  userId: string
   startedAt: string | null
   subjects: Array<{ id: string; name: string }>
   subjectMemory: Record<string, SubjectMemoryLite>
@@ -151,7 +154,7 @@ export function VisitBasket({
     void refresh()
   }, [refresh])
 
-  const { queued, uploadingUuid, syncNow } = useVisitCaptureUploader({ reportId, onUploaded })
+  const { queued, uploadingUuid, syncNow } = useVisitCaptureUploader({ reportId, userId, onUploaded })
 
   // Libère les object URLs des vignettes encore en attente quand on quitte le
   // panier (la file IndexedDB, elle, persiste : le drain global continue).
@@ -186,7 +189,7 @@ export function VisitBasket({
       const pos = await getOneShotPosition()
       const ext = kind === 'photo' ? 'jpg' : kind === 'video' ? 'mp4' : 'webm'
       await queueVisitCapture({
-        clientUuid, reportId, siteId, kind,
+        clientUuid, userId, reportId, siteId, kind,
         blob: file,
         filename: `${kind}-${clientUuid}.${ext}`,
         mimeType: file.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
@@ -545,6 +548,24 @@ export function VisitBasket({
           </ul>
         )}
       </div>
+
+      {/* Filet de réassurance permanent (façon WhatsApp) : l'agent sait toujours
+          où en est l'envoi, même hors réseau. Rien n'est jamais perdu. */}
+      {(kept.length > 0 || pendingSyncCount > 0) && (
+        pendingSyncCount > 0 ? (
+          <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <CloudUpload className="h-4 w-4 shrink-0 mt-px" />
+            <span>
+              {pendingSyncCount} capture{pendingSyncCount > 1 ? 's' : ''} en attente — envoyée{pendingSyncCount > 1 ? 's' : ''} automatiquement dès que le réseau revient. Rien n&apos;est perdu.
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 rounded-lg bg-emerald-100/70 px-3 py-2 text-[12px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            Toutes les captures sont synchronisées.
+          </div>
+        )
+      )}
 
       <p className="text-[11px] italic text-emerald-800/60 dark:text-emerald-300/60 leading-snug">
         On collecte. On décidera quoi en faire après la visite.

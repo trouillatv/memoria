@@ -21,6 +21,7 @@ export interface ActiveVisitCardItem {
   siteName: string
   startedAt: string | null
   captureCount: number
+  lastActivityAt: string | null
 }
 
 function useElapsed(startedAt: string | null): string {
@@ -36,6 +37,28 @@ function useElapsed(startedAt: string | null): string {
     const id = setInterval(tick, 30_000)
     return () => clearInterval(id)
   }, [startedAt])
+  return label
+}
+
+// « il y a X » qui se rafraîchit — repère immédiat pour l'agent qui revient.
+function useRelativeSince(iso: string | null): string {
+  const [label, setLabel] = useState('')
+  useEffect(() => {
+    if (!iso) return
+    const t = new Date(iso).getTime()
+    const tick = () => {
+      const m = Math.max(0, Math.floor((Date.now() - t) / 60000))
+      if (m < 1) setLabel("à l'instant")
+      else if (m < 60) setLabel(`il y a ${m} min`)
+      else {
+        const h = Math.floor(m / 60)
+        setLabel(`il y a ${h} h${m % 60 ? ` ${m % 60}` : ''}`)
+      }
+    }
+    tick()
+    const id = setInterval(tick, 30_000)
+    return () => clearInterval(id)
+  }, [iso])
   return label
 }
 
@@ -58,6 +81,7 @@ function usePendingCount(reportId: string): number {
 
 function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
   const elapsed = useElapsed(visit.startedAt)
+  const lastActivity = useRelativeSince(visit.lastActivityAt)
   const pending = usePendingCount(visit.reportId)
 
   return (
@@ -75,6 +99,9 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
       </p>
       {elapsed && (
         <p className="text-[13px] text-emerald-800/80 dark:text-emerald-200/70">Commencée il y a {elapsed}</p>
+      )}
+      {lastActivity && visit.captureCount > 0 && (
+        <p className="text-[12px] text-emerald-700/70 dark:text-emerald-300/60">Dernière activité {lastActivity}</p>
       )}
 
       <div className="mt-3 flex items-center gap-2 flex-wrap text-xs">

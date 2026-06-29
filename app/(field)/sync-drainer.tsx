@@ -18,11 +18,13 @@ import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
  * Ce composant ne rend rien : sa seule responsabilité est de tenir le hook
  * monté tant que l'utilisateur est dans la zone field.
  */
-export function FieldSyncDrainer() {
+export function FieldSyncDrainer({ userId }: { userId?: string }) {
   usePhotoUploader()
   // Lot B : draine aussi la file des captures de visite (photo/vidéo/vocal),
   // pour que les éléments « en attente » continuent de monter même quand on a
   // quitté le panier (visite suspendue, retour à l'accueil, app rouverte).
-  useVisitCaptureUploader()
+  // Scopé au compte connecté : sur un appareil partagé, on ne monte jamais les
+  // dépôts d'un autre agent (ils attendront son retour).
+  useVisitCaptureUploader({ userId })
   return null
 }

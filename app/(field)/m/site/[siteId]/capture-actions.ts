@@ -273,9 +273,15 @@ export async function addVocalCaptureAction(
 
 const drainKindSchema = z.enum(['photo', 'video', 'vocal'])
 
+// `drop: true` = l'entry est CONDAMNÉE (visite supprimée, params invalides, média
+// hors limite) → le drainer la retire de la file au lieu de re-tenter à l'infini.
+// Sans `drop`, l'échec est transitoire (réseau/stockage) → retry avec backoff.
 export async function drainVisitCaptureAction(
   formData: FormData,
-): Promise<{ ok: true; captureId: string; kind: 'photo' | 'video' | 'vocal' } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; captureId: string; kind: 'photo' | 'video' | 'vocal' }
+  | { ok: false; error: string; drop?: boolean }
+> {
   const auth = await requireFieldAgent()
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
 
@@ -283,14 +289,14 @@ export async function drainVisitCaptureAction(
   const siteId = formData.get('site_id')
   const clientUuid = formData.get('client_uuid')
   const kindParsed = drainKindSchema.safeParse(formData.get('kind'))
-  if (typeof reportId !== 'string' || !z.string().uuid().safeParse(reportId).success) return { ok: false, error: 'Visite invalide' }
-  if (typeof siteId !== 'string' || !z.string().uuid().safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
-  if (typeof clientUuid !== 'string' || !z.string().uuid().safeParse(clientUuid).success) return { ok: false, error: 'Identité invalide' }
-  if (!kindParsed.success) return { ok: false, error: 'Type invalide' }
+  if (typeof reportId !== 'string' || !z.string().uuid().safeParse(reportId).success) return { ok: false, error: 'Visite invalide', drop: true }
+  if (typeof siteId !== 'string' || !z.string().uuid().safeParse(siteId).success) return { ok: false, error: 'Site invalide', drop: true }
+  if (typeof clientUuid !== 'string' || !z.string().uuid().safeParse(clientUuid).success) return { ok: false, error: 'Identité invalide', drop: true }
+  if (!kindParsed.success) return { ok: false, error: 'Type invalide', drop: true }
   const kind = kindParsed.data
 
   const file = formData.get('file')
-  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Fichier manquant' }
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Fichier manquant', drop: true }
 
   // Position ponctuelle (opt-in), best-effort.
   const latRaw = formData.get('lat'); const lngRaw = formData.get('lng')
@@ -307,6 +313,10 @@ export async function drainVisitCaptureAction(
     const existing = await findVisitCaptureIdByClientUuid(clientUuid)
     if (existing) return { ok: true, captureId: existing, kind }
   } catch { /* on continue : l'insert idempotent rattrapera */ }
+
+  // Visite supprimée entre le dépôt et le drain → entry condamnée : on la lâche.
+  const report = await getSiteReport(reportId)
+  if (!report) return { ok: false, error: 'Visite introuvable', drop: true }
 
   try {
     if (kind === 'photo' || kind === 'video') {
@@ -328,9 +338,7 @@ export async function drainVisitCaptureAction(
     }
 
     // Vocal : upload dans le bucket audio + capture 'pending' (transcription async).
-    const report = await getSiteReport(reportId)
-    if (!report) return { ok: false, error: 'Visite introuvable' }
-    if (file.size > MAX_AUDIO_BYTES) return { ok: false, error: 'Mémo trop long' }
+    if (file.size > MAX_AUDIO_BYTES) return { ok: false, error: 'Mémo trop long', drop: true }
     const mime = file.type || 'audio/webm'
     const ext = mimeToExt(mime)
     const supabase = createAdminClient()

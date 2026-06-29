@@ -229,6 +229,7 @@ export default async function FieldSitePage({
         <VisitBasket
           reportId={activeVisit.id}
           siteId={siteId}
+          userId={user.id}
           startedAt={activeVisit.started_at}
           subjects={visitSubjects}
           subjectMemory={subjectMemory}
