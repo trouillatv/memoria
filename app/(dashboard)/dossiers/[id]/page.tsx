@@ -97,10 +97,10 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
             </Block>
           )}
 
-          {/* ❓ Questions ouvertes — « ce qu'on ne sait pas encore », à résoudre. Simple :
-              ouverte → réponse trouvée → résolue. Pas d'assignation/échéance/priorité. */}
+          {/* ❓ « À vérifier » — ce qu'on ne sait pas encore, à confirmer. Simple :
+              à vérifier → réponse trouvée → vérifié. Pas d'assignation/échéance/priorité. */}
           {r.questions.length > 0 && (
-            <Block icon={<HelpCircle className="h-4 w-4 text-amber-600" />} title="Questions encore sans réponse">
+            <Block icon={<HelpCircle className="h-4 w-4 text-amber-600" />} title="Points à vérifier">
               <ul className="space-y-1.5">
                 {r.questions.map((q) => (
                   <li key={q.id} className="flex items-start justify-between gap-2">
@@ -112,7 +112,7 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
                       <input type="hidden" name="id" value={q.id} />
                       <input type="hidden" name="dossierId" value={dossier.id} />
                       <button type="submit" className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted">
-                        <Check className="h-3 w-3" /> Résolue
+                        <Check className="h-3 w-3" /> Vérifié
                       </button>
                     </form>
                   </li>
