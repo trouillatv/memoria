@@ -64,9 +64,10 @@ export const NAV: NavItem[] = [
   // Répond à « qu'est-ce qui reste à faire, tous sites confondus ? » (≠ Planning).
   { href: '/actions',    label: 'Actions',                icon: ListTodo,      roles: ['admin', 'manager'], essential: true },
   { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'], essential: true },
-  // Opportunités = la prévisite AO, AVANT le contrat (un dossier d'opportunité
-  // devient chantier s'il est gagné, sans rupture de mémoire). Entrée du module AO.
-  { href: '/opportunites', label: 'Opportunités',         icon: Compass,       roles: ['admin', 'manager'], essential: true },
+  // Affaires = le mot du chargé d'affaires. Une affaire naît à la prévisite (avant
+  // le contrat), porte le site/l'AO/la mémoire, devient chantier si gagnée. L'AO
+  // n'est qu'un épisode de l'affaire. (Interne : table `dossiers`.)
+  { href: '/opportunites', label: 'Affaires',             icon: Compass,       roles: ['admin', 'manager'], essential: true },
   { href: '/contracts',  label: 'Contrats',               icon: FileCheck,     roles: ['admin', 'manager'] },
   { href: '/equipes',    label: 'Équipes',                icon: Users,         roles: ['admin', 'manager'] },
   // — Mémoire & continuité —

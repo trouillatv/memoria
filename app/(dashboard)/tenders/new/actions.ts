@@ -12,6 +12,7 @@ import {
   createTenderDocument,
   updateTenderStatus,
   countAnalysesToday,
+  attachTenderToDossier,
 } from '@/lib/db/tenders'
 
 async function requireManagerOrAdmin() {
@@ -29,6 +30,8 @@ const createSchema = z.object({
   title: z.string().min(1).max(200),
   client_name: z.string().max(200).nullable().optional(),
   deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  // Affaire (dossier) pré-remplie quand on crée l'AO DEPUIS une affaire.
+  dossier_id: z.string().uuid().nullable().optional(),
 })
 
 export async function createTenderAction(formData: FormData) {
@@ -43,6 +46,7 @@ export async function createTenderAction(formData: FormData) {
     title: formData.get('title'),
     client_name: formData.get('client_name') || null,
     deadline: formData.get('deadline') || null,
+    dossier_id: formData.get('dossier_id') || null,
   })
   if (!parsed.success) return { error: parsed.error.issues[0].message }
 
@@ -60,6 +64,11 @@ export async function createTenderAction(formData: FormData) {
     deadline: parsed.data.deadline,
     created_by: userId,
   })
+
+  // Rattachement auto à l'affaire si l'AO est créé depuis une affaire (best-effort).
+  if (parsed.data.dossier_id) {
+    await attachTenderToDossier(tenderId, parsed.data.dossier_id).catch(() => {})
+  }
 
   // 2. Upload PDF to bucket
   const supabase = createAdminClient()

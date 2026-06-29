@@ -3,8 +3,9 @@ import { AlertTriangle } from 'lucide-react'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
 import { TenderUploadForm } from './TenderUploadForm'
 
-export default async function NewTenderPage() {
+export default async function NewTenderPage({ searchParams }: { searchParams: Promise<{ dossier_id?: string }> }) {
   const items = await listKnowledgeItems({})
+  const { dossier_id: dossierId } = await searchParams
 
   return (
     <div className="w-full space-y-4">
@@ -26,7 +27,7 @@ export default async function NewTenderPage() {
         </div>
       )}
 
-      <TenderUploadForm />
+      <TenderUploadForm dossierId={dossierId} />
     </div>
   )
 }

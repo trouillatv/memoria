@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 // (« voilà ce que j'ai compris », puis mémoire technique) viendra par-dessus, gated.
 // Prototype : accessible par URL, pas encore dans la navigation principale.
 
-const PHASE_FR: Record<string, string> = { prospect: 'Prospect', en_ao: 'En appel d’offre', actif: 'Actif', perdu: 'Perdu', archive: 'Archivé' }
+const PHASE_FR: Record<string, string> = { prospect: 'Prospection', en_ao: 'Appel d’offres', actif: 'Travaux', perdu: 'Perdu', archive: 'Terminé' }
 const KIND_FR: Record<string, string> = { photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position' }
 const STATE_FR: Record<string, string> = { bloqué: 'Bloqué', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
 const STATE_CLS: Record<string, string> = {
@@ -48,7 +48,7 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
   return (
     <div className="max-w-3xl space-y-6 py-6">
       <Link href={`/opportunites`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Opportunités
+        <ArrowLeft className="h-4 w-4" /> Affaires
       </Link>
 
       <header className="space-y-1">
@@ -58,10 +58,9 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
             {PHASE_FR[dossier.phase] ?? dossier.phase}
           </span>
         </div>
-        <h1 className="text-2xl font-bold">Dossier de réponse à l&apos;appel d&apos;offre</h1>
-        <p className="text-sm font-medium">{r.siteName}</p>
+        <h1 className="text-2xl font-bold">{r.siteName}</h1>
         <p className="text-sm text-muted-foreground">
-          Ce que la prévisite a capté, organisé pour chiffrer. Restitution de la mémoire terrain — aucune IA.
+          Affaire — ce que la prévisite a capté, organisé pour répondre à l&apos;appel d&apos;offres. Mémoire terrain, aucune IA.
         </p>
       </header>
 
@@ -100,21 +99,31 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
         ) : (
           <p className="text-sm text-muted-foreground">Aucun AO rattaché. Quand l&apos;appel d&apos;offres arrive, relie-le ici.</p>
         )}
-        {attachableTenders.length > 0 && (
-          <form action={attachTenderToDossierAction} className="flex items-center gap-2 pt-1">
-            <input type="hidden" name="dossierId" value={dossier.id} />
-            <select name="tenderId" required defaultValue="" className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm">
-              <option value="" disabled>Rattacher un appel d&apos;offres…</option>
-              {attachableTenders.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-            </select>
-            <button type="submit" className="shrink-0 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted">Rattacher</button>
-          </form>
-        )}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {/* Chemin PRINCIPAL : créer l'AO depuis l'affaire → dossier_id auto-rempli. */}
+          <Link
+            href={`/tenders/new?dossier_id=${dossier.id}`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90"
+          >
+            <FileText className="h-4 w-4" /> Créer un appel d&apos;offres
+          </Link>
+          {/* Exception : rattacher un AO déjà importé (reçu par mail). */}
+          {attachableTenders.length > 0 && (
+            <form action={attachTenderToDossierAction} className="flex min-w-0 flex-1 items-center gap-2">
+              <input type="hidden" name="dossierId" value={dossier.id} />
+              <select name="tenderId" required defaultValue="" className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 text-sm">
+                <option value="" disabled>…ou rattacher un AO existant</option>
+                {attachableTenders.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+              </select>
+              <button type="submit" className="shrink-0 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted">Rattacher</button>
+            </form>
+          )}
+        </div>
       </section>
 
       {r.isEmpty ? (
         <p className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-          Rien n&apos;a encore été capté sur cette opportunité. Lancez une prévisite : photos, vocaux,
+          Rien n&apos;a encore été capté sur cette affaire. Lancez une prévisite : photos, vocaux,
           notes, mesures et infos entendues nourriront ce dossier.
         </p>
       ) : (

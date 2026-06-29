@@ -14,7 +14,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
 }
 
-export function TenderUploadForm() {
+export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
   const [pending, setPending] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -75,6 +75,8 @@ export function TenderUploadForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
+          {/* AO créé DEPUIS une affaire → rattachement auto (pas de manip). */}
+          {dossierId && <input type="hidden" name="dossier_id" value={dossierId} />}
           <div className="space-y-2">
             <Label htmlFor="title">Titre du dossier</Label>
             <Input id="title" name="title" required maxLength={200} placeholder="Ex. Marché d'entretien et de travaux 2026" />

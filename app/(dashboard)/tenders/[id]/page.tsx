@@ -187,11 +187,11 @@ export default async function TenderDetailPage({
                 <p className="text-sm text-muted-foreground line-clamp-1">{tender.title}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-2">
-                {/* Soudure AVANT — rattacher l'AO à une opportunité (ou y naviguer). */}
+                {/* Soudure AVANT — rattacher l'AO à une affaire (ou y naviguer). */}
                 {attachedDossier ? (
                   <div className="flex items-center gap-2 text-xs">
                     <Link href={`/dossiers/${attachedDossier.id}`} className="inline-flex items-center gap-1 font-medium text-sky-700 hover:underline">
-                      <Compass className="h-3.5 w-3.5" /> {attachedDossier.label ?? 'Opportunité'}
+                      <Compass className="h-3.5 w-3.5" /> {attachedDossier.label ?? 'Affaire'}
                     </Link>
                     <form action={setTenderDossierAction}>
                       <input type="hidden" name="tenderId" value={id} />
@@ -203,8 +203,8 @@ export default async function TenderDetailPage({
                   <form action={setTenderDossierAction} className="flex items-center gap-1.5">
                     <input type="hidden" name="tenderId" value={id} />
                     <select name="dossierId" required defaultValue="" className="rounded-md border bg-background px-2 py-1 text-xs">
-                      <option value="" disabled>Rattacher à une opportunité…</option>
-                      {dossiersForPicker.map((d) => <option key={d.id} value={d.id}>{d.label ?? d.site_name ?? 'Opportunité'}</option>)}
+                      <option value="" disabled>Rattacher à une affaire…</option>
+                      {dossiersForPicker.map((d) => <option key={d.id} value={d.id}>{d.label ?? d.site_name ?? 'Affaire'}</option>)}
                     </select>
                     <button type="submit" className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Rattacher</button>
                   </form>
