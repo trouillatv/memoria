@@ -35,12 +35,12 @@ export function MeetingLauncher() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-full w-full items-center gap-2 rounded-xl bg-blue-50 px-2.5 py-3 text-left text-[13px] font-semibold leading-tight text-blue-700 active:scale-[0.97] transition-transform dark:bg-blue-950/30 dark:text-blue-300"
+        className="flex h-full w-full flex-col items-center justify-start gap-2.5 rounded-2xl bg-blue-50 px-2 py-5 text-center text-[13px] font-medium leading-snug text-blue-700 active:scale-[0.97] transition-transform dark:bg-blue-950/30 dark:text-blue-300"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-blue-600 dark:bg-white/10 dark:text-blue-300">
-          <Mic className="h-4 w-4" />
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-blue-600 dark:bg-white/10 dark:text-blue-300">
+          <Mic className="h-7 w-7" />
         </span>
-        Enregistrer une réunion
+        <span className="break-words">Enregistrer une réunion</span>
       </button>
 
       {open && (

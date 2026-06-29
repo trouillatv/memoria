@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Zap, Briefcase, FileText, HelpCircle } from 'lucide-react'
-import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
@@ -114,6 +113,7 @@ function CockpitCard({
   title,
   headerHref,
   headerExtra,
+  flat = false,
   children,
 }: {
   icon: LucideIcon
@@ -121,6 +121,9 @@ function CockpitCard({
   title: string
   headerHref?: string
   headerExtra?: React.ReactNode
+  /** Carte secondaire (outils, liste vide) : aplatie pour reculer dans la
+   *  hiérarchie derrière les cartes « contenu » (attention, aujourd'hui). */
+  flat?: boolean
   children: React.ReactNode
 }) {
   const header = (
@@ -131,7 +134,13 @@ function CockpitCard({
     </div>
   )
   return (
-    <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4 shadow-sm space-y-3">
+    <section
+      className={`rounded-3xl border px-5 py-6 space-y-5 ${
+        flat
+          ? 'border-foreground/[0.06] bg-muted/20'
+          : 'border-foreground/[0.08] bg-card shadow-sm'
+      }`}
+    >
       {headerHref ? (
         <Link href={headerHref} className="block active:opacity-70">{header}</Link>
       ) : (
@@ -150,22 +159,22 @@ function AttentionRow({ item }: { item: AttentionItem }) {
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 border-l-4 ${s.bar} rounded-r-lg pl-3 pr-1 py-2.5 -mx-1 active:bg-muted/40 transition-colors`}
+      className={`flex items-center gap-4 border-l-2 ${s.bar} rounded-r-lg pl-4 pr-1 py-4 -mx-1 active:bg-muted/40 transition-colors`}
     >
-      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${s.chip}`}>
-        <Icon className="h-5 w-5" strokeWidth={2} />
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${s.chip}`}>
+        <Icon className="h-[22px] w-[22px]" strokeWidth={2} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className={`truncate text-[15px] font-semibold ${s.title}`}>{item.title}</span>
+        <span className="flex items-start gap-2">
+          <span className={`min-w-0 text-[15px] font-medium leading-snug ${s.title}`}>{item.title}</span>
           {item.urgent && (
-            <span className="shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-700 dark:bg-red-900/50 dark:text-red-300">
+            <span className="mt-px shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:bg-red-900/50 dark:text-red-300">
               Urgent
             </span>
           )}
         </span>
         {item.subtitle && (
-          <span className="mt-0.5 block truncate text-sm text-muted-foreground">{item.subtitle}</span>
+          <span className="mt-1 block truncate text-[13px] text-muted-foreground">{item.subtitle}</span>
         )}
       </span>
       <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -572,11 +581,13 @@ export default async function FieldHomePage({
   const recurringToday = selectedInterventions.filter((i) => !i.planned_start)
 
   return (
-    <div className="space-y-4 max-w-md pb-32">
+    <div className="space-y-7 max-w-md pb-32">
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
 
-      {/* 1 — Ce qui demande ton attention (remonté automatiquement). */}
-      {shownAttention.length > 0 && (
+      {/* 1 — Ce qui demande ton attention (remonté automatiquement).
+          Carte HÉRO : la plus prominente. Une phrase d'état donne l'ensemble
+          avant le détail ; si rien ne remonte, une carte calme rassure. */}
+      {shownAttention.length > 0 ? (
         <CockpitCard
           icon={Bell}
           iconClass="text-red-500"
@@ -591,17 +602,32 @@ export default async function FieldHomePage({
             </>
           }
         >
+          <p className="-mt-2.5 text-[13px] text-muted-foreground">
+            {attentionItems.length === 1
+              ? 'Un élément demande ton attention aujourd’hui.'
+              : `${attentionItems.length} éléments demandent ton attention aujourd’hui.`}
+          </p>
           <div className="divide-y divide-foreground/[0.06]">
             {shownAttention.map((item) => (
               <AttentionRow key={item.key} item={item} />
             ))}
           </div>
         </CockpitCard>
-      )}
+      ) : isToday ? (
+        <CockpitCard icon={CheckCircle2} iconClass="text-emerald-500" title="Tout est sous contrôle" flat>
+          <p className="-mt-2.5 text-[13px] text-muted-foreground">
+            Rien ne demande ton attention aujourd’hui.
+          </p>
+        </CockpitCard>
+      ) : null}
 
-      {/* 2 — Aujourd'hui : les rendez-vous datés du jour. */}
+      {/* 2 — Aujourd'hui : les rendez-vous datés du jour, avec une ligne de
+          synthèse pour que la carte « raconte » même avec un seul élément. */}
       {timedToday.length > 0 && (
         <CockpitCard icon={CalendarDays} iconClass="text-foreground/70" title="Aujourd'hui">
+          <p className="-mt-2.5 text-[13px] text-muted-foreground">
+            {timedToday.length === 1 ? 'Un rendez-vous prévu.' : `${timedToday.length} rendez-vous prévus.`}
+          </p>
           <ul className="space-y-1">
             {timedToday.map((i) => {
               const mission = missionById.get(i.mission_id)
@@ -615,17 +641,18 @@ export default async function FieldHomePage({
                 <li key={i.id}>
                   <Link
                     href={`/m/intervention/${i.id}?date=${selectedDate}`}
-                    className="flex items-center gap-3 rounded-xl py-2.5 -mx-1 px-1 active:bg-muted/40 transition-colors"
+                    className="flex items-center gap-4 rounded-xl py-4 -mx-1 px-1 active:bg-muted/40 transition-colors"
                   >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <CalendarDays className="h-5 w-5" strokeWidth={2} />
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      <CalendarDays className="h-[22px] w-[22px]" strokeWidth={2} />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-semibold">{mission?.name ?? 'Rendez-vous'}</span>
-                      {site?.name && <span className="mt-0.5 block truncate text-sm text-muted-foreground">{site.name}</span>}
+                      <span className="block text-[15px] font-medium leading-snug line-clamp-2">{mission?.name ?? 'Rendez-vous'}</span>
+                      {site?.name && <span className="mt-1 block truncate text-[13px] text-muted-foreground">{site.name}</span>}
                     </span>
                     {timeLabel && (
-                      <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 tabular-nums dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 tabular-nums dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                         {timeLabel}
                       </span>
                     )}
@@ -638,20 +665,24 @@ export default async function FieldHomePage({
         </CockpitCard>
       )}
 
-      {/* 3 — Démarrer une action : les outils pour agir (secondaires). */}
-      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action">
-        <div className="grid grid-cols-3 gap-2.5">
+      {/* 3 — Démarrer une action : les outils pour agir. Carte SECONDAIRE
+          (aplatie) : recule derrière l'attention et l'agenda du jour. */}
+      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action" flat>
+        <div className="grid grid-cols-3 gap-3">
           <MeetingLauncher />
           <VisitLauncherHome />
           <PrevisiteAoLauncher />
         </div>
       </CockpitCard>
 
-      {/* 4 — Interventions planifiées aujourd'hui (missions récurrentes). */}
+      {/* 4 — Interventions planifiées aujourd'hui (missions récurrentes).
+          Carte SECONDAIRE (aplatie). État vide compact (~180px) plutôt qu'un
+          grand vide, avec une sortie vers les chantiers. */}
       <CockpitCard
         icon={Briefcase}
         iconClass="text-foreground/70"
         title={`Interventions planifiées ${isToday ? "aujourd'hui" : selectedDayLabel}`}
+        flat={recurringToday.length === 0 && orgTodaySites.length === 0}
       >
         {recurringToday.length > 0 ? (
           <ul className="space-y-3">
@@ -680,12 +711,15 @@ export default async function FieldHomePage({
         ) : orgTodaySites.length > 0 ? (
           <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
         ) : (
-          <EmptyState
-            icon={CheckCircle2}
-            title="Pas d'intervention prévue aujourd'hui"
-            description="La page se mettra à jour quand une mission sera planifiée."
-            variant="compact"
-          />
+          <div className="-mt-1 flex flex-col items-center gap-2.5 py-2 text-center">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+              <CheckCircle2 className="h-5 w-5" strokeWidth={1.5} />
+            </span>
+            <p className="text-sm font-medium">Pas d&apos;intervention prévue.</p>
+            <Link href="/m/sites" className="text-[13px] font-medium text-foreground/70 underline underline-offset-2 active:opacity-70">
+              Voir mes chantiers
+            </Link>
+          </div>
         )}
       </CockpitCard>
 

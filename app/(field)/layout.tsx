@@ -28,13 +28,13 @@ export default async function FieldLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-dvh overflow-x-hidden bg-background text-foreground">
       <header className="sticky top-0 z-10 backdrop-blur-sm border-b border-foreground/[0.08] bg-background/95">
-        <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
+        <div className="max-w-md mx-auto flex items-center justify-between px-3 py-3.5">
           {/* Retour accueil + identité produit (remplace le « Bonjour <prénom> »
               redondant : le prénom est déjà repris en grand dans le corps de /m). */}
           <Link href="/m" className="text-sm font-semibold tracking-tight">
             MemorIA
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             {/* Raccourci annuaire chantiers — atteindre un site sans QR ni intervention. */}
             <Link
               href="/m/sites"
@@ -64,7 +64,7 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           </div>
         </div>
       </header>
-      <main className="max-w-md mx-auto px-4 py-4">{children}</main>
+      <main className="max-w-md mx-auto px-3 py-5">{children}</main>
       <footer className="max-w-md mx-auto px-4 py-6 mt-12 border-t border-foreground/[0.08] flex items-center gap-3 text-sm">
         <LogoutButton />
         <span aria-hidden className="text-muted-foreground/60">·</span>
