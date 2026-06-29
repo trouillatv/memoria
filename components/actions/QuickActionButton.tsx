@@ -62,21 +62,19 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
     })
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={
-          variant === 'mobile'
-            ? 'w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium active:scale-[0.99] transition-transform'
-            : 'inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]'
-        }
-      >
-        <Plus className="h-4 w-4" /> Action
-      </button>
-    )
-  }
+  const trigger = (
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      className={
+        variant === 'mobile'
+          ? 'w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium active:scale-[0.99] transition-transform'
+          : 'inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]'
+      }
+    >
+      <Plus className="h-4 w-4" /> Action
+    </button>
+  )
 
   const formCard = (
     <div className="rounded-xl border bg-card p-3 space-y-3">
@@ -123,7 +121,6 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           maxLength={200}
           placeholder="Ex : Reprendre la réservation plomberie cuisine"
@@ -169,15 +166,21 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
     </div>
   )
 
-  // Mobile : overlay plein écran — permet de placer le déclencheur ➕ Action dans
-  // une grille compacte sans écraser le formulaire. Desktop : inline comme avant.
-  if (variant === 'mobile') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3">
-        <div className="w-full max-w-lg my-2">{formCard}</div>
-      </div>
-    )
-  }
-
-  return formCard
+  // Le déclencheur reste TOUJOURS en place (la ligne ne grandit jamais) ; le
+  // formulaire SORT en popup par-dessus la page — mobile ET desktop. Clic sur le
+  // fond = fermer. (Avant, le desktop remplaçait le bouton par le form inline,
+  // ce qui agrandissait la ligne — Vincent 2026-06-29.)
+  return (
+    <>
+      {trigger}
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/70 backdrop-blur-sm p-3 pt-[10vh] md:pt-[14vh]"
+          onClick={(e) => { if (e.target === e.currentTarget) { setOpen(false); reset() } }}
+        >
+          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>{formCard}</div>
+        </div>
+      )}
+    </>
+  )
 }
