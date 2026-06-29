@@ -131,7 +131,13 @@ export interface TenderReading {
   missingDocuments: TakeoverItem[]
   /** Points déjà suivis qui appellent l'attention (rare sur une 1ʳᵉ prévisite). */
   toWatch: TakeoverDossier[]
+  /** Éléments ⭐ marqués sur le terrain « à réutiliser dans le mémoire technique » (mig 174). */
+  starred: { id: string; kind: string; text: string }[]
   isEmpty: boolean
+}
+
+const KIND_LABEL_FR: Record<string, string> = {
+  photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position',
 }
 
 // ── LES LENTILLES : fonctions PURES sur le read-model (aucun accès DB) ────────────
@@ -208,6 +214,13 @@ export function lensTender(rm: DossierReadModel): TenderReading {
   const toWatch: TakeoverDossier[] = rm.siteMemory.subjectsToWatch.map((w) => ({
     id: w.id, name: w.name, state: w.state, cause: w.cause, openQuestion: w.openQuestion,
   }))
+  const starred = captures
+    .filter((c) => c.starred)
+    .map((c) => ({
+      id: c.id,
+      kind: c.kind,
+      text: (c.kind === 'note' || c.kind === 'vocal') && c.body?.trim() ? c.body.trim() : (KIND_LABEL_FR[c.kind] ?? c.kind),
+    }))
 
   return {
     siteName: rm.identity.dossier?.label ?? rm.identity.site?.name ?? 'Dossier',
@@ -219,6 +232,7 @@ export function lensTender(rm: DossierReadModel): TenderReading {
     pitfalls,
     missingDocuments,
     toWatch,
+    starred,
     isEmpty:
       observed.capturesTotal === 0 && promises.length === 0 && risks.length === 0 &&
       pitfalls.length === 0 && missingDocuments.length === 0 && toWatch.length === 0,

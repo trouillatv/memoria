@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon } from 'lucide-react'
+import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon, Star } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
@@ -18,6 +18,7 @@ export const dynamic = 'force-dynamic'
 // Prototype : accessible par URL, pas encore dans la navigation principale.
 
 const PHASE_FR: Record<string, string> = { prospect: 'Prospect', en_ao: 'En appel d’offre', actif: 'Actif', perdu: 'Perdu', archive: 'Archivé' }
+const KIND_FR: Record<string, string> = { photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position' }
 const STATE_FR: Record<string, string> = { bloqué: 'Bloqué', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
 const STATE_CLS: Record<string, string> = {
   bloqué: 'bg-rose-100 text-rose-700', en_attente: 'bg-amber-100 text-amber-800',
@@ -78,6 +79,24 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
         </p>
       ) : (
         <>
+          {/* Éléments marqués sur le terrain — la sélection de Guillaume, son point de
+              départ pour rédiger l'AO (plutôt que refouiller toutes les captures). */}
+          {r.starred.length > 0 && (
+            <Block icon={<Star className="h-4 w-4 fill-amber-400 text-amber-500" />} title="Marqués pour le mémoire technique">
+              <ul className="space-y-1">
+                {r.starred.map((it) => (
+                  <li key={it.id} className="flex items-start gap-1.5 text-sm">
+                    <Star className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" />
+                    <span className="min-w-0">
+                      {it.text}
+                      <span className="ml-1.5 text-[11px] text-muted-foreground">{KIND_FR[it.kind] ?? it.kind}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Block>
+          )}
+
           {/* Ce qu'on a observé sur site — la matière brute, à transformer en postes. */}
           <Block icon={<Eye className="h-4 w-4 text-sky-600" />} title="Ce qu'on a observé sur site">
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
