@@ -417,7 +417,8 @@ export function VisitBasket({
                   </span>
                   <button
                     type="button" onClick={() => toggleStar(c)}
-                    aria-label={c.starred ? 'Retirer du mémoire technique' : 'Marquer pour le mémoire technique'}
+                    aria-label={c.starred ? 'Retirer « important »' : 'Important — à réutiliser'}
+                    title={c.starred ? 'Important' : 'Marquer comme important (à réutiliser)'}
                     className="shrink-0 pt-0.5"
                   >
                     <Star className={`h-3.5 w-3.5 ${c.starred ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground/40 hover:text-amber-500'}`} />
