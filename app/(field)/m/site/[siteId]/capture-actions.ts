@@ -18,11 +18,13 @@ import { getSiteReport, addReportAttachment } from '@/lib/db/site-reports'
 import { addCapturedKnowledge } from '@/lib/db/captured-knowledge'
 import {
   addVisitCapture,
+  findVisitCaptureIdByClientUuid,
   listVisitCaptures,
   removeCaptureWhileCollecting,
   setCaptureStarred,
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
+import { uploadReportAttachmentAction } from './report-actions'
 
 const BUCKET = 'site-reports'
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -259,6 +261,104 @@ export async function addVocalCaptureAction(
   } catch {
     await supabase.storage.from(BUCKET).remove([storagePath]).catch(() => {})
     return { ok: false, error: 'Échec de la capture vocale' }
+  }
+}
+
+// ── Drain de la file locale : monte un média déposé hors-ligne ───────────────
+// Lot B « la capture ne bloque jamais ». Le geste a déposé le blob dans la file
+// IndexedDB et rendu la main ; ce drain (rejoué tant que le réseau manque) monte
+// la pièce PUIS crée la capture, le tout idempotent par client_uuid (mig 177) :
+// un re-drain renvoie la capture déjà acquise, sans ré-uploader. Photo/vidéo
+// réutilisent l'upload de pièce existant ; le vocal réutilise le bucket audio.
+
+const drainKindSchema = z.enum(['photo', 'video', 'vocal'])
+
+export async function drainVisitCaptureAction(
+  formData: FormData,
+): Promise<{ ok: true; captureId: string; kind: 'photo' | 'video' | 'vocal' } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+
+  const reportId = formData.get('report_id')
+  const siteId = formData.get('site_id')
+  const clientUuid = formData.get('client_uuid')
+  const kindParsed = drainKindSchema.safeParse(formData.get('kind'))
+  if (typeof reportId !== 'string' || !z.string().uuid().safeParse(reportId).success) return { ok: false, error: 'Visite invalide' }
+  if (typeof siteId !== 'string' || !z.string().uuid().safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
+  if (typeof clientUuid !== 'string' || !z.string().uuid().safeParse(clientUuid).success) return { ok: false, error: 'Identité invalide' }
+  if (!kindParsed.success) return { ok: false, error: 'Type invalide' }
+  const kind = kindParsed.data
+
+  const file = formData.get('file')
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: 'Fichier manquant' }
+
+  // Position ponctuelle (opt-in), best-effort.
+  const latRaw = formData.get('lat'); const lngRaw = formData.get('lng')
+  const geo = z.object(coords).safeParse({
+    lat: typeof latRaw === 'string' && latRaw ? latRaw : undefined,
+    lng: typeof lngRaw === 'string' && lngRaw ? lngRaw : undefined,
+  })
+  const lat = geo.success ? geo.data.lat ?? null : null
+  const lng = geo.success ? geo.data.lng ?? null : null
+
+  // Idempotence en tête : si la capture existe déjà pour ce client_uuid, on
+  // renvoie sans ré-uploader (réponse perdue puis re-drain).
+  try {
+    const existing = await findVisitCaptureIdByClientUuid(clientUuid)
+    if (existing) return { ok: true, captureId: existing, kind }
+  } catch { /* on continue : l'insert idempotent rattrapera */ }
+
+  try {
+    if (kind === 'photo' || kind === 'video') {
+      // Réutilise l'upload de pièce (idempotent sur client_uuid côté attachment).
+      const fd = new FormData()
+      fd.set('report_id', reportId)
+      fd.set('kind', kind)
+      fd.set('file', file)
+      fd.set('client_uuid', clientUuid)
+      const up = await uploadReportAttachmentAction(fd)
+      if (!up.ok) return { ok: false, error: up.error }
+      const captureId = await addVisitCapture({
+        reportId, siteId, kind,
+        attachmentId: up.attachmentId,
+        clientUuid, lat, lng,
+        createdBy: auth.userId,
+      })
+      return { ok: true, captureId, kind }
+    }
+
+    // Vocal : upload dans le bucket audio + capture 'pending' (transcription async).
+    const report = await getSiteReport(reportId)
+    if (!report) return { ok: false, error: 'Visite introuvable' }
+    if (file.size > MAX_AUDIO_BYTES) return { ok: false, error: 'Mémo trop long' }
+    const mime = file.type || 'audio/webm'
+    const ext = mimeToExt(mime)
+    const supabase = createAdminClient()
+    const attId = crypto.randomUUID()
+    const storagePath = `${report.tenant_id}/${report.id}/${attId}.${ext}`
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const { error: upErr } = await supabase.storage
+      .from(BUCKET)
+      .upload(storagePath, bytes, { contentType: mime, upsert: false })
+    if (upErr) return { ok: false, error: 'Upload du mémo échoué' }
+    const attachmentId = await addReportAttachment({
+      report_id: report.id,
+      kind: 'audio',
+      storage_path: storagePath,
+      filename: `memo.${ext}`,
+      mime_type: mime,
+      size_bytes: file.size,
+    })
+    const captureId = await addVisitCapture({
+      reportId, siteId, kind: 'vocal',
+      attachmentId,
+      transcriptStatus: 'pending',
+      clientUuid, lat, lng,
+      createdBy: auth.userId,
+    })
+    return { ok: true, captureId, kind }
+  } catch {
+    return { ok: false, error: 'Échec de la capture' }
   }
 }
 

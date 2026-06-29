@@ -1,6 +1,7 @@
 'use client'
 
 import { usePhotoUploader } from '@/lib/field/use-photo-uploader'
+import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 
 /**
  * V5.1 (2026-05-14) — Drainer global de la queue IndexedDB sur toute la zone
@@ -19,5 +20,9 @@ import { usePhotoUploader } from '@/lib/field/use-photo-uploader'
  */
 export function FieldSyncDrainer() {
   usePhotoUploader()
+  // Lot B : draine aussi la file des captures de visite (photo/vidéo/vocal),
+  // pour que les éléments « en attente » continuent de monter même quand on a
+  // quitté le panier (visite suspendue, retour à l'accueil, app rouverte).
+  useVisitCaptureUploader()
   return null
 }

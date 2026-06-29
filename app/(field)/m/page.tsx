@@ -17,6 +17,8 @@ import { DateNav } from './DateNav'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
 import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
+import { ActiveVisitsCard } from './ActiveVisitsCard'
+import { listActiveVisitsForUser } from '@/lib/db/visits'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -580,9 +582,17 @@ export default async function FieldHomePage({
   const timedToday = selectedInterventions.filter((i) => !!i.planned_start)
   const recurringToday = selectedInterventions.filter((i) => !i.planned_start)
 
+  // Visites OUVERTES de l'agent (Lot A) — objet vivant à reprendre sans le
+  // chercher. Surfacé tout en haut, indépendant de la date sélectionnée.
+  const activeVisits = await listActiveVisitsForUser(user.id).catch(() => [])
+
   return (
     <div className="space-y-7 max-w-md pb-32">
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
+
+      {/* 0 — Visite en cours : LE bouton principal quand une collecte est ouverte.
+          Au-dessus de tout (avant l'attention) : on reprend en un geste. */}
+      <ActiveVisitsCard visits={activeVisits} />
 
       {/* 1 — Ce qui demande ton attention (remonté automatiquement).
           Carte HÉRO : la plus prominente. Une phrase d'état donne l'ensemble
