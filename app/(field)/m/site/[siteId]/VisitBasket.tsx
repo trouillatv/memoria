@@ -17,7 +17,7 @@ import {
   listVisitCapturesAction,
   revalidateSiteMobile,
 } from './capture-actions'
-import { queueVisitCapture } from '@/lib/field/visit-capture-queue'
+import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
@@ -163,6 +163,33 @@ export function VisitBasket({
   useEffect(() => () => {
     pendingRef.current.forEach((p) => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl) })
   }, [])
+
+  // REPRISE APRÈS FERMETURE DE L'APP : on reconstitue l'état « en attente » du
+  // panier depuis la file persistante. L'optimiste en mémoire (vignettes) est
+  // perdu à la fermeture, mais les médias, eux, sont en sécurité dans IndexedDB.
+  // Sans ça, une photo prise à 8h et pas encore montée restait invisible à la
+  // réouverture jusqu'à sa synchro (data SAFE, mais panier incomplet). On
+  // régénère les vignettes depuis les blobs stockés.
+  useEffect(() => {
+    let alive = true
+    listQueuedVisitCapturesByReport(reportId).then((entries) => {
+      if (!alive || entries.length === 0) return
+      setPending((prev) => {
+        const known = new Set(prev.map((p) => p.clientUuid))
+        const confirmed = new Set(initialCaptures.map((c) => c.client_uuid).filter((u): u is string => !!u))
+        const additions: PendingCapture[] = entries
+          .filter((e) => !known.has(e.clientUuid) && !confirmed.has(e.clientUuid))
+          .map((e) => ({
+            clientUuid: e.clientUuid,
+            kind: e.kind,
+            previewUrl: e.kind === 'vocal' ? null : URL.createObjectURL(e.blob),
+            takenAt: e.takenAt,
+          }))
+        return additions.length ? [...prev, ...additions] : prev
+      })
+    }).catch(() => { /* IndexedDB indispo : on s'appuie sur le serveur seul */ })
+    return () => { alive = false }
+  }, [reportId, initialCaptures])
 
   // Le transcript d'un vocal arrive en arrière-plan : tant qu'un mémo est en cours
   // de transcription, on rafraîchit doucement pour le faire apparaître tout seul.

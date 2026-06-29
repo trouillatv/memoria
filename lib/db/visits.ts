@@ -190,7 +190,10 @@ export interface ActiveVisitSummary {
   siteId: string
   siteName: string
   startedAt: string | null
+  /** Total des captures CONFIRMÉES (en base) — distinct des « en attente » (file client). */
   captureCount: number
+  /** Répartition par type : l'agent reconnaît sa visite (« la grosse, 42 photos »). */
+  kinds: { photo: number; video: number; vocal: number; note: number; verification: number; position: number }
   /** Horodatage de la capture la plus récente (fallback started_at) — « dernière
    *  activité » : aide l'agent qui revient à reconnaître SA visite d'un coup d'œil. */
   lastActivityAt: string | null
@@ -218,10 +221,11 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
 
   return Promise.all(
     rows.map(async (r) => {
-      const [{ count }, { data: last }] = await Promise.all([
+      // Un seul select des `kind` non écartés : donne le total ET la répartition.
+      const [{ data: kindRows }, { data: last }] = await Promise.all([
         supabase
           .from('visit_capture')
-          .select('id', { count: 'exact', head: true })
+          .select('kind')
           .eq('report_id', r.id)
           .neq('status', 'discarded'),
         supabase
@@ -233,13 +237,18 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
           .limit(1)
           .maybeSingle(),
       ])
+      const kinds = { photo: 0, video: 0, vocal: 0, note: 0, verification: 0, position: 0 }
+      for (const row of (kindRows ?? []) as Array<{ kind: keyof typeof kinds }>) {
+        if (row.kind in kinds) kinds[row.kind]++
+      }
       const lastCaptureAt = (last as { created_at: string } | null)?.created_at ?? null
       return {
         reportId: r.id,
         siteId: r.site_id,
         siteName: nameById.get(r.site_id) ?? 'Chantier',
         startedAt: r.started_at,
-        captureCount: count ?? 0,
+        captureCount: (kindRows ?? []).length,
+        kinds,
         lastActivityAt: lastCaptureAt ?? r.started_at,
       }
     }),
