@@ -250,7 +250,7 @@ export function VisitBasket({
       if (r.ok) {
         setQuestionText(''); setQuestionCaptureId(null); setOverlay('none')
         setQuestionCount((n) => n + 1)
-        toast.success('Question notée', { duration: 1200 })
+        toast.success('À vérifier — noté', { duration: 1200 })
       } else toast.error(r.error)
     })
   }
@@ -411,7 +411,7 @@ export function VisitBasket({
         type="button" onClick={() => openQuestion(null)} disabled={busy}
         className="flex w-full items-center justify-center gap-1.5 py-1 text-xs text-amber-800/90 dark:text-amber-300/90 disabled:opacity-50"
       >
-        <HelpCircle className="h-3.5 w-3.5" /> + Question à vérifier{questionCount > 0 ? ` · ${questionCount} notée${questionCount > 1 ? 's' : ''}` : ''}
+        <HelpCircle className="h-3.5 w-3.5" /> + À vérifier{questionCount > 0 ? ` · ${questionCount} noté${questionCount > 1 ? 's' : ''}` : ''}
       </button>
       {/* Géoloc OPT-IN : on localise l'OBSERVATION, jamais la personne, jamais en continu. */}
       <label className="flex items-start gap-2 rounded-lg px-1 text-xs text-emerald-800/90 dark:text-emerald-300/90">
@@ -450,7 +450,7 @@ export function VisitBasket({
                   </span>
                   <button
                     type="button" onClick={() => openQuestion(c.id)}
-                    aria-label="À vérifier — poser une question" title="À vérifier au retour"
+                    aria-label="À vérifier au retour" title="À vérifier au retour"
                     className="shrink-0 pt-0.5"
                   >
                     <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/40 hover:text-amber-600" />
@@ -502,7 +502,7 @@ export function VisitBasket({
           />
           <button type="button" onClick={saveQuestion} disabled={busy || questionText.trim().length < 1}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 disabled:opacity-50">
-            <Check className="h-4 w-4" /> Noter la question
+            <Check className="h-4 w-4" /> Ajouter
           </button>
         </Overlay>
       )}
