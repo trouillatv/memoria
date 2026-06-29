@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { updateDossierPhase } from '@/lib/db/dossiers'
+import { setCapturedKnowledgeStatus } from '@/lib/db/captured-knowledge'
 import type { DossierPhase } from '@/types/db'
 
 const ALLOWED: DossierPhase[] = ['prospect', 'en_ao', 'actif', 'perdu', 'archive']
@@ -18,5 +19,17 @@ export async function setDossierPhaseAction(formData: FormData): Promise<void> {
   if (!dossierId || !ALLOWED.includes(phase)) throw new Error('Paramètres invalides')
 
   await updateDossierPhase(dossierId, phase)
+  revalidatePath(`/dossiers/${dossierId}`)
+}
+
+// Marque une question ouverte comme résolue (réponse trouvée). Simple : ouverte →
+// résolue. Pas d'assignation, échéance, priorité — ce n'est pas un outil de tâches.
+export async function resolveQuestionAction(formData: FormData): Promise<void> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) throw new Error('Non autorisé')
+  const id = String(formData.get('id') ?? '')
+  const dossierId = String(formData.get('dossierId') ?? '')
+  if (!id) throw new Error('Paramètres invalides')
+  await setCapturedKnowledgeStatus(id, 'resolved')
   revalidatePath(`/dossiers/${dossierId}`)
 }

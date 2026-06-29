@@ -95,6 +95,16 @@ export async function listCapturedKnowledgeBySubject(subjectId: string): Promise
   return (data ?? []) as CapturedKnowledgeRow[]
 }
 
+/** Change le statut d'une info captée (ex. question active → resolved). */
+export async function setCapturedKnowledgeStatus(id: string, status: KnowledgeStatus): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('captured_knowledge')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 /** Les infos utiles actives d'un DOSSIER (opération) — scopées à l'opération. */
 export async function listActiveCapturedKnowledgeByDossier(dossierId: string, limit = 200): Promise<CapturedKnowledgeRow[]> {
   const supabase = createAdminClient()

@@ -1,12 +1,12 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon, Star } from 'lucide-react'
+import { ArrowLeft, Eye, Handshake, ShieldAlert, Info, FileX2, Mic, StickyNote, Camera, Video, ClipboardCheck, AlertTriangle, Smartphone, Send, Trophy, XCircle, RotateCcw, Building2, Map as MapIcon, Star, HelpCircle, Check } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
 import { listGeolocatedCapturesBySite } from '@/lib/db/visit-captures'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
-import { setDossierPhaseAction } from './actions'
+import { setDossierPhaseAction, resolveQuestionAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,6 +91,30 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
                       {it.text}
                       <span className="ml-1.5 text-[11px] text-muted-foreground">{KIND_FR[it.kind] ?? it.kind}</span>
                     </span>
+                  </li>
+                ))}
+              </ul>
+            </Block>
+          )}
+
+          {/* ❓ Questions ouvertes — « ce qu'on ne sait pas encore », à résoudre. Simple :
+              ouverte → réponse trouvée → résolue. Pas d'assignation/échéance/priorité. */}
+          {r.questions.length > 0 && (
+            <Block icon={<HelpCircle className="h-4 w-4 text-amber-600" />} title="Questions encore sans réponse">
+              <ul className="space-y-1.5">
+                {r.questions.map((q) => (
+                  <li key={q.id} className="flex items-start justify-between gap-2">
+                    <span className="flex min-w-0 items-start gap-1.5 text-sm">
+                      <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                      <span className="min-w-0">{q.text}</span>
+                    </span>
+                    <form action={resolveQuestionAction} className="shrink-0">
+                      <input type="hidden" name="id" value={q.id} />
+                      <input type="hidden" name="dossierId" value={dossier.id} />
+                      <button type="submit" className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted">
+                        <Check className="h-3 w-3" /> Résolue
+                      </button>
+                    </form>
                   </li>
                 ))}
               </ul>

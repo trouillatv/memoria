@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -17,6 +17,7 @@ import {
   addVocalCaptureAction,
   removeCaptureAction,
   setCaptureStarAction,
+  addQuestionCaptureAction,
   listVisitCapturesAction,
   revalidateSiteMobile,
 } from './capture-actions'
@@ -57,8 +58,12 @@ export function VisitBasket({
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
-  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify'>('none')
+  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question'>('none')
   const [note, setNote] = useState('')
+  // ❓ Question ouverte (« à vérifier ») : sur une capture (questionCaptureId) ou libre.
+  const [questionText, setQuestionText] = useState('')
+  const [questionCaptureId, setQuestionCaptureId] = useState<string | null>(null)
+  const [questionCount, setQuestionCount] = useState(0)
   const [verifIndex, setVerifIndex] = useState(0)
   const [verifNote, setVerifNote] = useState('')
   const touchStartX = useRef<number | null>(null)
@@ -228,6 +233,28 @@ export function VisitBasket({
     })
   }
 
+  // ── Question ouverte (❓ « à vérifier ») — sur une capture ou libre ──────────
+  function openQuestion(captureId: string | null) {
+    setQuestionCaptureId(captureId)
+    setQuestionText('')
+    setOverlay('question')
+  }
+  function saveQuestion() {
+    const body = questionText.trim()
+    if (body.length < 1) return
+    startBusy(async () => {
+      const r = await addQuestionCaptureAction({
+        report_id: reportId, site_id: siteId, body,
+        capture_id: questionCaptureId ?? undefined,
+      })
+      if (r.ok) {
+        setQuestionText(''); setQuestionCaptureId(null); setOverlay('none')
+        setQuestionCount((n) => n + 1)
+        toast.success('Question notée', { duration: 1200 })
+      } else toast.error(r.error)
+    })
+  }
+
   // ── Vérifier les points suivis — parcours séquentiel ────────────────────────
   // ERGONOMIE seulement : on enchaîne les points (suivant/suivant…, swipe) au lieu
   // de revenir à la liste. MÉTIER INCHANGÉ : même capture de vérification ; aucun
@@ -380,6 +407,12 @@ export function VisitBasket({
       >
         <MapPin className="h-3.5 w-3.5" /> Enregistrer ma position (facultatif)
       </button>
+      <button
+        type="button" onClick={() => openQuestion(null)} disabled={busy}
+        className="flex w-full items-center justify-center gap-1.5 py-1 text-xs text-amber-800/90 dark:text-amber-300/90 disabled:opacity-50"
+      >
+        <HelpCircle className="h-3.5 w-3.5" /> + Question à vérifier{questionCount > 0 ? ` · ${questionCount} notée${questionCount > 1 ? 's' : ''}` : ''}
+      </button>
       {/* Géoloc OPT-IN : on localise l'OBSERVATION, jamais la personne, jamais en continu. */}
       <label className="flex items-start gap-2 rounded-lg px-1 text-xs text-emerald-800/90 dark:text-emerald-300/90">
         <input type="checkbox" checked={geoTag} onChange={(e) => setGeoTag(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-emerald-600" />
@@ -416,6 +449,13 @@ export function VisitBasket({
                     {hint && <span className="block text-[11px] text-muted-foreground">{hint}</span>}
                   </span>
                   <button
+                    type="button" onClick={() => openQuestion(c.id)}
+                    aria-label="À vérifier — poser une question" title="À vérifier au retour"
+                    className="shrink-0 pt-0.5"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/40 hover:text-amber-600" />
+                  </button>
+                  <button
                     type="button" onClick={() => toggleStar(c)}
                     aria-label={c.starred ? 'Retirer « important »' : 'Important — à réutiliser'}
                     title={c.starred ? 'Important' : 'Marquer comme important (à réutiliser)'}
@@ -448,6 +488,21 @@ export function VisitBasket({
           <button type="button" onClick={saveNote} disabled={busy || note.trim().length < 1}
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 disabled:opacity-50">
             <Check className="h-4 w-4" /> Ajouter au panier
+          </button>
+        </Overlay>
+      )}
+
+      {/* Overlay : Question à vérifier (❓) — sur une capture ou libre. */}
+      {overlay === 'question' && (
+        <Overlay title="À vérifier au retour" icon={<HelpCircle className="h-4 w-4" />} onClose={() => { setOverlay('none'); setQuestionText(''); setQuestionCaptureId(null) }}>
+          <textarea
+            value={questionText} onChange={(e) => setQuestionText(e.target.value)} rows={2} autoFocus maxLength={500}
+            placeholder="Ex : diamètre canalisation à confirmer · où passe le réseau ?…"
+            className="w-full rounded-lg border bg-background px-3 py-2 text-base resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button type="button" onClick={saveQuestion} disabled={busy || questionText.trim().length < 1}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 disabled:opacity-50">
+            <Check className="h-4 w-4" /> Noter la question
           </button>
         </Overlay>
       )}
