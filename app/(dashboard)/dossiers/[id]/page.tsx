@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 // (« voilà ce que j'ai compris », puis mémoire technique) viendra par-dessus, gated.
 // Prototype : accessible par URL, pas encore dans la navigation principale.
 
-const PHASE_FR: Record<string, string> = { prospect: 'Prospection', en_ao: 'Appel d’offres', actif: 'Travaux', perdu: 'Perdu', archive: 'Terminé' }
+const PHASE_FR: Record<string, string> = { prospect: 'Prospection', en_ao: 'Préparation AO', actif: 'Travaux', perdu: 'Perdu', archive: 'Archivé' }
 const KIND_FR: Record<string, string> = { photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position' }
 const STATE_FR: Record<string, string> = { bloqué: 'Bloqué', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
 const STATE_CLS: Record<string, string> = {
@@ -45,6 +45,20 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
     body: c.body, reportId: c.report_id, subjectName: c.subject_name,
   }))
 
+  // Récit de l'affaire — « où j'en suis ». DÉTERMINISTE, dérivé des données déjà
+  // chargées (captures / AO rattachés / phase). Non bloquant : juste l'histoire.
+  const lost = dossier.phase === 'perdu'
+  const advanced = dossier.phase === 'actif' || dossier.phase === 'archive'
+  const recitSteps: Array<{ label: string; done: boolean; lost?: boolean }> = [
+    { label: 'Prospection', done: true },
+    { label: 'Prévisite', done: r.observed.capturesTotal > 0 },
+    { label: 'AO reçu', done: attachedTenders.length > 0 },
+    { label: 'Analyse', done: attachedTenders.some((t) => ['ready', 'submitted', 'archived'].includes(t.status)) },
+    { label: 'Réponse envoyée', done: attachedTenders.some((t) => t.status === 'submitted') },
+    lost ? { label: 'Perdu', done: true, lost: true } : { label: 'Marché gagné', done: advanced },
+    { label: 'Travaux', done: advanced },
+  ]
+
   return (
     <div className="max-w-3xl space-y-6 py-6">
       <Link href={`/opportunites`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
@@ -63,6 +77,9 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
           Affaire — ce que la prévisite a capté, organisé pour répondre à l&apos;appel d&apos;offres. Mémoire terrain, aucune IA.
         </p>
       </header>
+
+      {/* Récit de l'affaire — « où j'en suis ». Pas un workflow bloquant : une histoire. */}
+      <AffaireRecit steps={recitSteps} />
 
       {/* Cycle de vie du dossier — la soudure arrière. « Marché gagné » fait du
           dossier un chantier SANS copie : la mémoire de prévisite suit. */}
@@ -253,6 +270,24 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
           </p>
         </>
       )}
+    </div>
+  )
+}
+
+function AffaireRecit({ steps }: { steps: Array<{ label: string; done: boolean; lost?: boolean }> }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2.5">
+      {steps.map((s) => (
+        <span
+          key={s.label}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            s.lost ? 'bg-rose-100 text-rose-700' : s.done ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          {s.lost ? <XCircle className="h-3 w-3" /> : s.done ? <Check className="h-3 w-3" /> : <span className="h-2 w-2 rounded-full border border-current opacity-50" aria-hidden />}
+          {s.label}
+        </span>
+      ))}
     </div>
   )
 }
