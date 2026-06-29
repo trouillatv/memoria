@@ -1,11 +1,14 @@
 import Link from 'next/link'
-import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Zap, Briefcase, FileText, HelpCircle } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { listSharedHandoverBriefsForChef } from '@/lib/db/handover'
+import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
+import { actionHealth } from '@/lib/actions/health'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
@@ -18,19 +21,6 @@ import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
-
-/** J1 — Prénom de l'agent à partir du `full_name` (1er mot). Fallback : local-part
- * de l'email avant `@` capitalisée. Évite « Bonjour user@email.com » disgracieux. */
-function firstNameOf(fullName: string | null, email: string): string {
-  const trimmed = (fullName ?? '').trim()
-  if (trimmed.length > 0) {
-    const first = trimmed.split(/\s+/)[0]
-    if (first) return first
-  }
-  const local = (email.split('@')[0] ?? email).trim()
-  if (local.length === 0) return ''
-  return local[0].toUpperCase() + local.slice(1)
-}
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
@@ -64,6 +54,125 @@ const SLOT_BADGE_CLASSES: Record<string, string> = {
   evening: 'bg-indigo-100 text-indigo-900 border-indigo-200',
 }
 
+// ── Cockpit terrain (maquette Vincent) ──────────────────────────────────────
+// /m devient un cockpit : « ce qui demande ton attention » d'abord, puis les
+// outils pour agir. Les actions importantes remontent automatiquement — l'agent
+// ne va plus les chercher dans /m/actions.
+
+type Severity = 'red' | 'orange' | 'yellow' | 'indigo'
+
+// Une teinte par niveau d'urgence — la couleur EST l'information (cf. santé des
+// actions 🔴≥14j / 🟠7-13j / 🟢rythme). Barre latérale + pastille + titre teinté.
+const SEVERITY: Record<Severity, { bar: string; chip: string; title: string; rank: number }> = {
+  red: {
+    bar: 'border-red-500',
+    chip: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300',
+    title: 'text-red-700 dark:text-red-300',
+    rank: 0,
+  },
+  orange: {
+    bar: 'border-orange-400',
+    chip: 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-300',
+    title: 'text-orange-700 dark:text-orange-300',
+    rank: 1,
+  },
+  yellow: {
+    bar: 'border-amber-400',
+    chip: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300',
+    title: 'text-amber-700 dark:text-amber-300',
+    rank: 2,
+  },
+  indigo: {
+    bar: 'border-indigo-400',
+    chip: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300',
+    title: 'text-indigo-700 dark:text-indigo-300',
+    rank: 3,
+  },
+}
+
+interface AttentionItem {
+  key: string
+  severity: Severity
+  icon: LucideIcon
+  title: string
+  subtitle: string | null
+  href: string
+  urgent?: boolean
+}
+
+// Écart en JOURS CIVILS purs (anti-bascule fuseau Nouméa, cf. formatScheduledTime).
+function civilDaysBetween(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split('-').map(Number)
+  const [ty, tm, td] = toIso.split('-').map(Number)
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86_400_000)
+}
+
+// Carte du cockpit : conteneur arrondi + en-tête (icône + titre + extra à droite).
+function CockpitCard({
+  icon: Icon,
+  iconClass,
+  title,
+  headerHref,
+  headerExtra,
+  children,
+}: {
+  icon: LucideIcon
+  iconClass: string
+  title: string
+  headerHref?: string
+  headerExtra?: React.ReactNode
+  children: React.ReactNode
+}) {
+  const header = (
+    <div className="flex items-center gap-2.5">
+      <Icon className={`h-5 w-5 shrink-0 ${iconClass}`} strokeWidth={2} />
+      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+      {headerExtra && <div className="ml-auto flex items-center gap-2">{headerExtra}</div>}
+    </div>
+  )
+  return (
+    <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4 shadow-sm space-y-3">
+      {headerHref ? (
+        <Link href={headerHref} className="block active:opacity-70">{header}</Link>
+      ) : (
+        header
+      )}
+      {children}
+    </section>
+  )
+}
+
+// Ligne « attention » : barre latérale colorée + pastille icône + titre teinté
+// (+ pastille URGENT) + sous-titre discret + chevron.
+function AttentionRow({ item }: { item: AttentionItem }) {
+  const s = SEVERITY[item.severity]
+  const Icon = item.icon
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-3 border-l-4 ${s.bar} rounded-r-lg pl-3 pr-1 py-2.5 -mx-1 active:bg-muted/40 transition-colors`}
+    >
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${s.chip}`}>
+        <Icon className="h-5 w-5" strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className={`truncate text-[15px] font-semibold ${s.title}`}>{item.title}</span>
+          {item.urgent && (
+            <span className="shrink-0 rounded-md bg-red-100 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-700 dark:bg-red-900/50 dark:text-red-300">
+              Urgent
+            </span>
+          )}
+        </span>
+        {item.subtitle && (
+          <span className="mt-0.5 block truncate text-sm text-muted-foreground">{item.subtitle}</span>
+        )}
+      </span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+    </Link>
+  )
+}
+
 export default async function FieldHomePage({
   searchParams,
 }: {
@@ -78,8 +187,6 @@ export default async function FieldHomePage({
     ? params.date
     : todayIso
   const isToday = selectedDate === todayIso
-  const isPast = selectedDate < todayIso
-  const isFuture = selectedDate > todayIso
 
   const supabase = createAdminClient()
 
@@ -342,180 +449,213 @@ export default async function FieldHomePage({
       : []
   const selectedDayLabel = formatScheduledTime(selectedDate).day.toLowerCase()
 
-  if (interventions.length === 0 && orgTodaySites.length > 0) {
-    return (
-      <div className="space-y-6 max-w-md pb-32">
-        <DateNav todayIso={todayIso} selectedIso={selectedDate} />
-        <MeetingLauncher />
-        <VisitLauncherHome />
-        <PrevisiteAoLauncher />
-        <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
-        <FreePhotoFab sites={fabSites} />
-      </div>
-    )
+  // ── Assemblage du cockpit ────────────────────────────────────────────────
+  // « Ce qui demande ton attention » agrège plusieurs sources RÉELLES en une
+  // liste priorisée par couleur. Les actions importantes remontent ici
+  // automatiquement — l'agent ne va plus les chercher dans /m/actions.
+  // Silence positif : carte masquée si rien ne mérite l'œil.
+  const attentionItems: AttentionItem[] = []
+
+  if (isToday) {
+    // 1) Échéances AO (tenders) à rendre — la pression réglementaire d'abord.
+    //    🔴 J-≤2 (URGENT) · 🟠 J-≤7 · 🟡 J-≤14. Bornée à l'horizon 14 j.
+    if (user.organization_id) {
+      const horizon = addDaysLocal(todayIso, 14)
+      const { data: tenderRows } = await supabase
+        .from('tenders')
+        .select('id, title, client_name, deadline, status')
+        .eq('organization_id', user.organization_id)
+        .is('deleted_at', null)
+        .not('deadline', 'is', null)
+        .gte('deadline', todayIso)
+        .lte('deadline', horizon)
+        .order('deadline', { ascending: true })
+        .limit(5)
+      const CLOSED = new Set(['submitted', 'archived', 'won', 'lost', 'withdrawn'])
+      for (const t of (tenderRows ?? []) as Array<{ id: string; title: string | null; client_name: string | null; deadline: string; status: string }>) {
+        if (CLOSED.has(t.status)) continue
+        const dueIso = t.deadline.slice(0, 10)
+        const j = civilDaysBetween(todayIso, dueIso)
+        const severity: Severity = j <= 2 ? 'red' : j <= 7 ? 'orange' : 'yellow'
+        const label = t.title?.trim() || t.client_name?.trim() || 'Appel d’offres'
+        const dueLabel = new Date(dueIso + 'T00:00:00.000Z').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+        attentionItems.push({
+          key: `ao-${t.id}`,
+          severity,
+          icon: FileText,
+          title: `Répondre à l’AO — ${label}`,
+          subtitle: `Date limite : ${dueLabel} (J-${j})`,
+          href: `/tenders/${t.id}`,
+          urgent: j <= 2,
+        })
+      }
+    }
+
+    // 2) Interventions à régulariser (retard non fait) — 🔴.
+    for (const kpi of overdueKPIs) {
+      const ageLabel = kpi.daysAgo === 1 ? 'hier' : `il y a ${kpi.daysAgo} j`
+      attentionItems.push({
+        key: `overdue-${kpi.interventionId}`,
+        severity: 'red',
+        icon: History,
+        title: kpi.missionName,
+        subtitle: [kpi.siteName, `non fait — ${ageLabel}`].filter(Boolean).join(' · '),
+        href: `/m/intervention/${kpi.interventionId}?date=${selectedDate}`,
+      })
+    }
+
+    // 3) Tâches obligatoires non terminées — 🟠.
+    for (const kpi of incompleteKPIs) {
+      attentionItems.push({
+        key: `incomplete-${kpi.interventionId}`,
+        severity: 'orange',
+        icon: AlertTriangle,
+        title: kpi.missionName,
+        subtitle: [kpi.siteName, `${kpi.missingCount} tâche${kpi.missingCount > 1 ? 's' : ''} à finir`].filter(Boolean).join(' · '),
+        href: `/m/intervention/${kpi.interventionId}?date=${selectedDate}`,
+      })
+    }
+
+    // 4) Actions ouvertes du chantier qui traînent (le contenu du badge
+    //    « Actions » qui remonte AUTOMATIQUEMENT). 🔴 critique/≥14j ou en retard,
+    //    🟠 7-13j. On masque le rythme (<7j) : seul ce qui mérite l'œil aujourd'hui.
+    //    Une action « faite aujourd'hui » ne re-sollicite pas l'agent.
+    const scopedSites = agentSiteIds.length > 0 ? agentSiteIds : undefined
+    if (scopedSites || isManager) {
+      const openActions = await listOpenSiteActions(scopedSites ? { siteIds: scopedSites } : undefined).catch(() => [] as SiteActionRow[])
+      const nowMs = Date.now()
+      let shown = 0
+      for (const a of openActions) {
+        if (shown >= 4) break
+        // Action « faite aujourd'hui » → ne re-sollicite pas l'agent ce jour.
+        if (a.last_progress_at && a.last_progress_at.slice(0, 10) === todayIso) continue
+        const overdue = a.due_date ? a.due_date.slice(0, 10) < todayIso : false
+        const health = actionHealth(a.created_at, nowMs)
+        const severity: Severity | null =
+          overdue || health === 'critique' ? 'red' : health === 'surveiller' ? 'orange' : null
+        if (!severity) continue
+        attentionItems.push({
+          key: `action-${a.id}`,
+          severity,
+          icon: HelpCircle,
+          title: a.title,
+          subtitle: [a.site_name, a.corps_etat].filter(Boolean).join(' · ') || null,
+          href: '/m/actions',
+        })
+        shown++
+      }
+    }
+
+    // 5) Briefs de passation à lire — info 🟦 (retrouvables même si le SMS est perdu).
+    for (const b of handoverBriefs) {
+      if (b.status === 'acknowledged') continue
+      const siteCount = b.payload?.sites?.length ?? 0
+      attentionItems.push({
+        key: `brief-${b.id}`,
+        severity: 'indigo',
+        icon: ArrowRightLeft,
+        title: b.title,
+        subtitle: `${siteCount > 0 ? `${siteCount} site${siteCount > 1 ? 's' : ''} · ` : ''}mémoire transmise`,
+        href: `/h/${b.shared_token}`,
+      })
+    }
   }
 
-  if (interventions.length === 0) {
-    return (
-      <div className="space-y-6 max-w-md pb-32">
-        <DateNav todayIso={todayIso} selectedIso={selectedDate} />
-        <MeetingLauncher />
-        <VisitLauncherHome />
-        <PrevisiteAoLauncher />
-        <div className="rounded-lg border bg-card max-w-md">
-          <EmptyState
-            icon={CheckCircle2}
-            title="Pas d'intervention prévue aujourd'hui"
-            description="La page se mettra à jour quand une mission sera planifiée."
-            variant="compact"
-          />
-        </div>
-        <FreePhotoFab sites={fabSites} />
-      </div>
-    )
-  }
+  // Tri par urgence (rouge → orange → jaune → info), cap d'affichage.
+  attentionItems.sort((x, y) => SEVERITY[x.severity].rank - SEVERITY[y.severity].rank)
+  const shownAttention = attentionItems.slice(0, 6)
 
-  // Label "missions du jour" selon contexte
-  const dayLabel = isToday
-    ? "aujourd'hui"
-    : isPast
-      ? new Date(selectedDate + 'T00:00:00.000Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
-      : new Date(selectedDate + 'T00:00:00.000Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+  // « Aujourd'hui » = rendez-vous datés (heure précise = planned_start). Les
+  // missions récurrentes (créneau matin/aprèm) tombent dans « Interventions
+  // planifiées ». Mutuellement exclusifs → zéro doublon.
+  const timedToday = selectedInterventions.filter((i) => !!i.planned_start)
+  const recurringToday = selectedInterventions.filter((i) => !i.planned_start)
 
   return (
-    <div className="space-y-6 max-w-md pb-32">
+    <div className="space-y-4 max-w-md pb-32">
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
-      <p className="-mt-2 text-xs text-muted-foreground">Aujourd&apos;hui sur le terrain · interventions, visites, captures.</p>
-      <MeetingLauncher />
-      <VisitLauncherHome />
-      <PrevisiteAoLauncher />
 
-      {/* V6.2 (Vincent 2026-05-20) — alertes mobile chef d'équipe au ROUGE.
-          Position déjà en haut (juste après DateNav), couleurs renforcées.
-          Silence positif respecté : si overdueKPIs/incompleteKPIs vides, rien
-          ne s'affiche. Cf. [[alertes-doctrine-legere]]. */}
-      {overdueKPIs.length > 0 && isToday && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-red-700 dark:text-red-300 flex items-center gap-1.5">
-            <History className="h-3.5 w-3.5" strokeWidth={2.25} />
-            À régulariser (7 derniers jours)
-          </h2>
-          <ul className="space-y-1.5">
-            {overdueKPIs.map((kpi) => {
-              const ageLabel = kpi.daysAgo === 1 ? 'hier' : `il y a ${kpi.daysAgo} j`
-              return (
-                <li key={kpi.interventionId}>
-                  <Link
-                    href={`/m/intervention/${kpi.interventionId}?date=${selectedDate}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50/60 px-3 py-2.5 active:bg-red-100/80 dark:border-red-900/40 dark:bg-red-950/20 dark:active:bg-red-950/40"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-red-950 dark:text-red-50 truncate">{kpi.missionName}</div>
-                      {kpi.siteName && <div className="text-xs text-red-900/70 dark:text-red-200/70 truncate">{kpi.siteName}</div>}
-                    </div>
-                    <span className="shrink-0 text-xs font-semibold text-red-900 bg-red-100 border border-red-300 rounded-full px-2 py-0.5 tabular-nums dark:text-red-100 dark:bg-red-900/40 dark:border-red-800">
-                      {ageLabel}
-                    </span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {incompleteKPIs.length > 0 && isToday && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-red-700 dark:text-red-300 flex items-center gap-1.5">
-            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.25} />
-            Tâches non terminées (7 derniers jours)
-          </h2>
-          <ul className="space-y-1.5">
-            {incompleteKPIs.map((kpi) => (
-              <li key={kpi.interventionId}>
-                <Link
-                  href={`/m/intervention/${kpi.interventionId}?date=${selectedDate}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50/60 px-3 py-2.5 active:bg-red-100/80 dark:border-red-900/40 dark:bg-red-950/20 dark:active:bg-red-950/40"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-red-950 dark:text-red-50 truncate">{kpi.missionName}</div>
-                    <div className="flex items-center gap-2 text-xs text-red-900/70 dark:text-red-200/70">
-                      {kpi.siteName && <span className="truncate">{kpi.siteName}</span>}
-                      {kpi.executedAt && (
-                        <span className="shrink-0 tabular-nums">
-                          {new Date(kpi.executedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-xs font-semibold text-red-900 bg-red-100 border border-red-300 rounded-full px-2 py-0.5 tabular-nums dark:text-red-100 dark:bg-red-900/40 dark:border-red-800">
-                    {kpi.missingCount} manquante{kpi.missingCount > 1 ? 's' : ''}
-                  </span>
-                </Link>
-              </li>
+      {/* 1 — Ce qui demande ton attention (remonté automatiquement). */}
+      {shownAttention.length > 0 && (
+        <CockpitCard
+          icon={Bell}
+          iconClass="text-red-500"
+          title="Ce qui demande ton attention"
+          headerHref="/m/actions"
+          headerExtra={
+            <>
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold tabular-nums text-white">
+                {attentionItems.length}
+              </span>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </>
+          }
+        >
+          <div className="divide-y divide-foreground/[0.06]">
+            {shownAttention.map((item) => (
+              <AttentionRow key={item.key} item={item} />
             ))}
-          </ul>
-        </section>
+          </div>
+        </CockpitCard>
       )}
 
-      {/* P1 audit live — Briefs de passation reçus, retrouvables ici même si le
-          lien SMS est perdu. Ouvre la vue publique /h/[token] (lisible sans
-          login, avec accusé « C'est lu »). Sujet = mémoire transmise. */}
-      {handoverBriefs.length > 0 && isToday && (
-        <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-            <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={2.25} />
-            Briefs à lire
-          </h2>
-          <ul className="space-y-1.5">
-            {handoverBriefs.map((b) => {
-              const ack = b.status === 'acknowledged'
-              const siteCount = b.payload?.sites?.length ?? 0
+      {/* 2 — Aujourd'hui : les rendez-vous datés du jour. */}
+      {timedToday.length > 0 && (
+        <CockpitCard icon={CalendarDays} iconClass="text-foreground/70" title="Aujourd'hui">
+          <ul className="space-y-1">
+            {timedToday.map((i) => {
+              const mission = missionById.get(i.mission_id)
+              const site = mission ? siteById.get(mission.site_id) : null
+              const timeLabel = formatInterventionTimeLabel({
+                planned_start: i.planned_start,
+                planned_end: i.planned_end,
+                slot: (i.slot as 'morning' | 'afternoon' | 'evening' | null) ?? null,
+              })
               return (
-                <li key={b.id}>
+                <li key={i.id}>
                   <Link
-                    href={`/h/${b.shared_token}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 active:bg-indigo-100/80 dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:active:bg-indigo-950/40"
+                    href={`/m/intervention/${i.id}?date=${selectedDate}`}
+                    className="flex items-center gap-3 rounded-xl py-2.5 -mx-1 px-1 active:bg-muted/40 transition-colors"
                   >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{b.title}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {siteCount > 0 ? `${siteCount} site${siteCount > 1 ? 's' : ''} · ` : ''}
-                        mémoire transmise
-                      </div>
-                    </div>
-                    {ack ? (
-                      <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Lu
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      <CalendarDays className="h-5 w-5" strokeWidth={2} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-semibold">{mission?.name ?? 'Rendez-vous'}</span>
+                      {site?.name && <span className="mt-0.5 block truncate text-sm text-muted-foreground">{site.name}</span>}
+                    </span>
+                    {timeLabel && (
+                      <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 tabular-nums dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                        {timeLabel}
                       </span>
-                    ) : (
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
+                    <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
                   </Link>
                 </li>
               )
             })}
           </ul>
-        </section>
+        </CockpitCard>
       )}
 
-      {selectedInterventions.length > 0 && (
-        <section className="space-y-3">
-          {/* J1 — Doctrine V5 Pilier 5 : dignité > sophistication.
-              Reconnaître Joseph par son prénom avant de lui afficher une liste. */}
-          {isToday && (
-            <h1 className="text-xl font-semibold">
-              Bonjour {firstNameOf(user.full_name, user.email)}
-            </h1>
-          )}
-          <p className="text-sm text-muted-foreground">
-            {selectedInterventions.length === 1
-              ? `1 mission ${dayLabel}`
-              : `${selectedInterventions.length} missions ${dayLabel}`}
-          </p>
+      {/* 3 — Démarrer une action : les outils pour agir (secondaires). */}
+      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action">
+        <div className="grid grid-cols-3 gap-2.5">
+          <MeetingLauncher />
+          <VisitLauncherHome />
+          <PrevisiteAoLauncher />
+        </div>
+      </CockpitCard>
+
+      {/* 4 — Interventions planifiées aujourd'hui (missions récurrentes). */}
+      <CockpitCard
+        icon={Briefcase}
+        iconClass="text-foreground/70"
+        title={`Interventions planifiées ${isToday ? "aujourd'hui" : selectedDayLabel}`}
+      >
+        {recurringToday.length > 0 ? (
           <ul className="space-y-3">
-            {selectedInterventions.map((i) => {
+            {recurringToday.map((i) => {
               const mission = missionById.get(i.mission_id)
               const site = mission ? siteById.get(mission.site_id) : null
               return (
@@ -537,11 +677,21 @@ export default async function FieldHomePage({
               )
             })}
           </ul>
-        </section>
-      )}
+        ) : orgTodaySites.length > 0 ? (
+          <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
+        ) : (
+          <EmptyState
+            icon={CheckCircle2}
+            title="Pas d'intervention prévue aujourd'hui"
+            description="La page se mettra à jour quand une mission sera planifiée."
+            variant="compact"
+          />
+        )}
+      </CockpitCard>
 
+      {/* Absences du lieu — discrètes, sous les interventions. */}
       {mobileAbsences.length > 0 && (
-        <section className="space-y-1.5 px-0.5">
+        <div className="space-y-1.5 px-1">
           {mobileAbsences.map((abs, i) => (
             <p key={i} className="text-xs text-muted-foreground/80 italic pl-2 border-l border-muted leading-relaxed">
               {abs.weeksSince >= 16
@@ -549,25 +699,12 @@ export default async function FieldHomePage({
                 : `${abs.missionName} — absent depuis ${abs.weeksSince} semaines`}
             </p>
           ))}
-        </section>
-      )}
-
-      {selectedInterventions.length === 0 && upcomingInterventions.length > 0 && (
-        <div className="rounded-lg border bg-card">
-          <EmptyState
-            icon={CalendarDays}
-            title="Rien à faire aujourd'hui"
-            description={`Vous avez ${upcomingInterventions.length} intervention${upcomingInterventions.length > 1 ? 's' : ''} à venir cette semaine.`}
-            variant="compact"
-          />
         </div>
       )}
 
+      {/* À venir cette semaine. */}
       {upcomingInterventions.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            À venir
-          </h2>
+        <CockpitCard icon={CalendarDays} iconClass="text-foreground/70" title="À venir">
           <ul className="space-y-2">
             {upcomingInterventions.map((i) => {
               const mission = missionById.get(i.mission_id)
@@ -591,8 +728,9 @@ export default async function FieldHomePage({
               )
             })}
           </ul>
-        </section>
+        </CockpitCard>
       )}
+
       <FreePhotoFab sites={fabSites} />
     </div>
   )
