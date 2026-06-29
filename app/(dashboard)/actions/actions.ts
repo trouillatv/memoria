@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, markSiteActionDone, markSiteActionProgress, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import { createSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -48,6 +48,14 @@ const ProgressSchema = z.object({
   on: z.boolean(),
 })
 
+// « Reporter » : motif court parmi une liste fermée, ou null pour retirer.
+const SNOOZE_REASONS = ['attente_client', 'attente_materiel', 'meteo', 'autre'] as const
+const SnoozeSchema = z.object({
+  id: z.string().uuid(),
+  site_id: z.string().uuid().optional(),
+  reason: z.enum(SNOOZE_REASONS).nullable(),
+})
+
 export async function markActionProgressAction(
   input: z.input<typeof ProgressSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -57,6 +65,24 @@ export async function markActionProgressAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   try {
     await markSiteActionProgress(parsed.data.id, parsed.data.on)
+    revalidateActionSurfaces(parsed.data.site_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+/** « Reporter » une action : pose un motif (ou null pour le retirer). L'action
+ *  reste 'open' — c'est une explication, pas une clôture ni un blocage formel. */
+export async function snoozeActionAction(
+  input: z.input<typeof SnoozeSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireOperator()
+  if (!auth.ok) return auth
+  const parsed = SnoozeSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setSiteActionSnooze(parsed.data.id, parsed.data.reason)
     revalidateActionSurfaces(parsed.data.site_id)
     return { ok: true }
   } catch {

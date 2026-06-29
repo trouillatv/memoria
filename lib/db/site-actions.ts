@@ -153,6 +153,10 @@ export interface SiteActionRow {
   subject_id: string | null
   /** Dernière avancée « Fait aujourd'hui » (mig 169) — PAS une clôture. */
   last_progress_at: string | null
+  /** Motif de report posé par le chef (mig 176) : explique pourquoi l'action
+   *  reste ouverte (attente client/matériel, météo…). null = pas reportée. */
+  snooze_reason: string | null
+  snoozed_at: string | null
 }
 
 /**
@@ -216,6 +220,8 @@ export async function listOpenSiteActions(opts?: {
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
       subject_id: a.subject_id ?? null,
       last_progress_at: a.last_progress_at ?? null,
+      snooze_reason: a.snooze_reason ?? null,
+      snoozed_at: a.snoozed_at ?? null,
     }
   })
 }
@@ -266,6 +272,8 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       contract_name: s?.contract_id ? contractName.get(s.contract_id) ?? null : null,
       subject_id: a.subject_id ?? null,
       last_progress_at: a.last_progress_at ?? null,
+      snooze_reason: a.snooze_reason ?? null,
+      snoozed_at: a.snoozed_at ?? null,
     }
   })
 }
@@ -334,6 +342,23 @@ export async function markSiteActionProgress(id: string, on: boolean): Promise<v
   const { error } = await supabase
     .from('site_actions')
     .update({ last_progress_at: on ? new Date().toISOString() : null })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/**
+ * « Reporter » — pose (ou retire si reason=null) un motif expliquant pourquoi
+ * l'action reste ouverte. Ne change PAS le status (reste 'open'). Léger,
+ * réversible. snoozed_at horodate la pose du motif.
+ */
+export async function setSiteActionSnooze(id: string, reason: string | null): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('site_actions')
+    .update({
+      snooze_reason: reason,
+      snoozed_at: reason ? new Date().toISOString() : null,
+    })
     .eq('id', id)
   if (error) throw error
 }

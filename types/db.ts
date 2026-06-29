@@ -581,6 +581,11 @@ export interface DbSiteAction {
   ext_photo_path: string | null
   ext_at: string | null
   ext_by: string | null
+  // « Reporter » (migration 176) : motif posé par le chef expliquant pourquoi
+  // l'action reste ouverte (attente client/matériel, météo, autre). Léger,
+  // non bloquant — l'action reste 'open'. NULL = pas reportée.
+  snooze_reason: string | null
+  snoozed_at: string | null
 }
 
 // Sujets vivants (migration 124) — fil persistant qui agrège dans le temps
