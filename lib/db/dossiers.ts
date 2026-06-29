@@ -170,15 +170,19 @@ export async function listDossiersLite(): Promise<DossierLite[]> {
  * Renvoie { dossierId, siteId }.
  */
 export async function createProspectDossier(input: {
-  name: string
-  clientName: string
+  name: string                  // libellé de l'AFFAIRE (dossier.label)
+  clientName?: string | null    // donneur d'ordre — OPTIONNEL (terrain mobile)
+  siteName?: string | null      // nom du LIEU — défaut = name (desktop)
   address?: string | null
 }): Promise<{ dossierId: string; siteId: string }> {
-  const clientId = await findOrCreateClientByName(input.clientName)
+  // Client optionnel : à défaut, on rattache un client provisoire nommé comme
+  // l'affaire (le donneur d'ordre sera précisé au bureau). sites.client_id est NOT NULL.
+  const clientLabel = input.clientName?.trim() || input.name.trim()
+  const clientId = await findOrCreateClientByName(clientLabel)
   const siteId = await createSite({
     client_id: clientId,
     contract_id: null,
-    name: input.name.trim(),
+    name: (input.siteName?.trim() || input.name).trim(),
     address: input.address ?? null,
     phase: 'prospect',
   })
