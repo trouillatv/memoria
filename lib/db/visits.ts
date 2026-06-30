@@ -15,6 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
+import type { VisitCaptureKind } from '@/lib/db/visit-captures'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import type {
@@ -194,9 +195,27 @@ export interface ActiveVisitSummary {
   captureCount: number
   /** Répartition par type : l'agent reconnaît sa visite (« la grosse, 42 photos »). */
   kinds: { photo: number; video: number; vocal: number; note: number; verification: number; position: number }
+  /** Marquées ⭐ « important » — raconte mieux la visite que le seul volume. */
+  starred: number
+  /** ❓ « à vérifier » posées pendant la visite (captured_knowledge, kind=question). */
+  questions: number
+  /** Le DERNIER élément capturé — « où je me suis arrêté » (façon Google Docs). */
+  lastCapture: { kind: VisitCaptureKind; label: string; starred: boolean } | null
   /** Horodatage de la capture la plus récente (fallback started_at) — « dernière
    *  activité » : aide l'agent qui revient à reconnaître SA visite d'un coup d'œil. */
   lastActivityAt: string | null
+}
+
+function lastCaptureLabel(kind: VisitCaptureKind, body: string | null, subjectName: string | null): string {
+  const clip = (s: string) => (s.length > 48 ? s.slice(0, 47).trimEnd() + '…' : s)
+  switch (kind) {
+    case 'photo': return 'Photo'
+    case 'video': return 'Vidéo'
+    case 'vocal': return body?.trim() ? clip(body.trim()) : 'Mémo vocal'
+    case 'note': return body?.trim() ? clip(body.trim()) : 'Note'
+    case 'verification': return subjectName ?? 'Point suivi vérifié'
+    case 'position': return 'Position enregistrée'
+  }
 }
 
 export async function listActiveVisitsForUser(userId: string, limit = 5): Promise<ActiveVisitSummary[]> {
@@ -221,35 +240,65 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
 
   return Promise.all(
     rows.map(async (r) => {
-      // Un seul select des `kind` non écartés : donne le total ET la répartition.
-      const [{ data: kindRows }, { data: last }] = await Promise.all([
+      const [{ data: tallyRows }, { data: last }, { count: questionCount }] = await Promise.all([
+        // Tally : type + ⭐ en un seul select léger (pas de body).
         supabase
           .from('visit_capture')
-          .select('kind')
+          .select('kind, starred')
           .eq('report_id', r.id)
           .neq('status', 'discarded'),
+        // Dernier élément : « où je me suis arrêté » (avec le libellé).
         supabase
           .from('visit_capture')
-          .select('created_at')
+          .select('kind, body, subject_id, starred, created_at')
           .eq('report_id', r.id)
           .neq('status', 'discarded')
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
+        // ❓ « à vérifier » posées pendant la visite.
+        supabase
+          .from('captured_knowledge')
+          .select('id', { count: 'exact', head: true })
+          .eq('source_id', r.id)
+          .eq('kind', 'question')
+          .eq('status', 'active'),
       ])
+
       const kinds = { photo: 0, video: 0, vocal: 0, note: 0, verification: 0, position: 0 }
-      for (const row of (kindRows ?? []) as Array<{ kind: keyof typeof kinds }>) {
+      let starred = 0
+      for (const row of (tallyRows ?? []) as Array<{ kind: keyof typeof kinds; starred: boolean }>) {
         if (row.kind in kinds) kinds[row.kind]++
+        if (row.starred) starred++
       }
-      const lastCaptureAt = (last as { created_at: string } | null)?.created_at ?? null
+
+      const lastRow = last as { kind: VisitCaptureKind; body: string | null; subject_id: string | null; starred: boolean; created_at: string } | null
+      let lastCapture: ActiveVisitSummary['lastCapture'] = null
+      if (lastRow) {
+        // Nom du point suivi seulement si le dernier geste est une vérification.
+        let subjectName: string | null = null
+        if (lastRow.kind === 'verification' && lastRow.subject_id) {
+          const { data: subj } = await supabase.from('subjects').select('name').eq('id', lastRow.subject_id).maybeSingle()
+          subjectName = (subj as { name: string } | null)?.name ?? null
+        }
+        lastCapture = {
+          kind: lastRow.kind,
+          label: lastCaptureLabel(lastRow.kind, lastRow.body, subjectName),
+          starred: lastRow.starred,
+        }
+      }
+
       return {
         reportId: r.id,
         siteId: r.site_id,
         siteName: nameById.get(r.site_id) ?? 'Chantier',
         startedAt: r.started_at,
-        captureCount: (kindRows ?? []).length,
+        captureCount: (tallyRows ?? []).length,
         kinds,
-        lastActivityAt: lastCaptureAt ?? r.started_at,
+        starred,
+        questions: questionCount ?? 0,
+        lastCapture,
+        lastActivityAt: lastRow?.created_at ?? r.started_at,
       }
     }),
   )
