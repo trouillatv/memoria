@@ -7,9 +7,11 @@ import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
 import { listGeolocatedCapturesBySite } from '@/lib/db/visit-captures'
 import { listResolvedQuestionsByDossier } from '@/lib/db/captured-knowledge'
 import { listTendersByDossier, listAttachableTenders } from '@/lib/db/tenders'
+import { getLatestComprehensionRun } from '@/lib/db/comprehension'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { setDossierPhaseAction, resolveQuestionAction, attachTenderToDossierAction } from './actions'
 import { ExportSynthesisButton } from './ExportSynthesisButton'
+import { ComprehensionPanel } from './ComprehensionPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,11 +39,12 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
   const dossier = await getDossier(id)
   if (!dossier) notFound()
   const r = await readForTender(id)
-  const [geoCaps, attachedTenders, attachableTenders, resolvedQuestions] = await Promise.all([
+  const [geoCaps, attachedTenders, attachableTenders, resolvedQuestions, comprehensionRun] = await Promise.all([
     listGeolocatedCapturesBySite(dossier.site_id).catch(() => []),
     listTendersByDossier(dossier.id).catch(() => []),
     listAttachableTenders().catch(() => []),
     listResolvedQuestionsByDossier(dossier.id).catch(() => []),
+    getLatestComprehensionRun(dossier.id).catch(() => null),
   ])
   const mapCaps: MapCapture[] = geoCaps.map((c) => ({
     id: c.id, kind: c.kind, lat: c.lat, lng: c.lng, created_at: c.created_at,
@@ -87,6 +90,12 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
       {/* Export « Synthèse de prévisite pour réponse AO » — copier/coller ou .md.
           Déterministe : la matière captée + les points vérifiés, mise en forme. */}
       {!r.isEmpty && <ExportSynthesisButton dossierId={dossier.id} />}
+
+      {/* « Voilà ce que j'ai compris » — protocole d'évaluation IA (mig 179).
+          L'IA propose des affirmations atomiques + provenance ; l'humain juge. */}
+      {(!r.isEmpty || comprehensionRun) && (
+        <ComprehensionPanel dossierId={dossier.id} run={comprehensionRun} />
+      )}
 
       {/* Cycle de vie du dossier — la soudure arrière. « Marché gagné » fait du
           dossier un chantier SANS copie : la mémoire de prévisite suit. */}

@@ -8,7 +8,16 @@ import { attachTenderToDossier } from '@/lib/db/tenders'
 import { readForTender } from '@/lib/db/dossier-readings'
 import { getDossier } from '@/lib/db/dossiers'
 import { buildPrevisiteSynthesis } from '@/lib/db/previsite-synthesis'
+import {
+  buildComprehensionFacts,
+  createComprehensionRun,
+  setAffirmationVerdict,
+  type AffirmationVerdict,
+} from '@/lib/db/comprehension'
+import { runComprehensionAgent } from '@/services/ai/comprehension'
 import type { DossierPhase } from '@/types/db'
+
+const VERDICTS: AffirmationVerdict[] = ['juste', 'vague', 'parasite', 'dangereux']
 
 const ALLOWED: DossierPhase[] = ['prospect', 'en_ao', 'actif', 'perdu', 'archive']
 
@@ -81,4 +90,69 @@ export async function attachTenderToDossierAction(formData: FormData): Promise<v
   if (!tenderId || !dossierId) throw new Error('Paramètres invalides')
   await attachTenderToDossier(tenderId, detach ? null : dossierId)
   revalidatePath(`/dossiers/${dossierId}`)
+}
+
+// ── Harnais d'évaluation : « Voilà ce que j'ai compris » (mig 179) ───────────
+// L'IA génère une compréhension en affirmations atomiques (avec provenance) sur
+// le read-model. PROTOCOLE D'ÉVALUATION : l'humain note chaque affirmation. Un
+// appel LLM borné, async, traçé (coût). L'IA propose, l'humain juge.
+
+export async function generateComprehensionAction(
+  dossierId: string,
+): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return { ok: false, error: 'Non autorisé' }
+  if (!dossierId) return { ok: false, error: 'Dossier invalide' }
+  try {
+    const [dossier, reading, resolved] = await Promise.all([
+      getDossier(dossierId),
+      readForTender(dossierId),
+      listResolvedQuestionsByDossier(dossierId),
+    ])
+    if (!dossier) return { ok: false, error: 'Dossier introuvable' }
+
+    const facts = buildComprehensionFacts(reading, resolved)
+    if (facts.length <= 1) return { ok: false, error: 'Pas encore assez de matière captée pour une compréhension.' }
+
+    const res = await runComprehensionAgent({
+      siteName: reading.siteName,
+      clientName: reading.clientName,
+      facts,
+      userId: user.id,
+    })
+    if (res.affirmations.length === 0) return { ok: false, error: 'L’IA n’a rien pu formuler — réessaie.' }
+
+    await createComprehensionRun({
+      dossierId,
+      siteId: dossier.site_id,
+      provider: res.provider,
+      model: res.model,
+      createdBy: user.id,
+      affirmations: res.affirmations,
+    })
+    revalidatePath(`/dossiers/${dossierId}`)
+    return { ok: true, count: res.affirmations.length }
+  } catch {
+    return { ok: false, error: 'Échec de la génération' }
+  }
+}
+
+// Note humaine d'une affirmation (grille 4 classes). Toggle : re-cliquer le même
+// verdict l'efface. C'est la donnée d'évaluation qui fera évoluer le prompt/modèle.
+export async function rateAffirmationAction(input: {
+  affirmationId: string
+  dossierId: string
+  verdict: AffirmationVerdict | null
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return { ok: false, error: 'Non autorisé' }
+  if (!input.affirmationId) return { ok: false, error: 'Paramètres invalides' }
+  if (input.verdict !== null && !VERDICTS.includes(input.verdict)) return { ok: false, error: 'Verdict invalide' }
+  try {
+    await setAffirmationVerdict(input.affirmationId, input.verdict, null, user.id)
+    revalidatePath(`/dossiers/${input.dossierId}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
 }
