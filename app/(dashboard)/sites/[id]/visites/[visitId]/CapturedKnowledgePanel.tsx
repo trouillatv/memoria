@@ -58,7 +58,7 @@ export function CapturedKnowledgePanel({
       // Optimiste : on ajoute en tête, on réinitialise le titre.
       setItems((prev) => [{
         id: r.id, site_id: siteId, source_type: 'visit', source_id: reportId,
-        kind, title: t, body: null, status: 'active',
+        kind, title: t, body: null, status: 'active', resolution: null, resolved_at: null,
         subject_id: subjectId || null, action_id: null, zone_id: null,
         source_capture_ids: [], created_at: new Date().toISOString(),
       }, ...prev])

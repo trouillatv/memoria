@@ -443,6 +443,7 @@ export interface DbSiteReport {
   type: SiteReportType
   site_id: string | null
   contract_id: string | null
+  dossier_id: string | null // dossier d'opération rattaché (mig 172) — null si lieu legacy
   title: string | null
   next_meeting_at: string | null // date de prochaine réunion (mig 131)
   tenant_id: string

@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, ArrowRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, ArrowRight, Star, HelpCircle, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
@@ -19,11 +20,17 @@ export function DebriefExpress({
   reportId,
   siteId,
   siteName,
+  dossierId,
+  questionsCount,
   initialCaptures,
 }: {
   reportId: string
   siteId: string
   siteName: string
+  /** Le dossier d'opération de la prévisite — cible du CTA « Préparer l'AO ». */
+  dossierId: string | null
+  /** ❓ « à vérifier » posées pendant la visite (hors captures). */
+  questionsCount: number
   initialCaptures: VisitCaptureRow[]
 }) {
   const router = useRouter()
@@ -33,6 +40,24 @@ export function DebriefExpress({
 
   const total = captures.length
   const triaged = captures.filter((c) => c.status !== 'captured').length
+
+  // Récap de fin de prévisite : la composition par type + ⭐ + ❓. L'agent voit
+  // d'un coup ce qu'il a ramené, avant de passer à la préparation de l'AO.
+  const tally = {
+    photo: captures.filter((c) => c.kind === 'photo').length,
+    video: captures.filter((c) => c.kind === 'video').length,
+    vocal: captures.filter((c) => c.kind === 'vocal').length,
+    note: captures.filter((c) => c.kind === 'note').length,
+    starred: captures.filter((c) => c.starred).length,
+  }
+  const summaryChips: Array<{ icon: typeof Camera; n: number; cls?: string }> = [
+    { icon: Camera, n: tally.photo },
+    { icon: Video, n: tally.video },
+    { icon: Mic, n: tally.vocal },
+    { icon: Pencil, n: tally.note },
+    { icon: Star, n: tally.starred, cls: 'text-amber-500' },
+    { icon: HelpCircle, n: questionsCount, cls: 'text-amber-600' },
+  ].filter((c) => c.n > 0)
 
   // Le transcript arrive en fond : on le fait APPARAÎTRE tant qu'un vocal est en
   // cours. On ne fusionne QUE le texte (body/transcript_status) — jamais le
@@ -75,12 +100,28 @@ export function DebriefExpress({
   return (
     <div className="mx-auto max-w-md space-y-4 p-4 pb-28">
       {/* En-tête : on a fini de marcher, on relit vite. */}
-      <header className="space-y-1 pt-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Débrief de visite</p>
-        <h1 className="text-xl font-semibold">Visite terminée</h1>
-        <p className="text-sm text-muted-foreground">
-          {siteName} · {total} élément{total > 1 ? 's' : ''} relevé{total > 1 ? 's' : ''}
-        </p>
+      <header className="space-y-2 pt-2">
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Fin de prévisite</p>
+          <h1 className="text-xl font-semibold">Visite terminée</h1>
+          <p className="text-sm text-muted-foreground">
+            {siteName} · {total} élément{total > 1 ? 's' : ''} relevé{total > 1 ? 's' : ''}
+          </p>
+        </div>
+        {/* Composition de la prévisite — ce que l'agent a ramené, d'un coup d'œil. */}
+        {summaryChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border bg-muted/30 px-3 py-2.5 text-sm">
+            {summaryChips.map((c, i) => {
+              const Icon = c.icon
+              return (
+                <span key={i} className="inline-flex items-center gap-1">
+                  <Icon className={`h-4 w-4 ${c.cls ?? 'text-muted-foreground'}`} />
+                  <span className="tabular-nums font-medium">{c.n}</span>
+                </span>
+              )
+            })}
+          </div>
+        )}
       </header>
 
       {total === 0 ? (
@@ -102,19 +143,39 @@ export function DebriefExpress({
         </section>
       )}
 
-      {/* Barre de fin — on ne FORCE pas à tout trier ; on s'arrête quand on veut. */}
+      {/* Barre de fin — on ne FORCE pas à tout trier. Si un dossier d'affaire est
+          rattaché, on enchaîne naturellement sur la préparation de l'AO ; sinon on
+          revient au chantier. */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
-        <div className="mx-auto flex max-w-md items-center gap-3">
-          <p className="flex-1 text-xs text-muted-foreground">
-            Le reste sera préparé au bureau.
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push(`/m/site/${siteId}`)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
-          >
-            Terminé <ArrowRight className="h-4 w-4" />
-          </button>
+        <div className="mx-auto max-w-md space-y-2">
+          {dossierId ? (
+            <>
+              <Link
+                href={`/dossiers/${dossierId}`}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+              >
+                <FileText className="h-4 w-4" /> Préparer l&apos;appel d&apos;offres <ArrowRight className="h-4 w-4" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => router.push(`/m/site/${siteId}`)}
+                className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-muted-foreground"
+              >
+                Plus tard — revenir au chantier
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className="flex-1 text-xs text-muted-foreground">Le reste sera préparé au bureau.</p>
+              <button
+                type="button"
+                onClick={() => router.push(`/m/site/${siteId}`)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
+              >
+                Terminé <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

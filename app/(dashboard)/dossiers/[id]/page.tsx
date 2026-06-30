@@ -5,9 +5,11 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getDossier } from '@/lib/db/dossiers'
 import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
 import { listGeolocatedCapturesBySite } from '@/lib/db/visit-captures'
+import { listResolvedQuestionsByDossier } from '@/lib/db/captured-knowledge'
 import { listTendersByDossier, listAttachableTenders } from '@/lib/db/tenders'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { setDossierPhaseAction, resolveQuestionAction, attachTenderToDossierAction } from './actions'
+import { ExportSynthesisButton } from './ExportSynthesisButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,10 +37,11 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
   const dossier = await getDossier(id)
   if (!dossier) notFound()
   const r = await readForTender(id)
-  const [geoCaps, attachedTenders, attachableTenders] = await Promise.all([
+  const [geoCaps, attachedTenders, attachableTenders, resolvedQuestions] = await Promise.all([
     listGeolocatedCapturesBySite(dossier.site_id).catch(() => []),
     listTendersByDossier(dossier.id).catch(() => []),
     listAttachableTenders().catch(() => []),
+    listResolvedQuestionsByDossier(dossier.id).catch(() => []),
   ])
   const mapCaps: MapCapture[] = geoCaps.map((c) => ({
     id: c.id, kind: c.kind, lat: c.lat, lng: c.lng, created_at: c.created_at,
@@ -80,6 +83,10 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
 
       {/* Récit de l'affaire — « où j'en suis ». Pas un workflow bloquant : une histoire. */}
       <AffaireRecit steps={recitSteps} />
+
+      {/* Export « Synthèse de prévisite pour réponse AO » — copier/coller ou .md.
+          Déterministe : la matière captée + les points vérifiés, mise en forme. */}
+      {!r.isEmpty && <ExportSynthesisButton dossierId={dossier.id} />}
 
       {/* Cycle de vie du dossier — la soudure arrière. « Marché gagné » fait du
           dossier un chantier SANS copie : la mémoire de prévisite suit. */}
@@ -163,24 +170,48 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
             </Block>
           )}
 
-          {/* ❓ « À vérifier » — ce qu'on ne sait pas encore, à confirmer. Simple :
-              à vérifier → réponse trouvée → vérifié. Pas d'assignation/échéance/priorité. */}
+          {/* ❓ « À vérifier » — ce qu'on ne sait pas encore. On STOCKE la réponse
+              (mig 178), pas juste « résolu » : la valeur AO est dans ce qu'on a
+              trouvé. Pas d'assignation/échéance/priorité — pas un outil de tâches. */}
           {r.questions.length > 0 && (
             <Block icon={<HelpCircle className="h-4 w-4 text-amber-600" />} title="Points à vérifier">
-              <ul className="space-y-1.5">
+              <ul className="space-y-2.5">
                 {r.questions.map((q) => (
-                  <li key={q.id} className="flex items-start justify-between gap-2">
-                    <span className="flex min-w-0 items-start gap-1.5 text-sm">
+                  <li key={q.id} className="rounded-lg border bg-background px-3 py-2.5">
+                    <p className="flex items-start gap-1.5 text-sm font-medium">
                       <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
                       <span className="min-w-0">{q.text}</span>
-                    </span>
-                    <form action={resolveQuestionAction} className="shrink-0">
+                    </p>
+                    <form action={resolveQuestionAction} className="mt-2 flex items-center gap-2">
                       <input type="hidden" name="id" value={q.id} />
                       <input type="hidden" name="dossierId" value={dossier.id} />
-                      <button type="submit" className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted">
-                        <Check className="h-3 w-3" /> Vérifié
+                      <input
+                        name="answer" type="text" maxLength={2000}
+                        placeholder="Réponse trouvée (ex. diamètre 200, compteur en limite de propriété…)"
+                        className="min-w-0 flex-1 rounded-md border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <button type="submit" className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 px-2.5 py-1.5 text-[12px] font-medium text-emerald-700 hover:bg-emerald-50">
+                        <Check className="h-3.5 w-3.5" /> Vérifié
                       </button>
                     </form>
+                  </li>
+                ))}
+              </ul>
+            </Block>
+          )}
+
+          {/* Points VÉRIFIÉS — question → réponse trouvée. C'est la matière qui
+              part directement dans la réponse AO. */}
+          {resolvedQuestions.length > 0 && (
+            <Block icon={<Check className="h-4 w-4 text-emerald-600" />} title="Points vérifiés">
+              <ul className="space-y-1.5">
+                {resolvedQuestions.map((q) => (
+                  <li key={q.id} className="rounded-lg bg-emerald-50/60 px-3 py-2 text-sm dark:bg-emerald-950/20">
+                    <p className="font-medium">{q.question}</p>
+                    <p className="mt-0.5 flex items-start gap-1 text-emerald-800 dark:text-emerald-300">
+                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0">{q.answer?.trim() ? q.answer : 'Vérifié'}</span>
+                    </p>
                   </li>
                 ))}
               </ul>
