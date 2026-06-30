@@ -2,10 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Sparkles, Loader2, RefreshCw, Check, AlertTriangle, CircleSlash, XOctagon } from 'lucide-react'
+import { Sparkles, Loader2, RefreshCw, Check, AlertTriangle, CircleSlash, XOctagon, PlusCircle, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import { generateComprehensionAction, rateAffirmationAction } from './actions'
-import type { ComprehensionRunView, AffirmationVerdict } from '@/lib/db/comprehension'
+import {
+  generateComprehensionAction, rateAffirmationAction,
+  rateRunComprehensionAction, setComprehensionMissingAction,
+} from './actions'
+import type { ComprehensionRunView, ComprehensionTrackRecord, AffirmationVerdict, GlobalVerdict } from '@/lib/db/comprehension'
 
 // Lecture de reprise (lensTakeover) : l'ordre raconte « ce qu'il faut comprendre ».
 const CATEGORY_FR: Record<string, string> = {
@@ -22,13 +25,50 @@ const VERDICTS: Array<{ key: AffirmationVerdict; label: string; icon: typeof Che
   { key: 'dangereux', label: 'Dangereux', icon: XOctagon, cls: 'text-red-700', activeCls: 'border-red-600 bg-red-600 text-white' },
 ]
 
-export function ComprehensionPanel({ dossierId, run }: { dossierId: string; run: ComprehensionRunView | null }) {
+// Niveau 2 — le test de transmission. Une seule question, qui vaut énormément.
+const GLOBAL_OPTIONS: Array<{ key: GlobalVerdict; label: string; activeCls: string }> = [
+  { key: 'transmissible', label: 'Oui, quasiment telle quelle', activeCls: 'border-emerald-600 bg-emerald-600 text-white' },
+  { key: 'corrections', label: 'Oui, avec quelques corrections', activeCls: 'border-emerald-500 bg-emerald-500 text-white' },
+  { key: 'incomplet', label: 'Non, il manque l’essentiel', activeCls: 'border-amber-500 bg-amber-500 text-white' },
+  { key: 'trompeur', label: 'Non, elle est trompeuse', activeCls: 'border-red-600 bg-red-600 text-white' },
+]
+
+export function ComprehensionPanel({
+  dossierId, run, trackRecord,
+}: {
+  dossierId: string
+  run: ComprehensionRunView | null
+  trackRecord: ComprehensionTrackRecord
+}) {
   const router = useRouter()
   const [generating, startGen] = useTransition()
   // Verdicts optimistes par affirmation.
   const [verdicts, setVerdicts] = useState<Record<string, AffirmationVerdict | null>>(
     () => Object.fromEntries((run?.affirmations ?? []).map((a) => [a.id, a.verdict])),
   )
+  const [globalVerdict, setGlobalVerdict] = useState<GlobalVerdict | null>(run?.globalVerdict ?? null)
+  const [missingOpen, setMissingOpen] = useState(false)
+  const [missing, setMissing] = useState(run?.missingNote ?? '')
+  const [, startMissing] = useTransition()
+
+  function rateGlobal(verdict: GlobalVerdict) {
+    if (!run) return
+    const current = globalVerdict
+    const next = current === verdict ? null : verdict
+    setGlobalVerdict(next)
+    rateRunComprehensionAction({ runId: run.id, dossierId, verdict: next })
+      .then((r) => { if (!r.ok) { toast.error(r.error); setGlobalVerdict(current) } })
+      .catch(() => setGlobalVerdict(current))
+  }
+
+  function saveMissing() {
+    if (!run) return
+    startMissing(async () => {
+      const r = await setComprehensionMissingAction({ runId: run.id, dossierId, note: missing })
+      if (r.ok) { toast.success('Noté — ces oublis feront évoluer l’IA.'); setMissingOpen(false) }
+      else toast.error(r.error)
+    })
+  }
 
   function generate() {
     startGen(async () => {
@@ -73,6 +113,15 @@ export function ComprehensionPanel({ dossierId, run }: { dossierId: string; run:
         Synthèse générée par l’IA pour un conducteur qui reprendrait l’affaire demain.
         Jugez chaque affirmation — c’est ce qui fera évoluer l’IA. L’IA propose, vous jugez.
       </p>
+
+      {/* Palmarès FACTUEL (pas un score) : « construite sur le terrain ». */}
+      {trackRecord.evaluatedRuns > 0 && (
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-medium text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Compréhension évaluée sur {trackRecord.evaluatedRuns} prévisite{trackRecord.evaluatedRuns > 1 ? 's' : ''} réelle{trackRecord.evaluatedRuns > 1 ? 's' : ''}
+          {trackRecord.conductors > 0 ? ` · ${trackRecord.conductors} conducteur${trackRecord.conductors > 1 ? 's' : ''}` : ''}
+        </p>
+      )}
 
       {!run ? (
         <button
@@ -123,9 +172,60 @@ export function ComprehensionPanel({ dossierId, run }: { dossierId: string; run:
               )
             })}
           </ul>
+          {/* « Il manque quelque chose » — la donnée qui vaut de l'or : ce que l'IA
+              OUBLIE systématiquement (accès, réseaux, nuisances, demandes implicites). */}
+          <div className="rounded-xl border bg-background p-3">
+            {!missingOpen && !run.missingNote ? (
+              <button
+                type="button" onClick={() => setMissingOpen(true)}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-violet-700 hover:text-violet-900 dark:text-violet-300"
+              >
+                <PlusCircle className="h-4 w-4" /> Il manque quelque chose…
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Qu’est-ce qui manque ?</label>
+                <textarea
+                  value={missing} onChange={(e) => setMissing(e.target.value)} rows={3} maxLength={4000}
+                  placeholder="Ce que l’IA a oublié et qui comptait (accès, réseaux, nuisances, demande implicite du client…)"
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button
+                  type="button" onClick={saveMissing}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
+                >
+                  <Check className="h-4 w-4" /> Enregistrer
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Niveau 2 — le test de transmission. Une seule question, décisive. */}
+          <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 space-y-2 dark:border-violet-900/40 dark:bg-violet-950/20">
+            <p className="text-sm font-medium">
+              Cette synthèse te permettrait-elle de transmettre l’affaire à un collègue ?
+            </p>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {GLOBAL_OPTIONS.map((opt) => {
+                const active = globalVerdict === opt.key
+                return (
+                  <button
+                    key={opt.key} type="button" onClick={() => rateGlobal(opt.key)}
+                    className={`rounded-lg border px-3 py-2 text-left text-sm font-medium transition active:scale-[0.99] ${
+                      active ? opt.activeCls : 'border-border bg-background hover:bg-muted'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <p className="rounded-lg border border-dashed bg-background/60 px-3 py-2 text-[11px] text-muted-foreground">
-            Test « écho juste » : si tout est <strong>juste</strong>, l’IA restitue fidèlement la prévisite.
-            Les <strong>dangereux</strong> et <strong>parasites</strong> sont les signaux à corriger en priorité.
+            Test « écho juste » : si tout est <strong>juste</strong> et la transmission possible, l’IA restitue
+            fidèlement la prévisite. Les <strong>dangereux</strong>, <strong>parasites</strong> et « il manque… »
+            sont les signaux à corriger en priorité.
           </p>
         </>
       )}

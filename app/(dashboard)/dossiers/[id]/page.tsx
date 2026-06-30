@@ -7,7 +7,7 @@ import { readForTender, type TakeoverItem } from '@/lib/db/dossier-readings'
 import { listGeolocatedCapturesBySite } from '@/lib/db/visit-captures'
 import { listResolvedQuestionsByDossier } from '@/lib/db/captured-knowledge'
 import { listTendersByDossier, listAttachableTenders } from '@/lib/db/tenders'
-import { getLatestComprehensionRun } from '@/lib/db/comprehension'
+import { getLatestComprehensionRun, getComprehensionTrackRecord } from '@/lib/db/comprehension'
 import { CaptureMap, type MapCapture } from '@/components/CaptureMap'
 import { setDossierPhaseAction, resolveQuestionAction, attachTenderToDossierAction } from './actions'
 import { ExportSynthesisButton } from './ExportSynthesisButton'
@@ -39,12 +39,13 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
   const dossier = await getDossier(id)
   if (!dossier) notFound()
   const r = await readForTender(id)
-  const [geoCaps, attachedTenders, attachableTenders, resolvedQuestions, comprehensionRun] = await Promise.all([
+  const [geoCaps, attachedTenders, attachableTenders, resolvedQuestions, comprehensionRun, trackRecord] = await Promise.all([
     listGeolocatedCapturesBySite(dossier.site_id).catch(() => []),
     listTendersByDossier(dossier.id).catch(() => []),
     listAttachableTenders().catch(() => []),
     listResolvedQuestionsByDossier(dossier.id).catch(() => []),
     getLatestComprehensionRun(dossier.id).catch(() => null),
+    getComprehensionTrackRecord(user.organization_id).catch(() => ({ evaluatedRuns: 0, conductors: 0 })),
   ])
   const mapCaps: MapCapture[] = geoCaps.map((c) => ({
     id: c.id, kind: c.kind, lat: c.lat, lng: c.lng, created_at: c.created_at,
@@ -94,7 +95,7 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
       {/* « Voilà ce que j'ai compris » — protocole d'évaluation IA (mig 179).
           L'IA propose des affirmations atomiques + provenance ; l'humain juge. */}
       {(!r.isEmpty || comprehensionRun) && (
-        <ComprehensionPanel dossierId={dossier.id} run={comprehensionRun} />
+        <ComprehensionPanel dossierId={dossier.id} run={comprehensionRun} trackRecord={trackRecord} />
       )}
 
       {/* Cycle de vie du dossier — la soudure arrière. « Marché gagné » fait du
