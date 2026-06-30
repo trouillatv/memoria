@@ -19,6 +19,9 @@ export interface CapturedKnowledgeRow {
   title: string
   body: string | null
   status: KnowledgeStatus
+  /** Réponse trouvée quand une question est vérifiée (mig 178) — pas juste un statut. */
+  resolution: string | null
+  resolved_at: string | null
   subject_id: string | null
   action_id: string | null
   zone_id: string | null
@@ -69,7 +72,7 @@ export async function addCapturedKnowledge(input: AddCapturedKnowledgeInput): Pr
 }
 
 const SELECT =
-  'id, site_id, source_type, source_id, kind, title, body, status, subject_id, action_id, zone_id, source_capture_ids, created_at'
+  'id, site_id, source_type, source_id, kind, title, body, status, resolution, resolved_at, subject_id, action_id, zone_id, source_capture_ids, created_at'
 
 /** Les infos utiles d'une source (ex. une visite) — pour le débrief. */
 export async function listCapturedKnowledgeBySource(sourceId: string): Promise<CapturedKnowledgeRow[]> {
@@ -103,6 +106,45 @@ export async function setCapturedKnowledgeStatus(id: string, status: KnowledgeSt
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+}
+
+/**
+ * Vérifie une question EN CONSERVANT la réponse trouvée (mig 178). La valeur
+ * d'un point à vérifier n'est pas « résolu » mais CE QU'ON A TROUVÉ — gardé pour
+ * la réponse AO. La réponse est facultative (on peut clore sans), mais c'est le
+ * chemin encouragé.
+ */
+export async function resolveCapturedKnowledgeWithAnswer(id: string, answer: string | null): Promise<void> {
+  const supabase = createAdminClient()
+  const trimmed = answer?.trim() || null
+  const { error } = await supabase
+    .from('captured_knowledge')
+    .update({
+      status: 'resolved',
+      resolution: trimmed,
+      resolved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+/** Les points VÉRIFIÉS d'un dossier (question résolue + sa réponse) — pour les
+ *  afficher « Q → R » et les verser dans la synthèse AO. Plus récents d'abord. */
+export async function listResolvedQuestionsByDossier(
+  dossierId: string,
+): Promise<Array<{ id: string; question: string; answer: string | null; resolvedAt: string | null }>> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('captured_knowledge')
+    .select('id, title, resolution, resolved_at')
+    .eq('dossier_id', dossierId)
+    .eq('kind', 'question')
+    .eq('status', 'resolved')
+    .order('resolved_at', { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as Array<{ id: string; title: string; resolution: string | null; resolved_at: string | null }>)
+    .map((r) => ({ id: r.id, question: r.title, answer: r.resolution, resolvedAt: r.resolved_at }))
 }
 
 /** Les infos utiles actives d'un DOSSIER (opération) — scopées à l'opération. */

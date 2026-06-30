@@ -39,11 +39,22 @@ export default async function VisitDebriefPage({
 
   const captures = await listVisitCaptures(reportId)
 
+  // ❓ « à vérifier » posées pendant la visite (captured_knowledge) — comptées pour
+  // le récap de fin, à côté des captures.
+  const { count: questionsCount } = await supabase
+    .from('captured_knowledge')
+    .select('id', { count: 'exact', head: true })
+    .eq('source_id', reportId)
+    .eq('kind', 'question')
+    .eq('status', 'active')
+
   return (
     <DebriefExpress
       reportId={reportId}
       siteId={visit.site_id}
       siteName={(site as { name: string } | null)?.name ?? 'Chantier'}
+      dossierId={visit.dossier_id ?? null}
+      questionsCount={questionsCount ?? 0}
       initialCaptures={captures}
     />
   )
