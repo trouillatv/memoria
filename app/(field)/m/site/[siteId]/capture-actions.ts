@@ -370,6 +370,105 @@ export async function drainVisitCaptureAction(
   }
 }
 
+// ── Vidéo : upload DIRECT vers Supabase (URL signée) ─────────────────────────
+// La vidéo est lourde (30-150 Mo) : la passer par un Server Action la fait
+// rejeter par la bodySizeLimit (20 Mo) AVANT le code → ça plante. Et la mettre
+// dans la file IndexedDB charge l'appareil inutilement. Donc la vidéo s'envoie
+// DIRECTEMENT au stockage via une URL signée (créée ici), ce qui contourne
+// Vercel ; puis on enregistre la capture (petit payload). Idempotent.
+
+const videoPrepSchema = z.object({ report_id: z.string().uuid(), client_uuid: z.string().uuid() })
+
+export async function createVisitVideoUploadAction(
+  input: z.input<typeof videoPrepSchema>,
+): Promise<{ ok: true; storagePath: string; token: string; alreadyDone?: boolean; captureId?: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = videoPrepSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  // Idempotence : si la capture existe déjà (re-essai après succès), on s'arrête.
+  try {
+    const existing = await findVisitCaptureIdByClientUuid(parsed.data.client_uuid)
+    if (existing) return { ok: true, storagePath: '', token: '', alreadyDone: true, captureId: existing }
+  } catch { /* on continue */ }
+
+  const report = await getSiteReport(parsed.data.report_id)
+  if (!report) return { ok: false, error: 'Visite introuvable' }
+
+  const supabase = createAdminClient()
+  const attId = crypto.randomUUID()
+  const storagePath = `${report.tenant_id}/${report.id}/${attId}.mp4`
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(storagePath)
+  if (error || !data) return { ok: false, error: 'Préparation de l’envoi vidéo échouée' }
+  return { ok: true, storagePath: data.path, token: data.token }
+}
+
+const videoRegSchema = z.object({
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid(),
+  client_uuid: z.string().uuid(),
+  storage_path: z.string().min(1).max(500),
+  mime: z.string().max(80).optional(),
+  size_bytes: z.coerce.number().int().min(0).max(2_000_000_000).optional(),
+  ...coords,
+})
+
+export async function registerVisitVideoAction(
+  input: z.input<typeof videoRegSchema>,
+): Promise<{ ok: true; captureId: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = videoRegSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const d = parsed.data
+
+  try {
+    const existing = await findVisitCaptureIdByClientUuid(d.client_uuid)
+    if (existing) return { ok: true, captureId: existing }
+  } catch { /* on continue */ }
+
+  const report = await getSiteReport(d.report_id)
+  if (!report) return { ok: false, error: 'Visite introuvable' }
+
+  const supabase = createAdminClient()
+  try {
+    // Pièce idempotente sur client_uuid (re-essai après upload mais avant capture).
+    let attachmentId: string
+    const { data: existingAtt } = await supabase
+      .from('site_report_attachments')
+      .select('id')
+      .eq('client_uuid', d.client_uuid)
+      .maybeSingle()
+    if (existingAtt) {
+      attachmentId = (existingAtt as { id: string }).id
+    } else {
+      attachmentId = await addReportAttachment({
+        report_id: report.id,
+        kind: 'video',
+        storage_path: d.storage_path,
+        filename: 'video.mp4',
+        mime_type: d.mime ?? 'video/mp4',
+        size_bytes: d.size_bytes ?? null,
+        client_uuid: d.client_uuid,
+      })
+    }
+    const captureId = await addVisitCapture({
+      reportId: report.id,
+      siteId: d.site_id,
+      kind: 'video',
+      attachmentId,
+      clientUuid: d.client_uuid,
+      lat: d.lat ?? null,
+      lng: d.lng ?? null,
+      createdBy: auth.userId,
+    })
+    return { ok: true, captureId }
+  } catch {
+    return { ok: false, error: 'Enregistrement de la vidéo échoué' }
+  }
+}
+
 // ── Retirer une capture (faux geste, pendant la collecte) ────────────────────
 
 // ── Question ouverte / « à vérifier au retour » (❓) ──────────────────────────
