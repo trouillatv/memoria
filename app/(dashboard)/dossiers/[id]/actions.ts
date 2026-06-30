@@ -12,12 +12,16 @@ import {
   buildComprehensionFacts,
   createComprehensionRun,
   setAffirmationVerdict,
+  setRunGlobalVerdict,
+  setRunMissingNote,
   type AffirmationVerdict,
+  type GlobalVerdict,
 } from '@/lib/db/comprehension'
 import { runComprehensionAgent } from '@/services/ai/comprehension'
 import type { DossierPhase } from '@/types/db'
 
 const VERDICTS: AffirmationVerdict[] = ['juste', 'vague', 'parasite', 'dangereux']
+const GLOBAL_VERDICTS: GlobalVerdict[] = ['transmissible', 'corrections', 'incomplet', 'trompeur']
 
 const ALLOWED: DossierPhase[] = ['prospect', 'en_ao', 'actif', 'perdu', 'archive']
 
@@ -150,6 +154,44 @@ export async function rateAffirmationAction(input: {
   if (input.verdict !== null && !VERDICTS.includes(input.verdict)) return { ok: false, error: 'Verdict invalide' }
   try {
     await setAffirmationVerdict(input.affirmationId, input.verdict, null, user.id)
+    revalidatePath(`/dossiers/${input.dossierId}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+// Niveau 2 — verdict GLOBAL de transmission (toggle). La note qui vaut le plus :
+// « est-ce que cette IA a compris MON chantier ? ».
+export async function rateRunComprehensionAction(input: {
+  runId: string
+  dossierId: string
+  verdict: GlobalVerdict | null
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return { ok: false, error: 'Non autorisé' }
+  if (!input.runId) return { ok: false, error: 'Paramètres invalides' }
+  if (input.verdict !== null && !GLOBAL_VERDICTS.includes(input.verdict)) return { ok: false, error: 'Verdict invalide' }
+  try {
+    await setRunGlobalVerdict(input.runId, input.verdict, user.id)
+    revalidatePath(`/dossiers/${input.dossierId}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
+// « Il manque quelque chose » — capture les OMISSIONS de l'IA (texte libre).
+export async function setComprehensionMissingAction(input: {
+  runId: string
+  dossierId: string
+  note: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) return { ok: false, error: 'Non autorisé' }
+  if (!input.runId) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setRunMissingNote(input.runId, input.note.slice(0, 4000))
     revalidatePath(`/dossiers/${input.dossierId}`)
     return { ok: true }
   } catch {
