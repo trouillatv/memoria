@@ -16,6 +16,8 @@ import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
  * destinations, pas de vocabulaire technique. Le tri ENREGISTRE la décision ;
  * le bureau matérialisera les suites. Cf. [[visite-trois-temps]].
  */
+export type CapturePreview = { url: string; mime: string | null }
+
 export function DebriefExpress({
   reportId,
   siteId,
@@ -23,6 +25,7 @@ export function DebriefExpress({
   dossierId,
   questionsCount,
   initialCaptures,
+  previews,
 }: {
   reportId: string
   siteId: string
@@ -32,6 +35,8 @@ export function DebriefExpress({
   /** ❓ « à vérifier » posées pendant la visite (hors captures). */
   questionsCount: number
   initialCaptures: VisitCaptureRow[]
+  /** Aperçus signés (captureId → url/mime) pour trier en voyant le contenu. */
+  previews: Record<string, CapturePreview>
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -137,7 +142,7 @@ export function DebriefExpress({
 
           <ul className="space-y-2">
             {captures.map((c) => (
-              <CaptureCard key={c.id} capture={c} busy={busyId === c.id} onDecide={(d) => decide(c, d)} />
+              <CaptureCard key={c.id} capture={c} preview={previews[c.id]} busy={busyId === c.id} onDecide={(d) => decide(c, d)} />
             ))}
           </ul>
         </section>
@@ -213,9 +218,10 @@ function currentDecision(c: VisitCaptureRow): TriageDecision | null {
 }
 
 function CaptureCard({
-  capture, busy, onDecide,
+  capture, preview, busy, onDecide,
 }: {
   capture: VisitCaptureRow
+  preview?: CapturePreview
   busy: boolean
   onDecide: (d: TriageDecision) => void
 }) {
@@ -234,6 +240,21 @@ function CaptureCard({
           )}
         </p>
       </div>
+
+      {/* Aperçu du CONTENU — on ne trie pas à l'aveugle. Miniature photo,
+          lecteur vidéo, lecteur audio pour les vocaux. */}
+      {preview && capture.kind === 'photo' && (
+        <a href={preview.url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview.url} alt="" className="max-h-48 w-full rounded-lg border object-cover" />
+        </a>
+      )}
+      {preview && capture.kind === 'video' && (
+        <video src={preview.url} controls playsInline className="mt-2 max-h-56 w-full rounded-lg border bg-black" />
+      )}
+      {preview && capture.kind === 'vocal' && (
+        <audio src={preview.url} controls className="mt-2 w-full" />
+      )}
 
       {/* Une seule question : est-ce que ça mérite une suite ? */}
       <div className="mt-2.5 grid grid-cols-4 gap-1.5">
