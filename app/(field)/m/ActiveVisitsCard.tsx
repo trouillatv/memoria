@@ -1,23 +1,21 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { Radio, Camera, Video, Mic, Pencil, CloudUpload, Play, CheckCircle2, Check, Loader2, Square } from 'lucide-react'
-import { toast } from 'sonner'
+import { Radio, Pause, Camera, Video, Mic, Pencil, Target, MapPin, Star, HelpCircle, CloudUpload, Play, CheckCircle2 } from 'lucide-react'
 import { countQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
-import { endVisitAction } from '@/app/(field)/m/site/[siteId]/visit-actions'
+import type { VisitCaptureKind } from '@/lib/db/visit-captures'
 
 /**
  * Lot A — « Visite en cours » sur l'accueil terrain. Une visite est un objet
  * VIVANT : on l'interrompt (pause déjeuner, voiture) et on la reprend sans la
- * chercher. C'est LE bouton principal quand une collecte est ouverte : il monte
- * tout en haut de /m, avant même « ce qui demande ton attention ».
+ * chercher. C'est LE bouton principal quand une collecte est ouverte.
  *
- * La carte doit permettre de RECONNAÎTRE sa visite (répartition par type) et de
- * savoir où en est l'envoi (✓ synchronisées / ☁ en attente) sans rouvrir le
- * panier. On peut aussi la TERMINER d'ici (depuis la voiture). Le « en attente »
- * est un état CLIENT (file IndexedDB du Lot B) lu ici ; il fond tout seul.
+ * La carte doit RACONTER la visite : composition (📷/🎤/⭐/❓), où on s'est
+ * arrêté (dernier élément), et où en est l'envoi (✓/☁). Au-delà d'un certain
+ * temps sans activité, elle bascule d'elle-même en « En pause » (déduit, aucun
+ * bouton). Un seul point de CLÔTURE : le panier (on n'ajoute pas « Terminer »
+ * ici pour ne pas multiplier les façons de terminer).
  */
 export interface ActiveVisitCardItem {
   reportId: string
@@ -26,8 +24,14 @@ export interface ActiveVisitCardItem {
   startedAt: string | null
   captureCount: number
   kinds: { photo: number; video: number; vocal: number; note: number; verification: number; position: number }
+  starred: number
+  questions: number
+  lastCapture: { kind: VisitCaptureKind; label: string; starred: boolean } | null
   lastActivityAt: string | null
 }
+
+// Au-delà de ce silence, la visite « semble en pause » (déjeuner, déplacement).
+const PAUSE_AFTER_MIN = 45
 
 function useElapsed(startedAt: string | null): string {
   const [label, setLabel] = useState('')
@@ -45,26 +49,26 @@ function useElapsed(startedAt: string | null): string {
   return label
 }
 
-// « il y a X » qui se rafraîchit — repère immédiat pour l'agent qui revient.
-function useRelativeSince(iso: string | null): string {
-  const [label, setLabel] = useState('')
+// Minutes écoulées depuis `iso`, rafraîchies — sert au libellé ET à l'état pause.
+function useMinutesSince(iso: string | null): number | null {
+  const [mins, setMins] = useState<number | null>(null)
   useEffect(() => {
-    if (!iso) return
+    if (!iso) return // l'état par défaut est déjà null
     const t = new Date(iso).getTime()
-    const tick = () => {
-      const m = Math.max(0, Math.floor((Date.now() - t) / 60000))
-      if (m < 1) setLabel("à l'instant")
-      else if (m < 60) setLabel(`il y a ${m} min`)
-      else {
-        const h = Math.floor(m / 60)
-        setLabel(`il y a ${h} h${m % 60 ? ` ${m % 60}` : ''}`)
-      }
-    }
+    const tick = () => setMins(Math.max(0, Math.floor((Date.now() - t) / 60000)))
     tick()
     const id = setInterval(tick, 30_000)
     return () => clearInterval(id)
   }, [iso])
-  return label
+  return mins
+}
+
+function relativeLabel(mins: number | null): string {
+  if (mins == null) return ''
+  if (mins < 1) return "à l'instant"
+  if (mins < 60) return `il y a ${mins} min`
+  const h = Math.floor(mins / 60)
+  return `il y a ${h} h${mins % 60 ? ` ${mins % 60}` : ''}`
 }
 
 function usePendingCount(reportId: string): number {
@@ -77,30 +81,37 @@ function usePendingCount(reportId: string): number {
         .catch(() => { /* IndexedDB indispo : on n'affiche juste rien */ })
     }
     read()
-    // Le drain global fait fondre la file : on relit régulièrement.
     const id = setInterval(read, 5_000)
     return () => { alive = false; clearInterval(id) }
   }, [reportId])
   return pending
 }
 
-// Répartition par type — l'agent reconnaît SA visite (« la grosse, 42 photos »).
-function KindChips({ kinds }: { kinds: ActiveVisitCardItem['kinds'] }) {
-  const chips: Array<{ icon: typeof Camera; n: number; label: string }> = [
-    { icon: Camera, n: kinds.photo, label: kinds.photo > 1 ? 'photos' : 'photo' },
-    { icon: Video, n: kinds.video, label: kinds.video > 1 ? 'vidéos' : 'vidéo' },
-    { icon: Mic, n: kinds.vocal, label: kinds.vocal > 1 ? 'vocaux' : 'vocal' },
-    { icon: Pencil, n: kinds.note, label: kinds.note > 1 ? 'notes' : 'note' },
+const KIND_ICON: Record<VisitCaptureKind, typeof Camera> = {
+  photo: Camera, video: Video, vocal: Mic, note: Pencil, verification: Target, position: MapPin,
+}
+
+// Composition de la visite — l'agent reconnaît SA visite (« la grosse, 42 photos,
+// 4 trucs importants »). Inclut ⭐ et ❓ : ça raconte plus que le seul volume.
+function KindChips({ visit }: { visit: ActiveVisitCardItem }) {
+  const k = visit.kinds
+  const chips: Array<{ icon: typeof Camera; n: number; cls: string }> = [
+    { icon: Camera, n: k.photo, cls: '' },
+    { icon: Video, n: k.video, cls: '' },
+    { icon: Mic, n: k.vocal, cls: '' },
+    { icon: Pencil, n: k.note, cls: '' },
+    { icon: Star, n: visit.starred, cls: 'text-amber-600 dark:text-amber-400' },
+    { icon: HelpCircle, n: visit.questions, cls: 'text-amber-700 dark:text-amber-300' },
   ].filter((c) => c.n > 0)
   if (chips.length === 0) return null
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-emerald-900/80 dark:text-emerald-100/80">
-      {chips.map((c) => {
+      {chips.map((c, i) => {
         const Icon = c.icon
         return (
-          <span key={c.label} className="inline-flex items-center gap-1">
-            <Icon className="h-3.5 w-3.5 text-emerald-700/70 dark:text-emerald-300/70" />
-            <span className="tabular-nums font-medium">{c.n}</span> {c.label}
+          <span key={i} className="inline-flex items-center gap-1">
+            <Icon className={`h-3.5 w-3.5 ${c.cls || 'text-emerald-700/70 dark:text-emerald-300/70'}`} />
+            <span className="tabular-nums font-medium">{c.n}</span>
           </span>
         )
       })}
@@ -109,34 +120,29 @@ function KindChips({ kinds }: { kinds: ActiveVisitCardItem['kinds'] }) {
 }
 
 function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
-  const router = useRouter()
   const elapsed = useElapsed(visit.startedAt)
-  const lastActivity = useRelativeSince(visit.lastActivityAt)
+  const idleMins = useMinutesSince(visit.lastActivityAt)
   const pending = usePendingCount(visit.reportId)
-  const [confirmEnd, setConfirmEnd] = useState(false)
-  const [ending, startEnding] = useTransition()
 
   const synced = visit.captureCount
   const total = synced + pending
-
-  function end() {
-    startEnding(async () => {
-      const r = await endVisitAction({ report_id: visit.reportId, site_id: visit.siteId })
-      if (r.ok) {
-        toast.success('Visite terminée', { duration: 1500 })
-        router.refresh()
-      } else {
-        toast.error(r.error)
-        setConfirmEnd(false)
-      }
-    })
-  }
+  const paused = idleMins != null && idleMins >= PAUSE_AFTER_MIN && total > 0
+  const LastIcon = visit.lastCapture ? KIND_ICON[visit.lastCapture.kind] : null
 
   return (
-    <div className="rounded-2xl border border-emerald-500/40 bg-emerald-50/70 px-5 py-5 dark:bg-emerald-950/25">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-        <Radio className="h-3.5 w-3.5 animate-pulse" />
-        Visite en cours
+    <Link
+      href={`/m/site/${visit.siteId}`}
+      className={`block rounded-2xl border px-5 py-5 active:scale-[0.99] transition-transform ${
+        paused
+          ? 'border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20'
+          : 'border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-950/25'
+      }`}
+    >
+      <div className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide ${
+        paused ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'
+      }`}>
+        {paused ? <Pause className="h-3.5 w-3.5" /> : <Radio className="h-3.5 w-3.5 animate-pulse" />}
+        {paused ? 'En pause' : 'Visite en cours'}
       </div>
 
       <p className="mt-1.5 text-lg font-bold leading-tight text-emerald-950 dark:text-emerald-50">
@@ -145,11 +151,23 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
       {elapsed && (
         <p className="text-[13px] text-emerald-800/80 dark:text-emerald-200/70">Commencée il y a {elapsed}</p>
       )}
-      {lastActivity && total > 0 && (
-        <p className="text-[12px] text-emerald-700/70 dark:text-emerald-300/60">Dernière activité {lastActivity}</p>
+      {idleMins != null && total > 0 && (
+        <p className={`text-[12px] ${paused ? 'text-amber-700/80 dark:text-amber-300/70' : 'text-emerald-700/70 dark:text-emerald-300/60'}`}>
+          Dernière activité {relativeLabel(idleMins)}
+        </p>
       )}
 
-      <KindChips kinds={visit.kinds} />
+      <KindChips visit={visit} />
+
+      {/* « Où je me suis arrêté » — repère immédiat (façon Google Docs). */}
+      {visit.lastCapture && LastIcon && (
+        <p className="mt-2 flex items-center gap-1.5 text-[13px] text-emerald-900/85 dark:text-emerald-100/85">
+          <span className="text-muted-foreground">Dernier :</span>
+          <LastIcon className="h-3.5 w-3.5 shrink-0 text-emerald-700/70 dark:text-emerald-300/70" />
+          <span className="min-w-0 truncate font-medium">{visit.lastCapture.label}</span>
+          {visit.lastCapture.starred && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500" />}
+        </p>
+      )}
 
       {/* État d'envoi EXPLICITE : on ne laisse jamais deviner si « les autres »
           sont parties. ✓ synchronisées + ☁ en attente, séparément. */}
@@ -168,43 +186,11 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
         </div>
       )}
 
-      {/* Reprendre (principal) + Terminer (depuis la voiture, sans rouvrir le
-          panier) — avec confirmation pour éviter une clôture accidentelle. */}
-      {confirmEnd ? (
-        <div className="mt-4 flex items-center gap-2">
-          <span className="text-sm font-medium text-emerald-900 dark:text-emerald-100">Terminer la visite ?</span>
-          <button
-            type="button" onClick={end} disabled={ending}
-            className="inline-flex items-center gap-1 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {ending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Oui
-          </button>
-          <button
-            type="button" onClick={() => setConfirmEnd(false)} disabled={ending}
-            className="rounded-xl border border-emerald-600/30 px-3 py-2 text-sm font-medium text-emerald-800 dark:text-emerald-200 disabled:opacity-50"
-          >
-            Non
-          </button>
-        </div>
-      ) : (
-        <div className="mt-4 flex items-center gap-2">
-          <Link
-            href={`/m/site/${visit.siteId}`}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white active:scale-[0.98] transition-transform"
-          >
-            <Play className="h-4 w-4 fill-current" />
-            Reprendre
-          </Link>
-          <button
-            type="button" onClick={() => setConfirmEnd(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600/30 px-4 py-2.5 text-sm font-medium text-emerald-800 dark:text-emerald-200 active:scale-[0.98] transition-transform"
-          >
-            <Square className="h-4 w-4" />
-            Terminer
-          </button>
-        </div>
-      )}
-    </div>
+      <div className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">
+        <Play className="h-4 w-4 fill-current" />
+        Reprendre
+      </div>
+    </Link>
   )
 }
 
