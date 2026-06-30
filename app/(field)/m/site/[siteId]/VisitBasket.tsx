@@ -16,9 +16,16 @@ import {
   addQuestionCaptureAction,
   listVisitCapturesAction,
   revalidateSiteMobile,
+  createVisitVideoUploadAction,
+  registerVisitVideoAction,
 } from './capture-actions'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
+import { createClient } from '@/lib/supabase/client'
+
+// La vidéo s'upload en direct vers Supabase (URL signée), bornée par la limite du
+// bucket (mig 181). Au-delà : message clair plutôt qu'un échec silencieux.
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 // Mémoire LITE d'un point suivi (read-only), surfacée pendant la vérification :
@@ -241,11 +248,48 @@ export function VisitBasket({
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
+  // PAS la file IndexedDB (trop lourde) ni le Server Action (limite 20 Mo) : la
+  // vidéo s'envoie EN DIRECT au stockage via URL signée. Le geste reste non
+  // bloquant (optimiste tout de suite, envoi en arrière-plan).
   function onVideoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    enqueueMedia(file, 'video')
+    if (file.size > MAX_VIDEO_BYTES) {
+      toast.error('Vidéo trop lourde (max 50 Mo) — filme une séquence plus courte.')
+      return
+    }
+    const clientUuid = crypto.randomUUID()
+    const previewUrl = URL.createObjectURL(file)
+    setPending((prev) => [...prev, { clientUuid, kind: 'video', previewUrl, takenAt: Date.now() }])
+    const dropPending = () => setPending((prev) => {
+      const f = prev.find((p) => p.clientUuid === clientUuid)
+      if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl)
+      return prev.filter((p) => p.clientUuid !== clientUuid)
+    })
+    ;(async () => {
+      const pos = await getOneShotPosition()
+      const prep = await createVisitVideoUploadAction({ report_id: reportId, client_uuid: clientUuid })
+      if (!prep.ok) throw new Error(prep.error)
+      if (!prep.alreadyDone) {
+        const supa = createClient()
+        const { error: upErr } = await supa.storage
+          .from('site-reports')
+          .uploadToSignedUrl(prep.storagePath, prep.token, file, { contentType: file.type || 'video/mp4' })
+        if (upErr) throw new Error(upErr.message)
+        const reg = await registerVisitVideoAction({
+          report_id: reportId, site_id: siteId, client_uuid: clientUuid,
+          storage_path: prep.storagePath, mime: file.type || 'video/mp4', size_bytes: file.size,
+          lat: pos?.lat, lng: pos?.lng,
+        })
+        if (!reg.ok) throw new Error(reg.error)
+      }
+      dropPending()
+      void refresh()
+    })().catch(() => {
+      dropPending()
+      toast.error('Échec de l’envoi de la vidéo — réessaie.')
+    })
   }
 
   // ── Vocal ──────────────────────────────────────────────────────────────────
@@ -565,7 +609,7 @@ export function VisitBasket({
                       )}
                     </span>
                   </span>
-                  {p.previewUrl && (
+                  {p.kind === 'photo' && p.previewUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.previewUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border border-emerald-500/20 object-cover" />
                   )}

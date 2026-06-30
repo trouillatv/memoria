@@ -58,6 +58,9 @@ export function useVisitCaptureUploader(opts?: {
       let success = 0
       // Envoi séquentiel (1 à la fois) — on ne sature pas un réseau terrain faible.
       for (const item of all) {
+        // La vidéo ne passe PLUS par la file (upload direct, trop lourde pour
+        // IndexedDB + Server Action). On purge les entrées vidéo legacy coincées.
+        if (item.kind === 'video') { await removeQueuedVisitCapture(item.tempId); continue }
         if (!isReadyForRetry(item)) continue
         setUploadingUuid(item.clientUuid)
         const startedAt = Date.now()
