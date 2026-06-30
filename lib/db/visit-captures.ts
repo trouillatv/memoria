@@ -242,6 +242,46 @@ export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000)
   }))
 }
 
+/**
+ * URLs signées d'aperçu pour les captures avec pièce (photo/vidéo/vocal) — pour
+ * que le débrief montre le CONTENU (miniature, lecteur), pas juste « Photo ».
+ * Sans ça on trie à l'aveugle. Retourne une map captureId → { url, mime }.
+ */
+export async function getVisitCapturePreviewUrls(
+  captures: VisitCaptureRow[],
+): Promise<Record<string, { url: string; mime: string | null }>> {
+  const withAtt = captures.filter((c) => c.attachment_id)
+  if (withAtt.length === 0) return {}
+  const supabase = createAdminClient()
+  const attIds = [...new Set(withAtt.map((c) => c.attachment_id as string))]
+  const { data: atts } = await supabase
+    .from('site_report_attachments')
+    .select('id, storage_path, mime_type')
+    .in('id', attIds)
+  const byAttId = new Map(
+    ((atts ?? []) as Array<{ id: string; storage_path: string | null; mime_type: string | null }>)
+      .map((a) => [a.id, a]),
+  )
+  const paths = [...new Set(
+    (atts ?? []).map((a) => (a as { storage_path: string | null }).storage_path).filter((p): p is string => !!p),
+  )]
+  if (paths.length === 0) return {}
+  const { data: signed } = await supabase.storage.from('site-reports').createSignedUrls(paths, 3600)
+  const urlByPath = new Map(
+    ((signed ?? []) as Array<{ path: string | null; signedUrl: string }>)
+      .filter((s) => s.path && s.signedUrl)
+      .map((s) => [s.path as string, s.signedUrl]),
+  )
+  const out: Record<string, { url: string; mime: string | null }> = {}
+  for (const c of withAtt) {
+    const a = byAttId.get(c.attachment_id as string)
+    if (!a?.storage_path) continue
+    const url = urlByPath.get(a.storage_path)
+    if (url) out[c.id] = { url, mime: a.mime_type }
+  }
+  return out
+}
+
 /** Combien de captures non écartées dans le panier (badge « N éléments »). */
 export async function countVisitCaptures(reportId: string): Promise<number> {
   const supabase = createAdminClient()

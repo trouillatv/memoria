@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit } from '@/lib/db/visits'
-import { listVisitCaptures } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { DebriefExpress } from './DebriefExpress'
 
 export const dynamic = 'force-dynamic'
@@ -39,14 +39,18 @@ export default async function VisitDebriefPage({
 
   const captures = await listVisitCaptures(reportId)
 
-  // ❓ « à vérifier » posées pendant la visite (captured_knowledge) — comptées pour
-  // le récap de fin, à côté des captures.
-  const { count: questionsCount } = await supabase
-    .from('captured_knowledge')
-    .select('id', { count: 'exact', head: true })
-    .eq('source_id', reportId)
-    .eq('kind', 'question')
-    .eq('status', 'active')
+  const [{ count: questionsCount }, previews] = await Promise.all([
+    // ❓ « à vérifier » posées pendant la visite (captured_knowledge) — comptées
+    // pour le récap de fin, à côté des captures.
+    supabase
+      .from('captured_knowledge')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_id', reportId)
+      .eq('kind', 'question')
+      .eq('status', 'active'),
+    // Aperçus (miniature/lecteur) pour trier en VOYANT le contenu.
+    getVisitCapturePreviewUrls(captures).catch(() => ({})),
+  ])
 
   return (
     <DebriefExpress
@@ -56,6 +60,7 @@ export default async function VisitDebriefPage({
       dossierId={visit.dossier_id ?? null}
       questionsCount={questionsCount ?? 0}
       initialCaptures={captures}
+      previews={previews}
     />
   )
 }
