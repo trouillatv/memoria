@@ -30,14 +30,19 @@ import { getOrgId } from '@/lib/db/users'
 import type { DbTeam, DbTeamMember } from '@/types/db'
 
 /**
- * Rôles éligibles à la composition d'une équipe. Une équipe est un conteneur
- * logistique de couverture (cf. planning : on affecte des ÉQUIPES, pas des
- * personnes). Un manager peut donc piloter/rejoindre une équipe sans être
- * converti en `chef_equipe` — sinon il ne serait pas planifiable.
+ * L'appartenance à une équipe est INDÉPENDANTE du rôle. Une équipe est un
+ * conteneur logistique de couverture (le planning affecte des ÉQUIPES, pas des
+ * personnes) : toute personne pouvant intervenir sur un chantier peut donc en
+ * être membre, quel que soit son rôle (manager, chef d'équipe, et demain
+ * conducteur, ouvrier…). Le rôle continue de gouverner les droits et les
+ * écrans — jamais l'appartenance à une équipe.
  *
- * `admin` reste EXCLU : compte système, jamais un intervenant terrain.
+ * On exclut uniquement le compte système `admin` (jamais un intervenant
+ * terrain), en miroir de `listIntervenantsForList`. Éviter un allowlist de
+ * rôles supprime les exceptions « si Manager alors autoriser quand même… » à
+ * chaque nouveau rôle.
  */
-export const TEAM_MEMBER_ROLES = ['manager', 'chef_equipe'] as const
+const SYSTEM_ROLE_EXCLUDED_FROM_TEAMS = 'admin'
 
 // ----------------------------------------------------------------------------
 // Inputs
@@ -361,9 +366,9 @@ export interface OrphanUser {
 }
 
 /**
- * Liste les personnes éligibles à une équipe (managers + chefs d'équipe) qui ne
- * sont membres actifs d'aucune équipe. Sert à afficher le bandeau « ⚠ X
- * personnes pas dans une équipe » sur la page Équipes.
+ * Liste les personnes pouvant appartenir à une équipe (tout le monde sauf le
+ * compte système admin) qui ne sont membres actifs d'aucune équipe. Sert à
+ * afficher le bandeau « ⚠ X personnes pas dans une équipe » sur la page Équipes.
  *
  * Comme `listMembersOfTeam`, cette fonction expose des noms d'agents et n'est
  * destinée QU'à la page Équipes.
@@ -372,8 +377,8 @@ export async function listOrphanUsers(): Promise<OrphanUser[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
 
-  // 1) Toutes les personnes éligibles (manager + chef_equipe) non archivées
-  let uQ = supabase.from('users').select('id, full_name, email, role').in('role', TEAM_MEMBER_ROLES).is('deleted_at', null)
+  // 1) Toutes les personnes non archivées, hors compte système admin.
+  let uQ = supabase.from('users').select('id, full_name, email, role').neq('role', SYSTEM_ROLE_EXCLUDED_FROM_TEAMS).is('deleted_at', null)
   if (orgId) uQ = uQ.eq('organization_id', orgId)
   const { data: users, error: uErr } = await uQ
   if (uErr) throw uErr

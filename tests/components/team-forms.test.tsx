@@ -278,7 +278,7 @@ describe('EditTeamMembersDialog', () => {
       />
     )
     fireEvent.click(screen.getByTestId('edit-members-trigger-t-1'))
-    expect(screen.getByText(/aucun chef d’équipe disponible/i)).toBeInTheDocument()
+    expect(screen.getByText(/aucune personne disponible/i)).toBeInTheDocument()
     expect(screen.queryByTestId('add-member-submit')).not.toBeInTheDocument()
   })
 

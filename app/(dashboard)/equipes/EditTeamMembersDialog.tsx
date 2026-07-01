@@ -116,9 +116,9 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
         <DialogHeader>
           <DialogTitle>Composition — {teamName}</DialogTitle>
           <DialogDescription>
-            Ajouter ou retirer des membres (chefs d’équipe et managers). Les
-            missions planifiées associées resteront affectées tant que l’équipe
-            existe.
+            Ajouter ou retirer des personnes de l’équipe. L’appartenance à une
+            équipe est indépendante du rôle. Les missions planifiées associées
+            resteront affectées tant que l’équipe existe.
           </DialogDescription>
         </DialogHeader>
 
