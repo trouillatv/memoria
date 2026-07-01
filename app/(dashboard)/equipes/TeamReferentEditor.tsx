@@ -125,7 +125,7 @@ export function TeamReferentEditor({
         {extras.length > 0 && (
           <>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 pt-2">
-              Autres chefs d&apos;équipe
+              Autres personnes
             </div>
             {extras.map((m) => (
               <ReferentChoice

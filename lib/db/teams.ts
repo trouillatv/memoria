@@ -29,6 +29,16 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import type { DbTeam, DbTeamMember } from '@/types/db'
 
+/**
+ * Rôles éligibles à la composition d'une équipe. Une équipe est un conteneur
+ * logistique de couverture (cf. planning : on affecte des ÉQUIPES, pas des
+ * personnes). Un manager peut donc piloter/rejoindre une équipe sans être
+ * converti en `chef_equipe` — sinon il ne serait pas planifiable.
+ *
+ * `admin` reste EXCLU : compte système, jamais un intervenant terrain.
+ */
+export const TEAM_MEMBER_ROLES = ['manager', 'chef_equipe'] as const
+
 // ----------------------------------------------------------------------------
 // Inputs
 // ----------------------------------------------------------------------------
@@ -351,9 +361,9 @@ export interface OrphanUser {
 }
 
 /**
- * Liste les `chef_equipe` qui ne sont membres actifs d'aucune équipe.
- * Sert à afficher le bandeau « ⚠ X personnes pas dans une équipe » sur la page
- * Équipes.
+ * Liste les personnes éligibles à une équipe (managers + chefs d'équipe) qui ne
+ * sont membres actifs d'aucune équipe. Sert à afficher le bandeau « ⚠ X
+ * personnes pas dans une équipe » sur la page Équipes.
  *
  * Comme `listMembersOfTeam`, cette fonction expose des noms d'agents et n'est
  * destinée QU'à la page Équipes.
@@ -362,8 +372,8 @@ export async function listOrphanUsers(): Promise<OrphanUser[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
 
-  // 1) Tous les chef_equipe non archivés
-  let uQ = supabase.from('users').select('id, full_name, email, role').eq('role', 'chef_equipe').is('deleted_at', null)
+  // 1) Toutes les personnes éligibles (manager + chef_equipe) non archivées
+  let uQ = supabase.from('users').select('id, full_name, email, role').in('role', TEAM_MEMBER_ROLES).is('deleted_at', null)
   if (orgId) uQ = uQ.eq('organization_id', orgId)
   const { data: users, error: uErr } = await uQ
   if (uErr) throw uErr
