@@ -12,7 +12,7 @@ import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listTeamsWithMemberCount, listOrphanUsers, TEAM_MEMBER_ROLES } from '@/lib/db/teams'
+import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { CreateTeamButton } from './CreateTeamButton'
@@ -36,12 +36,13 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
   const [{ data: users, error: uErr }, { data: memberships, error: mErr }] =
     await Promise.all([
       (() => {
-        // manager + chef_equipe : une équipe est un conteneur logistique, un
-        // manager doit pouvoir y être rattaché pour être planifiable.
+        // Appartenance indépendante du rôle : toute personne pouvant intervenir
+        // sur un chantier (tout le monde sauf le compte système admin) peut être
+        // membre d'une équipe — le planning affecte des équipes, pas des rôles.
         let q = supabase
           .from('users')
           .select('id, full_name, email, role')
-          .in('role', TEAM_MEMBER_ROLES)
+          .neq('role', 'admin')
           .is('deleted_at', null)
           .order('full_name', { ascending: true })
         if (orgId) q = q.eq('organization_id', orgId)
