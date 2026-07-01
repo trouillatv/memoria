@@ -10,7 +10,7 @@
 
 import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,14 +29,22 @@ function displayName(fullName: string | null, email: string): string {
 
 async function listAllChefsEquipe(): Promise<MemberLite[]> {
   const supabase = createAdminClient()
+  // Scope org OBLIGATOIRE : createAdminClient() bypasse la RLS, donc sans ce
+  // filtre le sélecteur remonte les chefs d'équipe de TOUTES les organisations
+  // (cf. le reste de lib/db/teams.ts qui scope déjà via getOrgId()).
+  const orgId = await getOrgId()
   const [{ data: users, error: uErr }, { data: memberships, error: mErr }] =
     await Promise.all([
-      supabase
-        .from('users')
-        .select('id, full_name, email')
-        .eq('role', 'chef_equipe')
-        .is('deleted_at', null)
-        .order('full_name', { ascending: true }),
+      (() => {
+        let q = supabase
+          .from('users')
+          .select('id, full_name, email')
+          .eq('role', 'chef_equipe')
+          .is('deleted_at', null)
+          .order('full_name', { ascending: true })
+        if (orgId) q = q.eq('organization_id', orgId)
+        return q
+      })(),
       // Memberships actives + nom de l'équipe associée — pour signaler dans
       // le sélecteur "déjà dans Équipe X" et éviter les doublons cross-équipes.
       supabase

@@ -17,7 +17,8 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/lib/audit/log'
-import { updateUserProfileAsAdmin, getUserRoleById } from '@/lib/db/users'
+import { updateUserProfileAsAdmin, getUserRoleById, getOrgId } from '@/lib/db/users'
+import { assignUserToOrg } from '@/lib/db/organisations'
 import { updateContractEndDate } from '@/lib/db/continuity'
 
 // Mdp temporaire partagé — décision DG 2026-05-14 (même que /admin/users)
@@ -104,6 +105,15 @@ export async function createIntervenantAction(
     commune: parsed.data.commune ?? null,
     employment_type: parsed.data.employment_type ?? null,
   })
+
+  // Rattache le nouvel intervenant à l'organisation du manager créateur.
+  // Sans ça, organization_id reste null (ni le trigger DB ni createUser ne le
+  // posent) et l'intervenant n'apparaît jamais dans la liste ni dans le
+  // sélecteur d'équipe, tous deux scopés par org.
+  const orgId = await getOrgId()
+  if (orgId) {
+    await assignUserToOrg(data.user.id, orgId)
+  }
 
   // Date de fin de contrat (CDD / CDI Chantier) — alimente la Continuité.
   if (parsed.data.contract_end_date) {
