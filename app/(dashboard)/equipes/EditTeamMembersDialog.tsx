@@ -36,10 +36,22 @@ export interface MemberLite {
   id: string
   name: string
   email: string
+  /** Rôle applicatif (manager | chef_equipe) — affiché comme indice dans le
+   *  sélecteur pour distinguer un manager d'un chef d'équipe. Optionnel. */
+  role?: string
   /** Noms des autres équipes actives auxquelles cet utilisateur appartient
    *  déjà — utile dans le sélecteur d'ajout pour éviter d'ajouter quelqu'un
    *  qui est déjà dans une autre équipe sans le savoir. Optionnel. */
   currentTeamNames?: string[]
+}
+
+/** Libellé FR court du rôle, pour l'indice du sélecteur. */
+function roleHint(role: string | undefined): string | null {
+  switch (role) {
+    case 'manager': return 'Manager'
+    case 'chef_equipe': return "Chef d'équipe"
+    default: return null
+  }
 }
 
 interface Props {
@@ -104,8 +116,9 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
         <DialogHeader>
           <DialogTitle>Composition — {teamName}</DialogTitle>
           <DialogDescription>
-            Ajouter ou retirer des chefs d’équipe. Les missions planifiées
-            associées resteront affectées tant que l’équipe existe.
+            Ajouter ou retirer des membres (chefs d’équipe et managers). Les
+            missions planifiées associées resteront affectées tant que l’équipe
+            existe.
           </DialogDescription>
         </DialogHeader>
 
@@ -155,8 +168,8 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
             </Label>
             {candidates.length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground italic">
-                Aucun chef d’équipe disponible. Créez d’abord un compte depuis
-                la page Administration.
+                Aucune personne disponible. Créez d’abord un compte depuis la
+                page Intervenants ou Administration.
               </p>
             ) : (
               <div className="mt-2 flex gap-2">
@@ -178,12 +191,18 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
                       const otherTeams = (u.currentTeamNames ?? []).filter(
                         (n) => n !== teamName,
                       )
+                      const hint = roleHint(u.role)
                       return (
                         <SelectItem key={u.id} value={u.id}>
                           <span className="inline-flex items-center gap-2 flex-wrap">
                             <span>
                               {u.name} — {u.email}
                             </span>
+                            {hint && (
+                              <span className="text-[10px] uppercase tracking-wider text-muted-foreground bg-muted border border-border rounded px-1.5 py-0.5">
+                                {hint}
+                              </span>
+                            )}
                             {otherTeams.length > 0 && (
                               <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
                                 déjà dans {otherTeams.join(', ')}

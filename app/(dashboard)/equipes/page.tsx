@@ -12,7 +12,7 @@ import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
+import { listTeamsWithMemberCount, listOrphanUsers, TEAM_MEMBER_ROLES } from '@/lib/db/teams'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { CreateTeamButton } from './CreateTeamButton'
@@ -27,19 +27,21 @@ function displayName(fullName: string | null, email: string): string {
   return email.split('@')[0] ?? email
 }
 
-async function listAllChefsEquipe(): Promise<MemberLite[]> {
+async function listAssignableMembers(): Promise<MemberLite[]> {
   const supabase = createAdminClient()
   // Scope org OBLIGATOIRE : createAdminClient() bypasse la RLS, donc sans ce
-  // filtre le sélecteur remonte les chefs d'équipe de TOUTES les organisations
+  // filtre le sélecteur remonte les personnes de TOUTES les organisations
   // (cf. le reste de lib/db/teams.ts qui scope déjà via getOrgId()).
   const orgId = await getOrgId()
   const [{ data: users, error: uErr }, { data: memberships, error: mErr }] =
     await Promise.all([
       (() => {
+        // manager + chef_equipe : une équipe est un conteneur logistique, un
+        // manager doit pouvoir y être rattaché pour être planifiable.
         let q = supabase
           .from('users')
-          .select('id, full_name, email')
-          .eq('role', 'chef_equipe')
+          .select('id, full_name, email, role')
+          .in('role', TEAM_MEMBER_ROLES)
           .is('deleted_at', null)
           .order('full_name', { ascending: true })
         if (orgId) q = q.eq('organization_id', orgId)
@@ -72,6 +74,7 @@ async function listAllChefsEquipe(): Promise<MemberLite[]> {
     id: u.id,
     name: displayName(u.full_name, u.email),
     email: u.email,
+    role: (u as { role?: string }).role,
     currentTeamNames: teamsByUser.get(u.id) ?? [],
   }))
 }
@@ -85,7 +88,7 @@ export default async function EquipesPage() {
   const [teams, orphans, availableUsers] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
-    listAllChefsEquipe(),
+    listAssignableMembers(),
   ])
 
   return (
@@ -135,7 +138,7 @@ export default async function EquipesPage() {
               {orphans.length} {orphans.length > 1 ? 'personnes' : 'personne'} pas dans une équipe
             </div>
             <p className="text-xs text-amber-800/80">
-              Ces chefs d’équipe ne sont rattachés à aucune équipe active.
+              Ces personnes ne sont rattachées à aucune équipe active.
               Ajoutez-les via « Éditer » sur une équipe existante.
             </p>
             <div className="text-sm text-amber-900" data-testid="orphans-list">
