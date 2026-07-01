@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
 import { LogoutButton } from './m/logout-button'
+import { SwitchToDesktopLink } from './switch-to-desktop-link'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
 import { FieldSyncDrainer } from './sync-drainer'
@@ -74,13 +75,13 @@ export default async function FieldLayout({ children }: { children: React.ReactN
         >
           Mon compte
         </Link>
-        {/* Échappatoire bureau : un manager ne doit jamais être coincé sur /m. */}
+        {/* Échappatoire bureau : un manager ne doit jamais être coincé sur /m.
+            Bascule aussi home_preference sur `dashboard` pour aligner le réglage
+            « Page d'accueil » du menu compte sur le choix effectif de l'user. */}
         {(user.role === 'admin' || user.role === 'manager') && (
           <>
             <span aria-hidden className="text-muted-foreground/60">·</span>
-            <Link href="/dashboard" className="text-xs text-muted-foreground hover:text-foreground">
-              Vue bureau
-            </Link>
+            <SwitchToDesktopLink />
           </>
         )}
         {/* Thème : sélecteur accessible directement depuis le terrain (mobile).
