@@ -15,7 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import type { VisitCaptureKind } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import type {
@@ -607,10 +607,16 @@ export interface VisitCrDoc {
   durationLabel: string | null
   objective: string | null
   subjectName: string | null
-  /** Constats = notes saisies pendant la visite. */
+  /** Constats = ce qui a été noté/dit pendant la visite (notes + vocaux + site_notes). */
   constats: string[]
   reserves: Array<{ label: string; location: string | null }>
   actions: Array<{ title: string; corps_etat: string | null }>
+  /** URLs signées des photos captées — embarquées dans le PDF (le CR terrain
+   *  DOIT montrer les photos, sinon il paraît vide). */
+  photos: string[]
+  /** Combien de vidéos/vocaux captés (non embarqués, mentionnés). */
+  videoCount: number
+  vocalCount: number
   outcomeLabel: string | null
   resolutionLabel: string | null
 }
@@ -641,6 +647,37 @@ export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | nu
     : null
   const durationLabel = durMins == null ? null : durMins < 60 ? `${durMins} min` : `${Math.floor(durMins / 60)} h ${durMins % 60} min`
 
+  // Le CR se génère au TEMPS 2, avant que le bureau ne matérialise notes/réserves.
+  // Il doit donc refléter les CAPTURES elles-mêmes (photos, notes, vocaux), sinon
+  // il paraît vide. On lit le panier de la visite en plus du contexte bureau.
+  const captures = (await listVisitCaptures(reportId).catch(() => []))
+    .filter((c) => c.status !== 'discarded')
+  const noteBodies = captures
+    .filter((c) => c.kind === 'note' && c.body?.trim())
+    .map((c) => c.body!.trim())
+  const vocalBodies = captures
+    .filter((c) => c.kind === 'vocal' && c.body?.trim())
+    .map((c) => `« ${c.body!.trim()} »`)
+  const photoCaptures = captures.filter((c) => c.kind === 'photo')
+  const videoCount = captures.filter((c) => c.kind === 'video').length
+  const vocalCount = captures.filter((c) => c.kind === 'vocal').length
+
+  // Photos : URLs signées, embarquées dans le PDF (borné pour rester léger).
+  const previews: Record<string, { url: string; mime: string | null }> =
+    await getVisitCapturePreviewUrls(photoCaptures.slice(0, 24)).catch(() => ({}))
+  const photos = photoCaptures
+    .map((c) => previews[c.id]?.url)
+    .filter((u): u is string => !!u)
+
+  // Constats = notes bureau (site_notes) + notes/vocaux du terrain, dédupliqués.
+  const seen = new Set<string>()
+  const constats = [...ctx.capturedNotes, ...noteBodies, ...vocalBodies].filter((t) => {
+    const k = t.trim().toLowerCase()
+    if (!k || seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+
   return {
     siteName,
     clientName,
@@ -649,9 +686,12 @@ export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | nu
     durationLabel,
     objective: visit.objective?.trim() || null,
     subjectName,
-    constats: ctx.capturedNotes,
+    constats,
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
+    photos,
+    videoCount,
+    vocalCount,
     outcomeLabel: visit.outcome ? OUTCOME_FR[visit.outcome] ?? visit.outcome : null,
     resolutionLabel: visit.resolution ? RESOLUTION_FR[visit.resolution] ?? visit.resolution : null,
   }
@@ -692,6 +732,18 @@ export async function buildVisitCr(reportId: string): Promise<string | null> {
   if (doc.actions.length > 0) {
     lines.push('## Actions')
     doc.actions.forEach((a) => lines.push(`- ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`))
+    lines.push('')
+  }
+
+  // Médias captés — le CR terrain doit refléter ce qui a été ramené.
+  const mediaParts = [
+    doc.photos.length > 0 ? `${doc.photos.length} photo${doc.photos.length > 1 ? 's' : ''}` : null,
+    doc.videoCount > 0 ? `${doc.videoCount} vidéo${doc.videoCount > 1 ? 's' : ''}` : null,
+    doc.vocalCount > 0 ? `${doc.vocalCount} vocal${doc.vocalCount > 1 ? 'aux' : ''}` : null,
+  ].filter(Boolean)
+  if (mediaParts.length > 0) {
+    lines.push('## Médias')
+    lines.push(`${mediaParts.join(' · ')} (voir le PDF ou la visite pour les images).`)
     lines.push('')
   }
 

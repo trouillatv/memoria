@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, CheckCircle2,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -15,6 +15,7 @@ import {
   setCaptureStarAction,
   addQuestionCaptureAction,
   listVisitCapturesAction,
+  listVisitCapturePreviewsAction,
   revalidateSiteMobile,
   createVisitVideoUploadAction,
   registerVisitVideoAction,
@@ -75,6 +76,11 @@ export function VisitBasket({
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
+  // Aperçus signés (photo/vidéo) — la mémoire VISUELLE de la visite : une vignette
+  // rappelle « la façade » d'un coup d'œil, sans lire une liste d'horodatages.
+  const [previews, setPreviews] = useState<Record<string, { url: string; mime: string | null }>>({})
+  // Plein écran d'une capture (standard : un clic = grand). null = fermé.
+  const [lightbox, setLightbox] = useState<VisitCaptureRow | null>(null)
   // Lot B — captures déposées localement, pas encore confirmées par le serveur.
   // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
   const [pending, setPending] = useState<PendingCapture[]>([])
@@ -112,6 +118,13 @@ export function VisitBasket({
 
   const subjectName = (id: string | null) => subjects.find((s) => s.id === id)?.name ?? 'point suivi'
   const kept = captures.filter((c) => c.status !== 'discarded')
+  // Compteurs clairs par type — « 3 photos · 1 vidéo » plutôt qu'une liste.
+  const mediaCount = {
+    photo: kept.filter((c) => c.kind === 'photo').length,
+    video: kept.filter((c) => c.kind === 'video').length,
+    vocal: kept.filter((c) => c.kind === 'vocal').length,
+    note: kept.filter((c) => c.kind === 'note').length,
+  }
   // Dé-doublonnage optimiste : une capture en attente disparaît dès que sa vraie
   // ligne (même client_uuid) revient du serveur.
   const serverUuids = new Set(kept.map((c) => c.client_uuid).filter((u): u is string => !!u))
@@ -146,7 +159,14 @@ export function VisitBasket({
   }, [startedAt])
 
   const refresh = useCallback(async () => {
-    try { setCaptures(await listVisitCapturesAction(reportId)) } catch { /* silencieux */ }
+    try {
+      const [caps, prev] = await Promise.all([
+        listVisitCapturesAction(reportId),
+        listVisitCapturePreviewsAction(reportId).catch(() => ({})),
+      ])
+      setCaptures(caps)
+      setPreviews(prev)
+    } catch { /* silencieux */ }
   }, [reportId])
 
   // Dès que le serveur a confirmé une capture (drain réussi), on retire sa
@@ -546,6 +566,14 @@ export function VisitBasket({
           ) : null}
         </div>
         {kept.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pb-1 text-[13px] font-medium text-emerald-900/80 dark:text-emerald-200/80">
+            {mediaCount.photo > 0 && <span className="inline-flex items-center gap-1.5"><Camera className="h-4 w-4" /> {mediaCount.photo} photo{mediaCount.photo > 1 ? 's' : ''}</span>}
+            {mediaCount.video > 0 && <span className="inline-flex items-center gap-1.5"><Video className="h-4 w-4" /> {mediaCount.video} vidéo{mediaCount.video > 1 ? 's' : ''}</span>}
+            {mediaCount.vocal > 0 && <span className="inline-flex items-center gap-1.5"><Mic className="h-4 w-4" /> {mediaCount.vocal} vocal{mediaCount.vocal > 1 ? 'aux' : ''}</span>}
+            {mediaCount.note > 0 && <span className="inline-flex items-center gap-1.5"><Pencil className="h-4 w-4" /> {mediaCount.note} note{mediaCount.note > 1 ? 's' : ''}</span>}
+          </div>
+        )}
+        {kept.length > 0 && (
           <ul className="space-y-px">
             {kept.map((c) => {
               const hint = captureHint(c)
@@ -554,7 +582,24 @@ export function VisitBasket({
                   <span className="w-9 shrink-0 pt-0.5 text-[11px] tabular-nums font-medium text-emerald-800/70 dark:text-emerald-300/70">
                     {hhmm(c.created_at)}
                   </span>
-                  <span className="shrink-0 pt-0.5 text-emerald-700/80 dark:text-emerald-300/80">{KIND_ICON[c.kind]}</span>
+                  {(c.kind === 'photo' || c.kind === 'video') && previews[c.id]?.url ? (
+                    <button
+                      type="button" onClick={() => setLightbox(c)} aria-label="Agrandir"
+                      className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-emerald-500/20 bg-black/5"
+                    >
+                      {c.kind === 'photo' ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={previews[c.id]!.url} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <>
+                          <video src={previews[c.id]!.url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                          <span className="absolute inset-0 flex items-center justify-center text-white"><Play className="h-4 w-4 drop-shadow" fill="currentColor" /></span>
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 pt-0.5 text-emerald-700/80 dark:text-emerald-300/80">{KIND_ICON[c.kind]}</span>
+                  )}
                   <span className="min-w-0 flex-1 text-sm leading-snug">
                     {captureLabel(c)}
                     {hint && <span className="block text-[11px] text-muted-foreground">{hint}</span>}
@@ -620,27 +665,40 @@ export function VisitBasket({
         )}
       </div>
 
-      {/* Filet de réassurance permanent (façon WhatsApp) : l'agent sait toujours
-          où en est l'envoi, même hors réseau. Rien n'est jamais perdu. */}
-      {(kept.length > 0 || pendingSyncCount > 0) && (
-        pendingSyncCount > 0 ? (
-          <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-            <CloudUpload className="h-4 w-4 shrink-0 mt-px" />
-            <span>
-              {pendingSyncCount} capture{pendingSyncCount > 1 ? 's' : ''} en attente — envoyée{pendingSyncCount > 1 ? 's' : ''} automatiquement dès que le réseau revient. Rien n&apos;est perdu.
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 rounded-lg bg-emerald-100/70 px-3 py-2 text-[12px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            Toutes les captures sont synchronisées.
-          </div>
-        )
+      {/* Filet de réassurance UNIQUEMENT quand il y a de l'attente : hors réseau,
+          rien n'est perdu. Le « tout est synchronisé » est retiré — le conducteur
+          suppose que ça marche, on ne le félicite pas d'un état normal. */}
+      {pendingSyncCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          <CloudUpload className="h-4 w-4 shrink-0 mt-px" />
+          <span>
+            {pendingSyncCount} capture{pendingSyncCount > 1 ? 's' : ''} en attente — envoyée{pendingSyncCount > 1 ? 's' : ''} automatiquement dès que le réseau revient. Rien n&apos;est perdu.
+          </span>
+        </div>
       )}
 
       <p className="text-[11px] italic text-emerald-800/60 dark:text-emerald-300/60 leading-snug">
         On collecte. On décidera quoi en faire après la visite.
       </p>
+
+      {/* Plein écran d'une capture — un clic = grand (standard mobile). */}
+      {lightbox && previews[lightbox.id]?.url && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black/90" onClick={() => setLightbox(null)}>
+          <div className="flex justify-end p-3">
+            <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="rounded-full bg-white/10 p-2 text-white">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center p-3" onClick={(e) => e.stopPropagation()}>
+            {lightbox.kind === 'photo' ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previews[lightbox.id]!.url} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+            ) : (
+              <video src={previews[lightbox.id]!.url} controls autoPlay playsInline className="max-h-full max-w-full rounded-lg" />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Overlay : Note */}
       {overlay === 'note' && (
