@@ -8,6 +8,31 @@ quotidien) — ces retours valent mieux que des idées imaginées à l'avance.
 Statut au moment du gel : la chaîne **capturer → comprendre → valider → CR** est
 en place (écrans 1/2/3), avec « Reprendre une visite » et « Objet au démarrage ».
 
+## Priorités de reprise (ordre validé)
+
+> **Règle d'or** : *terrain = capturer vite ; débrief = transformer en actions.*
+> On ne met pas de charge cognitive sur le terrain ; l'intelligence arrive au débrief.
+
+1. **📎 « Ajouter un média » à une visite (depuis le téléphone)** — *indispensable.*
+   Sources : Appareil photo · Galerie · Fichier · Vocal. Types acceptés : photo,
+   vidéo, vocal, **PDF, document, capture d'écran**. C'est la brique qui débloque
+   le flux WhatsApp/PDF/photos reçues/documents fournisseur (et pose les bases du
+   moteur d'import). Distinct du live camera : on peut enrichir une visite avec ce
+   qu'on a déjà sur le téléphone.
+2. **📝 Annotation photo** (PR dédiée, priorité haute). Une photo brute dit « regarde
+   quelque part » ; annotée, « regarde exactement ici ». Outils : cercle · flèche ·
+   surlignage · texte court · **rouge par défaut**. **Sauvegarde de l'image annotée
+   EN PLUS de l'original** (jamais détruire la preuve).
+3. **🎤→✅ Vocal → suggestion d'action AU DÉBRIEF** (jamais pendant la capture, sinon
+   on casse le rythme). Terrain : vocal libre (« prévoir reprise étanchéité côté
+   nord avant fermeture »). Débrief : MemorIA propose « Action détectée : … » →
+   boutons **✅ Créer l'action / ✏️ Modifier / ❌ Ignorer**.
+4. **📋 Liste d'actions au niveau CHANTIER, alimentée par les visites.** Une visite
+   *propose* → l'utilisateur *valide* → l'action entre dans la liste du **chantier**.
+   Les visites suivantes détectent « cette action existe déjà — la mettre à jour ? ».
+   La SOURCE peut être n'importe quelle visite ; la **vérité vit au niveau chantier**,
+   pas au niveau visite.
+
 ## À reprendre après la phase d'usage réel
 
 - **⭐ Photo principale (couverture du CR)** — pendant le tri, marquer une photo
@@ -78,16 +103,69 @@ seulement l'ingestion + la corrélation.**
 - **Email** : adresse d'ingestion (forward → parse pièces jointes). Backend mail.
 - **Dossier Windows** : = simple upload multi-fichiers desktop.
 
-### Séquencement proposé
-1. **v1 (MVP)** : dépôt multi-fichiers → reconstruction chronologique → visite
-   prête pour le tri existant. Affectation au bon chantier (choix manuel).
-2. **v2** : association photo↔vocal proposée (« MemorIA pense que ce vocal décrit
-   cette photo — ✓ / ✏️ / ❌ ») + groupes multi-photos.
-3. **v3 — « Inbox chantier »** : plusieurs sources (WhatsApp export, email,
-   dossier) listées en boîte de réception → « Créer une visite » depuis chacune.
-   MemorIA devient l'endroit où TOUTE information brute entre dans le système.
+### 🔑 L'insight d'architecture : UN moteur d'import, plusieurs portes
+On ne construit **pas** une intégration WhatsApp. On construit un **moteur d'import
+universel** avec un **contrat d'ingestion unique** :
+
+```
+ingestBatch(files: Array<{ blob, filename, kind, capturedAt }>, { siteId, createdBy })
+  → tri chronologique → visite (site_report + visit_capture) → pipeline existant
+```
+
+Chaque « porte » n'est qu'un **adaptateur** qui remplit ce contrat :
+- Upload multi-fichiers (desktop/mobile) — lit EXIF/horodatage.
+- Feuille de partage OS (Android/iOS `share_target`).
+- Parse d'un export WhatsApp `.zip` (`_chat.txt` + médias).
+- Webhook WhatsApp Business Cloud API (télécharge les médias reçus).
+- Email (pièces jointes), dossier, etc.
+
+→ Le **cœur** (moteur + reconstruction + tri + CR + mémoire) se construit UNE fois ;
+brancher une nouvelle source = écrire un petit adaptateur.
+
+### Feuille de route (du plus simple/universel au plus ambitieux)
+- **Phase 1 (MVP, ~1-2 sem.)** — **Import de fichiers** (photos/vidéos/vocaux, tout
+  ordre) → reconstruction chronologique → visite → pipeline existant. Universel :
+  marche pour WhatsApp, Messenger, Signal, email, AirDrop, USB, explorateur…
+  *C'est le cœur ; tout le reste s'y branche.*
+- **Phase 2** — **Partage OS** Android/iOS vers MemorIA (feuille de partage).
+- **Phase 3** — **Import d'un export WhatsApp `.zip`** (robuste, garde dates+vocaux).
+- **Phase 4** — **Numéro WhatsApp Business** relié à l'**API officielle** (pas un
+  téléphone : Cloud API + webhook `POST /api/webhooks/whatsapp` → le serveur
+  télécharge les médias → alimente le MÊME moteur). Le conducteur ne change RIEN.
+- **Phase 5** — **Affectation automatique** : téléphone → entreprise → conducteur ;
+  chantier via commande vocale/texte (« Début chantier Médipôle » … « Fin ») ou
+  suggestion par la mémoire. Sinon choix manuel.
+
+Pourquoi le numéro WhatsApp EN DERNIER : il exige compte Meta Developer, app,
+config API, serveur public + webhooks, gestion médias/quotas. Or **le moteur
+d'import développé avant est identique** — le webhook ne fait que l'alimenter.
+
+### Inbox chantier (la vue qui unifie)
+```
+INBOX ── WhatsApp (28 médias) → Créer une visite
+      ── Email (12 pièces)    → Créer une visite
+      ── Import (15 photos)   → Créer une visite
+```
+MemorIA devient le point d'entrée de TOUTE information brute, quelle que soit la source.
+
+### Coût & modèle éco
+- Le **vrai coût récurrent** = stockage médias + transcription vocaux + résumé IA
+  (déjà optimisé : 1 appel, texte seul, gaté). **Pas** WhatsApp per-média.
+- WhatsApp Business Cloud API : facturation liée aux conversations/messages (selon
+  le modèle Meta EN VIGUEUR — à revérifier au moment de la Phase 4, la tarification
+  a évolué). Pour un pilote (~10 conducteurs × 5 visites/sem ≈ 200 conv./mois),
+  reste faible devant la valeur (≈ 1 h économisée / visite).
+- **Modèle d'offre** possible : *Standard* (visite + import manuel/partage/ZIP,
+  coût mini) vs *Premium* (numéro WhatsApp dédié + import auto). Le Premium finance
+  l'infra WhatsApp → risque maîtrisé.
+
+### Stratégie de validation (dérisquée)
+Ne PAS commencer par le numéro. Commencer par **partage/import** (Phase 1-3, zéro
+coût récurrent, faible complexité) pour prouver le gain de temps réel. Si après
+quelques semaines Guillaume dit « je l'utilise chaque semaine et je gagne 1 h »,
+alors investir dans le numéro WhatsApp Business (Phase 4).
 
 ### Décisions produit à trancher le moment venu
-- Où affecter au chantier (avant/après reconstruction ; suggestion par mémoire).
+- Affectation au chantier (avant/après reconstruction ; suggestion par mémoire).
 - Gestion des doublons / ré-imports.
 - Coût transcription en lot (rester texte-only pour l'IA, résumé unique à la fin).
