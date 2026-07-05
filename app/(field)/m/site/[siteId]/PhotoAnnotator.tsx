@@ -12,21 +12,33 @@ import { fetchAnnotationImageAction } from './capture-actions'
 type Tool = 'draw' | 'arrow' | 'circle' | 'text' | 'erase'
 type Pt = { x: number; y: number }
 type Shape =
-  | { tool: 'draw'; color: string; points: Pt[] }
-  | { tool: 'arrow'; color: string; a: Pt; b: Pt }
-  | { tool: 'circle'; color: string; a: Pt; b: Pt }
+  | { tool: 'draw'; color: string; points: Pt[]; width: number }
+  | { tool: 'arrow'; color: string; a: Pt; b: Pt; width: number }
+  | { tool: 'circle'; color: string; a: Pt; b: Pt; width: number }
   | { tool: 'text'; color: string; at: Pt; text: string; scale: number }
 
 const COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#111827']
-const LINE = 4
+// Épaisseur de trait (multiplicateurs). La BASE est proportionnelle à l'image
+// (≈ largeur/350) pour rester visible une fois la photo affichée en grand. « Fin »
+// = l'ancien trait (conservé), + deux crans plus épais.
+const STROKE_SIZES: Array<{ key: string; label: string; scale: number }> = [
+  { key: 'S', label: 'Fin', scale: 1 },
+  { key: 'M', label: 'Moyen', scale: 2.2 },
+  { key: 'L', label: 'Épais', scale: 4 },
+]
 // Tailles de texte (multiplicateurs). La taille de BASE est proportionnelle à
-// l'image (≈ largeur/22) : « Fissure » écrit sur le chantier doit rester lisible
+// l'image (≈ largeur/18) : « Fissure » écrit sur le chantier doit rester lisible
 // à 2 m, pas noyé dans une photo de 1400 px. Contour blanc + texte coloré.
 const TEXT_SIZES: Array<{ key: string; label: string; scale: number }> = [
   { key: 'S', label: 'Petit', scale: 0.7 },
   { key: 'M', label: 'Moyen', scale: 1 },
-  { key: 'L', label: 'Grand', scale: 1.5 },
+  { key: 'L', label: 'Grand', scale: 1.6 },
 ]
+
+/** Épaisseur de trait EFFECTIVE (px canvas) pour un multiplicateur donné. */
+function strokeWidth(canvasWidth: number, scale: number): number {
+  return Math.max(2, Math.round((canvasWidth / 350) * scale))
+}
 
 export function PhotoAnnotator({
   imageUrl,
@@ -47,6 +59,7 @@ export function PhotoAnnotator({
   const [tool, setTool] = useState<Tool>('draw')
   const [color, setColor] = useState(COLORS[0])
   const [textScale, setTextScale] = useState(1)
+  const [strokeScale, setStrokeScale] = useState(2.2) // « Moyen » par défaut (l'ancien trait était trop fin)
   const [shapes, setShapes] = useState<Shape[]>([])
   const [saving, setSaving] = useState(false)
   // Fichier annoté exporté, en attente du choix « remplacer / conserver les deux ».
@@ -133,9 +146,9 @@ export function PhotoAnnotator({
       return
     }
     draft.current =
-      tool === 'draw' ? { tool: 'draw', color, points: [p] }
-      : tool === 'arrow' ? { tool: 'arrow', color, a: p, b: p }
-      : { tool: 'circle', color, a: p, b: p }
+      tool === 'draw' ? { tool: 'draw', color, points: [p], width: strokeScale }
+      : tool === 'arrow' ? { tool: 'arrow', color, a: p, b: p, width: strokeScale }
+      : { tool: 'circle', color, a: p, b: p, width: strokeScale }
     ;(e.target as Element).setPointerCapture?.(e.pointerId)
     redraw()
   }
@@ -245,8 +258,22 @@ export function PhotoAnnotator({
         {tool === 'erase' && (
           <p className="text-center text-[11px] text-white/70">Touchez une annotation pour l&apos;effacer.</p>
         )}
+        {(tool === 'draw' || tool === 'arrow' || tool === 'circle') && (
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="mr-1 text-[11px] text-white/50">Trait</span>
+            {STROKE_SIZES.map((sz) => (
+              <button
+                key={sz.key} type="button" onClick={() => setStrokeScale(sz.scale)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${strokeScale === sz.scale ? 'bg-white text-black' : 'bg-white/10 text-white'}`}
+              >
+                {sz.label}
+              </button>
+            ))}
+          </div>
+        )}
         {tool === 'text' && (
           <div className="flex items-center justify-center gap-1.5">
+            <span className="mr-1 text-[11px] text-white/50">Texte</span>
             {TEXT_SIZES.map((sz) => (
               <button
                 key={sz.key} type="button" onClick={() => setTextScale(sz.scale)}
@@ -322,7 +349,7 @@ function hitShape(s: Shape, p: Pt, canvasWidth: number): boolean {
     return nx * nx + ny * ny <= 1.25 // à l'intérieur ou près du contour
   }
   // texte : boîte englobante approchée (police proportionnelle à l'image)
-  const fontSize = Math.max(22, Math.round((canvasWidth / 22) * s.scale))
+  const fontSize = Math.max(26, Math.round((canvasWidth / 18) * s.scale))
   const w = s.text.length * fontSize * 0.6
   return p.x >= s.at.x - near && p.x <= s.at.x + w + near && p.y >= s.at.y - near && p.y <= s.at.y + fontSize + near
 }
@@ -330,9 +357,11 @@ function hitShape(s: Shape, p: Pt, canvasWidth: number): boolean {
 function drawShape(ctx: CanvasRenderingContext2D, s: Shape) {
   ctx.strokeStyle = s.color
   ctx.fillStyle = s.color
-  ctx.lineWidth = LINE
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+  // Épaisseur EFFECTIVE du trait (proportionnelle à l'image × le cran choisi).
+  const lw = s.tool === 'text' ? 0 : strokeWidth(ctx.canvas.width, s.width)
+  ctx.lineWidth = lw
   if (s.tool === 'draw') {
     ctx.beginPath()
     s.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
@@ -347,7 +376,7 @@ function drawShape(ctx: CanvasRenderingContext2D, s: Shape) {
     const { a, b } = s
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
     const ang = Math.atan2(b.y - a.y, b.x - a.x)
-    const head = 14 + LINE * 2
+    const head = 14 + lw * 2
     ctx.beginPath()
     ctx.moveTo(b.x, b.y)
     ctx.lineTo(b.x - head * Math.cos(ang - Math.PI / 6), b.y - head * Math.sin(ang - Math.PI / 6))
@@ -358,7 +387,7 @@ function drawShape(ctx: CanvasRenderingContext2D, s: Shape) {
     // Taille PROPORTIONNELLE à l'image (× le multiplicateur choisi), avec un
     // plancher : lisible à 2 m, jamais minuscule. Contour blanc épais + texte
     // coloré = lisible sur n'importe quel fond de chantier.
-    const fontSize = Math.max(22, Math.round((ctx.canvas.width / 22) * s.scale))
+    const fontSize = Math.max(26, Math.round((ctx.canvas.width / 18) * s.scale))
     ctx.font = `bold ${fontSize}px sans-serif`
     ctx.textBaseline = 'top'
     ctx.lineJoin = 'round'
