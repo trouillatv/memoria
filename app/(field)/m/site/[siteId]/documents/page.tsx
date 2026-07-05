@@ -4,6 +4,7 @@ import { ArrowLeft, FileText, FileImage, File as FileIcon, ExternalLink } from '
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { SiteTabs } from '../SiteTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +64,7 @@ export default async function SiteDocumentsMobilePage({
           <ArrowLeft className="h-4 w-4" /> {site.name}
         </Link>
         <h1 className="text-xl font-semibold">Documents</h1>
+        <SiteTabs siteId={siteId} active="documents" userRole={user.role} />
       </header>
 
       {signed.length === 0 ? (

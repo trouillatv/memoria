@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, Users } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteMeetingsForMobile } from '@/lib/db/visits'
+import { SiteTabs } from '../SiteTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,7 @@ export default async function SiteMeetingsMobilePage({
           <ArrowLeft className="h-4 w-4" /> {site.name}
         </Link>
         <h1 className="text-xl font-semibold">Réunions</h1>
+        <SiteTabs siteId={siteId} active="reunions" userRole={user.role} />
       </header>
 
       {meetings.length === 0 ? (

@@ -7,6 +7,7 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteTimeline, type TimelineKind } from '@/lib/db/site-timeline'
+import { SiteTabs } from '../SiteTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,6 +59,7 @@ export default async function SiteFriseMobilePage({
         </Link>
         <h1 className="text-xl font-semibold">Frise du chantier</h1>
         <p className="text-sm text-muted-foreground">L&apos;histoire du chantier, du plus récent au plus ancien.</p>
+        <SiteTabs siteId={siteId} active="frise" userRole={user.role} />
       </header>
 
       {events.length === 0 ? (
