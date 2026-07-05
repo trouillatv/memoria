@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Camera, Users, Clock, Brain, FileText, ChevronRight } from 'lucide-react'
+import { Footprints, Users, Clock, Brain, FileText, ChevronRight } from 'lucide-react'
 
 /**
  * « Accès rapides » de la fiche chantier — raccourcis vers des vues qui existent
@@ -12,7 +12,7 @@ import { Camera, Users, Clock, Brain, FileText, ChevronRight } from 'lucide-reac
  */
 export function SiteQuickAccessCard({ siteId, showDocuments = false }: { siteId: string; showDocuments?: boolean }) {
   const items = [
-    { href: `/m/site/${siteId}/visites`, label: 'Toutes les visites', Icon: Camera, cls: 'text-emerald-600' },
+    { href: `/m/site/${siteId}/visites`, label: 'Toutes les visites', Icon: Footprints, cls: 'text-emerald-600' },
     { href: `/m/site/${siteId}/reunions`, label: 'Toutes les réunions', Icon: Users, cls: 'text-sky-600' },
     { href: `/m/site/${siteId}/frise`, label: 'Frise du chantier', Icon: Clock, cls: 'text-amber-600' },
     ...(showDocuments

@@ -5,6 +5,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteVisitsForMobile } from '@/lib/db/visits'
 import { SiteTabs } from '../SiteTabs'
+import { VisitLauncher } from '../VisitLauncher'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +49,10 @@ export default async function SiteVisitsMobilePage({
       </header>
 
       {visits.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Aucune visite sur ce chantier pour l&apos;instant.
-        </p>
+        <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Aucune visite sur ce chantier pour l&apos;instant.</p>
+          <div className="flex justify-center"><VisitLauncher siteId={siteId} activeVisit={null} /></div>
+        </div>
       ) : (
         <ul className="overflow-hidden rounded-xl border bg-card divide-y">
           {visits.map((v) => (

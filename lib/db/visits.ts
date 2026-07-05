@@ -763,6 +763,10 @@ export interface SiteActivityItem {
   dateLabel: string
   at: string
   href: string
+  /** id du report/intervention — sert à enrichir (photos, décisions). */
+  reportId: string | null
+  /** Détail déterministe : « 24 photos », « 5 décisions »… (null si aucun). */
+  detail: string | null
 }
 
 export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<SiteActivityItem[]> {
@@ -788,15 +792,30 @@ export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<
   for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
     const at = r.ended_at ?? r.started_at ?? r.created_at
     items.push(r.origin
-      ? { kind: 'visit', label: 'Visite', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap` }
-      : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap` })
+      ? { kind: 'visit', label: 'Visite', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null }
+      : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null })
   }
   for (const i of intv) {
     const at = i.scheduled_for ? `${i.scheduled_for}T12:00:00Z` : i.scheduled_at
-    items.push({ kind: 'intervention', label: missionName.get(i.mission_id) ?? 'Intervention', dateLabel: relativeDayLabel(at), at, href: `/m/intervention/${i.id}` })
+    items.push({ kind: 'intervention', label: missionName.get(i.mission_id) ?? 'Intervention', dateLabel: relativeDayLabel(at), at, href: `/m/intervention/${i.id}`, reportId: null, detail: null })
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  return items.slice(0, limit)
+  const shown = items.slice(0, limit)
+
+  // Enrichissement déterministe des SEULS éléments affichés : photos d'une
+  // visite, décisions d'une réunion. Compté sur les objets réels, zéro IA.
+  await Promise.all(shown.map(async (it) => {
+    if (it.kind === 'visit' && it.reportId) {
+      const { count } = await supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+        .eq('report_id', it.reportId).eq('kind', 'photo').is('hidden_at', null)
+      if (count && count > 0) it.detail = `${count} photo${count > 1 ? 's' : ''}`
+    } else if (it.kind === 'meeting' && it.reportId) {
+      const { count } = await supabase.from('site_decisions').select('id', { count: 'exact', head: true })
+        .eq('report_id', it.reportId)
+      if (count && count > 0) it.detail = `${count} décision${count > 1 ? 's' : ''}`
+    }
+  }))
+  return shown
 }
 
 // ── Fiche chantier : « Toutes les visites » (route /m/site/[id]/visites) ────────
@@ -918,6 +937,70 @@ async function resolveAuthorNames(ids: Array<string | null>): Promise<Map<string
     if (first) out.set(u.id, first)
   }
   return out
+}
+
+// ── Fiche chantier : « Depuis votre dernière visite » (résumé déterministe) ────
+// Micro-fonction Phase 2 : quand on rouvre un chantier, dire en une ligne ce qui
+// a bougé DEPUIS la dernière visite terminée. 100 % déterministe (compte des
+// objets réels, aucun LLM). Renvoie null s'il n'y a pas de visite passée ou si
+// rien n'a changé (silence positif).
+
+export interface SinceLastVisitSummary {
+  at: string
+  dateLabel: string
+  actionsDone: number
+  newReserves: number
+  meetings: number
+  newPhotos: number
+  total: number
+}
+
+export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceLastVisitSummary | null> {
+  const supabase = createAdminClient()
+  const { data: last } = await supabase
+    .from('site_reports')
+    .select('ended_at')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
+    .order('ended_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const ref = (last as { ended_at: string | null } | null)?.ended_at
+  if (!ref) return null
+
+  const { data: missions } = await supabase.from('missions').select('id').eq('site_id', siteId).is('deleted_at', null)
+  const missionIds = (missions ?? []).map((m) => m.id as string)
+
+  const [actionsRes, reservesRes, meetingsRes, capPhotosRes] = await Promise.all([
+    // Actions RÉELLEMENT terminées depuis la visite (done_at postérieur).
+    supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'done').gt('done_at', ref),
+    // Réserves ouvertes depuis (création postérieure).
+    supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId).gt('created_at', ref),
+    // Réunions/CR tenus depuis.
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).is('origin', null).neq('status', 'draft').gt('created_at', ref),
+    // Photos captées depuis (chemin mobile), hors captures masquées.
+    supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').is('hidden_at', null).gt('created_at', ref),
+  ])
+
+  // Photos d'intervention postérieures à la visite (le chantier bouge entre deux visites).
+  let intvPhotos = 0
+  if (missionIds.length > 0) {
+    const { data: intv } = await supabase.from('interventions').select('id').in('mission_id', missionIds)
+    const intvIds = (intv ?? []).map((i) => i.id as string)
+    if (intvIds.length > 0) {
+      const { count } = await supabase.from('intervention_photos').select('id', { count: 'exact', head: true }).in('intervention_id', intvIds).gt('taken_at', ref)
+      intvPhotos = count ?? 0
+    }
+  }
+
+  const actionsDone = actionsRes.count ?? 0
+  const newReserves = reservesRes.count ?? 0
+  const meetings = meetingsRes.count ?? 0
+  const newPhotos = (capPhotosRes.count ?? 0) + intvPhotos
+  const total = actionsDone + newReserves + meetings + newPhotos
+  if (total === 0) return null
+  return { at: ref, dateLabel: relativeDayLabel(ref), actionsDone, newReserves, meetings, newPhotos, total }
 }
 
 // ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
