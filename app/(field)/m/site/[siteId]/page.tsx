@@ -20,7 +20,9 @@ import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
 import { getActiveVisit, getLastEndedVisitForSite, buildSiteStatusSummary } from '@/lib/db/visits'
+import { getSiteIdentity } from '@/lib/db/sites'
 import { SiteStatusCard } from './SiteStatusCard'
+import { IdentityCard } from './IdentityCard'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -146,6 +148,9 @@ export default async function FieldSitePage({
   // « État du chantier » — résumé en tête de fiche (hors visite en cours, où
   // l'écran est le panier de capture).
   const siteStatus = activeVisit ? [] : await buildSiteStatusSummary(siteId).catch(() => [])
+  // Identité du chantier + Lieu (hors visite en cours). Chantier = dossier ;
+  // Site = localisation utile dans le chantier.
+  const identity = activeVisit ? null : await getSiteIdentity(siteId).catch(() => null)
   // Sinon : la dernière visite TERMINÉE — pour la carte « Dernière visite » (la
   // visite ne doit jamais donner l'impression de disparaître).
   const lastVisit = activeVisit ? null : await getLastEndedVisitForSite(siteId).catch(() => null)
@@ -265,6 +270,9 @@ export default async function FieldSitePage({
         <div className="space-y-3">
           {/* État du chantier — le résumé en 10 secondes, avant tout le reste. */}
           <SiteStatusCard lines={siteStatus} />
+
+          {/* Identité chantier + Lieu du chantier (Site = localisation support). */}
+          {identity && <IdentityCard identity={identity} />}
 
           <VisitLauncher siteId={siteId} activeVisit={null} />
 
