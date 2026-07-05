@@ -1,19 +1,19 @@
 import Link from 'next/link'
-import { Camera, Users, Brain, ChevronRight } from 'lucide-react'
+import { Camera, Users, Clock, Brain, ChevronRight } from 'lucide-react'
 
 /**
  * « Accès rapides » de la fiche chantier — raccourcis vers des vues qui existent
  * RÉELLEMENT. Discipline : une entrée n'apparaît que si sa destination est
  * branchée.
- *   - Visites / Réunions : routes /m dédiées (listes chronologiques).
+ *   - Visites / Réunions / Frise : routes /m dédiées.
  *   - Mémoire : panneau de recherche déjà présent plus bas sur la fiche (ancre).
- *   - Frise : volontairement ABSENTE tant que /m/site/[id]/frise n'existe pas.
- *   - Documents : absente (pas de stockage documentaire).
+ *   - Documents : volontairement ABSENTE (pas de stockage documentaire).
  */
 export function SiteQuickAccessCard({ siteId }: { siteId: string }) {
   const items = [
     { href: `/m/site/${siteId}/visites`, label: 'Toutes les visites', Icon: Camera, cls: 'text-emerald-600' },
     { href: `/m/site/${siteId}/reunions`, label: 'Toutes les réunions', Icon: Users, cls: 'text-sky-600' },
+    { href: `/m/site/${siteId}/frise`, label: 'Frise du chantier', Icon: Clock, cls: 'text-amber-600' },
     { href: `/m/site/${siteId}#memoire-lieu`, label: 'Mémoire du chantier', Icon: Brain, cls: 'text-violet-600' },
   ]
   return (
