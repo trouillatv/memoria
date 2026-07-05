@@ -70,6 +70,9 @@ export interface AddVisitCaptureInput {
   /** Instant réel (mig 184) — posé à l'IMPORT pour reconstruire la chronologie.
    *  Laissé null en direct : created_at fait foi. */
   capturedAt?: string | null
+  /** Photo clé dès la création (mig 174) — une photo ANNOTÉE l'est d'office :
+   *  si on a pris le temps de dessiner dessus, c'est la meilleure pour le CR. */
+  starred?: boolean
   createdBy: string | null
 }
 
@@ -118,6 +121,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       lat: input.lat ?? null,
       lng: input.lng ?? null,
       captured_at: input.capturedAt ?? null,
+      starred: input.starred ?? false,
       created_by: input.createdBy,
     })
     .select('id')

@@ -110,6 +110,8 @@ const photoSchema = z.object({
   // version ANNOTÉE, pour qu'elle se range juste à côté d'elle dans une visite
   // importée (timeline sur captured_at). Absent en direct.
   captured_at: z.string().datetime().optional(),
+  // Photo clé d'office (photo annotée) — prioritaire dans le CR.
+  starred: z.boolean().optional(),
   ...coords,
 })
 
@@ -127,6 +129,7 @@ export async function addPhotoCaptureAction(
       kind: 'photo',
       attachmentId: parsed.data.attachment_id,
       capturedAt: parsed.data.captured_at ?? null,
+      starred: parsed.data.starred ?? false,
       lat: parsed.data.lat ?? null,
       lng: parsed.data.lng ?? null,
       createdBy: auth.userId,

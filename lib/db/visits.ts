@@ -15,7 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent } from '@/lib/db/visit-captures'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
@@ -748,9 +748,12 @@ export interface VisitCrDoc {
   constats: string[]
   reserves: Array<{ label: string; location: string | null }>
   actions: Array<{ title: string; corps_etat: string | null }>
-  /** URLs signées des photos captées — embarquées dans le PDF (le CR terrain
-   *  DOIT montrer les photos, sinon il paraît vide). */
+  /** URLs signées des photos SÉLECTIONNÉES pour le CR (par tag + photo clé,
+   *  plafonnées) — embarquées dans le PDF. Le CR est un document de communication. */
   photos: string[]
+  /** Nombre TOTAL de photos captées (MemorIA les garde toutes) — pour dire
+   *  « N photos clés sur M dans MemorIA ». */
+  photoCount: number
   /** Combien de vidéos/vocaux captés (non embarqués, mentionnés). */
   videoCount: number
   vocalCount: number
@@ -772,6 +775,55 @@ export interface VisitCrDoc {
  * `userId` (optionnel) : traçabilité du coût du résumé IA. Sans provider IA
  * configuré (ou < 3 observations), le résumé est déterministe — zéro appel.
  */
+// ── Sélection INTELLIGENTE des photos du CR (v1, groupée par tag) ─────────────
+// Le PDF est un document de COMMUNICATION : court, lisible, métier. MemorIA garde
+// TOUT ; le CR ne montre que ce qui sert à comprendre/décider. Règles validées :
+//   ⚠️ Réserve + ✅ Action → toujours ; 👀 À surveiller → si peu nombreuses ;
+//   📚 Mémoire → jamais (par défaut) ; ⭐ photo clé (starred — p. ex. une photo
+//   ANNOTÉE) → prioritaire ; plafond global pour éviter les CR illisibles.
+// Limite v1 assumée : on groupe PAR TAG, pas encore par réserve précise (le
+// rattachement photo→objet viendra après). Déterministe, sans IA.
+export const CR_FOLLOW_MAX = 5
+export const CR_PHOTO_CAP = 12
+
+type CrPhotoLike = {
+  triage_intent: CaptureTriageIntent
+  starred: boolean
+  captured_at: string | null
+  created_at: string
+}
+
+export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
+  const includeFollow = photos.filter((c) => c.triage_intent === 'follow').length <= CR_FOLLOW_MAX
+  const weight = (c: T): number =>
+    c.starred ? 0
+    : c.triage_intent === 'reserve' ? 1
+    : c.triage_intent === 'action' ? 2
+    : c.triage_intent === 'follow' ? 3
+    : 4 // mémoire / non tagué — seulement en repli
+  const time = (c: T): number => Date.parse(c.captured_at ?? c.created_at) || 0
+  const eligible = photos.filter((c) =>
+    c.starred ||
+    c.triage_intent === 'reserve' ||
+    c.triage_intent === 'action' ||
+    (includeFollow && c.triage_intent === 'follow'),
+  )
+  // Repli : visite non triée (aucune photo taguée/clé) → on ne rend pas un CR sans
+  // aucune photo ; on prend les premières, plafonnées.
+  const pool = eligible.length > 0 ? eligible : photos
+  return [...pool].sort((a, b) => weight(a) - weight(b) || time(a) - time(b)).slice(0, CR_PHOTO_CAP)
+}
+
+/**
+ * Combien de photos seront incluses au CR vs total capté — pour l'écran de
+ * confirmation « X photos seront incluses ». Léger (pas d'IA, pas d'URL signée).
+ */
+export async function getVisitCrPhotoPlan(reportId: string): Promise<{ included: number; total: number }> {
+  const captures = (await listVisitCaptures(reportId).catch(() => [])).filter((c) => c.status !== 'discarded')
+  const photos = captures.filter((c) => c.kind === 'photo')
+  return { included: selectCrPhotos(photos).length, total: photos.length }
+}
+
 export async function buildVisitCrDoc(reportId: string, userId: string | null = null): Promise<VisitCrDoc | null> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return null
@@ -813,10 +865,13 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const videoCount = captures.filter((c) => c.kind === 'video').length
   const vocalCount = captures.filter((c) => c.kind === 'vocal').length
 
-  // Photos : URLs signées, embarquées dans le PDF (borné pour rester léger).
+  // Sélection intelligente (par tag + photo clé, plafonnée) : le CR ne montre que
+  // ce qui sert à comprendre/décider ; MemorIA garde les autres. URLs signées des
+  // seules photos retenues.
+  const selectedPhotos = selectCrPhotos(photoCaptures)
   const previews: Record<string, { url: string; mime: string | null }> =
-    await getVisitCapturePreviewUrls(photoCaptures.slice(0, 24)).catch(() => ({}))
-  const photos = photoCaptures
+    await getVisitCapturePreviewUrls(selectedPhotos).catch(() => ({}))
+  const photos = selectedPhotos
     .map((c) => previews[c.id]?.url)
     .filter((u): u is string => !!u)
 
@@ -868,6 +923,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
     photos,
+    photoCount: photoCaptures.length,
     videoCount,
     vocalCount,
     summary,

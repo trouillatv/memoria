@@ -360,6 +360,8 @@ export function VisitBasket({
       if (!up.ok) { toast.error(up.error); return }
       const cap = await addPhotoCaptureAction({
         report_id: reportId, site_id: siteId, attachment_id: up.attachmentId,
+        // Photo annotée = photo clé d'office (prioritaire dans le CR).
+        starred: true,
         lat: pos?.lat, lng: pos?.lng,
       })
       if (!cap.ok) { toast.error(cap.error); return }

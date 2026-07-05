@@ -103,6 +103,8 @@ export function CaptureTriage({
         report_id: capture.report_id,
         site_id: capture.site_id,
         attachment_id: up.attachmentId,
+        // Une photo annotée devient photo clé d'office → prioritaire dans le CR.
+        starred: true,
         ...(capture.captured_at ? { captured_at: capture.captured_at } : {}),
       })
       if (!cap.ok) { toast.error(cap.error); return }

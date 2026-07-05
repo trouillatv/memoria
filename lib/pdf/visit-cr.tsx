@@ -157,7 +157,11 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
 
         {doc.photos.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Photos ({doc.photos.length})</Text>
+            <Text style={styles.sectionTitle}>
+              {doc.photoCount > doc.photos.length
+                ? `Photos clés (${doc.photos.length} — ${doc.photoCount} au total dans MemorIA)`
+                : `Photos (${doc.photos.length})`}
+            </Text>
             <View style={styles.photoGrid}>
               {doc.photos.map((url, i) => (
                 // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image

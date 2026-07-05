@@ -9,6 +9,7 @@ import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
+import { getVisitCrPhotoPlan } from '@/lib/db/visits'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -134,6 +135,25 @@ export async function resolveSuiteAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }
+  }
+}
+
+/**
+ * Combien de photos seront incluses au CR (sélection par tag + photo clé,
+ * plafonnée) vs total capté — pour l'écran de confirmation « X photos seront
+ * incluses » avant de générer le PDF. MemorIA garde toutes les photos ; le CR
+ * ne montre que ce qui sert à comprendre/décider.
+ */
+export async function getCrPhotoPlanAction(
+  reportId: string,
+): Promise<{ included: number; total: number }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { included: 0, total: 0 }
+  if (!z.string().uuid().safeParse(reportId).success) return { included: 0, total: 0 }
+  try {
+    return await getVisitCrPhotoPlan(reportId)
+  } catch {
+    return { included: 0, total: 0 }
   }
 }
 
