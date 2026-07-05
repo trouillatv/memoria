@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
 import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
+import type { VisitImpact } from '@/lib/db/visits'
 
 /**
  * Débrief express (temps 2 — la voiture). Écran TRÈS simple. Une seule question
@@ -27,6 +28,7 @@ export function DebriefExpress({
   questionsCount,
   initialCaptures,
   previews,
+  impact,
 }: {
   reportId: string
   siteId: string
@@ -38,6 +40,8 @@ export function DebriefExpress({
   initialCaptures: VisitCaptureRow[]
   /** Aperçus signés (captureId → url/mime) pour trier en voyant le contenu. */
   previews: Record<string, CapturePreview>
+  /** Impact sur la mémoire du chantier — « ce que cette visite change ». */
+  impact: VisitImpact | null
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -137,6 +141,10 @@ export function DebriefExpress({
         <p className="text-[13px] text-muted-foreground">Tout est enregistré dans MemorIA.</p>
       </header>
 
+      {/* Impact métier — la visite n'est pas juste enregistrée,
+          elle a enrichi le chantier. 3-4 lignes, jamais un module lourd. */}
+      {impact && <VisitImpactCard impact={impact} total={total} />}
+
       {total === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
           Rien n&apos;a été capté pendant cette visite.
@@ -181,6 +189,66 @@ export function DebriefExpress({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * « Votre visite a fait avancer le chantier » — l'IMPACT métier, pas un inventaire.
+ * On répond à « en quoi le chantier est-il différent maintenant ? » : points de
+ * vigilance mis à jour, réserve à traiter, suivi enrichi — orienté CONSÉQUENCE,
+ * puis la prochaine étape. Truthful : une ligne n'apparaît que si elle a de la
+ * matière ; rien à dire = pas de carte (le conducteur doit sentir qu'il a fait
+ * avancer son chantier, jamais lire un journal d'activité).
+ */
+function VisitImpactCard({ impact, total }: { impact: VisitImpact; total: number }) {
+  const { added, touchedSubjects } = impact
+  const plural = (n: number) => (n > 1 ? 's' : '')
+
+  const lines: string[] = []
+
+  // Conséquence 1 — les points de vigilance du chantier ont bougé.
+  if (touchedSubjects.length > 0) {
+    const n = touchedSubjects.length
+    const names = touchedSubjects.slice(0, 2).join(', ')
+    lines.push(`${n} point${plural(n)} de vigilance mis à jour${n <= 2 ? ` : ${names}` : ''}`)
+  }
+  // Conséquence 2 — une réserve à traiter est née de la visite.
+  if (added.reserves > 0) {
+    lines.push(`${added.reserves} réserve${plural(added.reserves)} à traiter créée${plural(added.reserves)}`)
+  }
+  // Conséquence 3 — des actions à suivre.
+  if (added.actions > 0) {
+    lines.push(`${added.actions} action${plural(added.actions)} à suivre créée${plural(added.actions)}`)
+  }
+  // Conséquence 4 — le SUIVI du chantier s'est enrichi (pas « 8 photos » brut).
+  const enrichParts: string[] = []
+  if (added.photos > 0) enrichParts.push(`${added.photos} photo${plural(added.photos)}`)
+  if (added.notes > 0) enrichParts.push(`${added.notes} note${plural(added.notes)}`)
+  const enrichWith = enrichParts.length > 0
+    ? enrichParts.join(' et ')
+    : total > 0 ? `${total} élément${plural(total)}` : null
+  if (enrichWith) lines.push(`Le suivi du chantier a été enrichi avec ${enrichWith}`)
+
+  if (lines.length === 0) return null
+
+  return (
+    <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+        Votre visite a fait avancer le chantier
+      </h2>
+      <ul className="space-y-1 text-[13px] text-emerald-900/90 dark:text-emerald-100/90">
+        {lines.map((l, i) => (
+          <li key={i} className="flex gap-1.5">
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+            <span className="min-w-0">{l}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="flex items-center gap-1.5 border-t border-emerald-200/70 pt-2 text-[13px] text-emerald-800/80 dark:border-emerald-900/40 dark:text-emerald-200/70">
+        <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+        Prochaine étape : compléter le compte-rendu au bureau
+      </p>
+    </section>
   )
 }
 

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit } from '@/lib/db/visits'
+import { getVisit, buildVisitImpact } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { DebriefExpress } from './DebriefExpress'
 
@@ -55,7 +55,7 @@ export default async function VisitDebriefPage({
     if (phase === 'prospect' || phase === 'en_ao') previsiteDossierId = visit.dossier_id
   }
 
-  const [{ count: questionsCount }, previews] = await Promise.all([
+  const [{ count: questionsCount }, previews, impact] = await Promise.all([
     // ❓ « à vérifier » posées pendant la visite (captured_knowledge) — comptées
     // pour le récap de fin, à côté des captures.
     supabase
@@ -66,6 +66,8 @@ export default async function VisitDebriefPage({
       .eq('status', 'active'),
     // Aperçus (miniature/lecteur) pour trier en VOYANT le contenu.
     getVisitCapturePreviewUrls(captures).catch(() => ({})),
+    // Impact sur la mémoire du chantier — « ce que cette visite change ».
+    buildVisitImpact(reportId).catch(() => null),
   ])
 
   return (
@@ -77,6 +79,7 @@ export default async function VisitDebriefPage({
       questionsCount={questionsCount ?? 0}
       initialCaptures={captures}
       previews={previews}
+      impact={impact}
     />
   )
 }
