@@ -799,6 +799,127 @@ export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<
   return items.slice(0, limit)
 }
 
+// ── Fiche chantier : « Toutes les visites » (route /m/site/[id]/visites) ────────
+// Une seule question métier : « montre-moi toutes les visites de ce chantier ».
+// Liste chronologique déterministe. Réutilise site_reports + visit_capture.
+
+const VISIT_TYPE_LABEL: Record<string, string> = {
+  planned: 'Planifiée',
+  spontaneous: 'Visite',
+  qr: 'QR',
+  gps: 'GPS',
+  import: 'Import',
+}
+
+export interface SiteVisitListItem {
+  id: string
+  at: string
+  dateLabel: string
+  typeLabel: string
+  authorName: string | null
+  photos: number
+  inProgress: boolean
+  href: string
+}
+
+export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promise<SiteVisitListItem[]> {
+  const supabase = createAdminClient()
+  const { data: rows } = await supabase
+    .from('site_reports')
+    .select('id, origin, started_at, ended_at, created_at, created_by')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .order('started_at', { ascending: false, nullsFirst: false })
+    .limit(limit)
+  const reps = (rows ?? []) as Array<{ id: string; origin: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
+  if (reps.length === 0) return []
+
+  const authorById = await resolveAuthorNames(reps.map((r) => r.created_by))
+
+  // Photos capturées pendant la visite (chemin mobile : visit_capture par report).
+  const photosByReport = new Map<string, number>()
+  await Promise.all(
+    reps.map(async (r) => {
+      const { count } = await supabase
+        .from('visit_capture')
+        .select('id', { count: 'exact', head: true })
+        .eq('report_id', r.id)
+        .eq('kind', 'photo')
+        .is('hidden_at', null)
+      photosByReport.set(r.id, count ?? 0)
+    }),
+  )
+
+  return reps.map((r) => {
+    const at = r.started_at ?? r.created_at
+    return {
+      id: r.id,
+      at,
+      dateLabel: relativeDayLabel(at),
+      typeLabel: VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite',
+      authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
+      photos: photosByReport.get(r.id) ?? 0,
+      inProgress: !r.ended_at,
+      href: `/m/visite/${r.id}/recap`,
+    }
+  })
+}
+
+// ── Fiche chantier : « Toutes les réunions » (route /m/site/[id]/reunions) ──────
+// Question métier unique : « montre-moi toutes les réunions de ce chantier ».
+// Réunion / CR = site_report SANS origin. Ouvre le compte-rendu.
+
+export interface SiteMeetingListItem {
+  id: string
+  at: string
+  dateLabel: string
+  title: string
+  authorName: string | null
+  href: string
+}
+
+export async function listSiteMeetingsForMobile(siteId: string, limit = 50): Promise<SiteMeetingListItem[]> {
+  const supabase = createAdminClient()
+  const { data: rows } = await supabase
+    .from('site_reports')
+    .select('id, title, started_at, created_at, created_by')
+    .eq('site_id', siteId)
+    .is('origin', null)
+    .neq('status', 'draft')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  const reps = (rows ?? []) as Array<{ id: string; title: string | null; started_at: string | null; created_at: string; created_by: string | null }>
+  if (reps.length === 0) return []
+
+  const authorById = await resolveAuthorNames(reps.map((r) => r.created_by))
+
+  return reps.map((r) => {
+    const at = r.started_at ?? r.created_at
+    return {
+      id: r.id,
+      at,
+      dateLabel: relativeDayLabel(at),
+      title: r.title?.trim() || 'Réunion',
+      authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
+      href: `/m/visite/${r.id}/recap`,
+    }
+  })
+}
+
+// Résout des noms d'auteur (prénom) depuis des ids users. Une seule requête.
+async function resolveAuthorNames(ids: Array<string | null>): Promise<Map<string, string>> {
+  const uniq = [...new Set(ids.filter((x): x is string => !!x))]
+  const out = new Map<string, string>()
+  if (uniq.length === 0) return out
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('users').select('id, full_name').in('id', uniq)
+  for (const u of (data ?? []) as Array<{ id: string; full_name: string | null }>) {
+    const first = (u.full_name ?? '').trim().split(/\s+/)[0]
+    if (first) out.set(u.id, first)
+  }
+  return out
+}
+
 // ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
 // Le geste QUOTIDIEN n'est pas de démarrer une visite, c'est de reprendre ce qui
 // n'est pas fini. Ici : les visites TERMINÉES de l'agent qui ont encore des

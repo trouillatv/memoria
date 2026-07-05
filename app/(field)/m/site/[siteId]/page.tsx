@@ -26,6 +26,7 @@ import { SiteStatusCard } from './SiteStatusCard'
 import { IdentityCard } from './IdentityCard'
 import { SiteTodoCard } from './SiteTodoCard'
 import { SiteActivityCard } from './SiteActivityCard'
+import { SiteQuickAccessCard } from './SiteQuickAccessCard'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -274,6 +275,10 @@ export default async function FieldSitePage({
           {/* Dernière activité — visites, réunions ET interventions récentes du
               chantier (remplace la carte « Dernière visite » seule). */}
           <SiteActivityCard items={recentActivity} />
+
+          {/* Accès rapides — vers les vues qui existent réellement (Visites /
+              Réunions / Mémoire). Frise & Documents omis tant qu'ils n'existent pas. */}
+          <SiteQuickAccessCard siteId={siteId} />
         </div>
       )}
 
@@ -395,7 +400,7 @@ export default async function FieldSitePage({
           recherche est repliée derrière un bouton et les déclencheurs de capture
           sont groupés. Les briefs « Préparer ma visite/réunion » restent en haut
           (moment magique), seul le secondaire est condensé ici. */}
-      <section className="space-y-2 pt-3 border-t border-border/40">
+      <section id="memoire-lieu" className="scroll-mt-4 space-y-2 pt-3 border-t border-border/40">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Actions du lieu
         </h2>
