@@ -252,7 +252,11 @@ export function DebriefExpress({
           jamais le CTA dominant (sinon on donne l'impression de « lancer un AO »). */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-md space-y-2">
-          <VisitOutputActions reportId={reportId} siteId={siteId} />
+          <VisitOutputActions
+            reportId={reportId}
+            siteId={siteId}
+            onModify={() => setTriageStart(captures.findIndex((c) => c.status === 'captured') === -1 ? 0 : captures.findIndex((c) => c.status === 'captured'))}
+          />
           {dossierId && (
             <Link
               href={`/dossiers/${dossierId}`}

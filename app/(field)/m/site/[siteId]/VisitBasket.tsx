@@ -24,6 +24,7 @@ import {
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
+import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { createClient } from '@/lib/supabase/client'
 
@@ -247,12 +248,15 @@ export function VisitBasket({
     // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
     ;(async () => {
       const pos = await getOneShotPosition()
+      // Photo : compression/redimensionnement AVANT la file (50 photos plein
+      // format satureraient IndexedDB + upload + PDF). Non bloquant, non destructif.
+      const blob = kind === 'photo' ? await compressImageFile(file) : file
       const ext = kind === 'photo' ? 'jpg' : kind === 'video' ? 'mp4' : 'webm'
       await queueVisitCapture({
         clientUuid, userId, reportId, siteId, kind,
-        blob: file,
+        blob,
         filename: `${kind}-${clientUuid}.${ext}`,
-        mimeType: file.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
+        mimeType: blob.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
         lat: pos?.lat ?? null,
         lng: pos?.lng ?? null,
       })
@@ -343,7 +347,7 @@ export function VisitBasket({
   // ── Annotation ───────────────────────────────────────────────────────────────
   // L'image annotée s'ajoute EN PLUS de l'original (nouvelle capture photo) — on
   // ne détruit jamais la preuve. Upload direct (pièce du report) + capture.
-  async function saveAnnotation(file: File) {
+  async function saveAnnotation(file: File, replaceOriginal: boolean) {
     if (!annotate) return
     try {
       const pos = geoTag ? await getOneShotPosition() : null
@@ -356,6 +360,10 @@ export function VisitBasket({
       if (!up.ok) { toast.error(up.error); return }
       const cap = await addPhotoCaptureAction({
         report_id: reportId, site_id: siteId, attachment_id: up.attachmentId,
+        // Photo annotée = photo clé d'office (prioritaire dans le CR).
+        starred: true,
+        // « Remplacer l'affichage » → archive l'original (jamais supprimé).
+        ...(replaceOriginal ? { replaces_capture_id: annotate.id } : {}),
         lat: pos?.lat, lng: pos?.lng,
       })
       if (!cap.ok) { toast.error(cap.error); return }

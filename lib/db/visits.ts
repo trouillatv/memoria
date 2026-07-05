@@ -15,11 +15,12 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent } from '@/lib/db/visit-captures'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
+import { detectVisitSuites } from '@/services/ai/visit-suites'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -509,10 +510,18 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
  * « existe déjà, mettre à jour ? »).
  */
 export interface VisitSuiteProposal {
+  /** Identifiant UNIQUE de la proposition (une capture texte peut en donner
+   *  plusieurs) : `captureId` pour un tag, `captureId:n` pour une détection IA. */
+  id: string
   captureId: string
-  kind: 'action' | 'reserve'
+  kind: 'action' | 'reserve' | 'surveiller'
   text: string
   similar: Array<{ id: string; label: string }>
+  /** 'tag' = décidé au tri (photo/vidéo taguée) ; 'ai' = compris par MemorIA
+   *  depuis un vocal/une note. */
+  source: 'tag' | 'ai'
+  /** Extrait source (vocal/note) pour le contexte quand c'est MemorIA qui propose. */
+  excerpt?: string | null
 }
 
 function normalizeTitle(s: string): string {
@@ -551,7 +560,61 @@ export async function gatherVisitSuites(reportId: string): Promise<VisitSuitePro
     const text = c.body?.trim() || (kind === 'reserve' ? 'Réserve à préciser' : 'Action à préciser')
     const pool = kind === 'action' ? actionPool : reservePool
     const similar = pool.filter((o) => similarTitles(o.label, text)).slice(0, 3)
-    return { captureId: c.id, kind, text, similar }
+    return { id: c.id, captureId: c.id, kind, text, similar, source: 'tag' as const, excerpt: null }
+  })
+}
+
+/**
+ * « MemorIA a compris votre visite » — suites détectées depuis le TEXTE (vocaux +
+ * notes) par l'IA. Complète gatherVisitSuites (qui, lui, part des tags terrain).
+ * On ne considère QUE les captures texte non encore traitées et NON déjà taguées
+ * action/réserve (sinon doublon avec la voie taguée). MemorIA propose ; l'humain
+ * décide — rien n'est créé ici. Repli vide si l'IA est absente/échoue.
+ */
+export async function gatherVisitTextSuites(reportId: string, userId: string | null = null): Promise<VisitSuiteProposal[]> {
+  const captures = await listVisitCaptures(reportId).catch(() => [])
+  const textCaps = captures.filter(
+    (c) => c.status !== 'discarded'
+      && c.suite_status == null
+      && (c.kind === 'vocal' || c.kind === 'note')
+      && !!c.body?.trim()
+      && c.triage_intent !== 'action' && c.triage_intent !== 'reserve',
+  )
+  if (textCaps.length === 0) return []
+  const siteId = textCaps[0].site_id
+
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
+  const detected = await detectVisitSuites({
+    siteName: (site as { name: string } | null)?.name ?? 'Chantier',
+    items: textCaps.map((c) => ({ id: c.id, text: c.body!.trim() })),
+    userId,
+  }).catch(() => [])
+  if (detected.length === 0) return []
+
+  const [openActions, reserves] = await Promise.all([
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    getSiteReserves(siteId).catch(() => []),
+  ])
+  const actionPool = (openActions as Array<{ id: string; title: string }>).map((a) => ({ id: a.id, label: a.title }))
+  const reservePool = (reserves as Array<{ id: string; label: string; status: string }>)
+    .filter((r) => r.status === 'open')
+    .map((r) => ({ id: r.id, label: r.label }))
+
+  const bodyById = new Map(textCaps.map((c) => [c.id, c.body!.trim()]))
+  return detected.map((d, i) => {
+    const pool = d.kind === 'action' ? actionPool : d.kind === 'reserve' ? reservePool : []
+    const similar = pool.filter((o) => similarTitles(o.label, d.text)).slice(0, 3)
+    const src = bodyById.get(d.sourceId) ?? ''
+    return {
+      id: `${d.sourceId}:${i}`,
+      captureId: d.sourceId,
+      kind: d.kind,
+      text: d.text,
+      similar,
+      source: 'ai' as const,
+      excerpt: src.length > 120 ? src.slice(0, 119).trimEnd() + '…' : src,
+    }
   })
 }
 
@@ -748,9 +811,12 @@ export interface VisitCrDoc {
   constats: string[]
   reserves: Array<{ label: string; location: string | null }>
   actions: Array<{ title: string; corps_etat: string | null }>
-  /** URLs signées des photos captées — embarquées dans le PDF (le CR terrain
-   *  DOIT montrer les photos, sinon il paraît vide). */
+  /** URLs signées des photos SÉLECTIONNÉES pour le CR (par tag + photo clé,
+   *  plafonnées) — embarquées dans le PDF. Le CR est un document de communication. */
   photos: string[]
+  /** Nombre TOTAL de photos captées (MemorIA les garde toutes) — pour dire
+   *  « N photos clés sur M dans MemorIA ». */
+  photoCount: number
   /** Combien de vidéos/vocaux captés (non embarqués, mentionnés). */
   videoCount: number
   vocalCount: number
@@ -772,6 +838,55 @@ export interface VisitCrDoc {
  * `userId` (optionnel) : traçabilité du coût du résumé IA. Sans provider IA
  * configuré (ou < 3 observations), le résumé est déterministe — zéro appel.
  */
+// ── Sélection INTELLIGENTE des photos du CR (v1, groupée par tag) ─────────────
+// Le PDF est un document de COMMUNICATION : court, lisible, métier. MemorIA garde
+// TOUT ; le CR ne montre que ce qui sert à comprendre/décider. Règles validées :
+//   ⚠️ Réserve + ✅ Action → toujours ; 👀 À surveiller → si peu nombreuses ;
+//   📚 Mémoire → jamais (par défaut) ; ⭐ photo clé (starred — p. ex. une photo
+//   ANNOTÉE) → prioritaire ; plafond global pour éviter les CR illisibles.
+// Limite v1 assumée : on groupe PAR TAG, pas encore par réserve précise (le
+// rattachement photo→objet viendra après). Déterministe, sans IA.
+export const CR_FOLLOW_MAX = 5
+export const CR_PHOTO_CAP = 12
+
+type CrPhotoLike = {
+  triage_intent: CaptureTriageIntent
+  starred: boolean
+  captured_at: string | null
+  created_at: string
+}
+
+export function selectCrPhotos<T extends CrPhotoLike>(photos: T[]): T[] {
+  const includeFollow = photos.filter((c) => c.triage_intent === 'follow').length <= CR_FOLLOW_MAX
+  const weight = (c: T): number =>
+    c.starred ? 0
+    : c.triage_intent === 'reserve' ? 1
+    : c.triage_intent === 'action' ? 2
+    : c.triage_intent === 'follow' ? 3
+    : 4 // mémoire / non tagué — seulement en repli
+  const time = (c: T): number => Date.parse(c.captured_at ?? c.created_at) || 0
+  const eligible = photos.filter((c) =>
+    c.starred ||
+    c.triage_intent === 'reserve' ||
+    c.triage_intent === 'action' ||
+    (includeFollow && c.triage_intent === 'follow'),
+  )
+  // Repli : visite non triée (aucune photo taguée/clé) → on ne rend pas un CR sans
+  // aucune photo ; on prend les premières, plafonnées.
+  const pool = eligible.length > 0 ? eligible : photos
+  return [...pool].sort((a, b) => weight(a) - weight(b) || time(a) - time(b)).slice(0, CR_PHOTO_CAP)
+}
+
+/**
+ * Combien de photos seront incluses au CR vs total capté — pour l'écran de
+ * confirmation « X photos seront incluses ». Léger (pas d'IA, pas d'URL signée).
+ */
+export async function getVisitCrPhotoPlan(reportId: string): Promise<{ included: number; total: number }> {
+  const captures = (await listVisitCaptures(reportId).catch(() => [])).filter((c) => c.status !== 'discarded')
+  const photos = captures.filter((c) => c.kind === 'photo')
+  return { included: selectCrPhotos(photos).length, total: photos.length }
+}
+
 export async function buildVisitCrDoc(reportId: string, userId: string | null = null): Promise<VisitCrDoc | null> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return null
@@ -813,10 +928,13 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const videoCount = captures.filter((c) => c.kind === 'video').length
   const vocalCount = captures.filter((c) => c.kind === 'vocal').length
 
-  // Photos : URLs signées, embarquées dans le PDF (borné pour rester léger).
+  // Sélection intelligente (par tag + photo clé, plafonnée) : le CR ne montre que
+  // ce qui sert à comprendre/décider ; MemorIA garde les autres. URLs signées des
+  // seules photos retenues.
+  const selectedPhotos = selectCrPhotos(photoCaptures)
   const previews: Record<string, { url: string; mime: string | null }> =
-    await getVisitCapturePreviewUrls(photoCaptures.slice(0, 24)).catch(() => ({}))
-  const photos = photoCaptures
+    await getVisitCapturePreviewUrls(selectedPhotos).catch(() => ({}))
+  const photos = selectedPhotos
     .map((c) => previews[c.id]?.url)
     .filter((u): u is string => !!u)
 
@@ -868,6 +986,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
     photos,
+    photoCount: photoCaptures.length,
     videoCount,
     vocalCount,
     summary,

@@ -9,6 +9,7 @@ import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
+import { getVisitCrPhotoPlan } from '@/lib/db/visits'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -66,7 +67,7 @@ export async function triageCaptureAction(
 
 const createSuiteSchema = z.object({
   capture_id: z.string().uuid(),
-  kind: z.enum(['action', 'reserve']),
+  kind: z.enum(['action', 'reserve', 'surveiller']),
   title: z.string().trim().min(1).max(300),
 })
 
@@ -93,17 +94,20 @@ export async function createSuiteAction(
         site_id: c.site_id, report_id: c.report_id, title,
         created_by: auth.userId, created_from: 'visit_debrief', source_capture_id: capture_id,
       })
-    } else {
+    } else if (kind === 'reserve') {
       await createSiteReserve({
         siteId: c.site_id, label: title, location: null,
         issuedBy: auth.userId, issuedOn: new Date().toISOString().slice(0, 10),
         userId: auth.userId, sourceCaptureId: capture_id,
       })
     }
-    await supabase
-      .from('visit_capture')
-      .update({ suite_status: 'done', updated_at: new Date().toISOString() })
-      .eq('id', capture_id)
+    // 'surveiller' ne crée pas d'objet chantier : c'est un TAG de vigilance. On
+    // marque la capture source « à surveiller » (elle remonte aux prochains débriefs).
+    const patch =
+      kind === 'surveiller'
+        ? { triage_intent: 'follow' as const, suite_status: 'done' as const, updated_at: new Date().toISOString() }
+        : { suite_status: 'done' as const, updated_at: new Date().toISOString() }
+    await supabase.from('visit_capture').update(patch).eq('id', capture_id)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec de la création' }
@@ -134,6 +138,25 @@ export async function resolveSuiteAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }
+  }
+}
+
+/**
+ * Combien de photos seront incluses au CR (sélection par tag + photo clé,
+ * plafonnée) vs total capté — pour l'écran de confirmation « X photos seront
+ * incluses » avant de générer le PDF. MemorIA garde toutes les photos ; le CR
+ * ne montre que ce qui sert à comprendre/décider.
+ */
+export async function getCrPhotoPlanAction(
+  reportId: string,
+): Promise<{ included: number; total: number }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { included: 0, total: 0 }
+  if (!z.string().uuid().safeParse(reportId).success) return { included: 0, total: 0 }
+  try {
+    return await getVisitCrPhotoPlan(reportId)
+  } catch {
+    return { included: 0, total: 0 }
   }
 }
 
