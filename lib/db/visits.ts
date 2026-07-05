@@ -16,7 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent } from '@/lib/db/visit-captures'
-import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
+import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
@@ -587,6 +587,70 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
     actions: actionsRes.count ?? 0,
     reserves: reservesRes.count ?? 0,
   }
+}
+
+// ── « État du chantier » : le résumé qui se lit en 10 secondes (fiche chantier) ─
+// « 2 actions en retard · dernière visite il y a 3 jours · aucune réunion planifiée
+// · 1 réserve ouverte · +12 photos depuis la dernière visite. » Déterministe.
+
+export type SiteStatusTone = 'alert' | 'warn' | 'info'
+export interface SiteStatusLine { text: string; tone: SiteStatusTone }
+
+function daysAgoLabel(iso: string): string {
+  const days = Math.floor((new Date().getTime() - new Date(iso).getTime()) / 86400000)
+  if (Number.isNaN(days)) return ''
+  if (days <= 0) return "aujourd'hui"
+  if (days === 1) return 'hier'
+  if (days < 7) return `il y a ${days} jours`
+  return `le ${new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
+}
+
+export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusLine[]> {
+  const supabase = createAdminClient()
+  const [overdue, lastVisit, reserves, meeting] = await Promise.all([
+    detectOverdueActions(siteId).catch(() => null),
+    getLastEndedVisitForSite(siteId).catch(() => null),
+    getSiteReserves(siteId).catch(() => []),
+    supabase
+      .from('site_reports')
+      .select('next_meeting_at')
+      .eq('site_id', siteId)
+      .not('next_meeting_at', 'is', null)
+      .gte('next_meeting_at', new Date().toISOString())
+      .order('next_meeting_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const lines: SiteStatusLine[] = []
+  const overdueN = overdue ? overdue.items.length : 0
+  if (overdueN > 0) lines.push({ text: `${overdueN} action${overdueN > 1 ? 's' : ''} en retard`, tone: 'alert' })
+
+  const openReserves = (reserves as Array<{ status: string }>).filter((r) => r.status === 'open').length
+  if (openReserves > 0) lines.push({ text: `${openReserves} réserve${openReserves > 1 ? 's' : ''} ouverte${openReserves > 1 ? 's' : ''}`, tone: 'warn' })
+
+  const lastIso = lastVisit ? (lastVisit.endedAt ?? lastVisit.startedAt) : null
+  lines.push(lastIso ? { text: `Dernière visite ${daysAgoLabel(lastIso)}`, tone: 'info' } : { text: 'Aucune visite encore', tone: 'info' })
+
+  const nextMeeting = (meeting.data as { next_meeting_at: string } | null)?.next_meeting_at
+  lines.push(
+    nextMeeting
+      ? { text: `Réunion prévue le ${new Date(nextMeeting).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`, tone: 'info' }
+      : { text: 'Aucune réunion planifiée', tone: 'info' },
+  )
+
+  if (lastIso) {
+    const { count } = await supabase
+      .from('visit_capture')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .eq('kind', 'photo')
+      .neq('status', 'discarded')
+      .gt('created_at', lastIso)
+    if ((count ?? 0) > 0) lines.push({ text: `+${count} photo${(count ?? 0) > 1 ? 's' : ''} depuis la dernière visite`, tone: 'info' })
+  }
+
+  return lines
 }
 
 // ── « Chantiers récents » : les 3 derniers dossiers ouverts (accueil, sobre) ──
