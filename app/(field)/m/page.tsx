@@ -626,7 +626,7 @@ export default async function FieldHomePage({
         <CockpitCard
           icon={Bell}
           iconClass="text-red-500"
-          title="Ce qui demande ton attention"
+          title="Tu dois faire"
           headerHref="/m/actions"
           headerExtra={
             <>
