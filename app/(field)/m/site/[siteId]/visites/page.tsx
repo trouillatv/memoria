@@ -4,6 +4,7 @@ import { ArrowLeft, Camera, ChevronRight, Footprints } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteVisitsForMobile } from '@/lib/db/visits'
+import { SiteTabs } from '../SiteTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,7 @@ export default async function SiteVisitsMobilePage({
           <ArrowLeft className="h-4 w-4" /> {site.name}
         </Link>
         <h1 className="text-xl font-semibold">Visites</h1>
+        <SiteTabs siteId={siteId} active="visites" userRole={user.role} />
       </header>
 
       {visits.length === 0 ? (
