@@ -1,0 +1,238 @@
+'use client'
+
+// Annotation photo — « regarde EXACTEMENT ici ». Le conducteur entoure, fléche,
+// surligne, écrit un mot. Rouge par défaut. On EXPORTE une image annotée qui
+// s'ajoute EN PLUS de l'original (jamais détruire la preuve). Canvas simple,
+// tactile ; les formes sont mémorisées → on peut effacer la dernière.
+
+import { useEffect, useRef, useState } from 'react'
+import { X, Pencil, ArrowUpRight, Circle, Type, Undo2, Loader2, Check } from 'lucide-react'
+
+type Tool = 'draw' | 'arrow' | 'circle' | 'text'
+type Pt = { x: number; y: number }
+type Shape =
+  | { tool: 'draw'; color: string; points: Pt[] }
+  | { tool: 'arrow'; color: string; a: Pt; b: Pt }
+  | { tool: 'circle'; color: string; a: Pt; b: Pt }
+  | { tool: 'text'; color: string; at: Pt; text: string }
+
+const COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#111827']
+const LINE = 4
+
+export function PhotoAnnotator({
+  imageUrl,
+  onCancel,
+  onSave,
+}: {
+  imageUrl: string
+  onCancel: () => void
+  onSave: (file: File) => void | Promise<void>
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const [ready, setReady] = useState(false)
+  const [tool, setTool] = useState<Tool>('draw')
+  const [color, setColor] = useState(COLORS[0])
+  const [shapes, setShapes] = useState<Shape[]>([])
+  const [saving, setSaving] = useState(false)
+  const draft = useRef<Shape | null>(null)
+
+  // Charge l'image (crossOrigin pour pouvoir exporter le canvas ensuite).
+  useEffect(() => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      imgRef.current = img
+      const canvas = canvasRef.current
+      if (!canvas) return
+      // Taille interne = image, plafonnée (perf) ; l'affichage est géré en CSS.
+      const maxW = 1400
+      const scale = Math.min(1, maxW / img.naturalWidth)
+      canvas.width = Math.round(img.naturalWidth * scale)
+      canvas.height = Math.round(img.naturalHeight * scale)
+      setReady(true)
+    }
+    img.onerror = () => setReady(false)
+    img.src = imageUrl
+  }, [imageUrl])
+
+  // Redessine : image de fond + toutes les formes (+ le brouillon en cours).
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const img = imgRef.current
+    if (!canvas || !img) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    const all = draft.current ? [...shapes, draft.current] : shapes
+    for (const s of all) drawShape(ctx, s)
+  })
+
+  function toCanvas(e: React.PointerEvent): Pt {
+    const canvas = canvasRef.current!
+    const r = canvas.getBoundingClientRect()
+    return {
+      x: ((e.clientX - r.left) / r.width) * canvas.width,
+      y: ((e.clientY - r.top) / r.height) * canvas.height,
+    }
+  }
+
+  function redraw() {
+    // force le re-render (l'effet ci-dessus redessine)
+    setShapes((s) => [...s])
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (!ready) return
+    e.preventDefault()
+    const p = toCanvas(e)
+    if (tool === 'text') {
+      const text = window.prompt('Texte :')?.trim()
+      if (text) setShapes((s) => [...s, { tool: 'text', color, at: p, text }])
+      return
+    }
+    draft.current =
+      tool === 'draw' ? { tool: 'draw', color, points: [p] }
+      : tool === 'arrow' ? { tool: 'arrow', color, a: p, b: p }
+      : { tool: 'circle', color, a: p, b: p }
+    ;(e.target as Element).setPointerCapture?.(e.pointerId)
+    redraw()
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!draft.current) return
+    const p = toCanvas(e)
+    const d = draft.current
+    if (d.tool === 'draw') d.points.push(p)
+    else if (d.tool === 'arrow' || d.tool === 'circle') d.b = p
+    redraw()
+  }
+
+  function onPointerUp() {
+    if (!draft.current) return
+    const d = draft.current
+    draft.current = null
+    // Ignore les gestes quasi nuls (tap sans mouvement) pour arrow/circle.
+    if ((d.tool === 'arrow' || d.tool === 'circle') && dist(d.a, d.b) < 6) { redraw(); return }
+    setShapes((s) => [...s, d])
+  }
+
+  async function save() {
+    const canvas = canvasRef.current
+    if (!canvas || saving) return
+    setSaving(true)
+    try {
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.9))
+      if (!blob) throw new Error('export')
+      await onSave(new File([blob], 'annotation.jpg', { type: 'image/jpeg' }))
+    } catch {
+      setSaving(false)
+    }
+  }
+
+  const TOOLS: Array<{ t: Tool; icon: typeof Pencil; label: string }> = [
+    { t: 'draw', icon: Pencil, label: 'Dessiner' },
+    { t: 'arrow', icon: ArrowUpRight, label: 'Flèche' },
+    { t: 'circle', icon: Circle, label: 'Cercle' },
+    { t: 'text', icon: Type, label: 'Texte' },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-[80] flex flex-col bg-black">
+      <div className="flex items-center justify-between px-3 py-2 text-white">
+        <button type="button" onClick={onCancel} aria-label="Annuler" className="rounded-full bg-white/10 p-2"><X className="h-5 w-5" /></button>
+        <span className="text-sm font-medium">Annoter la photo</span>
+        <button
+          type="button" onClick={save} disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Enregistrer
+        </button>
+      </div>
+
+      <div className="flex flex-1 items-center justify-center overflow-hidden p-2">
+        {!ready && <Loader2 className="h-6 w-6 animate-spin text-white/70" />}
+        <canvas
+          ref={canvasRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          className="max-h-full max-w-full touch-none rounded-lg"
+          style={{ display: ready ? 'block' : 'none' }}
+        />
+      </div>
+
+      <div className="space-y-2 border-t border-white/10 p-3 safe-bottom">
+        <div className="grid grid-cols-5 gap-1.5">
+          {TOOLS.map(({ t, icon: Icon, label }) => (
+            <button
+              key={t} type="button" onClick={() => setTool(t)}
+              className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[11px] font-medium ${tool === t ? 'bg-white text-black' : 'bg-white/10 text-white'}`}
+            >
+              <Icon className="h-4 w-4" /> {label}
+            </button>
+          ))}
+          <button
+            type="button" onClick={() => setShapes((s) => s.slice(0, -1))} disabled={shapes.length === 0}
+            className="flex flex-col items-center gap-1 rounded-lg bg-white/10 px-1 py-2 text-[11px] font-medium text-white disabled:opacity-40"
+          >
+            <Undo2 className="h-4 w-4" /> Effacer
+          </button>
+        </div>
+        <div className="flex items-center justify-center gap-2">
+          {COLORS.map((c) => (
+            <button
+              key={c} type="button" onClick={() => setColor(c)} aria-label={`Couleur ${c}`}
+              className={`h-6 w-6 rounded-full ${color === c ? 'ring-2 ring-white ring-offset-2 ring-offset-black' : ''}`}
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function dist(a: Pt, b: Pt) { return Math.hypot(b.x - a.x, b.y - a.y) }
+
+function drawShape(ctx: CanvasRenderingContext2D, s: Shape) {
+  ctx.strokeStyle = s.color
+  ctx.fillStyle = s.color
+  ctx.lineWidth = LINE
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  if (s.tool === 'draw') {
+    ctx.beginPath()
+    s.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+    ctx.stroke()
+  } else if (s.tool === 'circle') {
+    const cx = (s.a.x + s.b.x) / 2, cy = (s.a.y + s.b.y) / 2
+    const rx = Math.abs(s.b.x - s.a.x) / 2, ry = Math.abs(s.b.y - s.a.y) / 2
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, Math.max(rx, 2), Math.max(ry, 2), 0, 0, Math.PI * 2)
+    ctx.stroke()
+  } else if (s.tool === 'arrow') {
+    const { a, b } = s
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
+    const ang = Math.atan2(b.y - a.y, b.x - a.x)
+    const head = 14 + LINE * 2
+    ctx.beginPath()
+    ctx.moveTo(b.x, b.y)
+    ctx.lineTo(b.x - head * Math.cos(ang - Math.PI / 6), b.y - head * Math.sin(ang - Math.PI / 6))
+    ctx.moveTo(b.x, b.y)
+    ctx.lineTo(b.x - head * Math.cos(ang + Math.PI / 6), b.y - head * Math.sin(ang + Math.PI / 6))
+    ctx.stroke()
+  } else {
+    ctx.font = 'bold 28px sans-serif'
+    ctx.textBaseline = 'top'
+    // Fond semi-opaque pour lisibilité.
+    const m = ctx.measureText(s.text)
+    ctx.save()
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'
+    ctx.fillRect(s.at.x - 3, s.at.y - 3, m.width + 6, 32)
+    ctx.restore()
+    ctx.fillStyle = s.color
+    ctx.fillText(s.text, s.at.x, s.at.y)
+  }
+}
