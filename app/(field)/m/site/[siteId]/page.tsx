@@ -19,13 +19,17 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, getLastEndedVisitForSite } from '@/lib/db/visits'
+import { getActiveVisit, getLastEndedVisitForSite, buildSiteStatusSummary } from '@/lib/db/visits'
+import { getSiteIdentity } from '@/lib/db/sites'
+import { getSiteReserves } from '@/lib/db/site-reserve'
+import { SiteStatusCard } from './SiteStatusCard'
+import { IdentityCard } from './IdentityCard'
+import { SiteTodoCard } from './SiteTodoCard'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
-import { OpenActionsList } from '@/components/actions/OpenActionsList'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
@@ -142,6 +146,18 @@ export default async function FieldSitePage({
 
   // Visite en cours (non terminée) sur ce site, le cas échéant.
   const activeVisit = await getActiveVisit(siteId).catch(() => null)
+  // « État du chantier » — résumé en tête de fiche (hors visite en cours, où
+  // l'écran est le panier de capture).
+  const siteStatus = activeVisit ? [] : await buildSiteStatusSummary(siteId).catch(() => [])
+  // Identité du chantier + Lieu (hors visite en cours). Chantier = dossier ;
+  // Site = localisation utile dans le chantier.
+  const identity = activeVisit ? null : await getSiteIdentity(siteId).catch(() => null)
+  // Réserves OUVERTES — pour le bloc « Que reste-t-il à faire ? ».
+  const openReserves = activeVisit
+    ? []
+    : (await getSiteReserves(siteId).catch(() => []))
+        .filter((r) => r.status === 'open')
+        .map((r) => ({ id: r.id, label: r.label, location: r.location }))
   // Sinon : la dernière visite TERMINÉE — pour la carte « Dernière visite » (la
   // visite ne doit jamais donner l'impression de disparaître).
   const lastVisit = activeVisit ? null : await getLastEndedVisitForSite(siteId).catch(() => null)
@@ -259,6 +275,12 @@ export default async function FieldSitePage({
         </div>
       ) : (
         <div className="space-y-3">
+          {/* État du chantier — le résumé en 10 secondes, avant tout le reste. */}
+          <SiteStatusCard lines={siteStatus} />
+
+          {/* Identité chantier + Lieu du chantier (Site = localisation support). */}
+          {identity && <IdentityCard identity={identity} />}
+
           <VisitLauncher siteId={siteId} activeVisit={null} />
 
           {/* Dernière visite — la trace ne disparaît pas : date, composition, « Voir ». */}
@@ -381,24 +403,9 @@ export default async function FieldSitePage({
         <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
       )}
 
-      {/* À suivre — APERÇU BORNÉ (top 3). La liste complète vit sur /m/actions :
-          la fiche site raconte le LIEU, elle ne doit pas être écrasée par la todo. */}
-      {openActions.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
-            <ListTodo className="h-4 w-4" /> À suivre ({openActions.length})
-          </h2>
-          <OpenActionsList actions={openActions.slice(0, 3)} compact />
-          {openActions.length > 3 && (
-            <Link
-              href="/m/actions"
-              className="inline-flex items-center gap-1 text-sm font-medium text-foreground/80 hover:text-foreground"
-            >
-              Voir les {openActions.length} actions <ChevronRight className="h-4 w-4" />
-            </Link>
-          )}
-        </section>
-      )}
+      {/* Que reste-t-il à faire ? — tableau de bord opérationnel : en retard,
+          bientôt, réserves, ouvert. Remplace l'ancien « À suivre » plat. */}
+      <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} />
 
       {/* Dernières preuves — photos récentes du site (lecture rapide). */}
       {recentPhotos.length > 0 && (

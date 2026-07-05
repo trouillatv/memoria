@@ -1,8 +1,55 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getOrgId } from '@/lib/db/users'
+import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSite, DbSiteNote, SitePhase } from '@/types/db'
+
+// ── Identité du chantier : dossier métier + LIEU (support) ───────────────────
+// Décision produit : Chantier = dossier métier, Site = localisation utile DANS le
+// chantier (« Lieu du chantier », jamais une entité concurrente). Ce loader
+// rassemble ce qui existe réellement ; le reste (MOA/MOE, entreprise) reste absent
+// tant qu'il n'a pas de source.
+
+const PHASE_FR: Record<string, string> = {
+  prospect: 'Prospect', en_ao: "Appel d'offres", actif: 'Actif', perdu: 'Perdu', archive: 'Archivé',
+}
+
+export interface SiteIdentity {
+  name: string
+  address: string | null
+  clientName: string | null
+  phaseLabel: string | null
+  accessHours: string | null
+  accessInstructions: string | null
+}
+
+export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | null> {
+  const supabase = createAdminClient()
+  const { data: site } = await supabase
+    .from('sites')
+    .select('name, address, client_id, access_hours, access_instructions')
+    .eq('id', siteId)
+    .maybeSingle()
+  if (!site) return null
+  const s = site as { name: string; address: string | null; client_id: string | null; access_hours: string | null; access_instructions: string | null }
+
+  let clientName: string | null = null
+  if (s.client_id) {
+    const { data: c } = await supabase.from('clients').select('name').eq('id', s.client_id).maybeSingle()
+    clientName = (c as { name: string } | null)?.name ?? null
+  }
+
+  let phaseLabel: string | null = null
+  const dossierId = await getOpenDossierIdForSite(siteId).catch(() => null)
+  if (dossierId) {
+    const { data: d } = await supabase.from('dossiers').select('phase').eq('id', dossierId).maybeSingle()
+    const phase = (d as { phase: string } | null)?.phase
+    phaseLabel = phase ? PHASE_FR[phase] ?? phase : null
+  }
+
+  return { name: s.name, address: s.address, clientName, phaseLabel, accessHours: s.access_hours, accessInstructions: s.access_instructions }
+}
 
 // ---------------------------------------------------------------------------
 // Identité canonique — anti-doublon
