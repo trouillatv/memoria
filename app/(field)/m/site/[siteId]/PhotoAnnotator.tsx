@@ -14,10 +14,18 @@ type Shape =
   | { tool: 'draw'; color: string; points: Pt[] }
   | { tool: 'arrow'; color: string; a: Pt; b: Pt }
   | { tool: 'circle'; color: string; a: Pt; b: Pt }
-  | { tool: 'text'; color: string; at: Pt; text: string }
+  | { tool: 'text'; color: string; at: Pt; text: string; scale: number }
 
 const COLORS = ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#111827']
 const LINE = 4
+// Tailles de texte (multiplicateurs). La taille de BASE est proportionnelle à
+// l'image (≈ largeur/22) : « Fissure » écrit sur le chantier doit rester lisible
+// à 2 m, pas noyé dans une photo de 1400 px. Contour blanc + texte coloré.
+const TEXT_SIZES: Array<{ key: string; label: string; scale: number }> = [
+  { key: 'S', label: 'Petit', scale: 0.7 },
+  { key: 'M', label: 'Moyen', scale: 1 },
+  { key: 'L', label: 'Grand', scale: 1.5 },
+]
 
 export function PhotoAnnotator({
   imageUrl,
@@ -33,6 +41,7 @@ export function PhotoAnnotator({
   const [ready, setReady] = useState(false)
   const [tool, setTool] = useState<Tool>('draw')
   const [color, setColor] = useState(COLORS[0])
+  const [textScale, setTextScale] = useState(1)
   const [shapes, setShapes] = useState<Shape[]>([])
   const [saving, setSaving] = useState(false)
   const draft = useRef<Shape | null>(null)
@@ -89,7 +98,7 @@ export function PhotoAnnotator({
     const p = toCanvas(e)
     if (tool === 'text') {
       const text = window.prompt('Texte :')?.trim()
-      if (text) setShapes((s) => [...s, { tool: 'text', color, at: p, text }])
+      if (text) setShapes((s) => [...s, { tool: 'text', color, at: p, text, scale: textScale }])
       return
     }
     draft.current =
@@ -180,6 +189,18 @@ export function PhotoAnnotator({
             <Undo2 className="h-4 w-4" /> Effacer
           </button>
         </div>
+        {tool === 'text' && (
+          <div className="flex items-center justify-center gap-1.5">
+            {TEXT_SIZES.map((sz) => (
+              <button
+                key={sz.key} type="button" onClick={() => setTextScale(sz.scale)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${textScale === sz.scale ? 'bg-white text-black' : 'bg-white/10 text-white'}`}
+              >
+                {sz.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-center gap-2">
           {COLORS.map((c) => (
             <button
@@ -224,14 +245,16 @@ function drawShape(ctx: CanvasRenderingContext2D, s: Shape) {
     ctx.lineTo(b.x - head * Math.cos(ang + Math.PI / 6), b.y - head * Math.sin(ang + Math.PI / 6))
     ctx.stroke()
   } else {
-    ctx.font = 'bold 28px sans-serif'
+    // Taille PROPORTIONNELLE à l'image (× le multiplicateur choisi), avec un
+    // plancher : lisible à 2 m, jamais minuscule. Contour blanc épais + texte
+    // coloré = lisible sur n'importe quel fond de chantier.
+    const fontSize = Math.max(22, Math.round((ctx.canvas.width / 22) * s.scale))
+    ctx.font = `bold ${fontSize}px sans-serif`
     ctx.textBaseline = 'top'
-    // Fond semi-opaque pour lisibilité.
-    const m = ctx.measureText(s.text)
-    ctx.save()
-    ctx.fillStyle = 'rgba(255,255,255,0.85)'
-    ctx.fillRect(s.at.x - 3, s.at.y - 3, m.width + 6, 32)
-    ctx.restore()
+    ctx.lineJoin = 'round'
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = Math.max(3, Math.round(fontSize / 5))
+    ctx.strokeText(s.text, s.at.x, s.at.y)
     ctx.fillStyle = s.color
     ctx.fillText(s.text, s.at.x, s.at.y)
   }
