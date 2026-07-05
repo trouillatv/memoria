@@ -53,8 +53,8 @@ export function VisitLauncher({
     startTransition(async () => {
       const res = await endVisitAction({ report_id: activeVisit.id, site_id: siteId })
       if (res.ok) {
-        toast.success('Visite terminée — le débrief vous attend au bureau', { duration: 2500 })
-        router.refresh()
+        toast.success('Visite terminée — relisons vite', { duration: 1500 })
+        router.push(`/m/visite/${activeVisit.id}`)
       } else {
         toast.error(res.error)
       }

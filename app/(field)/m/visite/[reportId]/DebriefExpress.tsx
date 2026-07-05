@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
+import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 /**
@@ -103,11 +104,13 @@ export function DebriefExpress({
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-4 p-4 pb-28">
+    <div className="mx-auto max-w-md space-y-4 p-4 pb-48">
       {/* En-tête : on a fini de marcher, on relit vite. */}
       <header className="space-y-2 pt-2">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Fin de prévisite</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
+            {dossierId ? 'Fin de prévisite' : 'Fin de visite'}
+          </p>
           <h1 className="text-xl font-semibold">Visite terminée</h1>
           <p className="text-sm text-muted-foreground">
             {siteName} · {total} élément{total > 1 ? 's' : ''} relevé{total > 1 ? 's' : ''}
@@ -148,39 +151,27 @@ export function DebriefExpress({
         </section>
       )}
 
-      {/* Barre de fin — on ne FORCE pas à tout trier. Si un dossier d'affaire est
-          rattaché, on enchaîne naturellement sur la préparation de l'AO ; sinon on
-          revient au chantier. */}
+      {/* Barre de fin — on ne FORCE pas à tout trier. On dit clairement OÙ retrouver
+          le résultat : voir la visite, produire un CR/PDF partageable, reprendre au
+          bureau. Si un dossier d'affaire est rattaché, on enchaîne en plus sur l'AO. */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-md space-y-2">
-          {dossierId ? (
-            <>
-              <Link
-                href={`/dossiers/${dossierId}`}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-              >
-                <FileText className="h-4 w-4" /> Préparer l&apos;appel d&apos;offres <ArrowRight className="h-4 w-4" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => router.push(`/m/site/${siteId}`)}
-                className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-muted-foreground"
-              >
-                Plus tard — revenir au chantier
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-3">
-              <p className="flex-1 text-xs text-muted-foreground">Le reste sera préparé au bureau.</p>
-              <button
-                type="button"
-                onClick={() => router.push(`/m/site/${siteId}`)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
-              >
-                Terminé <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
+          {dossierId && (
+            <Link
+              href={`/dossiers/${dossierId}`}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white"
+            >
+              <FileText className="h-4 w-4" /> Préparer l&apos;appel d&apos;offres <ArrowRight className="h-4 w-4" />
+            </Link>
           )}
+          <VisitOutputActions reportId={reportId} siteId={siteId} />
+          <button
+            type="button"
+            onClick={() => router.push(`/m/site/${siteId}`)}
+            className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
+          >
+            Revenir au chantier
+          </button>
         </div>
       </div>
     </div>

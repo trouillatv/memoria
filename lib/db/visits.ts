@@ -363,6 +363,61 @@ export async function listSiteVisitsWithCounts(siteId: string, limit = 50): Prom
   )
 }
 
+/**
+ * La DERNIÈRE visite TERMINÉE d'un site, avec ses compteurs (photos / réserves /
+ * notes / actions) — pour la carte « Dernière visite » du terrain. Compteurs par
+ * FENÊTRE TEMPORELLE (même règle que listSiteVisitsWithCounts). `null` s'il n'y a
+ * aucune visite terminée. On EXCLUT la visite en cours (ended_at null).
+ */
+export interface LastVisitCard {
+  reportId: string
+  startedAt: string | null
+  endedAt: string | null
+  photos: number
+  reserves: number
+  notes: number
+  actions: number
+}
+
+export async function getLastEndedVisitForSite(siteId: string): Promise<LastVisitCard | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_reports')
+    .select('id, started_at, ended_at, created_at')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
+    .order('ended_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  const visit = data as { id: string; started_at: string | null; ended_at: string | null; created_at: string } | null
+  if (!visit) return null
+
+  const from = visit.started_at ?? visit.created_at
+  const to = visit.ended_at ?? new Date().toISOString()
+  const countIn = async (table: string): Promise<number> => {
+    const { count } = await supabase
+      .from(table)
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .gte('created_at', from)
+      .lte('created_at', to)
+    return count ?? 0
+  }
+  const [notes, reserves, actions, photos] = await Promise.all([
+    countIn('site_notes'),
+    countIn('site_reserve'),
+    countIn('site_actions'),
+    supabase
+      .from('site_report_attachments')
+      .select('id', { count: 'exact', head: true })
+      .eq('report_id', visit.id)
+      .then(({ count }) => count ?? 0),
+  ])
+  return { reportId: visit.id, startedAt: visit.started_at, endedAt: visit.ended_at, photos, reserves, notes, actions }
+}
+
 // ── Historique UTILE du chantier courant (V2 bornée — PAS de cross-chantier) ─
 
 function frDate(iso: string | null): string {
@@ -537,18 +592,44 @@ const ORIGIN_FR: Record<string, string> = {
 }
 
 /**
- * Assemble le CR d'une visite. C'est une PROJECTION : un rendu déterministe des
- * données DÉJÀ VALIDÉES (objectif/sujet/résultat/résolution) + des captures de la
- * fenêtre. Aucun appel IA, aucun fait nouveau. Régénérable à volonté.
+ * Le CR d'une visite comme DONNÉES structurées — source de vérité unique pour
+ * les deux sorties (markdown côté bureau, PDF côté terrain). PROJECTION
+ * déterministe des éléments DÉJÀ VALIDÉS + des captures de la fenêtre. Aucun
+ * appel IA, aucun fait nouveau.
  */
-export async function buildVisitCr(reportId: string): Promise<string | null> {
+export interface VisitCrDoc {
+  siteName: string
+  clientName: string | null
+  /** Ex. « 5 juillet 2026, 10:42 ». */
+  dateLabel: string
+  /** Ex. « Visite spontanée ». */
+  typeLabel: string
+  durationLabel: string | null
+  objective: string | null
+  subjectName: string | null
+  /** Constats = notes saisies pendant la visite. */
+  constats: string[]
+  reserves: Array<{ label: string; location: string | null }>
+  actions: Array<{ title: string; corps_etat: string | null }>
+  outcomeLabel: string | null
+  resolutionLabel: string | null
+}
+
+/** Rassemble le CR d'une visite en données structurées. `null` si introuvable. */
+export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | null> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return null
   const { visit } = ctx
   const supabase = createAdminClient()
 
-  const { data: site } = await supabase.from('sites').select('name').eq('id', visit.site_id!).maybeSingle()
+  const { data: site } = await supabase
+    .from('sites')
+    .select('name, clients(name)')
+    .eq('id', visit.site_id!)
+    .maybeSingle()
   const siteName = (site as { name: string } | null)?.name ?? 'Chantier'
+  const clientRel = (site as { clients?: { name: string } | { name: string }[] | null } | null)?.clients
+  const clientName = Array.isArray(clientRel) ? clientRel[0]?.name ?? null : clientRel?.name ?? null
   const subjectName = visit.target_subject_id
     ? ctx.openSubjects.find((s) => s.id === visit.target_subject_id)?.name ?? null
     : null
@@ -558,41 +639,65 @@ export async function buildVisitCr(reportId: string): Promise<string | null> {
   const durMins = visit.started_at && visit.ended_at
     ? Math.max(0, Math.round((new Date(visit.ended_at).getTime() - new Date(visit.started_at).getTime()) / 60000))
     : null
-  const durLabel = durMins == null ? null : durMins < 60 ? `${durMins} min` : `${Math.floor(durMins / 60)} h ${durMins % 60} min`
+  const durationLabel = durMins == null ? null : durMins < 60 ? `${durMins} min` : `${Math.floor(durMins / 60)} h ${durMins % 60} min`
+
+  return {
+    siteName,
+    clientName,
+    dateLabel,
+    typeLabel: ORIGIN_FR[visit.origin ?? ''] ?? 'Visite',
+    durationLabel,
+    objective: visit.objective?.trim() || null,
+    subjectName,
+    constats: ctx.capturedNotes,
+    reserves: ctx.capturedReserves,
+    actions: ctx.capturedActions,
+    outcomeLabel: visit.outcome ? OUTCOME_FR[visit.outcome] ?? visit.outcome : null,
+    resolutionLabel: visit.resolution ? RESOLUTION_FR[visit.resolution] ?? visit.resolution : null,
+  }
+}
+
+/**
+ * Assemble le CR d'une visite en markdown. Projection du même `VisitCrDoc` que le
+ * PDF (source de vérité unique). Régénérable à volonté.
+ */
+export async function buildVisitCr(reportId: string): Promise<string | null> {
+  const doc = await buildVisitCrDoc(reportId)
+  if (!doc) return null
 
   const lines: string[] = []
-  lines.push(`# Compte-rendu de visite — ${siteName}`)
+  lines.push(`# Compte-rendu de visite — ${doc.siteName}`)
   lines.push('')
-  lines.push(`**Date :** ${dateLabel}`)
-  lines.push(`**Type :** ${ORIGIN_FR[visit.origin ?? ''] ?? 'Visite'}`)
-  if (durLabel) lines.push(`**Durée :** ${durLabel}`)
+  lines.push(`**Date :** ${doc.dateLabel}`)
+  lines.push(`**Type :** ${doc.typeLabel}`)
+  if (doc.durationLabel) lines.push(`**Durée :** ${doc.durationLabel}`)
   lines.push('')
 
   lines.push('## Objet de la visite')
-  lines.push(visit.objective?.trim() || '_Non précisé._')
-  if (subjectName) lines.push(`Sujet : **${subjectName}**`)
+  lines.push(doc.objective || '_Non précisé._')
+  if (doc.subjectName) lines.push(`Sujet : **${doc.subjectName}**`)
   lines.push('')
 
   lines.push('## Constats')
-  if (ctx.capturedNotes.length > 0) ctx.capturedNotes.forEach((n) => lines.push(`- ${n}`))
+  if (doc.constats.length > 0) doc.constats.forEach((n) => lines.push(`- ${n}`))
   else lines.push('_Aucune note saisie pendant la visite._')
   lines.push('')
 
-  if (ctx.capturedReserves.length > 0) {
+  if (doc.reserves.length > 0) {
     lines.push('## Réserves relevées')
-    ctx.capturedReserves.forEach((r) => lines.push(`- ${r.label}${r.location ? ` (${r.location})` : ''}`))
+    doc.reserves.forEach((r) => lines.push(`- ${r.label}${r.location ? ` (${r.location})` : ''}`))
     lines.push('')
   }
 
-  if (ctx.capturedActions.length > 0) {
+  if (doc.actions.length > 0) {
     lines.push('## Actions')
-    ctx.capturedActions.forEach((a) => lines.push(`- ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`))
+    doc.actions.forEach((a) => lines.push(`- ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`))
     lines.push('')
   }
 
   lines.push('## Bilan')
-  lines.push(`**Résultat :** ${visit.outcome ? OUTCOME_FR[visit.outcome] ?? visit.outcome : '_non précisé_'}`)
-  lines.push(`**Suivi :** ${visit.resolution ? RESOLUTION_FR[visit.resolution] ?? visit.resolution : '_non précisé_'}`)
+  lines.push(`**Résultat :** ${doc.outcomeLabel ?? '_non précisé_'}`)
+  lines.push(`**Suivi :** ${doc.resolutionLabel ?? '_non précisé_'}`)
   lines.push('')
   lines.push('---')
   lines.push('_Compte-rendu généré depuis le Débrief MemorIA — projection des éléments validés._')
