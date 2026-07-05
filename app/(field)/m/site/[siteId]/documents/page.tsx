@@ -68,9 +68,15 @@ export default async function SiteDocumentsMobilePage({
       </header>
 
       {signed.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Aucun document lié à ce chantier.
-        </p>
+        <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Aucun document lié à ce chantier.</p>
+          <Link
+            href="/documents/import"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background active:opacity-80"
+          >
+            <FileText className="h-4 w-4" /> Ajouter un document
+          </Link>
+        </div>
       ) : (
         <ul className="overflow-hidden rounded-xl border bg-card divide-y">
           {signed.map((d) => {

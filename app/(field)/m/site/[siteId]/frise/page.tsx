@@ -8,6 +8,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteTimeline, type TimelineKind } from '@/lib/db/site-timeline'
 import { SiteTabs } from '../SiteTabs'
+import { VisitLauncher } from '../VisitLauncher'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,9 +64,12 @@ export default async function SiteFriseMobilePage({
       </header>
 
       {events.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Rien à raconter encore. Les visites, réunions et jalons apparaîtront ici.
-        </p>
+        <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Rien à raconter encore. Commencez à documenter ce chantier — visites, réunions et jalons apparaîtront ici.
+          </p>
+          <div className="flex justify-center"><VisitLauncher siteId={siteId} activeVisit={null} /></div>
+        </div>
       ) : (
         <ol className="relative space-y-3 pl-2">
           {/* fil vertical de la frise */}

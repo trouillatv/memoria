@@ -5,6 +5,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteMeetingsForMobile } from '@/lib/db/visits'
 import { SiteTabs } from '../SiteTabs'
+import { SiteReportLauncher } from '../SiteReportLauncher'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,9 +49,12 @@ export default async function SiteMeetingsMobilePage({
       </header>
 
       {meetings.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Aucune réunion sur ce chantier pour l&apos;instant.
-        </p>
+        <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
+          <p className="text-sm text-muted-foreground">Aucune réunion sur ce chantier pour l&apos;instant.</p>
+          <div className="flex justify-center">
+            <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Enregistrer une réunion" />
+          </div>
+        </div>
       ) : (
         <ul className="overflow-hidden rounded-xl border bg-card divide-y">
           {meetings.map((m) => (

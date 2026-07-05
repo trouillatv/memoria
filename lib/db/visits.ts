@@ -763,6 +763,10 @@ export interface SiteActivityItem {
   dateLabel: string
   at: string
   href: string
+  /** id du report/intervention — sert à enrichir (photos, décisions). */
+  reportId: string | null
+  /** Détail déterministe : « 24 photos », « 5 décisions »… (null si aucun). */
+  detail: string | null
 }
 
 export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<SiteActivityItem[]> {
@@ -788,15 +792,30 @@ export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<
   for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
     const at = r.ended_at ?? r.started_at ?? r.created_at
     items.push(r.origin
-      ? { kind: 'visit', label: 'Visite', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap` }
-      : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap` })
+      ? { kind: 'visit', label: 'Visite', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null }
+      : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null })
   }
   for (const i of intv) {
     const at = i.scheduled_for ? `${i.scheduled_for}T12:00:00Z` : i.scheduled_at
-    items.push({ kind: 'intervention', label: missionName.get(i.mission_id) ?? 'Intervention', dateLabel: relativeDayLabel(at), at, href: `/m/intervention/${i.id}` })
+    items.push({ kind: 'intervention', label: missionName.get(i.mission_id) ?? 'Intervention', dateLabel: relativeDayLabel(at), at, href: `/m/intervention/${i.id}`, reportId: null, detail: null })
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-  return items.slice(0, limit)
+  const shown = items.slice(0, limit)
+
+  // Enrichissement déterministe des SEULS éléments affichés : photos d'une
+  // visite, décisions d'une réunion. Compté sur les objets réels, zéro IA.
+  await Promise.all(shown.map(async (it) => {
+    if (it.kind === 'visit' && it.reportId) {
+      const { count } = await supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+        .eq('report_id', it.reportId).eq('kind', 'photo').is('hidden_at', null)
+      if (count && count > 0) it.detail = `${count} photo${count > 1 ? 's' : ''}`
+    } else if (it.kind === 'meeting' && it.reportId) {
+      const { count } = await supabase.from('site_decisions').select('id', { count: 'exact', head: true })
+        .eq('report_id', it.reportId)
+      if (count && count > 0) it.detail = `${count} décision${count > 1 ? 's' : ''}`
+    }
+  }))
+  return shown
 }
 
 // ── Fiche chantier : « Toutes les visites » (route /m/site/[id]/visites) ────────
