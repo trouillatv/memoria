@@ -23,7 +23,7 @@ export type CaptureProcessingStage = 'pending' | 'ready' | 'failed'
 const TERMINAL_STAGES: CaptureProcessingStage[] = ['ready', 'failed']
 
 // Suite décidée au débrief express (mig 168) : action | follow | null(=trace).
-export type CaptureTriageIntent = 'action' | 'follow' | null
+export type CaptureTriageIntent = 'action' | 'follow' | 'reserve' | null
 
 export interface VisitCaptureRow {
   id: string
@@ -401,16 +401,25 @@ export async function setCaptureTranscript(
  */
 export async function setCaptureTriage(
   captureId: string,
-  decision: { status: 'kept' | 'discarded'; intent: CaptureTriageIntent },
+  decision: {
+    status: 'kept' | 'discarded'
+    intent: CaptureTriageIntent
+    /** Commentaire optionnel (« ce que la capture montre ») — stocké dans body.
+     *  À NE passer que pour une photo/vidéo (body vide), jamais un vocal/note
+     *  (body = transcription/texte, à ne pas écraser). */
+    comment?: string | null
+  },
 ): Promise<void> {
   const supabase = createAdminClient()
+  const patch: Record<string, unknown> = {
+    status: decision.status,
+    triage_intent: decision.intent,
+    updated_at: new Date().toISOString(),
+  }
+  if (decision.comment !== undefined) patch.body = decision.comment?.trim() || null
   const { error } = await supabase
     .from('visit_capture')
-    .update({
-      status: decision.status,
-      triage_intent: decision.intent,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', captureId)
   if (error) throw error
 }

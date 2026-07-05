@@ -13,19 +13,29 @@ import {
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
 
-export type TriageDecision = 'ignore' | 'keep' | 'action' | 'follow'
+// Vocabulaire MÉTIER du traitement des captures (mig 182). « Cette capture montre… »
+//   📚 Mémoire      → gardée, aucune suite (preuve, historique du chantier)
+//   👀 À surveiller → gardée, remonte aux prochains débriefs
+//   ⚠️ Réserve      → gardée, deviendra une réserve au bureau
+//   ✅ Action       → gardée, deviendra une action au bureau
+//   🗑 Supprimer    → geste VOLONTAIRE (photo floue) — le tri, lui, ne supprime jamais
+export type TriageDecision = 'memoire' | 'surveiller' | 'reserve' | 'action' | 'delete'
 
-// Décision métier → état technique (caché au terrain).
+// Décision métier → état technique (caché au terrain). AUCUN tag ne supprime :
+// seul « delete » (volontaire) pose discarded.
 const MAP: Record<TriageDecision, { status: 'kept' | 'discarded'; intent: CaptureTriageIntent }> = {
-  ignore: { status: 'discarded', intent: null },
-  keep: { status: 'kept', intent: null },
+  memoire: { status: 'kept', intent: null },
+  surveiller: { status: 'kept', intent: 'follow' },
+  reserve: { status: 'kept', intent: 'reserve' },
   action: { status: 'kept', intent: 'action' },
-  follow: { status: 'kept', intent: 'follow' },
+  delete: { status: 'discarded', intent: null },
 }
 
 const schema = z.object({
   capture_id: z.string().uuid(),
-  decision: z.enum(['ignore', 'keep', 'action', 'follow']),
+  decision: z.enum(['memoire', 'surveiller', 'reserve', 'action', 'delete']),
+  /** Commentaire « ce que la capture montre » — photo/vidéo uniquement. */
+  comment: z.string().max(500).optional(),
 })
 
 export async function triageCaptureAction(
@@ -36,7 +46,10 @@ export async function triageCaptureAction(
   const parsed = schema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   try {
-    await setCaptureTriage(parsed.data.capture_id, MAP[parsed.data.decision])
+    await setCaptureTriage(parsed.data.capture_id, {
+      ...MAP[parsed.data.decision],
+      ...(parsed.data.comment !== undefined ? { comment: parsed.data.comment } : {}),
+    })
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec du tri' }

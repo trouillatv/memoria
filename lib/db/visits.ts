@@ -711,8 +711,9 @@ export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | nu
   // il paraît vide. On lit le panier de la visite en plus du contexte bureau.
   const captures = (await listVisitCaptures(reportId).catch(() => []))
     .filter((c) => c.status !== 'discarded')
+  // Notes ET commentaires de photo/vidéo (« ce que la capture montre ») → constats.
   const noteBodies = captures
-    .filter((c) => c.kind === 'note' && c.body?.trim())
+    .filter((c) => (c.kind === 'note' || c.kind === 'photo' || c.kind === 'video') && c.body?.trim())
     .map((c) => c.body!.trim())
   const vocalBodies = captures
     .filter((c) => c.kind === 'vocal' && c.body?.trim())
