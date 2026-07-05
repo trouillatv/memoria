@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit, buildVisitImpact, gatherVisitSuites } from '@/lib/db/visits'
+import { getVisit, buildVisitImpact, gatherVisitSuites, gatherVisitTextSuites } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { DebriefExpress } from './DebriefExpress'
 
@@ -70,8 +70,14 @@ export default async function VisitDebriefPage({
     buildVisitImpact(reportId).catch(() => null),
   ])
 
-  // Suites à matérialiser (tags Action/Réserve non encore traités).
-  const suites = await gatherVisitSuites(reportId).catch(() => [])
+  // Suites proposées : les tags Action/Réserve (déterministe) + ce que MemorIA a
+  // COMPRIS des vocaux/notes (IA, texte seul, gatée). MemorIA propose, l'humain
+  // décide — rien n'est créé sans validation. Les deux voies se complètent.
+  const [tagSuites, textSuites] = await Promise.all([
+    gatherVisitSuites(reportId).catch(() => []),
+    gatherVisitTextSuites(reportId, user.id).catch(() => []),
+  ])
+  const suites = [...tagSuites, ...textSuites]
 
   return (
     <DebriefExpress

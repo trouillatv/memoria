@@ -20,6 +20,7 @@ import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, typ
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
+import { detectVisitSuites } from '@/services/ai/visit-suites'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -509,10 +510,18 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
  * « existe déjà, mettre à jour ? »).
  */
 export interface VisitSuiteProposal {
+  /** Identifiant UNIQUE de la proposition (une capture texte peut en donner
+   *  plusieurs) : `captureId` pour un tag, `captureId:n` pour une détection IA. */
+  id: string
   captureId: string
-  kind: 'action' | 'reserve'
+  kind: 'action' | 'reserve' | 'surveiller'
   text: string
   similar: Array<{ id: string; label: string }>
+  /** 'tag' = décidé au tri (photo/vidéo taguée) ; 'ai' = compris par MemorIA
+   *  depuis un vocal/une note. */
+  source: 'tag' | 'ai'
+  /** Extrait source (vocal/note) pour le contexte quand c'est MemorIA qui propose. */
+  excerpt?: string | null
 }
 
 function normalizeTitle(s: string): string {
@@ -551,7 +560,61 @@ export async function gatherVisitSuites(reportId: string): Promise<VisitSuitePro
     const text = c.body?.trim() || (kind === 'reserve' ? 'Réserve à préciser' : 'Action à préciser')
     const pool = kind === 'action' ? actionPool : reservePool
     const similar = pool.filter((o) => similarTitles(o.label, text)).slice(0, 3)
-    return { captureId: c.id, kind, text, similar }
+    return { id: c.id, captureId: c.id, kind, text, similar, source: 'tag' as const, excerpt: null }
+  })
+}
+
+/**
+ * « MemorIA a compris votre visite » — suites détectées depuis le TEXTE (vocaux +
+ * notes) par l'IA. Complète gatherVisitSuites (qui, lui, part des tags terrain).
+ * On ne considère QUE les captures texte non encore traitées et NON déjà taguées
+ * action/réserve (sinon doublon avec la voie taguée). MemorIA propose ; l'humain
+ * décide — rien n'est créé ici. Repli vide si l'IA est absente/échoue.
+ */
+export async function gatherVisitTextSuites(reportId: string, userId: string | null = null): Promise<VisitSuiteProposal[]> {
+  const captures = await listVisitCaptures(reportId).catch(() => [])
+  const textCaps = captures.filter(
+    (c) => c.status !== 'discarded'
+      && c.suite_status == null
+      && (c.kind === 'vocal' || c.kind === 'note')
+      && !!c.body?.trim()
+      && c.triage_intent !== 'action' && c.triage_intent !== 'reserve',
+  )
+  if (textCaps.length === 0) return []
+  const siteId = textCaps[0].site_id
+
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
+  const detected = await detectVisitSuites({
+    siteName: (site as { name: string } | null)?.name ?? 'Chantier',
+    items: textCaps.map((c) => ({ id: c.id, text: c.body!.trim() })),
+    userId,
+  }).catch(() => [])
+  if (detected.length === 0) return []
+
+  const [openActions, reserves] = await Promise.all([
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    getSiteReserves(siteId).catch(() => []),
+  ])
+  const actionPool = (openActions as Array<{ id: string; title: string }>).map((a) => ({ id: a.id, label: a.title }))
+  const reservePool = (reserves as Array<{ id: string; label: string; status: string }>)
+    .filter((r) => r.status === 'open')
+    .map((r) => ({ id: r.id, label: r.label }))
+
+  const bodyById = new Map(textCaps.map((c) => [c.id, c.body!.trim()]))
+  return detected.map((d, i) => {
+    const pool = d.kind === 'action' ? actionPool : d.kind === 'reserve' ? reservePool : []
+    const similar = pool.filter((o) => similarTitles(o.label, d.text)).slice(0, 3)
+    const src = bodyById.get(d.sourceId) ?? ''
+    return {
+      id: `${d.sourceId}:${i}`,
+      captureId: d.sourceId,
+      kind: d.kind,
+      text: d.text,
+      similar,
+      source: 'ai' as const,
+      excerpt: src.length > 120 ? src.slice(0, 119).trimEnd() + '…' : src,
+    }
   })
 }
 
