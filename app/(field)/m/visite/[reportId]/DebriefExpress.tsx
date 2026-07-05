@@ -4,10 +4,11 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, X, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, Star, HelpCircle, FileText,
+  Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
+import { CaptureTriage } from './CaptureTriage'
 import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 import type { VisitImpact } from '@/lib/db/visits'
@@ -47,6 +48,8 @@ export function DebriefExpress({
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [, startBusy] = useTransition()
+  // Traitement photo par photo (écran 2) : index de départ, null = fermé.
+  const [triageStart, setTriageStart] = useState<number | null>(null)
 
   const total = captures.length
   const triaged = captures.filter((c) => c.status !== 'captured').length
@@ -87,18 +90,24 @@ export function DebriefExpress({
     return () => clearInterval(id)
   }, [hasPendingTranscript, reportId])
 
-  function decide(c: VisitCaptureRow, decision: TriageDecision) {
+  function decide(c: VisitCaptureRow, decision: TriageDecision, comment?: string) {
     const prev = c
+    const canComment = c.kind === 'photo' || c.kind === 'video'
     // Optimiste : on reflète tout de suite le choix, on confirme en base derrière.
     const next: VisitCaptureRow = {
       ...c,
-      status: decision === 'ignore' ? 'discarded' : 'kept',
-      triage_intent: decision === 'action' ? 'action' : decision === 'follow' ? 'follow' : null,
+      status: decision === 'delete' ? 'discarded' : 'kept',
+      triage_intent:
+        decision === 'action' ? 'action'
+        : decision === 'surveiller' ? 'follow'
+        : decision === 'reserve' ? 'reserve'
+        : null,
+      ...(comment !== undefined && canComment ? { body: comment.trim() || null } : {}),
     }
     setCaptures((cs) => cs.map((x) => (x.id === c.id ? next : x)))
     setBusyId(c.id)
     startBusy(async () => {
-      const r = await triageCaptureAction({ capture_id: c.id, decision })
+      const r = await triageCaptureAction({ capture_id: c.id, decision, ...(comment !== undefined && canComment ? { comment } : {}) })
       setBusyId(null)
       if (!r.ok) {
         setCaptures((cs) => cs.map((x) => (x.id === c.id ? prev : x)))
@@ -152,13 +161,28 @@ export function DebriefExpress({
       ) : (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium">À relire rapidement</h2>
+            <h2 className="text-sm font-medium">Traiter les captures</h2>
             <span className="text-xs tabular-nums text-muted-foreground">{triaged}/{total} triés</span>
           </div>
 
+          {/* Chemin rapide : photo par photo, 1 geste par capture (objectif < 2 min). */}
+          <button
+            type="button"
+            onClick={() => {
+              const first = captures.findIndex((c) => c.status === 'captured')
+              setTriageStart(first === -1 ? 0 : first)
+            }}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white active:scale-[0.99] transition"
+          >
+            {triaged >= total
+              ? 'Revoir les captures'
+              : `Traiter ${total - triaged} capture${total - triaged > 1 ? 's' : ''}`}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+
           <ul className="space-y-2">
-            {captures.map((c) => (
-              <CaptureCard key={c.id} capture={c} preview={previews[c.id]} busy={busyId === c.id} onDecide={(d) => decide(c, d)} />
+            {captures.map((c, i) => (
+              <CaptureCard key={c.id} capture={c} preview={previews[c.id]} busy={busyId === c.id} onOpen={() => setTriageStart(i)} />
             ))}
           </ul>
         </section>
@@ -188,6 +212,17 @@ export function DebriefExpress({
           </button>
         </div>
       </div>
+
+      {/* Écran 2 — traitement photo par photo, plein écran (le vrai accélérateur). */}
+      {triageStart !== null && (
+        <CaptureTriage
+          captures={captures}
+          previews={previews}
+          startIndex={triageStart}
+          onDecide={(c, d, comment) => decide(c, d, comment)}
+          onClose={() => setTriageStart(null)}
+        />
+      )}
     </div>
   )
 }
@@ -272,31 +307,42 @@ function captureLabel(c: VisitCaptureRow): string {
   }
 }
 
+// Tag métier d'une capture déjà triée — chip discret dans la liste récap.
+const TAG_META: Record<TriageDecision, { label: string; Icon: typeof BookMarked; cls: string }> = {
+  memoire: { label: 'Mémoire', Icon: BookMarked, cls: 'text-slate-600 dark:text-slate-300' },
+  surveiller: { label: 'À surveiller', Icon: Eye, cls: 'text-amber-600 dark:text-amber-400' },
+  reserve: { label: 'Réserve', Icon: AlertTriangle, cls: 'text-rose-600 dark:text-rose-400' },
+  action: { label: 'Action', Icon: Check, cls: 'text-emerald-600 dark:text-emerald-400' },
+  delete: { label: 'Supprimé', Icon: Trash2, cls: 'text-muted-foreground' },
+}
+
 function currentDecision(c: VisitCaptureRow): TriageDecision | null {
-  if (c.status === 'discarded') return 'ignore'
+  if (c.status === 'discarded') return 'delete'
   if (c.status === 'kept') {
     if (c.triage_intent === 'action') return 'action'
-    if (c.triage_intent === 'follow') return 'follow'
-    return 'keep'
+    if (c.triage_intent === 'follow') return 'surveiller'
+    if (c.triage_intent === 'reserve') return 'reserve'
+    return 'memoire'
   }
   return null
 }
 
 function CaptureCard({
-  capture, preview, busy, onDecide,
+  capture, preview, busy, onOpen,
 }: {
   capture: VisitCaptureRow
   preview?: CapturePreview
   busy: boolean
-  onDecide: (d: TriageDecision) => void
+  onOpen: () => void
 }) {
   const chosen = currentDecision(capture)
-  const ignored = chosen === 'ignore'
+  const meta = chosen ? TAG_META[chosen] : null
+  const discarded = chosen === 'delete'
 
   return (
-    <li className={`rounded-xl border p-3 transition-opacity ${ignored ? 'opacity-50' : ''} ${busy ? 'opacity-70' : ''}`}>
-      {/* La ligne relevée — se lit comme un récit, pas comme un fichier. */}
-      <div className="flex items-start gap-2.5">
+    <li className={`rounded-xl border p-3 transition-opacity ${discarded ? 'opacity-50' : ''} ${busy ? 'opacity-70' : ''}`}>
+      {/* La ligne relevée + son tag actuel — un tap ouvre le plein écran de tri. */}
+      <button type="button" onClick={onOpen} className="flex w-full items-start gap-2.5 text-left">
         <span className="shrink-0 pt-0.5 text-emerald-700/80">{KIND_ICON[capture.kind]}</span>
         <p className="min-w-0 flex-1 text-sm leading-snug">
           {captureLabel(capture)}
@@ -304,15 +350,23 @@ function CaptureCard({
             <span className="block text-[11px] text-muted-foreground">transcription…</span>
           )}
         </p>
-      </div>
+        {meta ? (
+          <span className={`inline-flex shrink-0 items-center gap-1 text-[11px] font-medium ${meta.cls}`}>
+            <meta.Icon className="h-3.5 w-3.5" />{meta.label}
+          </span>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+            À trier <ChevronRight className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </button>
 
-      {/* Aperçu du CONTENU — on ne trie pas à l'aveugle. Miniature photo,
-          lecteur vidéo, lecteur audio pour les vocaux. */}
+      {/* Aperçu du CONTENU — un tap ouvre le tri plein écran (jamais à l'aveugle). */}
       {preview && capture.kind === 'photo' && (
-        <a href={preview.url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+        <button type="button" onClick={onOpen} className="mt-2 block w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview.url} alt="" className="max-h-48 w-full rounded-lg border object-cover" />
-        </a>
+        </button>
       )}
       {preview && capture.kind === 'video' && (
         <video src={preview.url} controls playsInline className="mt-2 max-h-56 w-full rounded-lg border bg-black" />
@@ -320,43 +374,6 @@ function CaptureCard({
       {preview && capture.kind === 'vocal' && (
         <audio src={preview.url} controls className="mt-2 w-full" />
       )}
-
-      {/* Une seule question : qu'est-ce que ça devient ? Libellés MÉTIER,
-          compréhensibles sans explication (2×2 pour laisser respirer le texte). */}
-      <div className="mt-2.5 grid grid-cols-2 gap-1.5">
-        <DecisionButton label="Sans intérêt" icon={<X className="h-4 w-4" />} active={chosen === 'ignore'} tone="muted" onClick={() => onDecide('ignore')} />
-        <DecisionButton label="Mémoire" icon={<BookMarked className="h-4 w-4" />} active={chosen === 'keep'} tone="neutral" onClick={() => onDecide('keep')} />
-        <DecisionButton label="Action" icon={<AlertTriangle className="h-4 w-4" />} active={chosen === 'action'} tone="warn" onClick={() => onDecide('action')} />
-        <DecisionButton label="Point de vigilance" icon={<Eye className="h-4 w-4" />} active={chosen === 'follow'} tone="accent" onClick={() => onDecide('follow')} />
-      </div>
     </li>
-  )
-}
-
-function DecisionButton({
-  label, icon, active, tone, onClick,
-}: {
-  label: string
-  icon: React.ReactNode
-  active: boolean
-  tone: 'muted' | 'neutral' | 'accent' | 'warn'
-  onClick: () => void
-}) {
-  const activeCls =
-    tone === 'accent' ? 'border-emerald-600 bg-emerald-600 text-white'
-    : tone === 'warn' ? 'border-amber-500 bg-amber-500 text-white'
-    : tone === 'muted' ? 'border-foreground/30 bg-muted text-foreground'
-    : 'border-foreground bg-foreground text-background'
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative flex flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium active:scale-[0.97] transition ${
-        active ? activeCls : 'border-border bg-background text-foreground/80'
-      }`}
-    >
-      {active ? <Check className="h-4 w-4" /> : icon}
-      {label}
-    </button>
   )
 }
