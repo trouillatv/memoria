@@ -8,10 +8,14 @@
 // supprime jamais ; 🗑 reste un geste volontaire. Cf. [[visite-trois-temps]].
 
 import { useRef, useState } from 'react'
-import { X, BookMarked, Eye, AlertTriangle, Check, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, BookMarked, Eye, AlertTriangle, Check, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { toast } from 'sonner'
 import type { TriageDecision } from './debrief-actions'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
 import type { CapturePreview } from './DebriefExpress'
+import { PhotoAnnotator } from '@/app/(field)/m/site/[siteId]/PhotoAnnotator'
+import { uploadReportAttachmentAction } from '@/app/(field)/m/site/[siteId]/report-actions'
+import { addPhotoCaptureAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 
 // État actuel d'une capture → décision (pour surligner le tag déjà choisi).
 function currentDecision(c: VisitCaptureRow): TriageDecision | null {
@@ -55,12 +59,16 @@ export function CaptureTriage({
   startIndex = 0,
   onDecide,
   onClose,
+  onAnnotated,
 }: {
   captures: VisitCaptureRow[]
   previews: Record<string, CapturePreview>
   startIndex?: number
   onDecide: (capture: VisitCaptureRow, decision: TriageDecision, comment?: string) => void
   onClose: () => void
+  /** Rappel après ajout d'une photo ANNOTÉE (nouvelle capture) — le parent
+   *  recharge la liste + les aperçus pour la faire apparaître. */
+  onAnnotated?: () => void | Promise<void>
 }) {
   const total = captures.length
   const [index, setIndex] = useState(Math.min(Math.max(0, startIndex), Math.max(0, total - 1)))
@@ -68,13 +76,43 @@ export function CaptureTriage({
   // Commentaire non contrôlé + `key` sur la capture : revenir en arrière recharge
   // ce qui a été saisi, sans setState en effet (pas de rendus en cascade).
   const commentRef = useRef<HTMLInputElement>(null)
+  // Annotation ouverte (url de la photo à annoter), null = fermée.
+  const [annotate, setAnnotate] = useState<string | null>(null)
 
   const capture = captures[index]
   if (!capture) { onClose(); return null }
 
   const preview = previews[capture.id]
   const canComment = capture.kind === 'photo' || capture.kind === 'video'
+  const canAnnotate = capture.kind === 'photo' && !!preview
   const chosen = currentDecision(capture)
+
+  // L'image ANNOTÉE s'ajoute EN PLUS de l'original (jamais détruire la preuve) :
+  // nouvelle capture photo, même instant réel que l'originale (donc rangée juste
+  // à côté d'elle dans une visite importée). Le parent recharge ensuite la liste.
+  async function saveAnnotation(file: File) {
+    try {
+      const fd = new FormData()
+      fd.set('report_id', capture.report_id)
+      fd.set('kind', 'photo')
+      fd.set('client_uuid', crypto.randomUUID())
+      fd.set('file', file)
+      const up = await uploadReportAttachmentAction(fd)
+      if (!up.ok) { toast.error(up.error); return }
+      const cap = await addPhotoCaptureAction({
+        report_id: capture.report_id,
+        site_id: capture.site_id,
+        attachment_id: up.attachmentId,
+        ...(capture.captured_at ? { captured_at: capture.captured_at } : {}),
+      })
+      if (!cap.ok) { toast.error(cap.error); return }
+      setAnnotate(null)
+      toast.success('Photo annotée ajoutée', { duration: 1500 })
+      await onAnnotated?.()
+    } catch {
+      toast.error('Échec de l’enregistrement de l’annotation')
+    }
+  }
 
   // Navigation CIRCULAIRE : après la dernière on revient à la première, et
   // « précédent » depuis la première va à la dernière. On ne SORT jamais tout
@@ -132,10 +170,19 @@ export function CaptureTriage({
 
       {/* Média en grand — le swipe se fait ici. */}
       <div
-        className="flex flex-1 items-center justify-center overflow-hidden bg-black/5 p-3 dark:bg-white/5"
+        className="relative flex flex-1 items-center justify-center overflow-hidden bg-black/5 p-3 dark:bg-white/5"
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
+        {canAnnotate && (
+          <button
+            type="button"
+            onClick={() => setAnnotate(preview.url)}
+            className="absolute right-4 top-4 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur active:scale-95"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Annoter
+          </button>
+        )}
         {capture.kind === 'photo' && preview ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview.url} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
@@ -198,6 +245,16 @@ export function CaptureTriage({
           </span>
         </div>
       </div>
+
+      {/* Annotation plein écran — « regarde EXACTEMENT ici ». L'image annotée
+          s'ajoute en plus de l'originale, sans jamais la détruire. */}
+      {annotate && (
+        <PhotoAnnotator
+          imageUrl={annotate}
+          onCancel={() => setAnnotate(null)}
+          onSave={saveAnnotation}
+        />
+      )}
     </div>
   )
 }
