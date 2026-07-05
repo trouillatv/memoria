@@ -24,6 +24,7 @@ import {
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
+import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { createClient } from '@/lib/supabase/client'
 
@@ -247,12 +248,15 @@ export function VisitBasket({
     // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
     ;(async () => {
       const pos = await getOneShotPosition()
+      // Photo : compression/redimensionnement AVANT la file (50 photos plein
+      // format satureraient IndexedDB + upload + PDF). Non bloquant, non destructif.
+      const blob = kind === 'photo' ? await compressImageFile(file) : file
       const ext = kind === 'photo' ? 'jpg' : kind === 'video' ? 'mp4' : 'webm'
       await queueVisitCapture({
         clientUuid, userId, reportId, siteId, kind,
-        blob: file,
+        blob,
         filename: `${kind}-${clientUuid}.${ext}`,
-        mimeType: file.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
+        mimeType: blob.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
         lat: pos?.lat ?? null,
         lng: pos?.lng ?? null,
       })
