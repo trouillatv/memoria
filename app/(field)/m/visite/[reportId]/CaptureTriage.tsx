@@ -8,10 +8,22 @@
 // supprime jamais ; 🗑 reste un geste volontaire. Cf. [[visite-trois-temps]].
 
 import { useRef, useState } from 'react'
-import { X, BookMarked, Eye, AlertTriangle, Check, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown } from 'lucide-react'
+import { X, BookMarked, Eye, AlertTriangle, Check, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TriageDecision } from './debrief-actions'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
 import type { CapturePreview } from './DebriefExpress'
+
+// État actuel d'une capture → décision (pour surligner le tag déjà choisi).
+function currentDecision(c: VisitCaptureRow): TriageDecision | null {
+  if (c.status === 'discarded') return 'delete'
+  if (c.status === 'kept') {
+    if (c.triage_intent === 'action') return 'action'
+    if (c.triage_intent === 'follow') return 'surveiller'
+    if (c.triage_intent === 'reserve') return 'reserve'
+    return 'memoire'
+  }
+  return null
+}
 
 const KEEP_TAGS: Array<{
   decision: Exclude<TriageDecision, 'delete'>
@@ -50,26 +62,31 @@ export function CaptureTriage({
   onDecide: (capture: VisitCaptureRow, decision: TriageDecision, comment?: string) => void
   onClose: () => void
 }) {
-  const [index, setIndex] = useState(Math.min(Math.max(0, startIndex), Math.max(0, captures.length - 1)))
-  const [comment, setComment] = useState('')
-  const touch = useRef<{ x: number; y: number } | null>(null)
-
   const total = captures.length
+  const [index, setIndex] = useState(Math.min(Math.max(0, startIndex), Math.max(0, total - 1)))
+  const touch = useRef<{ x: number; y: number } | null>(null)
+  // Commentaire non contrôlé + `key` sur la capture : revenir en arrière recharge
+  // ce qui a été saisi, sans setState en effet (pas de rendus en cascade).
+  const commentRef = useRef<HTMLInputElement>(null)
+
   const capture = captures[index]
   if (!capture) { onClose(); return null }
 
   const preview = previews[capture.id]
   const canComment = capture.kind === 'photo' || capture.kind === 'video'
+  const chosen = currentDecision(capture)
 
-  function advance() {
-    setComment('')
-    if (index >= total - 1) { onClose(); return }
-    setIndex((i) => i + 1)
+  // Navigation CIRCULAIRE : après la dernière on revient à la première, et
+  // « précédent » depuis la première va à la dernière. On ne SORT jamais tout
+  // seul — la fermeture est un geste volontaire (croix). On peut donc revenir
+  // corriger une mauvaise manipulation autant qu'on veut.
+  function go(delta: number) {
+    setIndex((i) => (i + delta + total) % total)
   }
 
   function decide(decision: TriageDecision) {
-    onDecide(capture, decision, canComment ? comment : undefined)
-    advance()
+    onDecide(capture, decision, canComment ? (commentRef.current?.value ?? undefined) : undefined)
+    go(1)
   }
 
   // Swipe : ← Mémoire · ↑ Surveiller · → Action · ↓ Réserve. Seuil généreux pour
@@ -92,10 +109,10 @@ export function CaptureTriage({
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-background">
-      {/* En-tête : progression + fermer. « Capture 3 / 15 ». */}
+      {/* En-tête : fermer · progression · navigation (revenir en arrière possible). */}
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <button type="button" onClick={onClose} aria-label="Fermer" className="text-muted-foreground">
-          <ArrowLeft className="h-5 w-5" />
+          <X className="h-5 w-5" />
         </button>
         <div className="min-w-0 flex-1 text-center">
           <p className="text-sm font-medium">Capture {index + 1} / {total}</p>
@@ -103,9 +120,14 @@ export function CaptureTriage({
             <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${((index + 1) / total) * 100}%` }} />
           </div>
         </div>
-        <button type="button" onClick={onClose} aria-label="Fermer" className="text-muted-foreground">
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => go(-1)} aria-label="Précédent" className="rounded-lg p-1 text-muted-foreground active:bg-muted">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button type="button" onClick={() => go(1)} aria-label="Suivant" className="rounded-lg p-1 text-muted-foreground active:bg-muted">
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {/* Média en grand — le swipe se fait ici. */}
@@ -135,8 +157,9 @@ export function CaptureTriage({
 
         {canComment && (
           <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            key={capture.id}
+            ref={commentRef}
+            defaultValue={capture.body ?? ''}
             placeholder="Ajouter un commentaire… (facultatif)"
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             maxLength={500}
@@ -146,14 +169,15 @@ export function CaptureTriage({
         <div className="grid grid-cols-2 gap-2">
           {KEEP_TAGS.map((t) => {
             const Icon = t.icon
+            const active = chosen === t.decision
             return (
               <button
                 key={t.decision}
                 type="button"
                 onClick={() => decide(t.decision)}
-                className={`flex items-center gap-2 rounded-xl border-2 bg-background px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${t.cls}`}
+                className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${t.cls} ${active ? 'bg-muted ring-2 ring-current ring-offset-1' : 'bg-background'}`}
               >
-                <Icon className="h-5 w-5 shrink-0" />
+                {active ? <Check className="h-5 w-5 shrink-0" /> : <Icon className="h-5 w-5 shrink-0" />}
                 <span className="min-w-0 flex-1 leading-tight">{t.label}</span>
                 <span className="shrink-0 text-xs text-muted-foreground/60" aria-hidden>{t.swipe}</span>
               </button>
@@ -165,9 +189,9 @@ export function CaptureTriage({
           <button
             type="button"
             onClick={() => decide('delete')}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive"
+            className={`inline-flex items-center gap-1.5 text-xs font-medium ${chosen === 'delete' ? 'text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
           >
-            <Trash2 className="h-3.5 w-3.5" /> Supprimer
+            <Trash2 className="h-3.5 w-3.5" /> {chosen === 'delete' ? 'Supprimée' : 'Supprimer'}
           </button>
           <span className="inline-flex items-center gap-2 text-[11px] text-muted-foreground/70" aria-hidden>
             <ArrowLeft className="h-3 w-3" /><ArrowUp className="h-3 w-3" /><ArrowDown className="h-3 w-3" /><ArrowRight className="h-3 w-3" /> glissez pour aller vite
