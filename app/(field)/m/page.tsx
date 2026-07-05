@@ -731,7 +731,7 @@ export default async function FieldHomePage({
               <CheckCircle2 className="h-5 w-5" strokeWidth={1.5} />
             </span>
             <p className="text-sm font-medium">Pas d&apos;intervention prévue.</p>
-            <Link href="/m/sites" className="text-[13px] font-medium text-foreground/70 underline underline-offset-2 active:opacity-70">
+            <Link href="/m/chantiers" className="text-[13px] font-medium text-foreground/70 underline underline-offset-2 active:opacity-70">
               Voir mes chantiers
             </Link>
           </div>

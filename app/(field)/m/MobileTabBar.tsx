@@ -11,7 +11,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, MapPin, Building2, CheckSquare, User } from 'lucide-react'
+import { Home, Building2, CheckSquare, User } from 'lucide-react'
 
 const ITEMS: Array<{
   href: string
@@ -21,8 +21,9 @@ const ITEMS: Array<{
   badge?: boolean
 }> = [
   { href: '/m', label: "Aujourd'hui", Icon: Home, isActive: (p) => p === '/m' },
-  { href: '/m/sites', label: 'Sites', Icon: MapPin, isActive: (p) => p.startsWith('/m/sites') },
-  { href: '/m/chantiers', label: 'Chantiers', Icon: Building2, isActive: (p) => p.startsWith('/m/chantiers') },
+  // « Sites » (proximité GPS) reviendra quand le « près de moi » sera réel — sinon
+  // c'est un doublon de Chantiers. Le chantier est le vrai centre du conducteur.
+  { href: '/m/chantiers', label: 'Chantiers', Icon: Building2, isActive: (p) => p.startsWith('/m/chantiers') || p.startsWith('/m/sites') || p.startsWith('/m/site/') },
   { href: '/m/actions', label: 'Actions', Icon: CheckSquare, isActive: (p) => p.startsWith('/m/actions'), badge: true },
   { href: '/m/profil', label: 'Profil', Icon: User, isActive: (p) => p.startsWith('/m/profil') },
 ]
@@ -36,7 +37,7 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-foreground/[0.08] bg-background/95 backdrop-blur safe-bottom">
-      <div className="mx-auto grid max-w-md grid-cols-5">
+      <div className="mx-auto grid max-w-md grid-cols-4">
         {ITEMS.map(({ href, label, Icon, isActive, badge }) => {
           const active = isActive(pathname)
           return (
