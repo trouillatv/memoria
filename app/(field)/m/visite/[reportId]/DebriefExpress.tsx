@@ -4,10 +4,11 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, ArrowRight, Star, HelpCircle, FileText,
+  Camera, Video, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, CheckCircle2, ArrowRight, Star, HelpCircle, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
+import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 /**
@@ -103,17 +104,23 @@ export function DebriefExpress({
   }
 
   return (
-    <div className="mx-auto max-w-md space-y-4 p-4 pb-28">
-      {/* En-tête : on a fini de marcher, on relit vite. */}
+    <div className="mx-auto max-w-md space-y-4 p-4 pb-48">
+      {/* En-tête : la visite a une VRAIE fin — le cerveau doit sentir que c'est
+          terminé et rangé. Affirmation « enregistrée » + réassurance mémoire. */}
       <header className="space-y-2 pt-2">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">Fin de prévisite</p>
-          <h1 className="text-xl font-semibold">Visite terminée</h1>
+          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
+            {dossierId ? 'Fin de prévisite' : 'Fin de visite'}
+          </p>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" />
+            Visite enregistrée
+          </h1>
           <p className="text-sm text-muted-foreground">
             {siteName} · {total} élément{total > 1 ? 's' : ''} relevé{total > 1 ? 's' : ''}
           </p>
         </div>
-        {/* Composition de la prévisite — ce que l'agent a ramené, d'un coup d'œil. */}
+        {/* Composition de la visite — ce que l'agent a ramené, d'un coup d'œil. */}
         {summaryChips.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border bg-muted/30 px-3 py-2.5 text-sm">
             {summaryChips.map((c, i) => {
@@ -127,6 +134,7 @@ export function DebriefExpress({
             })}
           </div>
         )}
+        <p className="text-[13px] text-muted-foreground">Tout est enregistré dans MemorIA.</p>
       </header>
 
       {total === 0 ? (
@@ -148,39 +156,28 @@ export function DebriefExpress({
         </section>
       )}
 
-      {/* Barre de fin — on ne FORCE pas à tout trier. Si un dossier d'affaire est
-          rattaché, on enchaîne naturellement sur la préparation de l'AO ; sinon on
-          revient au chantier. */}
+      {/* Barre de fin — la question à cet instant est « qu'est-ce que je fais de ma
+          visite ? ». On mène donc avec les SORTIES (voir / CR-PDF / ordinateur).
+          Une vraie prévisite AO peut ENSUITE enchaîner sur l'AO — option secondaire,
+          jamais le CTA dominant (sinon on donne l'impression de « lancer un AO »). */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-md space-y-2">
-          {dossierId ? (
-            <>
-              <Link
-                href={`/dossiers/${dossierId}`}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-              >
-                <FileText className="h-4 w-4" /> Préparer l&apos;appel d&apos;offres <ArrowRight className="h-4 w-4" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => router.push(`/m/site/${siteId}`)}
-                className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-muted-foreground"
-              >
-                Plus tard — revenir au chantier
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-3">
-              <p className="flex-1 text-xs text-muted-foreground">Le reste sera préparé au bureau.</p>
-              <button
-                type="button"
-                onClick={() => router.push(`/m/site/${siteId}`)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
-              >
-                Terminé <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
+          <VisitOutputActions reportId={reportId} siteId={siteId} />
+          {dossierId && (
+            <Link
+              href={`/dossiers/${dossierId}`}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-600/60 px-4 py-2.5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+            >
+              <FileText className="h-4 w-4" /> Enchaîner : préparer l&apos;appel d&apos;offres <ArrowRight className="h-4 w-4" />
+            </Link>
           )}
+          <button
+            type="button"
+            onClick={() => router.push(`/m/site/${siteId}`)}
+            className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
+          >
+            Retour au chantier
+          </button>
         </div>
       </div>
     </div>

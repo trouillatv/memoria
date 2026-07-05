@@ -39,6 +39,22 @@ export default async function VisitDebriefPage({
 
   const captures = await listVisitCaptures(reportId)
 
+  // Le CTA « Préparer l'AO » n'a de sens que pour une VRAIE prévisite d'appel
+  // d'offres (dossier en phase prospect/en_ao). Une visite normale sur un
+  // chantier actif porte aussi un dossier (phase 'actif') mais ne doit PAS
+  // proposer de démarrer un AO — à ce moment l'agent pense « qu'est-ce que je
+  // fais de ma visite ? », pas « je lance un appel d'offres ».
+  let previsiteDossierId: string | null = null
+  if (visit.dossier_id) {
+    const { data: dossier } = await supabase
+      .from('dossiers')
+      .select('phase')
+      .eq('id', visit.dossier_id)
+      .maybeSingle()
+    const phase = (dossier as { phase: string } | null)?.phase
+    if (phase === 'prospect' || phase === 'en_ao') previsiteDossierId = visit.dossier_id
+  }
+
   const [{ count: questionsCount }, previews] = await Promise.all([
     // ❓ « à vérifier » posées pendant la visite (captured_knowledge) — comptées
     // pour le récap de fin, à côté des captures.
@@ -57,7 +73,7 @@ export default async function VisitDebriefPage({
       reportId={reportId}
       siteId={visit.site_id}
       siteName={(site as { name: string } | null)?.name ?? 'Chantier'}
-      dossierId={visit.dossier_id ?? null}
+      dossierId={previsiteDossierId}
       questionsCount={questionsCount ?? 0}
       initialCaptures={captures}
       previews={previews}
