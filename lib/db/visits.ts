@@ -589,6 +589,72 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
   }
 }
 
+// ── « Chantiers récents » : les 3 derniers dossiers ouverts (accueil, sobre) ──
+// Pas besoin d'aller dans « Chantiers » à chaque fois : les 3 derniers, une ligne
+// chacun (nom · dernière activité · actions/réserves ouvertes). Zéro image.
+
+export interface RecentSiteItem {
+  siteId: string
+  name: string
+  lastActivityLabel: string | null
+  openActions: number
+  openReserves: number
+}
+
+function relativeDayLabel(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const t = d.getTime()
+  if (Number.isNaN(t)) return ''
+  if (t >= startToday) return "Aujourd'hui"
+  if (t >= startToday - 86400000) return 'Hier'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
+export async function listRecentSitesForUser(userId: string, limit = 3): Promise<RecentSiteItem[]> {
+  const supabase = createAdminClient()
+  const { data: reps } = await supabase
+    .from('site_reports')
+    .select('site_id, created_at, started_at, ended_at')
+    .eq('created_by', userId)
+    .not('site_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(40)
+  const rows = (reps ?? []) as Array<{ site_id: string; created_at: string; started_at: string | null; ended_at: string | null }>
+  const order: string[] = []
+  const lastBySite = new Map<string, string>()
+  for (const r of rows) {
+    if (!lastBySite.has(r.site_id)) {
+      lastBySite.set(r.site_id, r.ended_at ?? r.started_at ?? r.created_at)
+      order.push(r.site_id)
+    }
+    if (order.length >= limit) break
+  }
+  if (order.length === 0) return []
+
+  const [{ data: sites }, openActions, { data: reserveRows }] = await Promise.all([
+    supabase.from('sites').select('id, name').in('id', order),
+    listOpenSiteActions({ siteIds: order }).catch(() => []),
+    supabase.from('site_reserve').select('site_id, status').in('site_id', order),
+  ])
+  const nameById = new Map((sites ?? []).map((s) => [s.id as string, s.name as string]))
+  const actionsBySite = new Map<string, number>()
+  for (const a of openActions as Array<{ site_id: string }>) actionsBySite.set(a.site_id, (actionsBySite.get(a.site_id) ?? 0) + 1)
+  const reservesBySite = new Map<string, number>()
+  for (const r of (reserveRows ?? []) as Array<{ site_id: string; status: string }>) {
+    if (r.status === 'open') reservesBySite.set(r.site_id, (reservesBySite.get(r.site_id) ?? 0) + 1)
+  }
+
+  return order.map((siteId) => ({
+    siteId,
+    name: nameById.get(siteId) ?? 'Chantier',
+    lastActivityLabel: relativeDayLabel(lastBySite.get(siteId) ?? ''),
+    openActions: actionsBySite.get(siteId) ?? 0,
+    openReserves: reservesBySite.get(siteId) ?? 0,
+  }))
+}
+
 // ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
 // Le geste QUOTIDIEN n'est pas de démarrer une visite, c'est de reprendre ce qui
 // n'est pas fini. Ici : les visites TERMINÉES de l'agent qui ont encore des
