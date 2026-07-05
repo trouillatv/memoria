@@ -6,9 +6,9 @@
 // tactile ; les formes sont mémorisées → on peut effacer la dernière.
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Pencil, ArrowUpRight, Circle, Type, Undo2, Loader2, Check } from 'lucide-react'
+import { X, Pencil, ArrowUpRight, Circle, Type, Undo2, Loader2, Check, Eraser } from 'lucide-react'
 
-type Tool = 'draw' | 'arrow' | 'circle' | 'text'
+type Tool = 'draw' | 'arrow' | 'circle' | 'text' | 'erase'
 type Pt = { x: number; y: number }
 type Shape =
   | { tool: 'draw'; color: string; points: Pt[] }
@@ -96,6 +96,18 @@ export function PhotoAnnotator({
     if (!ready) return
     e.preventDefault()
     const p = toCanvas(e)
+    if (tool === 'erase') {
+      // Gomme : on retire l'annotation la PLUS RÉCENTE touchée (texte, cercle,
+      // flèche ou trait) — permet de viser n'importe laquelle, pas seulement la dernière.
+      const w = canvasRef.current?.width ?? 0
+      setShapes((s) => {
+        for (let i = s.length - 1; i >= 0; i--) {
+          if (hitShape(s[i], p, w)) { const c = s.slice(); c.splice(i, 1); return c }
+        }
+        return s
+      })
+      return
+    }
     if (tool === 'text') {
       const text = window.prompt('Texte :')?.trim()
       if (text) setShapes((s) => [...s, { tool: 'text', color, at: p, text, scale: textScale }])
@@ -145,6 +157,7 @@ export function PhotoAnnotator({
     { t: 'arrow', icon: ArrowUpRight, label: 'Flèche' },
     { t: 'circle', icon: Circle, label: 'Cercle' },
     { t: 'text', icon: Type, label: 'Texte' },
+    { t: 'erase', icon: Eraser, label: 'Gomme' },
   ]
 
   return (
@@ -173,7 +186,7 @@ export function PhotoAnnotator({
       </div>
 
       <div className="space-y-2 border-t border-white/10 p-3 safe-bottom">
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-3 gap-1.5">
           {TOOLS.map(({ t, icon: Icon, label }) => (
             <button
               key={t} type="button" onClick={() => setTool(t)}
@@ -186,9 +199,12 @@ export function PhotoAnnotator({
             type="button" onClick={() => setShapes((s) => s.slice(0, -1))} disabled={shapes.length === 0}
             className="flex flex-col items-center gap-1 rounded-lg bg-white/10 px-1 py-2 text-[11px] font-medium text-white disabled:opacity-40"
           >
-            <Undo2 className="h-4 w-4" /> Effacer
+            <Undo2 className="h-4 w-4" /> Annuler
           </button>
         </div>
+        {tool === 'erase' && (
+          <p className="text-center text-[11px] text-white/70">Touchez une annotation pour l&apos;effacer.</p>
+        )}
         {tool === 'text' && (
           <div className="flex items-center justify-center gap-1.5">
             {TEXT_SIZES.map((sz) => (
@@ -216,6 +232,34 @@ export function PhotoAnnotator({
 }
 
 function dist(a: Pt, b: Pt) { return Math.hypot(b.x - a.x, b.y - a.y) }
+
+/** Distance d'un point au segment [a,b] — pour toucher une flèche/un trait. */
+function distToSegment(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x, dy = b.y - a.y
+  const len2 = dx * dx + dy * dy
+  if (len2 === 0) return dist(p, a)
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return dist(p, { x: a.x + t * dx, y: a.y + t * dy })
+}
+
+/** La forme est-elle « touchée » par le point `p` (gomme) ? Tolérance tactile
+ *  proportionnelle à l'image. On teste de la plus récente à la plus ancienne. */
+function hitShape(s: Shape, p: Pt, canvasWidth: number): boolean {
+  const near = Math.max(12, canvasWidth / 55)
+  if (s.tool === 'draw') return s.points.some((pt) => dist(pt, p) < near)
+  if (s.tool === 'arrow') return distToSegment(p, s.a, s.b) < near
+  if (s.tool === 'circle') {
+    const cx = (s.a.x + s.b.x) / 2, cy = (s.a.y + s.b.y) / 2
+    const rx = Math.abs(s.b.x - s.a.x) / 2 || 1, ry = Math.abs(s.b.y - s.a.y) / 2 || 1
+    const nx = (p.x - cx) / rx, ny = (p.y - cy) / ry
+    return nx * nx + ny * ny <= 1.25 // à l'intérieur ou près du contour
+  }
+  // texte : boîte englobante approchée (police proportionnelle à l'image)
+  const fontSize = Math.max(22, Math.round((canvasWidth / 22) * s.scale))
+  const w = s.text.length * fontSize * 0.6
+  return p.x >= s.at.x - near && p.x <= s.at.x + w + near && p.y >= s.at.y - near && p.y <= s.at.y + fontSize + near
+}
 
 function drawShape(ctx: CanvasRenderingContext2D, s: Shape) {
   ctx.strokeStyle = s.color
