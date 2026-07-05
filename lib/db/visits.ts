@@ -719,6 +719,39 @@ export async function listRecentSitesForUser(userId: string, limit = 3): Promise
   }))
 }
 
+// ── « Récent » : dernière visite + dernier compte-rendu de l'agent (accueil) ──
+// La feuille de journée se termine par un « Récent » narratif : ce que j'ai fait
+// en dernier, pour y revenir vite. On ne montre QUE ce qui existe (pas de « dernier
+// chantier consulté » : aucun suivi de consultation en base).
+
+export interface RecentActivityItem { reportId: string; label: string; sub: string }
+
+export async function getRecentActivityForUser(userId: string): Promise<RecentActivityItem[]> {
+  const supabase = createAdminClient()
+  const [visitRes, crRes] = await Promise.all([
+    supabase.from('site_reports').select('id, site_id, started_at, ended_at, created_at')
+      .eq('created_by', userId).not('origin', 'is', null).not('site_id', 'is', null)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('site_reports').select('id, site_id, title, created_at')
+      .eq('created_by', userId).is('origin', null).neq('status', 'draft').not('site_id', 'is', null)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+  ])
+  const v = visitRes.data as { id: string; site_id: string; started_at: string | null; ended_at: string | null; created_at: string } | null
+  const cr = crRes.data as { id: string; site_id: string; title: string | null; created_at: string } | null
+
+  const ids = [v?.site_id, cr?.site_id].filter((x): x is string => !!x)
+  const nameById = new Map<string, string>()
+  if (ids.length) {
+    const { data } = await supabase.from('sites').select('id, name').in('id', [...new Set(ids)])
+    for (const s of (data ?? []) as Array<{ id: string; name: string }>) nameById.set(s.id, s.name)
+  }
+
+  const items: RecentActivityItem[] = []
+  if (v) items.push({ reportId: v.id, label: `Dernière visite — ${nameById.get(v.site_id) ?? 'Chantier'}`, sub: relativeDayLabel(v.ended_at ?? v.started_at ?? v.created_at) })
+  if (cr) items.push({ reportId: cr.id, label: cr.title?.trim() || `Compte-rendu — ${nameById.get(cr.site_id) ?? 'Chantier'}`, sub: relativeDayLabel(cr.created_at) })
+  return items
+}
+
 // ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
 // Le geste QUOTIDIEN n'est pas de démarrer une visite, c'est de reprendre ce qui
 // n'est pas fini. Ici : les visites TERMINÉES de l'agent qui ont encore des

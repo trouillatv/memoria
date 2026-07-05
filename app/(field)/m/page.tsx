@@ -19,7 +19,8 @@ import { VisitLauncherHome } from './VisitLauncherHome'
 import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
 import { ResumeWorkCard } from './ResumeWorkCard'
 import { RecentSitesCard } from './RecentSitesCard'
-import { listActiveVisitsForUser, listPendingTriageForUser, listRecentSitesForUser } from '@/lib/db/visits'
+import { RecentActivityCard } from './RecentActivityCard'
+import { listActiveVisitsForUser, listPendingTriageForUser, listRecentSitesForUser, getRecentActivityForUser } from '@/lib/db/visits'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -585,10 +586,11 @@ export default async function FieldHomePage({
 
   // « Reprendre mon travail » — la pile de travail du quotidien : visites en cours
   // (à reprendre) + visites terminées dont le TRI n'est pas fini. Tout en haut.
-  const [activeVisits, pendingTriage, recentSites] = await Promise.all([
+  const [activeVisits, pendingTriage, recentSites, recentActivity] = await Promise.all([
     listActiveVisitsForUser(user.id).catch(() => []),
     listPendingTriageForUser(user.id).catch(() => []),
     listRecentSitesForUser(user.id).catch(() => []),
+    getRecentActivityForUser(user.id).catch(() => []),
   ])
 
   // Narratif : on ouvre sur une salutation + la journée — une feuille de route,
@@ -763,6 +765,9 @@ export default async function FieldHomePage({
 
       {/* Chantiers récents — les 3 derniers dossiers ouverts (sobre, sans image). */}
       <RecentSitesCard sites={recentSites} />
+
+      {/* Récent — fin de la feuille de journée : dernière visite, dernier CR. */}
+      <RecentActivityCard items={recentActivity} />
 
       {/* À venir cette semaine. */}
       {upcomingInterventions.length > 0 && (
