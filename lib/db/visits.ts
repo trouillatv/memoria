@@ -18,6 +18,7 @@ import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { runVisitSummary } from '@/services/ai/visit-summary'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -676,12 +677,25 @@ export interface VisitCrDoc {
   /** Combien de vidéos/vocaux captés (non embarqués, mentionnés). */
   videoCount: number
   vocalCount: number
+  /** Résumé « MemorIA comprend » — IA gatée, ou repli déterministe. Éditable. */
+  summary: string | null
+  /** Points du CR groupés par TAG (écran 2), texte = commentaire ou libellé. */
+  points: {
+    memoire: string[]     // 📚 à conserver
+    surveiller: string[]  // 👀 à surveiller
+    reserve: string[]     // ⚠️ réserve
+    action: string[]      // ✅ action
+  }
   outcomeLabel: string | null
   resolutionLabel: string | null
 }
 
-/** Rassemble le CR d'une visite en données structurées. `null` si introuvable. */
-export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | null> {
+/**
+ * Rassemble le CR d'une visite en données structurées. `null` si introuvable.
+ * `userId` (optionnel) : traçabilité du coût du résumé IA. Sans provider IA
+ * configuré (ou < 3 observations), le résumé est déterministe — zéro appel.
+ */
+export async function buildVisitCrDoc(reportId: string, userId: string | null = null): Promise<VisitCrDoc | null> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return null
   const { visit } = ctx
@@ -738,6 +752,33 @@ export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | nu
     return true
   })
 
+  // Points du CR groupés par TAG (écran 2). Texte = commentaire de la capture,
+  // sinon un libellé par type. Seules les captures GARDÉES et taguées comptent.
+  const kindLabel: Record<VisitCaptureKind, string> = {
+    photo: 'Photo', video: 'Vidéo', vocal: 'Mémo vocal', note: 'Note', verification: 'Point vérifié', position: 'Position',
+  }
+  const kept = captures.filter((c) => c.status === 'kept')
+  const textOf = (c: (typeof kept)[number]) => c.body?.trim() || kindLabel[c.kind]
+  const points = {
+    memoire: kept.filter((c) => c.triage_intent == null).map(textOf),
+    surveiller: kept.filter((c) => c.triage_intent === 'follow').map(textOf),
+    reserve: kept.filter((c) => c.triage_intent === 'reserve').map(textOf),
+    action: kept.filter((c) => c.triage_intent === 'action').map(textOf),
+  }
+
+  // Résumé — la SEULE IA (gatée, sur du texte, jamais les images). Ne bloque
+  // jamais le CR : repli déterministe intégré au service.
+  const summary = await runVisitSummary({
+    siteName,
+    objective: visit.objective?.trim() || null,
+    constats,
+    reserves: points.reserve,
+    actions: points.action,
+    surveiller: points.surveiller,
+    photoCount: photoCaptures.length,
+    userId,
+  }).catch(() => null)
+
   return {
     siteName,
     clientName,
@@ -752,6 +793,8 @@ export async function buildVisitCrDoc(reportId: string): Promise<VisitCrDoc | nu
     photos,
     videoCount,
     vocalCount,
+    summary,
+    points,
     outcomeLabel: visit.outcome ? OUTCOME_FR[visit.outcome] ?? visit.outcome : null,
     resolutionLabel: visit.resolution ? RESOLUTION_FR[visit.resolution] ?? visit.resolution : null,
   }
@@ -778,20 +821,40 @@ export async function buildVisitCr(reportId: string): Promise<string | null> {
   if (doc.subjectName) lines.push(`Sujet : **${doc.subjectName}**`)
   lines.push('')
 
+  if (doc.summary) {
+    lines.push('## Résumé')
+    lines.push(doc.summary)
+    lines.push('')
+  }
+
   lines.push('## Constats')
   if (doc.constats.length > 0) doc.constats.forEach((n) => lines.push(`- ${n}`))
   else lines.push('_Aucune note saisie pendant la visite._')
   lines.push('')
 
-  if (doc.reserves.length > 0) {
-    lines.push('## Réserves relevées')
-    doc.reserves.forEach((r) => lines.push(`- ${r.label}${r.location ? ` (${r.location})` : ''}`))
+  const reserveLines = [
+    ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
+    ...doc.points.reserve,
+  ]
+  if (reserveLines.length > 0) {
+    lines.push('## Réserves')
+    reserveLines.forEach((r) => lines.push(`- ${r}`))
     lines.push('')
   }
 
-  if (doc.actions.length > 0) {
+  if (doc.points.surveiller.length > 0) {
+    lines.push('## Points à surveiller')
+    doc.points.surveiller.forEach((s) => lines.push(`- ${s}`))
+    lines.push('')
+  }
+
+  const actionLines = [
+    ...doc.actions.map((a) => `${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`),
+    ...doc.points.action,
+  ]
+  if (actionLines.length > 0) {
     lines.push('## Actions')
-    doc.actions.forEach((a) => lines.push(`- ${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`))
+    actionLines.forEach((a) => lines.push(`- ${a}`))
     lines.push('')
   }
 

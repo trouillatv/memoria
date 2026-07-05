@@ -82,8 +82,15 @@ function Bullets({ items, empty }: { items: string[]; empty: string }) {
 
 export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: string }) {
   const title = `Compte-rendu de visite — ${doc.siteName}`
-  const reserveLines = doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`)
-  const actionLines = doc.actions.map((a) => `${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`)
+  // Réserves/actions = objets bureau (site_reserve/actions) + tags terrain (écran 2).
+  const reserveLines = [
+    ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
+    ...doc.points.reserve,
+  ]
+  const actionLines = [
+    ...doc.actions.map((a) => `${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`),
+    ...doc.points.action,
+  ]
 
   return (
     <Document title={title}>
@@ -115,6 +122,13 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
           {doc.subjectName ? <Text style={styles.paragraph}>Sujet : {doc.subjectName}</Text> : null}
         </View>
 
+        {doc.summary && (
+          <View style={styles.section} wrap={false}>
+            <Text style={styles.sectionTitle}>Résumé</Text>
+            <Text style={styles.paragraph}>{doc.summary}</Text>
+          </View>
+        )}
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Constats</Text>
           <Bullets items={doc.constats} empty="Aucune note saisie pendant la visite." />
@@ -122,14 +136,21 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
 
         {reserveLines.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Réserves relevées</Text>
+            <Text style={styles.sectionTitle}>Réserves</Text>
             <Bullets items={reserveLines} empty="—" />
+          </View>
+        )}
+
+        {doc.points.surveiller.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Points à surveiller</Text>
+            <Bullets items={doc.points.surveiller} empty="—" />
           </View>
         )}
 
         {actionLines.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Actions</Text>
+            <Text style={styles.sectionTitle}>Actions à réaliser</Text>
             <Bullets items={actionLines} empty="—" />
           </View>
         )}
