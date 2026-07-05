@@ -141,7 +141,7 @@ export function DebriefExpress({
         <p className="text-[13px] text-muted-foreground">Tout est enregistré dans MemorIA.</p>
       </header>
 
-      {/* « Ce que cette visite change » — la visite n'est pas juste enregistrée,
+      {/* Impact métier — la visite n'est pas juste enregistrée,
           elle a enrichi le chantier. 3-4 lignes, jamais un module lourd. */}
       {impact && <VisitImpactCard impact={impact} total={total} />}
 
@@ -193,44 +193,49 @@ export function DebriefExpress({
 }
 
 /**
- * « Ce que cette visite change » — impact sur la mémoire du chantier, en 3-4
- * lignes max. Truthful : on n'affiche une ligne que si elle a de la matière ;
- * si rien ne ressort, on ne montre pas la carte (pas de vide, pas de sur-promesse).
+ * « Votre visite a fait avancer le chantier » — l'IMPACT métier, pas un inventaire.
+ * On répond à « en quoi le chantier est-il différent maintenant ? » : points de
+ * vigilance mis à jour, réserve à traiter, suivi enrichi — orienté CONSÉQUENCE,
+ * puis la prochaine étape. Truthful : une ligne n'apparaît que si elle a de la
+ * matière ; rien à dire = pas de carte (le conducteur doit sentir qu'il a fait
+ * avancer son chantier, jamais lire un journal d'activité).
  */
 function VisitImpactCard({ impact, total }: { impact: VisitImpact; total: number }) {
-  const { added, siteOpenActions, touchedSubjects } = impact
+  const { added, touchedSubjects } = impact
   const plural = (n: number) => (n > 1 ? 's' : '')
 
-  const addedParts: string[] = []
-  if (added.photos > 0) addedParts.push(`${added.photos} photo${plural(added.photos)}`)
-  if (added.notes > 0) addedParts.push(`${added.notes} note${plural(added.notes)}`)
-  const addedLine = addedParts.length > 0
-    ? `${addedParts.join(' · ')} ajouté${added.photos + added.notes > 1 ? 's' : ''} à la mémoire du chantier`
-    : total > 0
-      ? `${total} élément${plural(total)} ajouté${plural(total)} à la mémoire du chantier`
-      : null
+  const lines: string[] = []
 
-  const createdParts: string[] = []
-  if (added.reserves > 0) createdParts.push(`${added.reserves} réserve${plural(added.reserves)}`)
-  if (added.actions > 0) createdParts.push(`${added.actions} action${plural(added.actions)}`)
-  const createdLine = createdParts.length > 0
-    ? `${createdParts.join(' · ')} créée${added.reserves + added.actions > 1 ? 's' : ''}`
-    : null
+  // Conséquence 1 — les points de vigilance du chantier ont bougé.
+  if (touchedSubjects.length > 0) {
+    const n = touchedSubjects.length
+    const names = touchedSubjects.slice(0, 2).join(', ')
+    lines.push(`${n} point${plural(n)} de vigilance mis à jour${n <= 2 ? ` : ${names}` : ''}`)
+  }
+  // Conséquence 2 — une réserve à traiter est née de la visite.
+  if (added.reserves > 0) {
+    lines.push(`${added.reserves} réserve${plural(added.reserves)} à traiter créée${plural(added.reserves)}`)
+  }
+  // Conséquence 3 — des actions à suivre.
+  if (added.actions > 0) {
+    lines.push(`${added.actions} action${plural(added.actions)} à suivre créée${plural(added.actions)}`)
+  }
+  // Conséquence 4 — le SUIVI du chantier s'est enrichi (pas « 8 photos » brut).
+  const enrichParts: string[] = []
+  if (added.photos > 0) enrichParts.push(`${added.photos} photo${plural(added.photos)}`)
+  if (added.notes > 0) enrichParts.push(`${added.notes} note${plural(added.notes)}`)
+  const enrichWith = enrichParts.length > 0
+    ? enrichParts.join(' et ')
+    : total > 0 ? `${total} élément${plural(total)}` : null
+  if (enrichWith) lines.push(`Le suivi du chantier a été enrichi avec ${enrichWith}`)
 
-  const subjectsLine = touchedSubjects.length > 0
-    ? `Sujet${plural(touchedSubjects.length)} touché${plural(touchedSubjects.length)} : ${touchedSubjects.join(', ')}`
-    : null
-
-  const openActionsLine = siteOpenActions > 0
-    ? `Le chantier compte désormais ${siteOpenActions} action${plural(siteOpenActions)} ouverte${plural(siteOpenActions)}`
-    : null
-
-  const lines = [addedLine, createdLine, subjectsLine, openActionsLine].filter((l): l is string => !!l)
   if (lines.length === 0) return null
 
   return (
-    <section className="space-y-1.5 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Ce que cette visite change</h2>
+    <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+        Votre visite a fait avancer le chantier
+      </h2>
       <ul className="space-y-1 text-[13px] text-emerald-900/90 dark:text-emerald-100/90">
         {lines.map((l, i) => (
           <li key={i} className="flex gap-1.5">
@@ -239,6 +244,10 @@ function VisitImpactCard({ impact, total }: { impact: VisitImpact; total: number
           </li>
         ))}
       </ul>
+      <p className="flex items-center gap-1.5 border-t border-emerald-200/70 pt-2 text-[13px] text-emerald-800/80 dark:border-emerald-900/40 dark:text-emerald-200/70">
+        <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+        Prochaine étape : compléter le compte-rendu au bureau
+      </p>
     </section>
   )
 }

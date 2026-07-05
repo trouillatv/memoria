@@ -419,19 +419,17 @@ export async function getLastEndedVisitForSite(siteId: string): Promise<LastVisi
 }
 
 /**
- * L'IMPACT d'une visite sur la mémoire du chantier — « ce que cette visite
- * change », pour l'écran de fin. On ne raconte pas seulement ce qu'on a capturé :
- * on montre que le chantier s'en trouve enrichi. Truthful et borné : au temps 2
- * (la voiture) les réserves/actions ne sont matérialisées QUE si elles ont déjà
- * été créées ; sinon on met en avant l'apport mémoire (photos/notes) et les
- * sujets touchés. Lecture seule.
+ * L'IMPACT d'une visite sur la mémoire du chantier — « en quoi le chantier est-il
+ * différent maintenant ? », pour l'écran de fin. Pas un inventaire d'objets : une
+ * lecture métier, orientée CONSÉQUENCE (points de vigilance, réserve à traiter,
+ * suivi enrichi). Truthful et borné : au temps 2 (la voiture) les réserves/actions
+ * ne sont matérialisées QUE si elles ont déjà été créées ; sinon on met en avant
+ * l'apport mémoire (photos/notes) et les sujets touchés. Lecture seule.
  */
 export interface VisitImpact {
   /** Ajouté pendant la visite (fenêtre temporelle). */
   added: { photos: number; notes: number; reserves: number; actions: number }
-  /** Nombre d'actions ouvertes du chantier MAINTENANT (état, pas delta). */
-  siteOpenActions: number
-  /** Noms des sujets touchés pendant la visite (points remis en surveillance). */
+  /** Noms des sujets touchés pendant la visite (points de vigilance mis à jour). */
   touchedSubjects: string[]
 }
 
@@ -453,11 +451,10 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
     return count ?? 0
   }
 
-  const [captureRes, reserves, actions, openActions, touchedRes] = await Promise.all([
+  const [captureRes, reserves, actions, touchedRes] = await Promise.all([
     supabase.from('visit_capture').select('kind').eq('report_id', reportId).neq('status', 'discarded'),
     countWindow('site_reserve'),
     countWindow('site_actions'),
-    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
     supabase.from('visit_capture').select('subject_id').eq('report_id', reportId).not('subject_id', 'is', null).neq('status', 'discarded'),
   ])
 
@@ -476,7 +473,6 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
 
   return {
     added: { photos, notes, reserves, actions },
-    siteOpenActions: (openActions as unknown[]).length,
     touchedSubjects,
   }
 }
