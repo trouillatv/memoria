@@ -6,6 +6,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -53,6 +54,31 @@ export async function triageCaptureAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec du tri' }
+  }
+}
+
+/**
+ * Renseigne l'OBJET de la visite depuis le terrain (« pourquoi je suis venu »).
+ * Champ ciblé — on ne touche à AUCUN autre champ métier (outcome/résolution du
+ * bureau restent intacts). Cf. le CR qui affiche « Objet : … ».
+ */
+export async function setVisitObjectiveAction(
+  input: { report_id: string; objective: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid(), objective: z.string().max(300) }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const supabase = createAdminClient()
+    const { error } = await supabase
+      .from('site_reports')
+      .update({ objective: parsed.data.objective.trim() || null, updated_at: new Date().toISOString() })
+      .eq('id', parsed.data.report_id)
+    if (error) throw error
+    return { ok: true }
+  } catch {
+    return { ok: false, error: "Échec de l'enregistrement de l'objet" }
   }
 }
 

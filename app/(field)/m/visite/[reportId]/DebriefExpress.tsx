@@ -7,7 +7,7 @@ import {
   Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
+import { triageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
 import { CaptureTriage } from './CaptureTriage'
 import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
@@ -27,6 +27,7 @@ export function DebriefExpress({
   siteName,
   dossierId,
   questionsCount,
+  initialObjective,
   initialCaptures,
   previews,
   impact,
@@ -38,6 +39,8 @@ export function DebriefExpress({
   dossierId: string | null
   /** ❓ « à vérifier » posées pendant la visite (hors captures). */
   questionsCount: number
+  /** Objet de la visite déjà saisi (le CR l'affiche) — éditable ici. */
+  initialObjective: string | null
   initialCaptures: VisitCaptureRow[]
   /** Aperçus signés (captureId → url/mime) pour trier en voyant le contenu. */
   previews: Record<string, CapturePreview>
@@ -50,6 +53,19 @@ export function DebriefExpress({
   const [, startBusy] = useTransition()
   // Traitement photo par photo (écran 2) : index de départ, null = fermé.
   const [triageStart, setTriageStart] = useState<number | null>(null)
+  // Objet de la visite — éditable, enregistré au blur (aucun autre champ touché).
+  const [objective, setObjective] = useState(initialObjective ?? '')
+  const [savedObjective, setSavedObjective] = useState(initialObjective ?? '')
+
+  function saveObjective() {
+    const v = objective.trim()
+    if (v === savedObjective.trim()) return
+    startBusy(async () => {
+      const r = await setVisitObjectiveAction({ report_id: reportId, objective: v })
+      if (r.ok) { setSavedObjective(v); toast.success('Objet enregistré', { duration: 1200 }) }
+      else toast.error(r.error)
+    })
+  }
 
   const total = captures.length
   const triaged = captures.filter((c) => c.status !== 'captured').length
@@ -149,6 +165,23 @@ export function DebriefExpress({
         )}
         <p className="text-[13px] text-muted-foreground">Tout est enregistré dans MemorIA.</p>
       </header>
+
+      {/* Objet de la visite — « pourquoi je suis venu ». Facultatif, apparaît dans
+          le CR. Enregistré à la sortie du champ (aucun autre champ touché). */}
+      <div className="space-y-1">
+        <label htmlFor="visit-objective" className="text-xs font-medium text-muted-foreground">
+          Objet de la visite <span className="font-normal text-muted-foreground/70">(facultatif)</span>
+        </label>
+        <input
+          id="visit-objective"
+          value={objective}
+          onChange={(e) => setObjective(e.target.value)}
+          onBlur={saveObjective}
+          placeholder="ex. Contrôle étanchéité avant fermeture"
+          maxLength={300}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
 
       {/* Impact métier — la visite n'est pas juste enregistrée,
           elle a enrichi le chantier. 3-4 lignes, jamais un module lourd. */}

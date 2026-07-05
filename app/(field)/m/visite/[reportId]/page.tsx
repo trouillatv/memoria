@@ -77,6 +77,7 @@ export default async function VisitDebriefPage({
       siteName={(site as { name: string } | null)?.name ?? 'Chantier'}
       dossierId={previsiteDossierId}
       questionsCount={questionsCount ?? 0}
+      initialObjective={visit.objective}
       initialCaptures={captures}
       previews={previews}
       impact={impact}

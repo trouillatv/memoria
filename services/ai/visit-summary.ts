@@ -39,10 +39,12 @@ function deterministicSummary(input: VisitSummaryInput): string {
   if (input.reserves.length) parts.push(`${input.reserves.length} réserve${input.reserves.length > 1 ? 's' : ''} relevée${input.reserves.length > 1 ? 's' : ''}`)
   if (input.actions.length) parts.push(`${input.actions.length} action${input.actions.length > 1 ? 's' : ''} à prévoir`)
   if (input.surveiller.length) parts.push(`${input.surveiller.length} point${input.surveiller.length > 1 ? 's' : ''} à surveiller`)
-  if (parts.length === 0) {
-    return 'Aucune observation particulière — visite de suivi, captures conservées pour la mémoire du chantier.'
+  if (parts.length > 0) return `Visite avec ${parts.join(', ')}.`
+  // Des constats sans tag = observations réelles : ne JAMAIS dire « aucune ».
+  if (input.constats.length > 0) {
+    return `Visite de suivi — ${input.constats.length} constat${input.constats.length > 1 ? 's' : ''} relevé${input.constats.length > 1 ? 's' : ''}.`
   }
-  return `Visite avec ${parts.join(', ')}.`
+  return 'Aucune observation particulière — captures conservées pour la mémoire du chantier.'
 }
 
 /**
