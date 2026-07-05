@@ -19,7 +19,7 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, buildSiteStatusSummary, getSiteRecentActivity } from '@/lib/db/visits'
+import { getActiveVisit, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary } from '@/lib/db/visits'
 import { getSiteIdentity } from '@/lib/db/sites'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { SiteStatusCard } from './SiteStatusCard'
@@ -27,6 +27,7 @@ import { IdentityCard } from './IdentityCard'
 import { SiteTodoCard } from './SiteTodoCard'
 import { SiteActivityCard } from './SiteActivityCard'
 import { SiteQuickAccessCard } from './SiteQuickAccessCard'
+import { SinceLastVisitCard } from './SinceLastVisitCard'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -151,6 +152,8 @@ export default async function FieldSitePage({
         .map((r) => ({ id: r.id, label: r.label, location: r.location }))
   // Dernière activité du chantier — visites + réunions + interventions récentes.
   const recentActivity = activeVisit ? [] : await getSiteRecentActivity(siteId).catch(() => [])
+  // « Depuis votre dernière visite » — résumé déterministe de ce qui a bougé.
+  const sinceLastVisit = activeVisit ? null : await buildSinceLastVisitSummary(siteId).catch(() => null)
   // Documents : onglet réservé au conducteur (admin/manager) ET seulement s'il
   // existe de vrais documents liés — on ne dessine pas un menu vide.
   const canSeeDocs = !activeVisit && (user.role === 'admin' || user.role === 'manager')
@@ -273,6 +276,9 @@ export default async function FieldSitePage({
         <div className="space-y-3">
           {/* État du chantier — le résumé en 10 secondes, avant tout le reste. */}
           <SiteStatusCard lines={siteStatus} />
+
+          {/* « Depuis votre dernière visite » — ce qui a bougé (déterministe). */}
+          {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} />}
 
           {/* Identité chantier + Lieu du chantier (Site = localisation support). */}
           {identity && <IdentityCard identity={identity} />}
