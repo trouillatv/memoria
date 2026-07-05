@@ -33,7 +33,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const doc = await buildVisitCrDoc(reportId)
+  const doc = await buildVisitCrDoc(reportId, user.id)
   if (!doc) return NextResponse.json({ error: 'Visite introuvable' }, { status: 404 })
 
   const exportDate = new Date().toLocaleDateString('fr-FR', {
