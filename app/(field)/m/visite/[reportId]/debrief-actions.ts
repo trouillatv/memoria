@@ -7,6 +7,8 @@
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createSiteAction } from '@/lib/db/site-actions'
+import { createSiteReserve } from '@/lib/db/site-reserve'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -54,6 +56,84 @@ export async function triageCaptureAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec du tri' }
+  }
+}
+
+// ── Matérialiser une SUITE au débrief (tag → objet chantier, validé) ─────────
+// MemorIA PROPOSE ; l'humain décide. Rien n'est créé sans cette validation. La
+// vérité vit au CHANTIER (site_actions / site_reserve), pas à la visite ; la
+// capture d'origine est tracée (source_capture_id) et marquée suite_status='done'.
+
+const createSuiteSchema = z.object({
+  capture_id: z.string().uuid(),
+  kind: z.enum(['action', 'reserve']),
+  title: z.string().trim().min(1).max(300),
+})
+
+export async function createSuiteAction(
+  input: z.input<typeof createSuiteSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = createSuiteSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const { capture_id, kind, title } = parsed.data
+  try {
+    const supabase = createAdminClient()
+    const { data: cap } = await supabase
+      .from('visit_capture')
+      .select('report_id, site_id')
+      .eq('id', capture_id)
+      .maybeSingle()
+    const c = cap as { report_id: string; site_id: string } | null
+    if (!c) return { ok: false, error: 'Capture introuvable' }
+
+    if (kind === 'action') {
+      await createSiteAction({
+        site_id: c.site_id, report_id: c.report_id, title,
+        created_by: auth.userId, created_from: 'visit_debrief', source_capture_id: capture_id,
+      })
+    } else {
+      await createSiteReserve({
+        siteId: c.site_id, label: title, location: null,
+        issuedBy: auth.userId, issuedOn: new Date().toISOString().slice(0, 10),
+        userId: auth.userId, sourceCaptureId: capture_id,
+      })
+    }
+    await supabase
+      .from('visit_capture')
+      .update({ suite_status: 'done', updated_at: new Date().toISOString() })
+      .eq('id', capture_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la création' }
+  }
+}
+
+// Écarter (ignore) ou rattacher à un objet existant (attached) : dans les deux cas
+// on ne crée rien et on ne repropose plus cette suite.
+const resolveSuiteSchema = z.object({
+  capture_id: z.string().uuid(),
+  resolution: z.enum(['ignored', 'attached']),
+})
+
+export async function resolveSuiteAction(
+  input: z.input<typeof resolveSuiteSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = resolveSuiteSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const supabase = createAdminClient()
+    const { error } = await supabase
+      .from('visit_capture')
+      .update({ suite_status: parsed.data.resolution === 'ignored' ? 'ignored' : 'done', updated_at: new Date().toISOString() })
+      .eq('id', parsed.data.capture_id)
+    if (error) throw error
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
   }
 }
 

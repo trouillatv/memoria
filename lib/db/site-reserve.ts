@@ -134,6 +134,8 @@ export async function createSiteReserve(input: {
   issuedBy: string | null
   issuedOn: string | null
   userId: string | null
+  /** Capture d'origine (mig 183) — traçabilité de la réserve née d'une visite. */
+  sourceCaptureId?: string | null
 }): Promise<{ id: string }> {
   const sb = createAdminClient()
   const orgId = await getOrgId()
@@ -148,6 +150,7 @@ export async function createSiteReserve(input: {
       issued_on: input.issuedOn,
       status: 'open',
       created_by: input.userId,
+      source_capture_id: input.sourceCaptureId ?? null,
       updated_at: new Date().toISOString(),
     })
     .select('id')
