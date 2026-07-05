@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Play, X, ChevronRight, Loader2, Plus, ArrowLeft } from 'lucide-react'
+import { Play, X, ChevronRight, Loader2, Plus, ArrowLeft, Camera, MessageSquare, FolderUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { listMeetingSitesAction } from './meeting-actions'
 import { startVisitAction } from './site/[siteId]/visit-actions'
@@ -24,6 +24,8 @@ export function VisitLauncherHome() {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<Mode>('pick')
   const [sites, setSites] = useState<Site[] | null>(null)
+  // Chantier choisi, en attente du MODE de création (capturer / WhatsApp / fichiers).
+  const [chosenSite, setChosenSite] = useState<Site | null>(null)
   const [pending, startTransition] = useTransition()
 
   // Champs création rapide
@@ -37,7 +39,7 @@ export function VisitLauncherHome() {
   }, [open, mode, sites])
 
   function reset() {
-    setMode('pick'); setName(''); setAddress(''); setClientName('')
+    setMode('pick'); setName(''); setAddress(''); setClientName(''); setChosenSite(null)
   }
 
   function close() {
@@ -45,16 +47,28 @@ export function VisitLauncherHome() {
     reset()
   }
 
+  // Choisir un chantier n'ouvre plus directement la visite : on demande d'abord le
+  // MODE (capturer sur place, ou importer un lot). WhatsApp est un mode, pas un métier.
   function pick(site: Site) {
+    setChosenSite(site)
+  }
+
+  function captureNow() {
+    if (!chosenSite) return
     startTransition(async () => {
-      const res = await startVisitAction({ site_id: site.id })
+      const res = await startVisitAction({ site_id: chosenSite.id })
       if (res.ok) {
         toast.success('Visite démarrée', { duration: 1500 })
-        router.push(`/m/site/${site.id}`)
+        router.push(`/m/site/${chosenSite.id}`)
       } else {
         toast.error(res.error)
       }
     })
+  }
+
+  function importMode(m: 'whatsapp_zip' | 'upload') {
+    if (!chosenSite) return
+    router.push(`/m/import?site=${chosenSite.id}&mode=${m}`)
   }
 
   function createAndStart() {
@@ -95,14 +109,24 @@ export function VisitLauncherHome() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">
-                  {mode === 'create' ? 'Nouveau chantier' : 'Visite — pour quel chantier ?'}
+                  {chosenSite ? `Nouvelle visite : ${chosenSite.name}` : mode === 'create' ? 'Nouveau chantier' : 'Visite — pour quel chantier ?'}
                 </h3>
                 <button type="button" onClick={close} aria-label="Fermer" className="text-muted-foreground hover:text-foreground">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {mode === 'pick' ? (
+              {chosenSite ? (
+                <div className="space-y-2">
+                  <button type="button" onClick={() => setChosenSite(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <ArrowLeft className="h-3.5 w-3.5" /> Changer de chantier
+                  </button>
+                  <p className="text-[13px] text-muted-foreground">Comment démarrer cette visite ?</p>
+                  <ModeBtn onClick={captureNow} disabled={pending} icon={<Camera className="h-5 w-5" />} title="Capturer maintenant" hint="Photos, vidéos, vocaux sur place" />
+                  <ModeBtn onClick={() => importMode('whatsapp_zip')} disabled={pending} icon={<MessageSquare className="h-5 w-5" />} title="Importer depuis WhatsApp" hint="Un export .zip de la discussion" />
+                  <ModeBtn onClick={() => importMode('upload')} disabled={pending} icon={<FolderUp className="h-5 w-5" />} title="Importer des fichiers" hint="Photos, vidéos, vocaux, PDF" />
+                </div>
+              ) : mode === 'pick' ? (
                 <>
                   {/* Créer un nouveau chantier — première visite immédiate. */}
                   <button
@@ -211,5 +235,26 @@ export function VisitLauncherHome() {
         </div>
       )}
     </>
+  )
+}
+
+/** Un mode de création de visite (capturer / WhatsApp / fichiers). */
+function ModeBtn({ onClick, disabled, icon, title, hint }: {
+  onClick: () => void; disabled?: boolean; icon: React.ReactNode; title: string; hint: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-left active:scale-[0.99] transition-transform disabled:opacity-50"
+    >
+      <span className="shrink-0 text-emerald-700 dark:text-emerald-300">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-[11px] text-muted-foreground">{hint}</span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
   )
 }

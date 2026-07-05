@@ -13,10 +13,18 @@ export const dynamic = 'force-dynamic'
  * et fait entrer DIRECTEMENT dans le tri qu'on utilise en direct. Une seule
  * chaîne, deux portes. Cf. docs/ingestion-engine.md.
  */
-export default async function ImportVisitPage() {
+export default async function ImportVisitPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ site?: string; mode?: string }>
+}) {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
   const sites = await listMeetingSitesAction()
+  // Présélection depuis « Nouvelle visite → Importer WhatsApp / fichiers ».
+  const { site, mode } = await searchParams
+  const initialSiteId = site && sites.some((s) => s.id === site) ? site : undefined
+  const initialSource = mode === 'upload' ? 'upload' : mode === 'whatsapp_zip' ? 'whatsapp_zip' : undefined
 
   return (
     <div className="mx-auto min-h-dvh w-full max-w-lg px-4 pb-24 pt-4">
@@ -26,7 +34,7 @@ export default async function ImportVisitPage() {
         </Link>
         <h1 className="text-base font-semibold">Importer une visite</h1>
       </div>
-      <ImportVisit sites={sites} />
+      <ImportVisit sites={sites} initialSiteId={initialSiteId} initialSource={initialSource} />
     </div>
   )
 }

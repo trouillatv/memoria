@@ -18,10 +18,10 @@ import { importVisitAction, type ImportResult } from './import-actions'
 type Site = { id: string; name: string }
 type Source = 'whatsapp_zip' | 'upload'
 
-export function ImportVisit({ sites }: { sites: Site[] }) {
+export function ImportVisit({ sites, initialSiteId, initialSource }: { sites: Site[]; initialSiteId?: string; initialSource?: Source }) {
   const router = useRouter()
-  const [siteId, setSiteId] = useState<string>(sites[0]?.id ?? '')
-  const [source, setSource] = useState<Source>('whatsapp_zip')
+  const [siteId, setSiteId] = useState<string>(initialSiteId ?? sites[0]?.id ?? '')
+  const [source, setSource] = useState<Source>(initialSource ?? 'whatsapp_zip')
   const [pending, start] = useTransition()
   const [result, setResult] = useState<ImportResult | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
