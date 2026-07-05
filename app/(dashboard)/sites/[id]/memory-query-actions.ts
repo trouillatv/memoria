@@ -59,7 +59,10 @@ const SRC_TO_TYPE: Record<string, MemoryHitType> = {
 export interface SiteMemoryHit {
   // 'document' (S4a-2) = couche Connaissance (CCTP, marché, procédure…),
   // recall SÉMANTIQUE → labellisé « proche », ne gonfle pas la confiance lexicale.
-  type: MemoryHitType | 'document'
+  // 'observation' (P2) = flux terrain visit_capture (notes / mémos vocaux
+  // transcrits / points vérifiés), cherché en plein-texte DÉTERMINISTE (ILIKE) —
+  // c'est le cœur mobile, jusqu'ici absent du corpus de recherche.
+  type: MemoryHitType | 'document' | 'observation'
   id: string
   title: string
   snippet: string
@@ -83,6 +86,44 @@ const SOURCE_WEIGHT: Partial<Record<SiteMemoryHit['type'], number>> = {
   photo: 0.7,
 }
 const weightOf = (t: SiteMemoryHit['type']): number => SOURCE_WEIGHT[t] ?? 1.0
+
+// P2 — Observations terrain (visit_capture) : titre lisible par type de capture.
+const OBSERVATION_TITLE: Record<string, string> = {
+  note: 'Note de visite',
+  vocal: 'Mémo vocal',
+  verification: 'Point vérifié',
+}
+
+/**
+ * Recherche DÉTERMINISTE (ILIKE, zéro LLM) dans les observations terrain d'un
+ * site : le texte capturé pendant les visites (notes, transcriptions vocales,
+ * points vérifiés). Ce flux était invisible à la recherche jusqu'ici. Match =
+ * correspondance exacte (keyword:true) → nourrit l'ancrage lexical.
+ */
+async function searchSiteObservations(siteId: string, q: string): Promise<SiteMemoryHit[]> {
+  const supabase = createAdminClient()
+  // Neutralise les jokers LIKE saisis par l'utilisateur (recherche littérale).
+  const pattern = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`
+  const { data } = await supabase
+    .from('visit_capture')
+    .select('id, body, kind, captured_at, created_at')
+    .eq('site_id', siteId)
+    .is('hidden_at', null)
+    .in('kind', ['note', 'vocal', 'verification'])
+    .not('body', 'is', null)
+    .ilike('body', pattern)
+    .order('captured_at', { ascending: false, nullsFirst: false })
+    .limit(20)
+  return ((data ?? []) as Array<{ id: string; body: string | null; kind: string; captured_at: string | null; created_at: string }>).map((r) => ({
+    type: 'observation' as const,
+    id: r.id,
+    title: OBSERVATION_TITLE[r.kind] ?? 'Observation',
+    snippet: r.body ?? '',
+    occurredAt: r.captured_at ?? r.created_at,
+    similarity: null,
+    keyword: true,
+  }))
+}
 
 /** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Aide à juger la
  *  force et la nature de ce qui est retrouvé, sans réponse magique. */
@@ -146,7 +187,7 @@ export async function askSiteMemoryAction(
   // Sémantique + plein-texte + index d'enrichissement + DOCUMENTS (S4a-2) en parallèle.
   const queryEmbedding = await getEmbedding(q).catch(() => null)
   const tenantId = await getSiteTenantId(siteId)
-  const [ftsHits, semHits, timeline, docHits] = await Promise.all([
+  const [ftsHits, semHits, timeline, docHits, observationHits] = await Promise.all([
     searchMemory({ q, siteId, periodDays: 3650, limit: 30 }).catch(() => []),
     queryEmbedding
       ? findSimilarTraces({ siteId, queryEmbedding, limit: 20 }).catch(() => [])
@@ -155,6 +196,8 @@ export async function askSiteMemoryAction(
     queryEmbedding && tenantId
       ? searchKnowledgeForSite({ tenantId, siteId, queryEmbedding, role: user.role, limit: 12 }).catch(() => [])
       : Promise.resolve([]),
+    // P2 — observations terrain (visit_capture), plein-texte déterministe.
+    searchSiteObservations(siteId, q).catch(() => [] as SiteMemoryHit[]),
   ])
 
   const byId = new Map(timeline.map((e) => [e.id, e]))
@@ -167,6 +210,12 @@ export async function askSiteMemoryAction(
       type: h.type, id: h.id, title: h.title, snippet: h.snippet,
       occurredAt: h.occurredAt, similarity: null, keyword: true, fts: h.rank,
     })
+  }
+
+  // P2 — observations terrain : matches exacts, rangés par récence parmi les
+  // correspondances mot-clé (fts nominal faible, le tri final départage sur la date).
+  for (const o of observationHits) {
+    merged.set(`observation:${o.id}`, { ...o, fts: 0.01 })
   }
   for (const s of semHits) {
     const type = SRC_TO_TYPE[s.source_type]
