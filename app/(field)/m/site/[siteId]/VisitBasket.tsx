@@ -19,7 +19,10 @@ import {
   revalidateSiteMobile,
   createVisitVideoUploadAction,
   registerVisitVideoAction,
+  addPhotoCaptureAction,
 } from './capture-actions'
+import { uploadReportAttachmentAction } from './report-actions'
+import { PhotoAnnotator } from './PhotoAnnotator'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { createClient } from '@/lib/supabase/client'
@@ -81,6 +84,8 @@ export function VisitBasket({
   const [previews, setPreviews] = useState<Record<string, { url: string; mime: string | null }>>({})
   // Plein écran d'une capture (standard : un clic = grand). null = fermé.
   const [lightbox, setLightbox] = useState<VisitCaptureRow | null>(null)
+  // Photo en cours d'annotation (URL signée) — l'annotée s'ajoute EN PLUS.
+  const [annotate, setAnnotate] = useState<{ id: string; url: string } | null>(null)
   // Lot B — captures déposées localement, pas encore confirmées par le serveur.
   // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
   const [pending, setPending] = useState<PendingCapture[]>([])
@@ -333,6 +338,34 @@ export function VisitBasket({
     const skipped = files.length - added
     if (added > 0) toast.success(`${added} média${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}`, { duration: 1500 })
     if (skipped > 0) toast.error(`${skipped} fichier${skipped > 1 ? 's' : ''} ignoré${skipped > 1 ? 's' : ''} (photo/vidéo uniquement pour l'instant)`)
+  }
+
+  // ── Annotation ───────────────────────────────────────────────────────────────
+  // L'image annotée s'ajoute EN PLUS de l'original (nouvelle capture photo) — on
+  // ne détruit jamais la preuve. Upload direct (pièce du report) + capture.
+  async function saveAnnotation(file: File) {
+    if (!annotate) return
+    try {
+      const pos = geoTag ? await getOneShotPosition() : null
+      const fd = new FormData()
+      fd.set('report_id', reportId)
+      fd.set('kind', 'photo')
+      fd.set('client_uuid', crypto.randomUUID())
+      fd.set('file', file)
+      const up = await uploadReportAttachmentAction(fd)
+      if (!up.ok) { toast.error(up.error); return }
+      const cap = await addPhotoCaptureAction({
+        report_id: reportId, site_id: siteId, attachment_id: up.attachmentId,
+        lat: pos?.lat, lng: pos?.lng,
+      })
+      if (!cap.ok) { toast.error(cap.error); return }
+      setAnnotate(null)
+      setLightbox(null)
+      toast.success('Photo annotée ajoutée', { duration: 1500 })
+      void refresh()
+    } catch {
+      toast.error('Échec de l’enregistrement de l’annotation')
+    }
   }
 
   // ── Vocal ──────────────────────────────────────────────────────────────────
@@ -718,7 +751,16 @@ export function VisitBasket({
       {/* Plein écran d'une capture — un clic = grand (standard mobile). */}
       {lightbox && previews[lightbox.id]?.url && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/90" onClick={() => setLightbox(null)}>
-          <div className="flex justify-end p-3">
+          <div className="flex items-center justify-between p-3" onClick={(e) => e.stopPropagation()}>
+            {lightbox.kind === 'photo' ? (
+              <button
+                type="button"
+                onClick={() => setAnnotate({ id: lightbox.id, url: previews[lightbox.id]!.url })}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white"
+              >
+                <Pencil className="h-4 w-4" /> Annoter
+              </button>
+            ) : <span />}
             <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="rounded-full bg-white/10 p-2 text-white">
               <X className="h-5 w-5" />
             </button>
@@ -732,6 +774,15 @@ export function VisitBasket({
             )}
           </div>
         </div>
+      )}
+
+      {/* Annotation plein écran — l'image annotée s'ajoute EN PLUS de l'original. */}
+      {annotate && (
+        <PhotoAnnotator
+          imageUrl={annotate.url}
+          onCancel={() => setAnnotate(null)}
+          onSave={saveAnnotation}
+        />
       )}
 
       {/* Overlay : Note */}
