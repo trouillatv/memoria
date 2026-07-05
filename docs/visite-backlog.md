@@ -8,6 +8,31 @@ quotidien) — ces retours valent mieux que des idées imaginées à l'avance.
 Statut au moment du gel : la chaîne **capturer → comprendre → valider → CR** est
 en place (écrans 1/2/3), avec « Reprendre une visite » et « Objet au démarrage ».
 
+## Priorités de reprise (ordre validé)
+
+> **Règle d'or** : *terrain = capturer vite ; débrief = transformer en actions.*
+> On ne met pas de charge cognitive sur le terrain ; l'intelligence arrive au débrief.
+
+1. **📎 « Ajouter un média » à une visite (depuis le téléphone)** — *indispensable.*
+   Sources : Appareil photo · Galerie · Fichier · Vocal. Types acceptés : photo,
+   vidéo, vocal, **PDF, document, capture d'écran**. C'est la brique qui débloque
+   le flux WhatsApp/PDF/photos reçues/documents fournisseur (et pose les bases du
+   moteur d'import). Distinct du live camera : on peut enrichir une visite avec ce
+   qu'on a déjà sur le téléphone.
+2. **📝 Annotation photo** (PR dédiée, priorité haute). Une photo brute dit « regarde
+   quelque part » ; annotée, « regarde exactement ici ». Outils : cercle · flèche ·
+   surlignage · texte court · **rouge par défaut**. **Sauvegarde de l'image annotée
+   EN PLUS de l'original** (jamais détruire la preuve).
+3. **🎤→✅ Vocal → suggestion d'action AU DÉBRIEF** (jamais pendant la capture, sinon
+   on casse le rythme). Terrain : vocal libre (« prévoir reprise étanchéité côté
+   nord avant fermeture »). Débrief : MemorIA propose « Action détectée : … » →
+   boutons **✅ Créer l'action / ✏️ Modifier / ❌ Ignorer**.
+4. **📋 Liste d'actions au niveau CHANTIER, alimentée par les visites.** Une visite
+   *propose* → l'utilisateur *valide* → l'action entre dans la liste du **chantier**.
+   Les visites suivantes détectent « cette action existe déjà — la mettre à jour ? ».
+   La SOURCE peut être n'importe quelle visite ; la **vérité vit au niveau chantier**,
+   pas au niveau visite.
+
 ## À reprendre après la phase d'usage réel
 
 - **⭐ Photo principale (couverture du CR)** — pendant le tri, marquer une photo
