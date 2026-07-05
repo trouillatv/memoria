@@ -127,6 +127,21 @@ export async function endVisit(reportId: string): Promise<void> {
 }
 
 /**
+ * REPREND une visite terminée : efface `ended_at` → elle redevient LA visite en
+ * cours du site (getActiveVisit la retrouve), avec toutes ses captures et leurs
+ * tags intacts. « Une visite n'est jamais figée » : erreur, interruption, oubli
+ * → on reprend exactement où on en était. Ne touche à aucun champ métier.
+ */
+export async function reopenVisit(reportId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('site_reports')
+    .update({ ended_at: null, updated_at: new Date().toISOString() })
+    .eq('id', reportId)
+  if (error) throw error
+}
+
+/**
  * Enregistre la cristallisation d'une visite DEPUIS LE DÉBRIEF (desktop) : les
  * champs métier validés par l'humain. Ne touche pas à `ended_at` (posé au
  * terrain par endVisit). Ne touche pas au pipeline de transcription/analyse.

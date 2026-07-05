@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { VisitOutputActions } from '../VisitOutputActions'
+import { ReopenVisitButton } from '../ReopenVisitButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -121,6 +122,9 @@ export default async function VisitRecapPage({
           })}
         </div>
       )}
+
+      {/* Action PRINCIPALE : reprendre la visite. Une visite n'est jamais figée. */}
+      <ReopenVisitButton reportId={reportId} siteId={visit.site_id} />
 
       {captures.length === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
