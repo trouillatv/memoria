@@ -73,6 +73,8 @@ export interface AddVisitCaptureInput {
   /** Photo clé dès la création (mig 174) — une photo ANNOTÉE l'est d'office :
    *  si on a pris le temps de dessiner dessus, c'est la meilleure pour le CR. */
   starred?: boolean
+  /** Version ANNOTÉE d'une photo (mig 185) — pointe la photo d'origine. */
+  annotatedOriginalId?: string | null
   createdBy: string | null
 }
 
@@ -122,6 +124,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       lng: input.lng ?? null,
       captured_at: input.capturedAt ?? null,
       starred: input.starred ?? false,
+      annotated_original_id: input.annotatedOriginalId ?? null,
       created_by: input.createdBy,
     })
     .select('id')
@@ -163,6 +166,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
     .from('visit_capture')
     .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
     .eq('report_id', reportId)
+    .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: true })
   if (error) throw error

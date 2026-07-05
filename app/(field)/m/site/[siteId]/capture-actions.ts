@@ -112,6 +112,9 @@ const photoSchema = z.object({
   captured_at: z.string().datetime().optional(),
   // Photo clé d'office (photo annotée) — prioritaire dans le CR.
   starred: z.boolean().optional(),
+  // Version annotée qui REMPLACE l'affichage d'un original (mig 185) : on lie la
+  // nouvelle à l'original et on ARCHIVE l'original (jamais supprimé).
+  replaces_capture_id: z.string().uuid().optional(),
   ...coords,
 })
 
@@ -130,10 +133,20 @@ export async function addPhotoCaptureAction(
       attachmentId: parsed.data.attachment_id,
       capturedAt: parsed.data.captured_at ?? null,
       starred: parsed.data.starred ?? false,
+      annotatedOriginalId: parsed.data.replaces_capture_id ?? null,
       lat: parsed.data.lat ?? null,
       lng: parsed.data.lng ?? null,
       createdBy: auth.userId,
     })
+    // « Remplacer l'affichage » : on ARCHIVE l'original (masqué, jamais supprimé).
+    // Scopé au report pour ne toucher qu'une capture de CETTE visite.
+    if (parsed.data.replaces_capture_id) {
+      await createAdminClient()
+        .from('visit_capture')
+        .update({ hidden_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', parsed.data.replaces_capture_id)
+        .eq('report_id', parsed.data.report_id)
+    }
     return { ok: true, id }
   } catch {
     return { ok: false, error: 'Échec de la capture' }

@@ -347,7 +347,7 @@ export function VisitBasket({
   // ── Annotation ───────────────────────────────────────────────────────────────
   // L'image annotée s'ajoute EN PLUS de l'original (nouvelle capture photo) — on
   // ne détruit jamais la preuve. Upload direct (pièce du report) + capture.
-  async function saveAnnotation(file: File) {
+  async function saveAnnotation(file: File, replaceOriginal: boolean) {
     if (!annotate) return
     try {
       const pos = geoTag ? await getOneShotPosition() : null
@@ -362,6 +362,8 @@ export function VisitBasket({
         report_id: reportId, site_id: siteId, attachment_id: up.attachmentId,
         // Photo annotée = photo clé d'office (prioritaire dans le CR).
         starred: true,
+        // « Remplacer l'affichage » → archive l'original (jamais supprimé).
+        ...(replaceOriginal ? { replaces_capture_id: annotate.id } : {}),
         lat: pos?.lat, lng: pos?.lng,
       })
       if (!cap.ok) { toast.error(cap.error); return }

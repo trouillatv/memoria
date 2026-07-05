@@ -90,7 +90,7 @@ export function CaptureTriage({
   // L'image ANNOTÉE s'ajoute EN PLUS de l'original (jamais détruire la preuve) :
   // nouvelle capture photo, même instant réel que l'originale (donc rangée juste
   // à côté d'elle dans une visite importée). Le parent recharge ensuite la liste.
-  async function saveAnnotation(file: File) {
+  async function saveAnnotation(file: File, replaceOriginal: boolean) {
     try {
       const fd = new FormData()
       fd.set('report_id', capture.report_id)
@@ -105,6 +105,8 @@ export function CaptureTriage({
         attachment_id: up.attachmentId,
         // Une photo annotée devient photo clé d'office → prioritaire dans le CR.
         starred: true,
+        // « Remplacer l'affichage » → archive l'original (jamais supprimé).
+        ...(replaceOriginal ? { replaces_capture_id: capture.id } : {}),
         ...(capture.captured_at ? { captured_at: capture.captured_at } : {}),
       })
       if (!cap.ok) { toast.error(cap.error); return }

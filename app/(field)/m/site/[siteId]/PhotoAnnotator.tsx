@@ -34,7 +34,9 @@ export function PhotoAnnotator({
 }: {
   imageUrl: string
   onCancel: () => void
-  onSave: (file: File) => void | Promise<void>
+  /** `replaceOriginal` : remplacer l'affichage par la version annotée (l'original
+   *  reste archivé) ou conserver les deux. Cf. mig 185. */
+  onSave: (file: File, replaceOriginal: boolean) => void | Promise<void>
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
@@ -44,6 +46,8 @@ export function PhotoAnnotator({
   const [textScale, setTextScale] = useState(1)
   const [shapes, setShapes] = useState<Shape[]>([])
   const [saving, setSaving] = useState(false)
+  // Fichier annoté exporté, en attente du choix « remplacer / conserver les deux ».
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const draft = useRef<Shape | null>(null)
 
   // Charge l'image (crossOrigin pour pouvoir exporter le canvas ensuite).
@@ -139,16 +143,25 @@ export function PhotoAnnotator({
     setShapes((s) => [...s, d])
   }
 
-  async function save() {
+  // Étape 1 — exporter l'image annotée, puis DEMANDER le choix (on ne sauve pas
+  // encore). L'original n'est jamais perdu ; le choix ne porte que sur l'AFFICHAGE.
+  async function exportAndAsk() {
     const canvas = canvasRef.current
-    if (!canvas || saving) return
+    if (!canvas || saving || pendingFile) return
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.9))
+    if (!blob) return
+    setPendingFile(new File([blob], 'annotation.jpg', { type: 'image/jpeg' }))
+  }
+
+  // Étape 2 — le conducteur a tranché : remplacer l'affichage, ou garder les deux.
+  async function confirmSave(replaceOriginal: boolean) {
+    if (!pendingFile || saving) return
     setSaving(true)
     try {
-      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.9))
-      if (!blob) throw new Error('export')
-      await onSave(new File([blob], 'annotation.jpg', { type: 'image/jpeg' }))
+      await onSave(pendingFile, replaceOriginal)
     } catch {
       setSaving(false)
+      setPendingFile(null)
     }
   }
 
@@ -166,7 +179,7 @@ export function PhotoAnnotator({
         <button type="button" onClick={onCancel} aria-label="Annuler" className="rounded-full bg-white/10 p-2"><X className="h-5 w-5" /></button>
         <span className="text-sm font-medium">Annoter la photo</span>
         <button
-          type="button" onClick={save} disabled={saving}
+          type="button" onClick={exportAndAsk} disabled={saving || !!pendingFile}
           className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Enregistrer
@@ -227,6 +240,32 @@ export function PhotoAnnotator({
           ))}
         </div>
       </div>
+
+      {/* Choix à l'enregistrement : l'original est TOUJOURS conservé ; on ne décide
+          que de ce qu'on AFFICHE par défaut. */}
+      {pendingFile && (
+        <div className="absolute inset-0 z-[90] flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="w-full max-w-sm space-y-3 rounded-2xl bg-card p-4 text-foreground">
+            <h3 className="text-sm font-semibold">Photo annotée prête</h3>
+            <p className="text-[13px] text-muted-foreground">
+              L&apos;original est toujours conservé. Que veut-on voir par défaut ?
+            </p>
+            <button
+              type="button" onClick={() => confirmSave(true)} disabled={saving}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Remplacer par la version annotée
+            </button>
+            <button
+              type="button" onClick={() => confirmSave(false)} disabled={saving}
+              className="flex w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            >
+              Conserver les deux
+            </button>
+            <p className="text-center text-[11px] text-muted-foreground">L&apos;original reste archivé et consultable.</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
