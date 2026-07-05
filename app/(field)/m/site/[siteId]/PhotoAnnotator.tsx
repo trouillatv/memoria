@@ -6,7 +6,8 @@
 // tactile ; les formes sont mémorisées → on peut effacer la dernière.
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Pencil, ArrowUpRight, Circle, Type, Undo2, Loader2, Check, Eraser } from 'lucide-react'
+import { X, Pencil, ArrowUpRight, Circle, Type, Undo2, Loader2, Check, Eraser, AlertCircle, RotateCcw } from 'lucide-react'
+import { fetchAnnotationImageAction } from './capture-actions'
 
 type Tool = 'draw' | 'arrow' | 'circle' | 'text' | 'erase'
 type Pt = { x: number; y: number }
@@ -41,6 +42,8 @@ export function PhotoAnnotator({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [ready, setReady] = useState(false)
+  const [error, setError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const [tool, setTool] = useState<Tool>('draw')
   const [color, setColor] = useState(COLORS[0])
   const [textScale, setTextScale] = useState(1)
@@ -50,24 +53,36 @@ export function PhotoAnnotator({
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const draft = useRef<Shape | null>(null)
 
-  // Charge l'image (crossOrigin pour pouvoir exporter le canvas ensuite).
+  // Charge l'image via le SERVEUR (data URL) : les URLs signées Supabase n'ont pas
+  // d'en-tête CORS, donc un chargement crossOrigin (nécessaire pour exporter le
+  // canvas) échouait → spinner infini. Un data URL est de même origine : il
+  // s'affiche ET s'exporte. Erreur explicite au lieu d'un spinner sans fin.
   useEffect(() => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => {
-      imgRef.current = img
-      const canvas = canvasRef.current
-      if (!canvas) return
-      // Taille interne = image, plafonnée (perf) ; l'affichage est géré en CSS.
-      const maxW = 1400
-      const scale = Math.min(1, maxW / img.naturalWidth)
-      canvas.width = Math.round(img.naturalWidth * scale)
-      canvas.height = Math.round(img.naturalHeight * scale)
-      setReady(true)
-    }
-    img.onerror = () => setReady(false)
-    img.src = imageUrl
-  }, [imageUrl])
+    let cancelled = false
+    ;(async () => {
+      setReady(false)
+      setError(false)
+      const r = await fetchAnnotationImageAction(imageUrl)
+      if (cancelled) return
+      if (!r.ok) { setError(true); return }
+      const img = new Image()
+      img.onload = () => {
+        if (cancelled) return
+        imgRef.current = img
+        const canvas = canvasRef.current
+        if (!canvas) return
+        // Taille interne = image, plafonnée (perf) ; l'affichage est géré en CSS.
+        const maxW = 1400
+        const scale = Math.min(1, maxW / img.naturalWidth)
+        canvas.width = Math.round(img.naturalWidth * scale)
+        canvas.height = Math.round(img.naturalHeight * scale)
+        setReady(true)
+      }
+      img.onerror = () => { if (!cancelled) setError(true) }
+      img.src = r.dataUrl
+    })()
+    return () => { cancelled = true }
+  }, [imageUrl, attempt])
 
   // Redessine : image de fond + toutes les formes (+ le brouillon en cours).
   useEffect(() => {
@@ -187,7 +202,19 @@ export function PhotoAnnotator({
       </div>
 
       <div className="flex flex-1 items-center justify-center overflow-hidden p-2">
-        {!ready && <Loader2 className="h-6 w-6 animate-spin text-white/70" />}
+        {!ready && !error && <Loader2 className="h-6 w-6 animate-spin text-white/70" />}
+        {error && (
+          <div className="flex max-w-xs flex-col items-center gap-3 px-4 text-center text-white/80">
+            <AlertCircle className="h-8 w-8 text-white/60" />
+            <p className="text-sm">Impossible de charger la photo pour l&apos;annoter.</p>
+            <button
+              type="button" onClick={() => setAttempt((a) => a + 1)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium"
+            >
+              <RotateCcw className="h-4 w-4" /> Réessayer
+            </button>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           onPointerDown={onPointerDown}

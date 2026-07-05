@@ -491,6 +491,34 @@ export async function registerVisitVideoAction(
   }
 }
 
+// ── Image pour l'annotation (contourne le CORS) ──────────────────────────────
+// L'annotateur dessine la photo sur un <canvas> puis l'EXPORTE : il lui faut donc
+// une image « propre » (non teintée). Or les URLs signées Supabase ne renvoient
+// PAS d'en-tête CORS → une image chargée en crossOrigin échoue (canvas figé sur le
+// spinner). On récupère donc les octets CÔTÉ SERVEUR et on renvoie un data URL
+// (même origine, jamais teinté). Anti-SSRF : on ne relaie QUE notre stockage.
+
+const MAX_ANNOTATION_IMAGE_BYTES = 25 * 1024 * 1024
+
+export async function fetchAnnotationImageAction(
+  url: string,
+): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!base || !url.startsWith(`${base}/storage/`)) return { ok: false, error: 'URL non autorisée' }
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return { ok: false, error: 'Image introuvable' }
+    const buf = Buffer.from(await resp.arrayBuffer())
+    if (buf.byteLength > MAX_ANNOTATION_IMAGE_BYTES) return { ok: false, error: 'Image trop lourde' }
+    const mime = resp.headers.get('content-type') || 'image/jpeg'
+    return { ok: true, dataUrl: `data:${mime};base64,${buf.toString('base64')}` }
+  } catch {
+    return { ok: false, error: 'Chargement de l’image échoué' }
+  }
+}
+
 // ── Retirer une capture (faux geste, pendant la collecte) ────────────────────
 
 // ── Question ouverte / « à vérifier au retour » (❓) ──────────────────────────
