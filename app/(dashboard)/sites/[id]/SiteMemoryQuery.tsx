@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteMemoryTermsAction,
@@ -32,6 +32,8 @@ const EXAMPLES = ['réservation', 'étanchéité', 'accès', 'reprise', 'béton'
 const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof StickyNote; cls: string }> = {
   anomaly:      { label: 'Anomalie',     Icon: AlertTriangle, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   site_note:    { label: 'Note',         Icon: StickyNote,    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+  // P2 — observation terrain (visit_capture : note / mémo vocal / point vérifié).
+  observation:  { label: 'Observation',  Icon: Eye,           cls: 'bg-teal-50 text-teal-700 border-teal-200' },
   intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   photo:        { label: 'Photo',        Icon: Camera,        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   // S4a-1 — mémoire récente produite par MemorIA, désormais cherchable.
@@ -142,7 +144,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           <Search className="h-4 w-4 text-muted-foreground" /> Interroger ce site
         </h2>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          MemorIA retrouve dans la mémoire du site (anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus, documents : CCTP, marché, procédures…).
+          MemorIA retrouve dans la mémoire du site (observations de visite, anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus, documents : CCTP, marché, procédures…).
           Il vous montre les traces&nbsp;: il ne répond pas à votre place.
         </p>
       </div>
