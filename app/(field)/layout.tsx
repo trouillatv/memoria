@@ -3,13 +3,11 @@ import { ListTodo, Building2 } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
-import { LogoutButton } from './m/logout-button'
-import { SwitchToDesktopLink } from './switch-to-desktop-link'
+import { MobileTabBar } from './m/MobileTabBar'
 import { SyncIndicator } from './sync-indicator'
 import { SyncToastBridge } from './sync-toast-bridge'
 import { FieldSyncDrainer } from './sync-drainer'
 import { ThemeSync } from '@/components/layout/ThemeSync'
-import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { PageViewLogger } from '@/app/(dashboard)/PageViewLogger'
 
 export default async function FieldLayout({ children }: { children: React.ReactNode }) {
@@ -65,31 +63,10 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           </div>
         </div>
       </header>
-      <main className="max-w-md mx-auto px-3 py-5">{children}</main>
-      <footer className="max-w-md mx-auto px-4 py-6 mt-12 border-t border-foreground/[0.08] flex items-center gap-3 text-sm">
-        <LogoutButton />
-        <span aria-hidden className="text-muted-foreground/60">·</span>
-        <Link
-          href="/account"
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          Mon compte
-        </Link>
-        {/* Échappatoire bureau : un manager ne doit jamais être coincé sur /m.
-            Bascule aussi home_preference sur `dashboard` pour aligner le réglage
-            « Page d'accueil » du menu compte sur le choix effectif de l'user. */}
-        {(user.role === 'admin' || user.role === 'manager') && (
-          <>
-            <span aria-hidden className="text-muted-foreground/60">·</span>
-            <SwitchToDesktopLink />
-          </>
-        )}
-        {/* Thème : sélecteur accessible directement depuis le terrain (mobile).
-            Persiste en base + cross-device, comme le toggle desktop. */}
-        <div className="ml-auto">
-          <ThemeToggle />
-        </div>
-      </footer>
+      {/* pb pour dégager la barre de nav fixe (le socle du cockpit). Les réglages
+          (compte, thème, déconnexion, bascule bureau) vivent désormais dans Profil. */}
+      <main className="max-w-md mx-auto px-3 pt-5 pb-24">{children}</main>
+      <MobileTabBar actionsCount={actionsHealth.total} />
       {/* Réapplique le thème persisté de l'user en entrant sur le terrain. */}
       <ThemeSync theme={user.theme_preference} />
       {/* Instrumentation : ouverture des surfaces terrain (/m…) — savoir si le

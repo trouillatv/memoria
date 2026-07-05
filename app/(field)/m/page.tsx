@@ -16,10 +16,10 @@ import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
-import { ImportLauncherHome } from './ImportLauncherHome'
 import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
-import { ActiveVisitsCard } from './ActiveVisitsCard'
-import { listActiveVisitsForUser } from '@/lib/db/visits'
+import { ResumeWorkCard } from './ResumeWorkCard'
+import { RecentSitesCard } from './RecentSitesCard'
+import { listActiveVisitsForUser, listPendingTriageForUser, listRecentSitesForUser } from '@/lib/db/visits'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -583,19 +583,33 @@ export default async function FieldHomePage({
   const timedToday = selectedInterventions.filter((i) => !!i.planned_start)
   const recurringToday = selectedInterventions.filter((i) => !i.planned_start)
 
-  // Visites OUVERTES de l'agent (Lot A) — objet vivant à reprendre sans le
-  // chercher. Surfacé tout en haut, indépendant de la date sélectionnée.
-  const activeVisits = await listActiveVisitsForUser(user.id).catch(() => [])
+  // « Reprendre mon travail » — la pile de travail du quotidien : visites en cours
+  // (à reprendre) + visites terminées dont le TRI n'est pas fini. Tout en haut.
+  const [activeVisits, pendingTriage, recentSites] = await Promise.all([
+    listActiveVisitsForUser(user.id).catch(() => []),
+    listPendingTriageForUser(user.id).catch(() => []),
+    listRecentSitesForUser(user.id).catch(() => []),
+  ])
 
   return (
     <div className="space-y-7 max-w-md pb-32">
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
 
-      {/* 0 — Visite en cours : LE bouton principal quand une collecte est ouverte.
-          Au-dessus de tout (avant l'attention) : on reprend en un geste. */}
-      <ActiveVisitsCard visits={activeVisits} />
+      {/* 0 — Reprendre mon travail : la pile de travail du quotidien (visite en
+          cours + tri restant). Au-dessus de tout — on reprend en un geste. */}
+      <ResumeWorkCard activeVisits={activeVisits} pendingTriage={pendingTriage} />
 
-      {/* 1 — Ce qui demande ton attention (remonté automatiquement).
+      {/* Démarrer une action — juste après « Reprendre » : réunion, visite (avec
+          ses modes de création) ou prévisite. WhatsApp est un mode de Visite. */}
+      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action" flat>
+        <div className="grid grid-cols-3 gap-3">
+          <MeetingLauncher />
+          <VisitLauncherHome />
+          <PrevisiteAoLauncher />
+        </div>
+      </CockpitCard>
+
+      {/* Actions du jour — ce qui demande ton attention (remonté automatiquement).
           Carte HÉRO : la plus prominente. Une phrase d'état donne l'ensemble
           avant le détail ; si rien ne remonte, une carte calme rassure. */}
       {shownAttention.length > 0 ? (
@@ -676,18 +690,7 @@ export default async function FieldHomePage({
         </CockpitCard>
       )}
 
-      {/* 3 — Démarrer une action : les outils pour agir. Carte SECONDAIRE
-          (aplatie) : recule derrière l'attention et l'agenda du jour. */}
-      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action" flat>
-        <div className="grid grid-cols-2 gap-3">
-          <MeetingLauncher />
-          <VisitLauncherHome />
-          <ImportLauncherHome />
-          <PrevisiteAoLauncher />
-        </div>
-      </CockpitCard>
-
-      {/* 4 — Interventions planifiées aujourd'hui (missions récurrentes).
+      {/* Interventions du jour (missions récurrentes).
           Carte SECONDAIRE (aplatie). État vide compact (~180px) plutôt qu'un
           grand vide, avec une sortie vers les chantiers. */}
       <CockpitCard
@@ -747,6 +750,9 @@ export default async function FieldHomePage({
           ))}
         </div>
       )}
+
+      {/* Chantiers récents — les 3 derniers dossiers ouverts (sobre, sans image). */}
+      <RecentSitesCard sites={recentSites} />
 
       {/* À venir cette semaine. */}
       {upcomingInterventions.length > 0 && (
