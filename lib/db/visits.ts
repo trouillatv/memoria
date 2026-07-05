@@ -16,7 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent } from '@/lib/db/visit-captures'
-import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
+import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
@@ -502,6 +502,92 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
 }
 
 // ── Suites à matérialiser au débrief (tags Action/Réserve → objets chantier) ─
+
+// ── « Voir la visite » : Évolution + Patrimoine (mémoire du chantier) ─────────
+// La page de consultation devient 4 onglets (Cette visite / Évolution / Histoire /
+// Mémoire). Ces deux assembleurs nourrissent Évolution et le pied de Mémoire.
+// 100 % déterministe (aucune IA) : diffs et compteurs.
+
+export interface VisitEvolution {
+  /** Y a-t-il une visite précédente à comparer ? Non → « point de référence ». */
+  hasPrev: boolean
+  prevDateLabel: string | null
+  resolvedReserves: Array<{ label: string; location: string | null }>
+  newReserves: Array<{ label: string; location: string | null }>
+  recurring: Array<{ label: string; detail: string | null }>
+  addedPhotos: number
+}
+
+/** Le DIFF depuis la dernière visite : réserves levées / nouvelles, récurrences,
+ *  photos ajoutées. « Ce n'est plus la visite, c'est le diff. » */
+export async function buildVisitEvolution(reportId: string, siteId: string): Promise<VisitEvolution> {
+  const empty: VisitEvolution = { hasPrev: false, prevDateLabel: null, resolvedReserves: [], newReserves: [], recurring: [], addedPhotos: 0 }
+  const supabase = createAdminClient()
+
+  const { data: cur } = await supabase.from('site_reports').select('started_at, created_at').eq('id', reportId).maybeSingle()
+  const curRow = cur as { started_at: string | null; created_at: string } | null
+  const curStart = curRow?.started_at ?? curRow?.created_at ?? new Date().toISOString()
+
+  // Visite TERMINÉE juste avant la courante (la borne du diff).
+  const { data: prev } = await supabase
+    .from('site_reports')
+    .select('id, started_at, ended_at, created_at')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
+    .neq('id', reportId)
+    .lt('ended_at', curStart)
+    .order('ended_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const prevVisit = prev as { id: string; started_at: string | null; ended_at: string | null; created_at: string } | null
+  if (!prevVisit) return empty
+  const since = prevVisit.ended_at ?? prevVisit.started_at ?? prevVisit.created_at
+  const prevDateLabel = new Date(since).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+
+  const [{ data: resRows }, photosRes, rec] = await Promise.all([
+    supabase.from('site_reserve').select('label, location, status, created_at, lifted_at').eq('site_id', siteId),
+    supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId).eq('kind', 'photo').neq('status', 'discarded').gt('created_at', since),
+    detectRecurringTopics(siteId).catch(() => null),
+  ])
+  const rows = (resRows ?? []) as Array<{ label: string; location: string | null; status: string; created_at: string; lifted_at: string | null }>
+  const resolvedReserves = rows.filter((r) => r.status === 'lifted' && r.lifted_at && r.lifted_at > since).slice(0, 10).map((r) => ({ label: r.label, location: r.location }))
+  const newReserves = rows.filter((r) => r.created_at > since).slice(0, 10).map((r) => ({ label: r.label, location: r.location }))
+  const recurring = rec ? rec.items.slice(0, 5).map((i) => ({ label: i.label, detail: i.meta ?? i.context?.[0] ?? null })) : []
+
+  return { hasPrev: true, prevDateLabel, resolvedReserves, newReserves, recurring, addedPhotos: photosRes.count ?? 0 }
+}
+
+export interface SitePatrimoine {
+  firstVisitLabel: string | null
+  photos: number
+  visits: number
+  actions: number
+  reserves: number
+}
+
+/** Le PATRIMOINE du chantier — « depuis la première visite : N photos · N visites
+ *  · N actions · N réserves ». Présenté comme un patrimoine, pas des KPI. */
+export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoine> {
+  const supabase = createAdminClient()
+  const [visitsRes, photosRes, actionsRes, reservesRes, firstRes] = await Promise.all([
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).not('origin', 'is', null),
+    supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').neq('status', 'discarded'),
+    supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
+    supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
+    supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
+  ])
+  const first = firstRes.data as { started_at: string | null; created_at: string } | null
+  const firstIso = first?.started_at ?? first?.created_at ?? null
+  return {
+    firstVisitLabel: firstIso ? new Date(firstIso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
+    photos: photosRes.count ?? 0,
+    visits: visitsRes.count ?? 0,
+    actions: actionsRes.count ?? 0,
+    reserves: reservesRes.count ?? 0,
+  }
+}
 
 /**
  * Une SUITE proposée au débrief : une capture taguée ✅ Action / ⚠️ Réserve (écran
