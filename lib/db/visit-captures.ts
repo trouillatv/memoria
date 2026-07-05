@@ -36,6 +36,9 @@ export interface VisitCaptureRow {
   attachment_id: string | null
   subject_id: string | null
   triage_intent: CaptureTriageIntent
+  /** Cycle de la proposition de suite au débrief (mig 183) : null=à proposer,
+   *  'done'=matérialisée/rattachée, 'ignored'=écartée. */
+  suite_status: 'done' | 'ignored' | null
   /** Marqué « à réutiliser dans le mémoire technique » (mig 174) — optionnel, terrain. */
   starred: boolean
   /** Identité idempotente d'un dépôt offline-first (mig 177) — null pour les gestes serveur. */
@@ -144,7 +147,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
     .eq('report_id', reportId)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -156,7 +159,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -172,7 +175,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -190,7 +193,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })

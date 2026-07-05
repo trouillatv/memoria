@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit, buildVisitImpact } from '@/lib/db/visits'
+import { getVisit, buildVisitImpact, gatherVisitSuites } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { DebriefExpress } from './DebriefExpress'
 
@@ -70,6 +70,9 @@ export default async function VisitDebriefPage({
     buildVisitImpact(reportId).catch(() => null),
   ])
 
+  // Suites à matérialiser (tags Action/Réserve non encore traités).
+  const suites = await gatherVisitSuites(reportId).catch(() => [])
+
   return (
     <DebriefExpress
       reportId={reportId}
@@ -81,6 +84,7 @@ export default async function VisitDebriefPage({
       initialCaptures={captures}
       previews={previews}
       impact={impact}
+      initialSuites={suites}
     />
   )
 }

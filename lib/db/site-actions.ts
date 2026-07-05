@@ -34,6 +34,8 @@ export async function createSiteAction(input: {
   created_from?: string | null
   /** Type (migration 149) : one_shot (défaut) | deadline | recurring_until_done. */
   kind?: 'one_shot' | 'deadline' | 'recurring_until_done'
+  /** Capture d'origine (mig 183) — traçabilité « d'où vient cette action ? ». */
+  source_capture_id?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -52,6 +54,7 @@ export async function createSiteAction(input: {
       created_by: input.created_by,
       created_from: input.created_from ?? null,
       kind: input.kind ?? 'one_shot',
+      source_capture_id: input.source_capture_id ?? null,
       status: 'open' as SiteActionStatus,
     })
     .select('id')

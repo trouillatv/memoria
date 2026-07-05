@@ -9,9 +9,10 @@ import {
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
 import { CaptureTriage } from './CaptureTriage'
+import { SuiteProposals } from './SuiteProposals'
 import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
-import type { VisitImpact } from '@/lib/db/visits'
+import type { VisitImpact, VisitSuiteProposal } from '@/lib/db/visits'
 
 /**
  * Débrief express (temps 2 — la voiture). Écran TRÈS simple. Une seule question
@@ -31,6 +32,7 @@ export function DebriefExpress({
   initialCaptures,
   previews,
   impact,
+  initialSuites,
 }: {
   reportId: string
   siteId: string
@@ -46,6 +48,8 @@ export function DebriefExpress({
   previews: Record<string, CapturePreview>
   /** Impact sur la mémoire du chantier — « ce que cette visite change ». */
   impact: VisitImpact | null
+  /** Suites proposées (tags Action/Réserve à matérialiser au chantier). */
+  initialSuites: VisitSuiteProposal[]
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -186,6 +190,10 @@ export function DebriefExpress({
       {/* Impact métier — la visite n'est pas juste enregistrée,
           elle a enrichi le chantier. 3-4 lignes, jamais un module lourd. */}
       {impact && <VisitImpactCard impact={impact} total={total} />}
+
+      {/* Suites à créer — les tags Action/Réserve deviennent des objets chantier
+          (MemorIA propose, l'humain valide). */}
+      <SuiteProposals initialSuites={initialSuites} />
 
       {total === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">

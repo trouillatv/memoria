@@ -18,6 +18,7 @@ import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { buildSiteMemorySignals, buildSuggestedQuestions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
 import type {
   DbSiteReport,
@@ -491,6 +492,61 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
     added: { photos, notes, reserves, actions },
     touchedSubjects,
   }
+}
+
+// ── Suites à matérialiser au débrief (tags Action/Réserve → objets chantier) ─
+
+/**
+ * Une SUITE proposée au débrief : une capture taguée ✅ Action / ⚠️ Réserve (écran
+ * 2), pas encore matérialisée (`suite_status` null). MemorIA PROPOSE ; l'humain
+ * valide/modifie/ignore. `similar` = objets ouverts du chantier proches (dédup :
+ * « existe déjà, mettre à jour ? »).
+ */
+export interface VisitSuiteProposal {
+  captureId: string
+  kind: 'action' | 'reserve'
+  text: string
+  similar: Array<{ id: string; label: string }>
+}
+
+function normalizeTitle(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+function similarTitles(a: string, b: string): boolean {
+  const wa = new Set(normalizeTitle(a).split(' ').filter((w) => w.length > 2))
+  const wb = new Set(normalizeTitle(b).split(' ').filter((w) => w.length > 2))
+  if (wa.size === 0 || wb.size === 0) return false
+  let inter = 0
+  for (const w of wa) if (wb.has(w)) inter++
+  return inter / (wa.size + wb.size - inter) >= 0.5
+}
+
+export async function gatherVisitSuites(reportId: string): Promise<VisitSuiteProposal[]> {
+  const captures = await listVisitCaptures(reportId).catch(() => [])
+  const pending = captures.filter(
+    (c) => c.status === 'kept'
+      && (c.triage_intent === 'action' || c.triage_intent === 'reserve')
+      && c.suite_status == null,
+  )
+  if (pending.length === 0) return []
+  const siteId = pending[0].site_id
+
+  const [openActions, reserves] = await Promise.all([
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    getSiteReserves(siteId).catch(() => []),
+  ])
+  const actionPool = (openActions as Array<{ id: string; title: string }>).map((a) => ({ id: a.id, label: a.title }))
+  const reservePool = (reserves as Array<{ id: string; label: string; status: string }>)
+    .filter((r) => r.status === 'open')
+    .map((r) => ({ id: r.id, label: r.label }))
+
+  return pending.map((c) => {
+    const kind = c.triage_intent === 'reserve' ? ('reserve' as const) : ('action' as const)
+    const text = c.body?.trim() || (kind === 'reserve' ? 'Réserve à préciser' : 'Action à préciser')
+    const pool = kind === 'action' ? actionPool : reservePool
+    const similar = pool.filter((o) => similarTitles(o.label, text)).slice(0, 3)
+    return { captureId: c.id, kind, text, similar }
+  })
 }
 
 // ── Historique UTILE du chantier courant (V2 bornée — PAS de cross-chantier) ─
