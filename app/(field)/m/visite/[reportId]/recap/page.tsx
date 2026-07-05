@@ -5,10 +5,13 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit } from '@/lib/db/visits'
+import { getVisit, buildVisitEvolution, buildSitePatrimoine } from '@/lib/db/visits'
+import { getSiteNarrative } from '@/lib/db/site-narrative'
+import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { VisitOutputActions } from '../VisitOutputActions'
 import { ReopenVisitButton } from '../ReopenVisitButton'
+import { VisitMemoryTabs } from './VisitMemoryTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,8 +91,20 @@ export default async function VisitRecapPage({
     { icon: Star, n: tally.starred, cls: 'text-amber-500' },
   ].filter((c) => c.n > 0)
 
+  // Données des onglets Évolution / Histoire / Mémoire (déterministe, réutilise la
+  // mémoire du chantier). L'écran de FIN de visite, lui, reste inchangé et rapide.
+  const [evolution, narrative, memory, patrimoine] = await Promise.all([
+    buildVisitEvolution(reportId, visit.site_id).catch(() => ({ hasPrev: false, prevDateLabel: null, resolvedReserves: [], newReserves: [], recurring: [], addedPhotos: 0 })),
+    getSiteNarrative(visit.site_id).catch(() => null),
+    buildSiteMemorySignals(visit.site_id).catch(() => []),
+    buildSitePatrimoine(visit.site_id).catch(() => ({ firstVisitLabel: null, photos: 0, visits: 0, actions: 0, reserves: 0 })),
+  ])
+  const events = narrative ? narrative.months.flatMap((m) => m.events) : []
+
   return (
-    <div className="mx-auto max-w-md space-y-4 p-4 pb-40">
+    <VisitMemoryTabs evolution={evolution} events={events} memory={memory} patrimoine={patrimoine}>
+      {/* Onglet 1 — « Cette visite » : le récap existant, inchangé. */}
+      <div className="space-y-4">
       <Link
         href={`/m/site/${visit.site_id}`}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
@@ -161,12 +176,11 @@ export default async function VisitRecapPage({
         </ul>
       )}
 
-      {/* Sorties de la visite — mêmes que l'écran de fin (hors « Voir la visite »). */}
-      <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
-        <div className="mx-auto max-w-md">
-          <VisitOutputActions reportId={reportId} siteId={visit.site_id} showViewVisit={false} />
-        </div>
+      {/* Sorties de la visite (CR/PDF, ordinateur) — propres à CETTE visite. */}
+      <div className="pt-2">
+        <VisitOutputActions reportId={reportId} siteId={visit.site_id} showViewVisit={false} />
       </div>
-    </div>
+      </div>
+    </VisitMemoryTabs>
   )
 }
