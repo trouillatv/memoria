@@ -32,6 +32,7 @@ import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
@@ -150,6 +151,12 @@ export default async function FieldSitePage({
         .map((r) => ({ id: r.id, label: r.label, location: r.location }))
   // Dernière activité du chantier — visites + réunions + interventions récentes.
   const recentActivity = activeVisit ? [] : await getSiteRecentActivity(siteId).catch(() => [])
+  // Documents : onglet réservé au conducteur (admin/manager) ET seulement s'il
+  // existe de vrais documents liés — on ne dessine pas un menu vide.
+  const canSeeDocs = !activeVisit && (user.role === 'admin' || user.role === 'manager')
+  const siteDocCount = canSeeDocs
+    ? (await listDocumentsForTarget('site', siteId).catch(() => [])).length
+    : 0
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -277,8 +284,8 @@ export default async function FieldSitePage({
           <SiteActivityCard items={recentActivity} />
 
           {/* Accès rapides — vers les vues qui existent réellement (Visites /
-              Réunions / Mémoire). Frise & Documents omis tant qu'ils n'existent pas. */}
-          <SiteQuickAccessCard siteId={siteId} />
+              Réunions / Frise / Mémoire ; Documents si conducteur + docs liés). */}
+          <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
         </div>
       )}
 
