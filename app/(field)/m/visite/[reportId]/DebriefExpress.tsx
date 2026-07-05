@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
+import { listVisitCapturePreviewsAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import { CaptureTriage } from './CaptureTriage'
 import { SuiteProposals } from './SuiteProposals'
 import { VisitOutputActions } from './VisitOutputActions'
@@ -30,7 +31,7 @@ export function DebriefExpress({
   questionsCount,
   initialObjective,
   initialCaptures,
-  previews,
+  previews: initialPreviews,
   impact,
   initialSuites,
 }: {
@@ -53,6 +54,9 @@ export function DebriefExpress({
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
+  // Aperçus en ÉTAT (et non prop figée) : une photo annotée ajoutée pendant le
+  // tri doit apparaître avec sa miniature, donc on peut les recharger.
+  const [previews, setPreviews] = useState<Record<string, CapturePreview>>(initialPreviews)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [, startBusy] = useTransition()
   // Traitement photo par photo (écran 2) : index de départ, null = fermé.
@@ -109,6 +113,19 @@ export function DebriefExpress({
     }, 4000)
     return () => clearInterval(id)
   }, [hasPendingTranscript, reportId])
+
+  // Après ajout d'une photo annotée : recharge captures + aperçus pour la faire
+  // apparaître (nouvelle capture photo, non triée — le conducteur la taguera).
+  async function refreshAfterAnnotation() {
+    try {
+      const [fresh, freshPreviews] = await Promise.all([
+        refreshDebriefCapturesAction(reportId),
+        listVisitCapturePreviewsAction(reportId),
+      ])
+      if (fresh.length) setCaptures(fresh)
+      setPreviews((p) => ({ ...p, ...freshPreviews }))
+    } catch { /* silencieux : la photo est enregistrée côté serveur de toute façon */ }
+  }
 
   function decide(c: VisitCaptureRow, decision: TriageDecision, comment?: string) {
     const prev = c
@@ -262,6 +279,7 @@ export function DebriefExpress({
           startIndex={triageStart}
           onDecide={(c, d, comment) => decide(c, d, comment)}
           onClose={() => setTriageStart(null)}
+          onAnnotated={refreshAfterAnnotation}
         />
       )}
     </div>

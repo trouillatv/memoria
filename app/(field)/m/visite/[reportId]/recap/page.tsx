@@ -21,6 +21,7 @@ export const dynamic = 'force-dynamic'
 
 const ORIGIN_FR: Record<string, string> = {
   planned: 'Visite planifiée', spontaneous: 'Visite spontanée', qr: 'Visite (QR)', gps: 'Visite (sur place)',
+  import: 'Visite importée',
 }
 
 const KIND_ICON: Record<VisitCaptureKind, typeof Camera> = {

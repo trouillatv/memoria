@@ -430,7 +430,7 @@ export type VisitMotive =
   | 'expertise'
   | 'maintenance'
   | 'libre'
-export type VisitOrigin = 'planned' | 'spontaneous' | 'qr' | 'gps'
+export type VisitOrigin = 'planned' | 'spontaneous' | 'qr' | 'gps' | 'import'
 /** Résultat global — qualifie l'OUVRAGE/ZONE/SUJET, jamais la personne. */
 export type VisitOutcome = 'ras' | 'conforme' | 'conforme_reserves' | 'non_conforme' | 'a_revoir' | 'info'
 /** Résolution du sujet — orthogonale à l'outcome. */
@@ -462,6 +462,8 @@ export interface DbSiteReport {
   // Visites terrain (mig 162) — null pour un compte-rendu/réunion classique.
   // `origin` non-null = visite terrain. Champs posés à la clôture (facultatifs).
   origin: VisitOrigin | null
+  // Porte d'entrée (mig 184) : NULL/live=direct, whatsapp_zip/upload/…=import.
+  source: string | null
   started_at: string | null
   ended_at: string | null
   visit_motive: VisitMotive | null

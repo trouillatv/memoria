@@ -106,6 +106,10 @@ const photoSchema = z.object({
   report_id: z.string().uuid(),
   site_id: z.string().uuid(),
   attachment_id: z.string().uuid(),
+  // Instant réel (mig 184) — repris de la photo d'origine quand on ajoute une
+  // version ANNOTÉE, pour qu'elle se range juste à côté d'elle dans une visite
+  // importée (timeline sur captured_at). Absent en direct.
+  captured_at: z.string().datetime().optional(),
   ...coords,
 })
 
@@ -122,6 +126,7 @@ export async function addPhotoCaptureAction(
       siteId: parsed.data.site_id,
       kind: 'photo',
       attachmentId: parsed.data.attachment_id,
+      capturedAt: parsed.data.captured_at ?? null,
       lat: parsed.data.lat ?? null,
       lng: parsed.data.lng ?? null,
       createdBy: auth.userId,

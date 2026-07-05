@@ -40,6 +40,11 @@ export interface CreateVisitInput {
   siteId: string
   origin?: VisitOrigin
   createdBy: string | null
+  /** Porte d'entrée (mig 184). NULL/absent = direct terrain ; 'whatsapp_zip' /
+   *  'upload' / … = import. Le pipeline aval est identique. */
+  source?: string | null
+  /** Début RÉEL de la session (import : 1ʳᵉ capture du lot). Défaut : now(). */
+  startedAt?: string | null
 }
 
 /**
@@ -73,7 +78,8 @@ export async function createVisit(input: CreateVisitInput): Promise<string> {
       status: 'draft',
       created_by: input.createdBy,
       origin: input.origin ?? 'spontaneous',
-      started_at: new Date().toISOString(),
+      source: input.source ?? null,
+      started_at: input.startedAt ?? new Date().toISOString(),
     })
     .select('id')
     .single()

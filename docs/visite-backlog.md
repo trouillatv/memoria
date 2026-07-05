@@ -53,7 +53,126 @@ en place (écrans 1/2/3), avec « Reprendre une visite » et « Objet au démarr
   photo (la vidéo va dans la galerie, pas la photo). Décision produit : sauvegarde
   locale volontaire des médias ?
 
-## 🚀 Évolution STRATÉGIQUE — 2ᵉ porte d'entrée : Import / « Inbox chantier »
+## 🎯 Décision de cadrage (2026-07) — « uniquement WhatsApp »
+
+> Guillaume : *« Prenons uniquement WhatsApp et oublions le reste. »* On garde la
+> section « moteur d'import universel » ci-dessous comme **fond d'architecture**
+> (elle reste vraie : WhatsApp n'est qu'un adaptateur), mais la **feuille de route
+> exécutable** se réduit à **4 niveaux WhatsApp**, du moins risqué au plus ambitieux.
+> On ne construit qu'un seul chemin à la fois.
+
+### Les 4 niveaux WhatsApp
+
+- **Niveau 1 — Import d'un export WhatsApp `.zip` (MVP).** L'utilisateur fait
+  « Exporter la discussion » dans WhatsApp → obtient un `.zip` (`_chat.txt`
+  horodaté + médias). On le dépose dans MemorIA → parse → reconstruction
+  chronologique → visite → pipeline existant (tri écran 2 → CR écran 3). **Zéro
+  coût récurrent, zéro infra externe.** C'est le cœur ; tout le reste s'y branche.
+- **Niveau 2 — Export ZIP depuis MemorIA.** L'inverse : depuis une visite/un
+  chantier, produire un `.zip` (photos annotées + CR PDF + vocaux) partageable.
+  Déterministe, réutilise `site-export`/`buildVisitCrDoc`. Prouve la valeur
+  « sortie » avant d'investir dans l'entrée temps réel.
+- **Niveau 3 — Partager vers MemorIA (feuille de partage OS).** Depuis WhatsApp,
+  « Partager » les médias sélectionnés → MemorIA (PWA `share_target` Android /
+  feuille de partage iOS). Un cran plus fluide que l'export ZIP, toujours sans
+  numéro ni webhook.
+- **Niveau 4 — Assistant WhatsApp conversationnel (numéro WhatsApp Business).**
+  Le conducteur écrit à un **numéro MemorIA** comme à un collègue. Il envoie ses
+  photos/vocaux au fil de l'eau ; MemorIA répond DANS WhatsApp.
+
+### Niveau 4 en détail — faisabilité de l'assistant conversationnel
+
+Objectif ressenti : *« je parle à MemorIA dans WhatsApp, il me comprend et me
+répond. »* Techniquement réaliste avec la **WhatsApp Business Cloud API** (Meta) —
+pas un téléphone, un webhook serveur.
+
+- **Recevoir** : `POST /api/webhooks/whatsapp` reçoit chaque message (média ou
+  texte). Le serveur télécharge le média via l'API → alimente le **même moteur**
+  d'ingestion que les niveaux 1-3. Rien de neuf côté pipeline.
+- **Répondre** : l'API permet d'**envoyer des messages** en retour (texte +
+  **boutons de réponse rapide** interactifs, listes). MemorIA peut donc répondre
+  « ✅ 12 médias reçus — Terminer la visite ? [Oui] [Ajouter encore] ».
+- **Commandes légères** (parsing texte, pas d'IA nécessaire) :
+  - `Début visite Médipôle` → ouvre une visite sur le chantier reconnu (match par
+    nom sur les chantiers de l'émetteur ; sinon boutons de désambiguïsation).
+  - `Fin visite` → clôt la session : reconstruction chrono → tri proposé → CR.
+  - Tout média entre-temps est rattaché à la session ouverte de cet émetteur.
+- **État de session par émetteur** : une petite table `whatsapp_session`
+  (phone → report_id ouvert, chantier, dernière activité). Déterministe. Le
+  « conversationnel » = **machine à états simple** (aucune session ouverte →
+  attend `Début visite` ; session ouverte → accumule les médias ; `Fin visite` →
+  clôt), pas un agent libre. On garde la règle : **MemorIA propose, l'humain
+  valide** (le tri et la création de suites restent des gestes de validation, ici
+  via boutons WhatsApp).
+- **Affectation** : téléphone → conducteur → ses chantiers. Chantier via la
+  commande `Début visite <nom>` ou suggestion par la mémoire ; sinon boutons.
+
+**Pourquoi le Niveau 4 en dernier** : il exige compte Meta Developer, app vérifiée,
+numéro dédié, serveur public + webhooks signés, gestion médias/quotas, et une
+**facturation par conversation** (modèle Meta EN VIGUEUR — à revérifier au moment
+venu). Or les niveaux 1-3 délivrent déjà l'essentiel du gain de temps à coût nul.
+On n'investit dans le numéro que si l'usage réel prouve le besoin de temps réel.
+
+### Coût & modèle éco (Niveau 4)
+- **Vrai coût récurrent** = stockage médias + transcription vocaux + résumé IA
+  (déjà optimisé : 1 appel, texte seul, gaté). **Pas** WhatsApp per-média.
+- Cloud API : coût lié aux conversations. Pilote (~10 conducteurs × 5 visites/sem
+  ≈ 200 conv./mois) → faible devant la valeur (≈ 1 h économisée / visite).
+- **Offre** possible : *Standard* (import ZIP / partage, coût mini) vs *Premium*
+  (numéro WhatsApp dédié + assistant conversationnel). Le Premium finance l'infra.
+
+---
+
+## 🧠 À CONCEVOIR (pas encore développer) — « Mémoire vivante du chantier »
+
+> Guillaume : *« Je ne le développerais pas tout de suite, mais je commencerais à
+> le concevoir. »* Concept : répondre à **« Qu'est-ce qui a changé sur ce chantier
+> depuis un mois ? »** — réserves récurrentes, actions qui traînent, entreprises
+> qui interviennent le plus, zones à problèmes, évolution dans le temps.
+
+### 🔑 Lecture technique : c'est **déjà là à ~80 %**
+Ce n'est PAS un nouveau moteur. Presque tous les signaux existent déjà, en
+**déterministe**, dans `lib/db/site-memory-signals.ts` :
+
+| Question de Guillaume | Brique existante |
+|---|---|
+| Réserves qui traînent / récurrentes | `detectOpenReserves`, `detectRecurringTopics` |
+| Actions qui stagnent / en retard | `detectOverdueActions`, `detectUnappliedDecisions`, `detectRecurringActions` |
+| Entreprises qui interviennent le plus | `detectActorCongestion` |
+| Entreprises absentes / défaillantes | `detectRepeatedAbsences` |
+| Évolution dans le temps (frise) | `site-narrative.ts` → `getSiteNarrative` / `buildNarrativeMonths` / `buildStorySummary` |
+| Digest synthétique | `site-memory-digest.ts` → `getSiteMemoryDigest` |
+
+`buildSiteMemorySignals(siteId)` agrège déjà tous ces détecteurs. Ils tournent
+sur SQL (`site_reserve`, `site_actions`, visites, sujets) — **aucune IA, aucun coût.**
+
+### Ce qui manque réellement (petit)
+1. **Fenêtrage temporel** : ajouter un paramètre « depuis N jours / ce mois-ci » aux
+   détecteurs (aujourd'hui ils raisonnent surtout `asOf`). C'est un `WHERE date >= …`.
+2. **Framing « ce qui a CHANGÉ »** : diff entre deux instantanés (réserves ouvertes
+   il y a 1 mois vs aujourd'hui : ouvertes/levées/nouvelles). Déterministe.
+3. **UNE synthèse narrative IA** (optionnelle, gatée) : transformer la liste de
+   signaux en un paragraphe « voici le mois » — **texte seul, un appel, jamais
+   d'images**, avec repli déterministe. Exactement le patron de `runVisitSummary`.
+4. **Un écran** « Mémoire du chantier » (question en haut, réponse = signaux
+   fenêtrés + frise + synthèse).
+
+### Principe reconduit
+MemorIA **observe et restitue** ; il ne décide pas à la place du conducteur. La
+mémoire vivante *montre* (« 3 réserves rouvrent chaque mois côté lot plomberie »)
+— l'humain agit. Cohérent avec « proposer, pas imposer ».
+
+### Estimation
+Vu l'existant, c'est **surtout de l'assemblage + du fenêtrage + un écran**, pas un
+chantier IA. À planifier comme une itération courte quand on décidera d'y aller.
+
+---
+
+## 🚀 Fond d'architecture — moteur d'import universel (référence)
+
+> Conservé comme **socle conceptuel** (WhatsApp = un adaptateur parmi d'autres).
+> Non exécutable en l'état : la feuille de route active est « uniquement WhatsApp »
+> ci-dessus. À rouvrir seulement si une 2ᵉ source (email, dossier…) devient prioritaire.
 
 > Ce n'est pas qu'une feature : c'est un **repositionnement**. Aujourd'hui MemorIA
 > suppose qu'on l'utilise PENDANT la visite. Beaucoup de conducteurs travaillent

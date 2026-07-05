@@ -45,6 +45,9 @@ export interface VisitCaptureRow {
   client_uuid: string | null
   lat: number | null
   lng: number | null
+  /** Instant RÉEL de la capture (mig 184) — EXIF/horodatage export. NULL en direct
+   *  (created_at fait foi). La timeline s'ordonne sur coalesce(captured_at, created_at). */
+  captured_at: string | null
   created_at: string
 }
 
@@ -64,6 +67,9 @@ export interface AddVisitCaptureInput {
   clientUuid?: string | null
   lat?: number | null
   lng?: number | null
+  /** Instant réel (mig 184) — posé à l'IMPORT pour reconstruire la chronologie.
+   *  Laissé null en direct : created_at fait foi. */
+  capturedAt?: string | null
   createdBy: string | null
 }
 
@@ -111,6 +117,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       client_uuid: input.clientUuid ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      captured_at: input.capturedAt ?? null,
       created_by: input.createdBy,
     })
     .select('id')
@@ -142,13 +149,17 @@ export async function findVisitCaptureIdByClientUuid(clientUuid: string): Promis
   return (data as { id: string } | null)?.id ?? null
 }
 
-/** Les captures d'une visite, dans l'ordre du terrain (timeline du panier). */
+/** Les captures d'une visite, dans l'ordre du terrain (timeline du panier).
+ *  Ordonnées sur l'instant RÉEL quand il existe (import : captured_at), sinon sur
+ *  l'insertion (direct : captured_at NULL → tie-break created_at). C'est ce double
+ *  tri qui « remet dans l'ordre » un lot WhatsApp arrivé en désordre (mig 184). */
 export async function listVisitCaptures(reportId: string): Promise<VisitCaptureRow[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
     .eq('report_id', reportId)
+    .order('captured_at', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: true })
   if (error) throw error
   return (data ?? []) as VisitCaptureRow[]
@@ -159,7 +170,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -175,7 +186,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -193,7 +204,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
