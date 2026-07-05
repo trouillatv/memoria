@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Zap, Briefcase, FileText, HelpCircle } from 'lucide-react'
+import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Briefcase, FileText, HelpCircle } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
@@ -14,13 +14,9 @@ import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
-import { MeetingLauncher } from './MeetingLauncher'
-import { VisitLauncherHome } from './VisitLauncherHome'
-import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
 import { ResumeWorkCard } from './ResumeWorkCard'
-import { RecentSitesCard } from './RecentSitesCard'
 import { RecentActivityCard } from './RecentActivityCard'
-import { listActiveVisitsForUser, listPendingTriageForUser, listRecentSitesForUser, getRecentActivityForUser } from '@/lib/db/visits'
+import { listActiveVisitsForUser, listPendingTriageForUser, getRecentActivityForUser } from '@/lib/db/visits'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -586,10 +582,9 @@ export default async function FieldHomePage({
 
   // « Reprendre mon travail » — la pile de travail du quotidien : visites en cours
   // (à reprendre) + visites terminées dont le TRI n'est pas fini. Tout en haut.
-  const [activeVisits, pendingTriage, recentSites, recentActivity] = await Promise.all([
+  const [activeVisits, pendingTriage, recentActivity] = await Promise.all([
     listActiveVisitsForUser(user.id).catch(() => []),
     listPendingTriageForUser(user.id).catch(() => []),
-    listRecentSitesForUser(user.id).catch(() => []),
     getRecentActivityForUser(user.id).catch(() => []),
   ])
 
@@ -608,18 +603,10 @@ export default async function FieldHomePage({
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
 
       {/* 0 — Reprendre mon travail : la pile de travail du quotidien (visite en
-          cours + tri restant). Au-dessus de tout — on reprend en un geste. */}
+          cours + tri restant). Au-dessus de tout — on reprend en un geste.
+          « Commencer » n'est PAS répété ici : c'est le bouton central ➕ Visite
+          de la barre du bas (une seule porte pour démarrer, pas de doublon). */}
       <ResumeWorkCard activeVisits={activeVisits} pendingTriage={pendingTriage} />
-
-      {/* Commencer — juste après « Reprendre » : réunion, visite (avec ses modes
-          de création) ou prévisite. WhatsApp est un mode de Visite. */}
-      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Commencer" flat>
-        <div className="grid grid-cols-3 gap-3">
-          <MeetingLauncher />
-          <VisitLauncherHome />
-          <PrevisiteAoLauncher />
-        </div>
-      </CockpitCard>
 
       {/* Actions du jour — ce qui demande ton attention (remonté automatiquement).
           Carte HÉRO : la plus prominente. Une phrase d'état donne l'ensemble
@@ -763,8 +750,8 @@ export default async function FieldHomePage({
         </div>
       )}
 
-      {/* Chantiers récents — les 3 derniers dossiers ouverts (sobre, sans image). */}
-      <RecentSitesCard sites={recentSites} />
+      {/* « Chantiers récents » n'est PAS ici : c'est l'onglet Chantiers de la barre
+          du bas (Aujourd'hui ne doit pas devenir un 2ᵉ écran Chantiers). */}
 
       {/* Récent — fin de la feuille de journée : dernière visite, dernier CR. */}
       <RecentActivityCard items={recentActivity} />
