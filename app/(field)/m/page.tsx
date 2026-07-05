@@ -591,17 +591,27 @@ export default async function FieldHomePage({
     listRecentSitesForUser(user.id).catch(() => []),
   ])
 
+  // Narratif : on ouvre sur une salutation + la journée — une feuille de route,
+  // pas un tableau de bord. « Qu'est-ce que je fais maintenant ? », pas des chiffres.
+  const firstName = user.full_name?.trim().split(/\s+/)[0] || user.email?.split('@')[0] || ''
+  const greetingDate = new Date(`${todayIso}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+
   return (
-    <div className="space-y-7 max-w-md pb-32">
+    <div className="space-y-6 max-w-md pb-32">
+      <header className="space-y-0.5 pt-1">
+        <h1 className="text-2xl font-bold leading-tight">Bonjour{firstName ? ` ${firstName}` : ''}</h1>
+        <p className="text-sm text-muted-foreground first-letter:uppercase">{greetingDate}</p>
+      </header>
+
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
 
       {/* 0 — Reprendre mon travail : la pile de travail du quotidien (visite en
           cours + tri restant). Au-dessus de tout — on reprend en un geste. */}
       <ResumeWorkCard activeVisits={activeVisits} pendingTriage={pendingTriage} />
 
-      {/* Démarrer une action — juste après « Reprendre » : réunion, visite (avec
-          ses modes de création) ou prévisite. WhatsApp est un mode de Visite. */}
-      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action" flat>
+      {/* Commencer — juste après « Reprendre » : réunion, visite (avec ses modes
+          de création) ou prévisite. WhatsApp est un mode de Visite. */}
+      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Commencer" flat>
         <div className="grid grid-cols-3 gap-3">
           <MeetingLauncher />
           <VisitLauncherHome />
