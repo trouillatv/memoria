@@ -7,7 +7,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
-import { createVisit, endVisit, closeVisit } from '@/lib/db/visits'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createVisit, endVisit, closeVisit, reopenVisit } from '@/lib/db/visits'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -39,6 +40,58 @@ export async function startVisitAction(
     return { ok: true, reportId }
   } catch {
     return { ok: false, error: 'Échec du démarrage de la visite' }
+  }
+}
+
+// Reprendre (terrain) : efface ended_at → la visite redevient « en cours », avec
+// toutes ses captures + tags intacts. Une visite n'est jamais figée.
+const reopenSchema = z.object({
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid(),
+})
+
+export async function reopenVisitAction(
+  input: z.input<typeof reopenSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = reopenSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await reopenVisit(parsed.data.report_id)
+    revalidatePath(`/m/site/${parsed.data.site_id}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la reprise de la visite' }
+  }
+}
+
+// Objet de la visite — « pourquoi je suis là ». Renseigné AU DÉMARRAGE (contexte
+// pour l'IA/le CR) ou plus tard. Champ ciblé : ne touche à aucun autre champ.
+const objectiveSchema = z.object({
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid().optional(),
+  objective: z.string().max(300),
+})
+
+export async function setVisitObjectiveAction(
+  input: z.input<typeof objectiveSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = objectiveSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const supabase = createAdminClient()
+    const { error } = await supabase
+      .from('site_reports')
+      .update({ objective: parsed.data.objective.trim() || null, updated_at: new Date().toISOString() })
+      .eq('id', parsed.data.report_id)
+    if (error) throw error
+    if (parsed.data.site_id) revalidatePath(`/m/site/${parsed.data.site_id}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: "Échec de l'enregistrement de l'objet" }
   }
 }
 

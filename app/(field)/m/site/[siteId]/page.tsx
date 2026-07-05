@@ -18,6 +18,7 @@ import { MobileSiteReadings } from '@/components/field/MobileSiteReadings'
 import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
+import { VisitObjectivePrompt } from './VisitObjectivePrompt'
 import { getActiveVisit, getLastEndedVisitForSite } from '@/lib/db/visits'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
@@ -241,15 +242,21 @@ export default async function FieldSitePage({
       {/* Visite terrain. Visite ouverte → le PANIER (collecte focalisée, temps 1) ;
           sinon → le bouton « Démarrer une visite » (friction zéro). */}
       {activeVisit ? (
-        <VisitBasket
-          reportId={activeVisit.id}
-          siteId={siteId}
-          userId={user.id}
-          startedAt={activeVisit.started_at}
-          subjects={visitSubjects}
-          subjectMemory={subjectMemory}
-          initialCaptures={visitCaptures}
-        />
+        <div className="space-y-3">
+          {/* Objet au démarrage — MemorIA sait dès le début pourquoi on est là. */}
+          {!activeVisit.objective && (
+            <VisitObjectivePrompt reportId={activeVisit.id} siteId={siteId} />
+          )}
+          <VisitBasket
+            reportId={activeVisit.id}
+            siteId={siteId}
+            userId={user.id}
+            startedAt={activeVisit.started_at}
+            subjects={visitSubjects}
+            subjectMemory={subjectMemory}
+            initialCaptures={visitCaptures}
+          />
+        </div>
       ) : (
         <div className="space-y-3">
           <VisitLauncher siteId={siteId} activeVisit={null} />
