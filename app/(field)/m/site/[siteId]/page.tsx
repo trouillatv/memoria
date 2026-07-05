@@ -19,12 +19,13 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, getLastEndedVisitForSite, buildSiteStatusSummary } from '@/lib/db/visits'
+import { getActiveVisit, buildSiteStatusSummary, getSiteRecentActivity } from '@/lib/db/visits'
 import { getSiteIdentity } from '@/lib/db/sites'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { SiteStatusCard } from './SiteStatusCard'
 import { IdentityCard } from './IdentityCard'
 import { SiteTodoCard } from './SiteTodoCard'
+import { SiteActivityCard } from './SiteActivityCard'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -103,18 +104,6 @@ function formatTraceDate(iso: string): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
 }
 
-// « Aujourd'hui 10h42 » / « Hier 14h30 » / « 3 juil. 10h42 » — repère humain pour
-// la carte « Dernière visite ». Basé sur le jour calendaire local.
-function formatVisitMoment(iso: string): string {
-  const d = new Date(iso)
-  const hm = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')
-  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
-  const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000)
-  if (days <= 0) return `Aujourd'hui ${hm}`
-  if (days === 1) return `Hier ${hm}`
-  return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} ${hm}`
-}
-
 export default async function FieldSitePage({
   params,
 }: {
@@ -158,9 +147,8 @@ export default async function FieldSitePage({
     : (await getSiteReserves(siteId).catch(() => []))
         .filter((r) => r.status === 'open')
         .map((r) => ({ id: r.id, label: r.label, location: r.location }))
-  // Sinon : la dernière visite TERMINÉE — pour la carte « Dernière visite » (la
-  // visite ne doit jamais donner l'impression de disparaître).
-  const lastVisit = activeVisit ? null : await getLastEndedVisitForSite(siteId).catch(() => null)
+  // Dernière activité du chantier — visites + réunions + interventions récentes.
+  const recentActivity = activeVisit ? [] : await getSiteRecentActivity(siteId).catch(() => [])
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -283,36 +271,9 @@ export default async function FieldSitePage({
 
           <VisitLauncher siteId={siteId} activeVisit={null} />
 
-          {/* Dernière visite — la trace ne disparaît pas : date, composition, « Voir ». */}
-          {lastVisit && (
-            <Link
-              href={`/m/visite/${lastVisit.reportId}/recap`}
-              className="flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 active:bg-muted/40 transition-colors"
-            >
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dernière visite</p>
-                <p className="text-sm font-medium">
-                  {formatVisitMoment(lastVisit.endedAt ?? lastVisit.startedAt ?? new Date().toISOString())}
-                </p>
-                {(() => {
-                  const parts = [
-                    lastVisit.photos > 0 ? `${lastVisit.photos} photo${lastVisit.photos > 1 ? 's' : ''}` : null,
-                    lastVisit.reserves > 0 ? `${lastVisit.reserves} réserve${lastVisit.reserves > 1 ? 's' : ''}` : null,
-                    lastVisit.notes > 0 ? `${lastVisit.notes} note${lastVisit.notes > 1 ? 's' : ''}` : null,
-                    lastVisit.actions > 0 ? `${lastVisit.actions} action${lastVisit.actions > 1 ? 's' : ''}` : null,
-                  ].filter(Boolean)
-                  return (
-                    <p className="text-xs text-muted-foreground">
-                      {parts.length > 0 ? parts.join(' · ') : 'Aucun élément relevé'}
-                    </p>
-                  )
-                })()}
-              </div>
-              <span className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-foreground/80">
-                Voir <ChevronRight className="h-4 w-4" />
-              </span>
-            </Link>
-          )}
+          {/* Dernière activité — visites, réunions ET interventions récentes du
+              chantier (remplace la carte « Dernière visite » seule). */}
+          <SiteActivityCard items={recentActivity} />
         </div>
       )}
 
