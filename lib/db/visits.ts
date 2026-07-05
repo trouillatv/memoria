@@ -589,6 +589,53 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
   }
 }
 
+// ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
+// Le geste QUOTIDIEN n'est pas de démarrer une visite, c'est de reprendre ce qui
+// n'est pas fini. Ici : les visites TERMINÉES de l'agent qui ont encore des
+// captures non triées (status='captured'). Les visites EN COURS, elles, sont
+// gérées par listActiveVisitsForUser.
+
+export interface PendingTriageItem {
+  reportId: string
+  siteId: string
+  siteName: string
+  remaining: number
+  endedAt: string | null
+}
+
+export async function listPendingTriageForUser(userId: string, limit = 8): Promise<PendingTriageItem[]> {
+  const supabase = createAdminClient()
+  const { data: rows } = await supabase
+    .from('site_reports')
+    .select('id, site_id, ended_at')
+    .eq('created_by', userId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
+    .not('site_id', 'is', null)
+    .order('ended_at', { ascending: false })
+    .limit(30)
+  const reps = (rows ?? []) as Array<{ id: string; site_id: string; ended_at: string | null }>
+  if (reps.length === 0) return []
+
+  const siteIds = [...new Set(reps.map((r) => r.site_id))]
+  const { data: sites } = await supabase.from('sites').select('id, name').in('id', siteIds)
+  const nameById = new Map((sites ?? []).map((s) => [s.id as string, s.name as string]))
+
+  const out: PendingTriageItem[] = []
+  for (const r of reps) {
+    const { count } = await supabase
+      .from('visit_capture')
+      .select('id', { count: 'exact', head: true })
+      .eq('report_id', r.id)
+      .eq('status', 'captured')
+    if ((count ?? 0) > 0) {
+      out.push({ reportId: r.id, siteId: r.site_id, siteName: nameById.get(r.site_id) ?? 'Chantier', remaining: count ?? 0, endedAt: r.ended_at })
+      if (out.length >= limit) break
+    }
+  }
+  return out
+}
+
 /**
  * Une SUITE proposée au débrief : une capture taguée ✅ Action / ⚠️ Réserve (écran
  * 2), pas encore matérialisée (`suite_status` null). MemorIA PROPOSE ; l'humain
