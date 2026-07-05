@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { ListTodo, Building2 } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
@@ -33,32 +32,9 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           <Link href="/m" className="text-sm font-semibold tracking-tight">
             MemorIA
           </Link>
+          {/* Sites/Actions sont désormais dans la barre du bas : on ne garde en
+              haut que l'identité et le point de synchronisation (discret). */}
           <div className="flex items-center gap-2.5">
-            {/* Raccourci annuaire chantiers — atteindre un site sans QR ni intervention. */}
-            <Link
-              href="/m/sites"
-              aria-label="Mes chantiers"
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]"
-            >
-              <Building2 className="h-3.5 w-3.5" />
-              Sites
-            </Link>
-            {/* Toujours visible : porte d'entrée vers les actions ouvertes. */}
-            <Link
-              href="/m/actions"
-              aria-label="Actions ouvertes"
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors active:scale-[0.97] ${
-                actionsHealth.critique > 0
-                  ? 'border-red-200 bg-red-50 text-red-700'
-                  : 'border-border bg-card text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <ListTodo className="h-3.5 w-3.5" />
-              Actions
-              {actionsHealth.total > 0 && (
-                <span className="tabular-nums font-semibold">{actionsHealth.total}</span>
-              )}
-            </Link>
             <SyncIndicator />
           </div>
         </div>

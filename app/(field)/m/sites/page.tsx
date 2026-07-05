@@ -51,20 +51,19 @@ export default async function FieldSitesPage() {
 
   return (
     <div className="space-y-4 max-w-md pb-32">
-      <div className="flex items-center gap-2">
-        <Building2 className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-xl font-semibold">Mes chantiers</h1>
-        {sites.length > 0 && (
-          <span className="text-sm text-muted-foreground tabular-nums">{sites.length}</span>
-        )}
-      </div>
+      <header className="space-y-1">
+        <h1 className="inline-flex items-center gap-2 text-xl font-semibold">
+          <MapPin className="h-5 w-5 text-muted-foreground" /> Sites
+        </h1>
+        <p className="text-sm text-muted-foreground">Où êtes-vous ? Retrouvez un site pour démarrer une visite.</p>
+      </header>
 
       {sites.length === 0 ? (
         <div className="rounded-lg border bg-card">
           <EmptyState
             icon={Building2}
-            title="Aucun chantier"
-            description="Aucun chantier ne vous est rattaché pour l'instant."
+            title="Aucun site"
+            description="Aucun site ne vous est rattaché pour l'instant."
             variant="compact"
           />
         </div>
