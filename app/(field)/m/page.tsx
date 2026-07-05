@@ -16,6 +16,7 @@ import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
 import { DateNav } from './DateNav'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
+import { ImportLauncherHome } from './ImportLauncherHome'
 import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
 import { ActiveVisitsCard } from './ActiveVisitsCard'
 import { listActiveVisitsForUser } from '@/lib/db/visits'
@@ -678,9 +679,10 @@ export default async function FieldHomePage({
       {/* 3 — Démarrer une action : les outils pour agir. Carte SECONDAIRE
           (aplatie) : recule derrière l'attention et l'agenda du jour. */}
       <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action" flat>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <MeetingLauncher />
           <VisitLauncherHome />
+          <ImportLauncherHome />
           <PrevisiteAoLauncher />
         </div>
       </CockpitCard>
