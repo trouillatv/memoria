@@ -418,6 +418,69 @@ export async function getLastEndedVisitForSite(siteId: string): Promise<LastVisi
   return { reportId: visit.id, startedAt: visit.started_at, endedAt: visit.ended_at, photos, reserves, notes, actions }
 }
 
+/**
+ * L'IMPACT d'une visite sur la mémoire du chantier — « ce que cette visite
+ * change », pour l'écran de fin. On ne raconte pas seulement ce qu'on a capturé :
+ * on montre que le chantier s'en trouve enrichi. Truthful et borné : au temps 2
+ * (la voiture) les réserves/actions ne sont matérialisées QUE si elles ont déjà
+ * été créées ; sinon on met en avant l'apport mémoire (photos/notes) et les
+ * sujets touchés. Lecture seule.
+ */
+export interface VisitImpact {
+  /** Ajouté pendant la visite (fenêtre temporelle). */
+  added: { photos: number; notes: number; reserves: number; actions: number }
+  /** Nombre d'actions ouvertes du chantier MAINTENANT (état, pas delta). */
+  siteOpenActions: number
+  /** Noms des sujets touchés pendant la visite (points remis en surveillance). */
+  touchedSubjects: string[]
+}
+
+export async function buildVisitImpact(reportId: string): Promise<VisitImpact | null> {
+  const supabase = createAdminClient()
+  const visit = await getVisit(reportId)
+  if (!visit || !visit.site_id) return null
+  const siteId = visit.site_id
+  const from = visit.started_at ?? visit.created_at
+  const to = visit.ended_at ?? new Date().toISOString()
+
+  const countWindow = async (table: string): Promise<number> => {
+    const { count } = await supabase
+      .from(table)
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .gte('created_at', from)
+      .lte('created_at', to)
+    return count ?? 0
+  }
+
+  const [captureRes, reserves, actions, openActions, touchedRes] = await Promise.all([
+    supabase.from('visit_capture').select('kind').eq('report_id', reportId).neq('status', 'discarded'),
+    countWindow('site_reserve'),
+    countWindow('site_actions'),
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    supabase.from('visit_capture').select('subject_id').eq('report_id', reportId).not('subject_id', 'is', null).neq('status', 'discarded'),
+  ])
+
+  const kinds = (captureRes.data ?? []) as Array<{ kind: string }>
+  const photos = kinds.filter((k) => k.kind === 'photo').length
+  const notes = kinds.filter((k) => k.kind === 'note').length
+
+  const subjectIds = [...new Set(
+    ((touchedRes.data ?? []) as Array<{ subject_id: string | null }>).map((r) => r.subject_id).filter((x): x is string => !!x),
+  )]
+  let touchedSubjects: string[] = []
+  if (subjectIds.length > 0) {
+    const { data: subs } = await supabase.from('subjects').select('name').in('id', subjectIds).limit(4)
+    touchedSubjects = ((subs ?? []) as Array<{ name: string }>).map((s) => s.name)
+  }
+
+  return {
+    added: { photos, notes, reserves, actions },
+    siteOpenActions: (openActions as unknown[]).length,
+    touchedSubjects,
+  }
+}
+
 // ── Historique UTILE du chantier courant (V2 bornée — PAS de cross-chantier) ─
 
 function frDate(iso: string | null): string {

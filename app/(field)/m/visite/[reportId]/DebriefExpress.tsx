@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
 import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
+import type { VisitImpact } from '@/lib/db/visits'
 
 /**
  * Débrief express (temps 2 — la voiture). Écran TRÈS simple. Une seule question
@@ -27,6 +28,7 @@ export function DebriefExpress({
   questionsCount,
   initialCaptures,
   previews,
+  impact,
 }: {
   reportId: string
   siteId: string
@@ -38,6 +40,8 @@ export function DebriefExpress({
   initialCaptures: VisitCaptureRow[]
   /** Aperçus signés (captureId → url/mime) pour trier en voyant le contenu. */
   previews: Record<string, CapturePreview>
+  /** Impact sur la mémoire du chantier — « ce que cette visite change ». */
+  impact: VisitImpact | null
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -137,6 +141,10 @@ export function DebriefExpress({
         <p className="text-[13px] text-muted-foreground">Tout est enregistré dans MemorIA.</p>
       </header>
 
+      {/* « Ce que cette visite change » — la visite n'est pas juste enregistrée,
+          elle a enrichi le chantier. 3-4 lignes, jamais un module lourd. */}
+      {impact && <VisitImpactCard impact={impact} total={total} />}
+
       {total === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
           Rien n&apos;a été capté pendant cette visite.
@@ -181,6 +189,57 @@ export function DebriefExpress({
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * « Ce que cette visite change » — impact sur la mémoire du chantier, en 3-4
+ * lignes max. Truthful : on n'affiche une ligne que si elle a de la matière ;
+ * si rien ne ressort, on ne montre pas la carte (pas de vide, pas de sur-promesse).
+ */
+function VisitImpactCard({ impact, total }: { impact: VisitImpact; total: number }) {
+  const { added, siteOpenActions, touchedSubjects } = impact
+  const plural = (n: number) => (n > 1 ? 's' : '')
+
+  const addedParts: string[] = []
+  if (added.photos > 0) addedParts.push(`${added.photos} photo${plural(added.photos)}`)
+  if (added.notes > 0) addedParts.push(`${added.notes} note${plural(added.notes)}`)
+  const addedLine = addedParts.length > 0
+    ? `${addedParts.join(' · ')} ajouté${added.photos + added.notes > 1 ? 's' : ''} à la mémoire du chantier`
+    : total > 0
+      ? `${total} élément${plural(total)} ajouté${plural(total)} à la mémoire du chantier`
+      : null
+
+  const createdParts: string[] = []
+  if (added.reserves > 0) createdParts.push(`${added.reserves} réserve${plural(added.reserves)}`)
+  if (added.actions > 0) createdParts.push(`${added.actions} action${plural(added.actions)}`)
+  const createdLine = createdParts.length > 0
+    ? `${createdParts.join(' · ')} créée${added.reserves + added.actions > 1 ? 's' : ''}`
+    : null
+
+  const subjectsLine = touchedSubjects.length > 0
+    ? `Sujet${plural(touchedSubjects.length)} touché${plural(touchedSubjects.length)} : ${touchedSubjects.join(', ')}`
+    : null
+
+  const openActionsLine = siteOpenActions > 0
+    ? `Le chantier compte désormais ${siteOpenActions} action${plural(siteOpenActions)} ouverte${plural(siteOpenActions)}`
+    : null
+
+  const lines = [addedLine, createdLine, subjectsLine, openActionsLine].filter((l): l is string => !!l)
+  if (lines.length === 0) return null
+
+  return (
+    <section className="space-y-1.5 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Ce que cette visite change</h2>
+      <ul className="space-y-1 text-[13px] text-emerald-900/90 dark:text-emerald-100/90">
+        {lines.map((l, i) => (
+          <li key={i} className="flex gap-1.5">
+            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+            <span className="min-w-0">{l}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
