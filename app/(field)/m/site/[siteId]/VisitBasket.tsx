@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -98,6 +98,7 @@ export function VisitBasket({
   const [elapsed, setElapsed] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
@@ -271,10 +272,7 @@ export function VisitBasket({
   // PAS la file IndexedDB (trop lourde) ni le Server Action (limite 20 Mo) : la
   // vidéo s'envoie EN DIRECT au stockage via URL signée. Le geste reste non
   // bloquant (optimiste tout de suite, envoi en arrière-plan).
-  function onVideoFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  function uploadVideoFile(file: File) {
     if (file.size > MAX_VIDEO_BYTES) {
       toast.error('Vidéo trop lourde (max 50 Mo) — filme une séquence plus courte.')
       return
@@ -310,6 +308,31 @@ export function VisitBasket({
       dropPending()
       toast.error('Échec de l’envoi de la vidéo — réessaie.')
     })
+  }
+
+  function onVideoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) uploadVideoFile(file)
+  }
+
+  // ── Ajouter un média (galerie / fichier) ─────────────────────────────────────
+  // Le conducteur n'a pas TOUJOURS l'appli pendant la visite : il reçoit des
+  // photos/vidéos sur WhatsApp, prend des captures d'écran, etc. On accepte de
+  // les IMPORTER dans la visite. Multi-sélection ; chaque fichier suit le même
+  // pipeline que la capture live (photo → file IndexedDB, vidéo → envoi direct).
+  function onGalleryFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (files.length === 0) return
+    let added = 0
+    for (const file of files) {
+      if (file.type.startsWith('image/')) { enqueueMedia(file, 'photo'); added++ }
+      else if (file.type.startsWith('video/')) { uploadVideoFile(file); added++ }
+    }
+    const skipped = files.length - added
+    if (added > 0) toast.success(`${added} média${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}`, { duration: 1500 })
+    if (skipped > 0) toast.error(`${skipped} fichier${skipped > 1 ? 's' : ''} ignoré${skipped > 1 ? 's' : ''} (photo/vidéo uniquement pour l'instant)`)
   }
 
   // ── Vocal ──────────────────────────────────────────────────────────────────
@@ -521,6 +544,14 @@ export function VisitBasket({
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
         <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={openVerify} />
       </div>
+      {/* Importer des médias DÉJÀ sur le téléphone (WhatsApp, captures d'écran,
+          photos reçues) — le conducteur n'a pas toujours l'appli pendant la visite. */}
+      <button
+        type="button" onClick={() => galleryRef.current?.click()}
+        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-emerald-300 py-2 text-xs font-medium text-emerald-800/90 active:scale-[0.99] transition-transform dark:border-emerald-800 dark:text-emerald-300/90"
+      >
+        <ImagePlus className="h-4 w-4" /> Ajouter depuis la galerie / un fichier
+      </button>
       <button
         type="button" onClick={capturePosition} disabled={busy}
         className="flex w-full items-center justify-center gap-1.5 text-xs text-emerald-800/80 dark:text-emerald-300/80 py-1 disabled:opacity-50"
@@ -544,6 +575,9 @@ export function VisitBasket({
 
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" onChange={onVideoFile} className="hidden" />
+      {/* Galerie / fichier : PAS de `capture` → ouvre le sélecteur du téléphone
+          (photos reçues, captures d'écran…). Multi-sélection. */}
+      <input ref={galleryRef} type="file" accept="image/*,video/*" multiple onChange={onGalleryFiles} className="hidden" />
 
       {/* Journal de terrain — « ce que j'ai vu », pas « mes captures ».
           L'heure est le fil du temps ; chaque ligne se lit comme un récit. */}
