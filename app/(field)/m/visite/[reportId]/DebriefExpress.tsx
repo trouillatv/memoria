@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, X, Bookmark, ListTodo, Eye, Check, CheckCircle2, ArrowRight, Star, HelpCircle, FileText,
+  Camera, Video, Mic, Pencil, Target, MapPin, X, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, Star, HelpCircle, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, type TriageDecision } from './debrief-actions'
@@ -253,12 +253,13 @@ function CaptureCard({
         <audio src={preview.url} controls className="mt-2 w-full" />
       )}
 
-      {/* Une seule question : est-ce que ça mérite une suite ? */}
-      <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-        <DecisionButton label="Ignorer" icon={<X className="h-4 w-4" />} active={chosen === 'ignore'} tone="muted" onClick={() => onDecide('ignore')} />
-        <DecisionButton label="Garder" icon={<Bookmark className="h-4 w-4" />} active={chosen === 'keep'} tone="neutral" onClick={() => onDecide('keep')} />
-        <DecisionButton label="À traiter" icon={<ListTodo className="h-4 w-4" />} active={chosen === 'action'} tone="accent" onClick={() => onDecide('action')} />
-        <DecisionButton label="Suivre" icon={<Eye className="h-4 w-4" />} active={chosen === 'follow'} tone="accent" onClick={() => onDecide('follow')} />
+      {/* Une seule question : qu'est-ce que ça devient ? Libellés MÉTIER,
+          compréhensibles sans explication (2×2 pour laisser respirer le texte). */}
+      <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+        <DecisionButton label="Sans intérêt" icon={<X className="h-4 w-4" />} active={chosen === 'ignore'} tone="muted" onClick={() => onDecide('ignore')} />
+        <DecisionButton label="Mémoire" icon={<BookMarked className="h-4 w-4" />} active={chosen === 'keep'} tone="neutral" onClick={() => onDecide('keep')} />
+        <DecisionButton label="Action" icon={<AlertTriangle className="h-4 w-4" />} active={chosen === 'action'} tone="warn" onClick={() => onDecide('action')} />
+        <DecisionButton label="Point de vigilance" icon={<Eye className="h-4 w-4" />} active={chosen === 'follow'} tone="accent" onClick={() => onDecide('follow')} />
       </div>
     </li>
   )
@@ -270,11 +271,12 @@ function DecisionButton({
   label: string
   icon: React.ReactNode
   active: boolean
-  tone: 'muted' | 'neutral' | 'accent'
+  tone: 'muted' | 'neutral' | 'accent' | 'warn'
   onClick: () => void
 }) {
   const activeCls =
     tone === 'accent' ? 'border-emerald-600 bg-emerald-600 text-white'
+    : tone === 'warn' ? 'border-amber-500 bg-amber-500 text-white'
     : tone === 'muted' ? 'border-foreground/30 bg-muted text-foreground'
     : 'border-foreground bg-foreground text-background'
   return (

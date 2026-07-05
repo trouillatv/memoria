@@ -6,7 +6,7 @@
 // « — ». Généré à la volée, jamais stocké.
 
 import React from 'react'
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
 
 const COLORS = {
@@ -48,6 +48,9 @@ const styles = StyleSheet.create({
   bulletDot: { width: 10, color: COLORS.muted },
   bulletText: { flex: 1 },
   empty: { color: COLORS.faint, fontStyle: 'italic' },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  photo: { width: 158, height: 118, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  mediaNote: { fontSize: 9, color: COLORS.muted, marginTop: 4 },
   footer: {
     position: 'absolute',
     bottom: 24,
@@ -129,6 +132,29 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
             <Text style={styles.sectionTitle}>Actions</Text>
             <Bullets items={actionLines} empty="—" />
           </View>
+        )}
+
+        {doc.photos.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Photos ({doc.photos.length})</Text>
+            <View style={styles.photoGrid}>
+              {doc.photos.map((url, i) => (
+                // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
+                <Image key={i} src={url} style={styles.photo} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {(doc.videoCount > 0 || doc.vocalCount > 0) && (
+          <Text style={styles.mediaNote}>
+            Autres médias :{' '}
+            {[
+              doc.videoCount > 0 ? `${doc.videoCount} vidéo${doc.videoCount > 1 ? 's' : ''}` : null,
+              doc.vocalCount > 0 ? `${doc.vocalCount} mémo${doc.vocalCount > 1 ? 's' : ''} vocal${doc.vocalCount > 1 ? 'aux' : ''}` : null,
+            ].filter(Boolean).join(' · ')}{' '}
+            — consultables dans la visite.
+          </Text>
         )}
 
         <View style={styles.section} wrap={false}>

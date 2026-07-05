@@ -20,6 +20,7 @@ import {
   addVisitCapture,
   findVisitCaptureIdByClientUuid,
   listVisitCaptures,
+  getVisitCapturePreviewUrls,
   removeCaptureWhileCollecting,
   setCaptureStarred,
   type VisitCaptureRow,
@@ -552,6 +553,25 @@ export async function listVisitCapturesAction(reportId: string): Promise<VisitCa
     return await listVisitCaptures(reportId)
   } catch {
     return []
+  }
+}
+
+/**
+ * URLs signées (miniatures/lecteur) des photos/vidéos d'une visite — pour afficher
+ * une vignette pendant la collecte (le cerveau reconnaît « la façade » d'un coup
+ * d'œil, sans lire). Récupérées côté client car les captures évoluent en direct.
+ */
+export async function listVisitCapturePreviewsAction(
+  reportId: string,
+): Promise<Record<string, { url: string; mime: string | null }>> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return {}
+  if (!z.string().uuid().safeParse(reportId).success) return {}
+  try {
+    const caps = (await listVisitCaptures(reportId)).filter((c) => c.kind === 'photo' || c.kind === 'video')
+    return await getVisitCapturePreviewUrls(caps)
+  } catch {
+    return {}
   }
 }
 
