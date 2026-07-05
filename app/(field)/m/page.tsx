@@ -19,7 +19,8 @@ import { VisitLauncherHome } from './VisitLauncherHome'
 import { PrevisiteAoLauncher } from './PrevisiteAoLauncher'
 import { ResumeWorkCard } from './ResumeWorkCard'
 import { RecentSitesCard } from './RecentSitesCard'
-import { listActiveVisitsForUser, listPendingTriageForUser, listRecentSitesForUser } from '@/lib/db/visits'
+import { RecentActivityCard } from './RecentActivityCard'
+import { listActiveVisitsForUser, listPendingTriageForUser, listRecentSitesForUser, getRecentActivityForUser } from '@/lib/db/visits'
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
@@ -585,23 +586,34 @@ export default async function FieldHomePage({
 
   // « Reprendre mon travail » — la pile de travail du quotidien : visites en cours
   // (à reprendre) + visites terminées dont le TRI n'est pas fini. Tout en haut.
-  const [activeVisits, pendingTriage, recentSites] = await Promise.all([
+  const [activeVisits, pendingTriage, recentSites, recentActivity] = await Promise.all([
     listActiveVisitsForUser(user.id).catch(() => []),
     listPendingTriageForUser(user.id).catch(() => []),
     listRecentSitesForUser(user.id).catch(() => []),
+    getRecentActivityForUser(user.id).catch(() => []),
   ])
 
+  // Narratif : on ouvre sur une salutation + la journée — une feuille de route,
+  // pas un tableau de bord. « Qu'est-ce que je fais maintenant ? », pas des chiffres.
+  const firstName = user.full_name?.trim().split(/\s+/)[0] || user.email?.split('@')[0] || ''
+  const greetingDate = new Date(`${todayIso}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+
   return (
-    <div className="space-y-7 max-w-md pb-32">
+    <div className="space-y-6 max-w-md pb-32">
+      <header className="space-y-0.5 pt-1">
+        <h1 className="text-2xl font-bold leading-tight">Bonjour{firstName ? ` ${firstName}` : ''}</h1>
+        <p className="text-sm text-muted-foreground first-letter:uppercase">{greetingDate}</p>
+      </header>
+
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
 
       {/* 0 — Reprendre mon travail : la pile de travail du quotidien (visite en
           cours + tri restant). Au-dessus de tout — on reprend en un geste. */}
       <ResumeWorkCard activeVisits={activeVisits} pendingTriage={pendingTriage} />
 
-      {/* Démarrer une action — juste après « Reprendre » : réunion, visite (avec
-          ses modes de création) ou prévisite. WhatsApp est un mode de Visite. */}
-      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Démarrer une action" flat>
+      {/* Commencer — juste après « Reprendre » : réunion, visite (avec ses modes
+          de création) ou prévisite. WhatsApp est un mode de Visite. */}
+      <CockpitCard icon={Zap} iconClass="text-blue-500" title="Commencer" flat>
         <div className="grid grid-cols-3 gap-3">
           <MeetingLauncher />
           <VisitLauncherHome />
@@ -616,7 +628,7 @@ export default async function FieldHomePage({
         <CockpitCard
           icon={Bell}
           iconClass="text-red-500"
-          title="Ce qui demande ton attention"
+          title="Tu dois faire"
           headerHref="/m/actions"
           headerExtra={
             <>
@@ -753,6 +765,9 @@ export default async function FieldHomePage({
 
       {/* Chantiers récents — les 3 derniers dossiers ouverts (sobre, sans image). */}
       <RecentSitesCard sites={recentSites} />
+
+      {/* Récent — fin de la feuille de journée : dernière visite, dernier CR. */}
+      <RecentActivityCard items={recentActivity} />
 
       {/* À venir cette semaine. */}
       {upcomingInterventions.length > 0 && (
