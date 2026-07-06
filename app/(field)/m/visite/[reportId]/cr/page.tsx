@@ -2,11 +2,12 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ListChecks, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
-  ChevronRight, Star, Monitor, Check,
+  ChevronRight, Star, Monitor, Check, MapPin,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc, type VisitCrDoc } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
+import { CaptureMap } from '@/components/CaptureMap'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +70,12 @@ export default async function VisitCrPreviewPage({
   // Photos clés = un aperçu (3 vignettes), pas une galerie. « +N » si davantage.
   const thumbs = doc.photoCount > 3 ? doc.photos.slice(0, 2) : doc.photos.slice(0, 3)
   const photosMore = doc.photoCount - thumbs.length
+
+  // Carte des observations : les captures géolocalisées, sur le plan interactif.
+  const mapCaptures = doc.positions.map((p) => ({
+    id: p.id, kind: p.kind, lat: p.lat, lng: p.lng,
+    created_at: p.capturedAt, body: p.body, reportId, subjectName: null,
+  }))
 
   return (
     <div className="mx-auto min-h-dvh max-w-md space-y-3.5 px-4 pb-16 pt-5">
@@ -176,6 +183,25 @@ export default async function VisitCrPreviewPage({
           )}
         </Section>
       )}
+
+      {/* Localisation des observations — le « où », entre les constats et les
+          preuves. La carte fait le lien entre ce qui a été constaté et les photos.
+          Si aucune capture n'est géolocalisée : un encart pédagogique, pas du vide. */}
+      <Section Icon={MapPin} cls="text-sky-600" ring="bg-sky-100 dark:bg-sky-950/40" title="Localisation des observations">
+        {mapCaptures.length > 0 ? (
+          <div className="overflow-hidden rounded-xl border">
+            <CaptureMap siteId={visit.site_id} captures={mapCaptures} heightClass="h-60" />
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">
+            <MapPin className="mx-auto h-6 w-6 text-muted-foreground/40" />
+            <p className="mt-2 text-sm font-medium">Aucune observation géolocalisée</p>
+            <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted-foreground">
+              Activez la localisation des observations lors d’une prochaine visite pour retrouver automatiquement les photos, notes et vocaux sur le plan.
+            </p>
+          </div>
+        )}
+      </Section>
 
       {/* Photos clés — aperçu visuel (3 vignettes), pas une galerie. */}
       {thumbs.length > 0 && (
