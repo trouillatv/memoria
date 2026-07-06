@@ -4,12 +4,12 @@ import { listDocumentsForTarget } from '@/lib/db/documents'
 /**
  * Onglets intra-chantier — sur les sous-vues de la fiche (Visites / Réunions /
  * Frise / Documents), pour passer de l'une à l'autre SANS revenir à la fiche à
- * chaque fois. « Vue » ramène au cockpit ; « Mémoire » cible le panneau de
- * recherche déjà présent sur la fiche (ancre). Documents n'apparaît que pour le
+ * chaque fois. « Synthèse » ramène au cockpit ; « Patrimoine » ouvre la
+ * connaissance accumulée du chantier (recherche + blocs). Documents n'apparaît que pour le
  * conducteur (admin/manager) ET s'il existe de vrais documents liés — jamais un
  * onglet vide. Barre défilante horizontalement (aucun retour arrière requis).
  */
-export type SiteTab = 'vue' | 'visites' | 'reunions' | 'frise' | 'documents' | 'memoire'
+export type SiteTab = 'vue' | 'visites' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
 
 export async function SiteTabs({
   siteId,
@@ -26,12 +26,12 @@ export async function SiteTabs({
 
   const base = `/m/site/${siteId}`
   const tabs: { key: SiteTab; label: string; href: string }[] = [
-    { key: 'vue', label: 'Vue', href: base },
+    { key: 'vue', label: 'Synthèse', href: base },
     { key: 'visites', label: 'Visites', href: `${base}/visites` },
     { key: 'reunions', label: 'Réunions', href: `${base}/reunions` },
     { key: 'frise', label: 'Frise', href: `${base}/frise` },
     ...(showDocuments ? [{ key: 'documents' as const, label: 'Documents', href: `${base}/documents` }] : []),
-    { key: 'memoire', label: 'Mémoire', href: `${base}#memoire-lieu` },
+    { key: 'patrimoine', label: 'Patrimoine', href: `${base}/patrimoine` },
   ]
 
   return (
