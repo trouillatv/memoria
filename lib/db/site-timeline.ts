@@ -117,7 +117,7 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
         kind: 'meeting',
         title: r.title?.trim() || 'Réunion',
         detail: null,
-        href: `/m/visite/${r.id}/recap`,
+        href: `/m/reunion/${r.id}`,
       })
     }
   }

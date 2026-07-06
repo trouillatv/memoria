@@ -817,7 +817,7 @@ export async function getSiteRecentActivity(siteId: string, limit = 6): Promise<
     const at = r.ended_at ?? r.started_at ?? r.created_at
     items.push(r.origin
       ? { kind: 'visit', label: 'Visite', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null }
-      : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/visite/${r.id}/recap`, reportId: r.id, detail: null })
+      : { kind: 'meeting', label: r.title?.trim() || 'Réunion', dateLabel: relativeDayLabel(at), at, href: `/m/reunion/${r.id}`, reportId: r.id, detail: null })
   }
   for (const i of intv) {
     const at = i.scheduled_for ? `${i.scheduled_for}T12:00:00Z` : i.scheduled_at
@@ -984,7 +984,7 @@ export async function listSiteMeetingsForMobile(siteId: string, limit = 50): Pro
       title: r.title?.trim() || 'Réunion',
       authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
       decisions: decisionsByReport.get(r.id) ?? 0,
-      href: `/m/visite/${r.id}/recap`,
+      href: `/m/reunion/${r.id}`,
     }
   })
 }
