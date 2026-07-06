@@ -1,15 +1,17 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, ListChecks,
+  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { buildSiteStatusSummary, buildSitePatrimoine, getSiteRecentActivity } from '@/lib/db/visits'
+import { buildSiteStatusSummary, buildSitePatrimoine, getSiteRecentActivity, buildSiteImportantEvidence } from '@/lib/db/visits'
+import { listSiteMapCaptures } from '@/lib/db/visit-captures'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteTabs } from '../SiteTabs'
 import { SiteStatusCard } from '../SiteStatusCard'
 import { SitePatrimoineSearch } from '../SitePatrimoineSearch'
+import { CaptureMap } from '@/components/CaptureMap'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,12 +49,15 @@ export default async function SitePatrimoinePage({
   const { data: site } = await supabase.from('sites').select('id, name').eq('id', siteId).is('deleted_at', null).maybeSingle()
   if (!site) notFound()
 
-  const [statusCells, patrimoine, subjects, activity] = await Promise.all([
+  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     buildSitePatrimoine(siteId).catch(() => null),
     listSubjectsBySite(siteId).catch(() => []),
     getSiteRecentActivity(siteId).catch(() => []),
+    listSiteMapCaptures(siteId).catch(() => []),
+    buildSiteImportantEvidence(siteId).catch(() => ({ photos: [], decisions: [] })),
   ])
+  const hasEvidence = evidence.photos.length > 0 || evidence.decisions.length > 0
 
   // Sujets, du plus fréquent au moins fréquent (déterministe).
   const subjectsByFreq = [...subjects].sort((a, b) => subjectFreq(b) - subjectFreq(a) || a.name.localeCompare(b.name))
@@ -130,6 +135,69 @@ export default async function SitePatrimoinePage({
         </section>
       )}
 
+      {/* ── Bloc : Preuves importantes (⭐ photos + décisions, ouvre la source) ── */}
+      {hasEvidence && (
+        <section className="space-y-2">
+          <SectionTitle>Les preuves importantes</SectionTitle>
+          {evidence.photos.length > 0 && (
+            <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
+              <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Star className="h-[18px] w-[18px] shrink-0 fill-amber-400 text-amber-400" /> Photos favorites
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {evidence.photos.map((p) => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="relative aspect-square overflow-hidden rounded-lg border bg-muted active:brightness-95">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt="" className="h-full w-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          {evidence.decisions.length > 0 && (
+            <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
+              <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Gavel className="h-[18px] w-[18px] shrink-0 text-indigo-600" /> Décisions
+              </p>
+              <ul className="space-y-1.5">
+                {evidence.decisions.map((d) => {
+                  const row = (
+                    <span className="flex items-start gap-2">
+                      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-indigo-500" />
+                      <span className="min-w-0 flex-1">{d.titre}</span>
+                      {d.href && <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+                    </span>
+                  )
+                  return (
+                    <li key={d.id} className="text-[13px] leading-snug">
+                      {d.href ? <Link href={d.href} className="block active:opacity-70">{row}</Link> : row}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Bloc : Carte mémoire (TOUTES les observations géolocalisées) ── */}
+      <section className="space-y-2">
+        <SectionTitle>Carte mémoire</SectionTitle>
+        {mapCaptures.length > 0 ? (
+          <div className="overflow-hidden rounded-2xl border">
+            <CaptureMap siteId={siteId} captures={mapCaptures} heightClass="h-72" />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed bg-muted/30 px-4 py-6 text-center">
+            <MapPin className="mx-auto h-6 w-6 text-muted-foreground/40" />
+            <p className="mt-2 text-sm font-medium">Aucune observation géolocalisée</p>
+            <p className="mx-auto mt-1 max-w-xs text-[13px] text-muted-foreground">
+              Activez la localisation des observations pendant vos visites pour voir tout le chantier se dessiner ici.
+            </p>
+          </div>
+        )}
+      </section>
+
       {/* ── Bloc : Les meilleures ressources (dernière de chaque type) ── */}
       {resources.length > 0 && (
         <section className="space-y-2">
@@ -156,14 +224,6 @@ export default async function SitePatrimoinePage({
         </section>
       )}
 
-      {/* Fondation vide : un chantier tout neuf n'a pas encore de patrimoine. */}
-      {!learns && subjectsByFreq.length === 0 && resources.length === 0 && statusCells.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed bg-muted/30 px-4 py-8 text-center">
-          <ListChecks className="h-6 w-6 text-muted-foreground/40" />
-          <p className="text-sm font-medium">Le patrimoine se construit visite après visite</p>
-          <p className="max-w-xs text-[13px] text-muted-foreground">Dès la première visite, tout ce que vous capturez viendra alimenter la mémoire de ce chantier.</p>
-        </div>
-      )}
     </div>
   )
 }
