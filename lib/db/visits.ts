@@ -594,7 +594,7 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
 // · 1 réserve ouverte · +12 photos depuis la dernière visite. » Déterministe.
 
 export type SiteStatusTone = 'alert' | 'warn' | 'info'
-export interface SiteStatusLine { text: string; tone: SiteStatusTone }
+export interface SiteStatusLine { text: string; tone: SiteStatusTone; href?: string }
 
 function daysAgoLabel(iso: string): string {
   const days = Math.floor((new Date().getTime() - new Date(iso).getTime()) / 86400000)
@@ -607,7 +607,7 @@ function daysAgoLabel(iso: string): string {
 
 export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusLine[]> {
   const supabase = createAdminClient()
-  const [overdue, lastVisit, reserves, meeting] = await Promise.all([
+  const [overdue, lastVisit, reserves, meeting, openActionsAll] = await Promise.all([
     detectOverdueActions(siteId).catch(() => null),
     getLastEndedVisitForSite(siteId).catch(() => null),
     getSiteReserves(siteId).catch(() => []),
@@ -620,11 +620,18 @@ export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatus
       .order('next_meeting_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
   ])
 
   const lines: SiteStatusLine[] = []
+  const actionsHref = `/m/actions?site=${siteId}`
   const overdueN = overdue ? overdue.items.length : 0
-  if (overdueN > 0) lines.push({ text: `${overdueN} action${overdueN > 1 ? 's' : ''} en retard`, tone: 'alert' })
+  if (overdueN > 0) lines.push({ text: `${overdueN} action${overdueN > 1 ? 's' : ''} en retard`, tone: 'alert', href: actionsHref })
+
+  // Volume total d'actions ouvertes — la carte doit dire la SANTÉ, pas seulement
+  // les retards (un chantier peut avoir 9 actions ouvertes, aucune en retard).
+  const openActionsN = openActionsAll.length
+  if (openActionsN > 0) lines.push({ text: `${openActionsN} action${openActionsN > 1 ? 's' : ''} ouverte${openActionsN > 1 ? 's' : ''}`, tone: 'info', href: actionsHref })
 
   const openReserves = (reserves as Array<{ status: string }>).filter((r) => r.status === 'open').length
   if (openReserves > 0) lines.push({ text: `${openReserves} réserve${openReserves > 1 ? 's' : ''} ouverte${openReserves > 1 ? 's' : ''}`, tone: 'warn' })
@@ -835,8 +842,11 @@ export interface SiteVisitListItem {
   at: string
   dateLabel: string
   typeLabel: string
+  /** Objet de la visite s'il a été saisi — le vrai « de quoi ça parlait ». */
+  objective: string | null
   authorName: string | null
   photos: number
+  observations: number
   inProgress: boolean
   href: string
 }
@@ -845,39 +855,43 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
   const supabase = createAdminClient()
   const { data: rows } = await supabase
     .from('site_reports')
-    .select('id, origin, started_at, ended_at, created_at, created_by')
+    .select('id, origin, objective, started_at, ended_at, created_at, created_by')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(limit)
-  const reps = (rows ?? []) as Array<{ id: string; origin: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
+  const reps = (rows ?? []) as Array<{ id: string; origin: string | null; objective: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
   if (reps.length === 0) return []
 
   const authorById = await resolveAuthorNames(reps.map((r) => r.created_by))
 
-  // Photos capturées pendant la visite (chemin mobile : visit_capture par report).
-  const photosByReport = new Map<string, number>()
+  // Photos + observations capturées pendant la visite (visit_capture par report) —
+  // pour que la ligne RACONTE ce qui s'est passé, pas juste une date.
+  const countsByReport = new Map<string, { photos: number; observations: number }>()
   await Promise.all(
     reps.map(async (r) => {
-      const { count } = await supabase
-        .from('visit_capture')
-        .select('id', { count: 'exact', head: true })
-        .eq('report_id', r.id)
-        .eq('kind', 'photo')
-        .is('hidden_at', null)
-      photosByReport.set(r.id, count ?? 0)
+      const [photosRes, obsRes] = await Promise.all([
+        supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+          .eq('report_id', r.id).eq('kind', 'photo').is('hidden_at', null),
+        supabase.from('visit_capture').select('id', { count: 'exact', head: true })
+          .eq('report_id', r.id).in('kind', ['note', 'vocal', 'verification']).is('hidden_at', null),
+      ])
+      countsByReport.set(r.id, { photos: photosRes.count ?? 0, observations: obsRes.count ?? 0 })
     }),
   )
 
   return reps.map((r) => {
     const at = r.started_at ?? r.created_at
+    const c = countsByReport.get(r.id) ?? { photos: 0, observations: 0 }
     return {
       id: r.id,
       at,
       dateLabel: relativeDayLabel(at),
       typeLabel: VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite',
+      objective: r.objective?.trim() || null,
       authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
-      photos: photosByReport.get(r.id) ?? 0,
+      photos: c.photos,
+      observations: c.observations,
       inProgress: !r.ended_at,
       href: `/m/visite/${r.id}/recap`,
     }
@@ -894,6 +908,7 @@ export interface SiteMeetingListItem {
   dateLabel: string
   title: string
   authorName: string | null
+  decisions: number
   href: string
 }
 
@@ -912,6 +927,16 @@ export async function listSiteMeetingsForMobile(siteId: string, limit = 50): Pro
 
   const authorById = await resolveAuthorNames(reps.map((r) => r.created_by))
 
+  // Décisions prises dans chaque réunion — pour que la ligne dise ce qui en est
+  // sorti, pas seulement une date.
+  const decisionsByReport = new Map<string, number>()
+  await Promise.all(
+    reps.map(async (r) => {
+      const { count } = await supabase.from('site_decisions').select('id', { count: 'exact', head: true }).eq('report_id', r.id)
+      decisionsByReport.set(r.id, count ?? 0)
+    }),
+  )
+
   return reps.map((r) => {
     const at = r.started_at ?? r.created_at
     return {
@@ -920,6 +945,7 @@ export async function listSiteMeetingsForMobile(siteId: string, limit = 50): Pro
       dateLabel: relativeDayLabel(at),
       title: r.title?.trim() || 'Réunion',
       authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
+      decisions: decisionsByReport.get(r.id) ?? 0,
       href: `/m/visite/${r.id}/recap`,
     }
   })

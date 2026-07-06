@@ -133,33 +133,40 @@ export default async function FieldSitePage({
   ])
   const nthPassage = pastVisitDays + 1
 
-  // Actions ouvertes du site — « à suivre » côté terrain.
-  const openActions = await listOpenSiteActions({ siteIds: [siteId] }).catch(() => [])
+  // Actions ouvertes + visite en cours — indépendants, en parallèle.
+  const [openActions, activeVisit] = await Promise.all([
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    getActiveVisit(siteId).catch(() => null),
+  ])
 
-  // Visite en cours (non terminée) sur ce site, le cas échéant.
-  const activeVisit = await getActiveVisit(siteId).catch(() => null)
-  // « État du chantier » — résumé en tête de fiche (hors visite en cours, où
-  // l'écran est le panier de capture).
-  const siteStatus = activeVisit ? [] : await buildSiteStatusSummary(siteId).catch(() => [])
-  // Identité du chantier + Lieu (hors visite en cours). Chantier = dossier ;
-  // Site = localisation utile dans le chantier.
-  const identity = activeVisit ? null : await getSiteIdentity(siteId).catch(() => null)
-  // Réserves OUVERTES — pour le bloc « Que reste-t-il à faire ? ».
-  const openReserves = activeVisit
-    ? []
-    : (await getSiteReserves(siteId).catch(() => []))
-        .filter((r) => r.status === 'open')
-        .map((r) => ({ id: r.id, label: r.label, location: r.location }))
-  // Dernière activité du chantier — visites + réunions + interventions récentes.
-  const recentActivity = activeVisit ? [] : await getSiteRecentActivity(siteId).catch(() => [])
-  // « Depuis votre dernière visite » — résumé déterministe de ce qui a bougé.
-  const sinceLastVisit = activeVisit ? null : await buildSinceLastVisitSummary(siteId).catch(() => null)
-  // Documents : onglet réservé au conducteur (admin/manager) ET seulement s'il
-  // existe de vrais documents liés — on ne dessine pas un menu vide.
+  // PERF — hors visite en cours, TOUTES les données de cockpit sont
+  // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne
+  // séquentielle (la fiche est la page la plus ouverte : elle doit être rapide).
   const canSeeDocs = !activeVisit && (user.role === 'admin' || user.role === 'manager')
-  const siteDocCount = canSeeDocs
-    ? (await listDocumentsForTarget('site', siteId).catch(() => [])).length
-    : 0
+  let siteStatus: Awaited<ReturnType<typeof buildSiteStatusSummary>> = []
+  let identity: Awaited<ReturnType<typeof getSiteIdentity>> = null
+  let openReserves: { id: string; label: string; location: string | null }[] = []
+  let recentActivity: Awaited<ReturnType<typeof getSiteRecentActivity>> = []
+  let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
+  let siteDocCount = 0
+  if (!activeVisit) {
+    const [status, id, reservesRaw, activity, since, docList] = await Promise.all([
+      buildSiteStatusSummary(siteId).catch(() => []),
+      getSiteIdentity(siteId).catch(() => null),
+      getSiteReserves(siteId).catch(() => []),
+      getSiteRecentActivity(siteId).catch(() => []),
+      buildSinceLastVisitSummary(siteId).catch(() => null),
+      canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
+    ])
+    siteStatus = status
+    identity = id
+    openReserves = reservesRaw
+      .filter((r) => r.status === 'open')
+      .map((r) => ({ id: r.id, label: r.label, location: r.location }))
+    recentActivity = activity
+    sinceLastVisit = since
+    siteDocCount = docList.length
+  }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -309,9 +316,9 @@ export default async function FieldSitePage({
             <Hammer className="h-3.5 w-3.5" />{todayInterventions.length} interv.
           </span>
           {openActions.length > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium">
+            <Link href={`/m/actions?site=${siteId}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium active:bg-sky-100">
               <ListTodo className="h-3.5 w-3.5" />{openActions.length} action{openActions.length > 1 ? 's' : ''}
-            </span>
+            </Link>
           )}
           {openAnomaliesCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 px-2.5 py-1 font-medium">
@@ -384,7 +391,7 @@ export default async function FieldSitePage({
 
       {/* Que reste-t-il à faire ? — tableau de bord opérationnel : en retard,
           bientôt, réserves, ouvert. Remplace l'ancien « À suivre » plat. */}
-      <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} />
+      <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
 
       {/* Dernières preuves — photos récentes du site (lecture rapide). */}
       {recentPhotos.length > 0 && (
@@ -409,19 +416,23 @@ export default async function FieldSitePage({
         </section>
       )}
 
-      {/* Actions du lieu — zone compacte « bouttonifiée » (comme desktop) : la
-          recherche est repliée derrière un bouton et les déclencheurs de capture
-          sont groupés. Les briefs « Préparer ma visite/réunion » restent en haut
-          (moment magique), seul le secondaire est condensé ici. */}
+      {/* Mémoire du chantier — cible de l'onglet « Mémoire ». Sa propre section
+          (heading explicite), pour qu'on atterrisse VRAIMENT sur la mémoire et
+          non au milieu des boutons d'action. */}
       <section id="memoire-lieu" className="scroll-mt-4 space-y-2 pt-3 border-t border-border/40">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Mémoire du chantier
+        </h2>
+        <TogglePanel label="Rechercher dans la mémoire" icon={<Search className="h-4 w-4" />}>
+          <SiteMemoryQuery siteId={siteId} variant="mobile" />
+        </TogglePanel>
+      </section>
+
+      {/* Actions du lieu — déclencheurs de capture groupés (secondaire). */}
+      <section className="space-y-2 pt-3 border-t border-border/40">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Actions du lieu
         </h2>
-
-        {/* 🔍 Interroger ce site — replié (au lieu du champ toujours ouvert) */}
-        <TogglePanel label="Rechercher sur ce lieu" icon={<Search className="h-4 w-4" />}>
-          <SiteMemoryQuery siteId={siteId} variant="mobile" />
-        </TogglePanel>
 
         {/* Captures rapides côte à côte : ➕ Action (intention) · 📷 Photo (preuve).
             Les deux ouvrent en overlay → pas d'écrasement dans la grille. */}
