@@ -35,26 +35,31 @@ const JOURNEY: Array<{
   step: string        // fil de progression
   Icon: typeof BookOpen
   question: string    // la phrase-question en tête d'onglet
+  lead: string        // la NARRATION du chapitre (« Voilà… ») — 5 angles, 1 histoire
   conclusion: { Icon: typeof BookOpen; text: string }
 }> = [
   {
     key: 'visite', label: 'Cette visite', step: 'Capture', Icon: BookOpen,
     question: 'Qu’avons-nous capturé ?',
+    lead: 'Voilà exactement ce que vous avez capturé aujourd’hui.',
     conclusion: { Icon: FileText, text: 'Le compte-rendu est prêt.' },
   },
   {
     key: 'evolution', label: 'Impact', step: 'Impact', Icon: TrendingUp,
     question: 'Qu’a changé cette visite ?',
+    lead: 'Voilà ce que cette visite a changé sur le chantier.',
     conclusion: { Icon: TrendingUp, text: 'Cette visite a enrichi le dossier du chantier.' },
   },
   {
     key: 'histoire', label: 'Historique', step: 'Historique', Icon: History,
     question: 'Où s’inscrit cette visite dans la vie du chantier ?',
+    lead: 'Voilà où cette visite vient s’inscrire dans la vie du chantier.',
     conclusion: { Icon: History, text: 'Cette visite fait désormais partie de l’histoire du chantier.' },
   },
   {
     key: 'memoire', label: 'Mémoire', step: 'Mémoire', Icon: Brain,
     question: 'Que retient désormais MemorIA ?',
+    lead: 'Voilà ce que MemorIA retiendra dans cinq ans.',
     conclusion: { Icon: Brain, text: 'Cette connaissance sera réutilisée lors des prochaines visites et réunions.' },
   },
 ]
@@ -113,8 +118,8 @@ export function VisitMemoryTabs({
       {/* Fil de progression — suggère que les onglets forment un parcours. */}
       <JourneyStepper current={tab} onNavigate={setTab} />
 
-      {/* La QUESTION à laquelle cet onglet répond. */}
-      <PanelHeader kicker={current.label} question={current.question} />
+      {/* La QUESTION du chapitre + sa narration (« Voilà… »). */}
+      <PanelHeader kicker={current.label} question={current.question} lead={current.lead} />
 
       {/* Contenu de l'onglet. */}
       <div>
@@ -171,11 +176,12 @@ function JourneyStepper({ current, onNavigate }: { current: Tab; onNavigate: (t:
   )
 }
 
-function PanelHeader({ kicker, question }: { kicker: string; question: string }) {
+function PanelHeader({ kicker, question, lead }: { kicker: string; question: string; lead: string }) {
   return (
     <div className="space-y-1">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{kicker}</p>
       <h2 className="text-lg font-semibold leading-snug">{question}</h2>
+      <p className="text-[13px] leading-snug text-muted-foreground">{lead}</p>
     </div>
   )
 }
@@ -357,17 +363,25 @@ function MemoirePanel({ memory, patrimoine }: { memory: MemorySignal[]; patrimoi
         </ul>
       )}
 
-      {/* Patrimoine — pas des KPI, un patrimoine accumulé. */}
-      <div className="rounded-2xl border bg-muted/20 p-3.5">
-        <p className="text-sm font-semibold">Patrimoine du chantier</p>
+      {/* « Ce chantier apprend » — on ne regarde plus une visite, on regarde le
+          PATRIMOINE accumulé. Comptes réels, jamais des KPI ni des chiffres inventés. */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+        <p className="flex items-center gap-2.5 text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/40">
+            <Brain className="h-[18px] w-[18px] text-emerald-600" />
+          </span>
+          Ce chantier apprend
+        </p>
         {patrimoine.firstVisitLabel && (
-          <p className="text-[12px] text-muted-foreground">Depuis la première visite ({patrimoine.firstVisitLabel})</p>
+          <p className="mt-1 pl-[42px] text-[12px] text-emerald-800/70 dark:text-emerald-200/70">Depuis la première visite ({patrimoine.firstVisitLabel})</p>
         )}
-        <div className="mt-2 grid grid-cols-4 gap-2 text-center">
-          <Stat n={patrimoine.photos} label="photos" />
-          <Stat n={patrimoine.visits} label="visites" />
-          <Stat n={patrimoine.actions} label="actions" />
-          <Stat n={patrimoine.reserves} label="réserves" />
+        <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-2 text-center">
+          <Stat n={patrimoine.photos} label={patrimoine.photos > 1 ? 'photos' : 'photo'} />
+          <Stat n={patrimoine.visits} label={patrimoine.visits > 1 ? 'visites' : 'visite'} />
+          <Stat n={patrimoine.meetings} label={patrimoine.meetings > 1 ? 'réunions' : 'réunion'} />
+          <Stat n={patrimoine.actions} label={patrimoine.actions > 1 ? 'actions' : 'action'} />
+          <Stat n={patrimoine.reserves} label={patrimoine.reserves > 1 ? 'réserves' : 'réserve'} />
+          <Stat n={patrimoine.subjects} label={patrimoine.subjects > 1 ? 'sujets suivis' : 'sujet suivi'} />
         </div>
       </div>
     </div>
