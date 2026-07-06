@@ -378,7 +378,7 @@ export default async function FieldSitePage({
                 <li key={i.id}>
                   <Link
                     href={`/m/intervention/${i.id}`}
-                    className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2.5 active:bg-muted/40 transition-colors"
+                    className="flex items-center gap-2 rounded-xl border bg-muted/30 shadow-sm px-3 py-2.5 active:brightness-95 transition"
                   >
                     <span className="text-[11px] font-mono tabular-nums text-muted-foreground shrink-0 w-12">{time}</span>
                     <span className="text-sm font-medium min-w-0 flex-1 truncate">{missionNameById.get(i.mission_id) ?? 'Intervention'}</span>

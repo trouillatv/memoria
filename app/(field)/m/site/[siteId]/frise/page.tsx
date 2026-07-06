@@ -93,7 +93,7 @@ export default async function SiteFriseMobilePage({
             return (
               <li key={idx} className="relative">
                 {e.href ? (
-                  <Link href={e.href} className="flex items-start gap-3 rounded-xl border bg-card p-3 active:bg-accent">
+                  <Link href={e.href} className="flex items-start gap-3 rounded-xl border bg-muted/30 p-3 shadow-sm active:brightness-95">
                     {body}
                   </Link>
                 ) : (

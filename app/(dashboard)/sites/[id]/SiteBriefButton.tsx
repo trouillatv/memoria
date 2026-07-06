@@ -139,7 +139,9 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
         <button
           type="button"
           onClick={openPanel}
-          className="flex h-full w-full flex-col gap-1.5 rounded-xl border bg-card p-3 text-left active:bg-accent"
+          className={`flex h-full w-full flex-col gap-1.5 rounded-2xl border shadow-sm p-3 text-left active:brightness-95 ${
+            mode === 'meeting' ? 'bg-sky-50/60 dark:bg-sky-950/25' : 'bg-violet-50/60 dark:bg-violet-950/25'
+          }`}
         >
           <span className="flex w-full items-center gap-2">
             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${

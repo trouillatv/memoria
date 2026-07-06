@@ -51,7 +51,7 @@ export function SiteTodoCard({
         <Group icon={<AlertTriangle className="h-4 w-4 text-yellow-600" />} label={`Réserves ouvertes (${reserves.length})`}>
           <ul className="space-y-1">
             {reserves.slice(0, 5).map((r) => (
-              <li key={r.id} className="rounded-lg border bg-card px-3 py-2 text-sm">
+              <li key={r.id} className="rounded-xl border bg-muted/30 shadow-sm px-3 py-2 text-sm">
                 {r.label}
                 {r.location && <span className="text-muted-foreground"> · {r.location}</span>}
               </li>
