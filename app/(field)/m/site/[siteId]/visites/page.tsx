@@ -54,7 +54,7 @@ export default async function SiteVisitsMobilePage({
           <div className="flex justify-center"><VisitLauncher siteId={siteId} activeVisit={null} /></div>
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-xl border bg-card divide-y">
+        <ul className="space-y-1.5">
           {visits.map((v) => {
             const meta = [
               v.authorName,
@@ -63,7 +63,7 @@ export default async function SiteVisitsMobilePage({
             ].filter(Boolean)
             return (
               <li key={v.id}>
-                <Link href={v.href} className="flex items-start gap-3 px-3.5 py-3 active:bg-accent">
+                <Link href={v.href} className="flex items-start gap-3 rounded-xl border bg-muted/30 px-3.5 py-3 shadow-sm active:brightness-95">
                   <Footprints className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">

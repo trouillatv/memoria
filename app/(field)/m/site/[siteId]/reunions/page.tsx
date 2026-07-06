@@ -56,10 +56,10 @@ export default async function SiteMeetingsMobilePage({
           </div>
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-xl border bg-card divide-y">
+        <ul className="space-y-1.5">
           {meetings.map((m) => (
             <li key={m.id}>
-              <Link href={m.href} className="flex items-center gap-3 px-3.5 py-3 active:bg-accent">
+              <Link href={m.href} className="flex items-center gap-3 rounded-xl border bg-muted/30 px-3.5 py-3 shadow-sm active:brightness-95">
                 <Users className="h-5 w-5 shrink-0 text-sky-600" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{m.title}</span>

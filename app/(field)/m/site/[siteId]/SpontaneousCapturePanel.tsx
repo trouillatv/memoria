@@ -189,7 +189,7 @@ export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
       <button
         type="button"
         onClick={() => setMode('choice')}
-        className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card text-foreground px-4 py-3.5 text-sm font-medium active:bg-accent transition-colors"
+        className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-muted/30 shadow-sm text-foreground px-4 py-3.5 text-sm font-medium active:brightness-95 transition"
       >
         <Camera className="h-4 w-4 text-violet-600" />
         Note / photo

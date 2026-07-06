@@ -32,12 +32,12 @@ export function SiteActivityCard({ items }: { items: SiteActivityItem[] }) {
         {groups.map((g) => (
           <div key={g.label} className="space-y-1.5">
             <p className="text-[12px] font-medium text-muted-foreground first-letter:uppercase">{g.label}</p>
-            <ul className="overflow-hidden rounded-xl border bg-card divide-y">
+            <ul className="space-y-1.5">
               {g.items.map((i, idx) => {
                 const { Icon, cls } = META[i.kind]
                 return (
                   <li key={idx}>
-                    <Link href={i.href} className="flex items-center gap-3 px-3.5 py-3 active:bg-accent">
+                    <Link href={i.href} className="flex items-center gap-3 rounded-xl border bg-muted/30 px-3.5 py-3 shadow-sm active:brightness-95">
                       <Icon className={`h-5 w-5 shrink-0 ${cls}`} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{i.label}</span>
