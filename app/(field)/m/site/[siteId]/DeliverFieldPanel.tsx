@@ -34,8 +34,8 @@ export function DeliverFieldPanel({ siteId }: { siteId: string }) {
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card text-foreground text-sm font-medium px-4 py-3.5 active:bg-accent transition-colors">
-        <Truck className="h-4 w-4 text-amber-600" /> Déclarer une livraison / évacuation
+        className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card text-foreground text-sm font-medium px-4 py-3.5 active:bg-accent transition-colors">
+        <Truck className="h-4 w-4 text-amber-600" /> Livraison
       </button>
     )
   }

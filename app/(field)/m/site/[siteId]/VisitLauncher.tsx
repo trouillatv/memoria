@@ -85,7 +85,7 @@ export function VisitLauncher({
       type="button"
       onClick={start}
       disabled={pending}
-      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/70 bg-emerald-50 px-4 py-3.5 text-sm font-semibold text-emerald-800 disabled:opacity-50 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
+      className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/70 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 disabled:opacity-50 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
     >
       <Play className="h-4 w-4" /> Démarrer une visite
     </button>

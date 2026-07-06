@@ -27,7 +27,7 @@ export function SiteReportLauncher({ siteId, siteName, contractId, contractName,
   const buttonClass =
     variant === 'desktop'
       ? 'inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors'
-      : 'inline-flex items-center justify-center gap-2 w-full rounded-xl border bg-card text-foreground py-3.5 text-sm font-medium active:bg-accent transition-colors'
+      : 'inline-flex items-center justify-center gap-2 h-full w-full rounded-xl border bg-card text-foreground py-3.5 text-sm font-medium active:bg-accent transition-colors'
 
   return (
     <>

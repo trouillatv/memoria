@@ -192,7 +192,7 @@ export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
         className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card text-foreground px-4 py-3.5 text-sm font-medium active:bg-accent transition-colors"
       >
         <Camera className="h-4 w-4 text-violet-600" />
-        Prendre une note ou une photo
+        Note / photo
       </button>
       <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
     </>

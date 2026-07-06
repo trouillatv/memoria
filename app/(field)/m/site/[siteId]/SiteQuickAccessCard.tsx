@@ -23,17 +23,17 @@ export function SiteQuickAccessCard({ siteId, showDocuments = false }: { siteId:
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Accès rapides</h2>
-      <div className={`grid gap-1.5 ${items.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+      <div className={`grid gap-1 ${items.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
         {items.map(({ href, label, Icon, cls, bg }) => (
           <Link
             key={href}
             href={href}
-            className="flex flex-col items-center gap-1.5 rounded-xl border bg-card px-1 py-2.5 active:bg-accent"
+            className="flex flex-col items-center gap-1.5 rounded-xl px-1 py-1.5 active:bg-accent"
           >
-            <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${bg}`}>
-              <Icon className={`h-[18px] w-[18px] ${cls}`} />
+            <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${bg}`}>
+              <Icon className={`h-5 w-5 ${cls}`} />
             </span>
-            <span className="text-[11px] font-medium leading-tight text-center">{label}</span>
+            <span className="text-[11px] font-medium leading-tight text-center text-muted-foreground">{label}</span>
           </Link>
         ))}
       </div>
