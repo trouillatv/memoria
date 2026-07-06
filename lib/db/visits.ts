@@ -842,6 +842,9 @@ export interface SiteVisitListItem {
   at: string
   dateLabel: string
   typeLabel: string
+  /** Contexte AO : le chantier est en phase Prospect/AO → « pré-visite » (pas un
+   *  nouveau type d'objet, juste le vocabulaire du contexte). */
+  isPrevisite: boolean
   /** Objet de la visite s'il a été saisi — le vrai « de quoi ça parlait ». */
   objective: string | null
   authorName: string | null
@@ -862,6 +865,10 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
     .limit(limit)
   const reps = (rows ?? []) as Array<{ id: string; origin: string | null; objective: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
   if (reps.length === 0) return []
+
+  // Contexte AO du chantier : si son dossier est en phase prospect/AO, ses visites
+  // sont des « pré-visites AO ». Aucune donnée nouvelle — on lit la phase du dossier.
+  const aoContext = await isSiteInAoPhase(siteId)
 
   const authorById = await resolveAuthorNames(reps.map((r) => r.created_by))
 
@@ -887,7 +894,8 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
       id: r.id,
       at,
       dateLabel: relativeDayLabel(at),
-      typeLabel: VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite',
+      typeLabel: aoContext ? 'Pré-visite AO' : VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite',
+      isPrevisite: aoContext,
       objective: r.objective?.trim() || null,
       authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
       photos: c.photos,
@@ -896,6 +904,17 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
       href: `/m/visite/${r.id}/recap`,
     }
   })
+}
+
+/** Le chantier est-il en contexte AO (dossier en phase prospect/en_ao) ? Sert à
+ *  adapter le VOCABULAIRE (« pré-visite »), sans créer de nouveau type d'objet. */
+export async function isSiteInAoPhase(siteId: string): Promise<boolean> {
+  const dossierId = await getOpenDossierIdForSite(siteId).catch(() => null)
+  if (!dossierId) return false
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('dossiers').select('phase').eq('id', dossierId).maybeSingle()
+  const phase = (data as { phase: string } | null)?.phase
+  return phase === 'prospect' || phase === 'en_ao'
 }
 
 // ── Fiche chantier : « Toutes les réunions » (route /m/site/[id]/reunions) ──────

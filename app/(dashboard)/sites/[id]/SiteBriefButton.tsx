@@ -42,6 +42,13 @@ interface Props {
   variant?: 'mobile' | 'desktop'
   /** 'visit' = avant d'aller sur site · 'meeting' = avant une réunion chantier. */
   mode?: 'visit' | 'meeting'
+  /** 'button' (défaut) = gros bouton d'action · 'card' = carte légère d'assistant
+   *  (ces briefs aident à SE PRÉPARER, ce ne sont pas des actions principales). */
+  appearance?: 'button' | 'card'
+  /** Libellé override (ex. « Préparer une visite »). */
+  label?: string
+  /** Sous-titre affiché en mode carte : ce que le brief rappelle. */
+  description?: string
 }
 
 const MODE_META = {
@@ -69,7 +76,7 @@ function ageDaysLabel(iso: string | null): string | null {
   return `il y a ${days} j`
 }
 
-export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit' }: Props) {
+export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit', appearance = 'button', label, description }: Props) {
   const [open, setOpen] = useState(false)
   const [brief, setBrief] = useState<SiteBrief | null>(null)
   const [selectedSite, setSelectedSite] = useState('')
@@ -127,18 +134,32 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openPanel}
-        className={
-          variant === 'mobile'
-            ? 'w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3.5 text-base font-semibold text-background active:scale-[0.99] transition-transform'
-            : 'inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90 transition-[transform,opacity] active:scale-[0.97]'
-        }
-      >
-        <MetaIcon className={variant === 'mobile' ? 'h-5 w-5' : 'h-4 w-4'} />
-        {meta.label}
-      </button>
+      {appearance === 'card' ? (
+        <button
+          type="button"
+          onClick={openPanel}
+          className="flex h-full w-full flex-col gap-2 rounded-xl border bg-card p-3 text-left active:bg-accent"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground/70">
+            <MetaIcon className="h-[18px] w-[18px]" />
+          </span>
+          <span className="block text-sm font-medium leading-snug">{label ?? meta.label}</span>
+          {description && <span className="block text-[12px] leading-snug text-muted-foreground">{description}</span>}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={openPanel}
+          className={
+            variant === 'mobile'
+              ? 'w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-3.5 text-base font-semibold text-background active:scale-[0.99] transition-transform'
+              : 'inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90 transition-[transform,opacity] active:scale-[0.97]'
+          }
+        >
+          <MetaIcon className={variant === 'mobile' ? 'h-5 w-5' : 'h-4 w-4'} />
+          {label ?? meta.label}
+        </button>
+      )}
 
       {open && (
         <div

@@ -74,7 +74,12 @@ export default async function SiteVisitsMobilePage({
                         </span>
                       )}
                     </span>
-                    <span className="mt-0.5 block truncate text-sm font-medium">{v.objective ?? v.typeLabel}</span>
+                    <span className="mt-0.5 flex items-center gap-1.5">
+                      <span className="truncate text-sm font-medium">{v.objective ?? v.typeLabel}</span>
+                      {v.isPrevisite && (
+                        <span className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">AO</span>
+                      )}
+                    </span>
                     {meta.length > 0 && (
                       <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{meta.join(' · ')}</span>
                     )}
