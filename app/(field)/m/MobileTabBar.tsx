@@ -1,14 +1,17 @@
 'use client'
 
-// Barre de navigation basse — le socle du « cockpit de terrain ». 5 slots, avec
-// l'ACTION PRINCIPALE au centre (➕ Visite) : démarrer une visite est le geste le
-// plus fréquent, il doit être à portée du pouce PARTOUT. Les 4 destinations :
-// Aujourd'hui · Chantiers · Actions · Profil. Masquée dans les parcours immersifs
-// (visite/capture/import) qui ont déjà leur propre bas d'écran.
+// Barre de navigation basse — le socle du « cockpit de terrain ». 4 destinations
+// (Aujourd'hui · Chantiers · Actions · Profil) + une ACTION flottante au centre :
+// le ➕ n'est PAS un onglet ni une page, il OUVRE une bottom sheet (Créer) — comme
+// Slack/Notion/Drive. Plus d'écran intermédiaire vide. Masquée dans les parcours
+// immersifs (visite/capture/import) qui ont déjà leur propre bas d'écran.
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, Building2, Plus, CheckSquare, User } from 'lucide-react'
+import { Home, Building2, Plus, CheckSquare, User, X } from 'lucide-react'
+import { MeetingLauncher } from './MeetingLauncher'
+import { VisitLauncherHome } from './VisitLauncherHome'
 
 type Item = { href: string; label: string; Icon: typeof Home; isActive: (p: string) => boolean; badge?: boolean }
 
@@ -26,28 +29,61 @@ const IMMERSIVE = ['/m/visite/', '/m/site/', '/m/import', '/m/intervention/']
 
 export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
   const pathname = usePathname() ?? '/m'
+  const [createOpen, setCreateOpen] = useState(false)
   if (IMMERSIVE.some((p) => pathname.startsWith(p))) return null
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-foreground/[0.08] bg-background/95 backdrop-blur safe-bottom">
-      <div className="mx-auto grid max-w-md grid-cols-5 items-end">
-        {LEFT.map((it) => <Tab key={it.href} item={it} pathname={pathname} actionsCount={actionsCount} />)}
+    <>
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-foreground/[0.08] bg-background/95 backdrop-blur safe-bottom">
+        <div className="mx-auto grid max-w-md grid-cols-5 items-end">
+          {LEFT.map((it) => <Tab key={it.href} item={it} pathname={pathname} actionsCount={actionsCount} />)}
 
-        {/* Action principale — démarrer une visite en 1 tap, depuis n'importe où. */}
-        <div className="flex flex-col items-center gap-1 pb-1.5">
-          <Link
-            href="/m/demarrer"
-            aria-label="Démarrer une visite"
-            className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg ring-4 ring-background active:scale-95 ${pathname.startsWith('/m/demarrer') ? 'bg-emerald-700' : 'bg-emerald-600'}`}
-          >
-            <Plus className="h-7 w-7" />
-          </Link>
-          <span className={`text-[11px] font-medium ${pathname.startsWith('/m/demarrer') ? 'text-emerald-600' : 'text-muted-foreground'}`}>Visite</span>
+          {/* Action flottante — le ➕ OUVRE la bottom sheet « Créer », il ne navigue
+              pas (plus de page-lanceur vide). Sans texte : c'est une action. */}
+          <div className="flex items-center justify-center pb-2">
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              aria-label="Créer"
+              className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg ring-4 ring-background active:scale-95 transition-colors ${createOpen ? 'bg-emerald-700' : 'bg-emerald-600'}`}
+            >
+              <Plus className="h-7 w-7" />
+            </button>
+          </div>
+
+          {RIGHT.map((it) => <Tab key={it.href} item={it} pathname={pathname} actionsCount={actionsCount} />)}
         </div>
+      </nav>
 
-        {RIGHT.map((it) => <Tab key={it.href} item={it} pathname={pathname} actionsCount={actionsCount} />)}
-      </div>
-    </nav>
+      {/* Bottom sheet « Créer » — Réunion · Nouvelle visite. Chaque lanceur porte
+          ensuite son flux (visite : chantier → intention → mode de démarrage). */}
+      {createOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[1px]"
+          onClick={() => setCreateOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl border-t bg-card p-4 pb-6 shadow-xl safe-bottom"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Créer"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Créer</h2>
+              <button type="button" onClick={() => setCreateOpen(false)} aria-label="Fermer" className="rounded-lg p-1 text-muted-foreground active:bg-accent">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <MeetingLauncher />
+              <VisitLauncherHome />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
