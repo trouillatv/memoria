@@ -282,7 +282,7 @@ export default async function FieldSitePage({
       ) : (
         <div className="space-y-6">
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
-          <SiteStatusCard lines={siteStatus} />
+          <SiteStatusCard cells={siteStatus} />
 
           {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}
           {(aSavoir.length > 0 || openAnomalies.length > 0) && (
@@ -308,7 +308,7 @@ export default async function FieldSitePage({
           )}
 
           {/* 2 — Depuis votre dernière visite : ce qui a bougé (déterministe). */}
-          {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} />}
+          {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} siteId={siteId} />}
 
           {/* 3 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
           <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
@@ -318,6 +318,32 @@ export default async function FieldSitePage({
 
           {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
           <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
+
+          {/* 6 — Se préparer : deux assistants de contexte (cartes d'information,
+              PAS des CTA). Toute la carte ouvre le même brief qu'avant. */}
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Se préparer
+            </h2>
+            <div className="grid grid-cols-2 gap-2">
+              <SiteBriefButton
+                siteId={siteId}
+                variant="mobile"
+                mode="visit"
+                appearance="card"
+                label="Se préparer à une visite"
+                description="Observations, réserves, photos, actions ouvertes, points d'attention."
+              />
+              <SiteBriefButton
+                siteId={siteId}
+                variant="mobile"
+                mode="meeting"
+                appearance="card"
+                label="Se préparer à une réunion"
+                description="Dernier compte-rendu, décisions, participants, actions en attente."
+              />
+            </div>
+          </section>
 
           {/* Contexte du lieu — référence & secondaire (sous la narration). */}
           {identity && <IdentityCard identity={identity} />}
@@ -426,35 +452,8 @@ export default async function FieldSitePage({
             <DeliverFieldPanel siteId={siteId} />
           </section>
 
-          {/* 6 — Se préparer : deux assistants LÉGERS (comprendre avant d'agir).
-              Ce ne sont pas des actions principales → cartes discrètes, pas des
-              gros boutons noirs. Chacune rappelle ce qu'elle prépare. */}
-          <section className="space-y-2 pt-3 border-t border-border/40">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Se préparer
-            </h2>
-            <div className="grid grid-cols-2 gap-2">
-              <SiteBriefButton
-                siteId={siteId}
-                variant="mobile"
-                mode="visit"
-                appearance="card"
-                label="Préparer une visite"
-                description="Observations, réserves, photos, actions ouvertes, points d'attention."
-              />
-              <SiteBriefButton
-                siteId={siteId}
-                variant="mobile"
-                mode="meeting"
-                appearance="card"
-                label="Préparer une réunion"
-                description="Dernier compte-rendu, décisions, actions en attente, participants."
-              />
-            </div>
-          </section>
-
-          {/* 7 — Agir : « Démarrer une visite », l'action principale, tout en bas —
-              une fois le contexte compris. */}
+          {/* 8 — Agir : « Démarrer une visite », l'action principale, tout en bas —
+              une fois le contexte compris. Discrète (vert clair), jamais un slab noir. */}
           <VisitLauncher siteId={siteId} activeVisit={null} />
         </div>
       )}

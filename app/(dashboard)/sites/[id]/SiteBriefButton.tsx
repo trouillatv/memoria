@@ -31,6 +31,7 @@ import {
   Check,
   Sparkles,
   Layers,
+  ChevronRight,
 } from 'lucide-react'
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type DiscussionPoint } from './site-brief-actions'
 
@@ -138,12 +139,19 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
         <button
           type="button"
           onClick={openPanel}
-          className="flex h-full w-full flex-col gap-2 rounded-xl border bg-card p-3 text-left active:bg-accent"
+          className="flex h-full w-full flex-col gap-1.5 rounded-xl border bg-card p-3 text-left active:bg-accent"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground/70">
-            <MetaIcon className="h-[18px] w-[18px]" />
+          <span className="flex w-full items-center gap-2">
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+              mode === 'meeting'
+                ? 'bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-300'
+                : 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300'
+            }`}>
+              <MetaIcon className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium leading-snug">{label ?? meta.label}</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </span>
-          <span className="block text-sm font-medium leading-snug">{label ?? meta.label}</span>
           {description && <span className="block text-[12px] leading-snug text-muted-foreground">{description}</span>}
         </button>
       ) : (

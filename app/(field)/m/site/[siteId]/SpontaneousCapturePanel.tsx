@@ -183,15 +183,15 @@ export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
     )
   }
 
-  // ── État initial : LE bouton noir ──────────────────────────────────────────
+  // ── État initial : carte légère (fond blanc, bordure légère, icône colorée) ──
   return (
     <>
       <button
         type="button"
         onClick={() => setMode('choice')}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background px-4 py-3.5 text-sm font-semibold active:scale-[0.99] transition-transform"
+        className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card text-foreground px-4 py-3.5 text-sm font-medium active:bg-accent transition-colors"
       >
-        <Camera className="h-4 w-4" />
+        <Camera className="h-4 w-4 text-violet-600" />
         Prendre une note ou une photo
       </button>
       <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
