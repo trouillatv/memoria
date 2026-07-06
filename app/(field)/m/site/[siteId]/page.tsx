@@ -261,8 +261,8 @@ export default async function FieldSitePage({
         <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
       </section>
 
-      {/* Visite terrain. Visite ouverte → le PANIER (collecte focalisée, temps 1) ;
-          sinon → le bouton « Démarrer une visite » (friction zéro). */}
+      {/* Visite ouverte → le PANIER (collecte focalisée, écran épuré). Sinon → la
+          fiche « dossier vivant » : on COMPREND le chantier, on SE PRÉPARE, on AGIT. */}
       {activeVisit ? (
         <div className="space-y-3">
           {/* Objet au démarrage — MemorIA sait dès le début pourquoi on est là. */}
@@ -280,34 +280,50 @@ export default async function FieldSitePage({
           />
         </div>
       ) : (
-        <div className="space-y-3">
-          {/* État du chantier — le résumé en 10 secondes, avant tout le reste. */}
+        <div className="space-y-6">
+          {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard lines={siteStatus} />
 
-          {/* « Depuis votre dernière visite » — ce qui a bougé (déterministe). */}
+          {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}
+          {(aSavoir.length > 0 || openAnomalies.length > 0) && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4" /> Attention
+              </h2>
+              <ul className="space-y-1.5">
+                {aSavoir.slice(0, 4).map((n) => (
+                  <li key={n.id} className="text-sm text-amber-900 flex gap-1.5">
+                    <span aria-hidden>⚠</span>
+                    <span className="min-w-0">{n.body}</span>
+                  </li>
+                ))}
+                {openAnomalies.slice(0, 3).map((a) => (
+                  <li key={a.id} className="text-sm text-amber-900 flex gap-1.5">
+                    <span aria-hidden>⚠</span>
+                    <span className="min-w-0">{a.description}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* 2 — Depuis votre dernière visite : ce qui a bougé (déterministe). */}
           {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} />}
 
-          {/* Identité chantier + Lieu du chantier (Site = localisation support). */}
-          {identity && <IdentityCard identity={identity} />}
+          {/* 3 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
+          <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
 
-          <VisitLauncher siteId={siteId} activeVisit={null} />
-
-          {/* Dernière activité — visites, réunions ET interventions récentes du
-              chantier (remplace la carte « Dernière visite » seule). */}
+          {/* 4 — Dernière activité : ce qui s'est passé récemment, regroupé. */}
           <SiteActivityCard items={recentActivity} />
 
-          {/* Accès rapides — vers les vues qui existent réellement (Visites /
-              Réunions / Frise / Mémoire ; Documents si conducteur + docs liés). */}
+          {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
           <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
-        </div>
-      )}
 
-      {/* « Préparer ma visite » — brief « À savoir avant d'y aller » (V1, zéro LLM). */}
-      <SiteBriefButton siteId={siteId} variant="mobile" />
-      <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
+          {/* Contexte du lieu — référence & secondaire (sous la narration). */}
+          {identity && <IdentityCard identity={identity} />}
 
-      {/* « Aujourd'hui ici » — page d'arrivée : ce qui me concerne maintenant. */}
-      <section className="rounded-2xl border bg-card p-4 space-y-3">
+          {/* « Aujourd'hui ici » — ce qui me concerne maintenant. */}
+          <section className="rounded-2xl border bg-card p-4 space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Aujourd&apos;hui ici
         </h2>
@@ -352,101 +368,96 @@ export default async function FieldSitePage({
         )}
       </section>
 
-      {/* ATTENTION — vigilances persistantes (à savoir) + anomalies ouvertes.
-          Niveau 1 (ce qui doit alerter à l'arrivée), distinct de la mémoire en bas. */}
-      {(aSavoir.length > 0 || openAnomalies.length > 0) && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5">
-            <AlertTriangle className="h-4 w-4" /> Attention
-          </h2>
-          <ul className="space-y-1.5">
-            {aSavoir.slice(0, 4).map((n) => (
-              <li key={n.id} className="text-sm text-amber-900 flex gap-1.5">
-                <span aria-hidden>⚠</span>
-                <span className="min-w-0">{n.body}</span>
-              </li>
-            ))}
-            {openAnomalies.slice(0, 3).map((a) => (
-              <li key={a.id} className="text-sm text-amber-900 flex gap-1.5">
-                <span aria-hidden>⚠</span>
-                <span className="min-w-0">{a.description}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+          {lastNotable && (
+            <p className="text-[13px] italic text-muted-foreground leading-relaxed">
+              Dernière trace ici : {formatTraceDate(lastNotable.date)},{' '}
+              {lastNotable.text}.
+            </p>
+          )}
 
-      {lastNotable && (
-        <p className="text-[13px] italic text-muted-foreground leading-relaxed">
-          Dernière trace ici : {formatTraceDate(lastNotable.date)},{' '}
-          {lastNotable.text}.
-        </p>
-      )}
+          {/* Mémoire IA périphérique — présence ambiante discrète (ignorable). */}
+          {enrichedSiteReadings.readings.length > 0 && (
+            <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
+          )}
 
-      {/* V5.1.4 — Mémoire IA périphérique. Doctrine : présence ambiante
-          discrète, 2 fragments max, gris léger. Joseph peut l'ignorer. */}
-      {enrichedSiteReadings.readings.length > 0 && (
-        <MobileSiteReadings readings={enrichedSiteReadings} siteId={siteId} />
-      )}
+          {/* Dernières preuves — photos récentes du site (lecture rapide). */}
+          {recentPhotos.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
+                <Camera className="h-4 w-4" /> Dernières preuves
+              </h2>
+              <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 snap-x">
+                {recentPhotos.map((p) => (
+                  <a
+                    key={p.id}
+                    href={p.signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 snap-start block w-20 h-20 rounded-lg overflow-hidden border bg-muted active:opacity-80 transition-opacity"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.signedUrl} alt={p.caption ?? ''} className="w-full h-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
 
-      {/* Que reste-t-il à faire ? — tableau de bord opérationnel : en retard,
-          bientôt, réserves, ouvert. Remplace l'ancien « À suivre » plat. */}
-      <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
+          {/* Mémoire du chantier — cible de l'onglet « Mémoire » (ancre). */}
+          <section id="memoire-lieu" className="scroll-mt-4 space-y-2 pt-3 border-t border-border/40">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Mémoire du chantier
+            </h2>
+            <TogglePanel label="Rechercher dans la mémoire" icon={<Search className="h-4 w-4" />}>
+              <SiteMemoryQuery siteId={siteId} variant="mobile" />
+            </TogglePanel>
+          </section>
 
-      {/* Dernières preuves — photos récentes du site (lecture rapide). */}
-      {recentPhotos.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
-            <Camera className="h-4 w-4" /> Dernières preuves
-          </h2>
-          <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1 snap-x">
-            {recentPhotos.map((p) => (
-              <a
-                key={p.id}
-                href={p.signedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 snap-start block w-20 h-20 rounded-lg overflow-hidden border bg-muted active:opacity-80 transition-opacity"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.signedUrl} alt={p.caption ?? ''} className="w-full h-full object-cover" />
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+          {/* Actions du lieu — déclencheurs de capture groupés (secondaire). */}
+          <section className="space-y-2 pt-3 border-t border-border/40">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Actions du lieu
+            </h2>
+            <div className="grid grid-cols-2 gap-2">
+              <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
+              <SpontaneousCapturePanel siteId={siteId} />
+            </div>
+            <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
+            <DeliverFieldPanel siteId={siteId} />
+          </section>
 
-      {/* Mémoire du chantier — cible de l'onglet « Mémoire ». Sa propre section
-          (heading explicite), pour qu'on atterrisse VRAIMENT sur la mémoire et
-          non au milieu des boutons d'action. */}
-      <section id="memoire-lieu" className="scroll-mt-4 space-y-2 pt-3 border-t border-border/40">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Mémoire du chantier
-        </h2>
-        <TogglePanel label="Rechercher dans la mémoire" icon={<Search className="h-4 w-4" />}>
-          <SiteMemoryQuery siteId={siteId} variant="mobile" />
-        </TogglePanel>
-      </section>
+          {/* 6 — Se préparer : deux assistants LÉGERS (comprendre avant d'agir).
+              Ce ne sont pas des actions principales → cartes discrètes, pas des
+              gros boutons noirs. Chacune rappelle ce qu'elle prépare. */}
+          <section className="space-y-2 pt-3 border-t border-border/40">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Se préparer
+            </h2>
+            <div className="grid grid-cols-2 gap-2">
+              <SiteBriefButton
+                siteId={siteId}
+                variant="mobile"
+                mode="visit"
+                appearance="card"
+                label="Préparer une visite"
+                description="Observations, réserves, photos, actions ouvertes, points d'attention."
+              />
+              <SiteBriefButton
+                siteId={siteId}
+                variant="mobile"
+                mode="meeting"
+                appearance="card"
+                label="Préparer une réunion"
+                description="Dernier compte-rendu, décisions, actions en attente, participants."
+              />
+            </div>
+          </section>
 
-      {/* Actions du lieu — déclencheurs de capture groupés (secondaire). */}
-      <section className="space-y-2 pt-3 border-t border-border/40">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Actions du lieu
-        </h2>
-
-        {/* Captures rapides côte à côte : ➕ Action (intention) · 📷 Photo (preuve).
-            Les deux ouvrent en overlay → pas d'écrasement dans la grille. */}
-        <div className="grid grid-cols-2 gap-2">
-          <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
-          <SpontaneousCapturePanel siteId={siteId} />
+          {/* 7 — Agir : « Démarrer une visite », l'action principale, tout en bas —
+              une fois le contexte compris. */}
+          <VisitLauncher siteId={siteId} activeVisit={null} />
         </div>
-
-        {/* Compte-rendu multimodal (riche) : voix + texte + photos + pièces → décisions */}
-        <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
-
-        {/* Livraisons / évacuations déclarées depuis le terrain (+ photo). */}
-        <DeliverFieldPanel siteId={siteId} />
-      </section>
+      )}
     </div>
   )
 }
