@@ -10,10 +10,10 @@ import type { SinceLastVisitSummary } from '@/lib/db/visits'
  */
 export function SinceLastVisitCard({ summary, siteId }: { summary: SinceLastVisitSummary; siteId: string }) {
   const cells: { key: string; Icon: typeof Users; cls: string; n: number; label: string }[] = [
-    { key: 'm', Icon: Users, cls: 'text-sky-600', n: summary.meetings, label: summary.meetings > 1 ? 'Réunions' : 'Réunion' },
-    { key: 'r', Icon: ClipboardList, cls: 'text-rose-600', n: summary.newReserves, label: 'Nouvelles réserves' },
-    { key: 'a', Icon: CheckCircle2, cls: 'text-emerald-600', n: summary.actionsDone, label: 'Actions terminées' },
-    { key: 'p', Icon: Camera, cls: 'text-violet-600', n: summary.newPhotos, label: 'Photos ajoutées' },
+    { key: 'm', Icon: Users, cls: 'text-sky-600', n: summary.meetings, label: summary.meetings > 1 ? 'réunions' : 'réunion' },
+    { key: 'p', Icon: Camera, cls: 'text-violet-600', n: summary.newPhotos, label: summary.newPhotos > 1 ? 'photos ajoutées' : 'photo ajoutée' },
+    { key: 'r', Icon: ClipboardList, cls: 'text-rose-600', n: summary.newReserves, label: summary.newReserves > 1 ? 'nouvelles réserves' : 'nouvelle réserve' },
+    { key: 'a', Icon: CheckCircle2, cls: 'text-emerald-600', n: summary.actionsDone, label: summary.actionsDone > 1 ? 'actions terminées' : 'action terminée' },
   ].filter((c) => c.n > 0)
 
   if (cells.length === 0) return null
@@ -27,15 +27,15 @@ export function SinceLastVisitCard({ summary, siteId }: { summary: SinceLastVisi
         </h2>
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
       </Link>
-      <div className={`mt-3 grid gap-2 ${cells.length >= 4 ? 'grid-cols-4' : cells.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+      <ul className="mt-3 space-y-2">
         {cells.map(({ key, Icon, cls, n, label }) => (
-          <div key={key} className="flex flex-col items-center gap-1 text-center">
-            <Icon className={`h-5 w-5 ${cls}`} />
-            <span className="text-lg font-semibold leading-none tabular-nums">{n}</span>
-            <span className="text-[11px] leading-tight text-muted-foreground">{label}</span>
-          </div>
+          <li key={key} className="flex items-center gap-2.5 text-sm">
+            <Icon className={`h-[18px] w-[18px] shrink-0 ${cls}`} />
+            <span className="font-semibold tabular-nums">{n}</span>
+            <span className="text-muted-foreground">{label}</span>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   )
 }

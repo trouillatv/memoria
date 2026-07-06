@@ -331,16 +331,16 @@ export default async function FieldSitePage({
                 variant="mobile"
                 mode="visit"
                 appearance="card"
-                label="Se préparer à une visite"
-                description="Observations, réserves, photos, actions ouvertes, points d'attention."
+                label="Avant une visite"
+                description="Observations · Réserves · Photos · Actions ouvertes"
               />
               <SiteBriefButton
                 siteId={siteId}
                 variant="mobile"
                 mode="meeting"
                 appearance="card"
-                label="Se préparer à une réunion"
-                description="Dernier compte-rendu, décisions, participants, actions en attente."
+                label="Avant une réunion"
+                description="Dernier CR · Décisions · Participants · Actions"
               />
             </div>
           </section>
@@ -439,17 +439,18 @@ export default async function FieldSitePage({
             </TogglePanel>
           </section>
 
-          {/* Actions du lieu — déclencheurs de capture groupés (secondaire). */}
+          {/* Ajouter… — outils de CRÉATION du lieu (grille d'outils, pas des CTA).
+              On comprend d'un coup que ce sont des créations rapides. */}
           <section className="space-y-2 pt-3 border-t border-border/40">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Actions du lieu
+              Ajouter…
             </h2>
             <div className="grid grid-cols-2 gap-2">
               <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
               <SpontaneousCapturePanel siteId={siteId} />
+              <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
+              <DeliverFieldPanel siteId={siteId} />
             </div>
-            <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
-            <DeliverFieldPanel siteId={siteId} />
           </section>
 
           {/* 8 — Agir : « Démarrer une visite », l'action principale, tout en bas —
