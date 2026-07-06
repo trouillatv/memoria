@@ -31,6 +31,8 @@ import { createClient } from '@/lib/supabase/client'
 // La vidéo s'upload en direct vers Supabase (URL signée), bornée par la limite du
 // bucket (mig 181). Au-delà : message clair plutôt qu'un échec silencieux.
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+// Préférence géoloc mémorisée sur l'appareil : 'always' = ne plus demander.
+const GEO_PREF_KEY = 'memoria.geoloc.captures'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 
 // Mémoire LITE d'un point suivi (read-only), surfacée pendant la vérification :
@@ -108,10 +110,33 @@ export function VisitBasket({
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
 
-  // Géoloc OPT-IN (éteinte par défaut) : on localise l'OBSERVATION, pas la personne.
-  // Position PONCTUELLE par capture, best-effort — jamais de trace continue, jamais
-  // bloquante. Cf. [[ouverture-contextuelle-gps]].
+  // Géoloc des OBSERVATIONS (jamais de la personne) : position PONCTUELLE par
+  // capture, best-effort, jamais bloquante, jamais de trace continue. Le choix se
+  // fait UNE fois (prompt), et « Toujours oui » est mémorisé sur l'appareil — on
+  // ne repose plus la question. Cf. [[ouverture-contextuelle-gps]].
   const [geoTag, setGeoTag] = useState(false)
+  const [geoDecided, setGeoDecided] = useState(false)
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage.getItem(GEO_PREF_KEY) === 'always') {
+        setGeoTag(true)
+        setGeoDecided(true)
+      }
+    } catch { /* localStorage indisponible → on demandera cette visite */ }
+  }, [])
+  function chooseGeo(mode: 'session' | 'always' | 'no') {
+    if (mode === 'always') {
+      try { window.localStorage.setItem(GEO_PREF_KEY, 'always') } catch { /* ignore */ }
+      setGeoTag(true)
+    } else {
+      setGeoTag(mode === 'session')
+    }
+    setGeoDecided(true)
+  }
+  function disableGeo() {
+    try { window.localStorage.removeItem(GEO_PREF_KEY) } catch { /* ignore */ }
+    setGeoTag(false)
+  }
   function getOneShotPosition(): Promise<{ lat: number; lng: number } | null> {
     if (!geoTag || typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null)
     return new Promise((resolve) => {
@@ -605,14 +630,39 @@ export function VisitBasket({
       >
         <HelpCircle className="h-3.5 w-3.5" /> + À vérifier{questionCount > 0 ? ` · ${questionCount} noté${questionCount > 1 ? 's' : ''}` : ''}
       </button>
-      {/* Géoloc OPT-IN : on localise l'OBSERVATION, jamais la personne, jamais en continu. */}
-      <label className="flex items-start gap-2 rounded-lg px-1 text-xs text-emerald-800/90 dark:text-emerald-300/90">
-        <input type="checkbox" checked={geoTag} onChange={(e) => setGeoTag(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-emerald-600" />
-        <span className="min-w-0">
-          Géolocaliser les captures
-          <span className="block text-[10px] text-muted-foreground">Associe une position aux photos, vidéos, notes et vocaux de cette visite.</span>
-        </span>
-      </label>
+      {/* Géoloc des OBSERVATIONS : demandée UNE fois, « Toujours oui » mémorisé.
+          On localise l'observation, jamais la personne, jamais en continu. */}
+      {!geoDecided ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <p className="flex items-center gap-1.5 text-sm font-medium text-emerald-900 dark:text-emerald-200">
+            <MapPin className="h-4 w-4 shrink-0" /> Localiser les observations ?
+          </p>
+          <p className="mt-1 text-[12px] leading-snug text-emerald-900/80 dark:text-emerald-200/80">
+            Les photos, vidéos et notes pourront être replacées sur le plan du chantier.
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">La position des observations est enregistrée, jamais vos déplacements.</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button type="button" onClick={() => chooseGeo('session')} className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 active:scale-95 dark:border-emerald-800 dark:text-emerald-200">
+              Oui, pour cette visite
+            </button>
+            <button type="button" onClick={() => chooseGeo('always')} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white active:scale-95">
+              Toujours oui sur cet appareil
+            </button>
+          </div>
+          <button type="button" onClick={() => chooseGeo('no')} className="mt-1.5 text-[11px] text-muted-foreground underline underline-offset-2">
+            Pas maintenant
+          </button>
+        </div>
+      ) : geoTag ? (
+        <p className="flex items-center justify-center gap-1.5 px-1 text-[11px] text-emerald-800/80 dark:text-emerald-300/80">
+          <MapPin className="h-3.5 w-3.5" /> Observations géolocalisées ·
+          <button type="button" onClick={disableGeo} className="underline underline-offset-2">Désactiver</button>
+        </p>
+      ) : (
+        <button type="button" onClick={() => setGeoDecided(false)} className="flex w-full items-center justify-center gap-1.5 px-1 py-1 text-[11px] text-muted-foreground">
+          <MapPin className="h-3.5 w-3.5" /> Localiser les observations
+        </button>
+      )}
 
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
       <input ref={videoRef} type="file" accept="video/*" capture="environment" onChange={onVideoFile} className="hidden" />

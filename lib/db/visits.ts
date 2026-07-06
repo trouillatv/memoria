@@ -1553,8 +1553,9 @@ export interface VisitCrDoc {
   photos: string[]
   /** Photos sélectionnées AVEC leur légende (commentaire de la capture). */
   photoItems: Array<{ url: string; caption: string | null }>
-  /** Positions GPS des captures (lat/lng + type) — pour la carte des observations. */
-  positions: Array<{ lat: number; lng: number; kind: string }>
+  /** Positions GPS des captures — pour la carte des observations (schéma PDF +
+   *  carte interactive sur l'écran). Enrichi de quoi construire un MapCapture. */
+  positions: Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string }>
   /** Nombre TOTAL de photos captées (MemorIA les garde toutes) — pour dire
    *  « N photos clés sur M dans MemorIA ». */
   photoCount: number
@@ -1697,7 +1698,10 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   // Positions GPS des captures → carte des observations (le « où »).
   const positions = captures
     .filter((c) => c.lat != null && c.lng != null)
-    .map((c) => ({ lat: c.lat as number, lng: c.lng as number, kind: c.kind }))
+    .map((c) => ({
+      id: c.id, kind: c.kind, lat: c.lat as number, lng: c.lng as number,
+      body: c.body?.trim() || null, capturedAt: c.captured_at ?? c.created_at,
+    }))
 
   // Comptes par type + éléments marqués (richesse de la visite, bloc « En bref »).
   const noteCount = captures.filter((c) => c.kind === 'note').length
