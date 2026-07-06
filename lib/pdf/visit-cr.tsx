@@ -81,7 +81,16 @@ function Bullets({ items, empty }: { items: string[]; empty: string }) {
 }
 
 export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: string }) {
-  const title = `Compte-rendu de visite — ${doc.siteName}`
+  // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
+  // différent (première = référence · prévisite = appel d'offres · suivi = normal).
+  const isPremiere = doc.motive === 'premiere'
+  const isAo = doc.motive === 'previsite_ao'
+  const kicker = isPremiere ? 'État initial du chantier' : isAo ? "Prévisite d'appel d'offres" : 'Compte-rendu de visite de chantier'
+  const objetTitle = isPremiere || isAo ? 'Contexte' : 'Objet de la visite'
+  const reservesTitle = isPremiere ? 'Premières réserves' : isAo ? 'Points de vigilance observés' : 'Réserves'
+  const actionsTitle = isPremiere ? 'Premières actions' : 'Actions à réaliser'
+  const photosBase = isPremiere ? 'Photos de référence' : 'Photos'
+  const title = `${kicker} — ${doc.siteName}`
   // Réserves/actions = objets bureau (site_reserve/actions) + tags terrain (écran 2).
   const reserveLines = [
     ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
@@ -96,7 +105,7 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
     <Document title={title}>
       <Page size="A4" style={styles.page}>
         <View style={styles.header} fixed>
-          <Text style={styles.kicker}>Compte-rendu de visite de chantier</Text>
+          <Text style={styles.kicker}>{kicker}</Text>
           <Text style={styles.title}>{doc.siteName}</Text>
           <View style={styles.metaRow}>
             {doc.clientName ? <Text style={styles.metaItem}>{doc.clientName}</Text> : null}
@@ -115,7 +124,7 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
         </View>
 
         <View style={styles.section} wrap={false}>
-          <Text style={styles.sectionTitle}>Objet de la visite</Text>
+          <Text style={styles.sectionTitle}>{objetTitle}</Text>
           <Text style={doc.objective ? styles.paragraph : styles.empty}>
             {doc.objective ?? 'Non précisé.'}
           </Text>
@@ -136,7 +145,7 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
 
         {reserveLines.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Réserves</Text>
+            <Text style={styles.sectionTitle}>{reservesTitle}</Text>
             <Bullets items={reserveLines} empty="—" />
           </View>
         )}
@@ -150,7 +159,7 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
 
         {actionLines.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Actions à réaliser</Text>
+            <Text style={styles.sectionTitle}>{actionsTitle}</Text>
             <Bullets items={actionLines} empty="—" />
           </View>
         )}
@@ -159,8 +168,8 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
               {doc.photoCount > doc.photos.length
-                ? `Photos clés (${doc.photos.length} — ${doc.photoCount} au total dans MemorIA)`
-                : `Photos (${doc.photos.length})`}
+                ? `${photosBase} clés (${doc.photos.length} — ${doc.photoCount} au total dans MemorIA)`
+                : `${photosBase} (${doc.photos.length})`}
             </Text>
             <View style={styles.photoGrid}>
               {doc.photos.map((url, i) => (
