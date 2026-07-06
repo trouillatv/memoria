@@ -44,13 +44,10 @@ function captureLabel(c: VisitCaptureRow): string {
 
 export default async function VisitRecapPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ reportId: string }>
-  searchParams: Promise<{ saved?: string }>
 }) {
   const { reportId } = await params
-  const justSaved = (await searchParams).saved === '1'
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
@@ -119,7 +116,6 @@ export default async function VisitRecapPage({
       currentReportId={reportId}
       memory={memory}
       patrimoine={patrimoine}
-      justSaved={justSaved}
     >
       {/* Onglet 1 — « Cette visite » : le corps du récap (l'en-tête chantier et
           la conclusion sont fournis par la grammaire commune des onglets). */}

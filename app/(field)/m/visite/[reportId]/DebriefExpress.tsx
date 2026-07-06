@@ -2,16 +2,14 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import {
   Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { triageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
+import { triageCaptureAction, untriageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
 import { listVisitCapturePreviewsAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import { CaptureTriage } from './CaptureTriage'
 import { SuiteProposals } from './SuiteProposals'
-import { VisitOutputActions } from './VisitOutputActions'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 import type { VisitImpact, VisitSuiteProposal } from '@/lib/db/visits'
 
@@ -156,6 +154,23 @@ export function DebriefExpress({
     })
   }
 
+  // Annuler un choix : la capture redevient « à trier » (aucun tag). On peut
+  // changer d'avis autant qu'on veut tant qu'on est dans le débrief.
+  function undo(c: VisitCaptureRow) {
+    const prev = c
+    const next: VisitCaptureRow = { ...c, status: 'captured', triage_intent: null }
+    setCaptures((cs) => cs.map((x) => (x.id === c.id ? next : x)))
+    setBusyId(c.id)
+    startBusy(async () => {
+      const r = await untriageCaptureAction({ capture_id: c.id })
+      setBusyId(null)
+      if (!r.ok) {
+        setCaptures((cs) => cs.map((x) => (x.id === c.id ? prev : x)))
+        toast.error(r.error)
+      }
+    })
+  }
+
   // L'INTENTION change la SENSATION de fin (intro + conclusion), pas le moteur.
   const isPremiere = motive === 'premiere'
   const isAo = motive === 'previsite_ao' || !!dossierId
@@ -260,46 +275,18 @@ export function DebriefExpress({
         </section>
       )}
 
-      {/* Barre de fin — le téléphone CAPTURE, l'ordinateur EXPLOITE. La visite se
-          termine TOUJOURS de la même façon (les sorties : voir / CR-PDF /
-          ordinateur). Seuls le message et la destination du bouton principal
-          changent selon le contexte — jamais de « lancement d'AO » sur le mobile. */}
+      {/* Le POINT FINAL : un seul geste pour VALIDER DÉFINITIVEMENT la visite.
+          On sépare la clôture (l'écran de fin) de la consultation (la récap) —
+          plus d'état intermédiaire « je suis fini mais je peux continuer ». */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
-        <div className="mx-auto max-w-md space-y-2">
-          <VisitOutputActions
-            reportId={reportId}
-            siteId={siteId}
-            onModify={() => setTriageStart(captures.findIndex((c) => c.status === 'captured') === -1 ? 0 : captures.findIndex((c) => c.status === 'captured'))}
-          />
-          {dossierId ? (
-            <>
-              <p className="rounded-lg bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">
-                Cette prévisite a enrichi le dossier d&apos;appel d&apos;offres. Les informations sont
-                disponibles sur ordinateur pour préparer la réponse.
-              </p>
-              <Link
-                href={`/dossiers/${dossierId}`}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-600/60 px-4 py-2.5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
-              >
-                Retour au dossier AO <ArrowRight className="h-4 w-4" />
-              </Link>
-              <button
-                type="button"
-                onClick={() => router.push(`/m/site/${siteId}`)}
-                className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
-              >
-                Continuer la prévisite plus tard
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => router.push(`/m/site/${siteId}`)}
-              className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
-            >
-              Retour au chantier
-            </button>
-          )}
+        <div className="mx-auto max-w-md">
+          <button
+            type="button"
+            onClick={() => router.push(`/m/visite/${reportId}/fin`)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition"
+          >
+            Terminer la visite <ArrowRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -310,6 +297,7 @@ export function DebriefExpress({
           previews={previews}
           startIndex={triageStart}
           onDecide={(c, d, comment) => decide(c, d, comment)}
+          onUndo={(c) => undo(c)}
           onClose={() => setTriageStart(null)}
           onAnnotated={refreshAfterAnnotation}
         />
