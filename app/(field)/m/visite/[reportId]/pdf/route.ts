@@ -18,7 +18,7 @@ interface RouteCtx {
   params: Promise<{ reportId: string }>
 }
 
-export async function GET(_req: Request, ctx: RouteCtx) {
+export async function GET(req: Request, ctx: RouteCtx) {
   const user = await getCurrentUserWithProfile()
   if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   if (user.role !== 'chef_equipe' && user.role !== 'admin' && user.role !== 'manager') {
@@ -60,12 +60,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
 
+  // ?download=1 → attachment : le mobile TÉLÉCHARGE le fichier (bouton « Télécharger »).
+  // Sinon inline : le mobile OUVRE le PDF (aperçu), l'agent peut ensuite partager.
+  const download = new URL(req.url).searchParams.has('download')
+  const disposition = download ? 'attachment' : 'inline'
+
   return new NextResponse(new Uint8Array(pdfBuffer), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      // inline : le mobile OUVRE le PDF (aperçu), l'agent peut ensuite partager.
-      'Content-Disposition': `inline; filename="cr-visite-${slug || 'chantier'}.pdf"`,
+      'Content-Disposition': `${disposition}; filename="cr-visite-${slug || 'chantier'}.pdf"`,
       'Cache-Control': 'no-store',
     },
   })

@@ -51,6 +51,8 @@ export default async function VisitCrPreviewPage({
   if (!doc) notFound()
 
   const pdfHref = `/m/visite/${reportId}/pdf`
+  // ?download=1 force le téléchargement (attachment) au lieu de l'aperçu (inline).
+  const pdfDownloadHref = `${pdfHref}?download=1`
   const isAo = doc.motive === 'previsite_ao'
   const summary = doc.summary?.trim() || fallbackSummary(doc)
 
@@ -201,9 +203,7 @@ export default async function VisitCrPreviewPage({
           (pas de DOCX pour les CR de visite, pas de taille de fichier fictive). */}
       <Section Icon={FileText} cls="text-slate-600" ring="bg-slate-100 dark:bg-slate-800/60" title="Documents générés">
         <a
-          href={pdfHref}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={pdfDownloadHref}
           className="flex items-center gap-3 rounded-xl border bg-background p-3"
         >
           <FileText className="h-5 w-5 shrink-0 text-rose-600" />
@@ -215,11 +215,9 @@ export default async function VisitCrPreviewPage({
         </a>
       </Section>
 
-      {/* Télécharger — action principale des documents, mais visuellement sobre. */}
+      {/* Télécharger — force le téléchargement du fichier sur le téléphone. */}
       <a
-        href={pdfHref}
-        target="_blank"
-        rel="noopener noreferrer"
+        href={pdfDownloadHref}
         className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
       >
         <Download className="h-4 w-4" /> Télécharger le PDF complet
