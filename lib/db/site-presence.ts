@@ -1,24 +1,35 @@
 // lib/db/site-presence.ts
 //
 // « Assistant de présence » — le premier comportement du niveau 3 (Présence) du
-// conducteur. Puisque vous êtes SUR PLACE, MemorIA relit ce qui existe déjà sur
-// CE chantier et remonte 1 à 3 opportunités que vous pourriez saisir maintenant,
-// tant que vous y êtes. Rien n'est créé : on ne fait que présenter, au bon
-// moment et au bon endroit, des données qui existent déjà.
+// conducteur. C'est un FILTRE D'ATTENTION, pas un résumé de page : le conducteur
+// a déjà toutes les données sous les yeux ; MemorIA n'en montre pas plus, il
+// sélectionne les 1 à 3 éléments qui méritent son attention à cet instant précis.
+//
+// LA question à laquelle le bloc répond, et une seule :
+//   « Qu'est-ce que je risque de manquer si je repars maintenant ? »
 //
 // Doctrine (cf. artifact « niveau Conducteur ») :
 //   - DÉTERMINISTE, zéro IA, zéro donnée nouvelle.
 //   - Ton OPPORTUNITÉ, jamais reproche (« vous pourriez », pas « vous devez »).
-//   - Max 3 rappels. Priorité descendante : réserve sécurité > réserve qui
-//     traîne > action en retard > réunion proche > actions ouvertes > photo clé.
-//   - Chaque rappel est CLIQUABLE (href vers là où l'on agit).
-//   - Si rien ne remonte : l'UI affiche un état rassurant (le tableau est vide,
-//     et c'est une bonne nouvelle).
+//   - Max 3 rappels. Priorité descendante :
+//       1. Sécurité (absolue)          — réserve sécurité ouverte
+//       2. Ce qui vieillit mal         — réserve ancienne, action en retard
+//       3. Ce qui va bientôt arriver   — réunion proche (comme DEADLINE, ci-dessous)
+//   - JAMAIS répéter un fait déjà affiché juste en dessous. La valeur d'un rappel
+//     est le LIEN entre deux éléments de mémoire, pas la restitution d'un fait.
+//     → La réunion n'est donc pas un rappel autonome : elle REFORMULE l'élément
+//       ouvert le plus prioritaire en lui donnant une échéance (« réunion demain,
+//       et la réserve incendie est toujours ouverte : à vérifier avant de partir »).
+//   - Si rien ne remonte : tableau vide → l'UI affiche un état rassurant. C'est
+//     le cas NORMAL et souhaité : la rareté fait la confiance.
 //
-// Volontairement HORS moteur : les interventions du jour. Elles ont déjà leur
-// liste détaillée (heure, statut, lien) juste sous ce bloc — les répéter ici
-// ferait doublon. La présence remonte l'OPPORTUNISTE (ce qu'on ne verrait pas
-// sinon), pas le PLANIFIÉ (déjà visible).
+// Volontairement HORS moteur :
+//   - Les interventions du jour : déjà listées (heure, statut, lien) juste dessous.
+//   - Le compteur générique d'actions ouvertes : c'est un résumé de page (le
+//     statut du chantier l'affiche déjà) — seule l'action EN RETARD est missable.
+//   - Les photos ⭐ en rappel permanent : une photo déjà prise n'est pas « ce que
+//     je risque de manquer ». Elle le redeviendra une fois LIÉE à un signal
+//     (sujet rouvert, approche de réception) — pas comme fixture perpétuelle.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteReserves } from '@/lib/db/site-reserve'
@@ -30,8 +41,6 @@ export type PresenceReminderKind =
   | 'reserve_old'
   | 'action_overdue'
   | 'meeting_soon'
-  | 'action_open'
-  | 'starred'
 
 export interface PresenceReminder {
   kind: PresenceReminderKind
@@ -46,10 +55,12 @@ export interface PresenceReminder {
 // d'en rater une.
 const SAFETY_RE = /s[ée]cur|[ée]chafaud|garde.?corps|\bEPI\b|chute|[ée]lectr|amiante|incendie|extincteur|balis|harnais|nacelle/i
 
-// Âge d'une réserve/action au-delà duquel « ça traîne » (jours).
+// Âge d'une réserve au-delà duquel « ça traîne » (jours).
 const STALE_DAYS = 30
-// Fenêtre « réunion proche » (jours).
-const MEETING_SOON_DAYS = 7
+// Fenêtre où une réunion sert de DEADLINE à un problème ouvert (jours).
+const MEETING_LINK_DAYS = 7
+// Fenêtre où une réunion SEULE (chantier par ailleurs à jour) vaut un rappel.
+const MEETING_SOLO_DAYS = 2
 
 function daysSince(iso: string | null): number | null {
   if (!iso) return null
@@ -65,21 +76,28 @@ function daysUntil(iso: string | null): number | null {
   return Math.ceil((t - Date.now()) / 86_400_000)
 }
 
-function clip(s: string, n = 48): string {
+function clip(s: string, n = 44): string {
   const t = s.trim()
   return t.length <= n ? t : `${t.slice(0, n - 1).trimEnd()}…`
 }
 
-/** Nombre de photos/vidéos « clés » (⭐) épinglées sur ce chantier. */
-async function countStarredKeyPhotos(siteId: string): Promise<number> {
-  const supabase = createAdminClient()
-  const { count } = await supabase
-    .from('visit_capture')
-    .select('id', { count: 'exact', head: true })
-    .eq('site_id', siteId)
-    .eq('starred', true)
-    .in('kind', ['photo', 'video'])
-  return count ?? 0
+// « Réunion ici aujourd'hui / demain / dans N j » — la clause d'échéance qui
+// donne de l'urgence à un problème ouvert.
+function meetingClause(inDays: number): string {
+  if (inDays <= 0) return 'Réunion de chantier ici aujourd’hui'
+  if (inDays === 1) return 'Réunion de chantier ici demain'
+  return `Réunion de chantier ici dans ${inDays} j`
+}
+
+// Un candidat « élément ouvert » : ce qu'on risque de laisser derrière soi. En
+// ordre de priorité. La réunion, si proche, reformulera le PREMIER de la liste.
+interface OpenItem {
+  kind: PresenceReminderKind
+  href: string
+  /** Texte quand l'élément est seul (pas de réunion pour lui donner une deadline). */
+  solo: string
+  /** Texte quand une réunion proche lui donne une échéance : « … et {tail} ». */
+  tail: string
 }
 
 /**
@@ -95,7 +113,7 @@ export async function buildSitePresenceReminders(
   const supabase = createAdminClient()
   const todayIso = todayLocalIso()
 
-  const [reserves, openActions, meeting, starredCount] = await Promise.all([
+  const [reserves, openActions, meeting] = await Promise.all([
     getSiteReserves(siteId).catch(() => []),
     listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
     supabase
@@ -107,91 +125,89 @@ export async function buildSitePresenceReminders(
       .order('next_meeting_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
-    countStarredKeyPhotos(siteId).catch(() => 0),
   ])
 
-  const out: PresenceReminder[] = []
   const openReserves = reserves.filter((r) => r.status === 'open')
+  const reservesHref = `/m/site/${siteId}#reste-a-faire`
+  const actionsHref = `/m/actions?site=${siteId}`
 
-  // 1 — Réserve SÉCURITÉ ouverte : le plus prioritaire. On est là, on peut la lever.
+  // ── Éléments ouverts « missables », en ordre de priorité ────────────────────
+  const items: OpenItem[] = []
+
+  // 1 — Réserve SÉCURITÉ ouverte : priorité absolue.
   const safety = openReserves.find(
     (r) => SAFETY_RE.test(r.label) || (r.location != null && SAFETY_RE.test(r.location)),
   )
   if (safety) {
-    out.push({
+    items.push({
       kind: 'reserve_safety',
-      text: `Une réserve sécurité est ouverte ici — « ${clip(safety.label)} ». Vous pourriez la lever tant que vous y êtes.`,
-      href: `/m/site/${siteId}#reste-a-faire`,
+      href: reservesHref,
+      solo: `Une réserve sécurité est ouverte ici — « ${clip(safety.label)} ». Vous pourriez la lever tant que vous y êtes.`,
+      tail: `la réserve sécurité « ${clip(safety.label)} » est toujours ouverte. À lever avant de repartir.`,
     })
   }
 
-  // 2 — Réserve qui TRAÎNE (≥ 30 j), hors sécurité déjà remontée.
-  const oldReserve = openReserves.find(
-    (r) => r.id !== safety?.id && (daysSince(r.issuedOn ?? r.createdAt) ?? 0) >= STALE_DAYS,
-  )
-  if (oldReserve) {
-    const d = daysSince(oldReserve.issuedOn ?? oldReserve.createdAt) ?? 0
-    out.push({
-      kind: 'reserve_old',
-      text: `La réserve « ${clip(oldReserve.label)} » est ouverte depuis ${d} jours. Un point sur place la ferait avancer.`,
-      href: `/m/site/${siteId}#reste-a-faire`,
-    })
-  }
-
-  // 3 — Action EN RETARD (échéance dépassée).
+  // 2 — Ce qui vieillit mal : action en retard.
   const overdue = openActions
     .filter((a) => a.due_date != null && a.due_date < todayIso)
     .sort((a, b) => (a.due_date! < b.due_date! ? -1 : 1))[0]
   if (overdue) {
     const d = daysSince(overdue.due_date) ?? 0
-    out.push({
+    items.push({
       kind: 'action_overdue',
-      text:
+      href: actionsHref,
+      solo:
         d > 0
           ? `L'action « ${clip(overdue.title)} » a dépassé son échéance de ${d} j. Vous êtes au bon endroit pour la faire avancer.`
           : `L'action « ${clip(overdue.title)} » était attendue pour aujourd'hui. Vous êtes au bon endroit pour la boucler.`,
-      href: `/m/actions?site=${siteId}`,
+      tail:
+        d > 0
+          ? `l'action « ${clip(overdue.title)} » traîne depuis ${d} j. À faire avancer avant.`
+          : `l'action « ${clip(overdue.title)} » est attendue pour aujourd'hui. À boucler avant.`,
     })
   }
 
-  // 4 — Réunion PROCHE (≤ 7 j) : ce que vous voyez aujourd'hui la nourrira.
+  // 2bis — Ce qui vieillit mal : réserve ancienne (≥ 30 j), hors sécurité déjà remontée.
+  const oldReserve = openReserves.find(
+    (r) => r.id !== safety?.id && (daysSince(r.issuedOn ?? r.createdAt) ?? 0) >= STALE_DAYS,
+  )
+  if (oldReserve) {
+    const d = daysSince(oldReserve.issuedOn ?? oldReserve.createdAt) ?? 0
+    items.push({
+      kind: 'reserve_old',
+      href: reservesHref,
+      solo: `La réserve « ${clip(oldReserve.label)} » est ouverte depuis ${d} jours. Un point sur place la ferait avancer.`,
+      tail: `la réserve « ${clip(oldReserve.label)} » est ouverte depuis ${d} j. À vérifier avant.`,
+    })
+  }
+
+  // ── Réunion proche : DEADLINE d'un problème ouvert, pas un rappel autonome ──
   const nextMeetingIso = (meeting.data as { next_meeting_at: string } | null)?.next_meeting_at ?? null
   const inDays = daysUntil(nextMeetingIso)
-  if (nextMeetingIso && inDays != null && inDays <= MEETING_SOON_DAYS) {
-    const isToday = nextMeetingIso.slice(0, 10) === todayIso || inDays <= 0
+
+  const out: PresenceReminder[] = []
+
+  if (nextMeetingIso && inDays != null && inDays <= MEETING_LINK_DAYS && items.length > 0) {
+    // La réunion reformule l'élément le plus prioritaire (le LIEN = la valeur).
+    const top = items.shift()!
+    out.push({
+      kind: top.kind,
+      href: top.href,
+      text: `${meetingClause(inDays)} — et ${top.tail}`,
+    })
+  } else if (nextMeetingIso && inDays != null && inDays <= MEETING_SOLO_DAYS && items.length === 0) {
+    // Chantier par ailleurs à jour, mais réunion imminente : préparez-la.
     out.push({
       kind: 'meeting_soon',
-      text: isToday
-        ? `Une réunion de chantier est prévue aujourd'hui. Ce que vous relevez maintenant la nourrira.`
-        : `Une réunion approche (dans ${inDays} j). Vos observations d'aujourd'hui la prépareront.`,
       href: `/m/site/${siteId}/reunions`,
+      text: `${meetingClause(inDays)}. Ce que vous relevez maintenant la nourrira.`,
     })
   }
 
-  // 5 — Actions OUVERTES (générique) — seulement si aucune « en retard » n'a déjà
-  //     été remontée (sinon on répète le même sujet).
-  const stillOpen = openActions.length
-  if (stillOpen > 0 && !overdue) {
-    out.push({
-      kind: 'action_open',
-      text:
-        stillOpen === 1
-          ? `Une action est ouverte ici. Un geste sur place suffit peut-être à la clore.`
-          : `${stillOpen} actions sont ouvertes ici. Vous pourriez en boucler une ou deux tant que vous y êtes.`,
-      href: `/m/actions?site=${siteId}`,
-    })
-  }
-
-  // 6 — Photos CLÉS (⭐) : la mémoire visuelle est là si besoin de comparer.
-  if (starredCount > 0) {
-    out.push({
-      kind: 'starred',
-      text:
-        starredCount === 1
-          ? `Une photo clé est épinglée sur ce chantier — utile pour comparer l'avant/après.`
-          : `${starredCount} photos clés sont épinglées ici — utiles pour comparer l'avant/après.`,
-      href: `/m/site/${siteId}/patrimoine`,
-    })
+  // Les éléments ouverts restants, en clair (le premier a pu être « consommé »
+  // par la réunion ci-dessus).
+  for (const item of items) {
+    out.push({ kind: item.kind, href: item.href, text: item.solo })
   }
 
   return out.slice(0, limit)

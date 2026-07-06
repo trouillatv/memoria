@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import {
-  ShieldAlert, Clock, AlertCircle, CalendarClock, ListTodo, Star, ChevronRight, Check,
+  ShieldAlert, Clock, AlertCircle, CalendarClock, ChevronRight, Check,
 } from 'lucide-react'
 import type { PresenceReminder, PresenceReminderKind } from '@/lib/db/site-presence'
 
@@ -18,8 +18,6 @@ const KIND_META: Record<PresenceReminderKind, { Icon: typeof ShieldAlert; cls: s
   reserve_old: { Icon: Clock, cls: 'text-amber-600' },
   action_overdue: { Icon: AlertCircle, cls: 'text-amber-600' },
   meeting_soon: { Icon: CalendarClock, cls: 'text-sky-600' },
-  action_open: { Icon: ListTodo, cls: 'text-violet-600' },
-  starred: { Icon: Star, cls: 'text-violet-600' },
 }
 
 export function SitePresenceReminders({ reminders }: { reminders: PresenceReminder[] }) {
