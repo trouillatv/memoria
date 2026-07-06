@@ -133,33 +133,40 @@ export default async function FieldSitePage({
   ])
   const nthPassage = pastVisitDays + 1
 
-  // Actions ouvertes du site — « à suivre » côté terrain.
-  const openActions = await listOpenSiteActions({ siteIds: [siteId] }).catch(() => [])
+  // Actions ouvertes + visite en cours — indépendants, en parallèle.
+  const [openActions, activeVisit] = await Promise.all([
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
+    getActiveVisit(siteId).catch(() => null),
+  ])
 
-  // Visite en cours (non terminée) sur ce site, le cas échéant.
-  const activeVisit = await getActiveVisit(siteId).catch(() => null)
-  // « État du chantier » — résumé en tête de fiche (hors visite en cours, où
-  // l'écran est le panier de capture).
-  const siteStatus = activeVisit ? [] : await buildSiteStatusSummary(siteId).catch(() => [])
-  // Identité du chantier + Lieu (hors visite en cours). Chantier = dossier ;
-  // Site = localisation utile dans le chantier.
-  const identity = activeVisit ? null : await getSiteIdentity(siteId).catch(() => null)
-  // Réserves OUVERTES — pour le bloc « Que reste-t-il à faire ? ».
-  const openReserves = activeVisit
-    ? []
-    : (await getSiteReserves(siteId).catch(() => []))
-        .filter((r) => r.status === 'open')
-        .map((r) => ({ id: r.id, label: r.label, location: r.location }))
-  // Dernière activité du chantier — visites + réunions + interventions récentes.
-  const recentActivity = activeVisit ? [] : await getSiteRecentActivity(siteId).catch(() => [])
-  // « Depuis votre dernière visite » — résumé déterministe de ce qui a bougé.
-  const sinceLastVisit = activeVisit ? null : await buildSinceLastVisitSummary(siteId).catch(() => null)
-  // Documents : onglet réservé au conducteur (admin/manager) ET seulement s'il
-  // existe de vrais documents liés — on ne dessine pas un menu vide.
+  // PERF — hors visite en cours, TOUTES les données de cockpit sont
+  // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne
+  // séquentielle (la fiche est la page la plus ouverte : elle doit être rapide).
   const canSeeDocs = !activeVisit && (user.role === 'admin' || user.role === 'manager')
-  const siteDocCount = canSeeDocs
-    ? (await listDocumentsForTarget('site', siteId).catch(() => [])).length
-    : 0
+  let siteStatus: Awaited<ReturnType<typeof buildSiteStatusSummary>> = []
+  let identity: Awaited<ReturnType<typeof getSiteIdentity>> = null
+  let openReserves: { id: string; label: string; location: string | null }[] = []
+  let recentActivity: Awaited<ReturnType<typeof getSiteRecentActivity>> = []
+  let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
+  let siteDocCount = 0
+  if (!activeVisit) {
+    const [status, id, reservesRaw, activity, since, docList] = await Promise.all([
+      buildSiteStatusSummary(siteId).catch(() => []),
+      getSiteIdentity(siteId).catch(() => null),
+      getSiteReserves(siteId).catch(() => []),
+      getSiteRecentActivity(siteId).catch(() => []),
+      buildSinceLastVisitSummary(siteId).catch(() => null),
+      canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
+    ])
+    siteStatus = status
+    identity = id
+    openReserves = reservesRaw
+      .filter((r) => r.status === 'open')
+      .map((r) => ({ id: r.id, label: r.label, location: r.location }))
+    recentActivity = activity
+    sinceLastVisit = since
+    siteDocCount = docList.length
+  }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
