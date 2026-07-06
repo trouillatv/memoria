@@ -15,7 +15,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { listDecisionsBySite } from '@/lib/db/site-decisions'
 import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
@@ -605,6 +606,55 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
     reserves: reservesRes.count ?? 0,
     subjects: subjectsRes.count ?? 0,
   }
+}
+
+export interface SiteImportantEvidence {
+  /** Photos marquées ⭐ (clés) — les preuves à retrouver vite. */
+  photos: Array<{ id: string; url: string; reportId: string }>
+  /** Décisions distillées + lien vers LEUR source (visite ou réunion). */
+  decisions: Array<{ id: string; titre: string; impact: string | null; href: string | null }>
+}
+
+/**
+ * « Preuves importantes » du Patrimoine : ce qui mérite d'être retrouvé vite.
+ * Aucune nouvelle logique métier — on EXPOSE proprement des données déjà là :
+ * photos clés (⭐) et décisions distillées, chacune ouvrant sa source. Section
+ * masquée par l'appelant si tout est vide.
+ */
+export async function buildSiteImportantEvidence(siteId: string): Promise<SiteImportantEvidence> {
+  const supabase = createAdminClient()
+
+  // ⭐ Photos favorites (clés) — les plus récentes d'abord.
+  const { data: photoRows } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
+    .eq('site_id', siteId).eq('kind', 'photo').eq('starred', true).neq('status', 'discarded')
+    .order('created_at', { ascending: false }).limit(8)
+  const photoCaptures = (photoRows ?? []) as VisitCaptureRow[]
+  const previews = await getVisitCapturePreviewUrls(photoCaptures).catch(() => ({} as Record<string, { url: string; mime: string | null }>))
+  const photos = photoCaptures
+    .map((c) => ({ id: c.id, url: previews[c.id]?.url, reportId: c.report_id }))
+    .filter((p): p is { id: string; url: string; reportId: string } => !!p.url)
+
+  // Décisions distillées + lien vers leur source (origine → visite / réunion).
+  const decisionsAll = await listDecisionsBySite(siteId).catch(() => [])
+  const recent = decisionsAll.slice(0, 6)
+  const reportIds = [...new Set(recent.map((d) => d.reportId).filter((x): x is string => !!x))]
+  const originById = new Map<string, string | null>()
+  if (reportIds.length) {
+    const { data: reps } = await supabase.from('site_reports').select('id, origin').in('id', reportIds)
+    for (const r of (reps ?? []) as Array<{ id: string; origin: string | null }>) originById.set(r.id, r.origin)
+  }
+  const decisions = recent.map((d) => ({
+    id: d.id,
+    titre: d.titre,
+    impact: d.impact,
+    href: d.reportId && originById.has(d.reportId)
+      ? (originById.get(d.reportId) ? `/m/visite/${d.reportId}/recap` : `/m/reunion/${d.reportId}`)
+      : null,
+  }))
+
+  return { photos, decisions }
 }
 
 // ── « État du chantier » : le résumé qui se lit en 10 secondes (fiche chantier) ─

@@ -304,6 +304,42 @@ export async function getVisitCapturePreviewUrls(
   return out
 }
 
+/** Une capture géolocalisée du chantier, prête pour la carte (forme MapCapture). */
+export interface SiteMapCapture {
+  id: string
+  kind: string
+  lat: number
+  lng: number
+  created_at: string
+  body: string | null
+  reportId: string
+  subjectName: string | null
+}
+
+/**
+ * TOUTES les captures géolocalisées d'un chantier (pas seulement la dernière
+ * visite) — pour la « Carte mémoire » du Patrimoine. On n'expose que ce qui a de
+ * vraies coordonnées ; aucune zone inventée, aucun tracking de personne.
+ */
+export async function listSiteMapCaptures(siteId: string): Promise<SiteMapCapture[]> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('visit_capture')
+    .select('id, kind, lat, lng, body, captured_at, created_at, report_id')
+    .eq('site_id', siteId)
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
+    .neq('status', 'discarded')
+    .order('created_at', { ascending: false })
+    .limit(500)
+  return ((data ?? []) as Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; captured_at: string | null; created_at: string; report_id: string }>)
+    .map((c) => ({
+      id: c.id, kind: c.kind, lat: c.lat, lng: c.lng,
+      created_at: c.captured_at ?? c.created_at, body: c.body?.trim() || null,
+      reportId: c.report_id, subjectName: null,
+    }))
+}
+
 /** Combien de captures non écartées dans le panier (badge « N éléments »). */
 export async function countVisitCaptures(reportId: string): Promise<number> {
   const supabase = createAdminClient()
