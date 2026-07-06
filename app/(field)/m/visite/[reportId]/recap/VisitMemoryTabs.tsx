@@ -11,7 +11,7 @@
 import { useState } from 'react'
 import {
   BookOpen, TrendingUp, History, Brain, CheckCircle2, AlertTriangle, Eye, Camera,
-  CalendarDays, ListTodo, Flag, Footprints, Users, Wrench, ClipboardList, CheckSquare,
+  CalendarDays, ListTodo, Footprints, Users, Wrench, ClipboardList, CheckSquare,
   Compass, Trophy, Star,
 } from 'lucide-react'
 import type { VisitProduction, SitePatrimoine } from '@/lib/db/visits'
@@ -93,29 +93,30 @@ function EvolutionPanel({ p }: { p: VisitProduction | null }) {
     )
   }
 
-  // Bloc 1 — Nouvelles preuves (médias captés).
+  // Chaque bloc ne s'affiche QUE s'il porte une information réelle. La page se
+  // recompose autour de ce qui a vraiment été produit — jamais un gabarit rempli
+  // de zéros. Le 🧠 « mémoire enrichie » est porté par l'encart de fin.
+
+  // Bloc — Nouvelles preuves (médias captés, présence relevée).
   const proofBullets: string[] = []
   if (p.photos > 0) proofBullets.push(`${p.photos} ${plural(p.photos, 'photo')}`)
   if (p.vocals > 0) proofBullets.push(`${p.vocals} ${plural(p.vocals, 'note vocale', 'notes vocales')}`)
   if (p.videos > 0) proofBullets.push(`${p.videos} ${plural(p.videos, 'vidéo')}`)
   if (p.notes > 0) proofBullets.push(`${p.notes} ${plural(p.notes, 'note écrite', 'notes écrites')}`)
+  if (p.positions > 0) proofBullets.push(`${p.positions} ${plural(p.positions, 'position GPS', 'positions GPS')}`)
 
-  // Bloc 2 — Nouveaux constats (ce qui interroge / ce qui est vérifié).
+  // Bloc — Nouveaux constats (ce qui interroge / ce qui est vérifié).
   const findingBullets: string[] = []
   if (p.reservesCreated > 0) findingBullets.push(`${p.reservesCreated} ${plural(p.reservesCreated, 'réserve')} ${plural(p.reservesCreated, 'créée')}`)
   if (p.verifications > 0) findingBullets.push(`${p.verifications} ${plural(p.verifications, 'point vérifié', 'points vérifiés')}`)
 
-  // Bloc 3 — Impact sur le chantier (ce qui va faire avancer).
+  // Bloc — Impact sur le chantier (ce qui va faire avancer). Le compte-rendu
+  // n'est PAS un motif d'affichage : il vaut pour toute visite (cf. encart).
   const impactBullets: string[] = []
   if (p.actionsCreated > 0) impactBullets.push(`${p.actionsCreated} ${plural(p.actionsCreated, 'action ouverte', 'actions ouvertes')}`)
-  impactBullets.push('Compte-rendu généré')
 
-  // Bloc 4 — Mémoire enrichie (ce qui reste consultable après la visite).
-  const memoryBullets: string[] = []
-  if (p.photos + p.videos + p.vocals > 0) memoryBullets.push(`${p.photos + p.videos + p.vocals} ${plural(p.photos + p.videos + p.vocals, 'média consultable', 'médias consultables')}`)
-  if (p.positions > 0) memoryBullets.push(`${p.positions} ${plural(p.positions, 'position GPS', 'positions GPS')}`)
-  if (p.notes + p.vocals + p.verifications > 0) memoryBullets.push(`${p.notes + p.vocals + p.verifications} ${plural(p.notes + p.vocals + p.verifications, 'observation')}`)
-
+  // Visite extrêmement légère : aucune capture, aucun constat, aucune action.
+  // On ne remplit pas la page de zéros — un seul message, honnête et rassurant.
   const nothing = p.totalCaptures === 0
 
   return (
@@ -123,16 +124,12 @@ function EvolutionPanel({ p }: { p: VisitProduction | null }) {
       <PanelTitle title="Évolution de cette visite" subtitle="Ce que cette visite a apporté au chantier" />
 
       {nothing ? (
-        // Jamais vide : la visite existe, elle est entrée dans l'histoire.
-        <EvoBlock
-          emoji="📌"
-          Icon={Flag}
-          cls="text-emerald-600"
-          ring="bg-emerald-100 dark:bg-emerald-950/40"
-          title="Visite enregistrée"
-          bullets={['Visite ajoutée à l’historique du chantier']}
-          note="Chaque passage compte, même sans relevé."
-        />
+        <div className="rounded-2xl border bg-muted/30 p-4">
+          <p className="text-sm font-medium">Cette visite a été enregistrée.</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            Elle fait désormais partie de l’historique du chantier et pourra être retrouvée lors des prochaines visites et réunions.
+          </p>
+        </div>
       ) : (
         <div className="space-y-2.5">
           {proofBullets.length > 0 && (
@@ -166,23 +163,16 @@ function EvolutionPanel({ p }: { p: VisitProduction | null }) {
               bullets={impactBullets}
             />
           )}
-          {memoryBullets.length > 0 && (
-            <EvoBlock
-              emoji="🧠"
-              Icon={Brain}
-              cls="text-emerald-600"
-              ring="bg-emerald-100 dark:bg-emerald-950/40"
-              title="Mémoire enrichie"
-              bullets={memoryBullets}
-              note="Consultable lors des prochaines visites."
-            />
-          )}
         </div>
       )}
 
-      {/* Encart de fin — le sens : la visite a enrichi le dossier du chantier. */}
+      {/* Encart de fin — le sens : la visite a enrichi le dossier du chantier.
+          C'est lui qui fait le lien terrain → patrimoine numérique. Toujours là. */}
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Cette visite a enrichi le dossier du chantier.</p>
+        <p className="flex items-start gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+          <Brain className="mt-0.5 h-[18px] w-[18px] shrink-0 text-emerald-600" />
+          <span>Cette visite a enrichi le dossier du chantier.</span>
+        </p>
         <ul className="mt-2.5 space-y-1.5">
           <CheckLine text="Visible dans l’historique du chantier" />
           <CheckLine text="Intégrée au compte-rendu" />
