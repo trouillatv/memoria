@@ -9,10 +9,10 @@ export default function FieldNotFound() {
       <EmptyState
         icon={FileQuestion}
         title="Page introuvable"
-        description="Cette intervention n'existe pas ou vous n'y avez pas accès."
+        description="Cette page n'existe pas ou vous n'y avez pas accès."
         primaryAction={
           <Link href="/m">
-            <Button>Retour à mes missions</Button>
+            <Button>Retour à l&apos;accueil</Button>
           </Link>
         }
         variant="compact"
