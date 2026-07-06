@@ -27,12 +27,12 @@ export function SiteReportLauncher({ siteId, siteName, contractId, contractName,
   const buttonClass =
     variant === 'desktop'
       ? 'inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors'
-      : 'inline-flex items-center justify-center gap-2 w-full rounded-lg bg-foreground text-background py-3 text-sm font-medium active:scale-[0.99] transition-transform'
+      : 'inline-flex items-center justify-center gap-2 w-full rounded-xl border bg-card text-foreground py-3.5 text-sm font-medium active:bg-accent transition-colors'
 
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
-        <ClipboardList className="h-4 w-4" />
+        <ClipboardList className="h-4 w-4 text-sky-600" />
         {label ?? (reportType === 'contract' ? 'Réunion de contrat' : 'Compte-rendu chantier')}
       </button>
 

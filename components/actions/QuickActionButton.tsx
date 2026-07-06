@@ -68,11 +68,11 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
       onClick={() => setOpen(true)}
       className={
         variant === 'mobile'
-          ? 'w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-medium active:scale-[0.99] transition-transform'
+          ? 'h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3.5 text-sm font-medium active:bg-accent transition-colors'
           : 'inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 hover:bg-muted/40 transition-[transform,colors] active:scale-[0.97]'
       }
     >
-      <Plus className="h-4 w-4" /> Action
+      <Plus className="h-4 w-4 text-emerald-600" /> Action
     </button>
   )
 
