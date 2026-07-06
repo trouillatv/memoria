@@ -352,7 +352,7 @@ function VisitImpactCard({ impact, total, isPremiere, isAo }: { impact: VisitImp
     if (added.actions > 0) parts.push(`${added.actions} action${plural(added.actions)}`)
     const lines = ['Cette visite devient le point de référence du chantier.']
     if (parts.length > 0) lines.push(parts.join(' · '))
-    return <ImpactShell title="Première mémoire créée" lines={lines} footer="Les prochaines visites seront comparées à celle-ci." />
+    return <ImpactShell title="Première mémoire créée" lines={lines} footer="Toutes les futures visites seront comparées à cette référence." />
   }
 
   // 📑 PRÉVISITE AO — la base de l'analyse (la mécanique AO vient au 2ᵉ temps).
@@ -363,7 +363,7 @@ function VisitImpactCard({ impact, total, isPremiere, isAo }: { impact: VisitImp
     if (added.reserves > 0) parts.push(`${added.reserves} point${plural(added.reserves)} de vigilance`)
     const lines = ['Cette visite constitue la base de votre analyse.']
     if (parts.length > 0) lines.push(`MemorIA a relevé : ${parts.join(' · ')}`)
-    return <ImpactShell title="Prévisite enregistrée" lines={lines} footer="Prochaine étape : préparer l'analyse AO" />
+    return <ImpactShell title="Prévisite enregistrée" lines={lines} footer="Toutes les observations seront réutilisées pour préparer l'analyse de l'appel d'offres." />
   }
 
   // 📷 SUIVI — faire évoluer la mémoire (le cas normal, inchangé).
@@ -382,7 +382,7 @@ function VisitImpactCard({ impact, total, isPremiere, isAo }: { impact: VisitImp
   if (enrichWith) lines.push(`Le suivi du chantier a été enrichi avec ${enrichWith}`)
 
   if (lines.length === 0) return null
-  return <ImpactShell title="Cette visite enrichit la mémoire" lines={lines} footer="Prochaine étape : compléter le compte-rendu au bureau" />
+  return <ImpactShell title="Cette visite enrichit la mémoire" lines={lines} footer="Cette visite enrichit l'historique du chantier." />
 }
 
 const KIND_ICON: Record<VisitCaptureKind, React.ReactNode> = {

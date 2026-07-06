@@ -85,6 +85,9 @@ export async function createVisit(input: CreateVisitInput): Promise<string> {
       origin: input.origin ?? 'spontaneous',
       source: input.source ?? null,
       visit_motive: input.motive ?? null,
+      // Objet PRÉ-REMPLI pour une première visite (éditable) : MemorIA comprend
+      // d'emblée le contexte. Dans ~80 % des cas l'agent ne le changera pas.
+      objective: input.motive === 'premiere' ? "Créer l'état initial du chantier" : null,
       started_at: input.startedAt ?? new Date().toISOString(),
     })
     .select('id')
@@ -1411,6 +1414,8 @@ export interface VisitCrDoc {
   dateLabel: string
   /** Ex. « Visite spontanée ». */
   typeLabel: string
+  /** Intention (mig 186) — spécialise le TITRE et quelques intitulés du PDF. */
+  motive: string | null
   durationLabel: string | null
   objective: string | null
   subjectName: string | null
@@ -1585,7 +1590,8 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     siteName,
     clientName,
     dateLabel,
-    typeLabel: ORIGIN_FR[visit.origin ?? ''] ?? 'Visite',
+    typeLabel: visitIntentLabel(visit.visit_motive) ?? ORIGIN_FR[visit.origin ?? ''] ?? 'Visite',
+    motive: visit.visit_motive ?? null,
     durationLabel,
     objective: visit.objective?.trim() || null,
     subjectName,
@@ -1611,15 +1617,22 @@ export async function buildVisitCr(reportId: string): Promise<string | null> {
   const doc = await buildVisitCrDoc(reportId)
   if (!doc) return null
 
+  // Titre cadré par l'intention (cohérent avec le PDF).
+  const crKicker = doc.motive === 'premiere'
+    ? 'État initial du chantier'
+    : doc.motive === 'previsite_ao'
+      ? "Prévisite d'appel d'offres"
+      : 'Compte-rendu de visite'
+
   const lines: string[] = []
-  lines.push(`# Compte-rendu de visite — ${doc.siteName}`)
+  lines.push(`# ${crKicker} — ${doc.siteName}`)
   lines.push('')
   lines.push(`**Date :** ${doc.dateLabel}`)
   lines.push(`**Type :** ${doc.typeLabel}`)
   if (doc.durationLabel) lines.push(`**Durée :** ${doc.durationLabel}`)
   lines.push('')
 
-  lines.push('## Objet de la visite')
+  lines.push(doc.motive === 'premiere' || doc.motive === 'previsite_ao' ? '## Contexte' : '## Objet de la visite')
   lines.push(doc.objective || '_Non précisé._')
   if (doc.subjectName) lines.push(`Sujet : **${doc.subjectName}**`)
   lines.push('')
