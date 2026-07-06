@@ -9,9 +9,13 @@
 //   • Mémoire      → « qu'est-ce que MemorIA sait de ce chantier ? »  (récurrences)
 
 import { useState } from 'react'
-import { BookOpen, TrendingUp, History, Brain, CheckCircle2, AlertTriangle, Eye, Camera, CalendarDays, ListTodo, Flag } from 'lucide-react'
+import {
+  BookOpen, TrendingUp, History, Brain, CheckCircle2, AlertTriangle, Eye, Camera,
+  CalendarDays, ListTodo, Flag, Footprints, Users, Wrench, ClipboardList, CheckSquare,
+  Compass, Trophy, Star,
+} from 'lucide-react'
 import type { VisitEvolution, SitePatrimoine } from '@/lib/db/visits'
-import type { NarrativeEvent } from '@/lib/db/site-narrative'
+import type { TimelineEvent, TimelineKind } from '@/lib/db/site-timeline'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 
 type Tab = 'visite' | 'evolution' | 'histoire' | 'memoire'
@@ -25,13 +29,15 @@ const TABS: Array<{ key: Tab; label: string; Icon: typeof BookOpen }> = [
 
 export function VisitMemoryTabs({
   evolution,
-  events,
+  timeline,
+  currentReportId,
   memory,
   patrimoine,
   children,
 }: {
   evolution: VisitEvolution
-  events: NarrativeEvent[]
+  timeline: TimelineEvent[]
+  currentReportId: string
   memory: MemorySignal[]
   patrimoine: SitePatrimoine
   /** Onglet « Cette visite » — rendu côté serveur (contenu existant du récap). */
@@ -40,10 +46,10 @@ export function VisitMemoryTabs({
   const [tab, setTab] = useState<Tab>('visite')
 
   return (
-    <div className="mx-auto min-h-dvh max-w-md px-4 pb-24 pt-4">
+    <div className="mx-auto min-h-dvh max-w-md px-4 pb-24 pt-5">
       {tab === 'visite' && children}
       {tab === 'evolution' && <EvolutionPanel e={evolution} />}
-      {tab === 'histoire' && <HistoirePanel events={events} />}
+      {tab === 'histoire' && <HistoirePanel timeline={timeline} currentReportId={currentReportId} />}
       {tab === 'memoire' && <MemoirePanel memory={memory} patrimoine={patrimoine} />}
 
       {/* Barre d'onglets — une main, en bas du pouce. */}
@@ -73,7 +79,7 @@ export function VisitMemoryTabs({
 function EvolutionPanel({ e }: { e: VisitEvolution }) {
   if (!e.hasPrev) {
     return (
-      <div className="space-y-3 pt-2">
+      <div className="space-y-4">
         <PanelTitle title="Évolution" subtitle="Depuis la dernière visite" />
         <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
           <Flag className="mb-1.5 h-5 w-5 text-emerald-600" />
@@ -85,7 +91,7 @@ function EvolutionPanel({ e }: { e: VisitEvolution }) {
   }
   const nothing = e.resolvedReserves.length === 0 && e.newReserves.length === 0 && e.recurring.length === 0 && e.addedPhotos === 0
   return (
-    <div className="space-y-3 pt-2">
+    <div className="space-y-4">
       <PanelTitle title="Évolution" subtitle={`Depuis la dernière visite (${e.prevDateLabel})`} />
       {nothing ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">Rien de notable n&apos;a changé depuis la dernière visite.</p>
@@ -109,30 +115,52 @@ function EvolutionPanel({ e }: { e: VisitEvolution }) {
   )
 }
 
-// ── Onglet 3 — Histoire (la frise) ────────────────────────────────────────────
+// ── Onglet 3 — Histoire (la VRAIE frise, visites incluses) ────────────────────
 
-function HistoirePanel({ events: raw }: { events: NarrativeEvent[] }) {
-  // Événements du plus récent au plus ancien (la frise se lit de haut en bas).
-  const events = [...raw].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+const HIST_META: Record<TimelineKind, { Icon: typeof Users; cls: string; ring: string }> = {
+  visit: { Icon: Footprints, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
+  meeting: { Icon: Users, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40' },
+  intervention: { Icon: Wrench, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
+  reserve_open: { Icon: ClipboardList, cls: 'text-rose-600', ring: 'bg-rose-100 dark:bg-rose-950/40' },
+  reserve_lifted: { Icon: CheckCircle2, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
+  action_done: { Icon: CheckSquare, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
+  decision: { Icon: Compass, cls: 'text-violet-600', ring: 'bg-violet-100 dark:bg-violet-950/40' },
+  phase: { Icon: Trophy, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
+}
+
+function HistoirePanel({ timeline, currentReportId }: { timeline: TimelineEvent[]; currentReportId: string }) {
+  const currentHref = `/m/visite/${currentReportId}/recap`
   return (
-    <div className="space-y-3 pt-2">
-      <PanelTitle title="Histoire du chantier" subtitle="Les chapitres, du plus récent au premier jour" />
-      {events.length === 0 ? (
+    <div className="space-y-4">
+      <PanelTitle title="Histoire du chantier" subtitle="Votre visite vient d'entrer dans l'histoire" />
+      {timeline.length === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">L&apos;histoire du chantier commence avec cette visite.</p>
       ) : (
-        <ol className="relative space-y-3 border-l border-border pl-4">
-          {events.map((ev, i) => (
-            <li key={i} className="relative">
-              <span className="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-background" />
-              <div className="rounded-xl border bg-background p-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {new Date(ev.at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </p>
-                <p className="mt-0.5 text-sm font-medium">{ev.icon} {ev.title}</p>
-                {ev.detail && <p className="mt-0.5 text-[13px] text-muted-foreground">{ev.detail}</p>}
-              </div>
-            </li>
-          ))}
+        <ol className="relative space-y-2.5 pl-1">
+          {/* fil vertical de la frise */}
+          <span aria-hidden className="absolute left-[18px] top-3 bottom-3 w-px bg-border" />
+          {timeline.map((ev, i) => {
+            const isCurrent = ev.href === currentHref
+            const { Icon, cls, ring } = HIST_META[ev.kind] ?? HIST_META.decision
+            return (
+              <li key={i} className="relative flex items-start gap-3">
+                <span className={`relative z-10 mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isCurrent ? 'ring-2 ring-emerald-500' : ''} ${ring}`}>
+                  <Icon className={`h-[18px] w-[18px] ${cls}`} />
+                  {ev.star && <Star className="absolute -right-1 -top-1 h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
+                </span>
+                <div className={`min-w-0 flex-1 rounded-xl border p-3 ${isCurrent ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/20' : 'bg-background'}`}>
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <span className="min-w-0 truncate">{ev.title}</span>
+                    {isCurrent && (
+                      <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">Aujourd&apos;hui</span>
+                    )}
+                  </p>
+                  {ev.detail && <p className="mt-0.5 truncate text-[13px] text-muted-foreground">{ev.detail}</p>}
+                  <p className="mt-0.5 text-[12px] text-muted-foreground first-letter:uppercase">{ev.dateLabel}</p>
+                </div>
+              </li>
+            )
+          })}
         </ol>
       )}
     </div>
@@ -149,7 +177,7 @@ const SIGNAL_ICON: Record<string, typeof Eye> = {
 
 function MemoirePanel({ memory, patrimoine }: { memory: MemorySignal[]; patrimoine: SitePatrimoine }) {
   return (
-    <div className="space-y-3 pt-2">
+    <div className="space-y-4">
       <PanelTitle title="Mémoire du chantier" subtitle="Ce que MemorIA a retenu" />
       {memory.length === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">Pas encore de récurrence détectée — la mémoire se construit visite après visite.</p>

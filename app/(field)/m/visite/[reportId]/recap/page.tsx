@@ -6,7 +6,7 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitEvolution, buildSitePatrimoine } from '@/lib/db/visits'
-import { getSiteNarrative } from '@/lib/db/site-narrative'
+import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { VisitOutputActions } from '../VisitOutputActions'
@@ -93,16 +93,17 @@ export default async function VisitRecapPage({
 
   // Données des onglets Évolution / Histoire / Mémoire (déterministe, réutilise la
   // mémoire du chantier). L'écran de FIN de visite, lui, reste inchangé et rapide.
-  const [evolution, narrative, memory, patrimoine] = await Promise.all([
+  const [evolution, timeline, memory, patrimoine] = await Promise.all([
     buildVisitEvolution(reportId, visit.site_id).catch(() => ({ hasPrev: false, prevDateLabel: null, resolvedReserves: [], newReserves: [], recurring: [], addedPhotos: 0 })),
-    getSiteNarrative(visit.site_id).catch(() => null),
+    // Histoire = la VRAIE frise (visites incluses), pas l'ancien narratif qui les
+    // omettait (d'où l'onglet vide). La visite du jour y sera mise en évidence.
+    buildSiteTimeline(visit.site_id).catch(() => []),
     buildSiteMemorySignals(visit.site_id).catch(() => []),
     buildSitePatrimoine(visit.site_id).catch(() => ({ firstVisitLabel: null, photos: 0, visits: 0, actions: 0, reserves: 0 })),
   ])
-  const events = narrative ? narrative.months.flatMap((m) => m.events) : []
 
   return (
-    <VisitMemoryTabs evolution={evolution} events={events} memory={memory} patrimoine={patrimoine}>
+    <VisitMemoryTabs evolution={evolution} timeline={timeline} currentReportId={reportId} memory={memory} patrimoine={patrimoine}>
       {/* Onglet 1 — « Cette visite » : le récap existant, inchangé. */}
       <div className="space-y-4">
       <Link
