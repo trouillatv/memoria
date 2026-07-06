@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle, FileText,
+  Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { triageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
@@ -260,10 +260,10 @@ export function DebriefExpress({
         </section>
       )}
 
-      {/* Barre de fin — la question à cet instant est « qu'est-ce que je fais de ma
-          visite ? ». On mène donc avec les SORTIES (voir / CR-PDF / ordinateur).
-          Une vraie prévisite AO peut ENSUITE enchaîner sur l'AO — option secondaire,
-          jamais le CTA dominant (sinon on donne l'impression de « lancer un AO »). */}
+      {/* Barre de fin — le téléphone CAPTURE, l'ordinateur EXPLOITE. La visite se
+          termine TOUJOURS de la même façon (les sorties : voir / CR-PDF /
+          ordinateur). Seuls le message et la destination du bouton principal
+          changent selon le contexte — jamais de « lancement d'AO » sur le mobile. */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-md space-y-2">
           <VisitOutputActions
@@ -271,21 +271,35 @@ export function DebriefExpress({
             siteId={siteId}
             onModify={() => setTriageStart(captures.findIndex((c) => c.status === 'captured') === -1 ? 0 : captures.findIndex((c) => c.status === 'captured'))}
           />
-          {dossierId && (
-            <Link
-              href={`/dossiers/${dossierId}`}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-600/60 px-4 py-2.5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+          {dossierId ? (
+            <>
+              <p className="rounded-lg bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">
+                Cette prévisite a enrichi le dossier d&apos;appel d&apos;offres. Les informations sont
+                disponibles sur ordinateur pour préparer la réponse.
+              </p>
+              <Link
+                href={`/dossiers/${dossierId}`}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-600/60 px-4 py-2.5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+              >
+                Retour au dossier AO <ArrowRight className="h-4 w-4" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => router.push(`/m/site/${siteId}`)}
+                className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
+              >
+                Continuer la prévisite plus tard
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push(`/m/site/${siteId}`)}
+              className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
             >
-              <FileText className="h-4 w-4" /> Préparer l&apos;analyse AO <ArrowRight className="h-4 w-4" />
-            </Link>
+              Retour au chantier
+            </button>
           )}
-          <button
-            type="button"
-            onClick={() => router.push(`/m/site/${siteId}`)}
-            className="w-full rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground"
-          >
-            Retour au chantier
-          </button>
         </div>
       </div>
 
