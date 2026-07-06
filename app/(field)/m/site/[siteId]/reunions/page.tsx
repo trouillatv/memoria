@@ -66,6 +66,7 @@ export default async function SiteMeetingsMobilePage({
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
                     <span className="first-letter:uppercase">{m.dateLabel}</span>
                     {m.authorName && <span>· {m.authorName}</span>}
+                    {m.decisions > 0 && <span>· {m.decisions} décision{m.decisions > 1 ? 's' : ''}</span>}
                   </span>
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
