@@ -44,8 +44,8 @@ export async function quickCreateSiteVisitAction(
     })
 
     // Première visite lancée tout de suite — le panier terrain s'ouvre au retour
-    // sur /m/site/{siteId}.
-    const reportId = await createVisit({ siteId, origin: 'spontaneous', createdBy: auth.userId })
+    // sur /m/site/{siteId}. Un chantier tout neuf → intention « première visite ».
+    const reportId = await createVisit({ siteId, origin: 'spontaneous', createdBy: auth.userId, motive: 'premiere' })
     return { ok: true, siteId, reportId }
   } catch {
     return { ok: false, error: 'Échec de la création du chantier' }

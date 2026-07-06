@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { listMeetingSitesAction } from './meeting-actions'
 import { startVisitAction } from './site/[siteId]/visit-actions'
 import { quickCreateSiteVisitAction } from './quick-site-actions'
+import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 
 type Site = { id: string; name: string }
 type Mode = 'pick' | 'create'
@@ -24,8 +25,10 @@ export function VisitLauncherHome() {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<Mode>('pick')
   const [sites, setSites] = useState<Site[] | null>(null)
-  // Chantier choisi, en attente du MODE de création (capturer / WhatsApp / fichiers).
+  // Chantier choisi, puis INTENTION (« pourquoi êtes-vous ici ? »), puis MODE
+  // de démarrage (capturer / WhatsApp / fichiers). Le moteur reste identique.
   const [chosenSite, setChosenSite] = useState<Site | null>(null)
+  const [intent, setIntent] = useState<VisitIntent | null>(null)
   const [pending, startTransition] = useTransition()
 
   // Champs création rapide
@@ -39,7 +42,7 @@ export function VisitLauncherHome() {
   }, [open, mode, sites])
 
   function reset() {
-    setMode('pick'); setName(''); setAddress(''); setClientName(''); setChosenSite(null)
+    setMode('pick'); setName(''); setAddress(''); setClientName(''); setChosenSite(null); setIntent(null)
   }
 
   function close() {
@@ -56,7 +59,7 @@ export function VisitLauncherHome() {
   function captureNow() {
     if (!chosenSite) return
     startTransition(async () => {
-      const res = await startVisitAction({ site_id: chosenSite.id })
+      const res = await startVisitAction({ site_id: chosenSite.id, motive: intent ?? undefined })
       if (res.ok) {
         toast.success('Visite démarrée', { duration: 1500 })
         router.push(`/m/site/${chosenSite.id}`)
@@ -68,7 +71,8 @@ export function VisitLauncherHome() {
 
   function importMode(m: 'whatsapp_zip' | 'upload') {
     if (!chosenSite) return
-    router.push(`/m/import?site=${chosenSite.id}&mode=${m}`)
+    const q = intent ? `&motive=${intent}` : ''
+    router.push(`/m/import?site=${chosenSite.id}&mode=${m}${q}`)
   }
 
   function createAndStart() {
@@ -100,7 +104,7 @@ export function VisitLauncherHome() {
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-emerald-600 dark:bg-white/10 dark:text-emerald-300">
           <Play className="h-7 w-7" />
         </span>
-        <span className="break-words">Démarrer une visite</span>
+        <span className="break-words">Nouvelle visite</span>
       </button>
 
       {open && (
@@ -109,19 +113,44 @@ export function VisitLauncherHome() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">
-                  {chosenSite ? `Nouvelle visite : ${chosenSite.name}` : mode === 'create' ? 'Nouveau chantier' : 'Visite — pour quel chantier ?'}
+                  {chosenSite ? (intent ? `Nouvelle visite : ${chosenSite.name}` : 'Pourquoi êtes-vous ici ?') : mode === 'create' ? 'Nouveau chantier' : 'Visite — pour quel chantier ?'}
                 </h3>
                 <button type="button" onClick={close} aria-label="Fermer" className="text-muted-foreground hover:text-foreground">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {chosenSite ? (
+              {chosenSite && !intent ? (
+                /* « Pourquoi êtes-vous ici ? » — l'INTENTION. Même moteur ensuite. */
                 <div className="space-y-2">
                   <button type="button" onClick={() => setChosenSite(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <ArrowLeft className="h-3.5 w-3.5" /> Changer de chantier
                   </button>
-                  <p className="text-[13px] text-muted-foreground">Comment démarrer cette visite ?</p>
+                  <ul className="space-y-1.5">
+                    {VISIT_INTENTS.map((it) => (
+                      <li key={it.slug}>
+                        <button
+                          type="button"
+                          onClick={() => setIntent(it.slug)}
+                          className="flex w-full items-start gap-3 rounded-xl border bg-muted/30 px-3 py-2.5 text-left shadow-sm active:brightness-95"
+                        >
+                          <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-muted-foreground/40" aria-hidden />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">{it.label}</span>
+                            <span className="block text-[12px] text-muted-foreground">{it.hint}</span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : chosenSite ? (
+                /* « Comment voulez-vous démarrer ? » — capturer / WhatsApp / fichiers. */
+                <div className="space-y-2">
+                  <button type="button" onClick={() => setIntent(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <ArrowLeft className="h-3.5 w-3.5" /> {VISIT_INTENTS.find((i) => i.slug === intent)?.label ?? 'Retour'}
+                  </button>
+                  <p className="text-[13px] text-muted-foreground">Comment voulez-vous démarrer ?</p>
                   <ModeBtn onClick={captureNow} disabled={pending} icon={<Camera className="h-5 w-5" />} title="Capturer maintenant" hint="Photos, vidéos, vocaux sur place" />
                   <ModeBtn onClick={() => importMode('whatsapp_zip')} disabled={pending} icon={<MessageSquare className="h-5 w-5" />} title="Importer depuis WhatsApp" hint="Un export .zip de la discussion" />
                   <ModeBtn onClick={() => importMode('upload')} disabled={pending} icon={<FolderUp className="h-5 w-5" />} title="Importer des fichiers" hint="Photos, vidéos, vocaux, PDF" />

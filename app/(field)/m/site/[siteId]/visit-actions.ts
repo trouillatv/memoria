@@ -13,12 +13,16 @@ import { createVisit, endVisit, closeVisit, reopenVisit } from '@/lib/db/visits'
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
   'levee_reserves', 'constat', 'expertise', 'maintenance', 'libre',
+  // Intentions métier (mig 186) — « pourquoi êtes-vous ici ? ».
+  'premiere', 'previsite_ao', 'prereception', 'sav',
 ] as const
 
-// Démarrage : AUCUNE question. Seulement le site (+ origine auto).
+// Démarrage : le site (+ origine auto) et, si connue, l'INTENTION de la visite
+// (« pourquoi êtes-vous ici ? »). L'intention reste facultative (friction zéro).
 const startSchema = z.object({
   site_id: z.string().uuid(),
   origin: z.enum(['planned', 'spontaneous', 'qr', 'gps']).default('spontaneous'),
+  motive: z.enum(MOTIVES).optional(),
 })
 
 export async function startVisitAction(
@@ -35,6 +39,7 @@ export async function startVisitAction(
       siteId: parsed.data.site_id,
       origin: parsed.data.origin,
       createdBy: auth.userId,
+      motive: parsed.data.motive ?? null,
     })
     revalidatePath(`/m/site/${parsed.data.site_id}`)
     return { ok: true, reportId }

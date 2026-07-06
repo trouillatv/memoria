@@ -430,6 +430,11 @@ export type VisitMotive =
   | 'expertise'
   | 'maintenance'
   | 'libre'
+  // Intentions métier (mig 186) — « pourquoi êtes-vous ici ? ».
+  | 'premiere'
+  | 'previsite_ao'
+  | 'prereception'
+  | 'sav'
 export type VisitOrigin = 'planned' | 'spontaneous' | 'qr' | 'gps' | 'import'
 /** Résultat global — qualifie l'OUVRAGE/ZONE/SUJET, jamais la personne. */
 export type VisitOutcome = 'ras' | 'conforme' | 'conforme_reserves' | 'non_conforme' | 'a_revoir' | 'info'
