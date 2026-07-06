@@ -1,4 +1,5 @@
-import { AlertTriangle, AlertCircle, Info } from 'lucide-react'
+import Link from 'next/link'
+import { AlertTriangle, AlertCircle, Info, ChevronRight } from 'lucide-react'
 import type { SiteStatusLine } from '@/lib/db/visits'
 
 /**
@@ -21,10 +22,21 @@ export function SiteStatusCard({ lines }: { lines: SiteStatusLine[] }) {
       <ul className="space-y-1.5">
         {lines.map((l, i) => {
           const { Icon, cls } = TONE[l.tone]
+          const textCls = l.tone === 'info' ? 'text-foreground/90' : `font-medium ${cls}`
           return (
-            <li key={i} className="flex items-start gap-2 text-sm">
-              <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${cls}`} />
-              <span className={l.tone === 'info' ? 'text-foreground/90' : `font-medium ${cls}`}>{l.text}</span>
+            <li key={i} className="text-sm">
+              {l.href ? (
+                <Link href={l.href} className="flex items-center gap-2 -mx-1 rounded-md px-1 py-0.5 active:bg-accent">
+                  <Icon className={`h-4 w-4 shrink-0 ${cls}`} />
+                  <span className={`flex-1 ${textCls}`}>{l.text}</span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                </Link>
+              ) : (
+                <span className="flex items-start gap-2">
+                  <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${cls}`} />
+                  <span className={textCls}>{l.text}</span>
+                </span>
+              )}
             </li>
           )
         })}

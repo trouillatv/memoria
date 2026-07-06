@@ -594,7 +594,7 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
 // · 1 réserve ouverte · +12 photos depuis la dernière visite. » Déterministe.
 
 export type SiteStatusTone = 'alert' | 'warn' | 'info'
-export interface SiteStatusLine { text: string; tone: SiteStatusTone }
+export interface SiteStatusLine { text: string; tone: SiteStatusTone; href?: string }
 
 function daysAgoLabel(iso: string): string {
   const days = Math.floor((new Date().getTime() - new Date(iso).getTime()) / 86400000)
@@ -607,7 +607,7 @@ function daysAgoLabel(iso: string): string {
 
 export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusLine[]> {
   const supabase = createAdminClient()
-  const [overdue, lastVisit, reserves, meeting] = await Promise.all([
+  const [overdue, lastVisit, reserves, meeting, openActionsAll] = await Promise.all([
     detectOverdueActions(siteId).catch(() => null),
     getLastEndedVisitForSite(siteId).catch(() => null),
     getSiteReserves(siteId).catch(() => []),
@@ -620,11 +620,18 @@ export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatus
       .order('next_meeting_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
+    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
   ])
 
   const lines: SiteStatusLine[] = []
+  const actionsHref = `/m/actions?site=${siteId}`
   const overdueN = overdue ? overdue.items.length : 0
-  if (overdueN > 0) lines.push({ text: `${overdueN} action${overdueN > 1 ? 's' : ''} en retard`, tone: 'alert' })
+  if (overdueN > 0) lines.push({ text: `${overdueN} action${overdueN > 1 ? 's' : ''} en retard`, tone: 'alert', href: actionsHref })
+
+  // Volume total d'actions ouvertes — la carte doit dire la SANTÉ, pas seulement
+  // les retards (un chantier peut avoir 9 actions ouvertes, aucune en retard).
+  const openActionsN = openActionsAll.length
+  if (openActionsN > 0) lines.push({ text: `${openActionsN} action${openActionsN > 1 ? 's' : ''} ouverte${openActionsN > 1 ? 's' : ''}`, tone: 'info', href: actionsHref })
 
   const openReserves = (reserves as Array<{ status: string }>).filter((r) => r.status === 'open').length
   if (openReserves > 0) lines.push({ text: `${openReserves} réserve${openReserves > 1 ? 's' : ''} ouverte${openReserves > 1 ? 's' : ''}`, tone: 'warn' })
