@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock,
+  ArrowLeft, Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -9,7 +9,6 @@ import { getVisit, buildVisitProduction, buildSitePatrimoine } from '@/lib/db/vi
 import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
-import { VisitOutputActions } from '../VisitOutputActions'
 import { ReopenVisitButton } from '../ReopenVisitButton'
 import { VisitMemoryTabs } from './VisitMemoryTabs'
 
@@ -179,9 +178,15 @@ export default async function VisitRecapPage({
         </ul>
       )}
 
-      {/* Sorties de la visite (CR/PDF, ordinateur) — propres à CETTE visite. */}
+      {/* Aperçu du compte-rendu — « qu'est-ce qu'on lira demain ? ». La lecture
+          rapide + les documents (PDF, ordinateur) vivent sur l'écran dédié. */}
       <div className="pt-2">
-        <VisitOutputActions reportId={reportId} siteId={visit.site_id} showViewVisit={false} />
+        <Link
+          href={`/m/visite/${reportId}/cr`}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+        >
+          <FileText className="h-4 w-4" /> CR / Aperçu <ChevronRight className="h-4 w-4" />
+        </Link>
       </div>
       </div>
     </VisitMemoryTabs>
