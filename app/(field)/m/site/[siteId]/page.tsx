@@ -265,6 +265,13 @@ export default async function FieldSitePage({
           fiche « dossier vivant » : on COMPREND le chantier, on SE PRÉPARE, on AGIT. */}
       {activeVisit ? (
         <div className="space-y-3">
+          {/* Rappel discret propre à l'intention « Première visite » : on crée le
+              point de départ du chantier (différenciation légère, même moteur). */}
+          {activeVisit.visit_motive === 'premiere' && (
+            <p className="rounded-xl bg-muted/40 px-3 py-2 text-[13px] text-muted-foreground">
+              Vous créez le point de départ de ce chantier.
+            </p>
+          )}
           {/* Objet au démarrage — MemorIA sait dès le début pourquoi on est là. */}
           {!activeVisit.objective && (
             <VisitObjectivePrompt reportId={activeVisit.id} siteId={siteId} />
