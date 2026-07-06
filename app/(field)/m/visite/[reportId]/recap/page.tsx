@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitProduction, buildSitePatrimoine } from '@/lib/db/visits'
 import { buildSiteTimeline } from '@/lib/db/site-timeline'
@@ -103,29 +104,30 @@ export default async function VisitRecapPage({
     buildSitePatrimoine(visit.site_id).catch(() => ({ firstVisitLabel: null, photos: 0, visits: 0, actions: 0, reserves: 0 })),
   ])
 
-  return (
-    <VisitMemoryTabs production={production} timeline={timeline} currentReportId={reportId} memory={memory} patrimoine={patrimoine}>
-      {/* Onglet 1 — « Cette visite » : le récap existant, inchangé. */}
-      <div className="space-y-4">
-      <Link
-        href={`/m/site/${visit.site_id}`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Chantier
-      </Link>
+  const visitTypeLabel = visitIntentLabel(visit.visit_motive) ?? ORIGIN_FR[visit.origin ?? ''] ?? 'Visite'
 
-      <header className="space-y-1 pt-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">{ORIGIN_FR[visit.origin ?? ''] ?? 'Visite'}</p>
-        <h1 className="text-xl font-semibold">{siteName}</h1>
-        <p className="text-sm text-muted-foreground first-letter:uppercase">
-          {dateLabel}
-          {durLabel && (
-            <span className="ml-1 inline-flex items-center gap-1">
-              · <Clock className="h-3.5 w-3.5" /> {durLabel}
-            </span>
-          )}
-        </p>
-      </header>
+  return (
+    <VisitMemoryTabs
+      siteId={visit.site_id}
+      siteName={siteName}
+      visitTypeLabel={visitTypeLabel}
+      production={production}
+      timeline={timeline}
+      currentReportId={reportId}
+      memory={memory}
+      patrimoine={patrimoine}
+    >
+      {/* Onglet 1 — « Cette visite » : le corps du récap (l'en-tête chantier et
+          la conclusion sont fournis par la grammaire commune des onglets). */}
+      <div className="space-y-4">
+      <p className="text-[13px] text-muted-foreground first-letter:uppercase">
+        {dateLabel}
+        {durLabel && (
+          <span className="ml-1 inline-flex items-center gap-1">
+            · <Clock className="h-3.5 w-3.5" /> {durLabel}
+          </span>
+        )}
+      </p>
 
       {summaryChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border bg-muted/30 px-3 py-2.5 text-sm">
