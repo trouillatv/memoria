@@ -17,17 +17,24 @@ export type VisitIntent =
   | 'premiere'
   | 'previsite_ao'
 
+/** Accent (jeton de couleur, pas une classe) : création=vert · évolution=bleu ·
+ *  analyse=violet. La couleur est portée par l'icône/pastille, jamais le texte. */
+export type VisitIntentAccent = 'emerald' | 'sky' | 'violet'
+
 export interface VisitIntentDef {
   slug: VisitIntent
   label: string
   hint: string
+  /** Un mot qui résume l'objectif : Création / Évolution / Analyse. */
+  role: string
+  accent: VisitIntentAccent
 }
 
 /** Ordre d'affichage dans la bottom sheet « Pourquoi êtes-vous ici ? ». */
 export const VISIT_INTENTS: readonly VisitIntentDef[] = [
-  { slug: 'avancement', label: 'Suivi de chantier', hint: 'Pour une visite normale sur un chantier existant' },
-  { slug: 'premiere', label: 'Première visite', hint: 'Pour créer la mémoire de départ d’un chantier' },
-  { slug: 'previsite_ao', label: 'Prévisite AO', hint: 'Pour évaluer un chantier avant réponse à appel d’offres' },
+  { slug: 'avancement', label: 'Suivi de chantier', hint: 'Pour une visite normale sur un chantier existant', role: 'Évolution', accent: 'sky' },
+  { slug: 'premiere', label: 'Première visite', hint: 'Pour créer la mémoire de départ d’un chantier', role: 'Création', accent: 'emerald' },
+  { slug: 'previsite_ao', label: 'Prévisite AO', hint: 'Pour évaluer un chantier avant réponse à appel d’offres', role: 'Analyse', accent: 'violet' },
 ] as const
 
 const BY_SLUG = new Map<string, VisitIntentDef>(VISIT_INTENTS.map((i) => [i.slug, i]))

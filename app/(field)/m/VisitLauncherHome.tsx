@@ -10,15 +10,28 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Play, X, ChevronRight, Loader2, Plus, ArrowLeft, Camera, MessageSquare, FolderUp } from 'lucide-react'
+import { Play, X, ChevronRight, Loader2, Plus, ArrowLeft, Camera, MessageSquare, FolderUp, HardHat, FileSearch } from 'lucide-react'
 import { toast } from 'sonner'
 import { listMeetingSitesAction } from './meeting-actions'
 import { startVisitAction } from './site/[siteId]/visit-actions'
 import { quickCreateSiteVisitAction } from './quick-site-actions'
-import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
+import { VISIT_INTENTS, type VisitIntent, type VisitIntentAccent } from '@/lib/field/visit-intents'
 
 type Site = { id: string; name: string }
 type Mode = 'pick' | 'create'
+
+// Identité visuelle des intentions — icône + accent (le cerveau reconnaît le
+// contexte). La couleur est portée par l'icône/pastille, pas le texte.
+const INTENT_ICON: Record<VisitIntent, typeof Camera> = {
+  premiere: HardHat,
+  avancement: Camera,
+  previsite_ao: FileSearch,
+}
+const ACCENT: Record<VisitIntentAccent, { pastille: string; icon: string; role: string }> = {
+  emerald: { pastille: 'bg-emerald-50 dark:bg-emerald-950/40', icon: 'text-emerald-600', role: 'text-emerald-600 dark:text-emerald-400' },
+  sky: { pastille: 'bg-sky-50 dark:bg-sky-950/40', icon: 'text-sky-600', role: 'text-sky-600 dark:text-sky-400' },
+  violet: { pastille: 'bg-violet-50 dark:bg-violet-950/40', icon: 'text-violet-600', role: 'text-violet-600 dark:text-violet-400' },
+}
 
 export function VisitLauncherHome() {
   const router = useRouter()
@@ -127,21 +140,30 @@ export function VisitLauncherHome() {
                     <ArrowLeft className="h-3.5 w-3.5" /> Changer de chantier
                   </button>
                   <ul className="space-y-1.5">
-                    {VISIT_INTENTS.map((it) => (
-                      <li key={it.slug}>
-                        <button
-                          type="button"
-                          onClick={() => setIntent(it.slug)}
-                          className="flex w-full items-start gap-3 rounded-xl border bg-muted/30 px-3 py-2.5 text-left shadow-sm active:brightness-95"
-                        >
-                          <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-muted-foreground/40" aria-hidden />
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium">{it.label}</span>
-                            <span className="block text-[12px] text-muted-foreground">{it.hint}</span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
+                    {VISIT_INTENTS.map((it) => {
+                      const Icon = INTENT_ICON[it.slug]
+                      const a = ACCENT[it.accent]
+                      return (
+                        <li key={it.slug}>
+                          <button
+                            type="button"
+                            onClick={() => setIntent(it.slug)}
+                            className="flex w-full items-center gap-3 rounded-xl border bg-muted/30 px-3 py-2.5 text-left shadow-sm active:brightness-95"
+                          >
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${a.pastille}`}>
+                              <Icon className={`h-[18px] w-[18px] ${a.icon}`} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{it.label}</span>
+                                <span className={`text-[10px] font-semibold uppercase tracking-wide ${a.role}`}>{it.role}</span>
+                              </span>
+                              <span className="block text-[12px] text-muted-foreground">{it.hint}</span>
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               ) : chosenSite ? (

@@ -13,6 +13,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { listDecisionsBySite } from '@/lib/db/site-decisions'
+import { visitIntentLabel } from '@/lib/field/visit-intents'
 
 export type TimelineKind =
   | 'visit'
@@ -67,7 +68,7 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
     // Visites + réunions/CR (origin non-null = visite, null = réunion).
     supabase
       .from('site_reports')
-      .select('id, title, origin, started_at, ended_at, created_at')
+      .select('id, title, origin, visit_motive, started_at, ended_at, created_at')
       .eq('site_id', siteId)
       .neq('status', 'draft'),
     supabase.from('missions').select('id, name').eq('site_id', siteId).is('deleted_at', null),
@@ -80,14 +81,16 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
   const events: TimelineEvent[] = []
 
   // Visites & réunions.
-  for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
+  for (const r of (repsRes.data ?? []) as Array<{ id: string; title: string | null; origin: string | null; visit_motive: string | null; started_at: string | null; ended_at: string | null; created_at: string }>) {
     const at = r.ended_at ?? r.started_at ?? r.created_at
     if (r.origin) {
+      // La frise raconte une HISTOIRE : la visite porte son intention (Première
+      // visite / Prévisite AO / Suivi) plutôt qu'un générique « Visite ».
       events.push({
         at,
         dateLabel: frDate(at),
         kind: 'visit',
-        title: VISIT_TYPE_LABEL[r.origin] ?? 'Visite',
+        title: visitIntentLabel(r.visit_motive) ?? VISIT_TYPE_LABEL[r.origin] ?? 'Visite',
         detail: null,
         href: `/m/visite/${r.id}/recap`,
       })
