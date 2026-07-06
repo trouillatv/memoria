@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit, buildVisitEvolution, buildSitePatrimoine } from '@/lib/db/visits'
+import { getVisit, buildVisitProduction, buildSitePatrimoine } from '@/lib/db/visits'
 import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
@@ -93,8 +93,10 @@ export default async function VisitRecapPage({
 
   // Données des onglets Évolution / Histoire / Mémoire (déterministe, réutilise la
   // mémoire du chantier). L'écran de FIN de visite, lui, reste inchangé et rapide.
-  const [evolution, timeline, memory, patrimoine] = await Promise.all([
-    buildVisitEvolution(reportId, visit.site_id).catch(() => ({ hasPrev: false, prevDateLabel: null, resolvedReserves: [], newReserves: [], recurring: [], addedPhotos: 0 })),
+  const [production, timeline, memory, patrimoine] = await Promise.all([
+    // Évolution = ce que CETTE visite a produit (jamais vide) — l'histoire de la
+    // valeur créée, pas un dump de compteurs.
+    buildVisitProduction(reportId, visit.visit_motive === 'previsite_ao').catch(() => null),
     // Histoire = la VRAIE frise (visites incluses), pas l'ancien narratif qui les
     // omettait (d'où l'onglet vide). La visite du jour y sera mise en évidence.
     buildSiteTimeline(visit.site_id).catch(() => []),
@@ -103,7 +105,7 @@ export default async function VisitRecapPage({
   ])
 
   return (
-    <VisitMemoryTabs evolution={evolution} timeline={timeline} currentReportId={reportId} memory={memory} patrimoine={patrimoine}>
+    <VisitMemoryTabs production={production} timeline={timeline} currentReportId={reportId} memory={memory} patrimoine={patrimoine}>
       {/* Onglet 1 — « Cette visite » : le récap existant, inchangé. */}
       <div className="space-y-4">
       <Link

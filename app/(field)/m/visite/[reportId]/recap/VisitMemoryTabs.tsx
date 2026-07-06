@@ -14,7 +14,7 @@ import {
   CalendarDays, ListTodo, Flag, Footprints, Users, Wrench, ClipboardList, CheckSquare,
   Compass, Trophy, Star,
 } from 'lucide-react'
-import type { VisitEvolution, SitePatrimoine } from '@/lib/db/visits'
+import type { VisitProduction, SitePatrimoine } from '@/lib/db/visits'
 import type { TimelineEvent, TimelineKind } from '@/lib/db/site-timeline'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 
@@ -28,14 +28,14 @@ const TABS: Array<{ key: Tab; label: string; Icon: typeof BookOpen }> = [
 ]
 
 export function VisitMemoryTabs({
-  evolution,
+  production,
   timeline,
   currentReportId,
   memory,
   patrimoine,
   children,
 }: {
-  evolution: VisitEvolution
+  production: VisitProduction | null
   timeline: TimelineEvent[]
   currentReportId: string
   memory: MemorySignal[]
@@ -48,7 +48,7 @@ export function VisitMemoryTabs({
   return (
     <div className="mx-auto min-h-dvh max-w-md px-4 pb-24 pt-5">
       {tab === 'visite' && children}
-      {tab === 'evolution' && <EvolutionPanel e={evolution} />}
+      {tab === 'evolution' && <EvolutionPanel p={production} />}
       {tab === 'histoire' && <HistoirePanel timeline={timeline} currentReportId={currentReportId} />}
       {tab === 'memoire' && <MemoirePanel memory={memory} patrimoine={patrimoine} />}
 
@@ -74,44 +74,164 @@ export function VisitMemoryTabs({
   )
 }
 
-// ── Onglet 2 — Évolution (le diff depuis la dernière visite) ──────────────────
+// ── Onglet 2 — Évolution (ce que CETTE visite a apporté au chantier) ──────────
+// On raconte une HISTOIRE, pas des compteurs : preuves → constats → impact →
+// mémoire. L'onglet n'est JAMAIS vide — même une visite sans capture est entrée
+// dans l'histoire du chantier. « Le moteur reste identique, seul le récit change. »
 
-function EvolutionPanel({ e }: { e: VisitEvolution }) {
-  if (!e.hasPrev) {
+function plural(n: number, one: string, many = `${one}s`): string {
+  return n > 1 ? many : one
+}
+
+function EvolutionPanel({ p }: { p: VisitProduction | null }) {
+  if (!p) {
     return (
       <div className="space-y-4">
-        <PanelTitle title="Évolution" subtitle="Depuis la dernière visite" />
-        <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-          <Flag className="mb-1.5 h-5 w-5 text-emerald-600" />
-          <p className="font-medium text-foreground">Première visite</p>
-          <p>Pas encore de comparaison possible. Cette visite devient le <strong>point de référence</strong> du chantier.</p>
-        </div>
+        <PanelTitle title="Évolution de cette visite" subtitle="Ce que cette visite a apporté au chantier" />
+        <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">Visite ajoutée à l&apos;historique du chantier.</p>
       </div>
     )
   }
-  const nothing = e.resolvedReserves.length === 0 && e.newReserves.length === 0 && e.recurring.length === 0 && e.addedPhotos === 0
+
+  // Bloc 1 — Nouvelles preuves (médias captés).
+  const proofBullets: string[] = []
+  if (p.photos > 0) proofBullets.push(`${p.photos} ${plural(p.photos, 'photo')}`)
+  if (p.vocals > 0) proofBullets.push(`${p.vocals} ${plural(p.vocals, 'note vocale', 'notes vocales')}`)
+  if (p.videos > 0) proofBullets.push(`${p.videos} ${plural(p.videos, 'vidéo')}`)
+  if (p.notes > 0) proofBullets.push(`${p.notes} ${plural(p.notes, 'note écrite', 'notes écrites')}`)
+
+  // Bloc 2 — Nouveaux constats (ce qui interroge / ce qui est vérifié).
+  const findingBullets: string[] = []
+  if (p.reservesCreated > 0) findingBullets.push(`${p.reservesCreated} ${plural(p.reservesCreated, 'réserve')} ${plural(p.reservesCreated, 'créée')}`)
+  if (p.verifications > 0) findingBullets.push(`${p.verifications} ${plural(p.verifications, 'point vérifié', 'points vérifiés')}`)
+
+  // Bloc 3 — Impact sur le chantier (ce qui va faire avancer).
+  const impactBullets: string[] = []
+  if (p.actionsCreated > 0) impactBullets.push(`${p.actionsCreated} ${plural(p.actionsCreated, 'action ouverte', 'actions ouvertes')}`)
+  impactBullets.push('Compte-rendu généré')
+
+  // Bloc 4 — Mémoire enrichie (ce qui reste consultable après la visite).
+  const memoryBullets: string[] = []
+  if (p.photos + p.videos + p.vocals > 0) memoryBullets.push(`${p.photos + p.videos + p.vocals} ${plural(p.photos + p.videos + p.vocals, 'média consultable', 'médias consultables')}`)
+  if (p.positions > 0) memoryBullets.push(`${p.positions} ${plural(p.positions, 'position GPS', 'positions GPS')}`)
+  if (p.notes + p.vocals + p.verifications > 0) memoryBullets.push(`${p.notes + p.vocals + p.verifications} ${plural(p.notes + p.vocals + p.verifications, 'observation')}`)
+
+  const nothing = p.totalCaptures === 0
+
   return (
     <div className="space-y-4">
-      <PanelTitle title="Évolution" subtitle={`Depuis la dernière visite (${e.prevDateLabel})`} />
+      <PanelTitle title="Évolution de cette visite" subtitle="Ce que cette visite a apporté au chantier" />
+
       {nothing ? (
-        <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">Rien de notable n&apos;a changé depuis la dernière visite.</p>
+        // Jamais vide : la visite existe, elle est entrée dans l'histoire.
+        <EvoBlock
+          emoji="📌"
+          Icon={Flag}
+          cls="text-emerald-600"
+          ring="bg-emerald-100 dark:bg-emerald-950/40"
+          title="Visite enregistrée"
+          bullets={['Visite ajoutée à l’historique du chantier']}
+          note="Chaque passage compte, même sans relevé."
+        />
       ) : (
-        <ul className="space-y-2">
-          {e.resolvedReserves.map((r, i) => (
-            <Row key={`res-${i}`} icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} title={`${r.label}`} sub={r.location ? `${r.location} — réserve levée` : 'Réserve levée'} />
-          ))}
-          {e.newReserves.map((r, i) => (
-            <Row key={`new-${i}`} icon={<AlertTriangle className="h-5 w-5 text-rose-600" />} title={r.label} sub={r.location ? `${r.location} — nouvelle réserve` : 'Nouvelle réserve'} />
-          ))}
-          {e.recurring.map((r, i) => (
-            <Row key={`rec-${i}`} icon={<Eye className="h-5 w-5 text-amber-600" />} title={r.label} sub={r.detail ?? 'Toujours présent'} />
-          ))}
-          {e.addedPhotos > 0 && (
-            <Row icon={<Camera className="h-5 w-5 text-sky-600" />} title={`+${e.addedPhotos} nouvelle${e.addedPhotos > 1 ? 's' : ''} preuve${e.addedPhotos > 1 ? 's' : ''}`} sub="Depuis la dernière visite" />
+        <div className="space-y-2.5">
+          {proofBullets.length > 0 && (
+            <EvoBlock
+              emoji="📸"
+              Icon={Camera}
+              cls="text-sky-600"
+              ring="bg-sky-100 dark:bg-sky-950/40"
+              title="Nouvelles preuves"
+              bullets={proofBullets}
+              note="Toutes intégrées au dossier du chantier."
+            />
           )}
-        </ul>
+          {findingBullets.length > 0 && (
+            <EvoBlock
+              emoji="⚠️"
+              Icon={AlertTriangle}
+              cls="text-amber-600"
+              ring="bg-amber-100 dark:bg-amber-950/40"
+              title="Nouveaux constats"
+              bullets={findingBullets}
+            />
+          )}
+          {impactBullets.length > 0 && (
+            <EvoBlock
+              emoji="📋"
+              Icon={ListTodo}
+              cls="text-violet-600"
+              ring="bg-violet-100 dark:bg-violet-950/40"
+              title="Impact sur le chantier"
+              bullets={impactBullets}
+            />
+          )}
+          {memoryBullets.length > 0 && (
+            <EvoBlock
+              emoji="🧠"
+              Icon={Brain}
+              cls="text-emerald-600"
+              ring="bg-emerald-100 dark:bg-emerald-950/40"
+              title="Mémoire enrichie"
+              bullets={memoryBullets}
+              note="Consultable lors des prochaines visites."
+            />
+          )}
+        </div>
       )}
+
+      {/* Encart de fin — le sens : la visite a enrichi le dossier du chantier. */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Cette visite a enrichi le dossier du chantier.</p>
+        <ul className="mt-2.5 space-y-1.5">
+          <CheckLine text="Visible dans l’historique du chantier" />
+          <CheckLine text="Intégrée au compte-rendu" />
+          <CheckLine text="Disponible pour les prochaines visites" />
+          <CheckLine text="Disponible pour les prochaines réunions" />
+          {p.isAo && <CheckLine text="Disponible depuis l’ordinateur pour préparer la réponse à l’appel d’offres" />}
+        </ul>
+      </div>
     </div>
+  )
+}
+
+function EvoBlock({
+  emoji, Icon, cls, ring, title, bullets, note,
+}: {
+  emoji: string
+  Icon: typeof Camera
+  cls: string
+  ring: string
+  title: string
+  bullets: string[]
+  note?: string
+}) {
+  return (
+    <div className="rounded-2xl border bg-background p-3.5 shadow-sm">
+      <div className="flex items-center gap-2.5">
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${ring}`}>
+          <Icon className={`h-[18px] w-[18px] ${cls}`} />
+        </span>
+        <p className="text-sm font-semibold">
+          <span aria-hidden className="mr-1">{emoji}</span>{title}
+        </p>
+      </div>
+      <ul className="mt-2 space-y-1 pl-[42px]">
+        {bullets.map((b, i) => (
+          <li key={i} className="text-[13px] leading-snug text-foreground/90">{b}</li>
+        ))}
+      </ul>
+      {note && <p className="mt-1.5 pl-[42px] text-[12px] italic text-muted-foreground">{note}</p>}
+    </div>
+  )
+}
+
+function CheckLine({ text }: { text: string }) {
+  return (
+    <li className="flex items-start gap-2 text-[13px] text-emerald-900/90 dark:text-emerald-200/90">
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+      <span className="min-w-0">{text}</span>
+    </li>
   )
 }
 
@@ -229,18 +349,6 @@ function PanelTitle({ title, subtitle }: { title: string; subtitle: string }) {
       <h2 className="text-lg font-semibold">{title}</h2>
       <p className="text-[13px] text-muted-foreground">{subtitle}</p>
     </div>
-  )
-}
-
-function Row({ icon, title, sub }: { icon: React.ReactNode; title: string; sub: string }) {
-  return (
-    <li className="flex items-start gap-2.5 rounded-xl border bg-background p-3">
-      <span className="mt-0.5 shrink-0">{icon}</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-snug">{title}</p>
-        <p className="text-[12px] text-muted-foreground">{sub}</p>
-      </div>
-    </li>
   )
 }
 

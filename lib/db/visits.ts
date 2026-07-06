@@ -1140,6 +1140,49 @@ export async function getSiteMemorySnapshot(siteId: string): Promise<SiteMemoryS
   }
 }
 
+// ── Récap · onglet « Évolution » : ce que CETTE visite a PRODUIT ──────────────
+// « Qu'a apporté cette visite au chantier ? » On raconte la valeur créée (preuves,
+// constats, impact, mémoire), pas un dump de compteurs. Précis à CETTE visite
+// (visit_capture par report_id). Ne peut jamais être « vide » : une visite produit
+// toujours au minimum une entrée d'historique + un compte-rendu.
+
+export interface VisitProduction {
+  photos: number
+  vocals: number
+  videos: number
+  notes: number
+  verifications: number
+  positions: number
+  reservesCreated: number
+  actionsCreated: number
+  totalCaptures: number
+  /** Contexte AO — bascule la dernière ligne de l'encart (terrain → bureau). */
+  isAo: boolean
+}
+
+export async function buildVisitProduction(reportId: string, isAo: boolean): Promise<VisitProduction> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('visit_capture')
+    .select('kind, triage_intent')
+    .eq('report_id', reportId)
+    .is('hidden_at', null)
+  const rows = (data ?? []) as Array<{ kind: string; triage_intent: string | null }>
+  const byKind = (k: string) => rows.filter((r) => r.kind === k).length
+  return {
+    photos: byKind('photo'),
+    vocals: byKind('vocal'),
+    videos: byKind('video'),
+    notes: byKind('note'),
+    verifications: byKind('verification'),
+    positions: byKind('position'),
+    reservesCreated: rows.filter((r) => r.triage_intent === 'reserve').length,
+    actionsCreated: rows.filter((r) => r.triage_intent === 'action').length,
+    totalCaptures: rows.length,
+    isAo,
+  }
+}
+
 // ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
 // Le geste QUOTIDIEN n'est pas de démarrer une visite, c'est de reprendre ce qui
 // n'est pas fini. Ici : les visites TERMINÉES de l'agent qui ont encore des
