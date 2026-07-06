@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
+  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
@@ -11,6 +11,7 @@ import { buildSiteTimeline } from '@/lib/db/site-timeline'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureRow, type VisitCaptureKind } from '@/lib/db/visit-captures'
 import { ReopenVisitButton } from '../ReopenVisitButton'
+import { VisitShareButton } from '../VisitShareButton'
 import { VisitMemoryTabs } from './VisitMemoryTabs'
 
 export const dynamic = 'force-dynamic'
@@ -105,6 +106,9 @@ export default async function VisitRecapPage({
   ])
 
   const visitTypeLabel = visitIntentLabel(visit.visit_motive) ?? ORIGIN_FR[visit.origin ?? ''] ?? 'Visite'
+  // Une visite TERMINÉE est figée : on la consulte et on la partage, on ne la
+  // « reprend » plus (un oubli = une NOUVELLE visite, fidèle au terrain).
+  const isEnded = !!visit.ended_at
 
   return (
     <VisitMemoryTabs
@@ -143,8 +147,9 @@ export default async function VisitRecapPage({
         </div>
       )}
 
-      {/* Action PRINCIPALE : reprendre la visite. Une visite n'est jamais figée. */}
-      <ReopenVisitButton reportId={reportId} siteId={visit.site_id} />
+      {/* Une visite NON terminée peut encore être reprise (cas limite). Une visite
+          clôturée, elle, est figée : plus de « Reprendre » — voir les actions plus bas. */}
+      {!isEnded && <ReopenVisitButton reportId={reportId} siteId={visit.site_id} />}
 
       {captures.length === 0 ? (
         <p className="rounded-xl border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
@@ -180,15 +185,16 @@ export default async function VisitRecapPage({
         </ul>
       )}
 
-      {/* Aperçu du compte-rendu — « qu'est-ce qu'on lira demain ? ». La lecture
-          rapide + les documents (PDF, ordinateur) vivent sur l'écran dédié. */}
-      <div className="pt-2">
+      {/* Actions d'une visite CONSULTÉE : voir le compte-rendu (aperçu + export)
+          et le partager. Pas de « reprendre » — la visite est figée. */}
+      <div className="grid grid-cols-2 gap-2 pt-2">
         <Link
           href={`/m/visite/${reportId}/cr`}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
+          className="flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
         >
-          <FileText className="h-4 w-4" /> CR / Aperçu <ChevronRight className="h-4 w-4" />
+          <FileText className="h-4 w-4" /> Compte-rendu
         </Link>
+        <VisitShareButton reportId={reportId} siteName={siteName} />
       </div>
       </div>
     </VisitMemoryTabs>

@@ -56,43 +56,32 @@ export default async function VisitFinPage({
           </p>
         ) : (
           <p className="text-[15px] leading-relaxed text-muted-foreground">
-            Votre visite est terminée. Elle a été ajoutée à l’historique du chantier et a enrichi sa mémoire.
+            Votre visite est terminée. Elle a enrichi la mémoire du chantier.
           </p>
         )}
       </div>
 
-      <div className="space-y-2.5">
+      {/* Dans 90 % des cas, on veut juste repartir travailler : le retour est
+          l'action PRINCIPALE, le CR reste accessible en lien discret. */}
+      <div className="space-y-3">
         {isAo && previsiteDossierId ? (
-          <>
-            <Link
-              href={`/dossiers/${previsiteDossierId}`}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background"
-            >
-              Retour au dossier AO <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href={recapHref}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border px-4 py-3 text-sm font-medium"
-            >
-              <FileText className="h-4 w-4" /> Voir le compte-rendu
-            </Link>
-          </>
+          <Link
+            href={`/dossiers/${previsiteDossierId}`}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background"
+          >
+            Retour au dossier AO <ArrowRight className="h-4 w-4" />
+          </Link>
         ) : (
-          <>
-            <Link
-              href={recapHref}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background"
-            >
-              <FileText className="h-4 w-4" /> Voir le compte-rendu
-            </Link>
-            <Link
-              href={`/m/site/${visit.site_id}`}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border px-4 py-3 text-sm font-medium"
-            >
-              <Home className="h-4 w-4" /> Retour au chantier
-            </Link>
-          </>
+          <Link
+            href={`/m/site/${visit.site_id}?visite=ok`}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background"
+          >
+            <Home className="h-4 w-4" /> Retour au chantier
+          </Link>
         )}
+        <Link href={recapHref} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline underline-offset-2">
+          <FileText className="h-4 w-4" /> Voir le compte-rendu
+        </Link>
       </div>
     </div>
   )

@@ -29,6 +29,7 @@ import { SiteActivityCard } from './SiteActivityCard'
 import { SiteQuickAccessCard } from './SiteQuickAccessCard'
 import { SinceLastVisitCard } from './SinceLastVisitCard'
 import { SiteMemoryCard } from './SiteMemoryCard'
+import { JustVisitedBanner } from './JustVisitedBanner'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -110,10 +111,13 @@ function formatTraceDate(iso: string): string {
 
 export default async function FieldSitePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ siteId: string }>
+  searchParams: Promise<{ visite?: string }>
 }) {
   const { siteId } = await params
+  const justVisited = (await searchParams).visite === 'ok'
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
@@ -254,6 +258,7 @@ export default async function FieldSitePage({
 
   return (
     <div className="max-w-md space-y-6 pb-32">
+      {justVisited && <JustVisitedBanner />}
       <header className="space-y-1">
         <h1 className="text-xl font-semibold">
           Bonjour {firstNameOf(user.full_name, user.email)}
