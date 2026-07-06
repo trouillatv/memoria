@@ -32,7 +32,7 @@ export function SiteTodoCard({
   if (overdue.length === 0 && soon.length === 0 && later.length === 0 && reserves.length === 0) return null
 
   return (
-    <section className="space-y-3">
+    <section id="reste-a-faire" className="scroll-mt-4 space-y-3">
       <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         <ListTodo className="h-4 w-4" /> Que reste-t-il à faire ?
       </h2>

@@ -594,18 +594,24 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
 // · 1 réserve ouverte · +12 photos depuis la dernière visite. » Déterministe.
 
 export type SiteStatusTone = 'alert' | 'warn' | 'info'
-export interface SiteStatusLine { text: string; tone: SiteStatusTone; href?: string }
-
-function daysAgoLabel(iso: string): string {
-  const days = Math.floor((new Date().getTime() - new Date(iso).getTime()) / 86400000)
-  if (Number.isNaN(days)) return ''
-  if (days <= 0) return "aujourd'hui"
-  if (days === 1) return 'hier'
-  if (days < 7) return `il y a ${days} jours`
-  return `le ${new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
+export type SiteStatusMetric = 'actions' | 'reserves' | 'lastVisit' | 'nextMeeting'
+/** Une cellule de la grille « État du chantier » : la santé en 4 chiffres, chacun
+ *  cliquable vers son détail. `value` peut être un nombre (« 9 ») ou une date. */
+export interface SiteStatusCell {
+  key: SiteStatusMetric
+  value: string
+  label: string
+  tone: SiteStatusTone
+  href?: string
 }
 
-export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusLine[]> {
+function shortDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
+export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatusCell[]> {
   const supabase = createAdminClient()
   const [overdue, lastVisit, reserves, meeting, openActionsAll] = await Promise.all([
     detectOverdueActions(siteId).catch(() => null),
@@ -623,41 +629,43 @@ export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatus
     listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
   ])
 
-  const lines: SiteStatusLine[] = []
-  const actionsHref = `/m/actions?site=${siteId}`
   const overdueN = overdue ? overdue.items.length : 0
-  if (overdueN > 0) lines.push({ text: `${overdueN} action${overdueN > 1 ? 's' : ''} en retard`, tone: 'alert', href: actionsHref })
-
-  // Volume total d'actions ouvertes — la carte doit dire la SANTÉ, pas seulement
-  // les retards (un chantier peut avoir 9 actions ouvertes, aucune en retard).
   const openActionsN = openActionsAll.length
-  if (openActionsN > 0) lines.push({ text: `${openActionsN} action${openActionsN > 1 ? 's' : ''} ouverte${openActionsN > 1 ? 's' : ''}`, tone: 'info', href: actionsHref })
-
   const openReserves = (reserves as Array<{ status: string }>).filter((r) => r.status === 'open').length
-  if (openReserves > 0) lines.push({ text: `${openReserves} réserve${openReserves > 1 ? 's' : ''} ouverte${openReserves > 1 ? 's' : ''}`, tone: 'warn' })
-
   const lastIso = lastVisit ? (lastVisit.endedAt ?? lastVisit.startedAt) : null
-  lines.push(lastIso ? { text: `Dernière visite ${daysAgoLabel(lastIso)}`, tone: 'info' } : { text: 'Aucune visite encore', tone: 'info' })
-
   const nextMeeting = (meeting.data as { next_meeting_at: string } | null)?.next_meeting_at
-  lines.push(
-    nextMeeting
-      ? { text: `Réunion prévue le ${new Date(nextMeeting).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`, tone: 'info' }
-      : { text: 'Aucune réunion planifiée', tone: 'info' },
-  )
 
-  if (lastIso) {
-    const { count } = await supabase
-      .from('visit_capture')
-      .select('id', { count: 'exact', head: true })
-      .eq('site_id', siteId)
-      .eq('kind', 'photo')
-      .neq('status', 'discarded')
-      .gt('created_at', lastIso)
-    if ((count ?? 0) > 0) lines.push({ text: `+${count} photo${(count ?? 0) > 1 ? 's' : ''} depuis la dernière visite`, tone: 'info' })
-  }
-
-  return lines
+  // Toujours 4 cellules (grille stable) ; « colonne vide » → « 0 » ou « Aucune ».
+  return [
+    {
+      key: 'actions',
+      value: String(openActionsN),
+      label: openActionsN === 1 ? 'Action ouverte' : 'Actions ouvertes',
+      tone: overdueN > 0 ? 'alert' : openActionsN > 0 ? 'warn' : 'info',
+      href: openActionsN > 0 ? `/m/actions?site=${siteId}` : undefined,
+    },
+    {
+      key: 'reserves',
+      value: String(openReserves),
+      label: openReserves === 1 ? 'Réserve' : 'Réserves',
+      tone: openReserves > 0 ? 'warn' : 'info',
+      href: openReserves > 0 ? `/m/site/${siteId}#reste-a-faire` : undefined,
+    },
+    {
+      key: 'lastVisit',
+      value: lastIso ? shortDate(lastIso) : 'Aucune',
+      label: 'Dernière visite',
+      tone: 'info',
+      href: lastIso ? `/m/site/${siteId}/visites` : undefined,
+    },
+    {
+      key: 'nextMeeting',
+      value: nextMeeting ? shortDate(nextMeeting) : 'Aucune',
+      label: 'Prochaine réunion',
+      tone: 'info',
+      href: `/m/site/${siteId}/reunions`,
+    },
+  ]
 }
 
 // ── « Chantiers récents » : les 3 derniers dossiers ouverts (accueil, sobre) ──

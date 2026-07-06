@@ -282,7 +282,7 @@ export default async function FieldSitePage({
       ) : (
         <div className="space-y-6">
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
-          <SiteStatusCard lines={siteStatus} />
+          <SiteStatusCard cells={siteStatus} />
 
           {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}
           {(aSavoir.length > 0 || openAnomalies.length > 0) && (
@@ -308,7 +308,7 @@ export default async function FieldSitePage({
           )}
 
           {/* 2 — Depuis votre dernière visite : ce qui a bougé (déterministe). */}
-          {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} />}
+          {sinceLastVisit && <SinceLastVisitCard summary={sinceLastVisit} siteId={siteId} />}
 
           {/* 3 — Que reste-t-il à faire : les actions ouvertes / en retard. */}
           <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
