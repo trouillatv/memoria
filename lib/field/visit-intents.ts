@@ -7,14 +7,15 @@
 //
 // `slug` correspond à site_reports.visit_motive (mig 186).
 
+// TROIS intentions seulement — les seules qui changent VRAIMENT le comportement
+// (introduction, conclusion, compte-rendu). Le moteur de capture est identique.
+//   - Suivi        → faire évoluer la mémoire.
+//   - Première     → créer la mémoire de référence.
+//   - Prévisite AO → décider grâce à la mémoire.
 export type VisitIntent =
-  | 'premiere'
   | 'avancement'
+  | 'premiere'
   | 'previsite_ao'
-  | 'prereception'
-  | 'reception'
-  | 'levee_reserves'
-  | 'sav'
 
 export interface VisitIntentDef {
   slug: VisitIntent
@@ -24,13 +25,9 @@ export interface VisitIntentDef {
 
 /** Ordre d'affichage dans la bottom sheet « Pourquoi êtes-vous ici ? ». */
 export const VISIT_INTENTS: readonly VisitIntentDef[] = [
-  { slug: 'premiere', label: 'Première visite', hint: 'Créer le point de départ du chantier' },
-  { slug: 'avancement', label: 'Suivi de chantier', hint: 'Voir ce qui a changé depuis la dernière visite' },
-  { slug: 'previsite_ao', label: 'Prévisite AO', hint: 'Évaluer risques, faisabilité, pièces manquantes' },
-  { slug: 'prereception', label: 'Pré-réception', hint: 'Préparer la réception' },
-  { slug: 'reception', label: 'Réception', hint: 'Constater / lever les réserves' },
-  { slug: 'levee_reserves', label: 'Levée de réserves', hint: 'Vérifier ce qui est corrigé' },
-  { slug: 'sav', label: 'SAV / Incident', hint: 'Documenter un problème ponctuel' },
+  { slug: 'avancement', label: 'Suivi de chantier', hint: 'Pour une visite normale sur un chantier existant' },
+  { slug: 'premiere', label: 'Première visite', hint: 'Pour créer la mémoire de départ d’un chantier' },
+  { slug: 'previsite_ao', label: 'Prévisite AO', hint: 'Pour évaluer un chantier avant réponse à appel d’offres' },
 ] as const
 
 const BY_SLUG = new Map<string, VisitIntentDef>(VISIT_INTENTS.map((i) => [i.slug, i]))
