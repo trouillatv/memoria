@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ListChecks, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
-  ChevronRight, Star, Monitor, Check, MapPin,
+  ChevronRight, Star, Monitor, Check, MapPin, Download,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc, type VisitCrDoc } from '@/lib/db/visits'
@@ -52,6 +52,8 @@ export default async function VisitCrPreviewPage({
   if (!doc) notFound()
 
   const pdfHref = `/m/visite/${reportId}/pdf`
+  // ?download=1 → attachment (le téléphone enregistre le fichier).
+  const pdfDownloadHref = `${pdfHref}?download=1`
   const isAo = doc.motive === 'previsite_ao'
   const summary = doc.summary?.trim() || fallbackSummary(doc)
 
@@ -102,14 +104,6 @@ export default async function VisitCrPreviewPage({
       {/* Résumé — 3 à 6 lignes, puis le CR complet à un clic. */}
       <Section Icon={ListChecks} cls="text-emerald-600" ring="bg-emerald-100 dark:bg-emerald-950/40" title="Résumé">
         <p className="line-clamp-6 whitespace-pre-line text-[13px] leading-relaxed text-foreground/90">{summary}</p>
-        <a
-          href={pdfHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2.5 inline-flex items-center gap-0.5 text-sm font-medium text-emerald-700"
-        >
-          Voir le compte-rendu complet <ChevronRight className="h-4 w-4" />
-        </a>
       </Section>
 
       {/* Observations principales — seulement les constats importants. */}
@@ -223,38 +217,35 @@ export default async function VisitCrPreviewPage({
         </Section>
       )}
 
-      {/* Documents générés — le PDF est le document complet. Rien d'inventé
-          (pas de DOCX pour les CR de visite, pas de taille de fichier fictive). */}
+      {/* Documents générés — LE seul endroit pour le PDF : l'ouvrir OU le
+          télécharger. Une seule section, deux gestes clairs. */}
       <Section Icon={FileText} cls="text-slate-600" ring="bg-slate-100 dark:bg-slate-800/60" title="Documents générés">
-        <a
-          href={pdfHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border bg-background p-3"
-        >
+        <div className="flex items-center gap-3 rounded-xl border bg-background p-3">
           <FileText className="h-5 w-5 shrink-0 text-rose-600" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">Compte-rendu de visite</span>
             <span className="block text-[12px] text-muted-foreground">PDF</span>
           </span>
-          <Eye className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </a>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <a
+            href={pdfHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
+          >
+            <Eye className="h-4 w-4" /> Ouvrir
+          </a>
+          <a
+            href={pdfDownloadHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
+          >
+            <Download className="h-4 w-4" /> Télécharger
+          </a>
+        </div>
       </Section>
-
-      {/* Ouvrir le PDF EN GRAND dans le lecteur du téléphone : on le VOIT d'abord,
-          puis on le télécharge / partage avec les commandes natives. Pas de
-          téléchargement à l'aveugle vers un dossier inconnu. */}
-      <a
-        href={pdfHref}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
-      >
-        <Eye className="h-4 w-4" /> Ouvrir le PDF complet
-      </a>
-      <p className="-mt-1 text-center text-[12px] text-muted-foreground">
-        Le PDF s’ouvre en grand — vous pouvez ensuite le télécharger ou le partager depuis votre téléphone.
-      </p>
 
       {/* Le sens : ce que devient ce CR — le lien terrain → patrimoine numérique. */}
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">

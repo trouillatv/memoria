@@ -10,7 +10,7 @@
 // Le tri ne supprime jamais ; 🗑 reste un geste volontaire. Cf. [[visite-trois-temps]].
 
 import { useRef, useState } from 'react'
-import { X, BookMarked, Eye, AlertTriangle, Check, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
+import { X, BookMarked, Eye, AlertTriangle, Check, Wrench, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TriageDecision } from './debrief-actions'
 import type { VisitCaptureRow } from '@/lib/db/visit-captures'
@@ -41,7 +41,7 @@ const KEEP_TAGS: Array<{
   { decision: 'memoire', label: 'Un élément à conserver', icon: BookMarked, swipe: '←', cls: 'border-slate-300 text-slate-700 dark:text-slate-200' },
   { decision: 'surveiller', label: 'Un point à surveiller', icon: Eye, swipe: '↑', cls: 'border-amber-300 text-amber-700 dark:text-amber-300' },
   { decision: 'reserve', label: 'Une réserve', icon: AlertTriangle, swipe: '↓', cls: 'border-rose-300 text-rose-700 dark:text-rose-300' },
-  { decision: 'action', label: 'Une action à prévoir', icon: Check, swipe: '→', cls: 'border-emerald-400 text-emerald-700 dark:text-emerald-300' },
+  { decision: 'action', label: 'Une action à prévoir', icon: Wrench, swipe: '→', cls: 'border-emerald-400 text-emerald-700 dark:text-emerald-300' },
 ]
 
 function bigLabel(c: VisitCaptureRow): string {
@@ -60,6 +60,7 @@ export function CaptureTriage({
   previews,
   startIndex = 0,
   onDecide,
+  onUndo,
   onClose,
   onAnnotated,
 }: {
@@ -67,6 +68,8 @@ export function CaptureTriage({
   previews: Record<string, CapturePreview>
   startIndex?: number
   onDecide: (capture: VisitCaptureRow, decision: TriageDecision, comment?: string) => void
+  /** Re-tap sur le tag déjà choisi → on ANNULE (la capture redevient à trier). */
+  onUndo: (capture: VisitCaptureRow) => void
   onClose: () => void
   /** Rappel après ajout d'une photo ANNOTÉE (nouvelle capture) — le parent
    *  recharge la liste + les aperçus pour la faire apparaître. */
@@ -231,7 +234,7 @@ export function CaptureTriage({
               <button
                 key={t.decision}
                 type="button"
-                onClick={() => decide(t.decision, false)}
+                onClick={() => (active ? onUndo(capture) : decide(t.decision, false))}
                 className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${t.cls} ${active ? 'bg-muted ring-2 ring-current ring-offset-1' : 'bg-background'}`}
               >
                 {active ? <Check className="h-5 w-5 shrink-0" /> : <Icon className="h-5 w-5 shrink-0" />}
@@ -245,7 +248,7 @@ export function CaptureTriage({
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <button
             type="button"
-            onClick={() => decide('delete', false)}
+            onClick={() => (chosen === 'delete' ? onUndo(capture) : decide('delete', false))}
             className={`inline-flex items-center gap-1.5 text-xs font-medium ${chosen === 'delete' ? 'text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
           >
             <Trash2 className="h-3.5 w-3.5" /> {chosen === 'delete' ? 'Supprimée' : 'Supprimer'}

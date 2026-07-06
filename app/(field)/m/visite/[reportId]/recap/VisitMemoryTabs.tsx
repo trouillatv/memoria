@@ -73,7 +73,6 @@ export function VisitMemoryTabs({
   currentReportId,
   memory,
   patrimoine,
-  justSaved = false,
   children,
 }: {
   siteId: string
@@ -84,8 +83,6 @@ export function VisitMemoryTabs({
   currentReportId: string
   memory: MemorySignal[]
   patrimoine: SitePatrimoine
-  /** true = on arrive de FINIR la visite (?saved=1) → bandeau de satisfaction. */
-  justSaved?: boolean
   /** Onglet « Cette visite » — rendu côté serveur (contenu existant du récap). */
   children: React.ReactNode
 }) {
@@ -94,18 +91,6 @@ export function VisitMemoryTabs({
 
   return (
     <div className="mx-auto min-h-dvh max-w-md space-y-4 px-4 pb-24 pt-5">
-      {/* On arrive de finir la visite : on clôt la mission par une satisfaction. */}
-      {justSaved && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/30">
-          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900 dark:text-emerald-200">
-            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" /> Visite enregistrée avec succès
-          </p>
-          <p className="mt-0.5 pl-7 text-[13px] text-emerald-800/80 dark:text-emerald-200/80">
-            Votre visite a enrichi la mémoire du chantier.
-          </p>
-        </div>
-      )}
-
       {/* En-tête chantier — commun à tous les onglets. */}
       <div>
         <Link href={`/m/site/${siteId}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">

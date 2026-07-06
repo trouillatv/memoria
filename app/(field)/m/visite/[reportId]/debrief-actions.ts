@@ -60,6 +60,29 @@ export async function triageCaptureAction(
   }
 }
 
+// ANNULER un choix : re-tap sur le tag déjà choisi → la capture redevient « à
+// trier » (status captured, intent null). Le tri n'est jamais définitif tant
+// qu'on est dans le débrief : on peut changer d'avis sans friction.
+const untriageSchema = z.object({ capture_id: z.string().uuid() })
+
+export async function untriageCaptureAction(
+  input: z.input<typeof untriageSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = untriageSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await createAdminClient()
+      .from('visit_capture')
+      .update({ status: 'captured', triage_intent: null, updated_at: new Date().toISOString() })
+      .eq('id', parsed.data.capture_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
+}
+
 // ── Matérialiser une SUITE au débrief (tag → objet chantier, validé) ─────────
 // MemorIA PROPOSE ; l'humain décide. Rien n'est créé sans cette validation. La
 // vérité vit au CHANTIER (site_actions / site_reserve), pas à la visite ; la
