@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ChevronRight, Footprints, Users, Wrench,
-  ClipboardList, CheckCircle2, CheckSquare, Compass,
+  ClipboardList, CheckCircle2, CheckSquare, Compass, Trophy, Star,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -27,6 +27,7 @@ const META: Record<TimelineKind, { Icon: typeof Users; cls: string; ring: string
   reserve_lifted: { Icon: CheckCircle2, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
   action_done: { Icon: CheckSquare, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
   decision: { Icon: Compass, cls: 'text-violet-600', ring: 'bg-violet-100 dark:bg-violet-950/40' },
+  phase: { Icon: Trophy, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
 }
 
 export default async function SiteFriseMobilePage({
@@ -79,11 +80,14 @@ export default async function SiteFriseMobilePage({
             const { Icon, cls, ring } = META[e.kind] ?? META.decision
             const body = (
               <>
-                <span className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${ring}`}>
+                <span className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${e.star ? 'ring-2 ring-amber-400' : ''} ${ring}`}>
                   <Icon className={`h-[18px] w-[18px] ${cls}`} />
+                  {e.star && (
+                    <Star className="absolute -right-1 -top-1 h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                  )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium leading-snug">{e.title}</span>
+                  <span className={`block text-sm leading-snug ${e.star ? 'font-semibold' : 'font-medium'}`}>{e.title}</span>
                   {e.detail && <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{e.detail}</span>}
                   <span className="mt-0.5 block text-[12px] text-muted-foreground first-letter:uppercase">{e.dateLabel}</span>
                 </span>
