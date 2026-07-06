@@ -21,6 +21,7 @@ import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
 import { detectVisitSuites } from '@/services/ai/visit-suites'
+import { visitIntentLabel } from '@/lib/field/visit-intents'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -46,6 +47,9 @@ export interface CreateVisitInput {
   source?: string | null
   /** Début RÉEL de la session (import : 1ʳᵉ capture du lot). Défaut : now(). */
   startedAt?: string | null
+  /** INTENTION de la visite (mig 186 : premiere / avancement / previsite_ao / …).
+   *  Même moteur ; l'intention spécialisera libellés, CR, questions de fin. */
+  motive?: string | null
 }
 
 /**
@@ -80,6 +84,7 @@ export async function createVisit(input: CreateVisitInput): Promise<string> {
       created_by: input.createdBy,
       origin: input.origin ?? 'spontaneous',
       source: input.source ?? null,
+      visit_motive: input.motive ?? null,
       started_at: input.startedAt ?? new Date().toISOString(),
     })
     .select('id')
@@ -866,12 +871,12 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
   const supabase = createAdminClient()
   const { data: rows } = await supabase
     .from('site_reports')
-    .select('id, origin, objective, started_at, ended_at, created_at, created_by')
+    .select('id, origin, visit_motive, objective, started_at, ended_at, created_at, created_by')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(limit)
-  const reps = (rows ?? []) as Array<{ id: string; origin: string | null; objective: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
+  const reps = (rows ?? []) as Array<{ id: string; origin: string | null; visit_motive: string | null; objective: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
   if (reps.length === 0) return []
 
   // Contexte AO du chantier : si son dossier est en phase prospect/AO, ses visites
@@ -902,8 +907,10 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
       id: r.id,
       at,
       dateLabel: relativeDayLabel(at),
-      typeLabel: aoContext ? 'Pré-visite AO' : VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite',
-      isPrevisite: aoContext,
+      // Priorité à l'INTENTION explicite (mig 186) ; sinon contexte AO du dossier ;
+      // sinon le type dérivé de l'origine.
+      typeLabel: visitIntentLabel(r.visit_motive) ?? (aoContext ? 'Pré-visite AO' : VISIT_TYPE_LABEL[r.origin ?? ''] ?? 'Visite'),
+      isPrevisite: r.visit_motive === 'previsite_ao' || (!r.visit_motive && aoContext),
       objective: r.objective?.trim() || null,
       authorName: r.created_by ? authorById.get(r.created_by) ?? null : null,
       photos: c.photos,

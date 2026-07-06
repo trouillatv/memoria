@@ -1,16 +1,14 @@
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { MeetingLauncher } from '../MeetingLauncher'
 import { VisitLauncherHome } from '../VisitLauncherHome'
-import { PrevisiteAoLauncher } from '../PrevisiteAoLauncher'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * « Commencer » — l'écran ouvert par le bouton central Visite de la barre. L'action
- * principale du terrain (démarrer une visite) est ainsi accessible en 1 tap depuis
- * n'importe où. Réutilise les lanceurs existants (réunion / visite / prévisite) —
- * pas de nouvelle logique. La visite propose ensuite ses modes (capturer / WhatsApp
- * / fichiers).
+ * « Commencer » — l'écran ouvert par le bouton central de la barre. Deux gestes
+ * seulement : enregistrer une réunion, ou démarrer une NOUVELLE VISITE. La
+ * prévisite AO n'est plus un bouton à part : c'est une INTENTION de visite (le
+ * moteur est identique), demandée juste après (« Pourquoi êtes-vous ici ? »).
  */
 export default async function DemarrerPage() {
   const user = await getCurrentUserWithProfile()
@@ -23,10 +21,9 @@ export default async function DemarrerPage() {
         <p className="text-sm text-muted-foreground">Que voulez-vous démarrer ?</p>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <MeetingLauncher />
         <VisitLauncherHome />
-        <PrevisiteAoLauncher />
       </div>
     </div>
   )
