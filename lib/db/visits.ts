@@ -1066,6 +1066,57 @@ export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceL
   return { at: ref, dateLabel: relativeDayLabel(ref), actionsDone, newReserves, meetings, newPhotos, total }
 }
 
+// ── Fiche chantier : « Mémoire » — le cumul DEPUIS LA CRÉATION ─────────────────
+// Le chantier « parle » : combien de visites, de photos, d'actions, de réserves
+// il a accumulé depuis son premier jour. Déterministe (comptes bruts), zéro IA.
+
+export interface SiteMemorySnapshot {
+  visits: number
+  photos: number
+  actions: number
+  reserves: number
+  /** « mars 2026 » — le mois du premier jalon (null si aucune visite). */
+  sinceLabel: string | null
+}
+
+export async function getSiteMemorySnapshot(siteId: string): Promise<SiteMemorySnapshot> {
+  const supabase = createAdminClient()
+  const [visitsRes, capPhotosRes, actionsRes, reservesRes, firstRes, missionsRes] = await Promise.all([
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).not('origin', 'is', null).neq('status', 'draft'),
+    supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').is('hidden_at', null),
+    supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
+    supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
+    supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).neq('status', 'draft').order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
+    supabase.from('missions').select('id').eq('site_id', siteId).is('deleted_at', null),
+  ])
+
+  // Photos d'intervention (le chantier vit aussi hors visites).
+  let intvPhotos = 0
+  const missionIds = ((missionsRes.data ?? []) as Array<{ id: string }>).map((m) => m.id)
+  if (missionIds.length > 0) {
+    const { data: intv } = await supabase.from('interventions').select('id').in('mission_id', missionIds)
+    const intvIds = ((intv ?? []) as Array<{ id: string }>).map((i) => i.id)
+    if (intvIds.length > 0) {
+      const { count } = await supabase.from('intervention_photos').select('id', { count: 'exact', head: true }).in('intervention_id', intvIds)
+      intvPhotos = count ?? 0
+    }
+  }
+
+  const first = firstRes.data as { started_at: string | null; created_at: string } | null
+  const firstIso = first?.started_at ?? first?.created_at ?? null
+  const sinceLabel = firstIso
+    ? new Date(firstIso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'Pacific/Noumea' })
+    : null
+
+  return {
+    visits: visitsRes.count ?? 0,
+    photos: (capPhotosRes.count ?? 0) + intvPhotos,
+    actions: actionsRes.count ?? 0,
+    reserves: reservesRes.count ?? 0,
+    sinceLabel,
+  }
+}
+
 // ── « Reprendre mon travail » : le TRI RESTANT (pile de travail de l'accueil) ──
 // Le geste QUOTIDIEN n'est pas de démarrer une visite, c'est de reprendre ce qui
 // n'est pas fini. Ici : les visites TERMINÉES de l'agent qui ont encore des

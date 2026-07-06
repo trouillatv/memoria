@@ -19,7 +19,7 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary } from '@/lib/db/visits'
+import { getActiveVisit, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary, getSiteMemorySnapshot } from '@/lib/db/visits'
 import { getSiteIdentity } from '@/lib/db/sites'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { SiteStatusCard } from './SiteStatusCard'
@@ -28,6 +28,7 @@ import { SiteTodoCard } from './SiteTodoCard'
 import { SiteActivityCard } from './SiteActivityCard'
 import { SiteQuickAccessCard } from './SiteQuickAccessCard'
 import { SinceLastVisitCard } from './SinceLastVisitCard'
+import { SiteMemoryCard } from './SiteMemoryCard'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -148,14 +149,16 @@ export default async function FieldSitePage({
   let openReserves: { id: string; label: string; location: string | null }[] = []
   let recentActivity: Awaited<ReturnType<typeof getSiteRecentActivity>> = []
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
+  let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let siteDocCount = 0
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, docList] = await Promise.all([
+    const [status, id, reservesRaw, activity, since, snapshot, docList] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
       getSiteRecentActivity(siteId).catch(() => []),
       buildSinceLastVisitSummary(siteId).catch(() => null),
+      getSiteMemorySnapshot(siteId).catch(() => null),
       canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
     ])
     siteStatus = status
@@ -165,6 +168,7 @@ export default async function FieldSitePage({
       .map((r) => ({ id: r.id, label: r.label, location: r.location }))
     recentActivity = activity
     sinceLastVisit = since
+    memorySnapshot = snapshot
     siteDocCount = docList.length
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
@@ -322,6 +326,9 @@ export default async function FieldSitePage({
 
           {/* 4 — Dernière activité : ce qui s'est passé récemment, regroupé. */}
           <SiteActivityCard items={recentActivity} />
+
+          {/* Mémoire — le cumul depuis la création : le chantier « parle ». */}
+          {memorySnapshot && <SiteMemoryCard snapshot={memorySnapshot} />}
 
           {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
           <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
