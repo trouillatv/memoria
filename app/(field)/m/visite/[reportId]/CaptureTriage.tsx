@@ -1,11 +1,13 @@
 'use client'
 
-// Écran 2 — TRAITEMENT DES CAPTURES, photo par photo. L'objectif est UNE
-// métrique : traiter 30 captures en moins de 2 minutes. Donc : une capture en
-// grand, 4 tags métier, 1 geste → capture suivante automatiquement. Le SWIPE est
-// le vrai accélérateur (au bout de 2 jours, le conducteur ne regarde plus les
-// boutons) : ← Mémoire · ↑ À surveiller · → Action · ↓ Réserve. Le tri ne
-// supprime jamais ; 🗑 reste un geste volontaire. Cf. [[visite-trois-temps]].
+// Écran 2 — TRAITEMENT DES CAPTURES, photo par photo. Une capture en grand,
+// 4 tags métier, et DEUX rythmes assumés :
+//   • TAP sur un tag = décision DÉLIBÉRÉE : on enregistre mais on NE passe PAS à
+//     la suivante. Le conducteur reste maître d'avancer (bouton « Suivant » /
+//     swipe) — il peut corriger, commenter, changer d'avis avant de continuer.
+//   • SWIPE = décision RAPIDE : tague ET enchaîne (← Mémoire · ↑ À surveiller ·
+//     → Action · ↓ Réserve). L'accélérateur pour qui connaît les gestes.
+// Le tri ne supprime jamais ; 🗑 reste un geste volontaire. Cf. [[visite-trois-temps]].
 
 import { useRef, useState } from 'react'
 import { X, BookMarked, Eye, AlertTriangle, Check, Trash2, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Pencil } from 'lucide-react'
@@ -126,9 +128,13 @@ export function CaptureTriage({
     setIndex((i) => (i + delta + total) % total)
   }
 
-  function decide(decision: TriageDecision) {
+  // Un TAP sur un tag enregistre la décision mais NE PASSE PAS à la suivante :
+  // c'est au conducteur de décider quand il avance (bouton « Suivant » ou swipe).
+  // On peut donc corriger, ajouter un commentaire, changer d'avis avant d'avancer.
+  // Le SWIPE, lui, enchaîne (advance) — c'est le geste « aller vite » assumé.
+  function decide(decision: TriageDecision, advance: boolean) {
     onDecide(capture, decision, canComment ? (commentRef.current?.value ?? undefined) : undefined)
-    go(1)
+    if (advance) go(1)
   }
 
   // Swipe : ← Mémoire · ↑ Surveiller · → Action · ↓ Réserve. Seuil généreux pour
@@ -145,8 +151,8 @@ export function CaptureTriage({
     touch.current = null
     const TH = 60
     if (Math.abs(dx) < TH && Math.abs(dy) < TH) return
-    if (Math.abs(dx) > Math.abs(dy)) decide(dx < 0 ? 'memoire' : 'action')
-    else decide(dy < 0 ? 'surveiller' : 'reserve')
+    if (Math.abs(dx) > Math.abs(dy)) decide(dx < 0 ? 'memoire' : 'action', true)
+    else decide(dy < 0 ? 'surveiller' : 'reserve', true)
   }
 
   return (
@@ -225,7 +231,7 @@ export function CaptureTriage({
               <button
                 key={t.decision}
                 type="button"
-                onClick={() => decide(t.decision)}
+                onClick={() => decide(t.decision, false)}
                 className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${t.cls} ${active ? 'bg-muted ring-2 ring-current ring-offset-1' : 'bg-background'}`}
               >
                 {active ? <Check className="h-5 w-5 shrink-0" /> : <Icon className="h-5 w-5 shrink-0" />}
@@ -239,15 +245,23 @@ export function CaptureTriage({
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <button
             type="button"
-            onClick={() => decide('delete')}
+            onClick={() => decide('delete', false)}
             className={`inline-flex items-center gap-1.5 text-xs font-medium ${chosen === 'delete' ? 'text-destructive' : 'text-muted-foreground hover:text-destructive'}`}
           >
             <Trash2 className="h-3.5 w-3.5" /> {chosen === 'delete' ? 'Supprimée' : 'Supprimer'}
           </button>
-          <span className="inline-flex items-center gap-2 text-[11px] text-muted-foreground/70" aria-hidden>
-            <ArrowLeft className="h-3 w-3" /><ArrowUp className="h-3 w-3" /><ArrowDown className="h-3 w-3" /><ArrowRight className="h-3 w-3" /> glissez pour aller vite
-          </span>
+          {/* Avancer est un GESTE VOLONTAIRE : le tap sur un tag n'enchaîne plus. */}
+          <button
+            type="button"
+            onClick={() => go(1)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white active:scale-95"
+          >
+            Suivant <ArrowRight className="h-4 w-4" />
+          </button>
         </div>
+        <p className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70" aria-hidden>
+          <ArrowLeft className="h-3 w-3" /><ArrowUp className="h-3 w-3" /><ArrowDown className="h-3 w-3" /><ArrowRight className="h-3 w-3" /> glissez pour taguer et enchaîner
+        </p>
       </div>
 
       {/* Annotation plein écran — « regarde EXACTEMENT ici ». L'image annotée
