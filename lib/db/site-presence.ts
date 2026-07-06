@@ -23,6 +23,21 @@
 //   - Si rien ne remonte : tableau vide → l'UI affiche un état rassurant. C'est
 //     le cas NORMAL et souhaité : la rareté fait la confiance.
 //
+// TROIS RÈGLES (le contrat du moteur — toute source ajoutée doit les respecter) :
+//   Règle 1 — Un rappel ne remonte jamais SEUL si un lien métier peut être
+//     établi. Toujours préférer « événement + contexte » à « événement ». (Ex. la
+//     réunion ne s'affiche pas seule : elle donne une échéance à un problème ouvert.)
+//   Règle 2 — Le moteur remonte des OPPORTUNITÉS, pas des objets. Pas « réserve
+//     ouverte » mais « vous pouvez lever cette réserve avant la réunion » ; pas
+//     « action en retard » mais « vous êtes au bon endroit pour la boucler ». On
+//     ancre dans le RÉEL (le lieu de la réserve, la présence sur site) dès qu'on a
+//     la donnée : c'est ce qui déclenche l'action, pas l'objet.
+//   Règle 3 — Le contexte est CUMULATIF. On relie aujourd'hui réunion × réserve ;
+//     demain météo × intervention extérieure, sous-traitant × matériel, collègue
+//     déjà sur place × visite — SANS changer le moteur, en ajoutant des sources.
+//     C'est pourquoi le cœur ci-dessous raisonne en « éléments ouverts » + « liens »
+//     génériques, et non en cas particuliers figés.
+//
 // Volontairement HORS moteur :
 //   - Les interventions du jour : déjà listées (heure, statut, lien) juste dessous.
 //   - Le compteur générique d'actions ouvertes : c'est un résumé de page (le
@@ -79,6 +94,13 @@ function daysUntil(iso: string | null): number | null {
 function clip(s: string, n = 44): string {
   const t = s.trim()
   return t.length <= n ? t : `${t.slice(0, n - 1).trimEnd()}…`
+}
+
+// Ancrage SPATIAL (règle 2) : « (Bloc B) » quand la réserve porte un lieu — c'est
+// ce qui transforme « une réserve existe » en « vous passez devant le local ».
+function place(location: string | null): string {
+  const t = (location ?? '').trim()
+  return t.length > 0 ? ` (${clip(t, 28)})` : ''
 }
 
 // « Réunion ici aujourd'hui / demain / dans N j » — la clause d'échéance qui
@@ -139,11 +161,12 @@ export async function buildSitePresenceReminders(
     (r) => SAFETY_RE.test(r.label) || (r.location != null && SAFETY_RE.test(r.location)),
   )
   if (safety) {
+    const at = place(safety.location)
     items.push({
       kind: 'reserve_safety',
       href: reservesHref,
-      solo: `Une réserve sécurité est ouverte ici — « ${clip(safety.label)} ». Vous pourriez la lever tant que vous y êtes.`,
-      tail: `la réserve sécurité « ${clip(safety.label)} » est toujours ouverte. À lever avant de repartir.`,
+      solo: `Vous pourriez lever la réserve sécurité « ${clip(safety.label)} »${at} tant que vous êtes sur place.`,
+      tail: `la réserve sécurité « ${clip(safety.label)} »${at} est toujours ouverte. À lever avant de repartir.`,
     })
   }
 
@@ -158,8 +181,8 @@ export async function buildSitePresenceReminders(
       href: actionsHref,
       solo:
         d > 0
-          ? `L'action « ${clip(overdue.title)} » a dépassé son échéance de ${d} j. Vous êtes au bon endroit pour la faire avancer.`
-          : `L'action « ${clip(overdue.title)} » était attendue pour aujourd'hui. Vous êtes au bon endroit pour la boucler.`,
+          ? `Vous êtes au bon endroit pour faire avancer l'action « ${clip(overdue.title)} » (en retard de ${d} j).`
+          : `Vous êtes au bon endroit pour boucler l'action « ${clip(overdue.title)} », attendue aujourd'hui.`,
       tail:
         d > 0
           ? `l'action « ${clip(overdue.title)} » traîne depuis ${d} j. À faire avancer avant.`
@@ -173,11 +196,12 @@ export async function buildSitePresenceReminders(
   )
   if (oldReserve) {
     const d = daysSince(oldReserve.issuedOn ?? oldReserve.createdAt) ?? 0
+    const at = place(oldReserve.location)
     items.push({
       kind: 'reserve_old',
       href: reservesHref,
-      solo: `La réserve « ${clip(oldReserve.label)} » est ouverte depuis ${d} jours. Un point sur place la ferait avancer.`,
-      tail: `la réserve « ${clip(oldReserve.label)} » est ouverte depuis ${d} j. À vérifier avant.`,
+      solo: `Un point sur place ferait avancer la réserve « ${clip(oldReserve.label)} »${at}, ouverte depuis ${d} jours.`,
+      tail: `la réserve « ${clip(oldReserve.label)} »${at} est ouverte depuis ${d} j. À vérifier avant.`,
     })
   }
 
