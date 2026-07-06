@@ -66,7 +66,7 @@ export default async function SiteFriseMobilePage({
       {events.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
           <p className="text-sm text-muted-foreground">
-            Rien à raconter encore. Commencez à documenter ce chantier — visites, réunions et jalons apparaîtront ici.
+            Aucune activité pour l&apos;instant. Commencez à documenter ce chantier — visites, réunions et jalons apparaîtront ici.
           </p>
           <div className="flex justify-center"><VisitLauncher siteId={siteId} activeVisit={null} /></div>
         </div>
@@ -75,7 +75,8 @@ export default async function SiteFriseMobilePage({
           {/* fil vertical de la frise */}
           <span aria-hidden className="absolute left-[22px] top-2 bottom-2 w-px bg-border" />
           {events.map((e, idx) => {
-            const { Icon, cls, ring } = META[e.kind]
+            // Garde-fou : un type inattendu ne doit jamais casser le rendu.
+            const { Icon, cls, ring } = META[e.kind] ?? META.decision
             const body = (
               <>
                 <span className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${ring}`}>

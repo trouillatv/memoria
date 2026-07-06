@@ -52,6 +52,15 @@ function frDate(iso: string): string {
  * plus ancien. `limit` borne l'affichage par récence (l'histoire récente d'abord).
  */
 export async function buildSiteTimeline(siteId: string, limit = 100): Promise<TimelineEvent[]> {
+  try {
+    return await buildSiteTimelineInner(siteId, limit)
+  } catch {
+    // Une frise ne doit JAMAIS faire planter la page — au pire, elle est vide.
+    return []
+  }
+}
+
+async function buildSiteTimelineInner(siteId: string, limit: number): Promise<TimelineEvent[]> {
   const supabase = createAdminClient()
 
   const [repsRes, missionsRes, reserves, decisions, actionsRes] = await Promise.all([

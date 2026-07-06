@@ -309,9 +309,9 @@ export default async function FieldSitePage({
             <Hammer className="h-3.5 w-3.5" />{todayInterventions.length} interv.
           </span>
           {openActions.length > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium">
+            <Link href={`/m/actions?site=${siteId}`} className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium active:bg-sky-100">
               <ListTodo className="h-3.5 w-3.5" />{openActions.length} action{openActions.length > 1 ? 's' : ''}
-            </span>
+            </Link>
           )}
           {openAnomaliesCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-800 px-2.5 py-1 font-medium">
@@ -384,7 +384,7 @@ export default async function FieldSitePage({
 
       {/* Que reste-t-il à faire ? — tableau de bord opérationnel : en retard,
           bientôt, réserves, ouvert. Remplace l'ancien « À suivre » plat. */}
-      <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} />
+      <SiteTodoCard actions={openActions} reserves={openReserves} todayIso={todayIso} totalActions={openActions.length} siteId={siteId} />
 
       {/* Dernières preuves — photos récentes du site (lecture rapide). */}
       {recentPhotos.length > 0 && (
@@ -409,19 +409,23 @@ export default async function FieldSitePage({
         </section>
       )}
 
-      {/* Actions du lieu — zone compacte « bouttonifiée » (comme desktop) : la
-          recherche est repliée derrière un bouton et les déclencheurs de capture
-          sont groupés. Les briefs « Préparer ma visite/réunion » restent en haut
-          (moment magique), seul le secondaire est condensé ici. */}
+      {/* Mémoire du chantier — cible de l'onglet « Mémoire ». Sa propre section
+          (heading explicite), pour qu'on atterrisse VRAIMENT sur la mémoire et
+          non au milieu des boutons d'action. */}
       <section id="memoire-lieu" className="scroll-mt-4 space-y-2 pt-3 border-t border-border/40">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Mémoire du chantier
+        </h2>
+        <TogglePanel label="Rechercher dans la mémoire" icon={<Search className="h-4 w-4" />}>
+          <SiteMemoryQuery siteId={siteId} variant="mobile" />
+        </TogglePanel>
+      </section>
+
+      {/* Actions du lieu — déclencheurs de capture groupés (secondaire). */}
+      <section className="space-y-2 pt-3 border-t border-border/40">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Actions du lieu
         </h2>
-
-        {/* 🔍 Interroger ce site — replié (au lieu du champ toujours ouvert) */}
-        <TogglePanel label="Rechercher sur ce lieu" icon={<Search className="h-4 w-4" />}>
-          <SiteMemoryQuery siteId={siteId} variant="mobile" />
-        </TogglePanel>
 
         {/* Captures rapides côte à côte : ➕ Action (intention) · 📷 Photo (preuve).
             Les deux ouvrent en overlay → pas d'écrasement dans la grille. */}

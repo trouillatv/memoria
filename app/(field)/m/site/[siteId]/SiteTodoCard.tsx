@@ -17,11 +17,13 @@ export function SiteTodoCard({
   reserves,
   todayIso,
   totalActions,
+  siteId,
 }: {
   actions: SiteActionRow[]
   reserves: ReserveLite[]
   todayIso: string
   totalActions: number
+  siteId: string
 }) {
   const soonCutoff = addDaysLocal(todayIso, 7)
   const overdue = actions.filter((a) => a.due_date && a.due_date < todayIso)
@@ -64,7 +66,7 @@ export function SiteTodoCard({
       )}
 
       {totalActions > 3 && (
-        <Link href="/m/actions" className="inline-flex items-center gap-1 text-sm font-medium text-foreground/80 hover:text-foreground">
+        <Link href={`/m/actions?site=${siteId}`} className="inline-flex items-center gap-1 text-sm font-medium text-foreground/80 hover:text-foreground">
           Voir toutes les actions <ChevronRight className="h-4 w-4" />
         </Link>
       )}
