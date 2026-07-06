@@ -1,9 +1,14 @@
 // PDF « Compte-rendu de visite » (@react-pdf/renderer).
 //
 // Sortie PARTAGEABLE du Débrief : rendu déterministe du même `VisitCrDoc` que le
-// markdown (lib/db/visits.ts — source de vérité unique). Layout neutre, aligné sur
-// cr-chantier.tsx. Aucun fait inventé : ce qui n'a pas été relevé apparaît en
-// « — ». Généré à la volée, jamais stocké.
+// markdown (lib/db/visits.ts — source de vérité unique). Le CR RACONTE la visite :
+// qui / où / quand → résumé → constats → OÙ (carte) → preuves → à retenir.
+// Aucun fait inventé : ce qui n'a pas été relevé n'apparaît pas.
+//
+// Contraintes du format : polices Helvetica (WinAnsi) → PAS d'emoji couleur ni de
+// glyphe « ✓ » (rendus en tofu) ; on utilise des pastilles/carrés colorés. Pas de
+// fournisseur de tuiles configuré → la carte est un SCHÉMA (positions GPS
+// relatives par type), pas une carte de rue.
 
 import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
@@ -11,63 +16,107 @@ import type { VisitCrDoc } from '@/lib/db/visits'
 
 const COLORS = {
   text: '#0f172a',
+  slate: '#334155',
   muted: '#64748b',
   faint: '#94a3b8',
   border: '#e2e8f0',
-  accent: '#047857', // emerald-700 — couleur des visites terrain
+  accent: '#047857',      // emerald-700 — réservé aux titres IMPORTANTS
+  accentBg: '#ecfdf5',    // emerald-50 — fond des encarts (résumé, à retenir)
+  accentBorder: '#a7f3d0',
 }
+
+// Couleurs par type de capture — alignées sur la carte mobile (CaptureMap).
+const KIND_COLOR: Record<string, string> = {
+  photo: '#0284c7', video: '#7c3aed', vocal: '#d97706', note: '#475569', verification: '#059669', position: '#6b7280',
+}
+const KIND_LABEL: Record<string, string> = {
+  photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position',
+}
+
+const MAP_W = 515
+const MAP_H = 200
 
 const styles = StyleSheet.create({
   page: {
-    fontFamily: 'Helvetica',
-    fontSize: 10,
-    color: COLORS.text,
-    paddingTop: 40,
-    paddingBottom: 56,
-    paddingHorizontal: 40,
-    lineHeight: 1.45,
+    fontFamily: 'Helvetica', fontSize: 10, color: COLORS.text,
+    paddingTop: 36, paddingBottom: 52, paddingHorizontal: 40, lineHeight: 1.45,
   },
-  header: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 10, marginBottom: 18 },
-  kicker: { fontSize: 8, color: COLORS.faint, textTransform: 'uppercase', letterSpacing: 1 },
-  title: { fontSize: 16, fontFamily: 'Helvetica-Bold', marginTop: 4 },
-  meta: { fontSize: 9, color: COLORS.muted, marginTop: 4 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
-  metaItem: { fontSize: 9, color: COLORS.muted, marginRight: 12 },
-  metaStrong: { fontFamily: 'Helvetica-Bold', color: COLORS.text },
-  section: { marginBottom: 14 },
-  sectionTitle: {
-    fontSize: 11,
-    fontFamily: 'Helvetica-Bold',
-    color: COLORS.accent,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  // En-tête identité.
+  header: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 10, marginBottom: 14 },
+  headTop: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  siteName: { fontSize: 18, fontFamily: 'Helvetica-Bold' },
+  kicker: { fontSize: 8, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'Helvetica-Bold' },
+  badge: {
+    fontSize: 8, color: COLORS.accent, backgroundColor: COLORS.accentBg,
+    borderWidth: 0.5, borderColor: COLORS.accentBorder, borderRadius: 3, paddingVertical: 2, paddingHorizontal: 6,
   },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
+  metaItem: { fontSize: 9, color: COLORS.muted, marginRight: 14 },
+  metaStrong: { fontFamily: 'Helvetica-Bold', color: COLORS.slate },
+
+  section: { marginBottom: 13 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  dot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  titleGreen: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 },
+  titleSlate: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: COLORS.slate, textTransform: 'uppercase', letterSpacing: 0.5 },
+  subTitle: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 6, marginBottom: 3 },
+
   paragraph: { marginBottom: 3 },
+  empty: { color: COLORS.faint, fontStyle: 'italic' },
   bulletRow: { flexDirection: 'row', marginBottom: 2 },
   bulletDot: { width: 10, color: COLORS.muted },
   bulletText: { flex: 1 },
-  empty: { color: COLORS.faint, fontStyle: 'italic' },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  photo: { width: 158, height: 118, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
-  mediaNote: { fontSize: 9, color: COLORS.muted, marginTop: 4 },
+  rawRow: { flexDirection: 'row', marginBottom: 2 },
+  rawText: { flex: 1, fontSize: 9, color: COLORS.muted, fontStyle: 'italic' },
+
+  // Encart (résumé / à retenir).
+  card: { backgroundColor: COLORS.accentBg, borderWidth: 0.5, borderColor: COLORS.accentBorder, borderRadius: 5, padding: 10 },
+  cardLead: { fontFamily: 'Helvetica-Bold', color: COLORS.text, marginBottom: 4 },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2 },
+  checkMark: { width: 6, height: 6, borderRadius: 1.5, backgroundColor: COLORS.accent, marginTop: 3, marginRight: 6 },
+
+  // En bref (stats).
+  statStrip: { flexDirection: 'row', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5 },
+  statCell: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRightWidth: 0.5, borderRightColor: COLORS.border },
+  statCellLast: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  statN: { fontSize: 14, fontFamily: 'Helvetica-Bold' },
+  statLabel: { fontSize: 7.5, color: COLORS.muted, marginTop: 2, textAlign: 'center' },
+
+  // Photos.
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  photoCell: { width: 235, marginRight: 12, marginBottom: 8 },
+  photo: { width: 235, height: 150, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  photoCap: { fontSize: 9, marginTop: 3 },
+  photoCapStrong: { fontFamily: 'Helvetica-Bold' },
+  mediaNote: { fontSize: 9, color: COLORS.muted, marginTop: 2 },
+
+  // Carte des observations (schéma).
+  map: { width: MAP_W, height: MAP_H, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, position: 'relative' },
+  marker: { position: 'absolute', width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, borderColor: '#ffffff' },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
+  legendDot: { width: 7, height: 7, borderRadius: 3.5, marginRight: 4 },
+  legendLabel: { fontSize: 8, color: COLORS.muted },
+  caption: { fontSize: 8, color: COLORS.faint, marginTop: 4, fontStyle: 'italic' },
+
   footer: {
-    position: 'absolute',
-    bottom: 24,
-    left: 40,
-    right: 40,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingTop: 6,
-    fontSize: 8,
-    color: COLORS.faint,
+    position: 'absolute', bottom: 24, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between',
+    borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 6, fontSize: 8, color: COLORS.faint,
   },
 })
 
-function Bullets({ items, empty }: { items: string[]; empty: string }) {
-  if (items.length === 0) return <Text style={styles.empty}>{empty}</Text>
+function SectionTitle({ text, color, important, sub }: { text: string; color: string; important?: boolean; sub?: string }) {
+  return (
+    <View style={styles.titleRow}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <Text style={important ? styles.titleGreen : styles.titleSlate}>{text}</Text>
+      {sub ? <Text style={[styles.legendLabel, { marginLeft: 6 }]}>{sub}</Text> : null}
+    </View>
+  )
+}
+
+function Bullets({ items, empty }: { items: string[]; empty?: string }) {
+  if (items.length === 0) return empty ? <Text style={styles.empty}>{empty}</Text> : null
   return (
     <View>
       {items.map((line, i) => (
@@ -80,18 +129,54 @@ function Bullets({ items, empty }: { items: string[]; empty: string }) {
   )
 }
 
+// Carte SCHÉMATIQUE : positions GPS projetées relativement dans un cadre. Pas de
+// fond de rue (aucun fournisseur de tuiles) → on montre l'agencement relatif des
+// observations sur le chantier, coloré par type.
+function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
+  const lats = positions.map((p) => p.lat)
+  const lngs = positions.map((p) => p.lng)
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
+  const spanLat = maxLat - minLat || 1
+  const spanLng = maxLng - minLng || 1
+  const PAD = 0.12
+  const kindsPresent = [...new Set(positions.map((p) => p.kind))]
+
+  return (
+    <View wrap={false}>
+      <View style={styles.map}>
+        {positions.map((p, i) => {
+          const fx = positions.length === 1 ? 0.5 : (p.lng - minLng) / spanLng
+          const fy = positions.length === 1 ? 0.5 : (p.lat - minLat) / spanLat
+          const left = (PAD + fx * (1 - 2 * PAD)) * MAP_W - 6
+          const top = (PAD + (1 - fy) * (1 - 2 * PAD)) * MAP_H - 6
+          return <View key={i} style={[styles.marker, { left, top, backgroundColor: KIND_COLOR[p.kind] ?? '#6b7280' }]} />
+        })}
+      </View>
+      <View style={styles.legend}>
+        {kindsPresent.map((k) => (
+          <View key={k} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: KIND_COLOR[k] ?? '#6b7280' }]} />
+            <Text style={styles.legendLabel}>{KIND_LABEL[k] ?? k}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.caption}>Emplacements relatifs des observations sur le chantier ({positions.length} point{positions.length > 1 ? 's' : ''}).</Text>
+    </View>
+  )
+}
+
 export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: string }) {
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
   const isAo = doc.motive === 'previsite_ao'
   const kicker = isPremiere ? 'État initial du chantier' : isAo ? "Prévisite d'appel d'offres" : 'Compte-rendu de visite de chantier'
-  const objetTitle = isPremiere || isAo ? 'Contexte' : 'Objet de la visite'
   const reservesTitle = isPremiere ? 'Premières réserves' : isAo ? 'Points de vigilance observés' : 'Réserves'
   const actionsTitle = isPremiere ? 'Premières actions' : 'Actions à réaliser'
-  const photosBase = isPremiere ? 'Photos de référence' : 'Photos'
+  const photosBase = isPremiere ? 'Photos de référence' : 'Photos clés'
   const title = `${kicker} — ${doc.siteName}`
-  // Réserves/actions = objets bureau (site_reserve/actions) + tags terrain (écran 2).
+
   const reserveLines = [
     ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
     ...doc.points.reserve,
@@ -101,80 +186,143 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
     ...doc.points.action,
   ]
 
+  // « En bref » — richesse de la visite (comptes réels par type).
+  const stats: Array<{ n: number; label: string }> = [
+    { n: doc.photoCount, label: doc.photoCount > 1 ? 'photos' : 'photo' },
+    { n: doc.videoCount, label: doc.videoCount > 1 ? 'vidéos' : 'vidéo' },
+    { n: doc.vocalCount, label: doc.vocalCount > 1 ? 'mémos vocaux' : 'mémo vocal' },
+    { n: doc.noteCount, label: doc.noteCount > 1 ? 'notes écrites' : 'note écrite' },
+    { n: doc.verificationCount, label: doc.verificationCount > 1 ? 'vérifications' : 'vérification' },
+    { n: doc.starredCount, label: doc.starredCount > 1 ? 'éléments marqués' : 'élément marqué' },
+  ]
+
+  // « À retenir » — la conclusion : ce que la visite a enrichi.
+  const preuves = doc.photoCount + doc.videoCount + doc.vocalCount
+  const retenir: string[] = []
+  if (preuves > 0) retenir.push(`${preuves} nouvelle${preuves > 1 ? 's' : ''} preuve${preuves > 1 ? 's' : ''} ajoutée${preuves > 1 ? 's' : ''}`)
+  if (reserveLines.length > 0) retenir.push(`${reserveLines.length} réserve${reserveLines.length > 1 ? 's' : ''} créée${reserveLines.length > 1 ? 's' : ''}`)
+  if (actionLines.length > 0) retenir.push(`${actionLines.length} action${actionLines.length > 1 ? 's' : ''} créée${actionLines.length > 1 ? 's' : ''}`)
+  retenir.push('Compte-rendu généré et disponible')
+
   return (
     <Document title={title}>
       <Page size="A4" style={styles.page}>
+        {/* En-tête identité : qui / où / quand, avant même le résumé. */}
         <View style={styles.header} fixed>
-          <Text style={styles.kicker}>{kicker}</Text>
-          <Text style={styles.title}>{doc.siteName}</Text>
+          <View style={styles.headTop}>
+            <View>
+              <Text style={styles.kicker}>{kicker}</Text>
+              <Text style={styles.siteName}>{doc.siteName}</Text>
+            </View>
+            <Text style={styles.badge}>{doc.typeLabel}</Text>
+          </View>
           <View style={styles.metaRow}>
-            {doc.clientName ? <Text style={styles.metaItem}>{doc.clientName}</Text> : null}
-            <Text style={styles.metaItem}>
-              <Text style={styles.metaStrong}>Date : </Text>{doc.dateLabel}
-            </Text>
-            <Text style={styles.metaItem}>
-              <Text style={styles.metaStrong}>Type : </Text>{doc.typeLabel}
-            </Text>
-            {doc.durationLabel ? (
-              <Text style={styles.metaItem}>
-                <Text style={styles.metaStrong}>Durée : </Text>{doc.durationLabel}
-              </Text>
-            ) : null}
+            <Text style={styles.metaItem}>{doc.dateLabel}</Text>
+            {doc.authorName ? <Text style={styles.metaItem}><Text style={styles.metaStrong}>Conducteur : </Text>{doc.authorName}</Text> : null}
+            {doc.clientName ? <Text style={styles.metaItem}><Text style={styles.metaStrong}>Client : </Text>{doc.clientName}</Text> : null}
+            {doc.city ? <Text style={styles.metaItem}>{doc.city}</Text> : null}
+            {doc.durationLabel ? <Text style={styles.metaItem}><Text style={styles.metaStrong}>Durée : </Text>{doc.durationLabel}</Text> : null}
           </View>
         </View>
 
+        {/* Résumé — encart, ce que le lecteur doit voir en premier. */}
         <View style={styles.section} wrap={false}>
-          <Text style={styles.sectionTitle}>{objetTitle}</Text>
-          <Text style={doc.objective ? styles.paragraph : styles.empty}>
-            {doc.objective ?? 'Non précisé.'}
-          </Text>
-          {doc.subjectName ? <Text style={styles.paragraph}>Sujet : {doc.subjectName}</Text> : null}
+          <SectionTitle text="Résumé de la visite" color={COLORS.accent} important />
+          <View style={styles.card}>
+            <Text style={doc.summary ? undefined : styles.empty}>
+              {doc.summary?.trim() || 'Éléments insuffisants pour un résumé — voir les constats et photos ci-dessous.'}
+            </Text>
+          </View>
         </View>
 
-        {doc.summary && (
+        {/* En bref — richesse de la visite en un coup d'œil. */}
+        <View style={styles.section} wrap={false}>
+          <SectionTitle text="En bref — contenu de la visite" color={COLORS.muted} />
+          <View style={styles.statStrip}>
+            {stats.map((s, i) => (
+              <View key={i} style={i === stats.length - 1 ? styles.statCellLast : styles.statCell}>
+                <Text style={styles.statN}>{s.n}</Text>
+                <Text style={styles.statLabel}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Objet — seulement s'il est renseigné (pas de section vide). */}
+        {(doc.objective || doc.subjectName) && (
           <View style={styles.section} wrap={false}>
-            <Text style={styles.sectionTitle}>Résumé</Text>
-            <Text style={styles.paragraph}>{doc.summary}</Text>
+            <SectionTitle text={isPremiere || isAo ? 'Contexte' : 'Objet de la visite'} color={COLORS.muted} />
+            {doc.objective ? <Text style={styles.paragraph}>{doc.objective}</Text> : null}
+            {doc.subjectName ? <Text style={styles.paragraph}>Sujet : {doc.subjectName}</Text> : null}
           </View>
         )}
 
+        {/* Constats — écrits en clair, transcriptions vocales brutes reléguées dessous. */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Constats</Text>
-          <Bullets items={doc.constats} empty="Aucune note saisie pendant la visite." />
+          <SectionTitle text="Constats de la visite" color={COLORS.accent} important />
+          {doc.observations.length === 0 && doc.transcriptions.length === 0 ? (
+            <Text style={styles.empty}>Aucune note saisie pendant la visite.</Text>
+          ) : (
+            <>
+              <Bullets items={doc.observations} />
+              {doc.transcriptions.length > 0 && (
+                <>
+                  <Text style={styles.subTitle}>Transcriptions brutes (extraits)</Text>
+                  <View>
+                    {doc.transcriptions.map((line, i) => (
+                      <View key={i} style={styles.rawRow} wrap={false}>
+                        <Text style={styles.bulletDot}>•</Text>
+                        <Text style={styles.rawText}>{line}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </>
+          )}
         </View>
 
         {reserveLines.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{reservesTitle}</Text>
-            <Bullets items={reserveLines} empty="—" />
+            <SectionTitle text={reservesTitle} color="#e11d48" />
+            <Bullets items={reserveLines} />
           </View>
         )}
 
         {doc.points.surveiller.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Points à surveiller</Text>
-            <Bullets items={doc.points.surveiller} empty="—" />
+            <SectionTitle text="Points à surveiller" color="#d97706" />
+            <Bullets items={doc.points.surveiller} />
           </View>
         )}
 
-        {actionLines.length > 0 && (
+        {/* Localisation — le « où » AVANT les preuves. Uniquement si des GPS existent. */}
+        {doc.positions.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{actionsTitle}</Text>
-            <Bullets items={actionLines} empty="—" />
+            <SectionTitle text="Localisation des observations" color="#0284c7" />
+            <ObservationMap positions={doc.positions} />
           </View>
         )}
 
-        {doc.photos.length > 0 && (
+        {/* Photos — avec légendes, pour comprendre sans rouvrir l'app. */}
+        {doc.photoItems.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {doc.photoCount > doc.photos.length
-                ? `${photosBase} clés (${doc.photos.length} — ${doc.photoCount} au total dans MemorIA)`
-                : `${photosBase} (${doc.photos.length})`}
-            </Text>
+            <SectionTitle
+              text={photosBase}
+              color={COLORS.accent}
+              important
+              sub={doc.photoCount > doc.photoItems.length ? `${doc.photoItems.length} sur ${doc.photoCount}` : `${doc.photoItems.length}`}
+            />
             <View style={styles.photoGrid}>
-              {doc.photos.map((url, i) => (
-                // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
-                <Image key={i} src={url} style={styles.photo} />
+              {doc.photoItems.map((p, i) => (
+                <View key={i} style={styles.photoCell} wrap={false}>
+                  {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
+                  <Image src={p.url} style={styles.photo} />
+                  <Text style={styles.photoCap}>
+                    <Text style={styles.photoCapStrong}>Photo {i + 1}</Text>
+                    {p.caption ? ` — ${p.caption}` : ''}
+                  </Text>
+                </View>
               ))}
             </View>
           </View>
@@ -185,22 +333,38 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
             Autres médias :{' '}
             {[
               doc.videoCount > 0 ? `${doc.videoCount} vidéo${doc.videoCount > 1 ? 's' : ''}` : null,
-              doc.vocalCount > 0 ? `${doc.vocalCount} mémo${doc.vocalCount > 1 ? 's' : ''} vocal${doc.vocalCount > 1 ? 'aux' : ''}` : null,
+              doc.vocalCount > 0 ? `${doc.vocalCount} ${doc.vocalCount > 1 ? 'mémos vocaux' : 'mémo vocal'}` : null,
             ].filter(Boolean).join(' · ')}{' '}
             — consultables dans la visite.
           </Text>
         )}
 
+        {actionLines.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text={actionsTitle} color="#7c3aed" />
+            <Bullets items={actionLines} />
+          </View>
+        )}
+
+        {/* À retenir — la conclusion naturelle du document. */}
         <View style={styles.section} wrap={false}>
-          <Text style={styles.sectionTitle}>Bilan</Text>
-          <Text style={styles.paragraph}>
-            <Text style={styles.metaStrong}>Résultat : </Text>
-            {doc.outcomeLabel ?? 'non précisé'}
-          </Text>
-          <Text style={styles.paragraph}>
-            <Text style={styles.metaStrong}>Suivi : </Text>
-            {doc.resolutionLabel ?? 'non précisé'}
-          </Text>
+          <SectionTitle text="À retenir" color={COLORS.accent} important />
+          <View style={styles.card}>
+            <Text style={styles.cardLead}>Cette visite a enrichi la mémoire du chantier.</Text>
+            {retenir.map((line, i) => (
+              <View key={i} style={styles.checkRow}>
+                <View style={styles.checkMark} />
+                <Text style={styles.bulletText}>{line}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Bilan — résultat / suivi (posés à la clôture, souvent « non précisé »). */}
+        <View style={styles.section} wrap={false}>
+          <SectionTitle text="Bilan" color={COLORS.muted} />
+          <Text style={styles.paragraph}><Text style={styles.metaStrong}>Résultat : </Text>{doc.outcomeLabel ?? 'non précisé'}</Text>
+          <Text style={styles.paragraph}><Text style={styles.metaStrong}>Suivi : </Text>{doc.resolutionLabel ?? 'non précisé'}</Text>
         </View>
 
         <View style={styles.footer} fixed>
