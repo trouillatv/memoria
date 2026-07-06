@@ -28,7 +28,7 @@ export function VisitOutputActions({
     <div className="space-y-2">
       {showViewVisit && (
         <Link
-          href={`/m/visite/${reportId}/recap`}
+          href={`/m/visite/${reportId}/recap?saved=1`}
           className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
         >
           <Eye className="h-4 w-4" /> Voir la visite <ArrowRight className="h-4 w-4" />
