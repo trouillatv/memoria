@@ -1527,6 +1527,10 @@ const ORIGIN_FR: Record<string, string> = {
 export interface VisitCrDoc {
   siteName: string
   clientName: string | null
+  /** Conducteur (auteur de la visite) — nom complet, ou null. */
+  authorName: string | null
+  /** Commune du chantier (identité « où »), ou null si non renseignée. */
+  city: string | null
   /** Ex. « 5 juillet 2026, 10:42 ». */
   dateLabel: string
   /** Ex. « Visite spontanée ». */
@@ -1538,17 +1542,28 @@ export interface VisitCrDoc {
   subjectName: string | null
   /** Constats = ce qui a été noté/dit pendant la visite (notes + vocaux + site_notes). */
   constats: string[]
+  /** Constats ÉCRITS (notes, commentaires de photo) — présentés en clair. */
+  observations: string[]
+  /** Transcriptions VOCALES brutes — reléguées plus bas (« pour vérifier »). */
+  transcriptions: string[]
   reserves: Array<{ label: string; location: string | null }>
   actions: Array<{ title: string; corps_etat: string | null }>
   /** URLs signées des photos SÉLECTIONNÉES pour le CR (par tag + photo clé,
    *  plafonnées) — embarquées dans le PDF. Le CR est un document de communication. */
   photos: string[]
+  /** Photos sélectionnées AVEC leur légende (commentaire de la capture). */
+  photoItems: Array<{ url: string; caption: string | null }>
+  /** Positions GPS des captures (lat/lng + type) — pour la carte des observations. */
+  positions: Array<{ lat: number; lng: number; kind: string }>
   /** Nombre TOTAL de photos captées (MemorIA les garde toutes) — pour dire
    *  « N photos clés sur M dans MemorIA ». */
   photoCount: number
-  /** Combien de vidéos/vocaux captés (non embarqués, mentionnés). */
+  /** Combien de vidéos/vocaux/notes/vérifications captés + éléments marqués. */
   videoCount: number
   vocalCount: number
+  noteCount: number
+  verificationCount: number
+  starredCount: number
   /** Résumé « MemorIA comprend » — IA gatée, ou repli déterministe. Éditable. */
   summary: string | null
   /** Points du CR groupés par TAG (écran 2), texte = commentaire ou libellé. */
@@ -1624,15 +1639,23 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
 
   const { data: site } = await supabase
     .from('sites')
-    .select('name, clients(name)')
+    .select('name, commune, clients(name)')
     .eq('id', visit.site_id!)
     .maybeSingle()
   const siteName = (site as { name: string } | null)?.name ?? 'Chantier'
+  const city = (site as { commune: string | null } | null)?.commune?.trim() || null
   const clientRel = (site as { clients?: { name: string } | { name: string }[] | null } | null)?.clients
   const clientName = Array.isArray(clientRel) ? clientRel[0]?.name ?? null : clientRel?.name ?? null
   const subjectName = visit.target_subject_id
     ? ctx.openSubjects.find((s) => s.id === visit.target_subject_id)?.name ?? null
     : null
+
+  // Conducteur (auteur de la visite) — nom complet pour l'en-tête du CR.
+  let authorName: string | null = null
+  if (visit.created_by) {
+    const { data: u } = await supabase.from('users').select('full_name').eq('id', visit.created_by).maybeSingle()
+    authorName = (u as { full_name: string | null } | null)?.full_name?.trim() || null
+  }
 
   const startIso = visit.started_at ?? visit.created_at
   const dateLabel = new Date(startIso).toLocaleString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -1666,15 +1689,36 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const photos = selectedPhotos
     .map((c) => previews[c.id]?.url)
     .filter((u): u is string => !!u)
+  // Photos AVEC légende (commentaire de la capture) — pour un CR lisible sans l'app.
+  const photoItems = selectedPhotos
+    .map((c) => ({ url: previews[c.id]?.url, caption: c.body?.trim() || null }))
+    .filter((p): p is { url: string; caption: string | null } => !!p.url)
 
-  // Constats = notes bureau (site_notes) + notes/vocaux du terrain, dédupliqués.
-  const seen = new Set<string>()
-  const constats = [...ctx.capturedNotes, ...noteBodies, ...vocalBodies].filter((t) => {
-    const k = t.trim().toLowerCase()
-    if (!k || seen.has(k)) return false
-    seen.add(k)
-    return true
-  })
+  // Positions GPS des captures → carte des observations (le « où »).
+  const positions = captures
+    .filter((c) => c.lat != null && c.lng != null)
+    .map((c) => ({ lat: c.lat as number, lng: c.lng as number, kind: c.kind }))
+
+  // Comptes par type + éléments marqués (richesse de la visite, bloc « En bref »).
+  const noteCount = captures.filter((c) => c.kind === 'note').length
+  const verificationCount = captures.filter((c) => c.kind === 'verification').length
+  const starredCount = captures.filter((c) => c.starred).length
+
+  // Dédup insensible à la casse, réutilisable.
+  const dedup = (arr: string[]): string[] => {
+    const s = new Set<string>()
+    return arr.filter((t) => {
+      const k = t.trim().toLowerCase()
+      if (!k || s.has(k)) return false
+      s.add(k)
+      return true
+    })
+  }
+  // Constats = tout (compat markdown/aperçu). Observations = écrits ; transcriptions
+  // = vocaux bruts (relégués plus bas dans le PDF, « pour vérifier »).
+  const constats = dedup([...ctx.capturedNotes, ...noteBodies, ...vocalBodies])
+  const observations = dedup([...ctx.capturedNotes, ...noteBodies])
+  const transcriptions = dedup(vocalBodies)
 
   // Points du CR groupés par TAG (écran 2). Texte = commentaire de la capture,
   // sinon un libellé par type. Seules les captures GARDÉES et taguées comptent.
@@ -1706,6 +1750,8 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   return {
     siteName,
     clientName,
+    authorName,
+    city,
     dateLabel,
     typeLabel: visitIntentLabel(visit.visit_motive) ?? ORIGIN_FR[visit.origin ?? ''] ?? 'Visite',
     motive: visit.visit_motive ?? null,
@@ -1713,12 +1759,19 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     objective: visit.objective?.trim() || null,
     subjectName,
     constats,
+    observations,
+    transcriptions,
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
     photos,
+    photoItems,
+    positions,
     photoCount: photoCaptures.length,
     videoCount,
     vocalCount,
+    noteCount,
+    verificationCount,
+    starredCount,
     summary,
     points,
     outcomeLabel: visit.outcome ? OUTCOME_FR[visit.outcome] ?? visit.outcome : null,
