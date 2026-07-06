@@ -28,6 +28,7 @@ export function DebriefExpress({
   siteId,
   siteName,
   dossierId,
+  motive,
   questionsCount,
   initialObjective,
   initialCaptures,
@@ -40,6 +41,8 @@ export function DebriefExpress({
   siteName: string
   /** Le dossier d'opération de la prévisite — cible du CTA « Préparer l'AO ». */
   dossierId: string | null
+  /** Intention de la visite (mig 186) — spécialise l'INTRO et la CONCLUSION. */
+  motive: string | null
   /** ❓ « à vérifier » posées pendant la visite (hors captures). */
   questionsCount: number
   /** Objet de la visite déjà saisi (le CR l'affiche) — éditable ici. */
@@ -153,18 +156,29 @@ export function DebriefExpress({
     })
   }
 
+  // L'INTENTION change la SENSATION de fin (intro + conclusion), pas le moteur.
+  const isPremiere = motive === 'premiere'
+  const isAo = motive === 'previsite_ao' || !!dossierId
+  const overline = isPremiere ? 'Fin de première visite' : isAo ? 'Fin de prévisite' : 'Fin de visite'
+  const title = isPremiere ? 'Première mémoire créée' : isAo ? 'Prévisite enregistrée' : 'Visite enregistrée'
+  const reassure = isPremiere
+    ? 'Ce chantier a maintenant une mémoire.'
+    : isAo
+      ? 'Base de votre analyse enregistrée.'
+      : 'Tout est enregistré dans MemorIA.'
+
   return (
     <div className="mx-auto max-w-md space-y-4 p-4 pb-48">
-      {/* En-tête : la visite a une VRAIE fin — le cerveau doit sentir que c'est
-          terminé et rangé. Affirmation « enregistrée » + réassurance mémoire. */}
+      {/* En-tête : la visite a une VRAIE fin. Écran HOMOGÈNE entre les 3 intentions
+          — seuls les mots changent, pour donner la bonne sensation métier. */}
       <header className="space-y-2 pt-2">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
-            {dossierId ? 'Fin de prévisite' : 'Fin de visite'}
+            {overline}
           </p>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
             <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" />
-            Visite enregistrée
+            {title}
           </h1>
           <p className="text-sm text-muted-foreground">
             {siteName} · {total} élément{total > 1 ? 's' : ''} relevé{total > 1 ? 's' : ''}
@@ -184,7 +198,7 @@ export function DebriefExpress({
             })}
           </div>
         )}
-        <p className="text-[13px] text-muted-foreground">Tout est enregistré dans MemorIA.</p>
+        <p className="text-[13px] text-muted-foreground">{reassure}</p>
       </header>
 
       {/* Objet de la visite — « pourquoi je suis venu ». Facultatif, apparaît dans
@@ -204,9 +218,9 @@ export function DebriefExpress({
         />
       </div>
 
-      {/* Impact métier — la visite n'est pas juste enregistrée,
-          elle a enrichi le chantier. 3-4 lignes, jamais un module lourd. */}
-      {impact && <VisitImpactCard impact={impact} total={total} />}
+      {/* Conclusion métier — la SENSATION de fin, selon l'intention :
+          Première → mémoire de référence · Suivi → évolution · AO → base d'analyse. */}
+      {impact && <VisitImpactCard impact={impact} total={total} motive={motive} isPremiere={isPremiere} isAo={isAo} />}
 
       {/* Suites à créer — les tags Action/Réserve deviennent des objets chantier
           (MemorIA propose, l'humain valide). */}
@@ -262,7 +276,7 @@ export function DebriefExpress({
               href={`/dossiers/${dossierId}`}
               className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-600/60 px-4 py-2.5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
             >
-              <FileText className="h-4 w-4" /> Enchaîner : préparer l&apos;appel d&apos;offres <ArrowRight className="h-4 w-4" />
+              <FileText className="h-4 w-4" /> Préparer l&apos;analyse AO <ArrowRight className="h-4 w-4" />
             </Link>
           )}
           <button
@@ -298,56 +312,77 @@ export function DebriefExpress({
  * matière ; rien à dire = pas de carte (le conducteur doit sentir qu'il a fait
  * avancer son chantier, jamais lire un journal d'activité).
  */
-function VisitImpactCard({ impact, total }: { impact: VisitImpact; total: number }) {
+// Conteneur HOMOGÈNE (même carte verte) ; seuls le titre, les lignes et le
+// pied changent selon l'intention. C'est ce qui donne une SENSATION différente
+// sans faire trois écrans.
+function ImpactShell({ title, lines, footer }: { title: string; lines: string[]; footer: string }) {
+  if (lines.length === 0 && !footer) return null
+  return (
+    <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{title}</h2>
+      {lines.length > 0 && (
+        <ul className="space-y-1 text-[13px] text-emerald-900/90 dark:text-emerald-100/90">
+          {lines.map((l, i) => (
+            <li key={i} className="flex gap-1.5">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              <span className="min-w-0">{l}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {footer && (
+        <p className="flex items-center gap-1.5 border-t border-emerald-200/70 pt-2 text-[13px] text-emerald-800/80 dark:border-emerald-900/40 dark:text-emerald-200/70">
+          <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+          {footer}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function VisitImpactCard({ impact, total, isPremiere, isAo }: { impact: VisitImpact; total: number; motive: string | null; isPremiere: boolean; isAo: boolean }) {
   const { added, touchedSubjects } = impact
   const plural = (n: number) => (n > 1 ? 's' : '')
 
-  const lines: string[] = []
+  // 🏗 PREMIÈRE VISITE — créer la mémoire de référence (« point zéro »).
+  if (isPremiere) {
+    const parts: string[] = []
+    if (added.photos > 0) parts.push(`${added.photos} photo${plural(added.photos)}`)
+    if (added.reserves > 0) parts.push(`${added.reserves} réserve${plural(added.reserves)}`)
+    if (added.actions > 0) parts.push(`${added.actions} action${plural(added.actions)}`)
+    const lines = ['Cette visite devient le point de référence du chantier.']
+    if (parts.length > 0) lines.push(parts.join(' · '))
+    return <ImpactShell title="Première mémoire créée" lines={lines} footer="Les prochaines visites seront comparées à celle-ci." />
+  }
 
-  // Conséquence 1 — les points de vigilance du chantier ont bougé.
+  // 📑 PRÉVISITE AO — la base de l'analyse (la mécanique AO vient au 2ᵉ temps).
+  if (isAo) {
+    const parts: string[] = []
+    if (added.photos > 0) parts.push(`${added.photos} photo${plural(added.photos)}`)
+    if (touchedSubjects.length > 0) parts.push(`${touchedSubjects.length} point${plural(touchedSubjects.length)} technique${plural(touchedSubjects.length)}`)
+    if (added.reserves > 0) parts.push(`${added.reserves} point${plural(added.reserves)} de vigilance`)
+    const lines = ['Cette visite constitue la base de votre analyse.']
+    if (parts.length > 0) lines.push(`MemorIA a relevé : ${parts.join(' · ')}`)
+    return <ImpactShell title="Prévisite enregistrée" lines={lines} footer="Prochaine étape : préparer l'analyse AO" />
+  }
+
+  // 📷 SUIVI — faire évoluer la mémoire (le cas normal, inchangé).
+  const lines: string[] = []
   if (touchedSubjects.length > 0) {
     const n = touchedSubjects.length
     const names = touchedSubjects.slice(0, 2).join(', ')
     lines.push(`${n} point${plural(n)} de vigilance mis à jour${n <= 2 ? ` : ${names}` : ''}`)
   }
-  // Conséquence 2 — une réserve à traiter est née de la visite.
-  if (added.reserves > 0) {
-    lines.push(`${added.reserves} réserve${plural(added.reserves)} à traiter créée${plural(added.reserves)}`)
-  }
-  // Conséquence 3 — des actions à suivre.
-  if (added.actions > 0) {
-    lines.push(`${added.actions} action${plural(added.actions)} à suivre créée${plural(added.actions)}`)
-  }
-  // Conséquence 4 — le SUIVI du chantier s'est enrichi (pas « 8 photos » brut).
+  if (added.reserves > 0) lines.push(`${added.reserves} réserve${plural(added.reserves)} à traiter créée${plural(added.reserves)}`)
+  if (added.actions > 0) lines.push(`${added.actions} action${plural(added.actions)} à suivre créée${plural(added.actions)}`)
   const enrichParts: string[] = []
   if (added.photos > 0) enrichParts.push(`${added.photos} photo${plural(added.photos)}`)
   if (added.notes > 0) enrichParts.push(`${added.notes} note${plural(added.notes)}`)
-  const enrichWith = enrichParts.length > 0
-    ? enrichParts.join(' et ')
-    : total > 0 ? `${total} élément${plural(total)}` : null
+  const enrichWith = enrichParts.length > 0 ? enrichParts.join(' et ') : total > 0 ? `${total} élément${plural(total)}` : null
   if (enrichWith) lines.push(`Le suivi du chantier a été enrichi avec ${enrichWith}`)
 
   if (lines.length === 0) return null
-
-  return (
-    <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
-        Votre visite a fait avancer le chantier
-      </h2>
-      <ul className="space-y-1 text-[13px] text-emerald-900/90 dark:text-emerald-100/90">
-        {lines.map((l, i) => (
-          <li key={i} className="flex gap-1.5">
-            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-            <span className="min-w-0">{l}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="flex items-center gap-1.5 border-t border-emerald-200/70 pt-2 text-[13px] text-emerald-800/80 dark:border-emerald-900/40 dark:text-emerald-200/70">
-        <ArrowRight className="h-3.5 w-3.5 shrink-0" />
-        Prochaine étape : compléter le compte-rendu au bureau
-      </p>
-    </section>
-  )
+  return <ImpactShell title="Cette visite enrichit la mémoire" lines={lines} footer="Prochaine étape : compléter le compte-rendu au bureau" />
 }
 
 const KIND_ICON: Record<VisitCaptureKind, React.ReactNode> = {
