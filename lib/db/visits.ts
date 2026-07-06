@@ -572,19 +572,26 @@ export interface SitePatrimoine {
   firstVisitLabel: string | null
   photos: number
   visits: number
+  meetings: number
   actions: number
   reserves: number
+  subjects: number
 }
 
 /** Le PATRIMOINE du chantier — « depuis la première visite : N photos · N visites
- *  · N actions · N réserves ». Présenté comme un patrimoine, pas des KPI. */
+ *  · N réunions · N actions · N réserves · N sujets ». Présenté comme un patrimoine
+ *  accumulé (« ce chantier apprend »), pas des KPI. Comptes RÉELS, déterministes —
+ *  on n'affiche que ce qui a une source propre (entreprises/personnes = participants
+ *  JSON, zones sensibles = non captées : volontairement absents). */
 export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoine> {
   const supabase = createAdminClient()
-  const [visitsRes, photosRes, actionsRes, reservesRes, firstRes] = await Promise.all([
+  const [visitsRes, meetingsRes, photosRes, actionsRes, reservesRes, subjectsRes, firstRes] = await Promise.all([
     supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).not('origin', 'is', null),
+    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).is('origin', null).neq('status', 'draft'),
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').neq('status', 'discarded'),
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
     supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
+    supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('site_id', siteId).neq('status', 'closed'),
     supabase.from('site_reports').select('started_at, created_at').eq('site_id', siteId).not('origin', 'is', null).order('started_at', { ascending: true, nullsFirst: false }).limit(1).maybeSingle(),
   ])
   const first = firstRes.data as { started_at: string | null; created_at: string } | null
@@ -593,8 +600,10 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
     firstVisitLabel: firstIso ? new Date(firstIso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
     photos: photosRes.count ?? 0,
     visits: visitsRes.count ?? 0,
+    meetings: meetingsRes.count ?? 0,
     actions: actionsRes.count ?? 0,
     reserves: reservesRes.count ?? 0,
+    subjects: subjectsRes.count ?? 0,
   }
 }
 
