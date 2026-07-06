@@ -75,9 +75,15 @@ export async function updateDossierPhase(dossierId: string, phase: DossierPhase)
     .select('site_id')
     .maybeSingle()
   if (error) throw error
+  const siteId = (data as { site_id: string } | null)?.site_id ?? null
+  // Journalise la transition (mig 187) → jalon DATÉ pour la frise. Best-effort.
+  await supabase.from('dossier_phase_events').insert({ dossier_id: dossierId, site_id: siteId, phase }).then(
+    () => {},
+    () => {},
+  )
   // Marché gagné → le lieu devient un chantier visible (la mémoire suit, par construction).
-  if (phase === 'actif' && data) {
-    await supabase.from('sites').update({ phase: 'actif' }).eq('id', (data as { site_id: string }).site_id)
+  if (phase === 'actif' && siteId) {
+    await supabase.from('sites').update({ phase: 'actif' }).eq('id', siteId)
   }
 }
 

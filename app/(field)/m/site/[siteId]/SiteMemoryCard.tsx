@@ -1,4 +1,4 @@
-import { Footprints, Camera, ListChecks, ClipboardList } from 'lucide-react'
+import { Footprints, Camera, ListChecks, ClipboardList, Check, AlertTriangle } from 'lucide-react'
 import type { SiteMemorySnapshot } from '@/lib/db/visits'
 
 /**
@@ -29,6 +29,25 @@ export function SiteMemoryCard({ snapshot }: { snapshot: SiteMemorySnapshot }) {
           </div>
         ))}
       </div>
+
+      {/* Dernière évolution — le chantier « parle » de ses sujets récents. */}
+      {snapshot.evolution.length > 0 && (
+        <div className="mt-3 border-t border-border/50 pt-3">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Dernière évolution</p>
+          <ul className="space-y-1">
+            {snapshot.evolution.map((e, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-[13px]">
+                {e.tone === 'ok' ? (
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                )}
+                <span className="min-w-0">{e.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   )
 }

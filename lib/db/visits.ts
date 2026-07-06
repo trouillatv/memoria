@@ -22,6 +22,7 @@ import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
 import { detectVisitSuites } from '@/services/ai/visit-suites'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
+import { listSubjectsBySite } from '@/lib/db/subjects'
 import type {
   DbSiteReport,
   VisitMotive,
@@ -1070,6 +1071,7 @@ export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceL
 // Le chantier « parle » : combien de visites, de photos, d'actions, de réserves
 // il a accumulé depuis son premier jour. Déterministe (comptes bruts), zéro IA.
 
+export interface SiteEvolutionLine { text: string; tone: 'ok' | 'warn' }
 export interface SiteMemorySnapshot {
   visits: number
   photos: number
@@ -1077,6 +1079,8 @@ export interface SiteMemorySnapshot {
   reserves: number
   /** « mars 2026 » — le mois du premier jalon (null si aucune visite). */
   sinceLabel: string | null
+  /** Dernière évolution : quelques sujets résolus (✓) / encore actifs (⚠). */
+  evolution: SiteEvolutionLine[]
 }
 
 export async function getSiteMemorySnapshot(siteId: string): Promise<SiteMemorySnapshot> {
@@ -1108,12 +1112,31 @@ export async function getSiteMemorySnapshot(siteId: string): Promise<SiteMemoryS
     ? new Date(firstIso).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'Pacific/Noumea' })
     : null
 
+  // Dernière évolution — les sujets récemment actifs : ✓ résolus (closed) ou
+  // ⚠ encore actifs (open avec réserves/actions en retard). Max 3, du plus récent.
+  const evolution: SiteEvolutionLine[] = []
+  const subjects = await listSubjectsBySite(siteId).catch(() => [])
+  const recent = [...subjects].sort((a, b) => ((a.lastActivity ?? '') < (b.lastActivity ?? '') ? 1 : -1))
+  for (const s of recent) {
+    if (evolution.length >= 3) break
+    if (s.status === 'closed') {
+      evolution.push({ text: `${s.name} résolu`, tone: 'ok' })
+    } else if (s.status === 'open' && (s.openReserves > 0 || s.lateActions > 0)) {
+      const bits = [
+        s.openReserves > 0 ? `${s.openReserves} réserve${s.openReserves > 1 ? 's' : ''}` : null,
+        s.lateActions > 0 ? `${s.lateActions} action${s.lateActions > 1 ? 's' : ''} en retard` : null,
+      ].filter(Boolean).join(' · ')
+      evolution.push({ text: `${s.name} — ${bits}`, tone: 'warn' })
+    }
+  }
+
   return {
     visits: visitsRes.count ?? 0,
     photos: (capPhotosRes.count ?? 0) + intvPhotos,
     actions: actionsRes.count ?? 0,
     reserves: reservesRes.count ?? 0,
     sinceLabel,
+    evolution,
   }
 }
 

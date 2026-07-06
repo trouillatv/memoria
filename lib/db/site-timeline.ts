@@ -23,6 +23,7 @@ export type TimelineKind =
   | 'reserve_lifted'
   | 'action_done'
   | 'decision'
+  | 'phase'
 
 export interface TimelineEvent {
   at: string // ISO — clé de tri (décroissant)
@@ -31,6 +32,17 @@ export interface TimelineEvent {
   title: string
   detail: string | null
   href: string | null
+  /** Jalon marquant (⭐) — ex. la PREMIÈRE visite (le point zéro du chantier). */
+  star?: boolean
+}
+
+// Transitions de phase du dossier (mig 187) → jalons datés de la frise.
+const PHASE_LABEL: Record<string, string> = {
+  prospect: 'Dossier ouvert',
+  en_ao: 'Passé en appel d’offres',
+  actif: 'Marché remporté — chantier démarré',
+  perdu: 'Appel d’offres non retenu',
+  archive: 'Chantier archivé',
 }
 
 const VISIT_TYPE_LABEL: Record<string, string> = {
@@ -64,7 +76,7 @@ export async function buildSiteTimeline(siteId: string, limit = 100): Promise<Ti
 async function buildSiteTimelineInner(siteId: string, limit: number): Promise<TimelineEvent[]> {
   const supabase = createAdminClient()
 
-  const [repsRes, missionsRes, reserves, decisions, actionsRes] = await Promise.all([
+  const [repsRes, missionsRes, reserves, decisions, actionsRes, phaseRes] = await Promise.all([
     // Visites + réunions/CR (origin non-null = visite, null = réunion).
     supabase
       .from('site_reports')
@@ -76,6 +88,8 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
     listDecisionsBySite(siteId).catch(() => []),
     // Actions terminées = fait accompli (jalon d'histoire).
     supabase.from('site_actions').select('id, title, done_at, created_at').eq('site_id', siteId).eq('status', 'done'),
+    // Transitions de phase du dossier (mig 187) — jalons datés.
+    supabase.from('dossier_phase_events').select('id, phase, at').eq('site_id', siteId).order('at', { ascending: false }),
   ])
 
   const events: TimelineEvent[] = []
@@ -93,6 +107,8 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
         title: visitIntentLabel(r.visit_motive) ?? VISIT_TYPE_LABEL[r.origin] ?? 'Visite',
         detail: null,
         href: `/m/visite/${r.id}/recap`,
+        // ⭐ La première visite = le point zéro du chantier, mis en avant.
+        star: r.visit_motive === 'premiere' || undefined,
       })
     } else {
       events.push({
@@ -177,6 +193,21 @@ async function buildSiteTimelineInner(siteId: string, limit: number): Promise<Ti
       title: `Action terminée : ${a.title}`,
       detail: null,
       href: null,
+    })
+  }
+
+  // Jalons de phase du dossier (AO lancé, marché remporté, chantier archivé…).
+  for (const p of (phaseRes.data ?? []) as Array<{ phase: string; at: string }>) {
+    const label = PHASE_LABEL[p.phase]
+    if (!label) continue
+    events.push({
+      at: p.at,
+      dateLabel: frDate(p.at),
+      kind: 'phase',
+      title: label,
+      detail: null,
+      href: null,
+      star: p.phase === 'actif' || undefined,
     })
   }
 
