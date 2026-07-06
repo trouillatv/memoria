@@ -30,6 +30,8 @@ import { SiteQuickAccessCard } from './SiteQuickAccessCard'
 import { SinceLastVisitCard } from './SinceLastVisitCard'
 import { SiteMemoryCard } from './SiteMemoryCard'
 import { JustVisitedBanner } from './JustVisitedBanner'
+import { SitePresenceReminders } from './SitePresenceReminders'
+import { buildSitePresenceReminders } from '@/lib/db/site-presence'
 import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
@@ -224,10 +226,13 @@ export default async function FieldSitePage({
         .eq('scheduled_for', todayIso)
         .neq('status', 'skipped')
         .order('planned_start', { ascending: true })).data) ?? []) as TodayIntv[]
-  const [siteAnomalies, recentPhotos, aSavoir] = await Promise.all([
+  const [siteAnomalies, recentPhotos, aSavoir, presenceReminders] = await Promise.all([
     getSiteAnomalies(siteId).catch(() => []),
     getSiteRecentPhotos(siteId, 6).catch(() => []),
     listSiteASavoirActive(siteId).catch(() => []),
+    // « Puisque vous êtes ici » — l'assistant de présence (niveau 3) : 1 à 3
+    // opportunités à saisir sur place, déterministes, zéro donnée nouvelle.
+    buildSitePresenceReminders(siteId, { limit: 3 }).catch(() => []),
   ])
   const openAnomalies = siteAnomalies.filter((a) => a.status === 'open')
   const openAnomaliesCount = openAnomalies.length
@@ -367,11 +372,15 @@ export default async function FieldSitePage({
           {/* Contexte du lieu — référence & secondaire (sous la narration). */}
           {identity && <IdentityCard identity={identity} />}
 
-          {/* « Aujourd'hui ici » — ce qui me concerne maintenant. */}
+          {/* « Aujourd'hui ici » — ce qui me concerne maintenant. En tête,
+              l'assistant de présence : puisque je suis là, que puis-je saisir ? */}
           <section className="rounded-2xl border bg-card p-4 space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Aujourd&apos;hui ici
         </h2>
+
+        <SitePresenceReminders reminders={presenceReminders} />
+
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
             <Hammer className="h-3.5 w-3.5" />{todayInterventions.length} interv.
