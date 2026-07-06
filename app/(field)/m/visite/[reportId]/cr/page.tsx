@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ListChecks, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
-  Download, ChevronRight, Star, Monitor, Check,
+  ChevronRight, Star, Monitor, Check,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc, type VisitCrDoc } from '@/lib/db/visits'
@@ -51,8 +51,6 @@ export default async function VisitCrPreviewPage({
   if (!doc) notFound()
 
   const pdfHref = `/m/visite/${reportId}/pdf`
-  // ?download=1 force le téléchargement (attachment) au lieu de l'aperçu (inline).
-  const pdfDownloadHref = `${pdfHref}?download=1`
   const isAo = doc.motive === 'previsite_ao'
   const summary = doc.summary?.trim() || fallbackSummary(doc)
 
@@ -203,7 +201,9 @@ export default async function VisitCrPreviewPage({
           (pas de DOCX pour les CR de visite, pas de taille de fichier fictive). */}
       <Section Icon={FileText} cls="text-slate-600" ring="bg-slate-100 dark:bg-slate-800/60" title="Documents générés">
         <a
-          href={pdfDownloadHref}
+          href={pdfHref}
+          target="_blank"
+          rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-xl border bg-background p-3"
         >
           <FileText className="h-5 w-5 shrink-0 text-rose-600" />
@@ -211,17 +211,24 @@ export default async function VisitCrPreviewPage({
             <span className="block truncate text-sm font-medium">Compte-rendu de visite</span>
             <span className="block text-[12px] text-muted-foreground">PDF</span>
           </span>
-          <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Eye className="h-4 w-4 shrink-0 text-muted-foreground" />
         </a>
       </Section>
 
-      {/* Télécharger — force le téléchargement du fichier sur le téléphone. */}
+      {/* Ouvrir le PDF EN GRAND dans le lecteur du téléphone : on le VOIT d'abord,
+          puis on le télécharge / partage avec les commandes natives. Pas de
+          téléchargement à l'aveugle vers un dossier inconnu. */}
       <a
-        href={pdfDownloadHref}
+        href={pdfHref}
+        target="_blank"
+        rel="noopener noreferrer"
         className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background"
       >
-        <Download className="h-4 w-4" /> Télécharger le PDF complet
+        <Eye className="h-4 w-4" /> Ouvrir le PDF complet
       </a>
+      <p className="-mt-1 text-center text-[12px] text-muted-foreground">
+        Le PDF s’ouvre en grand — vous pouvez ensuite le télécharger ou le partager depuis votre téléphone.
+      </p>
 
       {/* Le sens : ce que devient ce CR — le lien terrain → patrimoine numérique. */}
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
