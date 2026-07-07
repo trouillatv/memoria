@@ -92,6 +92,25 @@ export function CaptureTriage({
   const canAnnotate = capture.kind === 'photo' && !!preview
   const chosen = currentDecision(capture)
 
+  // Quand la capture est taguée « Action » / « Réserve », le commentaire N'EST PLUS
+  // facultatif : il devient le TITRE de la suite. On le rend explicite et bien
+  // visible sur la photo, au lieu de laisser une « Action à préciser » vide.
+  const needsTitle = chosen === 'action' || chosen === 'reserve'
+  const commentLabel = chosen === 'action' ? 'Précisez l’action à réaliser'
+    : chosen === 'reserve' ? 'Précisez la réserve'
+    : null
+  const commentPlaceholder = chosen === 'action' ? 'Ex. Reprendre l’étanchéité de la terrasse'
+    : chosen === 'reserve' ? 'Ex. Fissure sur poteau — à traiter'
+    : 'Ajouter un commentaire… (facultatif)'
+
+  // Persiste le commentaire tapé APRÈS le choix du tag (au blur) : sinon le texte
+  // saisi une fois la photo taguée serait perdu (il n'était lu qu'au moment du tag).
+  function saveCommentIfTagged() {
+    if (!chosen || chosen === 'delete' || !canComment) return
+    const v = (commentRef.current?.value ?? '').trim()
+    if (v !== (capture.body ?? '').trim()) decide(chosen, false)
+  }
+
   // L'image ANNOTÉE s'ajoute EN PLUS de l'original (jamais détruire la preuve) :
   // nouvelle capture photo, même instant réel que l'originale (donc rangée juste
   // à côté d'elle dans une visite importée). Le parent recharge ensuite la liste.
@@ -216,14 +235,22 @@ export function CaptureTriage({
         <p className="text-sm font-medium text-muted-foreground">Cette capture montre…</p>
 
         {canComment && (
-          <input
-            key={capture.id}
-            ref={commentRef}
-            defaultValue={capture.body ?? ''}
-            placeholder="Ajouter un commentaire… (facultatif)"
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            maxLength={500}
-          />
+          <div className="space-y-1">
+            {commentLabel && (
+              <p className="text-[13px] font-medium text-emerald-700 dark:text-emerald-300">{commentLabel}</p>
+            )}
+            <input
+              key={capture.id}
+              ref={commentRef}
+              defaultValue={capture.body ?? ''}
+              placeholder={commentPlaceholder}
+              onBlur={saveCommentIfTagged}
+              className={`w-full rounded-lg bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring ${
+                needsTitle ? 'border-2 border-emerald-400' : 'border border-input'
+              }`}
+              maxLength={500}
+            />
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-2">
@@ -234,7 +261,15 @@ export function CaptureTriage({
               <button
                 key={t.decision}
                 type="button"
-                onClick={() => (active ? onUndo(capture) : decide(t.decision, false))}
+                onClick={() => {
+                  if (active) { onUndo(capture); return }
+                  decide(t.decision, false)
+                  // Action/Réserve non nommée → on invite à préciser tout de suite,
+                  // le champ (déjà mis en avant) prend le focus sur la photo.
+                  if ((t.decision === 'action' || t.decision === 'reserve') && canComment && !commentRef.current?.value.trim()) {
+                    commentRef.current?.focus()
+                  }
+                }}
                 className={`flex items-center gap-2 rounded-xl border-2 px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${t.cls} ${active ? 'bg-muted ring-2 ring-current ring-offset-1' : 'bg-background'}`}
               >
                 {active ? <Check className="h-5 w-5 shrink-0" /> : <Icon className="h-5 w-5 shrink-0" />}

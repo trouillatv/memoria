@@ -80,6 +80,8 @@ export function SuiteProposals({ initialSuites }: { initialSuites: VisitSuitePro
           <div key={k} className="space-y-2">
             {group.map((s) => {
               const busy = busyId === s.id
+              // On ne crée jamais une suite sans nom (fini les « Action à préciser »).
+              const canCreate = (titles[s.id] ?? s.text).trim().length > 0
               return (
                 <div key={s.id} className={`space-y-2 rounded-lg border bg-background p-2.5 ${busy ? 'opacity-60' : ''}`}>
                   <div className="flex items-center justify-between gap-2">
@@ -97,9 +99,18 @@ export function SuiteProposals({ initialSuites }: { initialSuites: VisitSuitePro
                     <p className="rounded bg-muted/60 px-2 py-1 text-[11px] italic text-muted-foreground">depuis « {s.excerpt} »</p>
                   )}
 
+                  {/* Suite née d'un tag SANS commentaire : on dit d'où elle vient
+                      (le geste du conducteur), pas une tâche vide surgie de nulle part. */}
+                  {s.source === 'tag' && !s.text.trim() && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Depuis une photo que vous avez taguée « {k === 'reserve' ? 'réserve' : 'à faire'} » — nommez-la ou ignorez-la.
+                    </p>
+                  )}
+
                   <input
                     value={titles[s.id] ?? s.text}
                     onChange={(e) => setTitles((t) => ({ ...t, [s.id]: e.target.value }))}
+                    placeholder={k === 'reserve' ? 'Décrivez la réserve…' : k === 'surveiller' ? 'Que faut-il surveiller ?' : 'Nommez l’action à réaliser…'}
                     className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     maxLength={300}
                   />
@@ -115,7 +126,7 @@ export function SuiteProposals({ initialSuites }: { initialSuites: VisitSuitePro
 
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
-                      type="button" onClick={() => create(s)} disabled={busy}
+                      type="button" onClick={() => create(s)} disabled={busy || !canCreate}
                       className="inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-2 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       <Check className="h-3.5 w-3.5" /> {meta.verb}
