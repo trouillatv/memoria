@@ -129,28 +129,40 @@ function Bullets({ items, empty }: { items: string[]; empty?: string }) {
   )
 }
 
-// Carte SCHÉMATIQUE : positions GPS projetées relativement dans un cadre. Pas de
-// fond de rue (aucun fournisseur de tuiles) → on montre l'agencement relatif des
-// observations sur le chantier, coloré par type.
+// Carte SCHÉMATIQUE : positions GPS projetées à l'ÉCHELLE RÉELLE (mètres),
+// centrées dans le cadre. Pas de fond de rue (aucun fournisseur de tuiles) → on
+// montre l'agencement RÉEL des observations, coloré par type. Le zoom est plafonné
+// (MIN_HALF_M) : deux points proches restent un petit amas central au lieu d'être
+// étirés d'un coin à l'autre — ce qui « ne parlait pas ».
 function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
-  const lats = positions.map((p) => p.lat)
-  const lngs = positions.map((p) => p.lng)
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
-  const spanLat = maxLat - minLat || 1
-  const spanLng = maxLng - minLng || 1
-  const PAD = 0.12
+  const cLat = positions.reduce((s, p) => s + p.lat, 0) / positions.length
+  const cLng = positions.reduce((s, p) => s + p.lng, 0) / positions.length
+  const M_PER_DEG = 111_320
+  const cosLat = Math.cos((cLat * Math.PI) / 180)
+  // Décalage de chaque point par rapport au centre, en mètres (y vers le nord).
+  const offsets = positions.map((p) => ({
+    p,
+    dx: (p.lng - cLng) * M_PER_DEG * cosLat,
+    dy: (p.lat - cLat) * M_PER_DEG,
+  }))
+  const halfW = Math.max(...offsets.map((o) => Math.abs(o.dx)), 0)
+  const halfH = Math.max(...offsets.map((o) => Math.abs(o.dy)), 0)
+  const PAD = 0.14
+  // Rayon minimal représenté : sous ~15 m d'étalement, on ne zoome pas davantage
+  // (sinon un chantier de quelques mètres remplirait tout le cadre = illisible).
+  const MIN_HALF_M = 15
+  const scaleX = (MAP_W / 2) * (1 - PAD) / Math.max(halfW, MIN_HALF_M)
+  const scaleY = (MAP_H / 2) * (1 - PAD) / Math.max(halfH, MIN_HALF_M)
+  const scale = Math.min(scaleX, scaleY) // même échelle X/Y → géométrie vraie
   const kindsPresent = [...new Set(positions.map((p) => p.kind))]
 
   return (
     <View wrap={false}>
       <View style={styles.map}>
-        {positions.map((p, i) => {
-          const fx = positions.length === 1 ? 0.5 : (p.lng - minLng) / spanLng
-          const fy = positions.length === 1 ? 0.5 : (p.lat - minLat) / spanLat
-          const left = (PAD + fx * (1 - 2 * PAD)) * MAP_W - 6
-          const top = (PAD + (1 - fy) * (1 - 2 * PAD)) * MAP_H - 6
-          return <View key={i} style={[styles.marker, { left, top, backgroundColor: KIND_COLOR[p.kind] ?? '#6b7280' }]} />
+        {offsets.map((o, i) => {
+          const left = MAP_W / 2 + o.dx * scale - 6
+          const top = MAP_H / 2 - o.dy * scale - 6
+          return <View key={i} style={[styles.marker, { left, top, backgroundColor: KIND_COLOR[o.p.kind] ?? '#6b7280' }]} />
         })}
       </View>
       <View style={styles.legend}>

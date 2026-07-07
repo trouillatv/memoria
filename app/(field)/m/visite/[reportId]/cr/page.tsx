@@ -228,14 +228,12 @@ export default async function VisitCrPreviewPage({
           </span>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <a
-            href={pdfHref}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href={`/m/visite/${reportId}/document`}
             className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
           >
             <Eye className="h-4 w-4" /> Ouvrir
-          </a>
+          </Link>
           <a
             href={pdfDownloadHref}
             target="_blank"

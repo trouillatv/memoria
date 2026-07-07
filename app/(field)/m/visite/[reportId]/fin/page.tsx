@@ -62,8 +62,10 @@ export default async function VisitFinPage({
       </div>
 
       {/* Dans 90 % des cas, on veut juste repartir travailler : le retour est
-          l'action PRINCIPALE, le CR reste accessible en lien discret. */}
-      <div className="space-y-3">
+          l'action PRINCIPALE. Mais consulter son travail ne doit pas sonner comme
+          un « au revoir » — le CR est une VRAIE seconde option, chaleureuse et
+          visible, pas un lien qu'on relègue. */}
+      <div className="space-y-2.5">
         {isAo && previsiteDossierId ? (
           <Link
             href={`/dossiers/${previsiteDossierId}`}
@@ -79,9 +81,15 @@ export default async function VisitFinPage({
             <Home className="h-4 w-4" /> Retour au chantier
           </Link>
         )}
-        <Link href={recapHref} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground underline underline-offset-2">
-          <FileText className="h-4 w-4" /> Voir le compte-rendu
+        <Link
+          href={recapHref}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-sm font-medium text-emerald-800 active:brightness-95 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200"
+        >
+          <FileText className="h-4 w-4" /> Revoir votre compte-rendu
         </Link>
+        <p className="text-[13px] text-muted-foreground">
+          Prenez le temps de le relire — il reste disponible à tout moment.
+        </p>
       </div>
     </div>
   )
