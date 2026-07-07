@@ -16,6 +16,7 @@ import { listMeetingSitesAction } from './meeting-actions'
 import { startVisitAction } from './site/[siteId]/visit-actions'
 import { quickCreateSiteVisitAction } from './quick-site-actions'
 import { VISIT_INTENTS, type VisitIntent, type VisitIntentAccent } from '@/lib/field/visit-intents'
+import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 
 type Site = { id: string; name: string }
 type Mode = 'pick' | 'create'
@@ -172,7 +173,11 @@ export function VisitLauncherHome() {
                   <button type="button" onClick={() => setIntent(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <ArrowLeft className="h-3.5 w-3.5" /> {VISIT_INTENTS.find((i) => i.slug === intent)?.label ?? 'Retour'}
                   </button>
-                  <p className="text-[13px] text-muted-foreground">Comment voulez-vous démarrer ?</p>
+                  {/* AVANT de démarrer : « Préparer ma visite » — MÊME moteur que la
+                      fiche chantier, avec le motif déjà choisi porté (initialMotive).
+                      Facultatif ; le démarrage juste dessous porte le même motif. */}
+                  <SiteBriefButton siteId={chosenSite.id} variant="mobile" mode="visit" initialMotive={intent ?? undefined} />
+                  <p className="pt-1 text-[13px] text-muted-foreground">Comment voulez-vous démarrer ?</p>
                   <ModeBtn onClick={captureNow} disabled={pending} icon={<Camera className="h-5 w-5" />} title="Capturer maintenant" hint="Photos, vidéos, vocaux sur place" />
                   <ModeBtn onClick={() => importMode('whatsapp_zip')} disabled={pending} icon={<MessageSquare className="h-5 w-5" />} title="Importer depuis WhatsApp" hint="Un export .zip de la discussion" />
                   <ModeBtn onClick={() => importMode('upload')} disabled={pending} icon={<FolderUp className="h-5 w-5" />} title="Importer des fichiers" hint="Photos, vidéos, vocaux, PDF" />

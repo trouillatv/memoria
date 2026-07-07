@@ -165,3 +165,46 @@ Le risque produit n'est pas de manquer d'IA.
 Le risque est qu'Adrien ou Fred perde plusieurs clics pour arriver sur le bon chantier.
 
 QR + home terrain + contexte chantier resolvent ce probleme plus vite qu'une feature IA sophistiquee.
+
+---
+
+## Roadmap — Teaser dynamique sur « Preparer ma visite » (a faire, pas encore code)
+
+Note produit (Guillaume, apres restauration du rituel « Preparer ma visite » +
+motive-aware). NON code volontairement — inscrit ici pour plus tard.
+
+Aujourd'hui le bouton dit une etiquette :
+
+```text
+Preparer ma visite
+```
+
+Demain il doit dire ce qui se passe, SANS ouvrir le panneau — un vrai appel a
+l'action :
+
+```text
+Preparer ma visite
+3 points meritent votre attention
+```
+```text
+Preparer ma visite
+Rien n'a change depuis votre derniere visite
+```
+```text
+Preparer ma visite
+2 reserves - 1 reunion demain
+```
+
+Pourquoi : le bouton passe de « Preparer ma visite » a « il se passe quelque
+chose, viens voir ». C'est ce qui transforme une fonction en reflexe.
+
+Faisabilite : les chiffres existent deja (getSiteBriefAction : vigilances,
+reserves, changements depuis le dernier CR, reunions proches). Il faut :
+- une projection LEGERE (compteur seul, pas le brief complet) calculable cote
+  serveur a l'affichage de la fiche, sans ouvrir le panneau ;
+- une phrase de synthese deterministe, priorisee (1 ligne max) ;
+- un etat calme quand rien ne bouge (« Rien n'a change… ») — la rarete fait la
+  valeur, comme pour Presence.
+
+Garde-fou : ne jamais crier. Si tout est calme, le dire calmement. Le teaser
+reprend la meme discipline d'apparition que l'assistant de Presence.
