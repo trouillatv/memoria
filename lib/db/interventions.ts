@@ -4,6 +4,7 @@ import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { buildScheduledAt, slotFromScheduledAt, buildPlannedTimestamp } from '@/lib/time/prestation-slot'
 import { anomalyLabel } from '@/lib/anomaly-labels'
+import { PONCTUEL_MISSION_NAME } from '@/lib/db/system-missions'
 import type {
   DbIntervention, InterventionStatus, InterventionSlot,
   DbInterventionChecklistItem, DbInterventionPhoto, PhotoKind,
@@ -242,6 +243,13 @@ export async function createIntervention(input: {
   /** V6.1 : heure précise de fin "HH:MM". Optionnel ; demande une `planned_start_hhmm`. */
   planned_end_hhmm?: string
   team?: string[]
+  /** Équipe affectée (doctrine V3) — le VRAI champ qui scope les vues « par équipe ».
+   *  À poser explicitement (le legacy `team: string[]` ne suffit pas). */
+  assigned_team_id?: string | null
+  /** Objet court (intervention ponctuelle, mig 189). Affichage = label ?? mission.name. */
+  label?: string | null
+  /** Commentaire libre optionnel (intervention ponctuelle) — colonne existante `notes`. */
+  note?: string | null
   created_by: string | null
   /** Org override — si fourni, utilise cet id au lieu de getOrgId(). Utile pour les scripts. */
   organization_id?: string | null
@@ -303,6 +311,9 @@ export async function createIntervention(input: {
       planned_start,
       planned_end,
       team: input.team ?? [],
+      ...(input.assigned_team_id !== undefined ? { assigned_team_id: input.assigned_team_id } : {}),
+      ...(input.label !== undefined ? { label: input.label } : {}),
+      ...(input.note !== undefined ? { notes: input.note } : {}),
       status: 'planned' as InterventionStatus,
       created_by: input.created_by,
       ...(orgId ? { organization_id: orgId } : {}),
@@ -672,7 +683,9 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
     const row = r as RawWithMission
     const m = Array.isArray(row.mission_cadence) ? row.mission_cadence[0] : row.mission_cadence
     if (!m) return true
-    return m.cadence !== 'on_demand'
+    // Garder la mission système « Interventions ponctuelles » (vrais événements
+    // datés) ; exclure les autres on_demand (Traces libres = conteneur photo).
+    return m.cadence !== 'on_demand' || m.name === PONCTUEL_MISSION_NAME
   })
 
   // Strip the joined field pour préserver le type DbIntervention

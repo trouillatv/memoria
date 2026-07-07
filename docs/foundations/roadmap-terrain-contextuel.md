@@ -208,3 +208,70 @@ reserves, changements depuis le dernier CR, reunions proches). Il faut :
 
 Garde-fou : ne jamais crier. Si tout est calme, le dire calmement. Le teaser
 reprend la meme discipline d'apparition que l'assistant de Presence.
+
+---
+
+## Roadmap — Planning terrain unifie « Ma journee » (decision structurante, pas encore code)
+
+Decision produit (Guillaume, apres l'ajout de l'intervention ponctuelle mobile).
+NON code volontairement — c'est une evolution majeure, a faire a froid.
+
+### Le changement de philosophie
+
+Le planning ne doit plus etre le planning d'un OBJET (missions, interventions).
+Il doit devenir le planning du CONDUCTEUR. Il ne repond plus a « quelles sont mes
+interventions ? » mais a « qu'est-ce qui concerne mes chantiers aujourd'hui ? ».
+
+Le conducteur ne pense pas « voici mes missions ». Il pense « qu'est-ce qui
+m'attend aujourd'hui ? ». Comme un agenda Google : on voit « Dentiste », pas
+« Agenda personnel ». Le planning montre les EVENEMENTS, pas les objets.
+
+### Le planning devient une PROJECTION unifiee (une vue, pas un objet)
+
+En base, rien ne change : Visite = captation, Action = chose a faire,
+Intervention = travail execute, Reunion = echange, Mission = gabarit interne.
+Le planning les RASSEMBLE en une seule chronologie. Chaque ligne = un evenement
+terrain : heure/creneau + type + chantier + intitule + equipe/personne si pertinent.
+
+    08:00  Visite        Medipole   Suivi mensuel
+    09:30  Intervention  Medipole   Reprise etancheite terrasse
+    11:00  Action        Medipole   Verifier la porte coupe-feu
+    14:00  Reunion       Medipole   Reunion OPC
+    16:00  Intervention  CHT        Pose garde-corps
+
+Regle d'affichage universelle : `intervention.label ?? mission.name`. Ne JAMAIS
+afficher « Mission Ponctuel » a l'utilisateur.
+
+### Mobile — l'ecran « Ma journee » (Passe | A venir)
+
+Onglet bas dedie. Deux sous-onglets seulement :
+- **Passe** — « qu'ai-je fait ? » : visites, reunions, interventions, actions
+  realisees, chronologiquement, avec resultat (CR, photos, preuves).
+- **A venir** — « qu'est-ce qui m'attend ? » : visites prevues, interventions,
+  reunions, actions planifiees, par journee.
+
+NE PAS filtrer par type — le TEMPS fait le travail. Le conducteur raisonne par
+journee, pas par objet. Dans 6 mois : Aujourd'hui / Demain / Cette semaine.
+
+### La frontiere « date » (evite la duplication)
+
+Le planning montre ce qui est DATE. Une action sans date ni creneau reste dans
+l'ecran « Actions » (boite de reception des choses a organiser). Des qu'une action
+est planifiee (datee), elle apparait AUSSI dans le planning. Frontiere naturelle.
+
+A terme, sur mobile, « Actions » pourrait devenir « Planning » dans la barre : les
+actions planifiees y apparaissent naturellement, les non-planifiees restent dans
+leur ecran-inbox.
+
+### Pourquoi c'est structurant
+
+- Evite quatre plannings differents (un par objet).
+- Colle au reel : une journee = une succession d'evenements lies aux chantiers.
+- C'est la MATIERE PREMIERE du niveau Tournee (niveau 4) : quand le planning
+  connait visites + reunions + interventions + actions datees, MemorIA pourra
+  proposer un ordre optimise (« tu vas au Medipole a 14 h ; tu as aussi une action
+  et une intervention a 500 m — fais-les avant de repartir ») SANS nouvel ecran.
+
+Premiere brique deja posee : l'intervention ponctuelle mobile (mig 189) est un
+vrai evenement terrain date, affiche via son `label` — exactement le type de ligne
+qui peuplera cette timeline.

@@ -12,6 +12,7 @@ import { usePathname } from 'next/navigation'
 import { Home, Building2, Plus, CheckSquare, User, X } from 'lucide-react'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
+import { InterventionLauncher } from './InterventionLauncher'
 
 type Item = { href: string; label: string; Icon: typeof Home; isActive: (p: string) => boolean; badge?: boolean }
 
@@ -77,8 +78,9 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <MeetingLauncher />
               <VisitLauncherHome />
+              <MeetingLauncher />
+              <InterventionLauncher />
             </div>
           </div>
         </div>

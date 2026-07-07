@@ -301,9 +301,16 @@ export default async function FieldInterventionPage({
       <SmartBackLink fallbackHref={`/m?date=${selectedDate}`} label="Retour" size="md" />
 
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold">
-          {mission?.name ?? site?.name ?? 'Intervention'}
-        </h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold">
+            {intervention.label ?? mission?.name ?? site?.name ?? 'Intervention'}
+          </h1>
+          {intervention.label && (
+            <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+              Ponctuelle
+            </span>
+          )}
+        </div>
         {site && (
           <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
             <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -336,7 +343,7 @@ export default async function FieldInterventionPage({
           <div className="pt-1 space-y-2">
             <ShareExternalButton
               interventionId={id}
-              missionName={mission?.name ?? 'Intervention'}
+              missionName={intervention.label ?? mission?.name ?? 'Intervention'}
               siteName={site?.name ?? ''}
               checklistItems={shareChecklistItems}
             />
@@ -383,13 +390,13 @@ export default async function FieldInterventionPage({
       {isCompleted && (
         <div className="rounded-lg border border-border bg-muted/30 p-4 text-base text-foreground flex items-center gap-2">
           <Check className="h-5 w-5 shrink-0 text-muted-foreground" />
-          <span>Mission {intervention.status === 'validated' ? 'validée' : 'terminée'}</span>
+          <span>{intervention.label ? 'Intervention' : 'Mission'} {intervention.status === 'validated' ? 'validée' : 'terminée'}</span>
         </div>
       )}
 
       {isInProgress && (
         <div className="rounded-lg border-l-2 border-l-foreground border-y border-r border-border bg-card p-3 text-sm text-muted-foreground">
-          Mission en cours — les tâches se cochent au fur et à mesure.
+          {intervention.label ? 'Intervention' : 'Mission'} en cours — les tâches se cochent au fur et à mesure.
         </div>
       )}
 
@@ -453,14 +460,18 @@ export default async function FieldInterventionPage({
         />
       )}
 
-      <ChecklistMobile
-        interventionId={id}
-        items={checklistItems}
-        serverPhotos={photos}
-        signedUrls={signedUrls}
-        canEdit={isInProgress}
-        executorByToken={Object.fromEntries(tokenLabel)}
-      />
+      {/* Checklist masquée si vide (cas d'une intervention ponctuelle : pas de
+          tâches obligatoires — le travail est l'objet lui-même). */}
+      {checklistItems.length > 0 && (
+        <ChecklistMobile
+          interventionId={id}
+          items={checklistItems}
+          serverPhotos={photos}
+          signedUrls={signedUrls}
+          canEdit={isInProgress}
+          executorByToken={Object.fromEntries(tokenLabel)}
+        />
+      )}
 
       <VoiceNoteList notes={voiceNotesWithUrls} />
 
