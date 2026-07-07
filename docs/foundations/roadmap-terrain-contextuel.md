@@ -259,9 +259,67 @@ Le planning montre ce qui est DATE. Une action sans date ni creneau reste dans
 l'ecran « Actions » (boite de reception des choses a organiser). Des qu'une action
 est planifiee (datee), elle apparait AUSSI dans le planning. Frontiere naturelle.
 
-A terme, sur mobile, « Actions » pourrait devenir « Planning » dans la barre : les
-actions planifiees y apparaissent naturellement, les non-planifiees restent dans
-leur ecran-inbox.
+### La barre : CINQ onglets, cinq questions (ne PAS fusionner)
+
+Correction (Guillaume) : Planning ne REMPLACE ni l'Accueil ni les Actions. On ajoute
+un onglet. Cinq onglets, cinq questions distinctes, non concurrentes :
+
+- **Accueil** — « Que se passe-t-il aujourd'hui ? » (vue synthetique)
+- **Planning** — « Comment se deroule ma journee ? »
+- **Chantiers** — « Sur quel chantier je veux travailler ? »
+- **Actions** — « Qu'est-ce qui reste a faire ? » (inbox des non-datees)
+- **Moi** — profil, preferences, historique personnel
+
+(Note structure : 5 onglets + le ➕ central = 6 emplacements — a arbitrer au moment
+du build : soit le ➕ sort de la barre, soit un onglet cede sa place au ➕.)
+
+### Planning : pas seulement « Aujourd'hui »
+
+Trois sections + une memoire :
+- **Aujourd'hui** / **Demain** / **A venir** (preparation)
+- **Historique / Passe** (justification — « quand suis-je passe au Medipole ? »)
+
+Un conducteur passe autant de temps a PREPARER qu'a JUSTIFIER. Le planning devient
+aussi une memoire chronologique. Passe = « qu'ai-je fait ? » (avec resultat : CR,
+photos, preuves). A venir = « qu'est-ce qui m'attend ? ».
+
+### Chaque ligne porte un ETAT
+
+Ne pas montrer seulement heure + type + chantier. Montrer l'ETAT, lisible d'un
+coup d'oeil :
+
+    08:00  Visite        Medipole   ✓ Terminee
+    09:30  Intervention  Bloc B     ▶ En cours
+    14:00  Reunion       CHT        ⏳ Dans 45 min
+
+Le conducteur voit immediatement ce qui est fait / en cours / a venir.
+
+### Planning devient le POINT D'ENTREE
+
+Aujourd'hui on entre par un chantier. Demain :
+
+    J'ouvre MemorIA -> Planning -> je choisis l'evenement -> Preparer -> Executer -> Debrief
+
+Le chantier devient un CONTEXTE ; le planning devient la porte d'entree du cycle.
+
+### Le ➕ : STABLE, jamais contextuel (seul l'ORDRE change)
+
+Correction (Guillaume) : ne PAS rendre le ➕ contextuel (options qui apparaissent/
+disparaissent selon l'ecran = interface imprevisible). Le ➕ garde TOUJOURS les cinq
+creations : Visite · Reunion · Intervention · Action · Photo/note. « + » = creer,
+partout, la meme chose.
+
+Seul l'ORDRE peut s'adapter au contexte :
+- sur une fiche chantier : Action, Photo, Visite, Reunion, Intervention
+- sur le Planning : Visite, Intervention, Reunion, Action, Photo
+
+On aide sans jamais donner l'impression qu'une option a disparu.
+
+### La vraie evolution : d'une app orientee DONNEES a une app orientee RYTHME
+
+Ce n'est plus « Visites / Reunions / Actions / Interventions ». C'est le cycle du
+conducteur : **Je prepare -> Je realise -> Je termine -> Je retrouve.** Le planning
+en devient la porte d'entree naturelle, sans remettre en cause les objets metier.
 
 ### Pourquoi c'est structurant
 
