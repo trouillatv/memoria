@@ -153,7 +153,7 @@ export default async function VisitCrPreviewPage({
                 ))}
               </ul>
               {doc.actions.length > 2 && (
-                <a href={pdfDownloadHref} className="mt-1.5 inline-flex items-center gap-0.5 text-[12px] font-medium text-violet-700">
+                <a href={pdfHref} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex items-center gap-0.5 text-[12px] font-medium text-violet-700">
                   Voir toutes les actions <ChevronRight className="h-3.5 w-3.5" />
                 </a>
               )}
@@ -230,19 +230,32 @@ export default async function VisitCrPreviewPage({
             <span className="block text-[12px] text-muted-foreground">PDF</span>
           </span>
         </div>
-        {/* PWA : une fenêtre in-app ne sait pas RENDRE un PDF (écran noir). Le
-            seul chemin fiable = TÉLÉCHARGER le fichier — Android le prend alors
-            en charge et l'ouvre dans SON lecteur PDF natif (partager / imprimer /
-            enregistrer). Disposition 'attachment' + pas de target : pas de fenêtre
-            vide, un téléchargement en place, puis le lecteur d'Android. */}
-        <a
-          href={pdfDownloadHref}
-          className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background active:brightness-95"
-        >
-          <Download className="h-4 w-4" /> Ouvrir le PDF
-        </a>
-        <p className="mt-1.5 text-center text-[12px] text-muted-foreground">
-          S’ouvre dans le lecteur PDF de votre téléphone — vous pouvez l’enregistrer, le partager ou l’imprimer.
+        {/* DEUX gestes honnêtes (limite plateforme PWA assumée) :
+            - « Voir le PDF » = aperçu rapide (inline). En PWA installée, le rendu
+              peut être limité — on NE promet PAS l'enregistrement local depuis là.
+            - « Télécharger » = le vrai fichier (Content-Disposition: attachment,
+              nom propre) : Android le range dans Téléchargements, puis ouvrir /
+              partager / imprimer / déplacer. C'est l'action fiable pour récupérer. */}
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <a
+            href={pdfHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
+          >
+            <Eye className="h-4 w-4" /> Voir le PDF
+          </a>
+          <a
+            href={pdfDownloadHref}
+            download
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background active:brightness-95"
+          >
+            <Download className="h-4 w-4" /> Télécharger
+          </a>
+        </div>
+        <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground">
+          Pour enregistrer le fichier sur votre téléphone, utilisez{' '}
+          <strong className="font-medium text-foreground">Télécharger</strong>. L’aperçu sert seulement à vérifier le compte-rendu.
         </p>
       </Section>
 
