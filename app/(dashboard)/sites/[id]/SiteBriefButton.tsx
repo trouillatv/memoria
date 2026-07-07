@@ -34,6 +34,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type DiscussionPoint } from './site-brief-actions'
+import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -50,12 +51,28 @@ interface Props {
   label?: string
   /** Sous-titre affiché en mode carte : ce que le brief rappelle. */
   description?: string
+  /** Motif porté par le flux de lancement (« Pourquoi êtes-vous ici ? »). Depuis
+   *  la fiche chantier il est absent → le panneau ouvre en Suivi et laisse choisir. */
+  initialMotive?: VisitIntent
+}
+
+// Accent par motif (jeton couleur, pas une classe métier) : Suivi=bleu ·
+// Première=vert · Prévisite AO=violet. Aligné sur lib/field/visit-intents.
+const MOTIVE_ACCENT: Record<VisitIntent, { active: string; ring: string; text: string; banner: string }> = {
+  avancement:   { active: 'bg-sky-600 text-white',     ring: 'ring-sky-300',     text: 'text-sky-700',     banner: 'Suivi de chantier — ce qui a bougé depuis la dernière fois, ce qui traîne.' },
+  premiere:     { active: 'bg-emerald-600 text-white', ring: 'ring-emerald-300', text: 'text-emerald-700', banner: 'Première visite — vous créez le point de départ. Peu de mémoire, c’est normal.' },
+  previsite_ao: { active: 'bg-violet-600 text-white',  ring: 'ring-violet-300',  text: 'text-violet-700',  banner: 'Prévisite AO — évaluez le chantier avant de répondre à l’appel d’offres.' },
 }
 
 const MODE_META = {
   visit:   { label: 'Préparer ma visite',  panel: "À savoir avant d'y aller", Icon: Brain },
   meeting: { label: 'Préparer ma réunion', panel: 'À aborder en réunion',     Icon: MessagesSquare },
 } as const
+
+// Libellés courts pour le sélecteur segmenté (3 tiers de largeur).
+const MOTIVE_SHORT: Record<VisitIntent, string> = {
+  avancement: 'Suivi', premiere: 'Première', previsite_ao: 'Prévisite AO',
+}
 
 const STATE_FR: Record<string, string> = {
   bloqué: 'Bloqué', en_attente: 'En attente', actif: 'Actif', résolu: 'Résolu', dormant: 'En sommeil',
@@ -77,8 +94,11 @@ function ageDaysLabel(iso: string | null): string | null {
   return `il y a ${days} j`
 }
 
-export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit', appearance = 'button', label, description }: Props) {
+export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit', appearance = 'button', label, description, initialMotive }: Props) {
   const [open, setOpen] = useState(false)
+  // Motif de préparation (mode visite uniquement). Depuis la fiche : Suivi par
+  // défaut + sélecteur ; depuis le flux de lancement : le motif choisi est porté.
+  const [motive, setMotive] = useState<VisitIntent>(initialMotive ?? 'avancement')
   const [brief, setBrief] = useState<SiteBrief | null>(null)
   const [selectedSite, setSelectedSite] = useState('')
   const [loadedSite, setLoadedSite] = useState<string | null>(null)
@@ -233,6 +253,30 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                 </div>
               )}
 
+              {/* Motif de la visite (mode visite) : même chantier, préparation
+                  différente. Le brief est le MÊME moteur ; le motif réordonne et
+                  recolore. Depuis le flux de lancement, il arrive déjà choisi. */}
+              {brief && mode === 'visit' && (
+                <div className="space-y-1.5">
+                  <div className="flex w-full gap-0.5 rounded-xl border bg-muted/40 p-0.5 text-xs font-medium">
+                    {VISIT_INTENTS.map((it) => {
+                      const active = motive === it.slug
+                      return (
+                        <button
+                          key={it.slug}
+                          type="button"
+                          onClick={() => setMotive(it.slug)}
+                          className={`flex-1 rounded-lg px-2 py-1.5 transition ${active ? MOTIVE_ACCENT[it.slug].active : 'text-muted-foreground active:bg-muted'}`}
+                        >
+                          {MOTIVE_SHORT[it.slug]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className={`text-[12px] leading-snug ${MOTIVE_ACCENT[motive].text}`}>{MOTIVE_ACCENT[motive].banner}</p>
+                </div>
+              )}
+
               {/* Priorité C — LLM encadré (sources affichées dessous). Réunion =
                   « Points à discuter » · Visite = « Objectif de la visite ». */}
               {brief && (
@@ -312,7 +356,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                 </section>
               )}
 
-              {brief && <BriefBody brief={brief} mode={mode} />}
+              {brief && <BriefBody brief={brief} mode={mode} motive={motive} />}
 
               {needsSitePick && !selectedSite && !pending && (
                 <p className="py-6 text-center text-sm italic text-muted-foreground">
@@ -369,9 +413,22 @@ const TIERS_MEETING: Tier[] = [
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
   { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
 ]
-const tiersForMode = (mode: 'visit' | 'meeting'): Tier[] => (mode === 'meeting' ? TIERS_MEETING : TIERS_VISIT)
+// Suivi : « ce qui a changé » MÈNE (on vient voir l'évolution). Première /
+// Prévisite AO : l'attention d'abord (base) — la mémoire y est de toute façon
+// mince, et le bandeau d'intention porte le sens.
+function tiersForVisit(motive: VisitIntent): Tier[] {
+  if (motive === 'avancement') {
+    return [
+      { label: 'Ce qui a changé', dot: 'bg-amber-500', keys: ['change'] },
+      ...TIERS_VISIT.filter((t) => !t.keys.includes('change')),
+    ]
+  }
+  return TIERS_VISIT
+}
+const tiersFor = (mode: 'visit' | 'meeting', motive: VisitIntent): Tier[] =>
+  mode === 'meeting' ? TIERS_MEETING : tiersForVisit(motive)
 
-function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting' }) {
+function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 'meeting'; motive: VisitIntent }) {
   const {
     situation,
     vigilance,
@@ -681,7 +738,7 @@ function BriefBody({ brief, mode }: { brief: SiteBrief; mode: 'visit' | 'meeting
         </div>
       </section>
 
-      {tiersForMode(mode).map((tier) => {
+      {tiersFor(mode, motive).map((tier) => {
         const hasContent = tier.keys.some((k) => sections[k])
         if (!hasContent) return null
         return (

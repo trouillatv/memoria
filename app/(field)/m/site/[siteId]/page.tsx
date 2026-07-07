@@ -343,30 +343,14 @@ export default async function FieldSitePage({
           {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
           <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
 
-          {/* 6 — Se préparer : deux assistants de contexte (cartes d'information,
-              PAS des CTA). Toute la carte ouvre le même brief qu'avant. */}
-          <section className="space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Se préparer
-            </h2>
-            <div className="grid grid-cols-2 gap-2">
-              <SiteBriefButton
-                siteId={siteId}
-                variant="mobile"
-                mode="visit"
-                appearance="card"
-                label="Avant une visite"
-                description="Observations · Réserves · Photos · Actions ouvertes"
-              />
-              <SiteBriefButton
-                siteId={siteId}
-                variant="mobile"
-                mode="meeting"
-                appearance="card"
-                label="Avant une réunion"
-                description="Dernier CR · Décisions · Participants · Actions"
-              />
-            </div>
+          {/* 6 — Préparer : LE rituel « avant de partir ». Deux CTA proéminents,
+              pas des cartes passives — c'est un MOMENT du parcours (« j'appuie
+              avant d'aller sur le chantier »). Présence (plus bas, « Aujourd'hui
+              ici ») prend le relais UNE FOIS sur place : les deux sont
+              complémentaires, jamais concurrents. */}
+          <section className="space-y-2.5">
+            <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
+            <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
           </section>
 
           {/* Contexte du lieu — référence & secondaire (sous la narration). */}
