@@ -446,6 +446,13 @@ function CaptureCard({
         <span className="shrink-0 pt-0.5 text-emerald-700/80">{KIND_ICON[capture.kind]}</span>
         <p className="min-w-0 flex-1 text-sm leading-snug">
           {captureLabel(capture)}
+          {/* Le commentaire ajouté sur une photo/vidéo doit se VOIR sur la carte,
+              sans avoir à ouvrir la capture. */}
+          {(capture.kind === 'photo' || capture.kind === 'video') && capture.body?.trim() && (
+            <span className="mt-0.5 block font-normal italic text-[12px] leading-snug text-muted-foreground">
+              « {capture.body.trim()} »
+            </span>
+          )}
           {capture.kind === 'vocal' && capture.transcript_status === 'pending' && (
             <span className="block text-[11px] text-muted-foreground">transcription…</span>
           )}

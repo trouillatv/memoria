@@ -28,7 +28,9 @@ const nextConfig: NextConfig = {
       },
     ]
   },
-  serverExternalPackages: ['pdf-parse', 'pdfjs-dist', '@react-pdf/renderer', '@google/genai'],
+  // @resvg/resvg-js est un binding natif (.node) — Turbopack ne peut pas le
+  // bundler, on l'externalise pour que Node le charge nativement.
+  serverExternalPackages: ['pdf-parse', 'pdfjs-dist', '@react-pdf/renderer', '@google/genai', '@resvg/resvg-js'],
 };
 
 export default nextConfig;
