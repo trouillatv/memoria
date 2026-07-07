@@ -1343,7 +1343,10 @@ export async function gatherVisitSuites(reportId: string): Promise<VisitSuitePro
 
   return pending.map((c) => {
     const kind = c.triage_intent === 'reserve' ? ('reserve' as const) : ('action' as const)
-    const text = c.body?.trim() || (kind === 'reserve' ? 'Réserve à préciser' : 'Action à préciser')
+    // Titre = le commentaire de la capture. VIDE s'il n'y en a pas — l'écran
+    // demandera alors de NOMMER la suite (au lieu d'afficher un faux « à préciser »
+    // qui donne l'impression d'une tâche vide inventée). Cf. retour terrain.
+    const text = c.body?.trim() || ''
     const pool = kind === 'action' ? actionPool : reservePool
     const similar = pool.filter((o) => similarTitles(o.label, text)).slice(0, 3)
     return { id: c.id, captureId: c.id, kind, text, similar, source: 'tag' as const, excerpt: null }
