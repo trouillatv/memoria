@@ -153,7 +153,7 @@ export default async function VisitCrPreviewPage({
                 ))}
               </ul>
               {doc.actions.length > 2 && (
-                <a href={pdfHref} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex items-center gap-0.5 text-[12px] font-medium text-violet-700">
+                <a href={pdfDownloadHref} className="mt-1.5 inline-flex items-center gap-0.5 text-[12px] font-medium text-violet-700">
                   Voir toutes les actions <ChevronRight className="h-3.5 w-3.5" />
                 </a>
               )}
@@ -230,27 +230,20 @@ export default async function VisitCrPreviewPage({
             <span className="block text-[12px] text-muted-foreground">PDF</span>
           </span>
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {/* Lien NATIF vers l'URL du PDF : on laisse Chrome/Android gérer
-              l'ouverture, le partage, l'impression, le choix d'app. Aucune
-              visionneuse maison — le comportement standard du web. */}
-          <a
-            href={pdfHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
-          >
-            <Eye className="h-4 w-4" /> Ouvrir le PDF
-          </a>
-          <a
-            href={pdfDownloadHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
-          >
-            <Download className="h-4 w-4" /> Télécharger
-          </a>
-        </div>
+        {/* PWA : une fenêtre in-app ne sait pas RENDRE un PDF (écran noir). Le
+            seul chemin fiable = TÉLÉCHARGER le fichier — Android le prend alors
+            en charge et l'ouvre dans SON lecteur PDF natif (partager / imprimer /
+            enregistrer). Disposition 'attachment' + pas de target : pas de fenêtre
+            vide, un téléchargement en place, puis le lecteur d'Android. */}
+        <a
+          href={pdfDownloadHref}
+          className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3 text-sm font-semibold text-background active:brightness-95"
+        >
+          <Download className="h-4 w-4" /> Ouvrir le PDF
+        </a>
+        <p className="mt-1.5 text-center text-[12px] text-muted-foreground">
+          S’ouvre dans le lecteur PDF de votre téléphone — vous pouvez l’enregistrer, le partager ou l’imprimer.
+        </p>
       </Section>
 
       {/* Le sens : ce que devient ce CR — le lien terrain → patrimoine numérique. */}
