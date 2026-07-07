@@ -8,6 +8,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc, type VisitCrDoc } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { CaptureMap } from '@/components/CaptureMap'
+import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 
 export const dynamic = 'force-dynamic'
 
@@ -185,6 +186,8 @@ export default async function VisitCrPreviewPage({
         {mapCaptures.length > 0 ? (
           <div className="overflow-hidden rounded-xl border">
             <CaptureMap siteId={visit.site_id} captures={mapCaptures} heightClass="h-60" />
+            {/* Produit en fond l'instantané carte que le PDF réutilisera. */}
+            <CrMapSnapshotTrigger reportId={reportId} />
           </div>
         ) : (
           <div className="rounded-xl border border-dashed bg-muted/30 px-4 py-6 text-center">

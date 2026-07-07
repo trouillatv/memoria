@@ -92,6 +92,7 @@ const styles = StyleSheet.create({
 
   // Carte des observations (schéma).
   map: { width: MAP_W, height: MAP_H, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, position: 'relative' },
+  mapImage: { width: MAP_W, height: MAP_H, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, objectFit: 'cover' },
   marker: { position: 'absolute', width: 12, height: 12, borderRadius: 6, borderWidth: 1.5, borderColor: '#ffffff' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
@@ -165,6 +166,16 @@ function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
           return <View key={i} style={[styles.marker, { left, top, backgroundColor: KIND_COLOR[o.p.kind] ?? '#6b7280' }]} />
         })}
       </View>
+      <MapLegend positions={positions} caption={`Emplacements relatifs des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}).`} />
+    </View>
+  )
+}
+
+// Légende (types présents) + caption — partagée par le schéma et l'instantané.
+function MapLegend({ positions, caption }: { positions: VisitCrDoc['positions']; caption: string }) {
+  const kindsPresent = [...new Set(positions.map((p) => p.kind))]
+  return (
+    <>
       <View style={styles.legend}>
         {kindsPresent.map((k) => (
           <View key={k} style={styles.legendItem}>
@@ -173,12 +184,24 @@ function ObservationMap({ positions }: { positions: VisitCrDoc['positions'] }) {
           </View>
         ))}
       </View>
-      <Text style={styles.caption}>Emplacements relatifs des observations sur le chantier ({positions.length} point{positions.length > 1 ? 's' : ''}).</Text>
+      <Text style={styles.caption}>{caption}</Text>
+    </>
+  )
+}
+
+// Instantané carte RÉEL (tuiles OSM assemblées côté serveur, fabriqué une fois et
+// réutilisé). Rendu net dans la même boîte que le schéma ; même légende.
+function ObservationMapSnapshot({ src, positions }: { src: string; positions: VisitCrDoc['positions'] }) {
+  return (
+    <View wrap={false}>
+      {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
+      <Image src={src} style={styles.mapImage} />
+      <MapLegend positions={positions} caption={`Emplacements des observations sur le chantier (${positions.length} point${positions.length > 1 ? 's' : ''}).`} />
     </View>
   )
 }
 
-export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: string }) {
+export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exportDate: string; mapImage?: string | null }) {
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
@@ -312,7 +335,9 @@ export function VisitCrPdf({ doc, exportDate }: { doc: VisitCrDoc; exportDate: s
         {doc.positions.length > 0 && (
           <View style={styles.section}>
             <SectionTitle text="Localisation des observations" color="#0284c7" />
-            <ObservationMap positions={doc.positions} />
+            {mapImage
+              ? <ObservationMapSnapshot src={mapImage} positions={doc.positions} />
+              : <ObservationMap positions={doc.positions} />}
           </View>
         )}
 

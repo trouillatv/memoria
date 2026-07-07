@@ -10,6 +10,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { VisitCrPdf } from '@/lib/pdf/visit-cr'
+import { loadCrMapSnapshotDataUri } from '@/lib/pdf/cr-map-snapshot'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -43,9 +44,15 @@ export async function GET(req: Request, ctx: RouteCtx) {
     timeZone: 'Pacific/Noumea',
   })
 
+  // Le PDF CONSOMME l'instantané carte déjà produit — il ne le fabrique jamais
+  // (aucune requête réseau ici). Absent → VisitCrPdf retombe sur le schéma métrique.
+  const mapImage = doc.positions.length > 0
+    ? await loadCrMapSnapshotDataUri(reportId).catch(() => null)
+    : null
+
   let pdfBuffer: Buffer
   try {
-    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, exportDate }))
+    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, exportDate, mapImage }))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'render error'
     console.error('[visit-cr-pdf] PDF render failed:', e)
