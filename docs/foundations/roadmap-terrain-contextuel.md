@@ -287,6 +287,10 @@ plus immediatement compris. « Ma journee » est plus chaleureux mais trop limit
 present ; « Agenda chantier » est plus juste mais plus lourd. Reevaluer apres usage
 reel (candidats de repli : « Agenda », « Ma journee »).
 
+MaJ 2026-07-08 — **renomme « Journal »** (session maquettes V2/V3, valide Vincent).
+« Planning » disait l'agenda ; l'ecran raconte aussi le fait et l'en-cours — c'est
+le journal de bord des journees du conducteur. La route reste `/m/planning`.
+
 ### Mobile — l'ecran Planning : une timeline continue
 
 Modele cible (Vincent) : PAS deux ecrans separes Passe / A venir, mais UNE seule
@@ -301,6 +305,19 @@ NE PAS filtrer par type — le TEMPS fait le travail. Le conducteur raisonne par
 journee, pas par objet. La vue s'ouvre centree sur Aujourd'hui (hier / aujourd'hui /
 demain / cette semaine a portee de scroll). Chaque ligne porte son ETAT (✓ terminee /
 ▶ en cours / ⏳ a venir).
+
+MaJ 2026-07-08 — design arbitre (maquettes V2 cartes vs V3 rail temporel) :
+**PAS de rail vertical qui materialise le temps.** Le rail est seduisant a 5
+evenements, encombrant a 15-20. Retenu : cartes independantes qui respirent
+(V2), rythmees par des separateurs **« Maintenant / Ensuite / Fait »** avec la
+couleur du moment (● vert / ○ gris / ✓). Concepts V3 conserves : nommage
+« Journal », **bouton evolutif** sur la carte du moment (Preparer → Demarrer →
+Continuer → Cloturer — le libelle suit le cycle de vie), retards EPINGLES en
+tete d'aujourd'hui (ils demandent une decision maintenant, ils ne s'affichent
+plus sur leur jour passe). Phrase-guide : « le Journal doit se lire comme une
+succession de decisions, pas comme une frise chronologique ». Non code
+volontairement (gele jusqu'au terrain) : le « tu devrais partir » (GPS/trajet)
+et les moments auto-injectes en direct.
 
 Reserve (a ne pas perdre) : la timeline continue sert le RYTHME proche. Elle ne sert
 PAS la justification lointaine (« quand suis-je passe au Medipole il y a 3 mois ? »)

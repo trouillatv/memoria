@@ -63,7 +63,12 @@ retrouver ce qui s'est vraiment passé, raconter la durée (« ouvert depuis
   photo, anomalie, tâche). Redirigé vers l'espace terrain. Il peut aussi **déclarer une
   livraison/évacuation** (+ photo) et **prendre en charge une intervention non affectée**
   pour son équipe afin de la démarrer (le gérant, lui, peut l'affecter à n'importe quelle
-  équipe).
+  équipe). L'onglet **Journal** est sa mémoire temporelle : tout ce qui est **daté** sur
+  ses chantiers (visites, interventions, réunions, actions planifiées), jour après jour.
+  Aujourd'hui se lit en trois temps — **Fait / Maintenant / Ensuite** — avec les retards
+  épinglés en tête ; la carte du moment porte un bouton qui suit l'avancement
+  (Préparer → Continuer). C'est **votre** journée (auto-consultation), jamais la
+  surveillance de ce qu'a fait quelqu'un d'autre.
 - **Entreprise externe** — pas de compte : elle reçoit un **lien public** (QR)
   pour déclarer ses actions ou confirmer une intervention.
 
