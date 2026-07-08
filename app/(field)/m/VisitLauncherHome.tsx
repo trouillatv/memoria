@@ -76,7 +76,9 @@ export function VisitLauncherHome() {
       const res = await startVisitAction({ site_id: chosenSite.id, motive: intent ?? undefined })
       if (res.ok) {
         toast.success('Visite démarrée', { duration: 1500 })
-        router.push(`/m/site/${chosenSite.id}`)
+        // `?live=<id>` → le panier de capture s'ouvre DIRECTEMENT (URL neuve, pas de
+        // cockpit servi depuis le cache de route ; ouverture par id, sans attente).
+        router.push(`/m/site/${chosenSite.id}?live=${res.reportId}`)
       } else {
         toast.error(res.error)
       }
@@ -99,7 +101,7 @@ export function VisitLauncherHome() {
       })
       if (res.ok) {
         toast.success('Chantier créé — visite démarrée', { duration: 1500 })
-        router.push(`/m/site/${res.siteId}`)
+        router.push(`/m/site/${res.siteId}?live=${res.reportId}`)
       } else {
         toast.error(res.error)
       }

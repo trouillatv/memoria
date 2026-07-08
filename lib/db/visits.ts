@@ -233,6 +233,30 @@ export async function getActiveVisit(siteId: string): Promise<DbSiteReport | nul
 }
 
 /**
+ * La visite qu'on VIENT de démarrer, retrouvée par son id (porté dans l'URL
+ * `?live=`). Sert de repli DÉTERMINISTE au « swap » fiche → panier : `getActiveVisit`
+ * dépend d'une relecture qui peut arriver une fraction de seconde après l'insert
+ * (cache de route, timing) ; quand on connaît déjà l'id du report tout juste créé,
+ * on l'ouvre directement. Ne filtre PAS `deleted_at` (une visite qu'on démarre à
+ * l'instant n'est pas supprimée), juste : bon site, c'est bien une visite (origin),
+ * non terminée. Renvoie null si l'id ne correspond pas (ex. déjà clôturée).
+ */
+export async function getStartedVisitById(reportId: string, siteId: string): Promise<DbSiteReport | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_reports')
+    .select('*')
+    .eq('id', reportId)
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .is('ended_at', null)
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as DbSiteReport | null) ?? null
+}
+
+/**
  * Les visites OUVERTES (non terminées) démarrées par l'agent, tous sites
  * confondus — pour la carte « Visite en cours » de l'accueil (Lot A). Une visite
  * est un objet vivant : on doit pouvoir la REPRENDRE sans la chercher. Renvoie de

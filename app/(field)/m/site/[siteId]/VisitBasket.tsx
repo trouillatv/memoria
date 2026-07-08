@@ -97,7 +97,6 @@ export function VisitBasket({
   // ❓ Question ouverte (« à vérifier ») : sur une capture (questionCaptureId) ou libre.
   const [questionText, setQuestionText] = useState('')
   const [questionCaptureId, setQuestionCaptureId] = useState<string | null>(null)
-  const [questionCount, setQuestionCount] = useState(0)
   const [verifIndex, setVerifIndex] = useState(0)
   const [verifNote, setVerifNote] = useState('')
   const touchStartX = useRef<number | null>(null)
@@ -457,7 +456,6 @@ export function VisitBasket({
       })
       if (r.ok) {
         setQuestionText(''); setQuestionCaptureId(null); setOverlay('none')
-        setQuestionCount((n) => n + 1)
         toast.success('À vérifier — noté', { duration: 1200 })
       } else toast.error(r.error)
     })
@@ -623,12 +621,6 @@ export function VisitBasket({
         className="flex w-full items-center justify-center gap-1.5 text-xs text-emerald-800/80 dark:text-emerald-300/80 py-1 disabled:opacity-50"
       >
         <MapPin className="h-3.5 w-3.5" /> Enregistrer ma position (facultatif)
-      </button>
-      <button
-        type="button" onClick={() => openQuestion(null)} disabled={busy}
-        className="flex w-full items-center justify-center gap-1.5 py-1 text-xs text-amber-800/90 dark:text-amber-300/90 disabled:opacity-50"
-      >
-        <HelpCircle className="h-3.5 w-3.5" /> + À vérifier{questionCount > 0 ? ` · ${questionCount} noté${questionCount > 1 ? 's' : ''}` : ''}
       </button>
       {/* Géoloc des OBSERVATIONS : demandée UNE fois, « Toujours oui » mémorisé.
           On localise l'observation, jamais la personne, jamais en continu. */}
