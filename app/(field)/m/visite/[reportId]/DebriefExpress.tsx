@@ -6,7 +6,7 @@ import {
   Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { triageCaptureAction, untriageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, type TriageDecision } from './debrief-actions'
+import { triageCaptureAction, untriageCaptureAction, refreshDebriefCapturesAction, setVisitObjectiveAction, finalizeVisitAction, type TriageDecision } from './debrief-actions'
 import { listVisitCapturePreviewsAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import { CaptureTriage } from './CaptureTriage'
 import { SuiteProposals } from './SuiteProposals'
@@ -61,6 +61,7 @@ export function DebriefExpress({
   const [previews, setPreviews] = useState<Record<string, CapturePreview>>(initialPreviews)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [, startBusy] = useTransition()
+  const [finishing, startFinishing] = useTransition()
   // Traitement photo par photo (écran 2) : index de départ, null = fermé.
   const [triageStart, setTriageStart] = useState<number | null>(null)
   // Objet de la visite — éditable, enregistré au blur (aucun autre champ touché).
@@ -290,8 +291,16 @@ export function DebriefExpress({
         <div className="mx-auto max-w-md">
           <button
             type="button"
-            onClick={() => router.push(`/m/visite/${reportId}/fin`)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition"
+            disabled={finishing}
+            onClick={() =>
+              startFinishing(async () => {
+                // Valide définitivement : ce qui reste « à trier » est gardé en
+                // mémoire → la visite quitte « Reprendre mon travail » (effectuée).
+                await finalizeVisitAction({ report_id: reportId }).catch(() => {})
+                router.push(`/m/visite/${reportId}/fin`)
+              })
+            }
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition disabled:opacity-60"
           >
             Terminer la visite <ArrowRight className="h-4 w-4" />
           </button>
