@@ -75,14 +75,15 @@ describe('DashboardNotFound (app/(dashboard)/not-found.tsx)', () => {
 })
 
 describe('FieldNotFound (app/(field)/not-found.tsx)', () => {
-  it('renders compact EmptyState with mission CTA', () => {
+  it('renders compact EmptyState with home CTA', () => {
     const { container } = render(<FieldNotFound />)
     const root = container.querySelector('[data-slot="empty-state"]')
     expect(root).not.toBeNull()
     // compact variant → py-12
     expect(root?.className).toContain('py-12')
 
-    const link = screen.getByRole('link', { name: /mes missions/i })
+    // Depuis l'écran mobile Réunions (#53), le CTA est « Retour à l'accueil » → /m.
+    const link = screen.getByRole('link', { name: /retour à l'accueil/i })
     expect(link.getAttribute('href')).toBe('/m')
   })
 })

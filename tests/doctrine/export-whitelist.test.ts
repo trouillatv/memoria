@@ -54,6 +54,9 @@ const EXPORT_ROUTES = [
   'app/(dashboard)/semaine/export/route.ts',
   'app/p/[token]/page.tsx',
   'app/p/[token]/layout.tsx',
+  // S2 — export ZIP « propriété des données » d'un chantier (donnees.xlsx +
+  // photos + documents hors litige). Admin/manager only ; scanné comme les autres.
+  'app/(dashboard)/sites/[id]/export/route.ts',
 ]
 
 // Fichiers explicitement audités qui peuvent contenir des références nominatives

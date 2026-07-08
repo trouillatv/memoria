@@ -57,13 +57,18 @@ describe('A6 — document_sources (réf. recall A3, zéro recall en plus)', () =
     expect(/drop |delete from|truncate/i.test(mig)).toBe(false) // non destructif
   })
 
-  it('les 3 appelants insertTenderAnalysis passent document_sources', () => {
-    for (const p of [
-      'app/(dashboard)/tenders/new/actions.ts',
-      'app/(dashboard)/tenders/[id]/actions.ts',
-      'app/api/tenders/[id]/analyze/route.ts',
-    ]) {
-      expect(/document_sources:\s*result\.documentSources/.test(read(p)), p).toBe(true)
-    }
+  it('le point de passage UNIQUE (run-analysis) passe document_sources', () => {
+    // Refactor post-A6 : les actions/routes délèguent toutes à
+    // lib/tenders/run-analysis.ts — la garantie vit AU point de passage.
+    expect(/document_sources:\s*result\.documentSources/.test(read('lib/tenders/run-analysis.ts'))).toBe(true)
+  })
+
+  it('aucun appelant insertTenderAnalysis hors run-analysis (pas de contournement)', () => {
+    // Si un nouveau code insère une analyse sans passer par run-analysis, il
+    // peut oublier document_sources → le recall A3 perd ses références.
+    const { execSync } = require('node:child_process') as typeof import('node:child_process')
+    const out = execSync('git grep -l "insertTenderAnalysis" -- app lib services', { cwd: ROOT }).toString()
+    const files = out.split('\n').filter(Boolean).map((f) => f.replace(/\\/g, '/'))
+    expect(files.sort()).toEqual(['lib/db/tenders.ts', 'lib/tenders/run-analysis.ts'])
   })
 })
