@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createVisit, endVisit, closeVisit, reopenVisit } from '@/lib/db/visits'
+import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '@/lib/db/visits'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -35,6 +35,15 @@ export async function startVisitAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
 
   try {
+    // Ne pas EMPILER des visites vides : s'il y a déjà une visite ouverte sur ce
+    // site, on la REPREND au lieu d'en créer une nouvelle. « Démarrer » devient
+    // idempotent — on n'enregistre jamais deux visites en cours pour un même lieu
+    // (c'est ce qui créait la pile de « Canal+ » sans le moindre élément).
+    const existing = await getActiveVisit(parsed.data.site_id).catch(() => null)
+    if (existing) {
+      revalidatePath(`/m/site/${parsed.data.site_id}`)
+      return { ok: true, reportId: existing.id }
+    }
     const reportId = await createVisit({
       siteId: parsed.data.site_id,
       origin: parsed.data.origin,

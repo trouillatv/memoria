@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Radio, Pause, Camera, Video, Mic, Pencil, Target, MapPin, Star, HelpCircle, CloudUpload, Play, CheckCircle2 } from 'lucide-react'
+import { Radio, Pause, Camera, Video, Mic, Pencil, Star, HelpCircle, CloudUpload, Play } from 'lucide-react'
 import { countQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import type { VisitCaptureKind } from '@/lib/db/visit-captures'
 
@@ -63,14 +63,6 @@ function useMinutesSince(iso: string | null): number | null {
   return mins
 }
 
-function relativeLabel(mins: number | null): string {
-  if (mins == null) return ''
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `il y a ${mins} min`
-  const h = Math.floor(mins / 60)
-  return `il y a ${h} h${mins % 60 ? ` ${mins % 60}` : ''}`
-}
-
 function usePendingCount(reportId: string): number {
   const [pending, setPending] = useState(0)
   useEffect(() => {
@@ -87,13 +79,17 @@ function usePendingCount(reportId: string): number {
   return pending
 }
 
-const KIND_ICON: Record<VisitCaptureKind, typeof Camera> = {
-  photo: Camera, video: Video, vocal: Mic, note: Pencil, verification: Target, position: MapPin,
-}
+function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
+  const elapsed = useElapsed(visit.startedAt)
+  const idleMins = useMinutesSince(visit.lastActivityAt)
+  const pending = usePendingCount(visit.reportId)
 
-// Composition de la visite — l'agent reconnaît SA visite (« la grosse, 42 photos,
-// 4 trucs importants »). Inclut ⭐ et ❓ : ça raconte plus que le seul volume.
-function KindChips({ visit }: { visit: ActiveVisitCardItem }) {
+  const synced = visit.captureCount
+  const total = synced + pending
+  const paused = idleMins != null && idleMins >= PAUSE_AFTER_MIN && total > 0
+
+  // Composition de la visite en SYMBOLES compacts (📷/🎥/🎤/✏️/⭐/❓) : l'état
+  // se lit d'un coup d'œil, sur une seule ligne, sans déplier la carte.
   const k = visit.kinds
   const chips: Array<{ icon: typeof Camera; n: number; cls: string }> = [
     { icon: Camera, n: k.photo, cls: '' },
@@ -103,93 +99,63 @@ function KindChips({ visit }: { visit: ActiveVisitCardItem }) {
     { icon: Star, n: visit.starred, cls: 'text-amber-600 dark:text-amber-400' },
     { icon: HelpCircle, n: visit.questions, cls: 'text-amber-700 dark:text-amber-300' },
   ].filter((c) => c.n > 0)
-  if (chips.length === 0) return null
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-emerald-900/80 dark:text-emerald-100/80">
-      {chips.map((c, i) => {
-        const Icon = c.icon
-        return (
-          <span key={i} className="inline-flex items-center gap-1">
-            <Icon className={`h-3.5 w-3.5 ${c.cls || 'text-emerald-700/70 dark:text-emerald-300/70'}`} />
-            <span className="tabular-nums font-medium">{c.n}</span>
-          </span>
-        )
-      })}
-    </div>
-  )
-}
-
-function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
-  const elapsed = useElapsed(visit.startedAt)
-  const idleMins = useMinutesSince(visit.lastActivityAt)
-  const pending = usePendingCount(visit.reportId)
-
-  const synced = visit.captureCount
-  const total = synced + pending
-  const paused = idleMins != null && idleMins >= PAUSE_AFTER_MIN && total > 0
-  const LastIcon = visit.lastCapture ? KIND_ICON[visit.lastCapture.kind] : null
 
   return (
     <Link
       href={`/m/site/${visit.siteId}`}
-      className={`block rounded-2xl border px-5 py-5 active:scale-[0.99] transition-transform ${
+      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 active:scale-[0.99] transition-transform ${
         paused
           ? 'border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20'
           : 'border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-950/25'
       }`}
     >
-      <div className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide ${
-        paused ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'
-      }`}>
-        {paused ? <Pause className="h-3.5 w-3.5" /> : <Radio className="h-3.5 w-3.5 animate-pulse" />}
-        {paused ? 'En pause' : 'Visite en cours'}
-      </div>
-
-      <p className="mt-1.5 text-lg font-bold leading-tight text-emerald-950 dark:text-emerald-50">
-        {visit.siteName}
-      </p>
-      {elapsed && (
-        <p className="text-[13px] text-emerald-800/80 dark:text-emerald-200/70">Commencée il y a {elapsed}</p>
-      )}
-      {idleMins != null && total > 0 && (
-        <p className={`text-[12px] ${paused ? 'text-amber-700/80 dark:text-amber-300/70' : 'text-emerald-700/70 dark:text-emerald-300/60'}`}>
-          Dernière activité {relativeLabel(idleMins)}
-        </p>
-      )}
-
-      <KindChips visit={visit} />
-
-      {/* « Où je me suis arrêté » — repère immédiat (façon Google Docs). */}
-      {visit.lastCapture && LastIcon && (
-        <p className="mt-2 flex items-center gap-1.5 text-[13px] text-emerald-900/85 dark:text-emerald-100/85">
-          <span className="text-muted-foreground">Dernier :</span>
-          <LastIcon className="h-3.5 w-3.5 shrink-0 text-emerald-700/70 dark:text-emerald-300/70" />
-          <span className="min-w-0 truncate font-medium">{visit.lastCapture.label}</span>
-          {visit.lastCapture.starred && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500" />}
-        </p>
-      )}
-
-      {/* État d'envoi EXPLICITE : on ne laisse jamais deviner si « les autres »
-          sont parties. ✓ synchronisées + ☁ en attente, séparément. */}
-      {total > 0 && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {synced} synchronisée{synced > 1 ? 's' : ''}
+      <div className="min-w-0 flex-1">
+        {/* Ligne 1 : état (● en cours / ⏸ en pause) + nom du chantier. */}
+        <div className="flex items-center gap-1.5">
+          {paused
+            ? <Pause className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+            : <Radio className="h-3.5 w-3.5 shrink-0 animate-pulse text-emerald-600" />}
+          <span className="min-w-0 truncate font-semibold text-emerald-950 dark:text-emerald-50">
+            {visit.siteName}
           </span>
+        </div>
+
+        {/* Ligne 2 : symboles d'état (nb de photos/vidéos/vocaux/notes…) + envoi + durée. */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-emerald-900/75 dark:text-emerald-100/75">
+          {chips.length === 0 ? (
+            <span className="text-emerald-800/55 dark:text-emerald-200/45">Rien capturé pour l&apos;instant</span>
+          ) : (
+            chips.map((c, i) => {
+              const Icon = c.icon
+              return (
+                <span key={i} className="inline-flex items-center gap-0.5">
+                  <Icon className={`h-3.5 w-3.5 ${c.cls || 'text-emerald-700/70 dark:text-emerald-300/70'}`} />
+                  <span className="tabular-nums font-medium">{c.n}</span>
+                </span>
+              )
+            })
+          )}
           {pending > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+            <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-300" title={`${pending} en attente d'envoi`}>
               <CloudUpload className="h-3.5 w-3.5" />
-              {pending} en attente
+              <span className="tabular-nums font-medium">{pending}</span>
             </span>
           )}
+          {elapsed && (
+            <span className="text-emerald-700/50 dark:text-emerald-300/40">· {paused ? 'en pause' : elapsed}</span>
+          )}
         </div>
-      )}
-
-      <div className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">
-        <Play className="h-4 w-4 fill-current" />
-        Reprendre
       </div>
+
+      {/* Reprendre : simple triangle de lecture à DROITE de la ligne. */}
+      <span
+        aria-label="Reprendre"
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${
+          paused ? 'bg-amber-600' : 'bg-emerald-700'
+        }`}
+      >
+        <Play className="h-5 w-5 fill-current" />
+      </span>
     </Link>
   )
 }

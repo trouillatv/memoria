@@ -90,6 +90,16 @@ export default async function VisitFinPage({
         <p className="text-[13px] text-muted-foreground">
           Prenez le temps de le relire — il reste disponible à tout moment.
         </p>
+
+        {/* Retour à l'accueil TOUJOURS possible : le bouton principal peut mener
+            ailleurs (dossier AO = ordinateur), on ne laisse jamais l'agent sans
+            porte vers /m. Discret, sous les actions principales. */}
+        <Link
+          href="/m"
+          className="mt-1 inline-flex w-full items-center justify-center gap-1.5 py-2 text-[13px] font-medium text-muted-foreground active:opacity-70"
+        >
+          <Home className="h-3.5 w-3.5" /> Retour à l&apos;accueil
+        </Link>
       </div>
     </div>
   )
