@@ -256,3 +256,51 @@ export async function deleteVisitAction(input: unknown): Promise<{ ok: boolean; 
     return { ok: false, error: 'Suppression impossible' }
   }
 }
+
+/**
+ * VALIDER DÉFINITIVEMENT la visite (bouton « Terminer la visite » du débrief).
+ * C'est le point final : la visite doit alors quitter « Reprendre mon travail »
+ * (elle est faite). Or « Tri restant » ne compte que les captures encore à trier
+ * (status = 'captured'). Une capture laissée « À trier » suffisait à la faire
+ * traîner comme « pas effectuée ».
+ *
+ * Règle produit : « non trié = gardé en mémoire » (rien n'est jamais perdu). On
+ * bascule donc les captures restantes en 'kept' (Mémoire) → plus rien « à trier »
+ * → la visite est effectuée. On s'assure aussi que ended_at est posé.
+ */
+export async function finalizeVisitAction(input: unknown): Promise<{ ok: boolean; error?: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+  try {
+    const supabase = createAdminClient()
+    // Captures encore « à trier » → gardées en mémoire (défaut non destructif).
+    await supabase
+      .from('visit_capture')
+      .update({ status: 'kept', triage_intent: null })
+      .eq('report_id', parsed.data.report_id)
+      .eq('status', 'captured')
+    // Filet : la visite doit être terminée (ended_at posé) — au cas où on arrive
+    // ici sans être passé par « Terminer » du panier.
+    if (!visit.ended_at) {
+      await supabase
+        .from('site_reports')
+        .update({ ended_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', parsed.data.report_id)
+        .is('ended_at', null)
+    }
+    revalidatePath('/m')
+    if (visit.site_id) revalidatePath(`/m/site/${visit.site_id}`)
+    revalidatePath(`/m/visite/${parsed.data.report_id}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la clôture de la visite' }
+  }
+}
