@@ -44,6 +44,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/missions.test.ts',
   'tests/lib/monthly-report-share.test.ts',
   'tests/lib/monthly-report.test.ts',
+  'tests/lib/morning-digest.test.ts',
   'tests/lib/proof-detail.test.ts',
   'tests/lib/proof-share-closure.test.ts',
   'tests/lib/proof-share.test.ts',

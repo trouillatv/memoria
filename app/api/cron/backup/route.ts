@@ -31,7 +31,7 @@ const TABLES = [
   'intervention_participants', 'intervention_photos', 'intervention_templates',
   'intervention_validations', 'intervention_voice_notes', 'interventions',
   'knowledge_chunks', 'knowledge_items', 'missions', 'proof_share_tokens',
-  'proof_verification_tokens', 'reports', 'share_access_log', 'site_notes',
+  'proof_verification_tokens', 'reports', 'share_access_log', 'site_morning_digest', 'site_notes',
   'site_reading_candidates', 'sites', 'team_members', 'teams', 'tender_agent_analyses',
   'tender_analyses', 'tender_chat_attachments', 'tender_chat_messages',
   'tender_conversations', 'tender_documents', 'tenders', 'trace_embeddings', 'users',
