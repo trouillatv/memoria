@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 
 const ROOT = join(__dirname, '..', '..')
@@ -66,7 +67,6 @@ describe('A6 — document_sources (réf. recall A3, zéro recall en plus)', () =
   it('aucun appelant insertTenderAnalysis hors run-analysis (pas de contournement)', () => {
     // Si un nouveau code insère une analyse sans passer par run-analysis, il
     // peut oublier document_sources → le recall A3 perd ses références.
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
     const out = execSync('git grep -l "insertTenderAnalysis" -- app lib services', { cwd: ROOT }).toString()
     const files = out.split('\n').filter(Boolean).map((f) => f.replace(/\\/g, '/'))
     expect(files.sort()).toEqual(['lib/db/tenders.ts', 'lib/tenders/run-analysis.ts'])

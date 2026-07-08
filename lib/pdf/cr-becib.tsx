@@ -278,12 +278,15 @@ const PRES_COLS = ['I', 'P', 'AE', 'AN', 'D'] as const
 
 type Intervenant = CrBecib['intervenants'][number]
 
+// Cellule « croix » (invité/présence/diffusion) — hissée hors du render
+// (react-hooks/static-components) ; rendu strictement identique.
+function IvX({ on }: { on: boolean }) {
+  return <View style={[s.ivcC, s.ivwP]}><Text style={s.ivtX}>{on ? 'X' : ''}</Text></View>
+}
+
 // Une ligne de données = 1 personne. CHAQUE cellule est une <View> bordée à
 // l'identique (ivc / ivcC). Aucune fusion. Grille uniforme garantie.
 function IvDataRow({ p }: { p: Intervenant }) {
-  const X = ({ on }: { on: boolean }) => (
-    <View style={[s.ivcC, s.ivwP]}><Text style={s.ivtX}>{on ? 'X' : ''}</Text></View>
-  )
   return (
     <View style={[s.ivRow, s.ivDataRowH]} wrap={false}>
       <View style={[s.ivc, s.ivwOrg]}><Text style={s.ivtOrg}>{p.organisme}</Text></View>
@@ -291,11 +294,11 @@ function IvDataRow({ p }: { p: Intervenant }) {
       <View style={[s.ivc, s.ivwTel]}><Text style={s.ivtSm}>{p.tel || ''}</Text></View>
       <View style={[s.ivc, s.ivwMob]}><Text style={s.ivtSm}>{p.mob || ''}</Text></View>
       <View style={[s.ivc, s.ivwMail]}><Text style={s.ivtMail}>{p.email || ''}</Text></View>
-      <X on={p.invite} />
-      <X on={p.presence === 'P'} />
-      <X on={p.presence === 'AE'} />
-      <X on={p.presence === 'AN'} />
-      <X on={p.diffusion} />
+      <IvX on={p.invite} />
+      <IvX on={p.presence === 'P'} />
+      <IvX on={p.presence === 'AE'} />
+      <IvX on={p.presence === 'AN'} />
+      <IvX on={p.diffusion} />
     </View>
   )
 }
