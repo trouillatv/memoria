@@ -9,20 +9,24 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, Building2, Plus, CheckSquare, User, X } from 'lucide-react'
+import { Home, Building2, Plus, CheckSquare, CalendarRange, X } from 'lucide-react'
 import { MeetingLauncher } from './MeetingLauncher'
 import { VisitLauncherHome } from './VisitLauncherHome'
 import { InterventionLauncher } from './InterventionLauncher'
 
 type Item = { href: string; label: string; Icon: typeof Home; isActive: (p: string) => boolean; badge?: boolean }
 
+// Barre = Accueil · Planning · ➕ · Chantiers · Actions (décision Vincent —
+// docs/foundations/roadmap-terrain-contextuel.md). « Moi » n'est plus un onglet :
+// il vit en avatar en haut à droite (layout). Planning et Actions forment un
+// couple — daté (Planning) vs à organiser (Actions) — les deux restent visibles.
 const LEFT: Item[] = [
   { href: '/m', label: "Aujourd'hui", Icon: Home, isActive: (p) => p === '/m' },
-  { href: '/m/chantiers', label: 'Chantiers', Icon: Building2, isActive: (p) => p.startsWith('/m/chantiers') || p.startsWith('/m/sites') || p.startsWith('/m/site/') },
+  { href: '/m/planning', label: 'Planning', Icon: CalendarRange, isActive: (p) => p.startsWith('/m/planning') },
 ]
 const RIGHT: Item[] = [
+  { href: '/m/chantiers', label: 'Chantiers', Icon: Building2, isActive: (p) => p.startsWith('/m/chantiers') || p.startsWith('/m/sites') || p.startsWith('/m/site/') },
   { href: '/m/actions', label: 'Actions', Icon: CheckSquare, isActive: (p) => p.startsWith('/m/actions'), badge: true },
-  { href: '/m/profil', label: 'Profil', Icon: User, isActive: (p) => p.startsWith('/m/profil') },
 ]
 
 // Parcours immersifs (bas d'écran propre) — on n'y superpose pas la barre.

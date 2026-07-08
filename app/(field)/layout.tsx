@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { User } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOpenActionsHealth } from '@/lib/db/site-actions'
 import { MobileTabBar } from './m/MobileTabBar'
@@ -32,10 +33,23 @@ export default async function FieldLayout({ children }: { children: React.ReactN
           <Link href="/m" className="text-sm font-semibold tracking-tight">
             MemorIA
           </Link>
-          {/* Sites/Actions sont désormais dans la barre du bas : on ne garde en
-              haut que l'identité et le point de synchronisation (discret). */}
+          {/* « Moi » n'est plus un onglet de la barre du bas (décision Vincent) :
+              il vit ici, en avatar discret en haut à droite — on ne l'ouvre jamais
+              dans l'urgence terrain. À côté, le point de synchronisation. */}
           <div className="flex items-center gap-2.5">
             <SyncIndicator />
+            <Link
+              href="/m/profil"
+              aria-label="Moi"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-foreground/10 active:opacity-70"
+            >
+              {(() => {
+              const initials = avatarInitials(user.full_name, user.email)
+              return initials
+                ? <span className="text-[11px] font-semibold tabular-nums">{initials}</span>
+                : <User className="h-4 w-4" />
+            })()}
+            </Link>
           </div>
         </div>
       </header>
@@ -52,4 +66,12 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       <FieldSyncDrainer userId={user.id} />
     </div>
   )
+}
+
+/** Initiales pour l'avatar « Moi » (1-2 lettres). null → icône générique. */
+function avatarInitials(fullName: string | null, email: string | null): string | null {
+  const src = fullName?.trim() || email?.split('@')[0]?.trim()
+  if (!src) return null
+  const parts = src.split(/[\s._-]+/).filter(Boolean)
+  return (parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2)).toUpperCase()
 }
