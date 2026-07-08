@@ -243,7 +243,10 @@ export async function deleteVisitAction(input: unknown): Promise<{ ok: boolean; 
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
-    await deleteVisit(parsed.data.report_id)
+    const affected = await deleteVisit(parsed.data.report_id)
+    // Écriture VÉRIFIÉE : si 0 ligne écrite, on ne prétend PAS avoir supprimé
+    // (sinon la carte se cache puis la visite réapparaît au rafraîchissement).
+    if (affected === 0) return { ok: false, error: "La visite n'a pas pu être écartée" }
     // La visite écartée doit disparaître d'« Aujourd'hui » (Reprendre mon travail)
     // ET de la fiche chantier — sinon le cache de route la ferait persister.
     revalidatePath('/m')
