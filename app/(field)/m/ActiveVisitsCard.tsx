@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Radio, Pause, Camera, Video, Mic, Pencil, Star, HelpCircle, CloudUpload, Play } from 'lucide-react'
 import { countQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import type { VisitCaptureKind } from '@/lib/db/visit-captures'
+import { HomeVisitDeleteButton } from './HomeVisitDeleteButton'
 
 /**
  * Lot A — « Visite en cours » sur l'accueil terrain. Une visite est un objet
@@ -101,27 +102,27 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
   ].filter((c) => c.n > 0)
 
   return (
-    <Link
-      href={`/m/site/${visit.siteId}`}
-      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 active:scale-[0.99] transition-transform ${
+    <div
+      className={`flex items-center gap-2 rounded-2xl border px-4 py-3 ${
         paused
           ? 'border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20'
           : 'border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-950/25'
       }`}
     >
-      <div className="min-w-0 flex-1">
+      {/* Zone tapable = reprendre. Le nom + les symboles d'état. */}
+      <Link href={`/m/site/${visit.siteId}`} className="flex min-w-0 flex-1 flex-col active:opacity-70">
         {/* Ligne 1 : état (● en cours / ⏸ en pause) + nom du chantier. */}
-        <div className="flex items-center gap-1.5">
+        <span className="flex items-center gap-1.5">
           {paused
             ? <Pause className="h-3.5 w-3.5 shrink-0 text-amber-600" />
             : <Radio className="h-3.5 w-3.5 shrink-0 animate-pulse text-emerald-600" />}
           <span className="min-w-0 truncate font-semibold text-emerald-950 dark:text-emerald-50">
             {visit.siteName}
           </span>
-        </div>
+        </span>
 
         {/* Ligne 2 : symboles d'état (nb de photos/vidéos/vocaux/notes…) + envoi + durée. */}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-emerald-900/75 dark:text-emerald-100/75">
+        <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-emerald-900/75 dark:text-emerald-100/75">
           {chips.length === 0 ? (
             <span className="text-emerald-800/55 dark:text-emerald-200/45">Rien capturé pour l&apos;instant</span>
           ) : (
@@ -144,19 +145,23 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
           {elapsed && (
             <span className="text-emerald-700/50 dark:text-emerald-300/40">· {paused ? 'en pause' : elapsed}</span>
           )}
-        </div>
-      </div>
+        </span>
+      </Link>
 
-      {/* Reprendre : simple triangle de lecture à DROITE de la ligne. */}
-      <span
+      {/* Supprimer la visite (fantôme / test / doublon) — 2 temps, sans l'ouvrir. */}
+      <HomeVisitDeleteButton reportId={visit.reportId} tone={paused ? 'amber' : 'emerald'} />
+
+      {/* Reprendre : triangle de lecture à DROITE. */}
+      <Link
+        href={`/m/site/${visit.siteId}`}
         aria-label="Reprendre"
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white active:brightness-95 ${
           paused ? 'bg-amber-600' : 'bg-emerald-700'
         }`}
       >
         <Play className="h-5 w-5 fill-current" />
-      </span>
-    </Link>
+      </Link>
+    </div>
   )
 }
 
