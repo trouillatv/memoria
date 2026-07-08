@@ -169,16 +169,38 @@ export function VisitLauncherHome() {
                 </div>
               ) : chosenSite ? (
                 /* « Comment voulez-vous démarrer ? » — capturer / WhatsApp / fichiers. */
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <button type="button" onClick={() => setIntent(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <ArrowLeft className="h-3.5 w-3.5" /> {VISIT_INTENTS.find((i) => i.slug === intent)?.label ?? 'Retour'}
                   </button>
-                  {/* AVANT de démarrer : « Préparer ma visite » — MÊME moteur que la
-                      fiche chantier, avec le motif déjà choisi porté (initialMotive).
-                      Facultatif ; le démarrage juste dessous porte le même motif. */}
-                  <SiteBriefButton siteId={chosenSite.id} variant="mobile" mode="visit" initialMotive={intent ?? undefined} />
-                  <p className="pt-1 text-[13px] text-muted-foreground">Comment voulez-vous démarrer ?</p>
-                  <ModeBtn onClick={captureNow} disabled={pending} icon={<Camera className="h-5 w-5" />} title="Capturer maintenant" hint="Photos, vidéos, vocaux sur place" />
+
+                  {/* ACTION PRINCIPALE : démarrer maintenant → écran de capture direct.
+                      C'est LE geste par défaut ; « Préparer » n'est qu'une option. */}
+                  <button
+                    type="button"
+                    onClick={captureNow}
+                    disabled={pending}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-4 text-base font-semibold text-white active:scale-[0.99] transition disabled:opacity-50"
+                  >
+                    {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
+                    Démarrer maintenant
+                  </button>
+                  <p className="-mt-1 text-center text-[12px] text-muted-foreground">Photos, vidéos, vocaux sur place</p>
+
+                  {/* OPTION : préparer — détour VOLONTAIRE (briefing motive-aware),
+                      jamais imposé. Apparence carte pour ne pas concurrencer « Démarrer ». */}
+                  <SiteBriefButton
+                    siteId={chosenSite.id}
+                    variant="mobile"
+                    mode="visit"
+                    appearance="card"
+                    initialMotive={intent ?? undefined}
+                    label="Préparer ma visite"
+                    description="Voir ce qu'il faut savoir avant d'y aller"
+                  />
+
+                  {/* Modes alternatifs de démarrage — secondaires. */}
+                  <p className="pt-1 text-[13px] text-muted-foreground">Ou importer</p>
                   <ModeBtn onClick={() => importMode('whatsapp_zip')} disabled={pending} icon={<MessageSquare className="h-5 w-5" />} title="Importer depuis WhatsApp" hint="Un export .zip de la discussion" />
                   <ModeBtn onClick={() => importMode('upload')} disabled={pending} icon={<FolderUp className="h-5 w-5" />} title="Importer des fichiers" hint="Photos, vidéos, vocaux, PDF" />
                 </div>
