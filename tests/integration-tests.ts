@@ -19,6 +19,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/components/dashboard-cockpit.test.tsx',
   'tests/components/dashboard-widgets.test.tsx',
   'tests/components/monthly-report-editor.test.tsx',
+  'tests/components/morning-hero.test.tsx',
   'tests/components/proof-photo-grid.test.tsx',
   'tests/components/team-week-grid.test.tsx',
   'tests/components/tender-memory-entry.test.tsx',

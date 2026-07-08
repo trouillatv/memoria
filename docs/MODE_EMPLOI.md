@@ -89,8 +89,11 @@ C'est votre premier point de contact au matin. MemorIA n'affiche que ce qui comp
 #### Votre premier chantier
 Si vous n'avez jamais créé de chantier, une carte d'accueil vous guide en trois étapes : **Créer votre premier chantier** (le lieu où s'accumule la mémoire) → **Démarrer une réunion** (voix ou notes → compte-rendu, actions, décisions) → **Suivre les actions** (ce qui reste à faire, à confier aux entreprises). Une fois la boucle lancée, vous accédez au cockpit complet.
 
-#### Mémoire active ce matin
-Une seule section en tête (jamais plusieurs), ou silence vert assumé si tout est calme. Elle remonte le plus critique du moment : passations à préparer, dossiers de démarrage à rendre, résonance terrain récente, signalements 24 h, état des lieux à surveiller. La couleur monte selon la criticité (ambre = attention, rouge = fragilité, vert = stable).
+#### Le Matin (hero de l'Accueil)
+Chaque nuit vers 6 h, MemorIA **relit tous vos chantiers actifs** (détecteurs déterministes : actions en retard, décisions jamais appliquées, réserves ouvertes, obligations négligées… — zéro IA, zéro coût) et prépare le matin. À l'ouverture : « *Cette nuit, MemorIA a relu vos 12 chantiers. Deux réclament votre attention.* » — au plus **2 chantiers en focus** avec leurs éléments datés, la **provenance toujours visible** (« Relu cette nuit à 05h17 · 12 chantiers · zéro IA »), et un bouton **Commencer ma journée** vers le premier chantier en focus. Si rien ne réclame d'attention : **silence vert assumé** — « rien n'a été oublié » est une information prouvée par l'heure de relecture, pas une absence de calcul. Chaque phrase du Matin est un fait vérifiable, jamais une rédaction libre.
+
+#### Mémoire active ce matin (quand la nuit n'a pas encore tourné)
+Si aucun digest nocturne n'existe (chantier créé aujourd'hui, toute première nuit), le hero historique prend le relais : passations à préparer, dossiers de démarrage à rendre, résonance terrain récente, signalements 24 h, état des lieux à surveiller. La couleur monte selon la criticité (ambre = attention, rouge = fragilité, vert = stable).
 
 #### Ligne mémoire
 Trois panneaux : **État de la continuité** (santé du relais entre équipes), **Temps mémoriel** (mini heatmap 12 semaines, résonance de chaque lieu), **Dernière mémoire utile** (4 événements récents pertinents).

@@ -32,6 +32,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getMyOrgMorningDigest, type OrgMorningDigest } from '@/lib/db/morning-digest'
+import { MorningHero } from './MorningHero'
 import { getInboxFeed } from '@/lib/db/inbox-feed'
 import { DashboardInbox } from './DashboardInbox'
 import { listContracts } from '@/lib/db/contracts'
@@ -148,6 +150,7 @@ export default async function DashboardPage() {
     continuity,
     memorySignalsRaw,
     heatmap,
+    morningDigest,
   ] = await Promise.all([
     listContracts(),
     getCapitalPreuves(),
@@ -165,6 +168,7 @@ export default async function DashboardPage() {
       : Promise.resolve({ entries: [], counts: { j7: 0, j14: 0, j30: 0 } }),
     collectMemorySignals(),
     getMemoryHeatmap(84),
+    getMyOrgMorningDigest(),
   ])
 
   // Moteur d'états de mémoire (Temps 2) : contextualisé pour le dashboard.
@@ -236,6 +240,7 @@ export default async function DashboardPage() {
       <DashboardInbox feed={inbox} />
 
       <Hero
+        morningDigest={morningDigest}
         morningReading={morningReading}
         tendersDueSoon={tendersDueSoon}
         recentAnomalies={recentAnomalies}
@@ -524,6 +529,7 @@ interface HeroSignal {
 }
 
 function Hero({
+  morningDigest,
   morningReading,
   tendersDueSoon,
   recentAnomalies,
@@ -532,6 +538,7 @@ function Hero({
   sharedAwaitingAck,
   continuityEnabled,
 }: {
+  morningDigest: OrgMorningDigest | null
   morningReading: TenantMorningReading
   tendersDueSoon: TenderDueSoonRow[]
   recentAnomalies: RecentAnomalyItem[]
@@ -540,6 +547,11 @@ function Hero({
   sharedAwaitingAck: number
   continuityEnabled: boolean
 }) {
+  // LE MATIN (Vincent 2026-07-09) : quand la Nuit a produit un digest pour
+  // aujourd'hui, il EST le hero — jamais deux heros empilés. Pas de digest
+  // (première nuit, chantier créé aujourd'hui) → le hero historique ci-dessous.
+  if (morningDigest) return <MorningHero digest={morningDigest} />
+
   const signals: HeroSignal[] = []
 
   // Continuité (état le plus critique : rupture de mémoire) — gated.

@@ -13,6 +13,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
+import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso } from '@/lib/time/local-date'
 
 export interface SiteMorningDigestRow {
@@ -113,6 +114,14 @@ export async function getOrgMorningDigest(orgId: string, date = todayLocalIso())
     totalSignals: sites.reduce((n, s) => n + s.signalCount, 0),
     computedAt: sites.reduce<string | null>((max, s) => (max && max > s.computedAt ? max : s.computedAt), null),
   }
+}
+
+/** Le digest du matin pour MON organisation (résolution getOrgId, pattern
+ *  maison — le client admin bypasse les RLS, on re-scope par org). */
+export async function getMyOrgMorningDigest(date = todayLocalIso()): Promise<OrgMorningDigest | null> {
+  const orgId = await getOrgId()
+  if (!orgId) return null
+  return getOrgMorningDigest(orgId, date)
 }
 
 /** Le digest du matin pour UN chantier (page site / préparation de visite). */
