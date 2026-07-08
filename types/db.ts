@@ -716,6 +716,8 @@ export interface DbIntervention {
   team: string[]
   status: InterventionStatus
   notes: string | null
+  /** Objet court d'une intervention ponctuelle (mig 189). Affichage = label ?? mission.name. */
+  label: string | null
   created_at: string
   updated_at: string
   created_by: string | null

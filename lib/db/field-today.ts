@@ -2,6 +2,7 @@
 // Utilisée sur /m quand l'utilisateur est manager/admin sans équipe assignée.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PONCTUEL_MISSION_NAME } from '@/lib/db/system-missions'
 
 export interface OrgTodayIntervention {
   id: string
@@ -45,8 +46,11 @@ export async function listOrgTodayInterventions(
     .select('id, name, site_id, cadence')
     .in('site_id', siteIds)
     .is('deleted_at', null)
+  // On exclut les missions on_demand « conteneur » (Traces libres = dépôt photo),
+  // MAIS on garde la mission système « Interventions ponctuelles » : ses
+  // interventions sont de vrais événements terrain datés, elles doivent apparaître.
   const validMissions = (missions ?? []).filter(
-    (m) => (m.cadence as string) !== 'on_demand',
+    (m) => (m.cadence as string) !== 'on_demand' || (m.name as string) === PONCTUEL_MISSION_NAME,
   )
   const missionIds = validMissions.map((m) => m.id as string)
   if (missionIds.length === 0) return []
@@ -61,7 +65,7 @@ export async function listOrgTodayInterventions(
   // 3. Interventions d'aujourd'hui sur ces missions
   const { data: interventions } = await sb
     .from('interventions')
-    .select('id, status, slot, planned_start, assigned_team_id, mission_id')
+    .select('id, status, slot, planned_start, assigned_team_id, mission_id, label')
     .in('mission_id', missionIds)
     .eq('scheduled_for', todayIso)
     .neq('status', 'skipped')
@@ -107,7 +111,8 @@ export async function listOrgTodayInterventions(
     bySite.get(siteId)!.push({
       id: iid,
       missionId: i.mission_id as string,
-      missionName: mission.name,
+      // Affichage = objet de la ponctuelle si présent, sinon nom de mission.
+      missionName: (i.label as string | null) ?? mission.name,
       siteId,
       siteName: siteNameById.get(siteId) ?? '',
       teamName: i.assigned_team_id

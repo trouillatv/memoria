@@ -31,9 +31,15 @@ import type { DbMission } from '@/types/db'
  * Si on ajoute un nouveau type de mission système dans le futur, l'ajouter
  * ici. Aucune autre source de vérité.
  */
-export const SYSTEM_MISSION_NAMES = ['Traces libres du site'] as const
+export const SYSTEM_MISSION_NAMES = ['Traces libres du site', 'Interventions ponctuelles'] as const
 
 export type SystemMissionName = (typeof SYSTEM_MISSION_NAMES)[number]
+
+// Mission système « conteneur » des interventions ponctuelles d'un chantier.
+// INVISIBLE comme CONCEPT (exclue des listes de missions) — mais ses interventions
+// sont de VRAIS événements terrain : elles apparaissent partout où l'on liste des
+// interventions, affichées avec `intervention.label` (jamais « Mission Ponctuel »).
+export const PONCTUEL_MISSION_NAME: SystemMissionName = 'Interventions ponctuelles'
 
 /**
  * Détecte si une mission est une mission système.
@@ -111,6 +117,48 @@ export async function ensureSystemMission(
   const created = await getMission(id)
   if (!created) {
     throw new Error(`ensureSystemMission: mission créée mais introuvable (site=${siteId}, id=${id})`)
+  }
+  return created
+}
+
+/**
+ * Find-or-create la mission système « Interventions ponctuelles » d'un chantier.
+ * Conteneur technique des interventions ponctuelles créées depuis le mobile.
+ * Idempotent (une seule par chantier). Cadence 'on_demand' → invisible du planning
+ * EN TANT QUE MISSION ; ses interventions, elles, restent des événements visibles.
+ */
+export async function ensurePonctuelMission(
+  siteId: string,
+  createdBy: string | null,
+): Promise<DbMission> {
+  const supabase = createAdminClient()
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('missions')
+    .select('*')
+    .eq('site_id', siteId)
+    .eq('cadence', 'on_demand')
+    .eq('name', PONCTUEL_MISSION_NAME)
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+  if (existing) return existing as DbMission
+
+  const id = await createMission({
+    site_id: siteId,
+    name: PONCTUEL_MISSION_NAME,
+    description: 'Mission système (mig 189). Conteneur des interventions ponctuelles créées depuis le mobile. Invisible comme concept ; ses interventions apparaissent via leur label.',
+    cadence: 'on_demand',
+    default_team: [],
+    engagement_ids: [],
+    default_checklist: [],
+    created_by: createdBy,
+  })
+
+  const created = await getMission(id)
+  if (!created) {
+    throw new Error(`ensurePonctuelMission: mission créée mais introuvable (site=${siteId}, id=${id})`)
   }
   return created
 }

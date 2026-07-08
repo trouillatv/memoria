@@ -216,12 +216,12 @@ export default async function FieldSitePage({
     .from('missions').select('id, name').eq('site_id', siteId).is('deleted_at', null)
   const missionNameById = new Map((siteMissionRows ?? []).map((m) => [m.id as string, m.name as string]))
   const siteMissionIds = [...missionNameById.keys()]
-  type TodayIntv = { id: string; status: string; slot: 'morning' | 'afternoon' | 'evening' | null; planned_start: string | null; planned_end: string | null; mission_id: string }
+  type TodayIntv = { id: string; status: string; slot: 'morning' | 'afternoon' | 'evening' | null; planned_start: string | null; planned_end: string | null; mission_id: string; label: string | null }
   const todayInterventions: TodayIntv[] = siteMissionIds.length === 0
     ? []
     : (((await supabase
         .from('interventions')
-        .select('id, status, slot, planned_start, planned_end, mission_id')
+        .select('id, status, slot, planned_start, planned_end, mission_id, label')
         .in('mission_id', siteMissionIds)
         .eq('scheduled_for', todayIso)
         .neq('status', 'skipped')
@@ -393,7 +393,7 @@ export default async function FieldSitePage({
                     className="flex items-center gap-2 rounded-xl border bg-muted/30 shadow-sm px-3 py-2.5 active:brightness-95 transition"
                   >
                     <span className="text-[11px] font-mono tabular-nums text-muted-foreground shrink-0 w-12">{time}</span>
-                    <span className="text-sm font-medium min-w-0 flex-1 truncate">{missionNameById.get(i.mission_id) ?? 'Intervention'}</span>
+                    <span className="text-sm font-medium min-w-0 flex-1 truncate">{i.label ?? missionNameById.get(i.mission_id) ?? 'Intervention'}</span>
                     <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.cls}`}>{meta.label}</span>
                     <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0" />
                   </Link>
