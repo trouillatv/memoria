@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
+import { deleteVisitAction } from '@/app/(field)/m/visite/[reportId]/debrief-actions'
 import {
   addNoteCaptureAction,
   addVerificationCaptureAction,
@@ -533,7 +534,24 @@ export function VisitBasket({
 
   // ── Terminer la visite ──────────────────────────────────────────────────────
   function end() {
+    // Visite SANS le moindre élément — ni en base (kept), ni dans la file hors-ligne
+    // (pending / queued). On est le SEUL endroit à savoir la file vide, donc le seul
+    // à pouvoir l'affirmer sans risque d'effacer du travail non synchronisé. Une
+    // visite vide qu'on « termine » ne doit pas laisser de fantôme : on l'écarte
+    // (soft-delete) → elle disparaît d'« Aujourd'hui », comme attendu.
+    const isEmpty =
+      kept.length === 0 && visiblePending.length === 0 && pending.length === 0 && queued.length === 0
+
     startBusy(async () => {
+      if (isEmpty) {
+        const r = await deleteVisitAction({ report_id: reportId })
+        if (r.ok) {
+          await revalidateSiteMobile(siteId)
+          toast.success('Visite vide — écartée', { duration: 1600 })
+          router.push('/m')
+        } else toast.error(r.error ?? 'Suppression impossible')
+        return
+      }
       const r = await endVisitAction({ report_id: reportId, site_id: siteId })
       if (r.ok) {
         await revalidateSiteMobile(siteId)
