@@ -5,6 +5,7 @@
 // (action, lien sujet, projection) est faite au bureau. Cf. [[visite-trois-temps]].
 
 import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -243,6 +244,10 @@ export async function deleteVisitAction(input: unknown): Promise<{ ok: boolean; 
   }
   try {
     await deleteVisit(parsed.data.report_id)
+    // La visite écartée doit disparaître d'« Aujourd'hui » (Reprendre mon travail)
+    // ET de la fiche chantier — sinon le cache de route la ferait persister.
+    revalidatePath('/m')
+    if (visit.site_id) revalidatePath(`/m/site/${visit.site_id}`)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Suppression impossible' }
