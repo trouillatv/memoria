@@ -23,19 +23,33 @@ export const maxDuration = 300
 const BUCKET = 'db-backups'
 const RETENTION_DAYS = 14
 
-// Tables publiques à sauvegarder. ⚠️ Ajouter ici toute NOUVELLE table métier.
-const TABLES = [
-  'activity_logs', 'ai_usage', 'clients', 'contracts', 'document_collections',
-  'document_links', 'documents', 'engagements', 'feedback', 'handover_briefs',
-  'intervention_access_events', 'intervention_anomalies', 'intervention_checklist_items',
-  'intervention_participants', 'intervention_photos', 'intervention_templates',
-  'intervention_validations', 'intervention_voice_notes', 'interventions',
-  'knowledge_chunks', 'knowledge_items', 'missions', 'proof_share_tokens',
-  'proof_verification_tokens', 'reports', 'share_access_log', 'site_morning_digest', 'site_notes',
-  'site_reading_candidates', 'sites', 'team_members', 'teams', 'tender_agent_analyses',
-  'tender_analyses', 'tender_chat_attachments', 'tender_chat_messages',
-  'tender_conversations', 'tender_documents', 'tenders', 'trace_embeddings', 'users',
-]
+// ÉNUMÉRATION DYNAMIQUE (mig 192, Vincent 2026-07-09) : la liste en dur avait
+// dérivé (~80 migrations de retard — site_actions, site_decisions, dossiers…
+// non sauvegardés). RÈGLE : toute table est sauvegardée par défaut ; toute
+// exclusion est EXPLICITE, ici, avec sa justification écrite.
+const EXCLUDED: Record<string, string> = {
+  // (aucune exclusion — le jour où une table doit sortir du backup, elle
+  // s'inscrit ici avec sa raison, et c'est un acte doctrinal délibéré.)
+}
+
+// Pagination du dump : PostgREST plafonne un select à ~1000 lignes — l'ancien
+// dump tronquait SILENCIEUSEMENT les grosses tables. NB : sans ORDER BY la
+// pagination n'est pas transactionnelle ; le cron tourne à 03h00 (fenêtre
+// calme), le risque résiduel est accepté pour un dump logique quotidien.
+const PAGE = 1000
+async function dumpTable(
+  supabase: ReturnType<typeof createAdminClient>,
+  table: string,
+): Promise<{ rows: unknown[] } | { error: string }> {
+  const rows: unknown[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase.from(table).select('*').range(from, from + PAGE - 1)
+    if (error) return { error: error.message }
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE) break
+  }
+  return { rows }
+}
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
@@ -52,12 +66,23 @@ export async function GET(request: Request) {
   const counts: Record<string, number> = {}
   const errors: string[] = []
 
-  // 1. Dump table par table
-  for (const t of TABLES) {
-    const { data, error } = await supabase.from(t).select('*')
-    if (error) { errors.push(`${t}: ${error.message}`); continue }
-    ;(dump.tables as Record<string, unknown[]>)[t] = data ?? []
-    counts[t] = data?.length ?? 0
+  // 0. Énumérer les tables (mig 192) — si l'énumération échoue, on REFUSE de
+  //    produire un backup partiel silencieux.
+  const { data: tableRows, error: listErr } = await supabase.rpc('backup_list_tables')
+  if (listErr || !tableRows?.length) {
+    return NextResponse.json(
+      { ok: false, reason: `backup_list_tables failed: ${listErr?.message ?? 'empty'}` },
+      { status: 500 },
+    )
+  }
+  const tables = (tableRows as string[]).filter((t) => !(t in EXCLUDED))
+
+  // 1. Dump table par table (paginé — jamais de troncature silencieuse)
+  for (const t of tables) {
+    const result = await dumpTable(supabase, t)
+    if ('error' in result) { errors.push(`${t}: ${result.error}`); continue }
+    ;(dump.tables as Record<string, unknown[]>)[t] = result.rows
+    counts[t] = result.rows.length
   }
 
   // 2. Upload (1 fichier par jour, écrasé si relance le même jour)
@@ -94,7 +119,8 @@ export async function GET(request: Request) {
     ok: true,
     file: path,
     bytes: body.length,
-    tables: TABLES.length,
+    tables: tables.length,
+    excluded: Object.keys(EXCLUDED).length ? EXCLUDED : undefined,
     rows: totalRows,
     purged,
     errors: errors.length ? errors : undefined,
