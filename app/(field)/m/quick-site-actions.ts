@@ -51,3 +51,35 @@ export async function quickCreateSiteVisitAction(
     return { ok: false, error: 'Échec de la création du chantier' }
   }
 }
+
+/**
+ * Crée juste le CHANTIER (sans visite) — pour « Enregistrer une réunion » sur un
+ * nouveau chantier : on veut le site, puis on ouvre l'enregistreur de réunion
+ * dessus. Même logique de création rapide (nom requis, reste facultatif).
+ */
+export async function quickCreateSiteAction(
+  input: z.input<typeof schema>,
+): Promise<{ ok: true; siteId: string; siteName: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+
+  const parsed = schema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Le nom du chantier est requis' }
+  const { name, address, clientName } = parsed.data
+
+  try {
+    const resolvedClientName = clientName || UNASSIGNED_CLIENT
+    const clientId = await findOrCreateClientByName(resolvedClientName)
+    const canonicalKey = buildCanonicalSiteKey(resolvedClientName, name)
+    const siteId = await createSite({
+      client_id: clientId,
+      contract_id: null,
+      name,
+      address: address ?? null,
+      canonical_site_key: canonicalKey,
+    })
+    return { ok: true, siteId, siteName: name }
+  } catch {
+    return { ok: false, error: 'Échec de la création du chantier' }
+  }
+}
