@@ -61,9 +61,9 @@ describe('MorningHero — état signaux', () => {
     expect(screen.getByText(/Relu cette nuit à 05h17 · 4 chantiers · zéro IA/)).toBeInTheDocument()
   })
 
-  it('CTA « Commencer ma journée » → premier chantier en focus', () => {
+  it('CTA intelligent : le libellé porte la destination (premier focus)', () => {
     render(<MorningHero digest={d} />)
-    const cta = screen.getByRole('link', { name: /commencer ma journée/i })
+    const cta = screen.getByRole('link', { name: /commencer ma journée — Lycée de Païta/i })
     expect(cta.getAttribute('href')).toBe('/sites/a')
   })
 
@@ -100,9 +100,9 @@ describe('MorningHero — silence vert compact', () => {
     expect(screen.getByText(/Relu cette nuit à 05h17/)).toBeInTheDocument()
   })
 
-  it('CTA de transition → /aujourdhui quand aucun focus', () => {
+  it('CTA de transition → /aujourdhui quand aucun focus (libellé adapté)', () => {
     render(<MorningHero digest={quiet} />)
-    const cta = screen.getByRole('link', { name: /commencer ma journée/i })
+    const cta = screen.getByRole('link', { name: /voir ma journée/i })
     expect(cta.getAttribute('href')).toBe('/aujourdhui')
   })
 })

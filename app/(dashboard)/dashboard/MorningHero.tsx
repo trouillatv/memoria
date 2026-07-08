@@ -74,7 +74,7 @@ export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
               href="/aujourdhui"
               className="inline-block mt-2 text-sm font-medium text-primary hover:underline"
             >
-              Commencer ma journée →
+              Voir ma journée →
             </Link>
           </div>
         </div>
@@ -129,11 +129,15 @@ export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
         </p>
       )}
 
+      {/* CTA de transition : le libellé porte la destination — le bouton dit
+          exactement où il emmène (« où commencer », pas « analyse encore »). */}
       <Link
         href={ctaHref}
         className="mt-4 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
       >
-        Commencer ma journée →
+        {focus.length > 0 && focus[0].siteName
+          ? `Commencer ma journée — ${focus[0].siteName} →`
+          : 'Commencer ma journée →'}
       </Link>
     </section>
   )
