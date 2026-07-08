@@ -74,6 +74,7 @@ export async function reopenVisitAction(
   try {
     await reopenVisit(parsed.data.report_id)
     revalidatePath(`/m/site/${parsed.data.site_id}`)
+    revalidatePath('/m') // « Reprendre mon travail » : la visite redevient en cours
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec de la reprise de la visite' }
@@ -127,6 +128,10 @@ export async function endVisitAction(
   try {
     await endVisit(parsed.data.report_id)
     if (parsed.data.site_id) revalidatePath(`/m/site/${parsed.data.site_id}`)
+    // Sans ça, l'accueil (« Reprendre mon travail ») garde la visite en cache et
+    // continue de l'afficher « en cours » avec l'option Terminer, alors qu'on
+    // vient de la terminer. On invalide la home pour qu'elle se recharge.
+    revalidatePath('/m')
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec de la fin de visite' }
@@ -164,6 +169,7 @@ export async function closeVisitAction(
       resolution: d.resolution ?? null,
     })
     if (d.site_id) revalidatePath(`/m/site/${d.site_id}`)
+    revalidatePath('/m') // la home reflète l'état de tri/clôture
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec de la clôture de la visite' }
