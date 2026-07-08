@@ -229,6 +229,36 @@ Le conducteur ne pense pas « voici mes missions ». Il pense « qu'est-ce qui
 m'attend aujourd'hui ? ». Comme un agenda Google : on voit « Dentiste », pas
 « Agenda personnel ». Le planning montre les EVENEMENTS, pas les objets.
 
+### Definition officielle du Planning
+
+> Le Planning est la vue chronologique de tous les evenements DATES lies aux
+> chantiers. Il agrege visites, reunions, interventions et actions planifiees,
+> passees ou a venir. Les actions non planifiees restent dans l'ecran Actions. Les
+> missions ne sont JAMAIS affichees : elles sont un mecanisme interne de planification.
+
+Regle d'architecture durable (plus forte que raisonner par type d'objet) : a chaque
+nouvel objet, une seule question —
+
+    Est-il date (date ou creneau) ?
+      oui -> il apparait dans le Planning
+      non -> il reste dans son ecran metier
+
+Table de reference :
+
+| Objet                | Planning              |
+| -------------------- | --------------------- |
+| Visite prevue        | Oui                   |
+| Visite realisee      | Oui (Passe)           |
+| Reunion              | Oui                   |
+| Intervention         | Oui                   |
+| Action planifiee     | Oui                   |
+| Action sans date     | Non (reste Actions)   |
+| Mission (gabarit)    | Non                   |
+
+Le Planning ne remplace rien : c'est une PROJECTION. Toucher une ligne ouvre la
+surface metier de l'objet (Visite -> Preparer/Demarrer ; Intervention -> fiche ;
+Reunion -> preparer ; Action -> fiche). Il devient la porte d'entree TEMPORELLE.
+
 ### Le planning devient une PROJECTION unifiee (une vue, pas un objet)
 
 En base, rien ne change : Visite = captation, Action = chose a faire,
@@ -257,16 +287,26 @@ plus immediatement compris. « Ma journee » est plus chaleureux mais trop limit
 present ; « Agenda chantier » est plus juste mais plus lourd. Reevaluer apres usage
 reel (candidats de repli : « Agenda », « Ma journee »).
 
-### Mobile — l'ecran « Ma journee » (Passe | A venir)
+### Mobile — l'ecran Planning : une timeline continue
 
-Onglet bas dedie. Deux sous-onglets seulement :
-- **Passe** — « qu'ai-je fait ? » : visites, reunions, interventions, actions
-  realisees, chronologiquement, avec resultat (CR, photos, preuves).
-- **A venir** — « qu'est-ce qui m'attend ? » : visites prevues, interventions,
-  reunions, actions planifiees, par journee.
+Modele cible (Vincent) : PAS deux ecrans separes Passe / A venir, mais UNE seule
+timeline continue, facon Google/Apple Calendar. Le temps est continu :
+
+    Hier         ✓ Visite Medipole    ✓ Reunion OPC
+    Aujourd'hui  ▶ Intervention Bloc B    ⏳ Reunion 14h
+    Demain       ⏳ Visite CHT
+    Vendredi     ⏳ Intervention BatiSud
 
 NE PAS filtrer par type — le TEMPS fait le travail. Le conducteur raisonne par
-journee, pas par objet. Dans 6 mois : Aujourd'hui / Demain / Cette semaine.
+journee, pas par objet. La vue s'ouvre centree sur Aujourd'hui (hier / aujourd'hui /
+demain / cette semaine a portee de scroll). Chaque ligne porte son ETAT (✓ terminee /
+▶ en cours / ⏳ a venir).
+
+Reserve (a ne pas perdre) : la timeline continue sert le RYTHME proche. Elle ne sert
+PAS la justification lointaine (« quand suis-je passe au Medipole il y a 3 mois ? »)
+— scroller a l'infini est mauvais pour ca. Garder un acces au Passe profond (saut par
+date / par chantier / recherche), sinon on perd la dimension memoire que le Planning
+est justement cense porter. Continu pour le proche ; accessible pour le lointain.
 
 ### La frontiere « date » (evite la duplication)
 
