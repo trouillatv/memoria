@@ -84,6 +84,10 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
   const elapsed = useElapsed(visit.startedAt)
   const idleMins = useMinutesSince(visit.lastActivityAt)
   const pending = usePendingCount(visit.reportId)
+  // Retrait optimiste : dès la suppression confirmée, la carte disparaît (fiable
+  // même quand plusieurs visites du même chantier se ressemblent).
+  const [deleted, setDeleted] = useState(false)
+  if (deleted) return null
 
   const synced = visit.captureCount
   const total = synced + pending
@@ -149,7 +153,7 @@ function VisitRow({ visit }: { visit: ActiveVisitCardItem }) {
       </Link>
 
       {/* Supprimer la visite (fantôme / test / doublon) — 2 temps, sans l'ouvrir. */}
-      <HomeVisitDeleteButton reportId={visit.reportId} tone={paused ? 'amber' : 'emerald'} />
+      <HomeVisitDeleteButton reportId={visit.reportId} tone={paused ? 'amber' : 'emerald'} onDeleted={() => setDeleted(true)} />
 
       {/* Reprendre : triangle de lecture à DROITE. */}
       <Link

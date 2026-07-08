@@ -14,10 +14,14 @@ import { deleteVisitAction } from '@/app/(field)/m/visite/[reportId]/debrief-act
 export function HomeVisitDeleteButton({
   reportId,
   tone = 'emerald',
+  onDeleted,
 }: {
   reportId: string
   /** Assortit la couleur au repos à la carte (verte = en cours, ambre = tri). */
   tone?: 'emerald' | 'amber'
+  /** Retrait OPTIMISTE : la carte disparaît tout de suite, sans attendre le
+   *  rafraîchissement serveur (fiable même si plusieurs cartes se ressemblent). */
+  onDeleted?: () => void
 }) {
   const router = useRouter()
   const [armed, setArmed] = useState(false)
@@ -37,12 +41,18 @@ export function HomeVisitDeleteButton({
       return
     }
     start(async () => {
-      const r = await deleteVisitAction({ report_id: reportId })
-      if (r.ok) {
-        toast.success('Visite supprimée', { duration: 1400 })
-        router.refresh()
-      } else {
-        toast.error(r.error ?? 'Suppression impossible')
+      try {
+        const r = await deleteVisitAction({ report_id: reportId })
+        if (r.ok) {
+          onDeleted?.() // la carte s'efface immédiatement
+          toast.success('Visite supprimée', { duration: 1400 })
+          router.refresh()
+        } else {
+          toast.error(r.error ?? 'Suppression impossible')
+          setArmed(false)
+        }
+      } catch {
+        toast.error('Suppression impossible — réessayez')
         setArmed(false)
       }
     })
