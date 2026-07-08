@@ -134,6 +134,9 @@ Ne pas forcer un placement manuel du pin a chaque creation si la proposition est
 - Permission utilisateur obligatoire.
 - Message clair : `Pour ouvrir automatiquement le bon chantier.`
 - Toujours garder une bascule manuelle via le compte et la navigation existante.
+- Le Planning « Ma journee » (surtout le Passe) est une AUTO-consultation : la journee
+  de CELUI qui regarde. Jamais la vue d'un tiers ou d'un manager sur « ce qu'a fait
+  l'agent X » — ce serait la ligne ERP-RH franchie.
 
 ---
 
@@ -242,6 +245,18 @@ terrain : heure/creneau + type + chantier + intitule + equipe/personne si pertin
 Regle d'affichage universelle : `intervention.label ?? mission.name`. Ne JAMAIS
 afficher « Mission Ponctuel » a l'utilisateur.
 
+Precision (corrige le wording de mig 189) : la mission systeme « Ponctuel » reste
+invisible EN TANT QUE CONCEPT utilisateur, mais ses interventions, elles, DOIVENT
+apparaitre dans le planning (via `label`). « Invisible du planning » dans mig 189 ne
+vise que la ligne-mission (le gabarit), pas l'evenement terrain. Le planning terrain
+affiche les evenements operationnels : visites prevues, interventions recurrentes ET
+ponctuelles, reunions chantier. La mission reste un gabarit interne, jamais une ligne.
+
+Nommage — **Decision (Vincent) : garder « Planning » pour l'instant.** C'est le mot le
+plus immediatement compris. « Ma journee » est plus chaleureux mais trop limite au
+present ; « Agenda chantier » est plus juste mais plus lourd. Reevaluer apres usage
+reel (candidats de repli : « Agenda », « Ma journee »).
+
 ### Mobile — l'ecran « Ma journee » (Passe | A venir)
 
 Onglet bas dedie. Deux sous-onglets seulement :
@@ -261,8 +276,8 @@ est planifiee (datee), elle apparait AUSSI dans le planning. Frontiere naturelle
 
 ### La barre : CINQ onglets, cinq questions (ne PAS fusionner)
 
-Correction (Guillaume) : Planning ne REMPLACE ni l'Accueil ni les Actions. On ajoute
-un onglet. Cinq onglets, cinq questions distinctes, non concurrentes :
+Position (Guillaume) : Planning ne remplace pas l'Accueil (non negociable). Cinq
+questions distinctes, non concurrentes :
 
 - **Accueil** — « Que se passe-t-il aujourd'hui ? » (vue synthetique)
 - **Planning** — « Comment se deroule ma journee ? »
@@ -270,8 +285,29 @@ un onglet. Cinq onglets, cinq questions distinctes, non concurrentes :
 - **Actions** — « Qu'est-ce qui reste a faire ? » (inbox des non-datees)
 - **Moi** — profil, preferences, historique personnel
 
-(Note structure : 5 onglets + le ➕ central = 6 emplacements — a arbitrer au moment
-du build : soit le ➕ sort de la barre, soit un onglet cede sa place au ➕.)
+Arbitrage du 6e emplacement (5 onglets + le ➕ central = 6). Le ➕ n'est PAS un onglet :
+c'est le bouton de creation. Il faut donc retomber a 4 onglets + ➕. Deux options
+s'opposent :
+
+- **Option A (recommandee)** : sortir **Moi** de la barre (avatar en haut a droite).
+  Barre = Accueil · Planning · ➕ · Chantiers · Actions. « Moi » est le seul onglet
+  qu'on n'ouvre jamais dans l'urgence terrain.
+- **Option B** (proposee ensuite par Guillaume) : sortir **Actions** de la barre
+  (Actions devient un ecran « boite de reception » atteignable depuis Accueil/Planning).
+  Barre = Accueil · Planning · ➕ · Chantiers · Moi.
+
+Point de vigilance sur l'option B : Planning ne montre QUE le date ; Actions est
+l'inbox du NON-date. Ce sont les deux etats d'une meme question « ce qui reste a
+faire » (planifie / non planifie) — c'est exactement la frontiere date. Retirer
+Actions de la barre affaiblit l'un des deux ancrages de cette frontiere et enterre
+le seul contenu que le Planning ne sait pas montrer (le non-planifie a organiser).
+D'ou la preference pour l'option A : garder le couple Planning(date) / Actions(non
+date) visible en permanence, faire ceder « Moi ».
+
+**Decision (Vincent, tranchee) : Option A.**
+Barre mobile = **Accueil · Planning · ➕ · Chantiers · Actions**. « Moi » sort de la
+barre et passe en **avatar en haut a droite**. Raison : Planning = date, Actions =
+non date / a organiser ; on garde les deux visibles (le couple ne se casse pas).
 
 ### Planning : pas seulement « Aujourd'hui »
 
@@ -301,6 +337,11 @@ Aujourd'hui on entre par un chantier. Demain :
     J'ouvre MemorIA -> Planning -> je choisis l'evenement -> Preparer -> Executer -> Debrief
 
 Le chantier devient un CONTEXTE ; le planning devient la porte d'entree du cycle.
+
+Nuance (arbitrage de landing) : « point d'entree » = REFLEXE, pas entonnoir force. Le
+landing par defaut reste pilote par `home_preference` + resolution de contexte (QR/GPS
+-> chantier). Planning est un onglet PROMU (voire le landing pour qui le prefere),
+jamais un passage oblige — sinon on casse « le contexte propose, n'enferme jamais ».
 
 ### Le ➕ : STABLE, jamais contextuel (seul l'ORDRE change)
 
