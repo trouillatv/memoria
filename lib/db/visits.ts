@@ -164,16 +164,20 @@ export async function reopenVisit(reportId: string): Promise<void> {
  * de « Reprendre mon travail », de la liste des visites et n'est plus ouvrable.
  * Réversible (deleted_at → null) ; on ne touche ni aux captures ni aux suites déjà
  * matérialisées (mais une visite « non concluante » n'en a normalement pas).
- * Garde-fou : ne supprime QUE des visites (origin non-null), jamais une réunion.
+ * Le garde-fou « c'est bien une visite » est fait EN AMONT (deleteVisitAction via
+ * getVisit, qui exige origin non-null). On ne le remet PAS sur l'UPDATE : un filtre
+ * supplémentaire pouvait matcher 0 ligne SANS erreur (suppression silencieusement
+ * sans effet, puis réapparition au rafraîchissement). On VÉRIFIE l'écriture.
  */
-export async function deleteVisit(reportId: string): Promise<void> {
+export async function deleteVisit(reportId: string): Promise<number> {
   const supabase = createAdminClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('site_reports')
     .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', reportId)
-    .not('origin', 'is', null)
+    .select('id')
   if (error) throw error
+  return (data ?? []).length
 }
 
 /**
