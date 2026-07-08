@@ -54,6 +54,9 @@ export interface FieldPlanning {
   windowEnd: string
   /** Tous les événements datés, triés chronologiquement (asc). */
   events: PlanningEvent[]
+  /** Réserves OUVERTES par site — matière du « Avant de partir » (ce qui reste à
+   *  savoir avant d'aller sur le chantier). Compté en une requête batchée. */
+  openReservesBySite: Record<string, number>
 }
 
 /** Les chantiers du conducteur : sites dont une mission est affectée à l'une de
@@ -109,13 +112,29 @@ export async function buildFieldPlanning(
   const supabase = createAdminClient()
   const siteIds = await resolveScopeSiteIds(userId, role, orgId)
   if (siteIds.length === 0) {
-    return { today, windowStart, windowEnd, events: [] }
+    return { today, windowStart, windowEnd, events: [], openReservesBySite: {} }
   }
 
   const siteNameById = new Map<string, string>()
   {
     const { data } = await supabase.from('sites').select('id, name').in('id', siteIds)
     for (const s of (data ?? []) as Array<{ id: string; name: string }>) siteNameById.set(s.id, s.name)
+  }
+
+  // Réserves OUVERTES par site (une requête batchée) — alimente « Avant de partir ».
+  // Dégradation gracieuse si la table n'existe pas encore (migration 110).
+  const openReservesBySite: Record<string, number> = {}
+  {
+    const { data, error } = await supabase
+      .from('site_reserve')
+      .select('site_id')
+      .in('site_id', siteIds)
+      .eq('status', 'open')
+    if (!error) {
+      for (const r of (data ?? []) as Array<{ site_id: string }>) {
+        openReservesBySite[r.site_id] = (openReservesBySite[r.site_id] ?? 0) + 1
+      }
+    }
   }
 
   // Bornes timestamptz élargies d'1 jour de chaque côté (marge fuseau Nouméa) :
@@ -325,7 +344,7 @@ export async function buildFieldPlanning(
     return kindOrder[a.kind] - kindOrder[b.kind]
   })
 
-  return { today, windowStart, windowEnd, events }
+  return { today, windowStart, windowEnd, events, openReservesBySite }
 }
 
 function interventionState(status: string, date: string, today: string): PlanningEventState {
