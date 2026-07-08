@@ -19,7 +19,7 @@ import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
-import { getActiveVisit, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary, getSiteMemorySnapshot } from '@/lib/db/visits'
+import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, getSiteRecentActivity, buildSinceLastVisitSummary, getSiteMemorySnapshot } from '@/lib/db/visits'
 import { getSiteIdentity } from '@/lib/db/sites'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { SiteStatusCard } from './SiteStatusCard'
@@ -116,10 +116,15 @@ export default async function FieldSitePage({
   searchParams,
 }: {
   params: Promise<{ siteId: string }>
-  searchParams: Promise<{ visite?: string }>
+  searchParams: Promise<{ visite?: string; live?: string }>
 }) {
   const { siteId } = await params
-  const justVisited = (await searchParams).visite === 'ok'
+  const sp = await searchParams
+  const justVisited = sp.visite === 'ok'
+  // Visite tout juste démarrée : son id est porté dans l'URL (`?live=`). On l'ouvre
+  // DIRECTEMENT en panier, sans attendre que la relecture `getActiveVisit` reflète
+  // l'insert — le « swap » fiche → panier devient déterministe (cf. getStartedVisitById).
+  const liveVisitId = typeof sp.live === 'string' && sp.live.length > 0 ? sp.live : null
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
@@ -141,10 +146,15 @@ export default async function FieldSitePage({
   const nthPassage = pastVisitDays + 1
 
   // Actions ouvertes + visite en cours — indépendants, en parallèle.
-  const [openActions, activeVisit] = await Promise.all([
+  const [openActions, activeVisitFromQuery] = await Promise.all([
     listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
     getActiveVisit(siteId).catch(() => null),
   ])
+  // Repli déterministe : si la relecture n'a pas (encore) retrouvé la visite mais
+  // que l'URL porte l'id d'une visite qu'on vient de démarrer, on l'ouvre par id.
+  const activeVisit =
+    activeVisitFromQuery ??
+    (liveVisitId ? await getStartedVisitById(liveVisitId, siteId).catch(() => null) : null)
 
   // PERF — hors visite en cours, TOUTES les données de cockpit sont
   // indépendantes : un seul aller-retour parallèle au lieu d'une chaîne

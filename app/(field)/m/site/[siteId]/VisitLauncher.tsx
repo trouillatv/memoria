@@ -41,11 +41,10 @@ export function VisitLauncher({
       const res = await startVisitAction({ site_id: siteId })
       if (res.ok) {
         toast.success('Visite démarrée', { duration: 1500 })
-        router.refresh()
-        // Le panier de capture s'affiche EN HAUT de la fiche une fois la visite
-        // démarrée. On remonte pour y arriver directement — sinon on reste en bas
-        // (là où était le bouton) et « rien ne semble se passer ».
-        if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+        // On NAVIGUE vers l'URL `?live=<id>` : nouvelle clé de cache de route (fini
+        // le cockpit servi depuis le cache) ET ouverture DIRECTE du panier par id,
+        // sans dépendre du timing de relecture. Le panier s'affiche, tout de suite.
+        router.push(`/m/site/${siteId}?live=${res.reportId}`)
       } else {
         toast.error(res.error)
       }

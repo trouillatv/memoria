@@ -19,7 +19,9 @@ export function ReopenVisitButton({ reportId, siteId }: { reportId: string; site
       const r = await reopenVisitAction({ report_id: reportId, site_id: siteId })
       if (r.ok) {
         toast.success('Visite reprise — vous pouvez continuer', { duration: 1500 })
-        router.push(`/m/site/${siteId}`)
+        // `?live=<id>` : URL neuve (pas de cockpit en cache) + ouverture directe du
+        // panier par id — la visite reprise s'ouvre bien en collecte, pas en fiche.
+        router.push(`/m/site/${siteId}?live=${reportId}`)
       } else {
         toast.error(r.error)
       }
