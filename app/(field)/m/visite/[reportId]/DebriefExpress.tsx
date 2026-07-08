@@ -10,6 +10,7 @@ import { triageCaptureAction, untriageCaptureAction, refreshDebriefCapturesActio
 import { listVisitCapturePreviewsAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import { CaptureTriage } from './CaptureTriage'
 import { SuiteProposals } from './SuiteProposals'
+import { DeleteVisitButton } from './DeleteVisitButton'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 import type { VisitImpact, VisitSuiteProposal } from '@/lib/db/visits'
 
@@ -274,6 +275,13 @@ export function DebriefExpress({
           </ul>
         </section>
       )}
+
+      {/* Sortie discrète pour une visite non concluante (test, doublon, rien de
+          notable) : la supprimer plutôt que de la laisser traîner dans « Reprendre
+          mon travail ». Geste volontaire, confirmé en deux temps. */}
+      <div className="flex justify-center pt-1">
+        <DeleteVisitButton reportId={reportId} />
+      </div>
 
       {/* Le POINT FINAL : un seul geste pour VALIDER DÉFINITIVEMENT la visite.
           On sépare la clôture (l'écran de fin) de la consultation (la récap) —

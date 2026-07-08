@@ -6,10 +6,11 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
-import { getVisitCrPhotoPlan } from '@/lib/db/visits'
+import { getVisitCrPhotoPlan, getVisit, deleteVisit } from '@/lib/db/visits'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -221,5 +222,29 @@ export async function refreshDebriefCapturesAction(reportId: string): Promise<Vi
     return await listVisitCaptures(reportId)
   } catch {
     return []
+  }
+}
+
+/**
+ * Supprime (soft) une visite non concluante. Elle quitte « Reprendre mon travail »,
+ * la liste des visites, et n'est plus ouvrable. Réservé aux visites (jamais une
+ * réunion). Scope organisation.
+ */
+export async function deleteVisitAction(input: unknown): Promise<{ ok: boolean; error?: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+  try {
+    await deleteVisit(parsed.data.report_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Suppression impossible' }
   }
 }

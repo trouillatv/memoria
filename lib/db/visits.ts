@@ -160,6 +160,23 @@ export async function reopenVisit(reportId: string): Promise<void> {
 }
 
 /**
+ * SUPPRIME (soft) une visite non concluante : pose `deleted_at`. Elle disparaît
+ * de « Reprendre mon travail », de la liste des visites et n'est plus ouvrable.
+ * Réversible (deleted_at → null) ; on ne touche ni aux captures ni aux suites déjà
+ * matérialisées (mais une visite « non concluante » n'en a normalement pas).
+ * Garde-fou : ne supprime QUE des visites (origin non-null), jamais une réunion.
+ */
+export async function deleteVisit(reportId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('site_reports')
+    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', reportId)
+    .not('origin', 'is', null)
+  if (error) throw error
+}
+
+/**
  * Enregistre la cristallisation d'une visite DEPUIS LE DÉBRIEF (desktop) : les
  * champs métier validés par l'humain. Ne touche pas à `ended_at` (posé au
  * terrain par endVisit). Ne touche pas au pipeline de transcription/analyse.
@@ -191,6 +208,7 @@ export async function listSiteVisits(siteId: string, limit = 50): Promise<DbSite
     .select('*')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .order('started_at', { ascending: false })
     .limit(limit)
   if (error) throw error
@@ -205,6 +223,7 @@ export async function getActiveVisit(siteId: string): Promise<DbSiteReport | nul
     .select('*')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .is('ended_at', null)
     .order('started_at', { ascending: false })
     .limit(1)
@@ -259,6 +278,7 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
     .select('id, site_id, started_at')
     .eq('created_by', userId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .is('ended_at', null)
     .not('site_id', 'is', null)
     .order('started_at', { ascending: false })
@@ -346,6 +366,7 @@ export async function getVisit(reportId: string): Promise<DbSiteReport | null> {
     .select('*')
     .eq('id', reportId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .maybeSingle()
   if (error) throw error
   return (data as DbSiteReport | null) ?? null
@@ -420,6 +441,7 @@ export async function getLastEndedVisitForSite(siteId: string): Promise<LastVisi
     .select('id, started_at, ended_at, created_at')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .not('ended_at', 'is', null)
     .order('ended_at', { ascending: false })
     .limit(1)
@@ -937,6 +959,7 @@ export async function listSiteVisitsForMobile(siteId: string, limit = 50): Promi
     .select('id, origin, visit_motive, objective, started_at, ended_at, created_at, created_by')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(limit)
   const reps = (rows ?? []) as Array<{ id: string; origin: string | null; visit_motive: string | null; objective: string | null; started_at: string | null; ended_at: string | null; created_at: string; created_by: string | null }>
@@ -1263,6 +1286,7 @@ export async function listPendingTriageForUser(userId: string, limit = 8): Promi
     .select('id, site_id, ended_at')
     .eq('created_by', userId)
     .not('origin', 'is', null)
+    .is('deleted_at', null)
     .not('ended_at', 'is', null)
     .not('site_id', 'is', null)
     .order('ended_at', { ascending: false })

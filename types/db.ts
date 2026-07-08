@@ -479,6 +479,8 @@ export interface DbSiteReport {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** Soft-delete d'une visite non concluante (mig 190). NULL = active. */
+  deleted_at: string | null
 }
 
 export type SiteReportAttachmentKind = 'audio' | 'photo' | 'file' | 'video'
