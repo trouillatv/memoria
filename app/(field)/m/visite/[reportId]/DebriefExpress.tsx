@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Camera, Video, Mic, Pencil, Target, MapPin, BookMarked, AlertTriangle, Eye, Check, CheckCircle2, ArrowRight, ChevronRight, Trash2, Star, HelpCircle,
 } from 'lucide-react'
@@ -55,6 +55,10 @@ export function DebriefExpress({
   initialSuites: VisitSuiteProposal[]
 }) {
   const router = useRouter()
+  // Arrivée depuis « Clôturer » du Journal : on surligne le geste de fin —
+  // l'intent voyage dans l'URL, l'écran répond (pas d'auto-clôture, jamais).
+  const searchParams = useSearchParams()
+  const closeIntent = searchParams?.get('intent') === 'cloturer'
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
   // Aperçus en ÉTAT (et non prop figée) : une photo annotée ajoutée pendant le
   // tri doit apparaître avec sa miniature, donc on peut les recharger.
@@ -300,7 +304,7 @@ export function DebriefExpress({
                 router.push(`/m/visite/${reportId}/fin`)
               })
             }
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition disabled:opacity-60"
+            className={`flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition disabled:opacity-60 ${closeIntent ? 'ring-2 ring-emerald-300 ring-offset-2 ring-offset-background' : ''}`}
           >
             Terminer la visite <ArrowRight className="h-4 w-4" />
           </button>

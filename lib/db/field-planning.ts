@@ -57,6 +57,10 @@ export interface FieldPlanning {
   /** Réserves OUVERTES par site — matière du « Avant de partir » (ce qui reste à
    *  savoir avant d'aller sur le chantier). Compté en une requête batchée. */
   openReservesBySite: Record<string, number>
+  /** Date (ISO) de la DERNIÈRE visite terminée par site — hors fenêtre J±7 :
+   *  c'est la FRAÎCHEUR de la mémoire (« dernière visite il y a 12 j »), pas un
+   *  événement du Journal. Alimente la narration du « Avant de partir ». */
+  lastVisitBySite: Record<string, string>
 }
 
 /** Les chantiers du conducteur : sites dont une mission est affectée à l'une de
@@ -112,7 +116,7 @@ export async function buildFieldPlanning(
   const supabase = createAdminClient()
   const siteIds = await resolveScopeSiteIds(userId, role, orgId)
   if (siteIds.length === 0) {
-    return { today, windowStart, windowEnd, events: [], openReservesBySite: {} }
+    return { today, windowStart, windowEnd, events: [], openReservesBySite: {}, lastVisitBySite: {} }
   }
 
   const siteNameById = new Map<string, string>()
@@ -134,6 +138,24 @@ export async function buildFieldPlanning(
       for (const r of (data ?? []) as Array<{ site_id: string }>) {
         openReservesBySite[r.site_id] = (openReservesBySite[r.site_id] ?? 0) + 1
       }
+    }
+  }
+
+  // Dernière visite TERMINÉE par site (sans borne de fenêtre) — la fraîcheur de
+  // la mémoire du lieu. Une requête, réduite au plus récent par site.
+  const lastVisitBySite: Record<string, string> = {}
+  {
+    const { data } = await supabase
+      .from('site_reports')
+      .select('site_id, started_at')
+      .in('site_id', siteIds)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .is('deleted_at', null)
+      .order('started_at', { ascending: false })
+      .limit(400)
+    for (const r of (data ?? []) as Array<{ site_id: string; started_at: string | null }>) {
+      if (r.started_at && !lastVisitBySite[r.site_id]) lastVisitBySite[r.site_id] = r.started_at
     }
   }
 
@@ -344,7 +366,7 @@ export async function buildFieldPlanning(
     return kindOrder[a.kind] - kindOrder[b.kind]
   })
 
-  return { today, windowStart, windowEnd, events, openReservesBySite }
+  return { today, windowStart, windowEnd, events, openReservesBySite, lastVisitBySite }
 }
 
 function interventionState(status: string, date: string, today: string): PlanningEventState {

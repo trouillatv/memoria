@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 import { HardHat, Wrench, Users, ClipboardList, ChevronRight, NotebookText, AlertTriangle, Check } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildFieldPlanning, type PlanningEvent, type PlanningEventKind, type PlanningEventState } from '@/lib/db/field-planning'
+import { detectClosingProofWindows } from '@/lib/db/site-memory-signals'
 import { addDaysLocal } from '@/lib/time/local-date'
 import { ScrollToToday } from './ScrollToToday'
 import { DoneToday } from './DoneToday'
@@ -112,13 +113,18 @@ function dayHeading(dateIso: string, todayIso: string): string {
   })
 }
 
-// Bouton ÉVOLUTIF : son libellé suit le cycle de vie (Préparer → Continuer).
-function ctaLabel(e: PlanningEvent): string {
+// Bouton ÉVOLUTIF : son libellé suit le cycle de vie complet du geste —
+// Préparer (avant) → Démarrer (le moment est arrivé) → Continuer (en cours)
+// → Clôturer (la fin, bouton secondaire) → Consulter (tap sur la ligne Fait).
+// `now` = la carte est « Maintenant » : préparer n'est plus le geste juste.
+function ctaLabel(e: PlanningEvent, now = false): string {
   if (e.state === 'in_progress') {
     if (e.kind === 'visite') return 'Continuer la visite'
     if (e.kind === 'intervention') return "Continuer l'intervention"
     return 'Continuer'
   }
+  if (now && e.kind === 'intervention') return "Démarrer l'intervention"
+  if (now && e.kind === 'visite') return 'Démarrer la visite'
   switch (e.kind) {
     case 'visite': return 'Préparer cette visite'
     case 'reunion': return 'Préparer la réunion'
@@ -127,17 +133,35 @@ function ctaLabel(e: PlanningEvent): string {
   }
 }
 
+// « Clôturer » saute au geste de fin du flux (le bouton Terminer vit sur l'écran
+// de destination) — l'intent surligne ce bouton à l'arrivée.
+function cloturerHref(e: PlanningEvent): string {
+  return `${e.href}${e.href.includes('?') ? '&' : '?'}intent=cloturer`
+}
+
 // « Avant de partir » : ce qu'il reste à SAVOIR sur le chantier de la prochaine
 // carte. C'est le lien avec tout MemorIA — la visite cesse d'être « juste une
 // visite », elle raconte. Silence positif : si rien, on n'affiche rien.
+// Narration (Vincent 2026-07-10) : mise en scène du moteur, pas nouveau moteur —
+// l'irréversible d'abord (fenêtre de preuve), puis la fraîcheur de la mémoire
+// (dernière visite), puis l'état du chantier.
 function beforeYouGo(
   e: PlanningEvent,
   all: PlanningEvent[],
   openReservesBySite: Record<string, number>,
   today: string,
+  lastVisitBySite: Record<string, string> = {},
+  proofLine: string | null = null,
 ): string[] {
   if (!e.siteId) return []
   const items: string[] = []
+  // L'IRRÉVERSIBLE d'abord : le retard se rattrape, la preuve recouverte jamais.
+  if (proofLine) items.push(proofLine)
+  const lastVisit = lastVisitBySite[e.siteId]
+  if (lastVisit) {
+    const days = Math.round((new Date(`${today}T00:00:00.000Z`).getTime() - new Date(`${lastVisit.slice(0, 10)}T00:00:00.000Z`).getTime()) / 86400000)
+    if (days >= 1) items.push(`dernière visite il y a ${days} j`)
+  }
   const res = openReservesBySite[e.siteId] ?? 0
   if (res > 0) items.push(`${res} réserve${res > 1 ? 's' : ''} ouverte${res > 1 ? 's' : ''}`)
 
@@ -157,7 +181,7 @@ function beforeYouGo(
   ).length
   if (acts > 0) items.push(`${acts} action${acts > 1 ? 's' : ''} à suivre`)
 
-  return items.slice(0, 3)
+  return items.slice(0, 4)
 }
 
 export default async function FieldPlanningPage() {
@@ -165,7 +189,21 @@ export default async function FieldPlanningPage() {
   if (!user) return null
 
   const planning = await buildFieldPlanning(user.id, user.role, user.organization_id ?? null)
-  const { today, events, openReservesBySite } = planning
+  const { today, events, openReservesBySite, lastVisitBySite } = planning
+
+  // La carte « Maintenant » (l'en-cours, sinon le prochain d'aujourd'hui) : le
+  // seul site pour lequel on paie une lecture de plus — la fenêtre de preuve.
+  const todaysTimed = events.filter((e) => e.date === today && e.state !== 'overdue')
+  const heroEvent =
+    todaysTimed.find((e) => e.state === 'in_progress') ??
+    todaysTimed.find((e) => e.state === 'upcoming') ??
+    null
+  let proofLine: string | null = null
+  if (heroEvent?.siteId) {
+    const pw = await detectClosingProofWindows(heroEvent.siteId).catch(() => null)
+    const it = pw?.items[0]
+    if (it) proofLine = `fenêtre de preuve : ${it.label} — ${(it.meta ?? '').split('·')[0].trim()}, photos avant`
+  }
 
   const firstName = user.full_name?.trim().split(/\s+/)[0] || user.email?.split('@')[0] || ''
   const greetingDate = new Date(`${today}T12:00:00.000Z`).toLocaleDateString('fr-FR', {
@@ -249,6 +287,8 @@ export default async function FieldPlanningPage() {
                     overdue={overdue}
                     allEvents={events}
                     openReservesBySite={openReservesBySite}
+                    lastVisitBySite={lastVisitBySite}
+                    proofLine={proofLine}
                     today={today}
                   />
                 ) : dayEvents.length === 0 ? (
@@ -296,12 +336,14 @@ function ChapterHeading({ label, count, isToday }: { label: string; count: numbe
 // Ordre de LECTURE = ordre d'IMPORTANCE : ce qui brûle (retards) → Maintenant
 // (la carte vivante) → Ensuite → Fait (replié, discret, en bas).
 function TodayRhythm({
-  events, overdue, allEvents, openReservesBySite, today,
+  events, overdue, allEvents, openReservesBySite, lastVisitBySite, proofLine, today,
 }: {
   events: PlanningEvent[]
   overdue: PlanningEvent[]
   allEvents: PlanningEvent[]
   openReservesBySite: Record<string, number>
+  lastVisitBySite: Record<string, string>
+  proofLine: string | null
   today: string
 }) {
   const done = events.filter((e) => e.state === 'done' || e.state === 'cancelled')
@@ -340,7 +382,7 @@ function TodayRhythm({
                   <HeroCard
                     key={e.id}
                     event={e}
-                    context={beforeYouGo(e, allEvents, openReservesBySite, today)}
+                    context={beforeYouGo(e, allEvents, openReservesBySite, today, lastVisitBySite, proofLine)}
                   />
                 ) : (
                   <EventRow key={e.id} event={e} />
@@ -436,13 +478,33 @@ function HeroCard({ event, context }: { event: PlanningEvent; context: string[] 
         </div>
       )}
 
-      <Link
-        href={event.href}
-        className={`mt-3.5 flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-colors ${theme.accentBtn}`}
-      >
-        {ctaLabel(event)}
-        <ChevronRight className="h-4 w-4" />
-      </Link>
+      {event.state === 'in_progress' ? (
+        /* En cours : deux issues, zéro ambiguïté — Continuer ramène dans le flux,
+           Clôturer saute au geste de fin (le bouton Terminer y est surligné). */
+        <div className="mt-3.5 grid grid-cols-2 gap-2">
+          <Link
+            href={event.href}
+            className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-colors ${theme.accentBtn}`}
+          >
+            Continuer
+          </Link>
+          <Link
+            href={cloturerHref(event)}
+            className="flex items-center justify-center gap-2 rounded-xl border border-foreground/15 px-4 py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-muted/40"
+          >
+            Clôturer
+            <Check className="h-4 w-4" strokeWidth={2.5} />
+          </Link>
+        </div>
+      ) : (
+        <Link
+          href={event.href}
+          className={`mt-3.5 flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-colors ${theme.accentBtn}`}
+        >
+          {ctaLabel(event, true)}
+          <ChevronRight className="h-4 w-4" />
+        </Link>
+      )}
     </div>
   )
 }
