@@ -12,6 +12,7 @@
 //   * Zéro LLM. Wording descriptif, calme (discipline d'apparition).
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { SCENE_ORDER } from '@/lib/mise-en-scene'
 import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
 import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -33,20 +34,10 @@ export interface OrgMorningDigest {
   computedAt: string | null
 }
 
-/** Ordre éditorial du MATIN : ce qui appelle une action datée d'abord, le
- *  structurel ensuite. Différent de l'ordre « réunion » (congestion en tête) —
- *  le matin on agit, on n'anime pas une discussion. */
-export const MORNING_KIND_PRIORITY: SignalKind[] = [
-  'proof_window_closing', // IRRÉVERSIBLE avant tout : le retard se rattrape, la preuve recouverte jamais
-  'action_overdue',
-  'obligation_neglected',
-  'decision_unapplied',
-  'reserve_open',
-  'actor_absent',
-  'action_recurring',
-  'actor_congestion',
-  'recurring_topic',
-]
+/** Ordre éditorial du MATIN — vit désormais dans la MISE EN SCÈNE
+ *  (lib/mise-en-scene.ts : la couture choisit l'ordre du récit). Ré-exporté ici
+ *  pour compatibilité (tests, consommateurs existants). */
+export const MORNING_KIND_PRIORITY: SignalKind[] = SCENE_ORDER.matin
 
 /** Écrit (upsert) le digest d'un chantier pour une date civile Nouméa.
  *  Appelé UNIQUEMENT par le cron de la Nuit (service-role). */

@@ -11,6 +11,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectNeglectedObligations } from '@/lib/db/obligations'
 import { buildProofWindowSignal, type ProofWindowCandidate } from '@/lib/proof-window'
+import { orderSignals } from '@/lib/mise-en-scene'
 
 export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected' | 'action_recurring' | 'proof_window_closing'
 
@@ -370,7 +371,10 @@ export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()):
     detectRepeatedAbsences(siteId),
     detectOpenReserves(siteId, asOf),
   ])
-  return [proofWindows, congestion, obligations, overdue, recurring, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  // L'ordre du RÉCIT appartient à la mise en scène (couture « réunion »), pas
+  // à l'ordre d'exécution des détecteurs.
+  const found = [proofWindows, congestion, obligations, overdue, recurring, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  return orderSignals(found, 'reunion')
 }
 
 export interface SuggestedQuestion { question: string; why: string | null }
