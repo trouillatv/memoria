@@ -53,10 +53,15 @@ describe('MORNING_KIND_PRIORITY — ordre éditorial du matin', () => {
     )
   })
 
+  it("l'IRRÉVERSIBLE passe avant tout (le retard se rattrape, la preuve recouverte jamais)", () => {
+    expect(MORNING_KIND_PRIORITY.indexOf('proof_window_closing')).toBe(0)
+  })
+
   it('couvre tous les kinds connus (pas de signal orphelin silencieux)', () => {
     const known: SignalKind[] = [
       'actor_congestion', 'recurring_topic', 'action_overdue', 'decision_unapplied',
       'actor_absent', 'reserve_open', 'obligation_neglected', 'action_recurring',
+      'proof_window_closing',
     ]
     for (const k of known) expect(MORNING_KIND_PRIORITY).toContain(k)
   })

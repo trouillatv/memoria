@@ -318,6 +318,7 @@ const SIGNAL_ICON: Record<string, typeof Eye> = {
   recurring_topic: Eye, action_overdue: ListTodo, action_recurring: ListTodo,
   reserve_open: AlertTriangle, actor_congestion: TrendingUp, actor_absent: TrendingUp,
   decision_unapplied: CalendarDays, obligation_neglected: AlertTriangle,
+  proof_window_closing: Camera,
 }
 
 function MemoirePanel({ memory, patrimoine }: { memory: MemorySignal[]; patrimoine: SitePatrimoine }) {

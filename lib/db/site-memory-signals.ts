@@ -10,8 +10,9 @@
 // chaque signal est EXPLICABLE (champ `source`).
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectNeglectedObligations } from '@/lib/db/obligations'
+import { buildProofWindowSignal, type ProofWindowCandidate } from '@/lib/proof-window'
 
-export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected' | 'action_recurring'
+export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected' | 'action_recurring' | 'proof_window_closing'
 
 export interface SignalItem {
   id: string
@@ -320,9 +321,48 @@ export async function detectRecurringActions(siteId: string, asOf = todayIso()):
   }
 }
 
+/** FENÊTRE DE PREUVE (Vincent 2026-07-09) : certains travaux RECOUVRENT ce qu'ils
+ *  touchent (coulage, doublage, remblai…) — après, la photo de l'existant devient
+ *  physiquement impossible. Fondé sur des FAITS DÉCLARÉS : interventions planifiées
+ *  (scheduled_for) et actions ouvertes à échéance (due_date) sous `horizonDays`,
+ *  dont l'intitulé matche le lexique de recouvrement (précision >> rappel).
+ *  Matching + wording = couche pure lib/proof-window.ts (testée en CI). */
+export async function detectClosingProofWindows(siteId: string, asOf = todayIso(), horizonDays = 7): Promise<MemorySignal | null> {
+  const sb = createAdminClient()
+  const until = (() => { const d = new Date(`${asOf}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + horizonDays); return d.toISOString().slice(0, 10) })()
+  const [interv, actions, reserves] = await Promise.all([
+    sb.from('interventions')
+      .select('id, scheduled_for, status, mission:missions!inner(name, site_id)')
+      .eq('mission.site_id', siteId)
+      .in('status', ['planned', 'in_progress'])
+      .gte('scheduled_for', asOf)
+      .lte('scheduled_for', until),
+    sb.from('site_actions')
+      .select('id, title, due_date, status')
+      .eq('site_id', siteId)
+      .eq('status', 'open')
+      .not('due_date', 'is', null)
+      .gte('due_date', asOf)
+      .lte('due_date', until),
+    sb.from('site_reserve')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .eq('status', 'open'),
+  ])
+  const candidates: ProofWindowCandidate[] = [
+    ...(interv.data ?? []).map((i) => {
+      const mission = i.mission as unknown as { name: string | null } | null
+      return { id: i.id as string, label: (mission?.name ?? '') as string, date: i.scheduled_for as string, origin: 'intervention' as const }
+    }),
+    ...(actions.data ?? []).map((a) => ({ id: a.id as string, label: a.title as string, date: a.due_date as string, origin: 'action' as const })),
+  ].filter((c) => c.label)
+  return buildProofWindowSignal(candidates, reserves.count ?? 0, asOf, horizonDays)
+}
+
 export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()): Promise<MemorySignal[]> {
-  const [congestion, obligations, overdue, recurring, decisions, absences, reserves] = await Promise.all([
-    detectActorCongestion(siteId, 4, 0.4, asOf), // en TÊTE : le seul qui anticipe « où ça va se concentrer »
+  const [proofWindows, congestion, obligations, overdue, recurring, decisions, absences, reserves] = await Promise.all([
+    detectClosingProofWindows(siteId, asOf),     // IRRÉVERSIBLE d'abord : ce qui sera physiquement impossible après
+    detectActorCongestion(siteId, 4, 0.4, asOf), // le seul qui anticipe « où ça va se concentrer »
     detectNeglectedObligations(siteId),          // obligations prescriptives négligées (DOE, journal photo…)
     detectOverdueActions(siteId, asOf),
     detectRecurringActions(siteId, asOf),        // récurrentes ouvertes (sans échéance) — reviennent chaque réunion
@@ -330,7 +370,7 @@ export async function buildSiteMemorySignals(siteId: string, asOf = todayIso()):
     detectRepeatedAbsences(siteId),
     detectOpenReserves(siteId, asOf),
   ])
-  return [congestion, obligations, overdue, recurring, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
+  return [proofWindows, congestion, obligations, overdue, recurring, decisions, absences, reserves].filter((s): s is MemorySignal => s !== null)
 }
 
 export interface SuggestedQuestion { question: string; why: string | null }
@@ -355,6 +395,7 @@ export function buildSuggestedQuestions(signals: MemorySignal[], perKind = 3): S
         case 'reserve_open': question = `La réserve « ${it.label} » est-elle levée ?`; break
         case 'obligation_neglected': question = `Obligation « ${it.label} » — où en est-on ? (à rappeler à ${it.meta ?? 'l\'entreprise'})`; break
         case 'action_recurring': question = `Action à reprendre « ${it.label} » — point d'avancement de la semaine ?`; break
+        case 'proof_window_closing': question = `Avant « ${it.label} » : toutes les preuves de ce qui va être recouvert sont-elles prises ?`; break
       }
       if (question) out.push({ question, why })
     }

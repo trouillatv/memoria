@@ -37,6 +37,7 @@ export interface OrgMorningDigest {
  *  structurel ensuite. Différent de l'ordre « réunion » (congestion en tête) —
  *  le matin on agit, on n'anime pas une discussion. */
 export const MORNING_KIND_PRIORITY: SignalKind[] = [
+  'proof_window_closing', // IRRÉVERSIBLE avant tout : le retard se rattrape, la preuve recouverte jamais
   'action_overdue',
   'obligation_neglected',
   'decision_unapplied',
