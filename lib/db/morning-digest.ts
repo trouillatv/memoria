@@ -12,7 +12,7 @@
 //   * Zéro LLM. Wording descriptif, calme (discipline d'apparition).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { SCENE_ORDER } from '@/lib/mise-en-scene'
+import { SCENE_ORDER } from '@/lib/scene'
 import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
 import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso } from '@/lib/time/local-date'

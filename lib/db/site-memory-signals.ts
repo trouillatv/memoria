@@ -11,7 +11,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectNeglectedObligations } from '@/lib/db/obligations'
 import { buildProofWindowSignal, type ProofWindowCandidate } from '@/lib/proof-window'
-import { orderSignals } from '@/lib/mise-en-scene'
+import { orderSignals } from '@/lib/scene'
 
 export type SignalKind = 'actor_congestion' | 'recurring_topic' | 'action_overdue' | 'decision_unapplied' | 'actor_absent' | 'reserve_open' | 'obligation_neglected' | 'action_recurring' | 'proof_window_closing'
 

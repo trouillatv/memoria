@@ -4,7 +4,7 @@
 // inconnu se raconte en dernier, jamais d'exception.
 
 import { describe, it, expect } from 'vitest'
-import { SCENE_ORDER, orderSignals, type SceneMoment } from '@/lib/mise-en-scene'
+import { SCENE_ORDER, orderSignals, type SceneMoment } from '@/lib/scene'
 import type { MemorySignal, SignalKind } from '@/lib/db/site-memory-signals'
 
 const ALL_KINDS: SignalKind[] = [
