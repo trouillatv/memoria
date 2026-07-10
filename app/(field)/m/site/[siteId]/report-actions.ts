@@ -32,6 +32,11 @@ import {
   addReportSites,
 } from '@/lib/db/site-reports'
 import {
+  listAudioSources,
+  setSourceTranscript,
+  buildCombinedCorpus,
+} from '@/lib/db/report-audio-sources'
+import {
   createSiteAction,
   markSiteActionPlanned,
   markSiteActionDone,
@@ -187,6 +192,74 @@ export async function createReportDraftAction(formData: FormData): Promise<
   return { ok: true, reportId, hasAudio }
 }
 
+// ── 1a. La réunion EXISTE dès « ▶ Commencer » ────────────────────────────────
+// Fondation « la réunion est l'objet » (Vincent 2026-07-10) : l'objet est créé
+// AVANT toute source — c'est ce qui autorise zéro audio, plusieurs audios, des
+// photos ajoutées à tout moment, et une réunion visible au Journal dès son
+// premier instant (elle ne disparaît jamais, elle se reprend).
+
+const startMeetingSchema = z.object({
+  report_type: z.enum(['site', 'contract']).default('site'),
+  site_id: z.string().uuid().optional(),
+  contract_id: z.string().uuid().optional(),
+  title: z.string().max(200).optional(),
+})
+
+export async function startMeetingAction(
+  input: z.input<typeof startMeetingSchema>,
+): Promise<{ ok: true; reportId: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = startMeetingSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  const type = parsed.data.report_type
+  if (type === 'site' && !parsed.data.site_id) return { ok: false, error: 'Site manquant' }
+  if (type === 'contract' && !parsed.data.contract_id) return { ok: false, error: 'Contrat manquant' }
+
+  const ctx = await resolveReportTenant({
+    type,
+    site_id: parsed.data.site_id,
+    contract_id: parsed.data.contract_id,
+  })
+  if (!ctx) return { ok: false, error: type === 'contract' ? 'Contrat sans site' : 'Site introuvable' }
+
+  const reportId = await createSiteReport({
+    type,
+    site_id: type === 'site' ? parsed.data.site_id : null,
+    contract_id: type === 'contract' ? parsed.data.contract_id : null,
+    title: parsed.data.title ?? null,
+    tenant_id: ctx.tenant_id,
+    created_by: auth.userId,
+  })
+  if (type === 'site' && parsed.data.site_id) {
+    await addReportSites(reportId, [parsed.data.site_id])
+  }
+  return { ok: true, reportId }
+}
+
+// Texte saisi persisté sur une réunion déjà créée (le brouillon existe avant le
+// texte, désormais) — même garantie qu'avant : le texte part en premier.
+const textPatchSchema = z.object({
+  report_id: z.string().uuid(),
+  text_input: z.string().max(5000).optional(),
+})
+
+export async function setReportTextInputAction(
+  input: z.input<typeof textPatchSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = textPatchSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setReportText(parsed.data.report_id, { text_input: parsed.data.text_input ?? null })
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Enregistrement du texte échoué' }
+  }
+}
+
 // ── 1b. Audio de réunion : upload DIRECT vers Supabase (URL signée) ──────────
 // Un enregistrement long (surtout AAC/mp4 sur iOS : ~1 Mo/min) dépasse la
 // bodySizeLimit (20 Mo) des Server Actions → passé dans le corps, il est rejeté
@@ -218,12 +291,25 @@ export async function createReportAudioUploadAction(
   return { ok: true, storagePath: data.path, token: data.token }
 }
 
+// Horodatage optionnel : chaîne ISO valide → normalisée, sinon null.
+function isoOrNull(v: string | undefined): string | null {
+  if (!v) return null
+  const t = Date.parse(v)
+  return Number.isNaN(t) ? null : new Date(t).toISOString()
+}
+
 const audioRegSchema = z.object({
   report_id: z.string().uuid(),
   storage_path: z.string().min(1).max(500),
   mime: z.string().max(80).optional(),
   duration_seconds: z.coerce.number().int().min(0).max(36000).optional(),
   size_bytes: z.coerce.number().int().min(0).max(2_000_000_000).optional(),
+  // Provenance de la source (mig 193) — exigence : chaque source conserve son
+  // origine, ses horaires, sa durée et son statut de traitement.
+  label: z.string().max(120).optional(),
+  source_origin: z.enum(['memoria', 'phone', 'import']).optional(),
+  recorded_started_at: z.string().max(40).optional(),
+  recorded_ended_at: z.string().max(40).optional(),
 })
 
 export async function attachReportAudioAction(
@@ -241,6 +327,8 @@ export async function attachReportAudioAction(
   const mime = d.mime || 'audio/webm'
   const ext = mimeToExt(mime)
   try {
+    // Chaque audio est une SOURCE à part entière (migs 141 + 193) : une réunion
+    // en accepte zéro, une ou plusieurs — jamais réduite à un seul fichier.
     await addReportAttachment({
       report_id: d.report_id,
       kind: 'audio',
@@ -248,17 +336,24 @@ export async function attachReportAudioAction(
       filename: `note.${ext}`,
       mime_type: mime,
       size_bytes: d.size_bytes ?? 0,
+      label: d.label ?? null,
+      type_source: 'audio_meeting',
+      duration_seconds: d.duration_seconds ?? null,
+      transcript_status: 'pending',
+      source_origin: d.source_origin ?? null,
+      recorded_started_at: isoOrNull(d.recorded_started_at),
+      recorded_ended_at: isoOrNull(d.recorded_ended_at),
     })
     const supabase = createAdminClient()
-    await supabase
-      .from('site_reports')
-      .update({
-        audio_path: d.storage_path,
-        audio_mime: mime,
-        audio_duration_seconds: d.duration_seconds ?? null,
-        transcript_status: 'pending',
-      })
-      .eq('id', d.report_id)
+    // Rétro-compat mono-source : la PREMIÈRE source reste l'« audio principal »
+    // au niveau réunion ; les suivantes ne l'écrasent pas.
+    const patch: Record<string, unknown> = { transcript_status: 'pending' }
+    if (!report.audio_path) {
+      patch.audio_path = d.storage_path
+      patch.audio_mime = mime
+      patch.audio_duration_seconds = d.duration_seconds ?? null
+    }
+    await supabase.from('site_reports').update(patch).eq('id', d.report_id)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Enregistrement de l’audio échoué' }
@@ -365,9 +460,70 @@ export async function transcribeReportAction(
   }
   const report = await getSiteReport(reportId)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
-  if (!report.audio_path) return { ok: false, error: 'Pas d\'audio à transcrire' }
 
   const supabase = createAdminClient()
+  const startedAt = Date.now()
+  const userId = auth.userId
+
+  // Trace de coût, une fois par run (tokens non disponibles via REST audio).
+  async function logUsage(status: 'success' | 'error', errorMsg: string | null) {
+    const prov = transcriptionProvider()
+    if (!prov) return
+    await logAIUsageDirect({
+      feature: 'site_report_transcription',
+      userId,
+      provider: prov,
+      model: prov === 'gemini' ? 'gemini-2.5-flash' : 'whisper-1',
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: Date.now() - startedAt,
+      status,
+      errorMsg,
+    })
+  }
+
+  // Chemin MULTI-SOURCES (fondation « la réunion est l'objet ») : chaque source
+  // audio garde SA transcription (traçabilité, migs 141+193) ; le corpus
+  // étiqueté — durée et rang de chaque source — devient le transcript réunion.
+  const sources = await listAudioSources(reportId)
+  if (sources.length > 0) {
+    let transcribed = 0
+    let lastError: string | null = null
+    for (const s of sources) {
+      if (s.transcriptStatus === 'done') { transcribed++; continue }
+      const { data: blob, error: dlErr } = await supabase.storage.from(BUCKET).download(s.storagePath)
+      if (dlErr || !blob) {
+        lastError = 'Audio introuvable'
+        await setSourceTranscript(s.id, '', 'failed').catch(() => {})
+        continue
+      }
+      try {
+        const mime = s.mimeType || 'audio/webm'
+        const buffer = await blob.arrayBuffer()
+        const t = await transcribeAudio(buffer, mime, mimeToExt(mime))
+        await setSourceTranscript(s.id, t, 'done')
+        transcribed++
+      } catch (e) {
+        // Échec sur CETTE source : les autres continuent, l'audio reste.
+        lastError = e instanceof Error ? e.message : 'Transcription échouée'
+        await setSourceTranscript(s.id, '', 'failed').catch(() => {})
+      }
+    }
+    const corpus = transcribed > 0 ? await buildCombinedCorpus(reportId) : ''
+    if (corpus.trim()) {
+      await setTranscript(reportId, { raw: corpus, status: 'done' })
+      await setReportStatus(reportId, 'ready')
+      await logUsage('success', null)
+      return { ok: true, transcript: corpus }
+    }
+    await setTranscript(reportId, { status: 'failed' })
+    await setReportStatus(reportId, 'ready')
+    await logUsage('error', lastError)
+    return { ok: false, error: lastError ?? 'Transcription échouée' }
+  }
+
+  // Repli mono-source (réunions antérieures : audio au niveau réunion seulement).
+  if (!report.audio_path) return { ok: false, error: 'Pas d\'audio à transcrire' }
   const { data: blob, error: dlErr } = await supabase.storage
     .from(BUCKET)
     .download(report.audio_path)
@@ -375,27 +531,12 @@ export async function transcribeReportAction(
 
   const mime = report.audio_mime || 'audio/webm'
   const ext = mimeToExt(mime)
-  const startedAt = Date.now()
   try {
     const buffer = await blob.arrayBuffer()
     const transcript = await transcribeAudio(buffer, mime, ext)
     await setTranscript(reportId, { raw: transcript, status: 'done' })
     await setReportStatus(reportId, 'ready')
-    // Coût (tokens non disponibles via REST audio) — tracé quand même.
-    const prov = transcriptionProvider()
-    if (prov) {
-      await logAIUsageDirect({
-        feature: 'site_report_transcription',
-        userId: auth.userId,
-        provider: prov,
-        model: prov === 'gemini' ? 'gemini-2.5-flash' : 'whisper-1',
-        inputTokens: null,
-        outputTokens: null,
-        durationMs: Date.now() - startedAt,
-        status: 'success',
-        errorMsg: null,
-      })
-    }
+    await logUsage('success', null)
     return { ok: true, transcript }
   } catch (e) {
     // Échec transcription : l'audio reste, l'humain saisira le texte à la main.

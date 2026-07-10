@@ -18,6 +18,13 @@ export interface AudioSource {
   storagePath: string
   mimeType: string | null
   createdAt: string
+  /** Provenance (mig 193) : 'memoria' = capté dans l'app, 'phone' = enregistreur
+   *  du téléphone, 'import' = fichier ajouté. NULL sur les sources antérieures. */
+  sourceOrigin: 'memoria' | 'phone' | 'import' | null
+  /** Horaires réels de capture (mig 193) — rendent les chevauchements entre
+   *  sources détectables. NULL quand l'origine ne les connaît pas. */
+  recordedStartedAt: string | null
+  recordedEndedAt: string | null
 }
 
 function rowToSource(r: Record<string, unknown>, index: number): AudioSource {
@@ -35,6 +42,9 @@ function rowToSource(r: Record<string, unknown>, index: number): AudioSource {
     storagePath: r.storage_path as string,
     mimeType: (r.mime_type as string | null) ?? null,
     createdAt: r.created_at as string,
+    sourceOrigin: ((r.source_origin as string | null) ?? null) as AudioSource['sourceOrigin'],
+    recordedStartedAt: (r.recorded_started_at as string | null) ?? null,
+    recordedEndedAt: (r.recorded_ended_at as string | null) ?? null,
   }
 }
 
@@ -42,7 +52,7 @@ function rowToSource(r: Record<string, unknown>, index: number): AudioSource {
 export async function listAudioSources(reportId: string): Promise<AudioSource[]> {
   const { data } = await createAdminClient()
     .from('site_report_attachments')
-    .select('id, label, type_source, duration_seconds, transcript_status, transcript_raw, storage_path, mime_type, created_at')
+    .select('id, label, type_source, duration_seconds, transcript_status, transcript_raw, storage_path, mime_type, created_at, source_origin, recorded_started_at, recorded_ended_at')
     .eq('report_id', reportId)
     .eq('kind', 'audio')
     .order('created_at', { ascending: true })

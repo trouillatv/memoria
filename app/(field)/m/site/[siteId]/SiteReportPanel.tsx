@@ -2,8 +2,15 @@
 
 // Capture multimodale d'un compte-rendu de chantier : voix + texte + photos +
 // pièces jointes. Machine d'états : capture → transcription → relecture →
-// analyse → curation → terminé. Réutilise le pattern MediaRecorder des notes
-// vocales d'intervention (cap 30s relâché : on compte vers le HAUT).
+// analyse → curation → terminé.
+//
+// Fondation « la réunion est l'objet » (Vincent 2026-07-10) :
+//   - la réunion EXISTE dès le premier geste (avant toute source) ;
+//   - l'audio n'est pas UN fichier : une réunion accepte zéro, un ou plusieurs
+//     enregistrements (segments in-app + enregistrement du téléphone), chacun
+//     avec son origine et ses horaires ;
+//   - le chrono est calculé sur HORODATAGES, jamais sur une minuterie qui
+//     s'incrémente — c'est la minuterie qui gèle en arrière-plan, pas l'horloge.
 //
 // Doctrine : rien n'est perdu — le texte saisi part en premier ; si la
 // transcription ou l'IA échoue, l'artefact reste.
@@ -21,7 +28,8 @@ import type {
 } from '@/types/db'
 import type { PriorActionUpdate } from '@/services/ai/site-report-analysis'
 import {
-  createReportDraftAction,
+  startMeetingAction,
+  setReportTextInputAction,
   createReportAudioUploadAction,
   attachReportAudioAction,
   uploadReportAttachmentAction,
@@ -38,6 +46,8 @@ interface Props {
   siteName?: string
   contractId?: string
   contractName?: string
+  /** Reprise d'une réunion déjà commencée (carte « en attente » du Journal). */
+  initialReportId?: string | null
   onClose: () => void
 }
 
@@ -52,20 +62,46 @@ interface LocalAttachment {
   uploaded: boolean
 }
 
+// Un ENREGISTREMENT de la réunion (segment in-app ou fichier ajouté). Chaque
+// segment devient une SOURCE côté serveur : origine + horaires + durée + statut.
+interface LocalAudioSegment {
+  id: string
+  blob: Blob
+  mime: string
+  /** Nom de fichier quand l'enregistrement vient du téléphone. */
+  name: string | null
+  origin: 'memoria' | 'import'
+  /** Horaires réels de capture (ISO) — connus pour la capture in-app. */
+  startedAt: string | null
+  endedAt: string | null
+  durationSeconds: number
+  uploaded: boolean
+}
+
 const FR = new Intl.NumberFormat('fr-FR')
+
+function fmtClock(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    : `${m}:${String(sec).padStart(2, '0')}`
+}
 
 // Wake Lock : type minimal pour ne pas dépendre de la présence de
 // WakeLockSentinel dans la lib DOM du projet.
 type WakeLockLike = { release: () => Promise<void> }
 
 export function SiteReportPanel({
-  reportType = 'site', siteId, siteName, contractId, contractName, onClose,
+  reportType = 'site', siteId, siteName, contractId, contractName, initialReportId, onClose,
 }: Props) {
   const router = useRouter()
   const subjectName = reportType === 'contract' ? (contractName ?? 'Contrat') : (siteName ?? 'Chantier')
   const [step, setStep] = useState<Step>('capture')
   const [working, setWorking] = useState<string>('')
-  const [reportId, setReportId] = useState<string | null>(null)
+  const [reportId, setReportId] = useState<string | null>(initialReportId ?? null)
 
   // Capture
   const [recording, setRecording] = useState(false)
@@ -74,9 +110,7 @@ export function SiteReportPanel({
   // que de lui laisser croire qu'une heure a été captée.
   const [interrupted, setInterrupted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
-  const [audioMime, setAudioMime] = useState<string>('audio/webm')
-  const [audioName, setAudioName] = useState<string | null>(null)
+  const [segments, setSegments] = useState<LocalAudioSegment[]>([])
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<LocalAttachment[]>([])
 
@@ -106,6 +140,58 @@ export function SiteReportPanel({
   // Retrait des écouteurs d'interruption (visibilitychange + piste morte),
   // installés le temps d'un enregistrement.
   const recordingListenersRef = useRef<(() => void) | null>(null)
+  // Chrono par HORODATAGE : l'instant de départ fait foi ; l'intervalle ne sert
+  // qu'à rafraîchir l'affichage (il peut geler en arrière-plan, pas l'horloge).
+  const recordStartRef = useRef<number | null>(null)
+  // Les segments, en miroir hors-render : source de vérité pour l'upload (les
+  // callbacks MediaRecorder et la transition async ne voient pas l'état frais).
+  const segmentsRef = useRef<LocalAudioSegment[]>([])
+  // La réunion est créée UNE fois, au premier geste — jamais en double.
+  const reportIdRef = useRef<string | null>(initialReportId ?? null)
+  const ensureReportPromiseRef = useRef<Promise<string | null> | null>(null)
+  // Résolution d'un stop en attente : l'onstop du MediaRecorder est asynchrone,
+  // « Analyser » doit attendre que le dernier segment soit réellement flushé.
+  const stopWaitersRef = useRef<Array<() => void>>([])
+
+  // La réunion EXISTE dès le premier geste (fondation « réunion = objet »).
+  // Idempotent et partagé : enregistrement, photo, pièce → même création.
+  function ensureReport(): Promise<string | null> {
+    if (reportIdRef.current) return Promise.resolve(reportIdRef.current)
+    if (!ensureReportPromiseRef.current) {
+      ensureReportPromiseRef.current = startMeetingAction({
+        report_type: reportType,
+        site_id: reportType === 'site' ? siteId : undefined,
+        contract_id: reportType === 'contract' ? contractId : undefined,
+      })
+        .then((r) => {
+          if (r.ok) {
+            reportIdRef.current = r.reportId
+            setReportId(r.reportId)
+            return r.reportId
+          }
+          ensureReportPromiseRef.current = null // nouvel essai au prochain geste
+          return null
+        })
+        .catch(() => {
+          ensureReportPromiseRef.current = null
+          return null
+        })
+    }
+    return ensureReportPromiseRef.current
+  }
+
+  function addSegment(seg: LocalAudioSegment) {
+    segmentsRef.current = [...segmentsRef.current, seg]
+    setSegments(segmentsRef.current)
+  }
+  function patchSegment(id: string, patch: Partial<LocalAudioSegment>) {
+    segmentsRef.current = segmentsRef.current.map((s) => (s.id === id ? { ...s, ...patch } : s))
+    setSegments(segmentsRef.current)
+  }
+  function removeSegment(id: string) {
+    segmentsRef.current = segmentsRef.current.filter((s) => s.id !== id)
+    setSegments(segmentsRef.current)
+  }
 
   // Empêche l'écran de s'éteindre pendant l'enregistrement : c'est le
   // déclencheur n°1 du gel de page (et donc de la perte d'audio) sur mobile.
@@ -135,6 +221,9 @@ export function SiteReportPanel({
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Le micro est ouvert : la réunion commence — l'objet existe dès maintenant
+      // (visible au Journal, reprenable), avant même la première seconde d'audio.
+      void ensureReport()
       streamRef.current = stream
       chunksRef.current = []
       const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -142,29 +231,51 @@ export function SiteReportPanel({
         : MediaRecorder.isTypeSupported('audio/mp4')
         ? 'audio/mp4'
         : 'audio/webm'
-      setAudioMime(mime)
       const mr = new MediaRecorder(stream, { mimeType: mime })
       mediaRecorderRef.current = mr
+      const startedAtMs = Date.now()
+      recordStartRef.current = startedAtMs
       mr.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = () => {
         streamRef.current?.getTracks().forEach((t) => t.stop())
+        const endedAtMs = Date.now()
         const blob = new Blob(chunksRef.current, { type: mime })
-        if (blob.size === 0) {
+        if (blob.size > 0) {
+          // Ce segment devient un ENREGISTREMENT de la réunion, avec ses
+          // horaires réels — s'il y a relais vers l'enregistreur du téléphone,
+          // le chevauchement à la jonction restera détectable.
+          addSegment({
+            id: crypto.randomUUID(),
+            blob,
+            mime,
+            name: null,
+            origin: 'memoria',
+            startedAt: new Date(startedAtMs).toISOString(),
+            endedAt: new Date(endedAtMs).toISOString(),
+            durationSeconds: Math.max(1, Math.round((endedAtMs - startedAtMs) / 1000)),
+            uploaded: false,
+          })
+        } else {
           // Enregistrement vide (micro muet, ou MediaRecorder mobile capricieux).
-          // On le dit clairement + on laisse les fallbacks : importer un audio / texte.
-          setAudioBlob(null)
-          toast.error('Enregistrement vide. Vérifiez le micro (autorisation), ou importez un fichier audio / saisissez le texte.')
-          return
+          // On le dit clairement + on laisse les fallbacks : autre enregistrement / texte.
+          toast.error('Enregistrement vide. Vérifiez le micro (autorisation), ou ajoutez l’enregistrement du téléphone / saisissez le texte.')
         }
-        setAudioBlob(blob)
+        recordStartRef.current = null
+        // Libère les « Analyser » en attente du flush.
+        stopWaitersRef.current.forEach((resolve) => resolve())
+        stopWaitersRef.current = []
       }
       // Sans timeslice : plus fiable sur iOS/Safari (les chunks arrivent au stop).
       mr.start()
       setRecording(true)
       setInterrupted(false)
-      setAudioName(null)
       setElapsed(0)
-      timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000)
+      // Affichage recalculé depuis l'horodatage : après un gel en arrière-plan,
+      // le chrono se recale tout seul au retour — il ne « perd » jamais de temps.
+      timerRef.current = setInterval(() => {
+        const start = recordStartRef.current
+        if (start != null) setElapsed(Math.round((Date.now() - start) / 1000))
+      }, 1000)
 
       // Garde-fous « arrière-plan » : on ne peut pas enregistrer de façon fiable
       // écran éteint / app en fond, mais on peut (1) empêcher l'écran de
@@ -178,7 +289,7 @@ export function SiteReportPanel({
         // plus rien capter : on arrête pour FLUSHER l'audio déjà enregistré,
         // et on prévient. Le stop() ci-dessous délivre les chunks bufferisés.
         setInterrupted(true)
-        toast.warning('Enregistrement interrompu (micro suspendu par le téléphone). L’audio capté jusqu’ici est conservé — vérifiez la durée avant d’envoyer.')
+        toast.warning('Enregistrement interrompu (micro suspendu par le téléphone). Les minutes captées sont conservées comme enregistrement de la réunion — poursuivez avec l’enregistreur du téléphone si besoin.')
         stopRecording()
       }
       track?.addEventListener('ended', onTrackEnded)
@@ -204,7 +315,7 @@ export function SiteReportPanel({
         recordingListenersRef.current = null
       }
     } catch {
-      toast.error('Micro inaccessible — autorisez le microphone, ou importez un fichier audio / saisissez le texte.')
+      toast.error('Micro inaccessible — autorisez le microphone, ou ajoutez l’enregistrement du téléphone / saisissez le texte.')
     }
   }
 
@@ -220,23 +331,53 @@ export function SiteReportPanel({
     setRecording(false)
   }
 
-  // Importer un fichier audio existant → traité comme une note dictée
-  // (uploadé + transcrit par l'IA, exactement comme un enregistrement).
-  function importAudio(file: File | null) {
+  // L'onstop du MediaRecorder est asynchrone : « Analyser » pendant un
+  // enregistrement doit ATTENDRE le flush du segment, sinon il partirait sans.
+  function stopRecordingAndWait(): Promise<void> {
+    if (mediaRecorderRef.current?.state !== 'recording') {
+      if (recording) setRecording(false)
+      return Promise.resolve()
+    }
+    return new Promise((resolve) => {
+      let settled = false
+      const once = () => { if (!settled) { settled = true; resolve() } }
+      stopWaitersRef.current.push(once)
+      stopRecording()
+      // Filet : si l'onstop ne vient jamais (navigateur capricieux), on repart
+      // quand même — les segments déjà flushés partent, rien ne reste bloqué.
+      setTimeout(once, 4000)
+    })
+  }
+
+  // Ajouter l'enregistrement du téléphone (ou tout fichier audio) : une source
+  // de plus pour la réunion — jamais un remplacement, jamais un « import ».
+  function addExternalAudio(file: File | null) {
     if (!file) return
-    if (!file.type.startsWith('audio/')) { toast.error('Fichier audio attendu (mp3, m4a, wav…)'); return }
+    if (!file.type.startsWith('audio/')) { toast.error('Enregistrement audio attendu (mp3, m4a, wav…)'); return }
     if (recording) stopRecording()
-    setAudioBlob(file)
-    setAudioMime(file.type || 'audio/mpeg')
-    setAudioName(file.name)
-    setElapsed(0)
+    void ensureReport()
+    const id = crypto.randomUUID()
+    addSegment({
+      id,
+      blob: file,
+      mime: file.type || 'audio/mpeg',
+      name: file.name,
+      origin: 'import',
+      // Horaires inconnus pour un fichier ajouté — on ne les invente pas.
+      startedAt: null,
+      endedAt: null,
+      durationSeconds: 0,
+      uploaded: false,
+    })
     try {
       const url = URL.createObjectURL(file)
       const probe = new Audio()
       probe.preload = 'metadata'
       probe.onloadedmetadata = () => {
-        const d = Number.isFinite(probe.duration) ? Math.min(600, Math.round(probe.duration)) : 0
-        setElapsed(d)
+        // Durée réelle du fichier, sans plafond : une réunion peut durer 2 h.
+        if (Number.isFinite(probe.duration)) {
+          patchSegment(id, { durationSeconds: Math.round(probe.duration) })
+        }
         URL.revokeObjectURL(url)
       }
       probe.onerror = () => URL.revokeObjectURL(url)
@@ -246,6 +387,7 @@ export function SiteReportPanel({
 
   function addFiles(files: FileList | null, kind: 'photo' | 'file') {
     if (!files) return
+    void ensureReport()
     const next: LocalAttachment[] = []
     for (const f of Array.from(files)) {
       const isImage = f.type.startsWith('image/')
@@ -295,68 +437,83 @@ export function SiteReportPanel({
     return true
   }
 
-  // ── Analyser : draft (audio sauvé EN PREMIER) → pièces → transcription →
-  //    analyse → curation, d'un seul geste. Si la transcription ou l'analyse
-  //    échoue (ex. clé IA absente en prod), l'audio est DÉJÀ sauvegardé : on
-  //    bascule sur l'écran « sauvegardé » (réessai possible), rien n'est perdu.
+  // ── Analyser : la réunion existe déjà (ou est créée là) → texte d'abord →
+  //    enregistrements (chacun = une source, avec origine et horaires) → pièces →
+  //    transcription de toutes les sources → analyse → curation. Si la
+  //    transcription ou l'IA échoue, tout est DÉJÀ sauvegardé : écran
+  //    « sauvegardé » (réessai possible), rien n'est perdu.
   function handleAnalyze() {
-    if (recording) stopRecording()
     // Feedback INSTANTANÉ : on bascule sur l'écran de chargement avant même le
     // transition async, pour qu'un clic se voie toujours (jamais « rien »).
     setWorking('Enregistrement du compte-rendu…')
     setStep('working')
     startTransition(async () => {
-      let createdId: string | null = null
       try {
-        // 1. Brouillon (le texte part EN PREMIER — persisté, jamais perdu).
-        const fd = new FormData()
-        fd.set('report_type', reportType)
-        if (reportType === 'contract' && contractId) fd.set('contract_id', contractId)
-        else if (siteId) fd.set('site_id', siteId)
-        if (text.trim()) fd.set('text_input', text.trim())
-        const draft = await createReportDraftAction(fd)
-        if (!draft.ok) { toast.error(draft.error); setStep('capture'); return }
-        createdId = draft.reportId
-        setReportId(draft.reportId)
+        // 0. Si un enregistrement est en cours : attendre son flush — le dernier
+        //    segment part avec le reste, jamais « oublié » par la course onstop.
+        await stopRecordingAndWait()
 
-        // 1b. Audio → upload DIRECT au stockage (URL signée). Contourne la
-        //     limite 20 Mo des Server Actions — indispensable pour une réunion
-        //     longue. Best-effort : le texte est déjà sauvé si ça échoue.
-        let hasAudio = false
-        if (audioBlob) {
-          setWorking('Envoi de l’audio…')
-          try {
-            const prep = await createReportAudioUploadAction({ report_id: draft.reportId, mime: audioMime })
-            if (prep.ok) {
-              const supa = createClient()
-              const { error: upErr } = await supa.storage
-                .from('site-reports')
-                .uploadToSignedUrl(prep.storagePath, prep.token, audioBlob, { contentType: audioMime })
-              if (!upErr) {
-                const reg = await attachReportAudioAction({
-                  report_id: draft.reportId,
-                  storage_path: prep.storagePath,
-                  mime: audioMime,
-                  duration_seconds: elapsed,
-                  size_bytes: audioBlob.size,
-                })
-                hasAudio = reg.ok
-              }
-            }
-          } catch { /* audio best-effort */ }
-          if (!hasAudio) {
-            toast.warning('L’audio n’a pas pu être envoyé — le compte-rendu texte est sauvegardé. Vous pourrez réessayer.')
-          }
+        // 1. La réunion (créée au premier geste ; filet si le geste a échoué).
+        const rid = reportIdRef.current ?? (await ensureReport())
+        if (!rid) {
+          toast.error('Connexion impossible — rien n’a été envoyé. Réessayez.')
+          setStep('capture')
+          return
+        }
+        setReportId(rid)
+
+        // 2. Le texte saisi part EN PREMIER — persisté, jamais perdu.
+        if (text.trim()) {
+          await setReportTextInputAction({ report_id: rid, text_input: text.trim() })
         }
 
-        // 2. Upload des pièces
-        if (attachments.length > 0) {
-          setWorking(`Envoi des pièces (${attachments.length})…`)
-          for (const a of attachments) {
+        // 3. Les enregistrements → upload DIRECT au stockage (URL signée, la
+        //    limite 20 Mo des Server Actions ne s'applique pas). Chaque segment
+        //    devient une SOURCE de la réunion. Best-effort par source.
+        const segs = segmentsRef.current
+        let hasAudio = false
+        for (let i = 0; i < segs.length; i++) {
+          const seg = segs[i]
+          if (seg.uploaded) { hasAudio = true; continue }
+          setWorking(segs.length > 1 ? `Envoi des enregistrements (${i + 1}/${segs.length})…` : 'Envoi de l’audio…')
+          try {
+            const prep = await createReportAudioUploadAction({ report_id: rid, mime: seg.mime })
+            if (!prep.ok) continue
+            const supa = createClient()
+            const { error: upErr } = await supa.storage
+              .from('site-reports')
+              .uploadToSignedUrl(prep.storagePath, prep.token, seg.blob, { contentType: seg.mime })
+            if (upErr) continue
+            const reg = await attachReportAudioAction({
+              report_id: rid,
+              storage_path: prep.storagePath,
+              mime: seg.mime,
+              duration_seconds: seg.durationSeconds,
+              size_bytes: seg.blob.size,
+              label: seg.origin === 'memoria' ? 'Enregistré dans MemorIA' : (seg.name ?? 'Enregistrement du téléphone'),
+              source_origin: seg.origin,
+              recorded_started_at: seg.startedAt ?? undefined,
+              recorded_ended_at: seg.endedAt ?? undefined,
+            })
+            if (reg.ok) {
+              patchSegment(seg.id, { uploaded: true })
+              hasAudio = true
+            }
+          } catch { /* audio best-effort — les autres sources continuent */ }
+        }
+        if (segs.length > 0 && !hasAudio) {
+          toast.warning('Les enregistrements n’ont pas pu être envoyés — le compte-rendu texte est sauvegardé. Vous pourrez réessayer.')
+        }
+
+        // 4. Upload des pièces
+        const pending = attachments.filter((a) => !a.uploaded)
+        if (pending.length > 0) {
+          setWorking(`Envoi des pièces (${pending.length})…`)
+          for (const a of pending) {
             const file = filesRef.current.get(a.clientUuid)
             if (!file) continue
             const afd = new FormData()
-            afd.set('report_id', draft.reportId)
+            afd.set('report_id', rid)
             afd.set('kind', a.kind)
             afd.set('client_uuid', a.clientUuid)
             afd.set('file', file)
@@ -364,31 +521,32 @@ export function SiteReportPanel({
           }
         }
 
-        // 3. Transcription (si audio)
+        // 5. Transcription : toutes les sources de la réunion (y compris celles
+        //    d'une réunion reprise, déjà en base).
         let transcriptText = ''
-        if (hasAudio) {
-          setWorking('Transcription de la note vocale…')
-          const tr = await transcribeReportAction(draft.reportId)
+        if (hasAudio || initialReportId) {
+          setWorking('Transcription des enregistrements…')
+          const tr = await transcribeReportAction(rid)
           if (tr.ok) transcriptText = tr.transcript
         }
 
-        // 4. Rien à analyser (transcription échouée + pas de texte saisi) → on
-        //    s'arrête proprement : l'audio est sauvegardé, on reprendra plus tard.
+        // 6. Rien à analyser (transcription échouée + pas de texte saisi) → on
+        //    s'arrête proprement : tout est sauvegardé, on reprendra plus tard.
         const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
         if (!hasContent) {
           setSavedNote(
             hasAudio
-              ? "Audio enregistré, mais la transcription n'a pas pu se faire (service IA indisponible). Le compte-rendu est sauvegardé — vous pourrez le reprendre plus tard."
+              ? "Enregistrements sauvegardés, mais la transcription n'a pas pu se faire (service IA indisponible). La réunion est conservée — vous pourrez la reprendre plus tard."
               : 'Compte-rendu sauvegardé.',
           )
           setStep('saved')
           return
         }
 
-        // 5. Analyse directe → curation (plus d'écran de relecture).
-        const ok = await runAnalysis(draft.reportId, transcriptText)
+        // 7. Analyse directe → curation (plus d'écran de relecture).
+        const ok = await runAnalysis(rid, transcriptText)
         if (!ok) {
-          setSavedNote("Le compte-rendu et l'audio sont sauvegardés, mais l'analyse n'a pas pu se faire. Réessayez dans un moment.")
+          setSavedNote("Le compte-rendu et les enregistrements sont sauvegardés, mais l'analyse n'a pas pu se faire. Réessayez dans un moment.")
           setStep('saved')
           return
         }
@@ -396,8 +554,8 @@ export function SiteReportPanel({
       } catch (e) {
         // Filet ultime : aucune erreur ne doit laisser le bouton « sans réponse ».
         toast.error(e instanceof Error ? e.message : 'Une erreur est survenue')
-        if (createdId) {
-          setSavedNote("Une erreur est survenue, mais le compte-rendu (et l'audio) est sauvegardé. Réessayez dans un moment.")
+        if (reportIdRef.current) {
+          setSavedNote("Une erreur est survenue, mais la réunion (et ses enregistrements envoyés) est sauvegardée. Réessayez dans un moment.")
           setStep('saved')
         } else {
           setStep('capture')
@@ -418,7 +576,7 @@ export function SiteReportPanel({
         if (tr.ok) transcriptText = tr.transcript
         const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
         if (!hasContent) {
-          setSavedNote("Toujours indisponible. L'audio reste sauvegardé — réessayez plus tard.")
+          setSavedNote("Toujours indisponible. Les enregistrements restent sauvegardés — réessayez plus tard.")
           setStep('saved')
           return
         }
@@ -426,13 +584,14 @@ export function SiteReportPanel({
         setStep(ok ? 'curation' : 'saved')
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Une erreur est survenue')
-        setSavedNote("Une erreur est survenue. L'audio reste sauvegardé — réessayez plus tard.")
+        setSavedNote("Une erreur est survenue. Les enregistrements restent sauvegardés — réessayez plus tard.")
         setStep('saved')
       }
     })
   }
 
-  const canAnalyze = !!audioBlob || text.trim().length > 0 || attachments.length > 0
+  const totalRecorded = segments.reduce((s, x) => s + x.durationSeconds, 0)
+  const canAnalyze = segments.length > 0 || text.trim().length > 0 || attachments.length > 0 || !!initialReportId
 
   return (
     <div className="space-y-4">
@@ -451,6 +610,13 @@ export function SiteReportPanel({
       {/* ── CAPTURE ── */}
       {step === 'capture' && (
         <div className="space-y-4">
+          {/* Réunion reprise depuis le Journal : elle n'a jamais cessé d'exister. */}
+          {initialReportId && (
+            <div className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-[11px] text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+              Votre réunion est toujours en cours. Ajoutez l’enregistrement réalisé avec votre téléphone (ou d’autres pièces), puis analysez.
+            </div>
+          )}
+
           {/* Micro */}
           <div className="flex flex-col items-center gap-2 rounded-xl border bg-card p-4">
             {!recording ? (
@@ -472,35 +638,62 @@ export function SiteReportPanel({
             )}
             <p className="text-xs text-muted-foreground tabular-nums text-center">
               {recording
-                ? `Enregistrement… ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
-                : audioName
-                ? `Audio importé : ${audioName}`
-                : audioBlob
-                ? `Note enregistrée (${elapsed}s) — réenregistrer ?`
+                ? `Enregistrement… ${fmtClock(elapsed)}`
+                : segments.length > 0
+                ? `${segments.length} enregistrement${segments.length > 1 ? 's' : ''} · ${fmtClock(totalRecorded)} — en ajouter un autre ?`
                 : 'Dicter le compte-rendu'}
             </p>
             {recording && (
               <p className="text-[11px] text-muted-foreground text-center">
-                Gardez l’écran allumé. Pour une réunion longue, le dictaphone du téléphone est recommandé afin de garantir un enregistrement complet — importez le fichier ensuite.
+                Gardez l’écran allumé. Si la réunion se prolonge, poursuivez avec l’enregistreur du téléphone — vous ajouterez l’enregistrement au retour, et rien ne sera perdu : la réunion accepte plusieurs enregistrements.
               </p>
             )}
             {interrupted && (
               <div className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                L’enregistrement a pu être interrompu (écran verrouillé ou app en arrière-plan). Vérifiez la durée de l’audio avant d’envoyer ; au besoin, réenregistrez ou importez le fichier.
+                L’enregistrement a pu être interrompu (écran verrouillé ou app en arrière-plan). Les minutes captées sont conservées ; au besoin, poursuivez avec l’enregistreur du téléphone et ajoutez son enregistrement — la réunion réunira les deux.
               </div>
             )}
             {!recording && (
               <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
                 <FileAudio className="h-3.5 w-3.5" />
-                {audioName ? 'Changer le fichier audio' : 'Importer un fichier audio'}
+                {segments.length > 0 ? 'Ajouter un autre enregistrement' : 'Ajouter l’enregistrement du téléphone'}
                 <input type="file" accept="audio/*" className="sr-only"
-                  onChange={(e) => { importAudio(e.target.files?.[0] ?? null); e.target.value = '' }} />
+                  onChange={(e) => { addExternalAudio(e.target.files?.[0] ?? null); e.target.value = '' }} />
               </label>
+            )}
+
+            {/* Cette réunion contient — les enregistrements sont visibles et
+                contrôlables (origine, durée, retrait avant envoi). */}
+            {segments.length > 0 && (
+              <div className="w-full rounded-lg bg-muted/30 px-3 py-2">
+                <p className="text-[11px] font-medium text-foreground/70">Cette réunion contient&nbsp;:</p>
+                <ul className="mt-1 space-y-1">
+                  {segments.map((s) => (
+                    <li key={s.id} className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+                      <FileAudio className="h-3 w-3 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {s.origin === 'memoria' ? 'Enregistré dans MemorIA' : (s.name ?? 'Enregistrement du téléphone')}
+                      </span>
+                      <span>{s.durationSeconds > 0 ? fmtClock(s.durationSeconds) : '…'}</span>
+                      {!s.uploaded && (
+                        <button
+                          type="button"
+                          onClick={() => removeSegment(s.id)}
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label="Retirer cet enregistrement"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {/* Aide-mémoire : ce qu'il faut penser à dire pour une bonne mémoire.
                 Affiché tant qu'on n'a pas encore d'audio (sinon on libère la place). */}
-            {!recording && !audioBlob && (
+            {!recording && segments.length === 0 && (
               <div className="mt-1 w-full rounded-lg bg-muted/30 px-3 py-2 text-left">
                 <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground/70">
                   <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
@@ -572,7 +765,7 @@ export function SiteReportPanel({
           {/* Pourquoi le bouton est inactif : il faut du contenu à analyser. */}
           {!canAnalyze && !recording && (
             <p className="text-[11px] text-center text-muted-foreground">
-              Pour analyser : enregistrez une note vocale (autorisez le micro), <span className="font-medium">importez un fichier audio</span>, ou saisissez du texte.
+              Pour analyser : enregistrez une note vocale (autorisez le micro), <span className="font-medium">ajoutez l’enregistrement du téléphone</span>, ou saisissez du texte.
             </p>
           )}
 

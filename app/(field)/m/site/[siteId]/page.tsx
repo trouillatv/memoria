@@ -116,11 +116,14 @@ export default async function FieldSitePage({
   searchParams,
 }: {
   params: Promise<{ siteId: string }>
-  searchParams: Promise<{ visite?: string; live?: string }>
+  searchParams: Promise<{ visite?: string; live?: string; reprendre?: string }>
 }) {
   const { siteId } = await params
   const sp = await searchParams
   const justVisited = sp.visite === 'ok'
+  // Reprise d'une réunion en attente (`?reprendre=` depuis la carte du Journal) :
+  // le panneau compte-rendu s'ouvre directement sur la réunion existante.
+  const resumeReportId = typeof sp.reprendre === 'string' && sp.reprendre.length > 0 ? sp.reprendre : null
   // Visite tout juste démarrée : son id est porté dans l'URL (`?live=`). On l'ouvre
   // DIRECTEMENT en panier, sans attendre que la relecture `getActiveVisit` reflète
   // l'insert — le « swap » fiche → panier devient déterministe (cf. getStartedVisitById).
@@ -470,7 +473,7 @@ export default async function FieldSitePage({
             <div className="grid grid-cols-2 gap-2">
               <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
               <SpontaneousCapturePanel siteId={siteId} />
-              <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" />
+              <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" resumeReportId={resumeReportId} />
               <DeliverFieldPanel siteId={siteId} />
             </div>
           </section>

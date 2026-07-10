@@ -84,23 +84,42 @@ export async function addReportAttachment(input: {
   // Mémoire enrichissable après réunion (mig 163) — PJ post-réunion tracée.
   uploaded_after_meeting?: boolean
   added_by?: string | null
+  // Source audio d'une réunion (migs 141 + 193) — chaque source conserve son
+  // origine, ses horaires, sa durée et son statut de traitement.
+  label?: string | null
+  type_source?: 'audio_meeting' | 'voice_note' | 'phone_call' | 'debrief' | 'other'
+  duration_seconds?: number | null
+  transcript_status?: 'none' | 'pending' | 'done' | 'failed'
+  source_origin?: 'memoria' | 'phone' | 'import' | null
+  recorded_started_at?: string | null
+  recorded_ended_at?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
+  const row: Record<string, unknown> = {
+    report_id: input.report_id,
+    kind: input.kind,
+    storage_path: input.storage_path,
+    filename: input.filename ?? null,
+    mime_type: input.mime_type ?? null,
+    size_bytes: input.size_bytes ?? null,
+    sha256: input.sha256 ?? null,
+    client_uuid: input.client_uuid ?? null,
+    uploaded_after_meeting: input.uploaded_after_meeting ?? false,
+    added_by: input.added_by ?? null,
+    added_at: input.uploaded_after_meeting ? new Date().toISOString() : null,
+  }
+  // Champs de source audio : posés seulement s'ils sont fournis, pour ne pas
+  // écraser les défauts SQL (transcript_status 'none') sur les autres kinds.
+  if (input.label !== undefined) row.label = input.label
+  if (input.type_source !== undefined) row.type_source = input.type_source
+  if (input.duration_seconds !== undefined) row.duration_seconds = input.duration_seconds
+  if (input.transcript_status !== undefined) row.transcript_status = input.transcript_status
+  if (input.source_origin !== undefined) row.source_origin = input.source_origin
+  if (input.recorded_started_at !== undefined) row.recorded_started_at = input.recorded_started_at
+  if (input.recorded_ended_at !== undefined) row.recorded_ended_at = input.recorded_ended_at
   const { data, error } = await supabase
     .from('site_report_attachments')
-    .insert({
-      report_id: input.report_id,
-      kind: input.kind,
-      storage_path: input.storage_path,
-      filename: input.filename ?? null,
-      mime_type: input.mime_type ?? null,
-      size_bytes: input.size_bytes ?? null,
-      sha256: input.sha256 ?? null,
-      client_uuid: input.client_uuid ?? null,
-      uploaded_after_meeting: input.uploaded_after_meeting ?? false,
-      added_by: input.added_by ?? null,
-      added_at: input.uploaded_after_meeting ? new Date().toISOString() : null,
-    })
+    .insert(row)
     .select('id')
     .single()
   if (error) throw error

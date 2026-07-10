@@ -500,6 +500,11 @@ export interface DbSiteReportAttachment {
   uploaded_after_meeting?: boolean
   added_by?: string | null
   added_at?: string | null
+  // Provenance d'une source audio (mig 193) — origine + horaires réels de la
+  // capture, pour rendre les chevauchements entre sources détectables.
+  source_origin?: 'memoria' | 'phone' | 'import' | null
+  recorded_started_at?: string | null
+  recorded_ended_at?: string | null
 }
 
 // Une proposition = une DÉCISION détectée dans le compte-rendu, routée selon

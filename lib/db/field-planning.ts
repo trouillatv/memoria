@@ -271,6 +271,50 @@ export async function buildFieldPlanning(
 
   // ── 3. Réunions passées + réunions à venir (next_meeting_at) ───────────────
   {
+    // Réunions EN COURS (fondation « la réunion est l'objet », 2026-07-10) :
+    // créées dès « ▶ Commencer », status='draft' tant que l'analyse n'a pas eu
+    // lieu. La réunion ne disparaît JAMAIS du Journal : en attente de son
+    // enregistrement (relais enregistreur du téléphone), elle se reprend d'un
+    // tap. En attente = état AUTORISÉ (orange côté UI), jamais une défaillance.
+    const { data: draftRows } = await supabase
+      .from('site_reports')
+      .select('id, site_id, title, created_at')
+      .in('site_id', siteIds)
+      .is('origin', null)
+      .eq('status', 'draft')
+      .gte('created_at', tsLow)
+      .lt('created_at', tsHigh)
+      .limit(100)
+    const drafts = (draftRows ?? []) as Array<{ id: string; site_id: string; title: string | null; created_at: string }>
+    // Quelles réunions en cours ont déjà au moins un enregistrement ? (batch)
+    const withAudio = new Set<string>()
+    if (drafts.length > 0) {
+      const { data: att } = await supabase
+        .from('site_report_attachments')
+        .select('report_id')
+        .in('report_id', drafts.map((d) => d.id))
+        .eq('kind', 'audio')
+      for (const a of (att ?? []) as Array<{ report_id: string }>) withAudio.add(a.report_id)
+    }
+    for (const r of drafts) {
+      const date = localDateOf(new Date(r.created_at))
+      if (!inWindow(date)) continue
+      const base = r.title?.trim() || 'Réunion'
+      events.push({
+        id: `mtgd-${r.id}`,
+        kind: 'reunion',
+        date,
+        at: r.created_at,
+        timeLabel: null,
+        title: withAudio.has(r.id) ? `${base} — à finaliser` : `${base} — enregistrement attendu`,
+        siteId: r.site_id,
+        siteName: siteNameById.get(r.site_id) ?? null,
+        teamName: null,
+        state: 'in_progress',
+        href: `/m/site/${r.site_id}?reprendre=${r.id}`,
+      })
+    }
+
     const { data: pastRows } = await supabase
       .from('site_reports')
       .select('id, site_id, title, started_at, created_at')

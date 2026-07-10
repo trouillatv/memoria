@@ -18,10 +18,13 @@ interface Props {
   contractName?: string
   variant?: 'mobile' | 'desktop'
   label?: string
+  /** Reprise d'une réunion déjà commencée (carte « en attente » du Journal) :
+   *  le panneau s'ouvre directement sur la réunion existante — jamais un double. */
+  resumeReportId?: string | null
 }
 
-export function SiteReportLauncher({ siteId, siteName, contractId, contractName, variant = 'mobile', label }: Props) {
-  const [open, setOpen] = useState(false)
+export function SiteReportLauncher({ siteId, siteName, contractId, contractName, variant = 'mobile', label, resumeReportId }: Props) {
+  const [open, setOpen] = useState(!!resumeReportId)
   const reportType = contractId ? 'contract' : 'site'
 
   const buttonClass =
@@ -51,6 +54,7 @@ export function SiteReportLauncher({ siteId, siteName, contractId, contractName,
               siteName={siteName}
               contractId={contractId}
               contractName={contractName}
+              initialReportId={resumeReportId ?? null}
               onClose={() => setOpen(false)}
             />
           </div>
