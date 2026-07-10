@@ -58,7 +58,12 @@ export async function deleteMeetingAction(
   return { ok: true }
 }
 
-/** Nettoyage en masse : supprime tous les brouillons + échecs de l'organisation. */
+/** Nettoyage en masse : supprime les brouillons + échecs de RÉUNIONS de
+ *  l'organisation. Deux garde-fous :
+ *  - JAMAIS les visites terrain (origin non-null) — elles fuyaient ici via
+ *    l'écran Réunions et un clic aurait détruit des captures (photos, mémos) ;
+ *  - JAMAIS les réunions des dernières 24 h : une réunion « en attente de son
+ *    enregistrement » (créée dès ▶ Commencer) est en cours, pas un déchet. */
 export async function cleanupDraftMeetingsAction(): Promise<
   { ok: true; deleted: number } | { ok: false; error: string }
 > {
@@ -67,7 +72,13 @@ export async function cleanupDraftMeetingsAction(): Promise<
 
   const supabase = createAdminClient()
   const orgId = await getOrgId()
-  let q = supabase.from('site_reports').select('id').in('status', ['draft', 'failed'])
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  let q = supabase
+    .from('site_reports')
+    .select('id')
+    .in('status', ['draft', 'failed'])
+    .is('origin', null)
+    .lt('created_at', cutoff)
   if (orgId) q = q.eq('organization_id', orgId)
   const { data } = await q
   const ids = ((data ?? []) as Array<{ id: string }>).map((r) => r.id)

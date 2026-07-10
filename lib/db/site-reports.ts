@@ -236,6 +236,9 @@ export async function listReportsBySite(siteId: string): Promise<DbSiteReport[]>
     .from('site_reports')
     .select('*')
     .or(orParts.join(','))
+    // Réunions uniquement : les visites terrain (origin non-null, mig 162) ont
+    // leurs propres écrans et ne doivent jamais apparaître dans cette liste.
+    .is('origin', null)
     .neq('status', 'draft')
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -269,7 +272,16 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
 
-  let q = supabase.from('site_reports').select('*').order('created_at', { ascending: false })
+  // Réunion = site_reports SANS origin (les visites terrain — origin
+  // 'planned'/'spontaneous'/'qr'/'gps', mig 162 — ont leurs propres écrans et
+  // ne doivent JAMAIS apparaître ici). Filtre absent à l'origine : les captures
+  // de visite fuyaient dans l'écran Réunions.
+  let q = supabase
+    .from('site_reports')
+    .select('*')
+    .is('origin', null)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
   if (orgId) q = q.eq('organization_id', orgId)
   const { data, error } = await q
   if (error) return [] // socle non migré → cockpit vide plutôt que crash
