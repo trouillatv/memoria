@@ -22,11 +22,14 @@ import type {
 import type { PriorActionUpdate } from '@/services/ai/site-report-analysis'
 import {
   createReportDraftAction,
+  createReportAudioUploadAction,
+  attachReportAudioAction,
   uploadReportAttachmentAction,
   transcribeReportAction,
   analyzeReportAction,
   getReportCurationContextAction,
 } from './report-actions'
+import { createClient } from '@/lib/supabase/client'
 import { SiteReportCuration } from './SiteReportCuration'
 
 interface Props {
@@ -51,6 +54,10 @@ interface LocalAttachment {
 
 const FR = new Intl.NumberFormat('fr-FR')
 
+// Wake Lock : type minimal pour ne pas dépendre de la présence de
+// WakeLockSentinel dans la lib DOM du projet.
+type WakeLockLike = { release: () => Promise<void> }
+
 export function SiteReportPanel({
   reportType = 'site', siteId, siteName, contractId, contractName, onClose,
 }: Props) {
@@ -62,6 +69,10 @@ export function SiteReportPanel({
 
   // Capture
   const [recording, setRecording] = useState(false)
+  // Vrai dès que l'enregistrement a PU être interrompu (passage en arrière-plan
+  // ou micro suspendu par l'OS). Sert à dire la vérité à l'utilisateur plutôt
+  // que de lui laisser croire qu'une heure a été captée.
+  const [interrupted, setInterrupted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [audioMime, setAudioMime] = useState<string>('audio/webm')
@@ -91,9 +102,31 @@ export function SiteReportPanel({
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const wakeLockRef = useRef<WakeLockLike | null>(null)
+  // Retrait des écouteurs d'interruption (visibilitychange + piste morte),
+  // installés le temps d'un enregistrement.
+  const recordingListenersRef = useRef<(() => void) | null>(null)
+
+  // Empêche l'écran de s'éteindre pendant l'enregistrement : c'est le
+  // déclencheur n°1 du gel de page (et donc de la perte d'audio) sur mobile.
+  // Best-effort — absent de certains navigateurs, on dégrade proprement.
+  async function acquireWakeLock() {
+    try {
+      const wl = (navigator as Navigator & {
+        wakeLock?: { request: (t: 'screen') => Promise<WakeLockLike> }
+      }).wakeLock
+      if (wl && !wakeLockRef.current) wakeLockRef.current = await wl.request('screen')
+    } catch { /* refusé ou non supporté — le bandeau d'honnêteté prend le relais */ }
+  }
+  function releaseWakeLock() {
+    wakeLockRef.current?.release().catch(() => {})
+    wakeLockRef.current = null
+  }
 
   useEffect(() => () => {
     if (timerRef.current) clearInterval(timerRef.current)
+    recordingListenersRef.current?.()
+    releaseWakeLock()
     streamRef.current?.getTracks().forEach((t) => t.stop())
     attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,9 +161,48 @@ export function SiteReportPanel({
       // Sans timeslice : plus fiable sur iOS/Safari (les chunks arrivent au stop).
       mr.start()
       setRecording(true)
+      setInterrupted(false)
       setAudioName(null)
       setElapsed(0)
       timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000)
+
+      // Garde-fous « arrière-plan » : on ne peut pas enregistrer de façon fiable
+      // écran éteint / app en fond, mais on peut (1) empêcher l'écran de
+      // s'éteindre, (2) sauver ce qui est capté si l'OS coupe le micro, et
+      // (3) le dire honnêtement.
+      await acquireWakeLock()
+
+      const track = stream.getAudioTracks()[0]
+      const onTrackEnded = () => {
+        // L'OS a coupé le micro (verrouillage/arrière-plan prolongé). On ne peut
+        // plus rien capter : on arrête pour FLUSHER l'audio déjà enregistré,
+        // et on prévient. Le stop() ci-dessous délivre les chunks bufferisés.
+        setInterrupted(true)
+        toast.warning('Enregistrement interrompu (micro suspendu par le téléphone). L’audio capté jusqu’ici est conservé — vérifiez la durée avant d’envoyer.')
+        stopRecording()
+      }
+      track?.addEventListener('ended', onTrackEnded)
+
+      const onVisibility = () => {
+        const active = mediaRecorderRef.current?.state === 'recording'
+        if (!active) return
+        if (document.hidden) {
+          // Passage en arrière-plan : le navigateur PEUT geler la page et
+          // suspendre le micro. On ne peut pas l'empêcher — on avertit.
+          setInterrupted(true)
+        } else {
+          // Retour au premier plan : le Wake Lock est libéré automatiquement
+          // quand la page est masquée, on le redemande.
+          void acquireWakeLock()
+        }
+      }
+      document.addEventListener('visibilitychange', onVisibility)
+
+      recordingListenersRef.current = () => {
+        track?.removeEventListener('ended', onTrackEnded)
+        document.removeEventListener('visibilitychange', onVisibility)
+        recordingListenersRef.current = null
+      }
     } catch {
       toast.error('Micro inaccessible — autorisez le microphone, ou importez un fichier audio / saisissez le texte.')
     }
@@ -138,6 +210,8 @@ export function SiteReportPanel({
 
   function stopRecording() {
     if (timerRef.current) clearInterval(timerRef.current)
+    recordingListenersRef.current?.()
+    releaseWakeLock()
     const mr = mediaRecorderRef.current
     if (mr?.state === 'recording') {
       try { mr.requestData() } catch { /* certains navigateurs n'exposent pas requestData */ }
@@ -234,21 +308,46 @@ export function SiteReportPanel({
     startTransition(async () => {
       let createdId: string | null = null
       try {
-        // 1. Brouillon (le texte ET l'audio partent EN PREMIER — persistés).
+        // 1. Brouillon (le texte part EN PREMIER — persisté, jamais perdu).
         const fd = new FormData()
         fd.set('report_type', reportType)
         if (reportType === 'contract' && contractId) fd.set('contract_id', contractId)
         else if (siteId) fd.set('site_id', siteId)
         if (text.trim()) fd.set('text_input', text.trim())
-        if (audioBlob) {
-          fd.set('audio', audioBlob, 'note.webm')
-          fd.set('audio_mime', audioMime)
-          fd.set('audio_duration_seconds', String(elapsed))
-        }
         const draft = await createReportDraftAction(fd)
         if (!draft.ok) { toast.error(draft.error); setStep('capture'); return }
         createdId = draft.reportId
         setReportId(draft.reportId)
+
+        // 1b. Audio → upload DIRECT au stockage (URL signée). Contourne la
+        //     limite 20 Mo des Server Actions — indispensable pour une réunion
+        //     longue. Best-effort : le texte est déjà sauvé si ça échoue.
+        let hasAudio = false
+        if (audioBlob) {
+          setWorking('Envoi de l’audio…')
+          try {
+            const prep = await createReportAudioUploadAction({ report_id: draft.reportId, mime: audioMime })
+            if (prep.ok) {
+              const supa = createClient()
+              const { error: upErr } = await supa.storage
+                .from('site-reports')
+                .uploadToSignedUrl(prep.storagePath, prep.token, audioBlob, { contentType: audioMime })
+              if (!upErr) {
+                const reg = await attachReportAudioAction({
+                  report_id: draft.reportId,
+                  storage_path: prep.storagePath,
+                  mime: audioMime,
+                  duration_seconds: elapsed,
+                  size_bytes: audioBlob.size,
+                })
+                hasAudio = reg.ok
+              }
+            }
+          } catch { /* audio best-effort */ }
+          if (!hasAudio) {
+            toast.warning('L’audio n’a pas pu être envoyé — le compte-rendu texte est sauvegardé. Vous pourrez réessayer.')
+          }
+        }
 
         // 2. Upload des pièces
         if (attachments.length > 0) {
@@ -267,7 +366,7 @@ export function SiteReportPanel({
 
         // 3. Transcription (si audio)
         let transcriptText = ''
-        if (draft.hasAudio) {
+        if (hasAudio) {
           setWorking('Transcription de la note vocale…')
           const tr = await transcribeReportAction(draft.reportId)
           if (tr.ok) transcriptText = tr.transcript
@@ -278,7 +377,7 @@ export function SiteReportPanel({
         const hasContent = transcriptText.trim().length > 0 || text.trim().length > 0
         if (!hasContent) {
           setSavedNote(
-            draft.hasAudio
+            hasAudio
               ? "Audio enregistré, mais la transcription n'a pas pu se faire (service IA indisponible). Le compte-rendu est sauvegardé — vous pourrez le reprendre plus tard."
               : 'Compte-rendu sauvegardé.',
           )
@@ -380,6 +479,16 @@ export function SiteReportPanel({
                 ? `Note enregistrée (${elapsed}s) — réenregistrer ?`
                 : 'Dicter le compte-rendu'}
             </p>
+            {recording && (
+              <p className="text-[11px] text-muted-foreground text-center">
+                Gardez l’écran allumé et l’app au premier plan. Pour une longue réunion, le dictaphone du téléphone est plus sûr — enregistrez-y, puis importez le fichier ci-dessous.
+              </p>
+            )}
+            {interrupted && (
+              <div className="w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                L’enregistrement a pu être interrompu (écran verrouillé ou app en arrière-plan). Vérifiez la durée de l’audio avant d’envoyer ; au besoin, réenregistrez ou importez le fichier.
+              </div>
+            )}
             {!recording && (
               <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
                 <FileAudio className="h-3.5 w-3.5" />

@@ -187,6 +187,84 @@ export async function createReportDraftAction(formData: FormData): Promise<
   return { ok: true, reportId, hasAudio }
 }
 
+// ── 1b. Audio de réunion : upload DIRECT vers Supabase (URL signée) ──────────
+// Un enregistrement long (surtout AAC/mp4 sur iOS : ~1 Mo/min) dépasse la
+// bodySizeLimit (20 Mo) des Server Actions → passé dans le corps, il est rejeté
+// AVANT le code. On l'envoie donc DIRECTEMENT au stockage via une URL signée
+// (créée ici), puis on l'attache (petit payload). Même patron que la vidéo.
+
+const audioPrepSchema = z.object({
+  report_id: z.string().uuid(),
+  mime: z.string().max(80).optional(),
+})
+
+export async function createReportAudioUploadAction(
+  input: z.input<typeof audioPrepSchema>,
+): Promise<{ ok: true; storagePath: string; token: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = audioPrepSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  const report = await getSiteReport(parsed.data.report_id)
+  if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
+
+  const ext = mimeToExt(parsed.data.mime || 'audio/webm')
+  const attId = crypto.randomUUID()
+  const storagePath = `${report.tenant_id}/${report.id}/${attId}.${ext}`
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(storagePath)
+  if (error || !data) return { ok: false, error: 'Préparation de l’envoi audio échouée' }
+  return { ok: true, storagePath: data.path, token: data.token }
+}
+
+const audioRegSchema = z.object({
+  report_id: z.string().uuid(),
+  storage_path: z.string().min(1).max(500),
+  mime: z.string().max(80).optional(),
+  duration_seconds: z.coerce.number().int().min(0).max(36000).optional(),
+  size_bytes: z.coerce.number().int().min(0).max(2_000_000_000).optional(),
+})
+
+export async function attachReportAudioAction(
+  input: z.input<typeof audioRegSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = audioRegSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const d = parsed.data
+
+  const report = await getSiteReport(d.report_id)
+  if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
+
+  const mime = d.mime || 'audio/webm'
+  const ext = mimeToExt(mime)
+  try {
+    await addReportAttachment({
+      report_id: d.report_id,
+      kind: 'audio',
+      storage_path: d.storage_path,
+      filename: `note.${ext}`,
+      mime_type: mime,
+      size_bytes: d.size_bytes ?? 0,
+    })
+    const supabase = createAdminClient()
+    await supabase
+      .from('site_reports')
+      .update({
+        audio_path: d.storage_path,
+        audio_mime: mime,
+        audio_duration_seconds: d.duration_seconds ?? null,
+        transcript_status: 'pending',
+      })
+      .eq('id', d.report_id)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Enregistrement de l’audio échoué' }
+  }
+}
+
 // ── 2. Upload d'une pièce jointe (photo ou fichier) ─────────────────────────
 
 const attachmentSchema = z.object({
