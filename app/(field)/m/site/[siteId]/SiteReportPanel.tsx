@@ -481,7 +481,7 @@ export function SiteReportPanel({
             </p>
             {recording && (
               <p className="text-[11px] text-muted-foreground text-center">
-                Gardez l’écran allumé et l’app au premier plan. Pour une longue réunion, le dictaphone du téléphone est plus sûr — enregistrez-y, puis importez le fichier ci-dessous.
+                Gardez l’écran allumé. Pour une réunion longue, le dictaphone du téléphone est recommandé afin de garantir un enregistrement complet — importez le fichier ensuite.
               </p>
             )}
             {interrupted && (
