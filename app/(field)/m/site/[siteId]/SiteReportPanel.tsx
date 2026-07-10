@@ -593,6 +593,16 @@ export function SiteReportPanel({
   const totalRecorded = segments.reduce((s, x) => s + x.durationSeconds, 0)
   const canAnalyze = segments.length > 0 || text.trim().length > 0 || attachments.length > 0 || !!initialReportId
 
+  // « Cette réunion contient » — la réunion est un CONTENEUR qui se remplit ;
+  // le compteur le dit d'un coup d'œil (enregistrements, photos, fichiers, notes).
+  const photoCount = attachments.filter((a) => a.kind === 'photo').length
+  const fileCount = attachments.filter((a) => a.kind === 'file').length
+  const containsParts: string[] = []
+  if (segments.length > 0) containsParts.push(`${segments.length} enregistrement${segments.length > 1 ? 's' : ''}`)
+  if (photoCount > 0) containsParts.push(`${photoCount} photo${photoCount > 1 ? 's' : ''}`)
+  if (fileCount > 0) containsParts.push(`${fileCount} fichier${fileCount > 1 ? 's' : ''}`)
+  if (text.trim().length > 0) containsParts.push('des notes')
+
   return (
     <div className="space-y-4">
       <header className="flex items-center justify-between">
@@ -662,11 +672,14 @@ export function SiteReportPanel({
               </label>
             )}
 
-            {/* Cette réunion contient — les enregistrements sont visibles et
-                contrôlables (origine, durée, retrait avant envoi). */}
-            {segments.length > 0 && (
+            {/* Cette réunion contient — la réunion se construit sous les yeux :
+                compteur (conteneur) + enregistrements visibles et contrôlables
+                (origine, durée, retrait avant envoi). */}
+            {containsParts.length > 0 && (
               <div className="w-full rounded-lg bg-muted/30 px-3 py-2">
-                <p className="text-[11px] font-medium text-foreground/70">Cette réunion contient&nbsp;:</p>
+                <p className="text-[11px] font-medium text-foreground/70">
+                  Cette réunion contient&nbsp;: <span className="text-foreground/90">{containsParts.join(' · ')}</span>
+                </p>
                 <ul className="mt-1 space-y-1">
                   {segments.map((s) => (
                     <li key={s.id} className="flex items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
