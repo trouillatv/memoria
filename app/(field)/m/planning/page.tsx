@@ -406,10 +406,10 @@ function TodayRhythm({
 
           {/* Le fait — replié par défaut, discret : il ne pousse plus l'important vers le bas. */}
           {done.length > 0 && (
-            <DoneToday count={done.length}>
+            <DoneToday count={done.length} items={done.map((e) => ({ id: e.id, title: e.title }))}>
               <ul className="space-y-1">
                 {done.map((e) => (
-                  <li key={e.id}>
+                  <li key={e.id} data-done-id={e.id}>
                     <DoneRow event={e} />
                   </li>
                 ))}
