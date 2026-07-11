@@ -6,6 +6,7 @@ import {
   listQueuedVisitCaptures,
   type QueuedVisitCapture,
 } from './visit-capture-queue'
+import { snapshotLiveUploads, type LiveUpload } from './live-uploads'
 
 export type SyncState = 'green' | 'yellow' | 'red' | 'unknown'
 
@@ -15,8 +16,9 @@ export interface SyncStatus {
   hasErrors: boolean
 }
 
-/** File d'origine d'une entry — détermine où router retry / suppression. */
-export type QueueSource = 'photo' | 'visit'
+/** Canal d'origine d'une entry — détermine où router retry / suppression.
+ *  'live' = upload direct (vidéo, #81) : ni relançable ni supprimable. */
+export type QueueSource = 'photo' | 'visit' | 'live'
 
 /**
  * Vue unifiée d'une capture en attente, quelle que soit sa file d'origine
@@ -37,6 +39,8 @@ export interface UnifiedQueueEntry {
   filename?: string
   /** Média local (absent pour un geste léger : note / vérification / position). */
   blob?: Blob
+  /** Vignette déjà prête (upload direct : objectURL) — prime sur blob. */
+  previewUrl?: string | null
   takenAt: number
   attempts: number
   lastAttemptAt?: number
@@ -89,6 +93,7 @@ const VISIT_KIND_LABELS: Record<QueuedVisitCapture['kind'], string> = {
 function toUnified(
   photos: QueuedPhoto[],
   visits: QueuedVisitCapture[],
+  lives: LiveUpload[] = [],
 ): UnifiedQueueEntry[] {
   const fromPhotos: UnifiedQueueEntry[] = photos.map((p) => ({
     tempId: p.tempId,
@@ -114,7 +119,16 @@ function toUnified(
     lastAttemptAt: v.lastAttemptAt,
     lastError: v.lastError,
   }))
-  return [...fromPhotos, ...fromVisits]
+  // Uploads directs (vidéo, #81) : montent en ce moment même — pas de retry.
+  const fromLives: UnifiedQueueEntry[] = lives.map((u) => ({
+    tempId: `live:${u.id}`,
+    source: 'live',
+    kindLabel: 'Vidéo',
+    previewUrl: u.previewUrl,
+    takenAt: u.takenAt,
+    attempts: 0,
+  }))
+  return [...fromPhotos, ...fromVisits, ...fromLives]
 }
 
 /**
@@ -128,18 +142,28 @@ async function loadUnified(): Promise<UnifiedQueueEntry[]> {
     listQueuedPhotos().catch(() => [] as QueuedPhoto[]),
     listQueuedVisitCaptures().catch(() => [] as QueuedVisitCapture[]),
   ])
-  return toUnified(photos, visits)
+  return toUnified(photos, visits, snapshotLiveUploads())
 }
 
-function deriveState(entries: Array<{ attempts: number }>): SyncStatus {
-  if (entries.length === 0) {
+/** Agrège les TROIS canaux (file photos, file visite, uploads directs) en un
+ *  état de pastille. Un upload direct compte en attente mais ne met jamais la
+ *  pastille en rouge (pas de compteur d'échec). Exporté pour les tests de
+ *  régression de la #81. */
+export function deriveState(
+  photos: Array<{ attempts: number }>,
+  visits: Array<{ attempts: number }>,
+  liveCount: number,
+): SyncStatus {
+  const queued = [...photos, ...visits]
+  const pendingCount = queued.length + Math.max(0, liveCount)
+  if (pendingCount === 0) {
     return { state: 'green', pendingCount: 0, hasErrors: false }
   }
-  const hasErrors = entries.some((q) => q.attempts >= 3)
+  const hasErrors = queued.some((q) => q.attempts >= 3)
   if (hasErrors) {
-    return { state: 'red', pendingCount: entries.length, hasErrors: true }
+    return { state: 'red', pendingCount, hasErrors: true }
   }
-  return { state: 'yellow', pendingCount: entries.length, hasErrors: false }
+  return { state: 'yellow', pendingCount, hasErrors: false }
 }
 
 export function useSyncStatus(): SyncStatus {
@@ -151,8 +175,11 @@ export function useSyncStatus(): SyncStatus {
 
   const refresh = useCallback(async () => {
     try {
-      const entries = await loadUnified()
-      setStatus(deriveState(entries))
+      const [photos, visits] = await Promise.all([
+        listQueuedPhotos().catch(() => [] as QueuedPhoto[]),
+        listQueuedVisitCaptures().catch(() => [] as QueuedVisitCapture[]),
+      ])
+      setStatus(deriveState(photos, visits, snapshotLiveUploads().length))
     } catch (e) {
       console.error('[useSyncStatus]', e)
     }

@@ -95,6 +95,8 @@ function QueueRow({ entry, uploading, onDelete }: { entry: UnifiedQueueEntry; up
   const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
+    // Upload direct (vidéo, #81) : la vignette est déjà un objectURL prêt.
+    if (entry.previewUrl) { setThumbUrl(entry.previewUrl); return }
     // Geste léger (note / vérification / position) : pas de média → icône seule.
     if (!entry.blob) { setThumbUrl(null); return }
     let cancelled = false
@@ -111,7 +113,8 @@ function QueueRow({ entry, uploading, onDelete }: { entry: UnifiedQueueEntry; up
   }, [entry.blob])
 
   // « envoi… » prime sur le compte à rebours : c'est ce qui se passe LÀ.
-  const status = uploading ? 'envoi…' : formatNextRetry(entry)
+  // Un upload direct (vidéo) est par définition en train de monter.
+  const status = uploading || entry.source === 'live' ? 'envoi…' : formatNextRetry(entry)
   const ago = formatTakenAgo(entry.takenAt)
 
   return (
@@ -176,15 +179,18 @@ function QueueRow({ entry, uploading, onDelete }: { entry: UnifiedQueueEntry; up
       ) : (
         <div className="flex flex-shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground tabular-nums">{status}</span>
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            aria-label="Supprimer cette photo"
-            data-testid="photo-queue-delete"
-            className="p-1 text-muted-foreground hover:text-rose-600"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden />
-          </button>
+          {/* Un upload direct en cours ne se supprime pas (il n'est dans aucune file). */}
+          {entry.source !== 'live' && (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              aria-label="Supprimer cette capture"
+              data-testid="photo-queue-delete"
+              className="p-1 text-muted-foreground hover:text-rose-600"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </button>
+          )}
         </div>
       )}
     </li>
