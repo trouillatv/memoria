@@ -48,6 +48,10 @@ export interface VisitCaptureRow {
   /** Instant RÉEL de la capture (mig 184) — EXIF/horodatage export. NULL en direct
    *  (created_at fait foi). La timeline s'ordonne sur coalesce(captured_at, created_at). */
   captured_at: string | null
+  /** Point de repère photographique (mig 195) : ancre d'une série « même cadrage ». */
+  is_viewpoint: boolean
+  /** Reprise d'un point de repère (mig 195) : pointe la capture ancre. */
+  viewpoint_of: string | null
   created_at: string
 }
 
@@ -70,6 +74,8 @@ export interface AddVisitCaptureInput {
   /** Instant réel (mig 184) — posé à l'IMPORT pour reconstruire la chronologie.
    *  Laissé null en direct : created_at fait foi. */
   capturedAt?: string | null
+  /** Reprise d'un point de repère (mig 195) — pointe la capture ancre. */
+  viewpointOf?: string | null
   /** Photo clé dès la création (mig 174) — une photo ANNOTÉE l'est d'office :
    *  si on a pris le temps de dessiner dessus, c'est la meilleure pour le CR. */
   starred?: boolean
@@ -123,6 +129,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       lat: input.lat ?? null,
       lng: input.lng ?? null,
       captured_at: input.capturedAt ?? null,
+      viewpoint_of: input.viewpointOf ?? null,
       starred: input.starred ?? false,
       annotated_original_id: input.annotatedOriginalId ?? null,
       created_by: input.createdBy,
@@ -164,7 +171,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -178,7 +185,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -194,7 +201,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -212,7 +219,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -269,6 +276,38 @@ export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000)
  * que le débrief montre le CONTENU (miniature, lecteur), pas juste « Photo ».
  * Sans ça on trie à l'aveugle. Retourne une map captureId → { url, mime }.
  */
+// ── Points de repère photographiques (mig 195) ───────────────────────────────
+
+/** Épingle / désépingle une photo comme point de repère (ancre de série). */
+export async function setCaptureViewpoint(captureId: string, isViewpoint: boolean): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('visit_capture')
+    .update({ is_viewpoint: isViewpoint, updated_at: new Date().toISOString() })
+    .eq('id', captureId)
+    .eq('kind', 'photo')
+  if (error) throw error
+}
+
+/** Toutes les photos d'un chantier appartenant à une série de point de repère
+ *  (ancres + reprises), toutes visites confondues. Le regroupement en séries
+ *  est fait par groupViewpointChains (pur). */
+export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptureRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, captured_at, is_viewpoint, viewpoint_of, created_at')
+    .eq('site_id', siteId)
+    .eq('kind', 'photo')
+    .neq('status', 'discarded')
+    .is('hidden_at', null)
+    .or('is_viewpoint.eq.true,viewpoint_of.not.is.null')
+    .order('created_at', { ascending: true })
+    .limit(400)
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
 export async function getVisitCapturePreviewUrls(
   captures: VisitCaptureRow[],
 ): Promise<Record<string, { url: string; mime: string | null }>> {

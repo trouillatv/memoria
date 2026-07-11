@@ -3,17 +3,15 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin, Eye, ListChecks, Plus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
 import { deleteVisitAction } from '@/app/(field)/m/visite/[reportId]/debrief-actions'
 import {
-  addNoteCaptureAction,
-  addVerificationCaptureAction,
-  addPositionCaptureAction,
   removeCaptureAction,
   setCaptureStarAction,
+  setCaptureViewpointAction,
   addQuestionCaptureAction,
   listVisitCapturesAction,
   listVisitCapturePreviewsAction,
@@ -24,8 +22,11 @@ import {
 } from './capture-actions'
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
+import { GhostCamera } from './GhostCamera'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { beginLiveUpload, endLiveUpload } from '@/lib/field/live-uploads'
+import { setWatchlistItemStateAction, addWatchlistItemAction } from './watchlist-actions'
+import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { createClient } from '@/lib/supabase/client'
@@ -49,13 +50,16 @@ export type SubjectMemoryLite = {
   criticality: string
 }
 
-// Une capture média déposée localement, en attente de confirmation serveur (Lot B).
-// previewUrl = objectURL pour la vignette photo/vidéo (null pour un vocal).
+// Une capture déposée localement, en attente de confirmation serveur (Lot B,
+// étendu PR-2 aux gestes légers). previewUrl = objectURL pour la vignette
+// photo/vidéo (null sinon). body = texte d'une note / constat de vérification.
 type PendingCapture = {
   clientUuid: string
-  kind: 'photo' | 'video' | 'vocal'
+  kind: 'photo' | 'video' | 'vocal' | 'note' | 'verification' | 'position'
   previewUrl: string | null
   takenAt: number
+  body?: string
+  subjectId?: string
 }
 
 /**
@@ -67,20 +71,29 @@ type PendingCapture = {
 export function VisitBasket({
   reportId,
   siteId,
+  siteName,
   userId,
   startedAt,
   subjects,
   subjectMemory,
   initialCaptures,
+  viewpoints = [],
+  watchlist = [],
 }: {
   reportId: string
   siteId: string
+  /** Nom du chantier — embarqué dans la file de sync pour l'affichage. */
+  siteName?: string
   /** L'agent courant — tague les dépôts locaux (anti cross-compte au drain). */
   userId: string
   startedAt: string | null
   subjects: Array<{ id: string; name: string }>
   subjectMemory: Record<string, SubjectMemoryLite>
   initialCaptures: VisitCaptureRow[]
+  /** Points de repère du chantier (mig 195) : séries « même cadrage » à reprendre. */
+  viewpoints?: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }>
+  /** Liste « À vérifier » de CETTE visite (mig 196) — figée au démarrage. */
+  watchlist?: DbVisitWatchlistItem[]
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -94,7 +107,12 @@ export function VisitBasket({
   // Lot B — captures déposées localement, pas encore confirmées par le serveur.
   // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
   const [pending, setPending] = useState<PendingCapture[]>([])
-  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question'>('none')
+  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question' | 'watch' | 'lastlook'>('none')
+  // Caméra fantôme (mig 195) : point de repère en cours de reprise, ou null.
+  const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
+  // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
+  // à ce point de repère (sans fantôme, mais la série reste continue).
+  const nextPhotoViewpointRef = useRef<string | null>(null)
   const [note, setNote] = useState('')
   // ❓ Question ouverte (« à vérifier ») : sur une capture (questionCaptureId) ou libre.
   const [questionText, setQuestionText] = useState('')
@@ -173,10 +191,12 @@ export function VisitBasket({
     return 'queued'
   }
   // Points suivis déjà vérifiés pendant CETTE visite (progression + ✓). Dérivé des
-  // captures : aucune donnée nouvelle.
-  const verifiedSubjectIds = new Set(
-    kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => c.subject_id as string),
-  )
+  // captures confirmées ET des vérifications encore en file (hors-ligne, la ✓
+  // s'affiche quand même — la donnée est en sécurité localement).
+  const verifiedSubjectIds = new Set([
+    ...kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => c.subject_id as string),
+    ...visiblePending.filter((p) => p.kind === 'verification' && p.subjectId).map((p) => p.subjectId as string),
+  ])
 
   // Chrono de la visite.
   useEffect(() => {
@@ -242,8 +262,10 @@ export function VisitBasket({
           .map((e) => ({
             clientUuid: e.clientUuid,
             kind: e.kind,
-            previewUrl: e.kind === 'vocal' ? null : URL.createObjectURL(e.blob),
+            previewUrl: (e.kind === 'photo' || e.kind === 'video') && e.blob ? URL.createObjectURL(e.blob) : null,
             takenAt: e.takenAt,
+            body: e.body,
+            subjectId: e.subjectId,
           }))
         return additions.length ? [...prev, ...additions] : prev
       })
@@ -266,7 +288,7 @@ export function VisitBasket({
   // Règle d'or du Lot B : on affiche la capture immédiatement (optimiste), on la
   // pousse dans la file IndexedDB, et le drain de fond la monte avec retry réseau.
   // Aucun `await` réseau dans le geste : on rend la main tout de suite.
-  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal') {
+  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal', viewpointOf?: string) {
     const clientUuid = crypto.randomUUID()
     const previewUrl = kind === 'vocal' ? null : URL.createObjectURL(file)
     // 1) Optimiste, SYNCHRONE : la vignette apparaît dans la timeline sur-le-champ.
@@ -279,12 +301,13 @@ export function VisitBasket({
       const blob = kind === 'photo' ? await compressImageFile(file) : file
       const ext = kind === 'photo' ? 'jpg' : kind === 'video' ? 'mp4' : 'webm'
       await queueVisitCapture({
-        clientUuid, userId, reportId, siteId, kind,
+        clientUuid, userId, reportId, siteId, siteName, kind,
         blob,
         filename: `${kind}-${clientUuid}.${ext}`,
         mimeType: blob.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
         lat: pos?.lat ?? null,
         lng: pos?.lng ?? null,
+        viewpointOf,
       })
       void syncNow()
     })().catch(() => {
@@ -300,7 +323,10 @@ export function VisitBasket({
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    enqueueMedia(file, 'photo')
+    // Repli natif d'une reprise de point de repère : la photo reste chaînée.
+    const viewpointOf = nextPhotoViewpointRef.current ?? undefined
+    nextPhotoViewpointRef.current = null
+    enqueueMedia(file, 'photo', viewpointOf)
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
@@ -317,7 +343,8 @@ export function VisitBasket({
     const takenAt = Date.now()
     setPending((prev) => [...prev, { clientUuid, kind: 'video', previewUrl, takenAt }])
     // La vidéo n'entre dans AUCUNE file (upload direct) : on la signale au registre
-    // des uploads directs pour que l'indicateur de synchro du header la reflète.
+    // des uploads directs (#81) pour que la pastille du header et la file de sync
+    // la voient — sinon « Tout est arrivé » mentirait pendant qu'elle monte.
     beginLiveUpload({ id: clientUuid, kind: 'video', previewUrl, takenAt })
     const dropPending = () => {
       endLiveUpload(clientUuid)
@@ -437,16 +464,46 @@ export function VisitBasket({
     setRecording(false)
   }
 
+  // ── Dépôt local d'un geste LÉGER (note/vérification/position) — PR-2 ────────
+  // Même règle d'or que les médias : la capture ne bloque JAMAIS. On affiche en
+  // optimiste, on persiste dans la file IndexedDB, le drain monte avec retry.
+  // Fini la note perdue en sous-sol sur un toast d'erreur invisible.
+  function enqueueLight(
+    kind: 'note' | 'verification' | 'position',
+    payload: { body?: string; subjectId?: string; lat?: number | null; lng?: number | null },
+    opts?: { withPosition?: boolean },
+  ) {
+    const clientUuid = crypto.randomUUID()
+    // 1) Optimiste, SYNCHRONE : la ligne apparaît dans la timeline sur-le-champ.
+    setPending((prev) => [...prev, {
+      clientUuid, kind, previewUrl: null, takenAt: Date.now(),
+      body: payload.body, subjectId: payload.subjectId,
+    }])
+    // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
+    ;(async () => {
+      const pos = opts?.withPosition ? await getOneShotPosition() : null
+      await queueVisitCapture({
+        clientUuid, userId, reportId, siteId, siteName, kind,
+        body: payload.body,
+        subjectId: payload.subjectId,
+        lat: payload.lat ?? pos?.lat ?? null,
+        lng: payload.lng ?? pos?.lng ?? null,
+      })
+      void syncNow()
+    })().catch(() => {
+      // Échec d'écriture locale (très rare) : on retire l'optimiste et on prévient.
+      setPending((prev) => prev.filter((p) => p.clientUuid !== clientUuid))
+      toast.error('Échec de l’enregistrement local')
+    })
+  }
+
   // ── Note ───────────────────────────────────────────────────────────────────
   function saveNote() {
     const body = note.trim()
     if (body.length < 1) return
-    startBusy(async () => {
-      const pos = await getOneShotPosition()
-      const r = await addNoteCaptureAction({ report_id: reportId, site_id: siteId, body, lat: pos?.lat, lng: pos?.lng })
-      if (r.ok) { setNote(''); setOverlay('none'); toast.success('Note ajoutée', { duration: 1200 }); refresh() }
-      else toast.error(r.error)
-    })
+    enqueueLight('note', { body }, { withPosition: true })
+    setNote(''); setOverlay('none')
+    toast.success('Note ajoutée', { duration: 1200 })
   }
 
   // ── Question ouverte (❓ « à vérifier ») — sur une capture ou libre ──────────
@@ -488,19 +545,11 @@ export function VisitBasket({
   function saveVerification() {
     const subject = subjects[verifIndex]
     if (!subject) return
-    startBusy(async () => {
-      const r = await addVerificationCaptureAction({
-        report_id: reportId, site_id: siteId, subject_id: subject.id,
-        body: verifNote.trim() || undefined,
-      })
-      if (r.ok) {
-        toast.success('Point vérifié', { duration: 1000 })
-        setVerifNote('')
-        refresh()
-        // Fluide : on enchaîne sur le point suivant s'il en reste.
-        if (verifIndex < subjects.length - 1) setVerifIndex(verifIndex + 1)
-      } else toast.error(r.error)
-    })
+    enqueueLight('verification', { subjectId: subject.id, body: verifNote.trim() || undefined })
+    toast.success('Point vérifié', { duration: 1000 })
+    setVerifNote('')
+    // Fluide : on enchaîne sur le point suivant s'il en reste.
+    if (verifIndex < subjects.length - 1) setVerifIndex(verifIndex + 1)
   }
 
   // ── Position ───────────────────────────────────────────────────────────────
@@ -508,14 +557,9 @@ export function VisitBasket({
     if (!navigator.geolocation) { toast.error('Position indisponible'); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        startBusy(async () => {
-          const r = await addPositionCaptureAction({
-            report_id: reportId, site_id: siteId,
-            lat: pos.coords.latitude, lng: pos.coords.longitude,
-          })
-          if (r.ok) { toast.success('Position enregistrée', { duration: 1200 }); refresh() }
-          else toast.error(r.error)
-        })
+        // Le GPS marche sans réseau : la position part dans la file locale.
+        enqueueLight('position', { lat: pos.coords.latitude, lng: pos.coords.longitude })
+        toast.success('Position enregistrée', { duration: 1200 })
       },
       () => toast.error('Position refusée'),
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
@@ -531,6 +575,16 @@ export function VisitBasket({
       .catch(() => refresh())
   }
 
+  // ── Photo de référence : épingler « je referai cette photo » (optimiste) ────
+  function toggleViewpoint(c: VisitCaptureRow) {
+    const next = !c.is_viewpoint
+    setCaptures((prev) => prev.map((x) => (x.id === c.id ? { ...x, is_viewpoint: next } : x)))
+    if (next) toast.success('Photo de référence — MemorIA vous proposera de la refaire à chaque visite', { duration: 2000 })
+    setCaptureViewpointAction({ capture_id: c.id, is_viewpoint: next })
+      .then((r) => { if (!r.ok) { toast.error(r.error); refresh() } })
+      .catch(() => refresh())
+  }
+
   // ── Retirer une capture (faux geste) ────────────────────────────────────────
   function remove(id: string) {
     startBusy(async () => {
@@ -540,8 +594,45 @@ export function VisitBasket({
     })
   }
 
+  // ── « À vérifier » (mig 196) : la liste de contrôle de CETTE visite ─────────
+  // 3 décisions (Vérifié / À suivre / Sans objet), optimistes. Jamais bloquant,
+  // jamais de rappel permanent — un bouton compact, un panneau à la demande.
+  const [watchItems, setWatchItems] = useState<DbVisitWatchlistItem[]>(watchlist ?? [])
+  const [watchNewLabel, setWatchNewLabel] = useState('')
+  const pendingWatch = watchItems.filter((w) => w.state === 'pending')
+  // Le dernier regard ne se pose QU'UNE fois — jamais une app qui harcèle.
+  const lastLookAskedRef = useRef(false)
+
+  function decideWatch(item: DbVisitWatchlistItem, state: WatchlistItemState) {
+    setWatchItems((prev) => prev.map((w) => (w.id === item.id ? { ...w, state } : w)))
+    setWatchlistItemStateAction({ item_id: item.id, state })
+      .then((r) => { if (!r.ok) toast.error(r.error) })
+      .catch(() => toast.error('Échec'))
+  }
+  function addWatch() {
+    const label = watchNewLabel.trim()
+    if (!label) return
+    setWatchNewLabel('')
+    addWatchlistItemAction({ report_id: reportId, site_id: siteId, label })
+      .then((r) => {
+        if (r.ok) setWatchItems((prev) => [...prev, r.item])
+        else toast.error(r.error)
+      })
+      .catch(() => toast.error('Échec'))
+  }
+
   // ── Terminer la visite ──────────────────────────────────────────────────────
   function end() {
+    // LE DERNIER REGARD — une seule question, jamais plusieurs : s'il reste des
+    // points non statués, on montre le premier avant de partir. Une fois.
+    if (!lastLookAskedRef.current && pendingWatch.length > 0) {
+      lastLookAskedRef.current = true
+      setOverlay('lastlook')
+      return
+    }
+    doEnd()
+  }
+  function doEnd() {
     // Visite SANS le moindre élément — ni en base (kept), ni dans la file hors-ligne
     // (pending / queued). On est le SEUL endroit à savoir la file vide, donc le seul
     // à pouvoir l'affirmer sans risque d'effacer du travail non synchronisé. Une
@@ -632,8 +723,57 @@ export function VisitBasket({
           onClick={recording ? stopRec : startRec}
         />
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
-        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={openVerify} />
+        {/* F10 : sans point suivi, « Vérifier » n'a rien à offrir — grisé plutôt
+            qu'un cul-de-sac. */}
+        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy || subjects.length === 0} onClick={openVerify} />
       </div>
+      {/* « À vérifier · N » (mig 196) — accès COMPACT à la liste de contrôle de
+          cette visite. Jamais affichée en permanence : un tap l'ouvre, on décide,
+          on revient à la capture. */}
+      {watchItems.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOverlay('watch')}
+          data-testid="watchlist-chip"
+          className="flex w-full items-center justify-between rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2 text-sm font-medium text-amber-900 active:scale-[0.99] dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200"
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <ListChecks className="h-4 w-4" /> À vérifier
+          </span>
+          <span className="tabular-nums">
+            {pendingWatch.length > 0 ? `${pendingWatch.length} restant${pendingWatch.length > 1 ? 's' : ''}` : 'tout est vu ✓'}
+          </span>
+        </button>
+      )}
+
+      {/* Points de repère (mig 195) : « reprends exactement le même point de vue ».
+          Un tap ouvre la caméra avec le FANTÔME de la dernière photo en
+          surimpression — on cadre, on déclenche, la série continue. */}
+      {viewpoints.filter((v) => v.lastUrl).length > 0 && (
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-medium text-emerald-900/70 dark:text-emerald-200/70">
+            Reprendre le même point de vue
+          </span>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {viewpoints.filter((v) => v.lastUrl).map((v) => (
+              <button
+                key={v.anchorId}
+                type="button"
+                onClick={() => setGhost({ anchorId: v.anchorId, url: v.lastUrl!, label: v.label })}
+                data-testid="viewpoint-chip"
+                className="flex shrink-0 items-center gap-2 rounded-xl border border-emerald-300 bg-background py-1.5 pl-1.5 pr-3 text-left active:scale-[0.98] dark:border-emerald-800"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={v.lastUrl!} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                <span className="max-w-[120px]">
+                  <span className="block truncate text-xs font-medium">{v.label ?? 'Photo de référence'}</span>
+                  <span className="block text-[10px] text-muted-foreground">{v.shots} photo{v.shots > 1 ? 's' : ''}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Importer des médias DÉJÀ sur le téléphone (WhatsApp, captures d'écran,
           photos reçues) — le conducteur n'a pas toujours l'appli pendant la visite. */}
       <button
@@ -754,6 +894,16 @@ export function VisitBasket({
                   >
                     <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/40 hover:text-amber-600" />
                   </button>
+                  {c.kind === 'photo' && (
+                    <button
+                      type="button" onClick={() => toggleViewpoint(c)}
+                      aria-label={c.is_viewpoint ? 'Ne plus refaire cette photo' : 'Photo de référence — la refaire à chaque visite'}
+                      title={c.is_viewpoint ? 'Photo de référence' : 'Refaire cette photo à chaque visite'}
+                      className="shrink-0 pt-0.5"
+                    >
+                      <Pin className={`h-3.5 w-3.5 ${c.is_viewpoint ? 'fill-emerald-500 text-emerald-600' : 'text-muted-foreground/40 hover:text-emerald-600'}`} />
+                    </button>
+                  )}
                   <button
                     type="button" onClick={() => toggleStar(c)}
                     aria-label={c.starred ? 'Retirer « important »' : 'Important — à réutiliser'}
@@ -784,7 +934,12 @@ export function VisitBasket({
                   </span>
                   <span className="shrink-0 pt-0.5 text-emerald-700/80 dark:text-emerald-300/80">{KIND_ICON[p.kind]}</span>
                   <span className="min-w-0 flex-1 text-sm leading-snug">
-                    {p.kind === 'photo' ? 'Photo' : p.kind === 'video' ? 'Vidéo' : 'Mémo vocal'}
+                    {p.kind === 'photo' ? 'Photo'
+                      : p.kind === 'video' ? 'Vidéo'
+                      : p.kind === 'vocal' ? 'Mémo vocal'
+                      : p.kind === 'note' ? (p.body ?? 'Note')
+                      : p.kind === 'verification' ? `Point vérifié — ${subjectName(p.subjectId ?? null)}`
+                      : 'Position'}
                     <span className="mt-0.5 flex items-center gap-1 text-[11px]">
                       {st === 'uploading' ? (
                         <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> envoi…</span>
@@ -818,6 +973,106 @@ export function VisitBasket({
             {pendingSyncCount} capture{pendingSyncCount > 1 ? 's' : ''} en attente — envoyée{pendingSyncCount > 1 ? 's' : ''} automatiquement dès que le réseau revient. Rien n&apos;est perdu.
           </span>
         </div>
+      )}
+
+      {/* Panneau « À vérifier » — les 3 décisions par point + ajout manuel. */}
+      {overlay === 'watch' && (
+        <Overlay title="À vérifier pendant cette visite" icon={<ListChecks className="h-4 w-4" />} onClose={() => setOverlay('none')}>
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+            {watchItems.map((w) => (
+              <div key={w.id} className="space-y-1.5 rounded-lg border p-2.5" data-testid="watchlist-item">
+                <p className={`text-sm leading-snug ${w.state !== 'pending' ? 'text-muted-foreground' : ''}`}>{w.label}</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <WatchStateButton
+                    active={w.state === 'verified'} icon={<Check className="h-3.5 w-3.5" />} label="Vérifié"
+                    activeCls="border-emerald-600 bg-emerald-600 text-white"
+                    onClick={() => decideWatch(w, w.state === 'verified' ? 'pending' : 'verified')}
+                  />
+                  <WatchStateButton
+                    active={w.state === 'to_follow'} icon={<Eye className="h-3.5 w-3.5" />} label="À suivre"
+                    activeCls="border-amber-500 bg-amber-500 text-white"
+                    onClick={() => decideWatch(w, w.state === 'to_follow' ? 'pending' : 'to_follow')}
+                  />
+                  <WatchStateButton
+                    active={w.state === 'dismissed'} icon={<X className="h-3.5 w-3.5" />} label="Sans objet"
+                    activeCls="border-slate-500 bg-slate-500 text-white"
+                    onClick={() => decideWatch(w, w.state === 'dismissed' ? 'pending' : 'dismissed')}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Ajout manuel — « et vérifie aussi… ». */}
+          <div className="flex gap-1.5">
+            <input
+              value={watchNewLabel}
+              onChange={(e) => setWatchNewLabel(e.target.value)}
+              placeholder="Ajouter un point à vérifier…"
+              maxLength={300}
+              className="w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              type="button" onClick={addWatch} disabled={!watchNewLabel.trim()}
+              aria-label="Ajouter" className="shrink-0 rounded-lg border px-3 disabled:opacity-40"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </Overlay>
+      )}
+
+      {/* LE DERNIER REGARD — une seule question avant de partir, jamais dix. */}
+      {overlay === 'lastlook' && pendingWatch[0] && (
+        <Overlay title="Un dernier point" icon={<Eye className="h-4 w-4" />} onClose={() => { setOverlay('none'); doEnd() }}>
+          <p className="text-sm leading-snug">
+            Avant de partir — <span className="font-medium">{pendingWatch[0].label}</span>
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            <WatchStateButton
+              icon={<Check className="h-3.5 w-3.5" />} label="Vérifié" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'verified'); setOverlay('none'); doEnd() }}
+            />
+            <WatchStateButton
+              icon={<Eye className="h-3.5 w-3.5" />} label="À suivre" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'to_follow'); setOverlay('none'); doEnd() }}
+            />
+            <WatchStateButton
+              icon={<X className="h-3.5 w-3.5" />} label="Sans objet" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'dismissed'); setOverlay('none'); doEnd() }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => { setOverlay('none'); doEnd() }}
+            className="w-full py-1.5 text-center text-xs text-muted-foreground"
+          >
+            Terminer sans répondre
+          </button>
+        </Overlay>
+      )}
+
+      {/* Caméra fantôme — la photo précédente en surimpression, on aligne, on
+          déclenche. Repli : appareil natif, la reprise reste chaînée. */}
+      {ghost && (
+        <GhostCamera
+          ghostUrl={ghost.url}
+          label={ghost.label}
+          onCapture={(file) => {
+            enqueueMedia(file, 'photo', ghost.anchorId)
+            // La série grandit — dire à l'utilisateur qu'il CONSTRUIT quelque chose.
+            const serie = viewpoints.find((v) => v.anchorId === ghost.anchorId)
+            toast.success(
+              `Même point de vue repris — « ${ghost.label ?? 'Photo de référence'} » : ${(serie?.shots ?? 1) + 1} photos`,
+              { duration: 2000 },
+            )
+          }}
+          onClose={() => setGhost(null)}
+          onFallbackNative={() => {
+            nextPhotoViewpointRef.current = ghost.anchorId
+            setGhost(null)
+            fileRef.current?.click()
+          }}
+        />
       )}
 
       <p className="text-[11px] italic text-emerald-800/60 dark:text-emerald-300/60 leading-snug">
@@ -991,6 +1246,23 @@ function SubjectMemoryBlock({ mem }: { mem: SubjectMemoryLite | undefined }) {
         </p>
       )}
     </div>
+  )
+}
+
+function WatchStateButton({
+  icon, label, onClick, active, activeCls,
+}: {
+  icon: React.ReactNode; label: string; onClick: () => void; active?: boolean; activeCls: string
+}) {
+  return (
+    <button
+      type="button" onClick={onClick}
+      className={`inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium active:scale-[0.98] transition-transform ${
+        active ? activeCls : 'border-border bg-background text-muted-foreground'
+      }`}
+    >
+      {icon} {label}
+    </button>
   )
 }
 

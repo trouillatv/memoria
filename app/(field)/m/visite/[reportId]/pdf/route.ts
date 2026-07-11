@@ -67,6 +67,27 @@ export async function GET(req: Request, ctx: RouteCtx) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
 
+  // Nom de fichier UNIQUE par visite : chantier + date + heure de la visite
+  // (fuseau Nouméa). Sans l'horodatage, Android voit « cr-visite-<chantier>.pdf »
+  // déjà présent dans Téléchargements et rouvre l'ancien PDF au lieu du nouveau —
+  // le conducteur croit alors que MemorIA s'est trompé. Ex. « cr-cuisine-petratiti-2026-07-22-14h32.pdf ».
+  const visitInstant = new Date(visit.started_at ?? visit.created_at ?? Date.now())
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Pacific/Noumea',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(visitInstant) // « 2026-07-22 »
+  const hm = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Pacific/Noumea',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+    .format(visitInstant)
+    .replace(':', 'h') // « 14h32 »
+  const stamp = `${ymd}-${hm}`
+
   // ?download=1 → attachment : le mobile TÉLÉCHARGE le fichier (bouton « Télécharger »).
   // Sinon inline : le mobile OUVRE le PDF (aperçu), l'agent peut ensuite partager.
   const download = new URL(req.url).searchParams.has('download')
@@ -76,7 +97,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `${disposition}; filename="cr-visite-${slug || 'chantier'}.pdf"`,
+      'Content-Disposition': `${disposition}; filename="cr-${slug || 'chantier'}-${stamp}.pdf"`,
       'Cache-Control': 'no-store',
     },
   })

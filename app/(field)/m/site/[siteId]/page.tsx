@@ -32,7 +32,9 @@ import { SiteMemoryCard } from './SiteMemoryCard'
 import { JustVisitedBanner } from './JustVisitedBanner'
 import { SitePresenceReminders } from './SitePresenceReminders'
 import { buildSitePresenceReminders } from '@/lib/db/site-presence'
-import { listVisitCaptures } from '@/lib/db/visit-captures'
+import { listVisitCaptures, listSiteViewpointRows, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
+import { groupViewpointChains } from '@/lib/visits/viewpoints'
+import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
@@ -170,15 +172,17 @@ export default async function FieldSitePage({
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
   let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let siteDocCount = 0
+  let hasEvolution = false
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, snapshot, docList] = await Promise.all([
+    const [status, id, reservesRaw, activity, since, snapshot, docList, vpRows] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
       getSiteRecentActivity(siteId).catch(() => []),
-      buildSinceLastVisitSummary(siteId).catch(() => null),
+      buildSinceLastVisitSummary(siteId, user.id).catch(() => null),
       getSiteMemorySnapshot(siteId).catch(() => null),
       canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
+      listSiteViewpointRows(siteId).catch(() => []),
     ])
     siteStatus = status
     identity = id
@@ -189,6 +193,7 @@ export default async function FieldSitePage({
     sinceLastVisit = since
     memorySnapshot = snapshot
     siteDocCount = docList.length
+    hasEvolution = groupViewpointChains(vpRows).length > 0
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
@@ -197,14 +202,32 @@ export default async function FieldSitePage({
   // Mémoire LITE par sujet (read-only) — surfacée au moment où on vérifie un point :
   // « voilà ce qu'on sait déjà dessus ». Une seule requête (listSubjectsBySite).
   const subjectMemory: Record<string, SubjectMemoryLite> = {}
+  // Points de repère (mig 195) : séries « même cadrage » du chantier, avec l'URL
+  // signée de la DERNIÈRE photo de chaque série (le fantôme de la reprise).
+  let visitViewpoints: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }> = []
+  let visitWatchlist: Awaited<ReturnType<typeof listWatchlist>> = []
   if (activeVisit) {
-    const [subs, caps, summaries] = await Promise.all([
+    const [subs, caps, summaries, vpRows, watch] = await Promise.all([
       listOpenSiteSubjectsLite(siteId).catch(() => []),
       listVisitCaptures(activeVisit.id).catch(() => []),
       listSubjectsBySite(siteId).catch(() => []),
+      listSiteViewpointRows(siteId).catch(() => []),
+      listWatchlist(activeVisit.id).catch(() => []),
     ])
+    visitWatchlist = watch
     visitSubjects = subs
     visitCaptures = caps
+    const chains = groupViewpointChains(vpRows)
+    if (chains.length > 0) {
+      const lastPreviews = await getVisitCapturePreviewUrls(chains.map((c) => c.last))
+        .catch(() => ({} as Record<string, { url: string; mime: string | null }>))
+      visitViewpoints = chains.map((c) => ({
+        anchorId: c.anchorId,
+        label: c.label,
+        lastUrl: lastPreviews[c.last.id]?.url ?? null,
+        shots: c.shots,
+      }))
+    }
     for (const s of summaries) {
       subjectMemory[s.id] = {
         // Âge calculé côté serveur (évite Date.now() en rendu client).
@@ -306,11 +329,14 @@ export default async function FieldSitePage({
           <VisitBasket
             reportId={activeVisit.id}
             siteId={siteId}
+            siteName={site.name}
             userId={user.id}
             startedAt={activeVisit.started_at}
             subjects={visitSubjects}
             subjectMemory={subjectMemory}
             initialCaptures={visitCaptures}
+            viewpoints={visitViewpoints}
+            watchlist={visitWatchlist}
           />
         </div>
       ) : (
@@ -354,7 +380,7 @@ export default async function FieldSitePage({
           {memorySnapshot && <SiteMemoryCard snapshot={memorySnapshot} />}
 
           {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
-          <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
+          <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} showEvolution={hasEvolution} />
 
           {/* 6 — Préparer : LE rituel « avant de partir ». Deux CTA proéminents,
               pas des cartes passives — c'est un MOMENT du parcours (« j'appuie
@@ -472,15 +498,21 @@ export default async function FieldSitePage({
             </h2>
             <div className="grid grid-cols-2 gap-2">
               <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
-              <SpontaneousCapturePanel siteId={siteId} />
+              <SpontaneousCapturePanel siteId={siteId} siteName={site.name} />
               <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" resumeReportId={resumeReportId} />
               <DeliverFieldPanel siteId={siteId} />
             </div>
           </section>
 
-          {/* 8 — Agir : « Démarrer une visite », l'action principale, tout en bas —
-              une fois le contexte compris. Discrète (vert clair), jamais un slab noir. */}
-          <VisitLauncher siteId={siteId} activeVisit={null} />
+          {/* 8 — Agir : « Démarrer une visite ». STICKY (F5) : le conducteur
+              arrive gants sales pour capturer — l'action principale reste sous
+              le pouce quelle que soit la longueur de la fiche. Le sticky est
+              prouvé dans ce conteneur (le header top-0 du layout l'utilise) ;
+              bottom-20 dégage la MobileTabBar (fixed bottom-0, ~4 rem + safe
+              area). Toujours discrète (vert clair), jamais un slab noir. */}
+          <div className="sticky bottom-20 z-30 drop-shadow-lg">
+            <VisitLauncher siteId={siteId} activeVisit={null} />
+          </div>
         </div>
       )}
     </div>

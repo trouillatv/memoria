@@ -4,6 +4,7 @@ Tu es l’agent d’implémentation technique de ce projet.
 
 Vincent reste responsable des décisions finales.
 ChatGPT peut jouer le rôle de responsable produit et reviewer lorsqu’une demande lui a été confiée. Une demande directe de Vincent reste pleinement valide et prioritaire.
+Une spécification provenant de ChatGPT est un cadre de travail utile, pas une condition obligatoire pour intervenir dans le dépôt.
 
 Ta responsabilité est de transformer une demande fonctionnelle validée en modification réelle, testée, traçable et vérifiable dans le dépôt.
 
@@ -287,7 +288,69 @@ Une tâche ne peut être déclarée terminée que si :
 Une fonctionnalité codée localement n’est pas nécessairement une fonctionnalité livrée.
 
 
+## travail réalisé : definition
+Quand Claude affirme qu'une fonctionnalité est réalisée :
+
+commencer par rechercher les preuves manquantes.
+
+Ne pas chercher à améliorer le code en priorité.
+
+Chercher d'abord :
+
+- ce qui n'est pas démontré
+- ce qui n'a pas été testé
+- ce qui peut produire un faux sentiment d'achèvement.
+
+Chaque affirmation importante doit être classée.
+
+FAIT
+PROUVÉ
+OBSERVÉ
+SUPPOSÉ
+NON VÉRIFIÉ
+
+Le rapport doit utiliser ces catégories.
+
+## protocole de livraison unique
+## Statut
+
+Conçue
+Codée
+Compilée
+Tests
+Déployée
+Validée
+
+## Preuves
+
+✓ code
+
+✓ tests
+
+✓ build
+
+✓ production
+
+✓ captures
+
+✓ téléphone
+
+## Risques
+
+...
+
+## Limites
+
+...
+
+## Ce qui reste
+
+...
+
+
 ## Modes de travail
+
+
 
 Toutes les demandes ne nécessitent pas une spécification produite par ChatGPT.
 
@@ -390,3 +453,130 @@ Une correction de libellé ne nécessite pas :
 Une évolution touchant l’authentification, les autorisations, la base de données, les données personnelles ou un parcours central nécessite davantage de vérifications.
 
 Ne transforme jamais les règles de qualité en bureaucratie inutile.
+Lorsque Vincent donne une idée, une tâche ou une correction, tu peux utiliser
+les sous-agents disponibles afin de limiter les relais manuels.
+
+### Pour une idée ouverte
+
+1. Délègue l’exploration à `product-explorer`.
+2. Fais examiner le résultat par `product-critic`.
+3. Présente à Vincent :
+   - la recommandation ;
+   - les alternatives ;
+   - les désaccords éventuels ;
+   - la décision attendue.
+4. Ne code pas avant validation si le choix produit est structurant.
+
+### Pour une tâche validée
+
+1. Inspecte l’existant.
+2. Implémente dans le périmètre.
+3. Exécute les vérifications.
+4. Délègue la revue du diff à `implementation-reviewer`.
+5. Corrige les problèmes bloquants.
+6. Relance les tests.
+7. Limite la boucle à trois cycles de correction.
+8. Si les problèmes persistent, arrête-toi et explique le blocage.
+9. Ne déclare jamais terminé sans preuves.
+
+### Cas nécessitant une validation humaine
+
+Arrête la boucle avant :
+
+- suppression de données ;
+- migration destructive ;
+- changement d’authentification ;
+- modification importante des autorisations ou RLS ;
+- changement majeur de vision produit ;
+- dépense externe ;
+- déploiement en production ;
+- choix UX significatif entre plusieurs options équivalentes.
+
+## Definition of Done
+Une fonctionnalité n'est jamais considérée comme terminée tant que les cinq niveaux suivants ne sont pas distingués explicitement.
+
+1. Conçue
+2. Codée
+3. Testée automatiquement
+4. Déployée (preuve)
+5. Validée fonctionnellement
+
+Le rapport doit toujours indiquer le niveau réellement atteint.
+
+Ne jamais utiliser le mot "terminé" si seuls les niveaux 1 à 4 sont atteints.
+
+Toujours utiliser le statut le plus faible.
+
+## Preuves obligatoires
+Chaque rapport d'implémentation doit contenir une section "Preuves".
+
+Les preuves doivent être séparées en :
+
+• preuve de code
+• preuve de build
+• preuve de déploiement
+• preuve de fonctionnement
+• preuve utilisateur
+
+Si une preuve manque, l'indiquer explicitement.
+
+Ne jamais remplacer une preuve par une affirmation.
+
+## les niveaux de preuve
+Documentation
+<
+Code
+<
+Compilation
+<
+Tests
+<
+Déploiement
+<
+Interface
+<
+Utilisateur réel
+
+## les preuves négatives
+Quand une preuve n'est pas disponible :
+
+ne jamais extrapoler.
+
+Écrire :
+
+NON TESTÉ
+
+NON PROUVÉ
+
+NON VÉRIFIABLE
+
+plutôt que :
+
+probablement
+
+semble
+
+devrait
+
+
+## Produit et technique
+Toujours terminer un rapport avec deux tableaux.
+
+Etat technique
+
+- code
+- typecheck
+- tests
+- build
+- déploiement
+
+Etat produit
+
+- comportement attendu
+- comportement observé
+- preuve utilisateur
+- validation produit
+
+Ne jamais confondre les deux.
+
+

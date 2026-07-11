@@ -30,6 +30,16 @@ vi.mock('@/lib/field/photo-queue', async () => {
   }
 })
 
+// PR-1 — la sheet agrège désormais la file des captures de visite en plus des
+// photos. On la mocke pour éviter IndexedDB en jsdom.
+const listQueuedVisitCapturesMock = vi.fn<() => Promise<unknown[]>>(async () => [])
+vi.mock('@/lib/field/visit-capture-queue', () => ({
+  listQueuedVisitCaptures: () => listQueuedVisitCapturesMock(),
+  markAllQueuedVisitCapturesReadyForRetry: vi.fn(async () => 0),
+  removeQueuedVisitCapture: vi.fn(async () => {}),
+  LIGHT_VISIT_KINDS: new Set(['note', 'verification', 'position']),
+}))
+
 // Sonner — pas utilisé directement mais importé par les modules autour
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), {
@@ -39,6 +49,7 @@ vi.mock('sonner', () => ({
 }))
 
 import { PhotoQueueSheet } from '@/app/(field)/photo-queue-sheet'
+import { reportUploadSuccess } from '@/lib/field/sync-status'
 
 function makeEntry(overrides: Partial<QueuedPhoto> = {}): QueuedPhoto {
   return {
@@ -61,6 +72,8 @@ beforeEach(() => {
   listQueuedPhotosMock.mockResolvedValue([])
   markAllReadyForRetryMock.mockReset()
   markAllReadyForRetryMock.mockResolvedValue(0)
+  listQueuedVisitCapturesMock.mockReset()
+  listQueuedVisitCapturesMock.mockResolvedValue([])
 })
 
 describe('PhotoQueueSheet — empty state', () => {
@@ -79,9 +92,8 @@ describe('PhotoQueueSheet — empty state', () => {
     await waitFor(() => {
       expect(screen.getByTestId('photo-queue-empty')).toBeInTheDocument()
     })
-    expect(
-      screen.getByText(/toutes vos photos sont synchronisées/i),
-    ).toBeInTheDocument()
+    // « Tout est arrivé » apparaît en titre ET dans l'état vide — les deux sont voulus.
+    expect(screen.getAllByText(/tout est arrivé/i).length).toBeGreaterThanOrEqual(1)
 
     // Pas de bouton "Re-essayer maintenant" dans l'empty state
     expect(screen.queryByTestId('photo-queue-retry')).not.toBeInTheDocument()
@@ -111,6 +123,59 @@ describe('PhotoQueueSheet — entries listing', () => {
     expect(screen.getByTestId('photo-queue-list')).toBeInTheDocument()
     expect(screen.getByTestId('photo-queue-retry')).toBeInTheDocument()
     expect(screen.queryByTestId('photo-queue-empty')).not.toBeInTheDocument()
+  })
+})
+
+describe('PhotoQueueSheet — geste léger en attente (PR-2)', () => {
+  it('affiche une note de visite en file (sans blob) avec type + chantier', async () => {
+    listQueuedVisitCapturesMock.mockResolvedValue([
+      {
+        tempId: 'v-1',
+        clientUuid: '00000000-0000-0000-0000-00000000000a',
+        reportId: '00000000-0000-0000-0000-000000000002',
+        siteId: '00000000-0000-0000-0000-000000000003',
+        siteName: 'Cuisine Petratiti',
+        kind: 'note',
+        body: 'odeur persistante réserve froide',
+        takenAt: Date.now() - 30_000,
+        attempts: 0,
+      },
+    ])
+
+    await act(async () => {
+      render(
+        <PhotoQueueSheet
+          trigger={<button type="button">trigger</button>}
+          open
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('photo-queue-row')).toHaveLength(1)
+    })
+    // Type + chantier lisibles — la ligne est identifiable sans média.
+    expect(screen.getByText(/note — cuisine petratiti/i)).toBeInTheDocument()
+  })
+})
+
+describe('PhotoQueueSheet — file vivante (envoyé à l’instant)', () => {
+  it('un envoi réussi apparaît sous « Envoyé à l’instant » avec type + chantier', async () => {
+    reportUploadSuccess({ kindLabel: 'Vocal', siteName: 'Cuisine Petratiti' })
+
+    await act(async () => {
+      render(
+        <PhotoQueueSheet
+          trigger={<button type="button">trigger</button>}
+          open
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('recently-sent-row').length).toBeGreaterThanOrEqual(1)
+    })
+    expect(screen.getByText(/vocal arrivé — cuisine petratiti/i)).toBeInTheDocument()
   })
 })
 

@@ -18,7 +18,7 @@ import { addSiteNoteAction } from './note-actions'
 type CapturedPhoto = { blob: Blob; previewUrl: string } | null
 type Mode = 'idle' | 'choice' | 'note'
 
-export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
+export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; siteName?: string }) {
   const [mode, setMode] = useState<Mode>('idle')
   const [photo, setPhoto] = useState<CapturedPhoto>(null)
   const [note, setNote] = useState('')
@@ -52,6 +52,7 @@ export function SpontaneousCapturePanel({ siteId }: { siteId: string }) {
           mimeType: photo.blob.type || 'image/jpeg',
           checklistItemId: null,
           siteId,
+          siteName,
           intent,
           kind: intent === 'anomaly' ? 'anomaly' : 'passage',
         })

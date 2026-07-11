@@ -15,13 +15,16 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { groupViewpointChains, sampleSerie } from '@/lib/visits/viewpoints'
 import { listDecisionsBySite } from '@/lib/db/site-decisions'
 import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
 import { detectVisitSuites } from '@/services/ai/visit-suites'
+import { listProposals, bulkInsertProposals } from '@/lib/db/site-reports'
+import { toProposalRows, proposalVisitKind, proposalCaptureId, proposalExcerpt } from '@/lib/visits/suite-proposals'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import type {
@@ -1176,39 +1179,76 @@ async function resolveAuthorNames(ids: Array<string | null>): Promise<Map<string
 export interface SinceLastVisitSummary {
   at: string
   dateLabel: string
+  /** Jours écoulés depuis cette visite — « il y a 18 j », le temps du récit. */
+  daysAgo: number
+  /** true = la référence est VOTRE dernière visite (récit personnel) ;
+   *  false = celle du chantier (vous n'y êtes jamais venu / repli). */
+  personal: boolean
   actionsDone: number
   newReserves: number
+  /** Réserves LEVÉES depuis — le chantier avance, pas seulement il s'alourdit. */
+  liftedReserves: number
   meetings: number
   newPhotos: number
+  /** « Vous étiez reparti avec un doute — il existe toujours. » : questions
+   *  « à vérifier » posées AVANT/PENDANT cette visite, toujours actives (max 2). */
+  doubts: string[]
   total: number
 }
 
-export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceLastVisitSummary | null> {
+export async function buildSinceLastVisitSummary(siteId: string, userId: string | null = null): Promise<SinceLastVisitSummary | null> {
   const supabase = createAdminClient()
-  const { data: last } = await supabase
-    .from('site_reports')
-    .select('ended_at')
-    .eq('site_id', siteId)
-    .not('origin', 'is', null)
-    .not('ended_at', 'is', null)
-    .order('ended_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const ref = (last as { ended_at: string | null } | null)?.ended_at
+  // LE récit est personnel : « depuis MA dernière visite », pas celle du
+  // chantier (à 25 visites sur 6 mois, à plusieurs, la nuance change tout).
+  // Repli sur la dernière visite du site si cette personne n'y est jamais venue.
+  let ref: string | null = null
+  let personal = false
+  if (userId) {
+    const { data: mine } = await supabase
+      .from('site_reports')
+      .select('ended_at')
+      .eq('site_id', siteId)
+      .eq('created_by', userId)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .is('deleted_at', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    ref = (mine as { ended_at: string | null } | null)?.ended_at ?? null
+    personal = !!ref
+  }
+  if (!ref) {
+    const { data: last } = await supabase
+      .from('site_reports')
+      .select('ended_at')
+      .eq('site_id', siteId)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    ref = (last as { ended_at: string | null } | null)?.ended_at ?? null
+  }
   if (!ref) return null
 
   const { data: missions } = await supabase.from('missions').select('id').eq('site_id', siteId).is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id as string)
 
-  const [actionsRes, reservesRes, meetingsRes, capPhotosRes] = await Promise.all([
+  const [actionsRes, reservesRes, liftedRes, meetingsRes, capPhotosRes, doubtsRes] = await Promise.all([
     // Actions RÉELLEMENT terminées depuis la visite (done_at postérieur).
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'done').gt('done_at', ref),
     // Réserves ouvertes depuis (création postérieure).
     supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId).gt('created_at', ref),
+    // Réserves LEVÉES depuis — la bonne nouvelle du récit.
+    supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'lifted').gt('lifted_at', ref),
     // Réunions/CR tenus depuis.
     supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).is('origin', null).neq('status', 'draft').gt('created_at', ref),
     // Photos captées depuis (chemin mobile), hors captures masquées.
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').is('hidden_at', null).gt('created_at', ref),
+    // Le doute d'alors, toujours ouvert : questions « à vérifier » posées au plus
+    // tard À cette visite, encore actives aujourd'hui.
+    supabase.from('captured_knowledge').select('title').eq('site_id', siteId).eq('kind', 'question').eq('status', 'active').lte('created_at', ref).order('created_at', { ascending: false }).limit(2),
   ])
 
   // Photos d'intervention postérieures à la visite (le chantier bouge entre deux visites).
@@ -1224,11 +1264,17 @@ export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceL
 
   const actionsDone = actionsRes.count ?? 0
   const newReserves = reservesRes.count ?? 0
+  const liftedReserves = liftedRes.count ?? 0
   const meetings = meetingsRes.count ?? 0
   const newPhotos = (capPhotosRes.count ?? 0) + intvPhotos
-  const total = actionsDone + newReserves + meetings + newPhotos
-  if (total === 0) return null
-  return { at: ref, dateLabel: relativeDayLabel(ref), actionsDone, newReserves, meetings, newPhotos, total }
+  const doubts = ((doubtsRes.data ?? []) as Array<{ title: string }>)
+    .map((d) => d.title?.trim())
+    .filter((t): t is string => !!t)
+  const total = actionsDone + newReserves + liftedReserves + meetings + newPhotos
+  // Silence positif — SAUF si un doute d'alors existe toujours : ça, ça se dit.
+  if (total === 0 && doubts.length === 0) return null
+  const daysAgo = Math.max(0, Math.floor((Date.now() - new Date(ref).getTime()) / 86_400_000))
+  return { at: ref, dateLabel: relativeDayLabel(ref), daysAgo, personal, actionsDone, newReserves, liftedReserves, meetings, newPhotos, doubts, total }
 }
 
 // ── Fiche chantier : « Mémoire » — le cumul DEPUIS LA CRÉATION ─────────────────
@@ -1402,8 +1448,8 @@ export async function listPendingTriageForUser(userId: string, limit = 8): Promi
  * « existe déjà, mettre à jour ? »).
  */
 export interface VisitSuiteProposal {
-  /** Identifiant UNIQUE de la proposition (une capture texte peut en donner
-   *  plusieurs) : `captureId` pour un tag, `captureId:n` pour une détection IA. */
+  /** Identifiant UNIQUE de la proposition : `captureId` pour un tag, id de la
+   *  ligne site_report_proposals pour une détection IA (persistée, mig 194). */
   id: string
   captureId: string
   kind: 'action' | 'reserve' | 'surveiller'
@@ -1414,6 +1460,9 @@ export interface VisitSuiteProposal {
   source: 'tag' | 'ai'
   /** Extrait source (vocal/note) pour le contexte quand c'est MemorIA qui propose. */
   excerpt?: string | null
+  /** Ligne site_report_proposals correspondante (source 'ai' uniquement) — le
+   *  cycle proposed→accepted/rejected vit là, comme pour une réunion. */
+  proposalId?: string
 }
 
 function normalizeTitle(s: string): string {
@@ -1461,54 +1510,91 @@ export async function gatherVisitSuites(reportId: string): Promise<VisitSuitePro
 
 /**
  * « MemorIA a compris votre visite » — suites détectées depuis le TEXTE (vocaux +
- * notes) par l'IA. Complète gatherVisitSuites (qui, lui, part des tags terrain).
- * On ne considère QUE les captures texte non encore traitées et NON déjà taguées
- * action/réserve (sinon doublon avec la voie taguée). MemorIA propose ; l'humain
- * décide — rien n'est créé ici. Repli vide si l'IA est absente/échoue.
+ * notes) par l'IA, désormais PERSISTÉES dans site_report_proposals (mig 194) —
+ * le même pipeline que la réunion : détection UNE fois par capture, propositions
+ * stables et auditables, cycle proposed→accepted/rejected. Avant : re-détection
+ * (et re-facturation LLM) à chaque ouverture du Débrief, formulations instables,
+ * et accepter UNE suite d'un vocal en faisait disparaître les autres.
+ * MemorIA propose ; l'humain décide — rien n'est créé ici.
  */
 export async function gatherVisitTextSuites(reportId: string, userId: string | null = null): Promise<VisitSuiteProposal[]> {
   const captures = await listVisitCaptures(reportId).catch(() => [])
+  const supabase = createAdminClient()
+
+  // 0. Propositions déjà persistées — la double garde d'idempotence : même si le
+  //    marquage 'analyzed' échoue (migration 194 pas encore appliquée), une
+  //    capture couverte par une proposition n'est JAMAIS re-détectée (sinon
+  //    chaque ouverture du Débrief dupliquerait les propositions).
+  const existingProposals = await listProposals(reportId).catch(() => [])
+  const coveredCaptureIds = new Set(
+    existingProposals
+      .filter((p) => proposalVisitKind(p.payload) !== null)
+      .map((p) => proposalCaptureId(p.payload))
+      .filter((id): id is string => !!id),
+  )
+
+  // 1. Captures texte jamais passées à l'IA (suite_status null, non couvertes) —
+  //    détection puis persistance. Échec IA (null) → on ne marque RIEN, retry plus tard.
   const textCaps = captures.filter(
     (c) => c.status !== 'discarded'
       && c.suite_status == null
+      && !coveredCaptureIds.has(c.id)
       && (c.kind === 'vocal' || c.kind === 'note')
       && !!c.body?.trim()
       && c.triage_intent !== 'action' && c.triage_intent !== 'reserve',
   )
-  if (textCaps.length === 0) return []
-  const siteId = textCaps[0].site_id
+  if (textCaps.length > 0) {
+    const siteId = textCaps[0].site_id
+    const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
+    const detected = await detectVisitSuites({
+      siteName: (site as { name: string } | null)?.name ?? 'Chantier',
+      items: textCaps.map((c) => ({ id: c.id, text: c.body!.trim() })),
+      userId,
+    }).catch(() => null)
+    if (detected !== null) {
+      if (detected.length > 0) {
+        const bodyById = new Map(textCaps.map((c) => [c.id, c.body!.trim()]))
+        await bulkInsertProposals({
+          report_id: reportId,
+          proposals: toProposalRows(detected, siteId, bodyById),
+        }).catch(() => [])
+      }
+      // Analysées (même sans suite trouvée — définitif) : plus de re-run.
+      await supabase
+        .from('visit_capture')
+        .update({ suite_status: 'analyzed', updated_at: new Date().toISOString() })
+        .in('id', textCaps.map((c) => c.id))
+    }
+  }
 
-  const supabase = createAdminClient()
-  const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
-  const detected = await detectVisitSuites({
-    siteName: (site as { name: string } | null)?.name ?? 'Chantier',
-    items: textCaps.map((c) => ({ id: c.id, text: c.body!.trim() })),
-    userId,
-  }).catch(() => [])
-  if (detected.length === 0) return []
+  // 2. Relire les propositions persistées encore EN ATTENTE de décision.
+  const proposals = await listProposals(reportId).catch(() => [])
+  const pendingAi = proposals.filter((p) => p.status === 'proposed' && proposalVisitKind(p.payload) !== null)
+  if (pendingAi.length === 0) return []
 
+  const siteId = pendingAi[0].site_id ?? captures[0]?.site_id
   const [openActions, reserves] = await Promise.all([
-    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
-    getSiteReserves(siteId).catch(() => []),
+    siteId ? listOpenSiteActions({ siteIds: [siteId] }).catch(() => []) : [],
+    siteId ? getSiteReserves(siteId).catch(() => []) : [],
   ])
   const actionPool = (openActions as Array<{ id: string; title: string }>).map((a) => ({ id: a.id, label: a.title }))
   const reservePool = (reserves as Array<{ id: string; label: string; status: string }>)
     .filter((r) => r.status === 'open')
     .map((r) => ({ id: r.id, label: r.label }))
 
-  const bodyById = new Map(textCaps.map((c) => [c.id, c.body!.trim()]))
-  return detected.map((d, i) => {
-    const pool = d.kind === 'action' ? actionPool : d.kind === 'reserve' ? reservePool : []
-    const similar = pool.filter((o) => similarTitles(o.label, d.text)).slice(0, 3)
-    const src = bodyById.get(d.sourceId) ?? ''
+  return pendingAi.map((p) => {
+    const kind = proposalVisitKind(p.payload)!
+    const pool = kind === 'action' ? actionPool : kind === 'reserve' ? reservePool : []
+    const similar = pool.filter((o) => similarTitles(o.label, p.short_label)).slice(0, 3)
     return {
-      id: `${d.sourceId}:${i}`,
-      captureId: d.sourceId,
-      kind: d.kind,
-      text: d.text,
+      id: p.id,
+      proposalId: p.id,
+      captureId: proposalCaptureId(p.payload) ?? '',
+      kind,
+      text: p.short_label,
       similar,
       source: 'ai' as const,
-      excerpt: src.length > 120 ? src.slice(0, 119).trimEnd() + '…' : src,
+      excerpt: proposalExcerpt(p.payload),
     }
   })
 }
@@ -1721,6 +1807,11 @@ export interface VisitCrDoc {
   photos: string[]
   /** Photos sélectionnées AVEC leur légende (commentaire de la capture). */
   photoItems: Array<{ url: string; caption: string | null }>
+  /** Bloc « Évolution — même point de vue » (mig 195) : les séries de photos de
+   *  référence TOUCHÉES par cette visite, échantillonnées (≤3 séries × ≤4 photos,
+   *  premier jour → aujourd'hui). Le client reçoit la transformation dans le CR,
+   *  sans ouvrir MemorIA. */
+  evolutions: Array<{ label: string | null; items: Array<{ url: string; dateLabel: string }> }>
   /** Positions GPS des captures — pour la carte des observations (schéma PDF +
    *  carte interactive sur l'écran). Enrichi de quoi construire un MapCapture. */
   positions: Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string }>
@@ -1919,6 +2010,30 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     userId,
   }).catch(() => null)
 
+  // ÉVOLUTION — le CR porte la transformation (mig 195) : pour chaque photo de
+  // référence dont la série a été TOUCHÉE par cette visite, une bande « même
+  // cadrage » du premier jour à aujourd'hui. ≤3 séries × ≤4 photos : des
+  // chapitres, jamais une galerie. Best-effort : ne bloque jamais le CR.
+  const evolutions: VisitCrDoc['evolutions'] = []
+  try {
+    const evoChains = groupViewpointChains(await listSiteViewpointRows(visit.site_id!))
+      .filter((c) => c.serie.length >= 2 && c.serie.some((r) => r.report_id === reportId))
+      .slice(0, 3)
+    const evoDateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' })
+    for (const chain of evoChains) {
+      const sampled = sampleSerie(chain.serie, 4)
+      const evoPreviews = await getVisitCapturePreviewUrls(sampled).catch(() => ({} as Record<string, { url: string; mime: string | null }>))
+      const items = sampled
+        .map((c) => {
+          const url = evoPreviews[c.id]?.url
+          return url ? { url, dateLabel: evoDateFmt.format(new Date(c.captured_at ?? c.created_at)) } : null
+        })
+        .filter((x): x is { url: string; dateLabel: string } => x !== null)
+      // Une « évolution » à moins de 2 photos ne raconte rien : on l'omet.
+      if (items.length >= 2) evolutions.push({ label: chain.label, items })
+    }
+  } catch { /* CR sans bloc évolution plutôt que pas de CR */ }
+
   return {
     siteName,
     clientName,
@@ -1937,6 +2052,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     actions: ctx.capturedActions,
     photos,
     photoItems,
+    evolutions,
     positions,
     photoCount: photoCaptures.length,
     videoCount,

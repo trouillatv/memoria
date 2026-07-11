@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Footprints, Users, Clock, Brain, FileText } from 'lucide-react'
+import { Footprints, Users, Clock, Brain, FileText, Images } from 'lucide-react'
 
 /**
  * « Accès rapides » de la fiche chantier — une BANDE d'icônes (façon Apple/Linear),
@@ -10,20 +10,26 @@ import { Footprints, Users, Clock, Brain, FileText } from 'lucide-react'
  *   - Documents : uniquement si le chantier a de vrais documents liés ET que
  *     l'utilisateur y a droit (conducteur) — sinon absente (pas de faux menu).
  */
-export function SiteQuickAccessCard({ siteId, showDocuments = false }: { siteId: string; showDocuments?: boolean }) {
+export function SiteQuickAccessCard({ siteId, showDocuments = false, showEvolution = false }: { siteId: string; showDocuments?: boolean; showEvolution?: boolean }) {
   const items = [
     { href: `/m/site/${siteId}/visites`, label: 'Visites', Icon: Footprints, cls: 'text-emerald-600', bg: 'bg-emerald-50/70 dark:bg-emerald-950/25' },
     { href: `/m/site/${siteId}/reunions`, label: 'Réunions', Icon: Users, cls: 'text-sky-600', bg: 'bg-sky-50/70 dark:bg-sky-950/25' },
     { href: `/m/site/${siteId}/frise`, label: 'Frise', Icon: Clock, cls: 'text-amber-600', bg: 'bg-amber-50/70 dark:bg-amber-950/25' },
     { href: `/m/site/${siteId}/patrimoine`, label: 'Patrimoine', Icon: Brain, cls: 'text-violet-600', bg: 'bg-violet-50/70 dark:bg-violet-950/25' },
+    // « Évolution » n'apparaît que si le chantier a au moins une photo de
+    // référence (même discipline que Documents : pas de faux menu).
+    ...(showEvolution
+      ? [{ href: `/m/site/${siteId}/evolution`, label: 'Évolution', Icon: Images, cls: 'text-teal-600', bg: 'bg-teal-50/70 dark:bg-teal-950/25' }]
+      : []),
     ...(showDocuments
       ? [{ href: `/m/site/${siteId}/documents`, label: 'Documents', Icon: FileText, cls: 'text-slate-500', bg: 'bg-muted/50' }]
       : []),
   ]
+  const cols = items.length >= 6 ? 'grid-cols-3' : items.length === 5 ? 'grid-cols-5' : 'grid-cols-4'
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Accès rapides</h2>
-      <div className={`grid gap-1.5 ${items.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+      <div className={`grid gap-1.5 ${cols}`}>
         {items.map(({ href, label, Icon, cls, bg }) => (
           <Link
             key={href}

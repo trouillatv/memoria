@@ -15,9 +15,13 @@
  *
  * Idempotence : clientUuid (uuid v4) généré AVANT tout réseau, porté jusqu'au
  * serveur (visit_capture.client_uuid, mig 177) — un re-drain renvoie la capture
- * déjà créée au lieu d'en dupliquer une. Les gestes sans média (note /
- * vérification / position), quasi instantanés, restent en appel serveur direct
- * et ne passent pas par cette file.
+ * déjà créée au lieu d'en dupliquer une.
+ *
+ * PR-2 (« plus jamais une note perdue ») : les gestes SANS média — note /
+ * vérification / position — passent désormais eux aussi par cette file. Avant,
+ * ils partaient en appel serveur direct : hors réseau, un toast d'erreur fugace
+ * et la note n'existait nulle part. Une entry légère n'a pas de blob ; le drain
+ * la route vers drainLightCaptureAction (payload JSON, même idempotence).
  */
 
 import { isReadyForRetry, nextRetryDelay } from '@/lib/field/photo-queue'
@@ -28,7 +32,10 @@ const DB_NAME = 'memoria-field-visits'
 const STORE_NAME = 'visit-capture-queue'
 const DB_VERSION = 1
 
-export type QueuedVisitKind = 'photo' | 'video' | 'vocal'
+export type QueuedVisitKind = 'photo' | 'video' | 'vocal' | 'note' | 'verification' | 'position'
+
+/** Gestes légers (sans blob) — drainés via payload JSON, pas FormData. */
+export const LIGHT_VISIT_KINDS = new Set<QueuedVisitKind>(['note', 'verification', 'position'])
 
 export interface QueuedVisitCapture {
   tempId: string
@@ -40,10 +47,21 @@ export interface QueuedVisitCapture {
   userId?: string
   reportId: string
   siteId: string
+  /** Nom du chantier au moment du dépôt — pour que la file de sync affiche
+   *  « Cuisine Petratiti · Photo » sans appel serveur. Optionnel (rétrocompat
+   *  avec les entries déposées avant ce champ). */
+  siteName?: string
   kind: QueuedVisitKind
-  blob: Blob
-  filename: string
-  mimeType: string
+  /** Média (photo/vidéo/vocal). Absent pour un geste léger (note/vérif/position). */
+  blob?: Blob
+  filename?: string
+  mimeType?: string
+  /** Texte du geste léger : corps de la note, constat de vérification. */
+  body?: string
+  /** Point suivi visé par une vérification. */
+  subjectId?: string
+  /** Reprise d'un point de repère (mig 195) — photo cadrée sur le fantôme. */
+  viewpointOf?: string
   /** Position ponctuelle OPT-IN de l'observation (jamais une trace). */
   lat?: number | null
   lng?: number | null
@@ -121,13 +139,23 @@ export async function countQueuedVisitCapturesByReport(reportId: string): Promis
   return all.length
 }
 
+export async function removeQueuedVisitCapture(tempId: string): Promise<void> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    const req = tx.objectStore(STORE_NAME).delete(tempId)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
 /**
- * Reset `lastAttemptAt` à `undefined` sur toutes les captures de visite afin
- * qu'elles redeviennent immédiatement éligibles à un retry (sans toucher au
- * compteur `attempts`, informatif pour l'UI). Miroir de la primitive legacy
- * markAllReadyForRetry — utilisé par le bouton « Re-essayer maintenant ».
+ * Reset `lastAttemptAt` sur toutes les entries pour les rendre immédiatement
+ * éligibles au retry (symétrique de `markAllReadyForRetry` de la file photos).
+ * Utilisé par le bouton « Re-essayer maintenant » de la sheet de sync, qui
+ * relance les DEUX files. `attempts` reste inchangé (informatif pour l'UI).
  */
-export async function markAllVisitCapturesReadyForRetry(): Promise<number> {
+export async function markAllQueuedVisitCapturesReadyForRetry(): Promise<number> {
   const db = await openDb()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -146,16 +174,6 @@ export async function markAllVisitCapturesReadyForRetry(): Promise<number> {
         putReq.onerror = () => reject(putReq.error)
       }
     }
-    req.onerror = () => reject(req.error)
-  })
-}
-
-export async function removeQueuedVisitCapture(tempId: string): Promise<void> {
-  const db = await openDb()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite')
-    const req = tx.objectStore(STORE_NAME).delete(tempId)
-    req.onsuccess = () => resolve()
     req.onerror = () => reject(req.error)
   })
 }

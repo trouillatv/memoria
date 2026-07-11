@@ -76,14 +76,18 @@ function parseSuites(raw: string, knownIds: Set<string>): DetectedSuite[] {
 }
 
 /**
- * Détecte les suites depuis le texte. Repli VIDE (jamais d'invention) : pas d'IA
- * configurée, gate non franchie, ou échec → aucune proposition texte (les suites
- * TAGUÉES, elles, restent proposées par ailleurs). Un seul appel `light`.
+ * Détecte les suites depuis le texte. Jamais d'invention. Le retour distingue
+ * (mig 194 — persistance des propositions) :
+ *   - `[]`  : l'IA a TOURNÉ et n'a rien trouvé (ou gate non franchie) — c'est
+ *             DÉFINITIF, les captures peuvent être marquées analysées ;
+ *   - `null`: IA absente ou échec TRANSITOIRE — ne rien marquer, on retentera.
+ * Sans cette distinction, une panne LLM ferait marquer les captures comme
+ * analysées et leurs points seraient perdus pour toujours.
  */
-export async function detectVisitSuites(input: DetectSuitesInput): Promise<DetectedSuite[]> {
+export async function detectVisitSuites(input: DetectSuitesInput): Promise<DetectedSuite[] | null> {
   if (input.items.length === 0 || !worthCalling(input.items)) return []
   const provider = getAIProvider()
-  if (provider.name === 'mock') return []
+  if (provider.name === 'mock') return null
 
   const knownIds = new Set(input.items.map((it) => it.id))
   const userMessage = [
@@ -102,6 +106,6 @@ export async function detectVisitSuites(input: DetectSuitesInput): Promise<Detec
       return { result: suites, tokens: out.tokens, model: out.model, provider: provider.name, durationMs: out.durationMs }
     })
   } catch {
-    return []
+    return null
   }
 }

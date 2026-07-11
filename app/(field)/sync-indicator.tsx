@@ -3,25 +3,31 @@
 /**
  * Sync indicator (header field).
  *
- * Slice A.1 — Devient cliquable et ouvre la PhotoQueueSheet pour montrer à
- * l'agent ses photos en attente et un bouton "Re-essayer maintenant".
+ * Cliquable → ouvre la file de synchronisation (toutes captures : photo, vocal,
+ * vidéo…) et un bouton "Re-essayer maintenant".
+ *
+ * PR-1 — l'indicateur agrège désormais les DEUX files (photos legacy/spontanées
+ * ET captures de visite). Avant, il ne comptait que les photos : une photo ou un
+ * vocal de visite encore en cours d'envoi n'apparaissait pas, et « Tout est
+ * envoyé » pouvait mentir. Le vocabulaire est neutralisé (« captures », plus
+ * « photos »).
  *
  * Doctrine :
  *   - Visuel : point coloré green/yellow/red + label sobre.
  *   - Pas d'animation rouge clignotante anxiogène.
- *   - aria-label explicite ("Voir mes photos en attente").
+ *   - aria-label explicite ("Voir la file de synchronisation").
  */
 
 import { useSyncStatus } from '@/lib/field/sync-status'
 import { PhotoQueueSheet } from './photo-queue-sheet'
 
-// Libellés génériques : la file couvre désormais photos, vidéos et vocaux d'une
-// visite (pas seulement les photos d'intervention).
 const LABELS = {
-  green:   'Tout est envoyé',
+  // « Arrivé » (certitude côté mémoire) plutôt qu'« envoyé » (geste du
+  // téléphone) : la pastille dit ce qui EST, pas ce qu'on a tenté.
+  green:   'Tout est arrivé',
   yellow:  'en attente',
   red:     'à renvoyer',
-  unknown: 'Synchronisation',
+  unknown: 'Vérification…',
 } as const
 
 const COLORS = {
@@ -37,12 +43,12 @@ export function SyncIndicator() {
   const isPending = state === 'yellow' || state === 'red'
 
   const ariaLabel = isPending
-    ? `${pendingCount} ${pendingCount > 1 ? 'éléments en attente' : 'élément en attente'} d'envoi. Voir les éléments en attente.`
-    : 'Tout est synchronisé. Voir les éléments en attente.'
+    ? `${pendingCount} ${pendingCount > 1 ? 'captures en attente' : 'capture en attente'} d'envoi. Voir la file de synchronisation.`
+    : 'Toutes vos captures sont arrivées. Voir la file de synchronisation.'
 
   const tooltip = isPending
-    ? `${pendingCount} ${pendingCount > 1 ? 'éléments en attente' : 'élément en attente'} d'envoi`
-    : 'Tout est synchronisé'
+    ? `${pendingCount} ${pendingCount > 1 ? 'captures en attente' : 'capture en attente'} d'envoi`
+    : 'Tout est arrivé'
 
   return (
     <PhotoQueueSheet
