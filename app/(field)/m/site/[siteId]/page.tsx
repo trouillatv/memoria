@@ -506,9 +506,11 @@ export default async function FieldSitePage({
 
           {/* 8 — Agir : « Démarrer une visite ». STICKY (F5) : le conducteur
               arrive gants sales pour capturer — l'action principale reste sous
-              le pouce quelle que soit la longueur de la fiche. Toujours discrète
-              (vert clair), jamais un slab noir. */}
-          <div className="sticky bottom-3 z-30 drop-shadow-lg">
+              le pouce quelle que soit la longueur de la fiche. Le sticky est
+              prouvé dans ce conteneur (le header top-0 du layout l'utilise) ;
+              bottom-20 dégage la MobileTabBar (fixed bottom-0, ~4 rem + safe
+              area). Toujours discrète (vert clair), jamais un slab noir. */}
+          <div className="sticky bottom-20 z-30 drop-shadow-lg">
             <VisitLauncher siteId={siteId} activeVisit={null} />
           </div>
         </div>
