@@ -714,7 +714,9 @@ export function VisitBasket({
           onClick={recording ? stopRec : startRec}
         />
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
-        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={openVerify} />
+        {/* F10 : sans point suivi, « Vérifier » n'a rien à offrir — grisé plutôt
+            qu'un cul-de-sac. */}
+        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy || subjects.length === 0} onClick={openVerify} />
       </div>
       {/* « À vérifier · N » (mig 196) — accès COMPACT à la liste de contrôle de
           cette visite. Jamais affichée en permanence : un tap l'ouvre, on décide,

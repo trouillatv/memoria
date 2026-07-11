@@ -504,9 +504,13 @@ export default async function FieldSitePage({
             </div>
           </section>
 
-          {/* 8 — Agir : « Démarrer une visite », l'action principale, tout en bas —
-              une fois le contexte compris. Discrète (vert clair), jamais un slab noir. */}
-          <VisitLauncher siteId={siteId} activeVisit={null} />
+          {/* 8 — Agir : « Démarrer une visite ». STICKY (F5) : le conducteur
+              arrive gants sales pour capturer — l'action principale reste sous
+              le pouce quelle que soit la longueur de la fiche. Toujours discrète
+              (vert clair), jamais un slab noir. */}
+          <div className="sticky bottom-3 z-30 drop-shadow-lg">
+            <VisitLauncher siteId={siteId} activeVisit={null} />
+          </div>
         </div>
       )}
     </div>

@@ -73,6 +73,9 @@ export function DebriefExpress({
   const [finishing, startFinishing] = useTransition()
   // Traitement photo par photo (écran 2) : index de départ, null = fermé.
   const [triageStart, setTriageStart] = useState<number | null>(null)
+  // F12 — garde-fou de clôture : 1er tap avec des captures non triées = on
+  // prévient (photos absentes du CR) ; 2e tap = « Terminer quand même ».
+  const [confirmFinish, setConfirmFinish] = useState(false)
   // Objet de la visite — éditable, enregistré au blur (aucun autre champ touché).
   const [objective, setObjective] = useState(initialObjective ?? '')
   const [savedObjective, setSavedObjective] = useState(initialObjective ?? '')
@@ -301,12 +304,40 @@ export function DebriefExpress({
           On sépare la clôture (l'écran de fin) de la consultation (la récap) —
           plus d'état intermédiaire « je suis fini mais je peux continuer ». */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
-        <div className="mx-auto max-w-md">
+        <div className="mx-auto max-w-md space-y-2">
+          {/* Garde-fou (F12) : une capture non triée est gardée en Mémoire — et
+              une photo « Mémoire » n'apparaît PAS dans le compte-rendu. On le DIT
+              avant de fermer, une fois, sans bloquer. */}
+          {confirmFinish && triaged < total && (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-[13px] leading-snug text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+              <p>
+                {total - triaged} capture{total - triaged > 1 ? 's' : ''} non triée{total - triaged > 1 ? 's' : ''} ser{total - triaged > 1 ? 'ont' : 'a'} gardée{total - triaged > 1 ? 's' : ''} en mémoire —
+                elle{total - triaged > 1 ? 's' : ''} n&apos;apparaîtr{total - triaged > 1 ? 'ont' : 'a'} <span className="font-semibold">pas dans le compte-rendu</span>.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmFinish(false)
+                  const first = captures.findIndex((c) => c.status === 'captured')
+                  setTriageStart(first === -1 ? 0 : first)
+                }}
+                className="w-full rounded-lg border border-amber-300 bg-background px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-800 dark:text-amber-200"
+              >
+                Les trier d&apos;abord
+              </button>
+            </div>
+          )}
           <button
             type="button"
             disabled={finishing}
             onClick={() =>
               startFinishing(async () => {
+                // F12 : premier tap avec des captures non triées → on prévient,
+                // on ne ferme pas. Le second tap assume (« quand même »).
+                if (triaged < total && !confirmFinish) {
+                  setConfirmFinish(true)
+                  return
+                }
                 // Valide définitivement : ce qui reste « à trier » est gardé en
                 // mémoire → la visite quitte « Reprendre mon travail » (effectuée).
                 // L'écran de fin n'est montré QUE si la clôture a réellement
@@ -326,7 +357,7 @@ export function DebriefExpress({
             }
             className={`flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition disabled:opacity-60 ${closeIntent ? 'ring-2 ring-emerald-300 ring-offset-2 ring-offset-background' : ''}`}
           >
-            Terminer la visite <ArrowRight className="h-4 w-4" />
+            {confirmFinish && triaged < total ? 'Terminer quand même' : 'Terminer la visite'} <ArrowRight className="h-4 w-4" />
           </button>
         </div>
       </div>

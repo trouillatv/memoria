@@ -251,14 +251,27 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setShowNewClient(true); setClientId('') }}
-                    className="text-xs text-muted-foreground hover:text-foreground underline"
-                    disabled={pending}
-                  >
-                    + Nouveau client
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewClient(true); setClientId('') }}
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                      disabled={pending}
+                    >
+                      + Nouveau client
+                    </button>
+                    {/* F1 — chantier sans client commercial (sinistre, interne…) :
+                        on ne bloque JAMAIS la création. Classé sous « Interne »
+                        (client réel créé/réutilisé — zéro impact schéma/droits). */}
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewClient(true); setClientId(''); setClientNameNew('Interne') }}
+                      className="text-xs text-muted-foreground hover:text-foreground underline"
+                      disabled={pending}
+                    >
+                      Sans client (interne)
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-1.5">

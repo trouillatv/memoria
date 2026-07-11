@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CheckCircle2, ArrowRight, FileText, Home } from 'lucide-react'
+import { CheckCircle2, ArrowRight, FileText, Home, Download } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit } from '@/lib/db/visits'
+import { VisitShareButton } from '../VisitShareButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,9 @@ export default async function VisitFinPage({
   const isAo = visit.visit_motive === 'previsite_ao' || !!previsiteDossierId
   const isPremiere = visit.visit_motive === 'premiere'
   const recapHref = `/m/visite/${reportId}/recap`
+  // Nom du chantier — pour le titre de la feuille de partage du CR.
+  const { data: siteRow } = await supabase.from('sites').select('name').eq('id', visit.site_id).maybeSingle()
+  const siteName = (siteRow as { name: string } | null)?.name ?? 'Chantier'
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-8 px-6 py-10 text-center">
@@ -87,6 +91,17 @@ export default async function VisitFinPage({
         >
           <FileText className="h-4 w-4" /> Revoir votre compte-rendu
         </Link>
+        {/* F14 — le moment naturel de l'envoi, c'est ICI, juste après la clôture :
+            partager / télécharger le CR sans repasser par la récap. */}
+        <div className="grid grid-cols-2 gap-2">
+          <VisitShareButton reportId={reportId} siteName={siteName} />
+          <a
+            href={`/m/visite/${reportId}/pdf?download=1`}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium text-muted-foreground active:brightness-95"
+          >
+            <Download className="h-4 w-4" /> Télécharger
+          </a>
+        </div>
         <p className="text-[13px] text-muted-foreground">
           Prenez le temps de le relire — il reste disponible à tout moment.
         </p>
