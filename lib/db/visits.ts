@@ -22,6 +22,8 @@ import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { runVisitSummary } from '@/services/ai/visit-summary'
 import { detectVisitSuites } from '@/services/ai/visit-suites'
+import { listProposals, bulkInsertProposals } from '@/lib/db/site-reports'
+import { toProposalRows, proposalVisitKind, proposalCaptureId, proposalExcerpt } from '@/lib/visits/suite-proposals'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import type {
@@ -1402,8 +1404,8 @@ export async function listPendingTriageForUser(userId: string, limit = 8): Promi
  * « existe déjà, mettre à jour ? »).
  */
 export interface VisitSuiteProposal {
-  /** Identifiant UNIQUE de la proposition (une capture texte peut en donner
-   *  plusieurs) : `captureId` pour un tag, `captureId:n` pour une détection IA. */
+  /** Identifiant UNIQUE de la proposition : `captureId` pour un tag, id de la
+   *  ligne site_report_proposals pour une détection IA (persistée, mig 194). */
   id: string
   captureId: string
   kind: 'action' | 'reserve' | 'surveiller'
@@ -1414,6 +1416,9 @@ export interface VisitSuiteProposal {
   source: 'tag' | 'ai'
   /** Extrait source (vocal/note) pour le contexte quand c'est MemorIA qui propose. */
   excerpt?: string | null
+  /** Ligne site_report_proposals correspondante (source 'ai' uniquement) — le
+   *  cycle proposed→accepted/rejected vit là, comme pour une réunion. */
+  proposalId?: string
 }
 
 function normalizeTitle(s: string): string {
@@ -1461,54 +1466,91 @@ export async function gatherVisitSuites(reportId: string): Promise<VisitSuitePro
 
 /**
  * « MemorIA a compris votre visite » — suites détectées depuis le TEXTE (vocaux +
- * notes) par l'IA. Complète gatherVisitSuites (qui, lui, part des tags terrain).
- * On ne considère QUE les captures texte non encore traitées et NON déjà taguées
- * action/réserve (sinon doublon avec la voie taguée). MemorIA propose ; l'humain
- * décide — rien n'est créé ici. Repli vide si l'IA est absente/échoue.
+ * notes) par l'IA, désormais PERSISTÉES dans site_report_proposals (mig 194) —
+ * le même pipeline que la réunion : détection UNE fois par capture, propositions
+ * stables et auditables, cycle proposed→accepted/rejected. Avant : re-détection
+ * (et re-facturation LLM) à chaque ouverture du Débrief, formulations instables,
+ * et accepter UNE suite d'un vocal en faisait disparaître les autres.
+ * MemorIA propose ; l'humain décide — rien n'est créé ici.
  */
 export async function gatherVisitTextSuites(reportId: string, userId: string | null = null): Promise<VisitSuiteProposal[]> {
   const captures = await listVisitCaptures(reportId).catch(() => [])
+  const supabase = createAdminClient()
+
+  // 0. Propositions déjà persistées — la double garde d'idempotence : même si le
+  //    marquage 'analyzed' échoue (migration 194 pas encore appliquée), une
+  //    capture couverte par une proposition n'est JAMAIS re-détectée (sinon
+  //    chaque ouverture du Débrief dupliquerait les propositions).
+  const existingProposals = await listProposals(reportId).catch(() => [])
+  const coveredCaptureIds = new Set(
+    existingProposals
+      .filter((p) => proposalVisitKind(p.payload) !== null)
+      .map((p) => proposalCaptureId(p.payload))
+      .filter((id): id is string => !!id),
+  )
+
+  // 1. Captures texte jamais passées à l'IA (suite_status null, non couvertes) —
+  //    détection puis persistance. Échec IA (null) → on ne marque RIEN, retry plus tard.
   const textCaps = captures.filter(
     (c) => c.status !== 'discarded'
       && c.suite_status == null
+      && !coveredCaptureIds.has(c.id)
       && (c.kind === 'vocal' || c.kind === 'note')
       && !!c.body?.trim()
       && c.triage_intent !== 'action' && c.triage_intent !== 'reserve',
   )
-  if (textCaps.length === 0) return []
-  const siteId = textCaps[0].site_id
+  if (textCaps.length > 0) {
+    const siteId = textCaps[0].site_id
+    const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
+    const detected = await detectVisitSuites({
+      siteName: (site as { name: string } | null)?.name ?? 'Chantier',
+      items: textCaps.map((c) => ({ id: c.id, text: c.body!.trim() })),
+      userId,
+    }).catch(() => null)
+    if (detected !== null) {
+      if (detected.length > 0) {
+        const bodyById = new Map(textCaps.map((c) => [c.id, c.body!.trim()]))
+        await bulkInsertProposals({
+          report_id: reportId,
+          proposals: toProposalRows(detected, siteId, bodyById),
+        }).catch(() => [])
+      }
+      // Analysées (même sans suite trouvée — définitif) : plus de re-run.
+      await supabase
+        .from('visit_capture')
+        .update({ suite_status: 'analyzed', updated_at: new Date().toISOString() })
+        .in('id', textCaps.map((c) => c.id))
+    }
+  }
 
-  const supabase = createAdminClient()
-  const { data: site } = await supabase.from('sites').select('name').eq('id', siteId).maybeSingle()
-  const detected = await detectVisitSuites({
-    siteName: (site as { name: string } | null)?.name ?? 'Chantier',
-    items: textCaps.map((c) => ({ id: c.id, text: c.body!.trim() })),
-    userId,
-  }).catch(() => [])
-  if (detected.length === 0) return []
+  // 2. Relire les propositions persistées encore EN ATTENTE de décision.
+  const proposals = await listProposals(reportId).catch(() => [])
+  const pendingAi = proposals.filter((p) => p.status === 'proposed' && proposalVisitKind(p.payload) !== null)
+  if (pendingAi.length === 0) return []
 
+  const siteId = pendingAi[0].site_id ?? captures[0]?.site_id
   const [openActions, reserves] = await Promise.all([
-    listOpenSiteActions({ siteIds: [siteId] }).catch(() => []),
-    getSiteReserves(siteId).catch(() => []),
+    siteId ? listOpenSiteActions({ siteIds: [siteId] }).catch(() => []) : [],
+    siteId ? getSiteReserves(siteId).catch(() => []) : [],
   ])
   const actionPool = (openActions as Array<{ id: string; title: string }>).map((a) => ({ id: a.id, label: a.title }))
   const reservePool = (reserves as Array<{ id: string; label: string; status: string }>)
     .filter((r) => r.status === 'open')
     .map((r) => ({ id: r.id, label: r.label }))
 
-  const bodyById = new Map(textCaps.map((c) => [c.id, c.body!.trim()]))
-  return detected.map((d, i) => {
-    const pool = d.kind === 'action' ? actionPool : d.kind === 'reserve' ? reservePool : []
-    const similar = pool.filter((o) => similarTitles(o.label, d.text)).slice(0, 3)
-    const src = bodyById.get(d.sourceId) ?? ''
+  return pendingAi.map((p) => {
+    const kind = proposalVisitKind(p.payload)!
+    const pool = kind === 'action' ? actionPool : kind === 'reserve' ? reservePool : []
+    const similar = pool.filter((o) => similarTitles(o.label, p.short_label)).slice(0, 3)
     return {
-      id: `${d.sourceId}:${i}`,
-      captureId: d.sourceId,
-      kind: d.kind,
-      text: d.text,
+      id: p.id,
+      proposalId: p.id,
+      captureId: proposalCaptureId(p.payload) ?? '',
+      kind,
+      text: p.short_label,
       similar,
       source: 'ai' as const,
-      excerpt: src.length > 120 ? src.slice(0, 119).trimEnd() + '…' : src,
+      excerpt: proposalExcerpt(p.payload),
     }
   })
 }

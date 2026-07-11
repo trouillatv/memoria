@@ -40,7 +40,7 @@ export function SuiteProposals({ initialSuites }: { initialSuites: VisitSuitePro
     if (!title) return
     setBusyId(s.id)
     start(async () => {
-      const r = await createSuiteAction({ capture_id: s.captureId, kind: s.kind, title })
+      const r = await createSuiteAction({ capture_id: s.captureId, kind: s.kind, title, proposal_id: s.proposalId })
       setBusyId(null)
       if (r.ok) { toast.success(`${KIND_META[s.kind].label} enregistrée`, { duration: 1200 }); remove(s.id) }
       else toast.error(r.error)
@@ -50,7 +50,7 @@ export function SuiteProposals({ initialSuites }: { initialSuites: VisitSuitePro
   function resolve(s: VisitSuiteProposal, resolution: 'ignored' | 'attached') {
     setBusyId(s.id)
     start(async () => {
-      const r = await resolveSuiteAction({ capture_id: s.captureId, resolution })
+      const r = await resolveSuiteAction({ capture_id: s.captureId, resolution, proposal_id: s.proposalId })
       setBusyId(null)
       if (r.ok) remove(s.id)
       else toast.error(r.error)

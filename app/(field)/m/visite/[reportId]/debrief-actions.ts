@@ -11,6 +11,7 @@ import { getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
+import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
 import { getVisitCrPhotoPlan, getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
 import {
   setCaptureTriage,
@@ -94,6 +95,9 @@ const createSuiteSchema = z.object({
   capture_id: z.string().uuid(),
   kind: z.enum(['action', 'reserve', 'surveiller']),
   title: z.string().trim().min(1).max(300),
+  // Proposition IA persistée (mig 194) — son cycle proposed→accepted vit dans
+  // site_report_proposals, comme pour une réunion. Absent pour une suite taguée.
+  proposal_id: z.string().uuid().optional(),
 })
 
 export async function createSuiteAction(
@@ -103,7 +107,7 @@ export async function createSuiteAction(
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = createSuiteSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
-  const { capture_id, kind, title } = parsed.data
+  const { capture_id, kind, title, proposal_id } = parsed.data
   try {
     const supabase = createAdminClient()
     const { data: cap } = await supabase
@@ -114,18 +118,36 @@ export async function createSuiteAction(
     const c = cap as { report_id: string; site_id: string } | null
     if (!c) return { ok: false, error: 'Capture introuvable' }
 
+    let entity: { type: string; id: string } | null = null
     if (kind === 'action') {
-      await createSiteAction({
+      const actionId = await createSiteAction({
         site_id: c.site_id, report_id: c.report_id, title,
         created_by: auth.userId, created_from: 'visit_debrief', source_capture_id: capture_id,
       })
+      entity = { type: 'site_action', id: actionId }
     } else if (kind === 'reserve') {
-      await createSiteReserve({
+      const reserve = await createSiteReserve({
         siteId: c.site_id, label: title, location: null,
         issuedBy: auth.userId, issuedOn: new Date().toISOString().slice(0, 10),
         userId: auth.userId, sourceCaptureId: capture_id,
       })
+      entity = { type: 'site_reserve', id: reserve.id }
     }
+
+    if (proposal_id) {
+      // Proposition IA : la décision vit dans site_report_proposals. On ne touche
+      // PAS suite_status (la capture est 'analyzed' ; ses autres propositions
+      // restent en attente). 'surveiller' pose quand même le tag de vigilance.
+      await curateProposal(proposal_id, { short_label: title, status: 'accepted' })
+      if (entity) await markProposalCreated(proposal_id, entity.type, entity.id)
+      if (kind === 'surveiller') {
+        await supabase.from('visit_capture')
+          .update({ triage_intent: 'follow', updated_at: new Date().toISOString() })
+          .eq('id', capture_id)
+      }
+      return { ok: true }
+    }
+
     // 'surveiller' ne crée pas d'objet chantier : c'est un TAG de vigilance. On
     // marque la capture source « à surveiller » (elle remonte aux prochains débriefs).
     const patch =
@@ -144,6 +166,9 @@ export async function createSuiteAction(
 const resolveSuiteSchema = z.object({
   capture_id: z.string().uuid(),
   resolution: z.enum(['ignored', 'attached']),
+  // Proposition IA persistée (mig 194) — la décision se pose sur la ligne
+  // site_report_proposals, pas sur la capture (qui reste 'analyzed').
+  proposal_id: z.string().uuid().optional(),
 })
 
 export async function resolveSuiteAction(
@@ -154,6 +179,12 @@ export async function resolveSuiteAction(
   const parsed = resolveSuiteSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   try {
+    if (parsed.data.proposal_id) {
+      await curateProposal(parsed.data.proposal_id, {
+        status: parsed.data.resolution === 'ignored' ? 'rejected' : 'accepted',
+      })
+      return { ok: true }
+    }
     const supabase = createAdminClient()
     const { error } = await supabase
       .from('visit_capture')
