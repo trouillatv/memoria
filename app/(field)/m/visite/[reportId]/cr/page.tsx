@@ -2,13 +2,15 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ListChecks, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
-  ChevronRight, Star, Monitor, Check, MapPin, Download,
+  ChevronRight, Star, Monitor, Check, MapPin, Download, CheckCircle2, ArrowRight, Home, Pencil,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitCrDoc, type VisitCrDoc } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
+import { VisitShareButton } from '../VisitShareButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,10 +35,15 @@ function fallbackSummary(doc: VisitCrDoc): string {
 
 export default async function VisitCrPreviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ reportId: string }>
+  searchParams: Promise<{ done?: string }>
 }) {
   const { reportId } = await params
+  // `?done=1` : on vient de terminer la visite → le CR sert AUSSI d'écran de
+  // clôture (confirmation + actions de sortie). Sinon, c'est une consultation.
+  const done = (await searchParams).done === '1'
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
@@ -56,7 +63,25 @@ export default async function VisitCrPreviewPage({
   // ?download=1 → attachment (le téléphone enregistre le fichier).
   const pdfDownloadHref = `${pdfHref}?download=1`
   const isAo = doc.motive === 'previsite_ao'
+  const isPremiere = visit.visit_motive === 'premiere'
   const summary = doc.summary?.trim() || fallbackSummary(doc)
+
+  // Prochaine étape après clôture : pour une VRAIE prévisite AO (dossier en phase
+  // prospect/en_ao) la suite se joue sur ordinateur → « Retour au dossier AO ».
+  // Sinon, retour au chantier. Même règle que l'ancien écran de fin.
+  let previsiteDossierId: string | null = null
+  if (visit.dossier_id) {
+    const supabase = createAdminClient()
+    const { data: dossier } = await supabase
+      .from('dossiers').select('phase').eq('id', visit.dossier_id).maybeSingle()
+    const phase = (dossier as { phase: string } | null)?.phase
+    if (phase === 'prospect' || phase === 'en_ao') previsiteDossierId = visit.dossier_id
+  }
+  const finishedTitle = isAo
+    ? 'Prévisite enregistrée'
+    : isPremiere
+    ? 'Première visite enregistrée'
+    : 'Visite enregistrée'
 
   // Observations = les constats retenus, plafonnés (le reste est dans le CR complet).
   const OBS_MAX = 5
@@ -82,12 +107,24 @@ export default async function VisitCrPreviewPage({
 
   return (
     <div className="mx-auto min-h-dvh max-w-md space-y-3.5 px-4 pb-16 pt-5">
-      <Link
-        href={`/m/visite/${reportId}/recap`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Récap
-      </Link>
+      {done ? (
+        // Clôture réunie à la récompense : une confirmation chaleureuse mais
+        // discrète, juste au-dessus du compte-rendu qu'on vient d'obtenir.
+        <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{finishedTitle}</p>
+            <p className="text-[12px] text-emerald-800/80 dark:text-emerald-300/80">Voici votre compte-rendu.</p>
+          </div>
+        </div>
+      ) : (
+        <Link
+          href={`/m/visite/${reportId}/recap`}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Récap
+        </Link>
+      )}
 
       <header className="space-y-0.5">
         <h1 className="text-xl font-semibold">Compte-rendu de visite</h1>
@@ -277,6 +314,36 @@ export default async function VisitCrPreviewPage({
             <span><strong className="font-medium">Prévisite AO</strong> — disponible depuis l’ordinateur pour préparer la réponse à l’appel d’offres.</span>
           </div>
         )}
+      </div>
+
+      {/* Actions de sortie — la suite du parcours, réunie sous la récompense.
+          Le PDF a sa place canonique (section « Documents générés ») ; ici on
+          navigue : repartir, revoir/corriger ses captures, ou partager. */}
+      <div className="space-y-2 pt-1">
+        {previsiteDossierId ? (
+          <Link
+            href={`/dossiers/${previsiteDossierId}`}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background"
+          >
+            Retour au dossier AO <ArrowRight className="h-4 w-4" />
+          </Link>
+        ) : (
+          <Link
+            href={`/m/site/${visit.site_id}${done ? '?visite=ok' : ''}`}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-3.5 text-sm font-semibold text-background"
+          >
+            <Home className="h-4 w-4" /> Retour au chantier
+          </Link>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            href={`/m/visite/${reportId}`}
+            className="flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium active:bg-accent"
+          >
+            <Pencil className="h-4 w-4" /> Modifier les captures
+          </Link>
+          <VisitShareButton reportId={reportId} siteName={doc.siteName} />
+        </div>
       </div>
     </div>
   )
