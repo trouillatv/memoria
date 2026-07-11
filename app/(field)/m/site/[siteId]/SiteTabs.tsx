@@ -35,7 +35,7 @@ export async function SiteTabs({
   ]
 
   return (
-    <nav className="-mx-3 overflow-x-auto px-3">
+    <nav className="scrollbar-hide -mx-3 overflow-x-auto px-3">
       <ul className="flex w-max gap-1.5">
         {tabs.map((t) => {
           const isActive = t.key === active

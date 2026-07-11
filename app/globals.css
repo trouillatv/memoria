@@ -7,6 +7,18 @@
 
 @custom-variant dark (&:is(.dark *, .petrole *, .monolithe *));
 
+/* Masque l'ascenseur horizontal des barres défilantes (onglets intra-chantier,
+   tabs, etc.) tout en conservant le défilement tactile. Sur mobile, cet
+   ascenseur gris était disgracieux sous les onglets (Frise / Réunions…).
+   Utilisée par SiteTabs et les barres d'onglets du dashboard. */
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @theme {
   /* Palette `brand-*` : RÉSERVÉE à l'identité (logo, séparateur sidebar active,
      icône de section "rare" comme Calendar de /semaine).
