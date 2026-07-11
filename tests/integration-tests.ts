@@ -63,6 +63,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/tender-memory.test.ts',
   'tests/lib/tender-outcome.test.ts',
   'tests/lib/tender-voice-note.test.ts',
+  'tests/lib/visit-finalize.test.ts',
   'tests/lib/week-planning.test.ts',
   // Ajoutés après preuve CI : ils importent lib/db + createAdminClient et
   // frappent la vraie base, mais avaient un vi.mock PARTIEL (audit/revalidate)

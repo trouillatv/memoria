@@ -300,8 +300,19 @@ export function DebriefExpress({
               startFinishing(async () => {
                 // Valide définitivement : ce qui reste « à trier » est gardé en
                 // mémoire → la visite quitte « Reprendre mon travail » (effectuée).
-                await finalizeVisitAction({ report_id: reportId }).catch(() => {})
-                router.push(`/m/visite/${reportId}/fin`)
+                // L'écran de fin n'est montré QUE si la clôture a réellement
+                // réussi — jamais de réussite affichée sans preuve. En échec on
+                // reste ici, le bouton se réactive (fin de transition), on réessaie.
+                try {
+                  const result = await finalizeVisitAction({ report_id: reportId })
+                  if (!result.ok) {
+                    toast.error(result.error ?? 'La visite n’a pas pu être terminée — réessayez.')
+                    return
+                  }
+                  router.push(`/m/visite/${reportId}/fin`)
+                } catch {
+                  toast.error('La visite n’a pas pu être terminée (connexion ?). Rien n’est perdu — réessayez.')
+                }
               })
             }
             className={`flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-semibold text-white active:scale-[0.99] transition disabled:opacity-60 ${closeIntent ? 'ring-2 ring-emerald-300 ring-offset-2 ring-offset-background' : ''}`}

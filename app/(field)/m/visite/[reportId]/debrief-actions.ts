@@ -11,7 +11,7 @@ import { getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
-import { getVisitCrPhotoPlan, getVisit, deleteVisit } from '@/lib/db/visits'
+import { getVisitCrPhotoPlan, getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -276,26 +276,19 @@ export async function finalizeVisitAction(input: unknown): Promise<{ ok: boolean
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
   const orgId = await getOrgId()
+  // Scope organisation (le client admin bypasse les RLS → ce contrôle applicatif
+  // est LA barrière). Les null (visites/utilisateurs historiques d'avant le
+  // multi-org) passent : choix assumé, cohérent avec deleteVisitAction ci-dessus.
   if (orgId && visit.organization_id && visit.organization_id !== orgId) {
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
-    const supabase = createAdminClient()
-    // Captures encore « à trier » → gardées en mémoire (défaut non destructif).
-    await supabase
-      .from('visit_capture')
-      .update({ status: 'kept', triage_intent: null })
-      .eq('report_id', parsed.data.report_id)
-      .eq('status', 'captured')
-    // Filet : la visite doit être terminée (ended_at posé) — au cas où on arrive
-    // ici sans être passé par « Terminer » du panier.
-    if (!visit.ended_at) {
-      await supabase
-        .from('site_reports')
-        .update({ ended_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', parsed.data.report_id)
-        .is('ended_at', null)
-    }
+    // Cœur testable (lib/db/visits.finalizeVisit) : écritures VÉRIFIÉES, ordre
+    // filet (captures d'abord — un échec sur ended_at laisse la visite visible
+    // dans « Reprendre mon travail », jamais perdue), idempotent.
+    const result = await finalizeVisit(parsed.data.report_id)
+    if (!result.ok) return result
+
     revalidatePath('/m')
     if (visit.site_id) revalidatePath(`/m/site/${visit.site_id}`)
     revalidatePath(`/m/visite/${parsed.data.report_id}`)

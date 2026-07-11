@@ -181,6 +181,60 @@ export async function deleteVisit(reportId: string): Promise<number> {
 }
 
 /**
+ * Clôture DÉFINITIVE d'une visite — le cœur testable de « Terminer la visite ».
+ * Règle produit : « non trié = gardé en mémoire » (rien n'est jamais perdu).
+ *
+ * Deux écritures, pas de transaction : l'ORDRE fait le filet. Les captures
+ * d'abord, ended_at ensuite — si la seconde échoue, ended_at reste null et la
+ * visite reste dans « Reprendre mon travail » (visible, reprenable, jamais
+ * perdue). Chaque écriture est VÉRIFIÉE (Supabase retourne ses erreurs, il ne
+ * les lance pas) : jamais ok:true sans preuve. Idempotente : un second appel
+ * ne modifie rien et retourne un succès cohérent (les tris explicites — intent
+ * posé, statut kept — ne sont JAMAIS écrasés : seul status='captured' bascule).
+ */
+export async function finalizeVisit(reportId: string): Promise<{ ok: boolean; error?: string }> {
+  const visit = await getVisit(reportId)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+
+  // 1. Captures encore « à trier » → gardées en mémoire (défaut non destructif).
+  //    0 ligne modifiée = légitime (tout était déjà trié), pas un échec.
+  const { error: capErr } = await supabase
+    .from('visit_capture')
+    .update({ status: 'kept', triage_intent: null, updated_at: now })
+    .eq('report_id', reportId)
+    .eq('status', 'captured')
+  if (capErr) {
+    return { ok: false, error: 'Les captures n’ont pas pu être gardées en mémoire — réessayez.' }
+  }
+
+  // 2. La visite doit être terminée (ended_at posé) — au cas où on arrive ici
+  //    sans être passé par « Terminer » du panier.
+  if (!visit.ended_at) {
+    const { data: endedRows, error: endErr } = await supabase
+      .from('site_reports')
+      .update({ ended_at: now, updated_at: now })
+      .eq('id', reportId)
+      .is('ended_at', null)
+      .select('id')
+    if (endErr) {
+      return { ok: false, error: 'La fin de visite n’a pas pu être enregistrée — réessayez.' }
+    }
+    if (!endedRows || endedRows.length === 0) {
+      // 0 ligne : soit ended_at vient d'être posé ailleurs (course bénigne),
+      // soit la ligne a disparu. On relit pour trancher — jamais de succès
+      // déclaré sans preuve.
+      const fresh = await getVisit(reportId)
+      if (!fresh?.ended_at) {
+        return { ok: false, error: 'La fin de visite n’a pas pu être enregistrée — réessayez.' }
+      }
+    }
+  }
+  return { ok: true }
+}
+
+/**
  * Enregistre la cristallisation d'une visite DEPUIS LE DÉBRIEF (desktop) : les
  * champs métier validés par l'humain. Ne touche pas à `ended_at` (posé au
  * terrain par endVisit). Ne touche pas au pipeline de transcription/analyse.
