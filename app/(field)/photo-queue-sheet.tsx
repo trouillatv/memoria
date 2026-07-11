@@ -1,18 +1,20 @@
 'use client'
 
 /**
- * Slice A.1 — PhotoQueueSheet
+ * Slice A.1 — PhotoQueueSheet (élargie Lot B).
  *
- * Drawer (bottom-up sur mobile) qui liste les photos en attente de sync vers
- * le serveur. Déclenchée depuis le SyncIndicator du header field.
+ * Drawer (bottom-up sur mobile) qui liste les éléments en attente d'envoi vers
+ * le serveur — TOUS canaux confondus : photos d'intervention (file legacy),
+ * captures de visite photo/vidéo/vocal (file visite) et vidéos en upload direct.
+ * Déclenchée depuis le SyncIndicator du header field.
  *
  * Doctrine :
  *   - Wording calme, jamais "FAILURE/ERROR/ALERTE".
  *   - Empty state rassurant : "Toutes vos photos sont synchronisées".
- *   - "Vos photos" — pas "qui a pris quoi" (anonymisation).
- *   - Bouton "Re-essayer maintenant" force un drain immédiat.
+ *   - "Vos captures" — pas "qui a pris quoi" (anonymisation).
+ *   - Bouton "Re-essayer maintenant" force un drain immédiat des files.
  *   - Pas de banner rouge, pas de notif push.
- *   - Une photo en queue avec attempts >= 3 affiche "Re-essai dans X" — pas
+ *   - Une entry avec attempts >= 3 affiche "Re-essai dans X" — pas
  *     "ERREUR" ni "FAILED".
  */
 
@@ -28,18 +30,9 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
-import { ImageIcon, RotateCw, Clock, CheckCircle2, X, Check, Trash2 } from 'lucide-react'
-import {
-  useQueueEntries,
-} from '@/lib/field/sync-status'
-import {
-  blobToDataUrl,
-  isReadyForRetry,
-  markAllReadyForRetry,
-  nextRetryDelay,
-  removeQueuedPhoto,
-  type QueuedPhoto,
-} from '@/lib/field/photo-queue'
+import { ImageIcon, RotateCw, Clock, CheckCircle2, X, Check, Trash2, UploadCloud } from 'lucide-react'
+import { useQueueEntries, type PendingEntry } from '@/lib/field/sync-status'
+import { blobToDataUrl, isReadyForRetry, nextRetryDelay } from '@/lib/field/photo-queue'
 
 interface Props {
   /** Element déclencheur — typiquement le SyncIndicator wrappé. */
@@ -53,16 +46,19 @@ interface Props {
 
 function formatTakenAgo(takenAt: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - takenAt) / 1000))
-  if (seconds < 60) return `il y a ${seconds} s`
+  if (seconds < 60) return `il y a ${seconds} s`
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `il y a ${minutes} min`
+  if (minutes < 60) return `il y a ${minutes} min`
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `il y a ${hours} h`
+  if (hours < 24) return `il y a ${hours} h`
   const days = Math.round(hours / 24)
-  return `il y a ${days} j`
+  return `il y a ${days} j`
 }
 
-function formatNextRetry(entry: QueuedPhoto, now = Date.now()): string {
+function formatStatus(entry: PendingEntry, now = Date.now()): string {
+  // Upload direct (vidéo) : pas de file, il monte en ce moment même.
+  if (entry.source === 'live') return 'Envoi en cours'
+
   // Sans tentative encore : "En attente"
   if (entry.lastAttemptAt == null) return 'En attente'
 
@@ -75,32 +71,28 @@ function formatNextRetry(entry: QueuedPhoto, now = Date.now()): string {
 
   if (remaining < 60_000) {
     const s = Math.max(1, Math.round(remaining / 1000))
-    return `Re-essai dans ${s} s`
+    return `Re-essai dans ${s} s`
   }
   if (remaining < 3_600_000) {
     const m = Math.max(1, Math.round(remaining / 60_000))
-    return `Re-essai dans ${m} min`
+    return `Re-essai dans ${m} min`
   }
   const h = Math.max(1, Math.round(remaining / 3_600_000))
-  return `Re-essai dans ${h} h`
+  return `Re-essai dans ${h} h`
 }
 
-const KIND_LABELS: Record<QueuedPhoto['kind'], string> = {
-  before: 'Avant',
-  after: 'Après',
-  anomaly: 'Anomalie',
-  proof: 'Preuve',
-  passage: 'Passage', // V5.1 Slice 1 — trace libre déposée hors workflow planifié
-  access: 'Accès', // 070 — photo trousseau/badge
-}
-
-function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => void }) {
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+function QueueRow({ entry, onDelete }: { entry: PendingEntry; onDelete: () => void }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(entry.thumbUrl ?? null)
   const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
+    // Upload direct : la vignette est déjà un objectURL prêt à l'emploi.
+    if (!entry.thumbBlob) {
+      setThumbUrl(entry.thumbUrl ?? null)
+      return
+    }
     let cancelled = false
-    blobToDataUrl(entry.blob)
+    blobToDataUrl(entry.thumbBlob)
       .then((url) => {
         if (!cancelled) setThumbUrl(url)
       })
@@ -110,9 +102,9 @@ function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => voi
     return () => {
       cancelled = true
     }
-  }, [entry.blob])
+  }, [entry.thumbBlob, entry.thumbUrl])
 
-  const status = formatNextRetry(entry)
+  const status = formatStatus(entry)
   const ago = formatTakenAgo(entry.takenAt)
 
   return (
@@ -134,11 +126,11 @@ function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => voi
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-foreground truncate">
-          Photo {KIND_LABELS[entry.kind].toLowerCase()}
+          {entry.label}
         </div>
         <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
           <Clock className="w-3 h-3" aria-hidden />
-          <span>capturée {ago}</span>
+          <span>capturé {ago}</span>
         </div>
       </div>
       {confirming ? (
@@ -165,15 +157,17 @@ function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => voi
       ) : (
         <div className="flex flex-shrink-0 items-center gap-2">
           <span className="text-xs text-muted-foreground tabular-nums">{status}</span>
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            aria-label="Supprimer cette photo"
-            data-testid="photo-queue-delete"
-            className="p-1 text-muted-foreground hover:text-rose-600"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden />
-          </button>
+          {entry.deletable && (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              aria-label="Supprimer cette capture"
+              data-testid="photo-queue-delete"
+              className="p-1 text-muted-foreground hover:text-rose-600"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </button>
+          )}
         </div>
       )}
     </li>
@@ -186,7 +180,7 @@ export function PhotoQueueSheet({
   open: controlledOpen,
   onOpenChange,
 }: Props) {
-  const { entries, refresh } = useQueueEntries()
+  const { entries, retryAll, remove } = useQueueEntries()
   const [internalOpen, setInternalOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
@@ -202,32 +196,38 @@ export function PhotoQueueSheet({
   const handleRetry = useCallback(() => {
     startTransition(async () => {
       try {
-        await markAllReadyForRetry()
-        await refresh()
+        await retryAll()
         onRetryNow?.()
       } catch (e) {
         console.error('[PhotoQueueSheet] retry', e)
       }
     })
-  }, [onRetryNow, refresh])
+  }, [onRetryNow, retryAll])
 
-  // Abandon manuel d'une photo (filet de sécurité pour une entry qui ne partira
-  // jamais — ex. cause structurelle). Destructif : la photo est perdue, d'où la
+  // Abandon manuel d'une capture (filet de sécurité pour une entry qui ne partira
+  // jamais — ex. cause structurelle). Destructif : la capture est perdue, d'où la
   // confirmation 2 temps côté ligne. La file ne supprime JAMAIS d'elle-même.
-  const handleDelete = useCallback((tempId: string) => {
-    startTransition(async () => {
-      try {
-        await removeQueuedPhoto(tempId)
-        await refresh()
-      } catch (e) {
-        console.error('[PhotoQueueSheet] delete', e)
-      }
-    })
-  }, [refresh])
+  const handleDelete = useCallback(
+    (entry: PendingEntry) => {
+      startTransition(async () => {
+        try {
+          await remove(entry)
+        } catch (e) {
+          console.error('[PhotoQueueSheet] delete', e)
+        }
+      })
+    },
+    [remove],
+  )
 
   const empty = entries.length === 0
-  const readyCount = useMemo(
-    () => entries.filter((e) => isReadyForRetry(e)).length,
+  // « Re-essayer » n'a de sens que pour les entries en file (pas les uploads directs).
+  const hasQueued = useMemo(() => entries.some((e) => e.source !== 'live'), [entries])
+  const allReady = useMemo(
+    () =>
+      entries
+        .filter((e) => e.source !== 'live')
+        .every((e) => isReadyForRetry(e)),
     [entries],
   )
 
@@ -239,11 +239,11 @@ export function PhotoQueueSheet({
         data-testid="photo-queue-sheet"
       >
         <DrawerHeader>
-          <DrawerTitle>Mes photos en attente</DrawerTitle>
+          <DrawerTitle>Mes éléments en attente</DrawerTitle>
           <DrawerDescription>
             {empty
               ? 'Tout est à jour sur le serveur.'
-              : 'Vos photos sont en sécurité sur cet appareil. Elles seront envoyées dès que possible.'}
+              : 'Vos captures sont en sécurité sur cet appareil. Elles seront envoyées dès que possible.'}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -268,9 +268,9 @@ export function PhotoQueueSheet({
             <ul className="divide-y" data-testid="photo-queue-list">
               {entries.map((entry) => (
                 <QueueRow
-                  key={entry.tempId}
+                  key={entry.key}
                   entry={entry}
-                  onDelete={() => handleDelete(entry.tempId)}
+                  onDelete={() => handleDelete(entry)}
                 />
               ))}
             </ul>
@@ -278,7 +278,7 @@ export function PhotoQueueSheet({
         </div>
 
         <DrawerFooter className="gap-2">
-          {!empty && (
+          {!empty && hasQueued && (
             <Button
               type="button"
               onClick={handleRetry}
@@ -291,12 +291,13 @@ export function PhotoQueueSheet({
                 className={`w-4 h-4 ${pending ? 'animate-spin' : ''}`}
                 aria-hidden
               />
-              {pending
-                ? 'Relance en cours…'
-                : readyCount === entries.length
-                ? 'Re-essayer maintenant'
-                : 'Re-essayer maintenant'}
+              {pending ? 'Relance en cours…' : allReady ? 'Re-essayer maintenant' : 'Re-essayer maintenant'}
             </Button>
+          )}
+          {!empty && !hasQueued && (
+            <p className="flex items-center justify-center gap-1.5 py-1 text-xs text-muted-foreground">
+              <UploadCloud className="w-4 h-4" aria-hidden /> Envoi en cours…
+            </p>
           )}
           <DrawerClose asChild>
             <Button

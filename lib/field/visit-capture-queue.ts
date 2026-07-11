@@ -121,6 +121,35 @@ export async function countQueuedVisitCapturesByReport(reportId: string): Promis
   return all.length
 }
 
+/**
+ * Reset `lastAttemptAt` à `undefined` sur toutes les captures de visite afin
+ * qu'elles redeviennent immédiatement éligibles à un retry (sans toucher au
+ * compteur `attempts`, informatif pour l'UI). Miroir de la primitive legacy
+ * markAllReadyForRetry — utilisé par le bouton « Re-essayer maintenant ».
+ */
+export async function markAllVisitCapturesReadyForRetry(): Promise<number> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    const store = tx.objectStore(STORE_NAME)
+    const req = store.getAll()
+    req.onsuccess = () => {
+      const all = (req.result as QueuedVisitCapture[]) ?? []
+      let pending = all.length
+      if (pending === 0) return resolve(0)
+      for (const entry of all) {
+        const putReq = store.put({ ...entry, lastAttemptAt: undefined })
+        putReq.onsuccess = () => {
+          pending -= 1
+          if (pending === 0) resolve(all.length)
+        }
+        putReq.onerror = () => reject(putReq.error)
+      }
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
 export async function removeQueuedVisitCapture(tempId: string): Promise<void> {
   const db = await openDb()
   return new Promise((resolve, reject) => {

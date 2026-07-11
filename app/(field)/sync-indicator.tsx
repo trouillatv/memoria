@@ -15,10 +15,12 @@
 import { useSyncStatus } from '@/lib/field/sync-status'
 import { PhotoQueueSheet } from './photo-queue-sheet'
 
+// Libellés génériques : la file couvre désormais photos, vidéos et vocaux d'une
+// visite (pas seulement les photos d'intervention).
 const LABELS = {
   green:   'Tout est envoyé',
-  yellow:  'Photos en attente',
-  red:     'À renvoyer',
+  yellow:  'en attente',
+  red:     'à renvoyer',
   unknown: 'Synchronisation',
 } as const
 
@@ -35,11 +37,11 @@ export function SyncIndicator() {
   const isPending = state === 'yellow' || state === 'red'
 
   const ariaLabel = isPending
-    ? `${pendingCount} ${pendingCount > 1 ? 'photos en attente' : 'photo en attente'}. Voir mes photos en attente.`
-    : 'Toutes vos photos sont synchronisées. Voir mes photos en attente.'
+    ? `${pendingCount} ${pendingCount > 1 ? 'éléments en attente' : 'élément en attente'} d'envoi. Voir les éléments en attente.`
+    : 'Tout est synchronisé. Voir les éléments en attente.'
 
   const tooltip = isPending
-    ? `${pendingCount} ${pendingCount > 1 ? 'photos en attente' : 'photo en attente'}`
+    ? `${pendingCount} ${pendingCount > 1 ? 'éléments en attente' : 'élément en attente'} d'envoi`
     : 'Tout est synchronisé'
 
   return (
