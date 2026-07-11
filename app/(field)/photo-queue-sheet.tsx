@@ -31,6 +31,8 @@ import { Button } from '@/components/ui/button'
 import { ImageIcon, RotateCw, Clock, CheckCircle2, X, Check, Trash2 } from 'lucide-react'
 import {
   useQueueEntries,
+  type UnifiedQueueEntry,
+  type QueueSource,
 } from '@/lib/field/sync-status'
 import {
   blobToDataUrl,
@@ -38,8 +40,11 @@ import {
   markAllReadyForRetry,
   nextRetryDelay,
   removeQueuedPhoto,
-  type QueuedPhoto,
 } from '@/lib/field/photo-queue'
+import {
+  markAllQueuedVisitCapturesReadyForRetry,
+  removeQueuedVisitCapture,
+} from '@/lib/field/visit-capture-queue'
 
 interface Props {
   /** Element déclencheur — typiquement le SyncIndicator wrappé. */
@@ -62,7 +67,7 @@ function formatTakenAgo(takenAt: number, now = Date.now()): string {
   return `il y a ${days} j`
 }
 
-function formatNextRetry(entry: QueuedPhoto, now = Date.now()): string {
+function formatNextRetry(entry: UnifiedQueueEntry, now = Date.now()): string {
   // Sans tentative encore : "En attente"
   if (entry.lastAttemptAt == null) return 'En attente'
 
@@ -85,16 +90,7 @@ function formatNextRetry(entry: QueuedPhoto, now = Date.now()): string {
   return `Re-essai dans ${h} h`
 }
 
-const KIND_LABELS: Record<QueuedPhoto['kind'], string> = {
-  before: 'Avant',
-  after: 'Après',
-  anomaly: 'Anomalie',
-  proof: 'Preuve',
-  passage: 'Passage', // V5.1 Slice 1 — trace libre déposée hors workflow planifié
-  access: 'Accès', // 070 — photo trousseau/badge
-}
-
-function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => void }) {
+function QueueRow({ entry, onDelete }: { entry: UnifiedQueueEntry; onDelete: () => void }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
 
@@ -134,12 +130,24 @@ function QueueRow({ entry, onDelete }: { entry: QueuedPhoto; onDelete: () => voi
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-foreground truncate">
-          Photo {KIND_LABELS[entry.kind].toLowerCase()}
+          {/* « Photo — Cuisine Petratiti » : le chantier rend la ligne
+              immédiatement identifiable sans ouvrir quoi que ce soit. */}
+          {entry.kindLabel}
+          {entry.siteName ? ` — ${entry.siteName}` : ''}
         </div>
         <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
           <Clock className="w-3 h-3" aria-hidden />
           <span>capturée {ago}</span>
         </div>
+        {/* En échec répété : montrer le fichier + la cause, pour que l'utilisateur
+            sache exactement QUOI n'est pas parti (et quoi renvoyer). */}
+        {entry.attempts >= 3 && (
+          <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
+            {entry.filename ? `${entry.filename} · ` : ''}
+            {entry.attempts} tentatives
+            {entry.lastError ? ` · ${entry.lastError}` : ''}
+          </div>
+        )}
       </div>
       {confirming ? (
         <div className="flex flex-shrink-0 items-center gap-1">
@@ -202,7 +210,12 @@ export function PhotoQueueSheet({
   const handleRetry = useCallback(() => {
     startTransition(async () => {
       try {
-        await markAllReadyForRetry()
+        // Relancer les DEUX files : photos (intervention/spontané) ET captures
+        // de visite. Sinon le bouton ne débloquerait qu'une moitié de la file.
+        await Promise.all([
+          markAllReadyForRetry(),
+          markAllQueuedVisitCapturesReadyForRetry(),
+        ])
         await refresh()
         onRetryNow?.()
       } catch (e) {
@@ -211,13 +224,15 @@ export function PhotoQueueSheet({
     })
   }, [onRetryNow, refresh])
 
-  // Abandon manuel d'une photo (filet de sécurité pour une entry qui ne partira
-  // jamais — ex. cause structurelle). Destructif : la photo est perdue, d'où la
-  // confirmation 2 temps côté ligne. La file ne supprime JAMAIS d'elle-même.
-  const handleDelete = useCallback((tempId: string) => {
+  // Abandon manuel d'une capture (filet de sécurité pour une entry qui ne
+  // partira jamais — ex. cause structurelle). Destructif : la capture est
+  // perdue, d'où la confirmation 2 temps côté ligne. La file ne supprime JAMAIS
+  // d'elle-même. On route vers la bonne file selon la source de l'entry.
+  const handleDelete = useCallback((source: QueueSource, tempId: string) => {
     startTransition(async () => {
       try {
-        await removeQueuedPhoto(tempId)
+        if (source === 'visit') await removeQueuedVisitCapture(tempId)
+        else await removeQueuedPhoto(tempId)
         await refresh()
       } catch (e) {
         console.error('[PhotoQueueSheet] delete', e)
@@ -239,11 +254,11 @@ export function PhotoQueueSheet({
         data-testid="photo-queue-sheet"
       >
         <DrawerHeader>
-          <DrawerTitle>Mes photos en attente</DrawerTitle>
+          <DrawerTitle>En attente d&apos;envoi</DrawerTitle>
           <DrawerDescription>
             {empty
               ? 'Tout est à jour sur le serveur.'
-              : 'Vos photos sont en sécurité sur cet appareil. Elles seront envoyées dès que possible.'}
+              : 'Vos captures sont en sécurité sur cet appareil. Elles seront envoyées dès que possible.'}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -258,7 +273,7 @@ export function PhotoQueueSheet({
                 aria-hidden
               />
               <p className="text-sm font-medium text-foreground">
-                Toutes vos photos sont synchronisées
+                Toutes vos captures sont synchronisées
               </p>
               <p className="text-xs text-muted-foreground">
                 Rien à envoyer pour le moment.
@@ -270,7 +285,7 @@ export function PhotoQueueSheet({
                 <QueueRow
                   key={entry.tempId}
                   entry={entry}
-                  onDelete={() => handleDelete(entry.tempId)}
+                  onDelete={() => handleDelete(entry.source, entry.tempId)}
                 />
               ))}
             </ul>

@@ -30,6 +30,14 @@ vi.mock('@/lib/field/photo-queue', async () => {
   }
 })
 
+// PR-1 — la sheet agrège désormais la file des captures de visite en plus des
+// photos. On la mocke pour éviter IndexedDB en jsdom (file vide + retry no-op).
+vi.mock('@/lib/field/visit-capture-queue', () => ({
+  listQueuedVisitCaptures: vi.fn(async () => []),
+  markAllQueuedVisitCapturesReadyForRetry: vi.fn(async () => 0),
+  removeQueuedVisitCapture: vi.fn(async () => {}),
+}))
+
 // Sonner — pas utilisé directement mais importé par les modules autour
 vi.mock('sonner', () => ({
   toast: Object.assign(vi.fn(), {
@@ -80,7 +88,7 @@ describe('PhotoQueueSheet — empty state', () => {
       expect(screen.getByTestId('photo-queue-empty')).toBeInTheDocument()
     })
     expect(
-      screen.getByText(/toutes vos photos sont synchronisées/i),
+      screen.getByText(/toutes vos captures sont synchronisées/i),
     ).toBeInTheDocument()
 
     // Pas de bouton "Re-essayer maintenant" dans l'empty state

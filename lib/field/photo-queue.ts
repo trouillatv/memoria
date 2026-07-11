@@ -51,6 +51,9 @@ export interface QueuedPhoto {
   anomalyId?: string | null
   /** Mode spontané (V5.1) : trace libre sur un site. Mutuellement exclusif avec interventionId. */
   siteId?: string
+  /** Nom du chantier au moment du dépôt — pour l'affichage dans la file de sync
+   *  sans appel serveur. Optionnel (rétrocompat entries pré-champ). */
+  siteName?: string
   /** Mode spontané (V5.1) : nature de la trace (passage banal / anomalie). */
   intent?: 'passage' | 'anomaly'
   kind: PhotoKind

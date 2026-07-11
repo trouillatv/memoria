@@ -40,6 +40,10 @@ export interface QueuedVisitCapture {
   userId?: string
   reportId: string
   siteId: string
+  /** Nom du chantier au moment du dépôt — pour que la file de sync affiche
+   *  « Cuisine Petratiti · Photo » sans appel serveur. Optionnel (rétrocompat
+   *  avec les entries déposées avant ce champ). */
+  siteName?: string
   kind: QueuedVisitKind
   blob: Blob
   filename: string
@@ -127,6 +131,35 @@ export async function removeQueuedVisitCapture(tempId: string): Promise<void> {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     const req = tx.objectStore(STORE_NAME).delete(tempId)
     req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
+/**
+ * Reset `lastAttemptAt` sur toutes les entries pour les rendre immédiatement
+ * éligibles au retry (symétrique de `markAllReadyForRetry` de la file photos).
+ * Utilisé par le bouton « Re-essayer maintenant » de la sheet de sync, qui
+ * relance les DEUX files. `attempts` reste inchangé (informatif pour l'UI).
+ */
+export async function markAllQueuedVisitCapturesReadyForRetry(): Promise<number> {
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    const store = tx.objectStore(STORE_NAME)
+    const req = store.getAll()
+    req.onsuccess = () => {
+      const all = (req.result as QueuedVisitCapture[]) ?? []
+      let pending = all.length
+      if (pending === 0) return resolve(0)
+      for (const entry of all) {
+        const putReq = store.put({ ...entry, lastAttemptAt: undefined })
+        putReq.onsuccess = () => {
+          pending -= 1
+          if (pending === 0) resolve(all.length)
+        }
+        putReq.onerror = () => reject(putReq.error)
+      }
+    }
     req.onerror = () => reject(req.error)
   })
 }

@@ -306,6 +306,7 @@ export default async function FieldSitePage({
           <VisitBasket
             reportId={activeVisit.id}
             siteId={siteId}
+            siteName={site.name}
             userId={user.id}
             startedAt={activeVisit.started_at}
             subjects={visitSubjects}
@@ -472,7 +473,7 @@ export default async function FieldSitePage({
             </h2>
             <div className="grid grid-cols-2 gap-2">
               <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
-              <SpontaneousCapturePanel siteId={siteId} />
+              <SpontaneousCapturePanel siteId={siteId} siteName={site.name} />
               <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" resumeReportId={resumeReportId} />
               <DeliverFieldPanel siteId={siteId} />
             </div>

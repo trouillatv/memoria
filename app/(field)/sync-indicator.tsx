@@ -3,13 +3,19 @@
 /**
  * Sync indicator (header field).
  *
- * Slice A.1 — Devient cliquable et ouvre la PhotoQueueSheet pour montrer à
- * l'agent ses photos en attente et un bouton "Re-essayer maintenant".
+ * Cliquable → ouvre la file de synchronisation (toutes captures : photo, vocal,
+ * vidéo…) et un bouton "Re-essayer maintenant".
+ *
+ * PR-1 — l'indicateur agrège désormais les DEUX files (photos legacy/spontanées
+ * ET captures de visite). Avant, il ne comptait que les photos : une photo ou un
+ * vocal de visite encore en cours d'envoi n'apparaissait pas, et « Tout est
+ * envoyé » pouvait mentir. Le vocabulaire est neutralisé (« captures », plus
+ * « photos »).
  *
  * Doctrine :
  *   - Visuel : point coloré green/yellow/red + label sobre.
  *   - Pas d'animation rouge clignotante anxiogène.
- *   - aria-label explicite ("Voir mes photos en attente").
+ *   - aria-label explicite ("Voir la file de synchronisation").
  */
 
 import { useSyncStatus } from '@/lib/field/sync-status'
@@ -17,8 +23,8 @@ import { PhotoQueueSheet } from './photo-queue-sheet'
 
 const LABELS = {
   green:   'Tout est envoyé',
-  yellow:  'Photos en attente',
-  red:     'À renvoyer',
+  yellow:  'en attente',
+  red:     'à renvoyer',
   unknown: 'Synchronisation',
 } as const
 
@@ -35,11 +41,11 @@ export function SyncIndicator() {
   const isPending = state === 'yellow' || state === 'red'
 
   const ariaLabel = isPending
-    ? `${pendingCount} ${pendingCount > 1 ? 'photos en attente' : 'photo en attente'}. Voir mes photos en attente.`
-    : 'Toutes vos photos sont synchronisées. Voir mes photos en attente.'
+    ? `${pendingCount} ${pendingCount > 1 ? 'captures en attente' : 'capture en attente'} d'envoi. Voir la file de synchronisation.`
+    : 'Toutes vos captures sont synchronisées. Voir la file de synchronisation.'
 
   const tooltip = isPending
-    ? `${pendingCount} ${pendingCount > 1 ? 'photos en attente' : 'photo en attente'}`
+    ? `${pendingCount} ${pendingCount > 1 ? 'captures en attente' : 'capture en attente'} d'envoi`
     : 'Tout est synchronisé'
 
   return (

@@ -66,6 +66,7 @@ type PendingCapture = {
 export function VisitBasket({
   reportId,
   siteId,
+  siteName,
   userId,
   startedAt,
   subjects,
@@ -74,6 +75,8 @@ export function VisitBasket({
 }: {
   reportId: string
   siteId: string
+  /** Nom du chantier — embarqué dans la file de sync pour l'affichage. */
+  siteName?: string
   /** L'agent courant — tague les dépôts locaux (anti cross-compte au drain). */
   userId: string
   startedAt: string | null
@@ -278,7 +281,7 @@ export function VisitBasket({
       const blob = kind === 'photo' ? await compressImageFile(file) : file
       const ext = kind === 'photo' ? 'jpg' : kind === 'video' ? 'mp4' : 'webm'
       await queueVisitCapture({
-        clientUuid, userId, reportId, siteId, kind,
+        clientUuid, userId, reportId, siteId, siteName, kind,
         blob,
         filename: `${kind}-${clientUuid}.${ext}`,
         mimeType: blob.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
