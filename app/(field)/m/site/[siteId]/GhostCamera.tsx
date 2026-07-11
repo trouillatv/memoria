@@ -95,7 +95,7 @@ export function GhostCamera({
       {/* En-tête : quoi reprendre + fermer. */}
       <div className="flex items-center justify-between gap-2 px-4 py-3 text-white">
         <span className="min-w-0 truncate text-sm font-medium">
-          {label ?? 'Point de repère'} — alignez sur le fantôme
+          {label ?? 'Photo de référence'} — alignez sur le fantôme
         </span>
         <button type="button" onClick={onClose} aria-label="Fermer" className="shrink-0 rounded-full bg-white/10 p-2">
           <X className="h-5 w-5" />

@@ -561,11 +561,11 @@ export function VisitBasket({
       .catch(() => refresh())
   }
 
-  // ── Point de repère : épingler « je reprendrai ce cadrage » (optimiste) ─────
+  // ── Photo de référence : épingler « je referai cette photo » (optimiste) ────
   function toggleViewpoint(c: VisitCaptureRow) {
     const next = !c.is_viewpoint
     setCaptures((prev) => prev.map((x) => (x.id === c.id ? { ...x, is_viewpoint: next } : x)))
-    if (next) toast.success('Point de repère — ce cadrage sera proposé à chaque visite', { duration: 1800 })
+    if (next) toast.success('Photo de référence — MemorIA vous proposera de la refaire à chaque visite', { duration: 2000 })
     setCaptureViewpointAction({ capture_id: c.id, is_viewpoint: next })
       .then((r) => { if (!r.ok) { toast.error(r.error); refresh() } })
       .catch(() => refresh())
@@ -694,7 +694,7 @@ export function VisitBasket({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={v.lastUrl!} alt="" className="h-9 w-9 rounded-lg object-cover" />
                 <span className="max-w-[120px]">
-                  <span className="block truncate text-xs font-medium">{v.label ?? 'Point de repère'}</span>
+                  <span className="block truncate text-xs font-medium">{v.label ?? 'Photo de référence'}</span>
                   <span className="block text-[10px] text-muted-foreground">{v.shots} photo{v.shots > 1 ? 's' : ''}</span>
                 </span>
               </button>
@@ -825,8 +825,8 @@ export function VisitBasket({
                   {c.kind === 'photo' && (
                     <button
                       type="button" onClick={() => toggleViewpoint(c)}
-                      aria-label={c.is_viewpoint ? 'Ne plus reprendre ce cadrage' : 'Point de repère — reprendre ce cadrage à chaque visite'}
-                      title={c.is_viewpoint ? 'Point de repère' : 'Reprendre ce cadrage à chaque visite'}
+                      aria-label={c.is_viewpoint ? 'Ne plus refaire cette photo' : 'Photo de référence — la refaire à chaque visite'}
+                      title={c.is_viewpoint ? 'Photo de référence' : 'Refaire cette photo à chaque visite'}
                       className="shrink-0 pt-0.5"
                     >
                       <Pin className={`h-3.5 w-3.5 ${c.is_viewpoint ? 'fill-emerald-500 text-emerald-600' : 'text-muted-foreground/40 hover:text-emerald-600'}`} />
@@ -909,7 +909,15 @@ export function VisitBasket({
         <GhostCamera
           ghostUrl={ghost.url}
           label={ghost.label}
-          onCapture={(file) => enqueueMedia(file, 'photo', ghost.anchorId)}
+          onCapture={(file) => {
+            enqueueMedia(file, 'photo', ghost.anchorId)
+            // La série grandit — dire à l'utilisateur qu'il CONSTRUIT quelque chose.
+            const serie = viewpoints.find((v) => v.anchorId === ghost.anchorId)
+            toast.success(
+              `Même point de vue repris — « ${ghost.label ?? 'Photo de référence'} » : ${(serie?.shots ?? 1) + 1} photos`,
+              { duration: 2000 },
+            )
+          }}
           onClose={() => setGhost(null)}
           onFallbackNative={() => {
             nextPhotoViewpointRef.current = ghost.anchorId

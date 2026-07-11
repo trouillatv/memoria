@@ -16,12 +16,14 @@ export interface ViewpointCaptureLite {
 export interface ViewpointChain<T extends ViewpointCaptureLite> {
   /** L'ancre de la série (capture épinglée). */
   anchorId: string
-  /** Nom lisible : le commentaire de l'ancre, sinon null (l'UI dira « Point de repère »). */
+  /** Nom lisible : le commentaire de l'ancre, sinon null (l'UI dira « Photo de référence »). */
   label: string | null
   /** La photo la plus récente de la série — le futur fantôme. */
   last: T
   /** Nombre de photos dans la série (ancre comprise). */
   shots: number
+  /** La série complète, du plus ancien au plus récent — l'écran « Évolution ». */
+  serie: T[]
 }
 
 function instant(c: ViewpointCaptureLite): number {
@@ -49,6 +51,7 @@ export function groupViewpointChains<T extends ViewpointCaptureLite>(rows: T[]):
       label: anchor.body?.trim() || null,
       last: serie[serie.length - 1],
       shots: serie.length,
+      serie,
     })
   }
   // Séries les plus récemment reprises d'abord — celles qu'on est en train de suivre.

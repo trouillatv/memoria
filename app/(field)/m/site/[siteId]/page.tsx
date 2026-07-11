@@ -171,8 +171,9 @@ export default async function FieldSitePage({
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitSummary>> = null
   let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let siteDocCount = 0
+  let hasEvolution = false
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, snapshot, docList] = await Promise.all([
+    const [status, id, reservesRaw, activity, since, snapshot, docList, vpRows] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
@@ -180,6 +181,7 @@ export default async function FieldSitePage({
       buildSinceLastVisitSummary(siteId).catch(() => null),
       getSiteMemorySnapshot(siteId).catch(() => null),
       canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
+      listSiteViewpointRows(siteId).catch(() => []),
     ])
     siteStatus = status
     identity = id
@@ -190,6 +192,7 @@ export default async function FieldSitePage({
     sinceLastVisit = since
     memorySnapshot = snapshot
     siteDocCount = docList.length
+    hasEvolution = groupViewpointChains(vpRows).length > 0
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
@@ -372,7 +375,7 @@ export default async function FieldSitePage({
           {memorySnapshot && <SiteMemoryCard snapshot={memorySnapshot} />}
 
           {/* 5 — Accès rapides : les vues du chantier (Visites / Réunions / Frise…). */}
-          <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} />
+          <SiteQuickAccessCard siteId={siteId} showDocuments={siteDocCount > 0} showEvolution={hasEvolution} />
 
           {/* 6 — Préparer : LE rituel « avant de partir ». Deux CTA proéminents,
               pas des cartes passives — c'est un MOMENT du parcours (« j'appuie
