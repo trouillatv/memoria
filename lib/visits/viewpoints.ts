@@ -31,6 +31,19 @@ function instant(c: ViewpointCaptureLite): number {
 }
 
 /**
+ * Échantillonne une série pour un EXPORT (bloc « Évolution » du CR) : le premier
+ * et le dernier TOUJOURS, jalons intermédiaires répartis uniformément. Le CR est
+ * un document de communication — 4 photos racontent la transformation mieux que 15.
+ */
+export function sampleSerie<T>(serie: T[], max = 4): T[] {
+  if (max < 2 || serie.length <= max) return [...serie]
+  const lastIdx = serie.length - 1
+  const idx = new Set<number>()
+  for (let i = 0; i < max; i++) idx.add(Math.round((i * lastIdx) / (max - 1)))
+  return [...idx].sort((a, b) => a - b).map((i) => serie[i])
+}
+
+/**
  * Regroupe ancres + reprises en séries. Une reprise orpheline (ancre supprimée
  * → viewpoint_of ON DELETE SET NULL, ou ancre écartée) est ignorée : une série
  * sans ancre n'a plus de sens à proposer.

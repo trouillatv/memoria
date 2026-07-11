@@ -90,6 +90,14 @@ const styles = StyleSheet.create({
   photoCapStrong: { fontFamily: 'Helvetica-Bold' },
   mediaNote: { fontSize: 9, color: COLORS.muted, marginTop: 2 },
 
+  // Évolution — même point de vue (mig 195) : une bande par série, ≤4 jalons.
+  evoBlock: { marginBottom: 8 },
+  evoLabel: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: COLORS.slate, marginBottom: 3 },
+  evoRow: { flexDirection: 'row' },
+  evoCell: { width: 120, marginRight: 8 },
+  evoPhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  evoDate: { fontSize: 7.5, color: COLORS.muted, marginTop: 2, textAlign: 'center' },
+
   // Carte des observations (schéma).
   map: { width: MAP_W, height: MAP_H, backgroundColor: '#f1f5f9', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, position: 'relative' },
   mapImage: { width: MAP_W, height: MAP_H, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5, objectFit: 'cover' },
@@ -362,6 +370,29 @@ export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exp
                 </View>
               ))}
             </View>
+          </View>
+        )}
+
+        {/* Évolution — même point de vue : la preuve de la TRANSFORMATION, dans
+            le document (le client n'a pas besoin d'ouvrir MemorIA). Des chapitres
+            (≤3 séries × ≤4 jalons), jamais une galerie. */}
+        {doc.evolutions.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Évolution — même point de vue" color={COLORS.accent} important />
+            {doc.evolutions.map((e, i) => (
+              <View key={i} style={styles.evoBlock} wrap={false}>
+                {e.label && <Text style={styles.evoLabel}>{e.label}</Text>}
+                <View style={styles.evoRow}>
+                  {e.items.map((p, j) => (
+                    <View key={j} style={styles.evoCell}>
+                      {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
+                      <Image src={p.url} style={styles.evoPhoto} />
+                      <Text style={styles.evoDate}>{p.dateLabel}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 

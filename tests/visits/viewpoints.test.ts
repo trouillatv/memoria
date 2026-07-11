@@ -3,7 +3,7 @@
 // TOUJOURS la photo la plus récente de la série (pas l'ancre d'origine).
 
 import { describe, it, expect } from 'vitest'
-import { groupViewpointChains, type ViewpointCaptureLite } from '@/lib/visits/viewpoints'
+import { groupViewpointChains, sampleSerie, type ViewpointCaptureLite } from '@/lib/visits/viewpoints'
 
 function cap(over: Partial<ViewpointCaptureLite> & { id: string; created_at: string }): ViewpointCaptureLite {
   return {
@@ -55,5 +55,22 @@ describe('groupViewpointChains', () => {
     const chains = groupViewpointChains([anchor])
     expect(chains[0].last.id).toBe('a1')
     expect(chains[0].shots).toBe(1)
+  })
+})
+
+describe('sampleSerie — jalons de l’export CR', () => {
+  it('série courte : renvoyée telle quelle', () => {
+    expect(sampleSerie([1, 2, 3], 4)).toEqual([1, 2, 3])
+  })
+  it('série longue : premier + dernier TOUJOURS, max jalons, ordre croissant', () => {
+    const serie = Array.from({ length: 15 }, (_, i) => i)
+    const out = sampleSerie(serie, 4)
+    expect(out).toHaveLength(4)
+    expect(out[0]).toBe(0)
+    expect(out[out.length - 1]).toBe(14)
+    expect([...out]).toEqual([...out].sort((a, b) => a - b))
+  })
+  it('deux photos suffisent à raconter (max=4, série de 2)', () => {
+    expect(sampleSerie(['avant', 'après'], 4)).toEqual(['avant', 'après'])
   })
 })

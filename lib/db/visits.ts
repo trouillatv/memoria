@@ -15,7 +15,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { groupViewpointChains, sampleSerie } from '@/lib/visits/viewpoints'
 import { listDecisionsBySite } from '@/lib/db/site-decisions'
 import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
@@ -1763,6 +1764,11 @@ export interface VisitCrDoc {
   photos: string[]
   /** Photos sélectionnées AVEC leur légende (commentaire de la capture). */
   photoItems: Array<{ url: string; caption: string | null }>
+  /** Bloc « Évolution — même point de vue » (mig 195) : les séries de photos de
+   *  référence TOUCHÉES par cette visite, échantillonnées (≤3 séries × ≤4 photos,
+   *  premier jour → aujourd'hui). Le client reçoit la transformation dans le CR,
+   *  sans ouvrir MemorIA. */
+  evolutions: Array<{ label: string | null; items: Array<{ url: string; dateLabel: string }> }>
   /** Positions GPS des captures — pour la carte des observations (schéma PDF +
    *  carte interactive sur l'écran). Enrichi de quoi construire un MapCapture. */
   positions: Array<{ id: string; kind: string; lat: number; lng: number; body: string | null; capturedAt: string }>
@@ -1961,6 +1967,30 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     userId,
   }).catch(() => null)
 
+  // ÉVOLUTION — le CR porte la transformation (mig 195) : pour chaque photo de
+  // référence dont la série a été TOUCHÉE par cette visite, une bande « même
+  // cadrage » du premier jour à aujourd'hui. ≤3 séries × ≤4 photos : des
+  // chapitres, jamais une galerie. Best-effort : ne bloque jamais le CR.
+  const evolutions: VisitCrDoc['evolutions'] = []
+  try {
+    const evoChains = groupViewpointChains(await listSiteViewpointRows(visit.site_id!))
+      .filter((c) => c.serie.length >= 2 && c.serie.some((r) => r.report_id === reportId))
+      .slice(0, 3)
+    const evoDateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' })
+    for (const chain of evoChains) {
+      const sampled = sampleSerie(chain.serie, 4)
+      const evoPreviews = await getVisitCapturePreviewUrls(sampled).catch(() => ({} as Record<string, { url: string; mime: string | null }>))
+      const items = sampled
+        .map((c) => {
+          const url = evoPreviews[c.id]?.url
+          return url ? { url, dateLabel: evoDateFmt.format(new Date(c.captured_at ?? c.created_at)) } : null
+        })
+        .filter((x): x is { url: string; dateLabel: string } => x !== null)
+      // Une « évolution » à moins de 2 photos ne raconte rien : on l'omet.
+      if (items.length >= 2) evolutions.push({ label: chain.label, items })
+    }
+  } catch { /* CR sans bloc évolution plutôt que pas de CR */ }
+
   return {
     siteName,
     clientName,
@@ -1979,6 +2009,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     actions: ctx.capturedActions,
     photos,
     photoItems,
+    evolutions,
     positions,
     photoCount: photoCaptures.length,
     videoCount,
