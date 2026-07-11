@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteReserve } from '@/lib/db/site-reserve'
 import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
+import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisitCrPhotoPlan, getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
 import {
   setCaptureTriage,
@@ -194,6 +195,54 @@ export async function resolveSuiteAction(
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }
+  }
+}
+
+// ── Promotion HUMAINE d'un point « à suivre » (mig 196) ─────────────────────
+// Un point de la liste « À vérifier » resté ouvert peut devenir un objet
+// chantier — sur DÉCISION du conducteur, jamais automatiquement.
+
+const promoteWatchSchema = z.object({
+  item_id: z.string().uuid(),
+  promote_to: z.enum(['action', 'reserve']),
+})
+
+export async function promoteWatchlistItemAction(
+  input: z.input<typeof promoteWatchSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = promoteWatchSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const supabase = createAdminClient()
+    const { data } = await supabase
+      .from('visit_watchlist_item')
+      .select('id, report_id, site_id, label, promoted_ref')
+      .eq('id', parsed.data.item_id)
+      .maybeSingle()
+    const item = data as { id: string; report_id: string; site_id: string; label: string; promoted_ref: string | null } | null
+    if (!item) return { ok: false, error: 'Point introuvable' }
+    if (item.promoted_ref) return { ok: true } // déjà promu : idempotent
+
+    let refId: string
+    if (parsed.data.promote_to === 'action') {
+      refId = await createSiteAction({
+        site_id: item.site_id, report_id: item.report_id, title: item.label,
+        created_by: auth.userId, created_from: 'visit_watchlist',
+      })
+    } else {
+      const reserve = await createSiteReserve({
+        siteId: item.site_id, label: item.label, location: null,
+        issuedBy: auth.userId, issuedOn: new Date().toISOString().slice(0, 10),
+        userId: auth.userId,
+      })
+      refId = reserve.id
+    }
+    await markWatchlistItemPromoted(item.id, parsed.data.promote_to, refId)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la promotion' }
   }
 }
 

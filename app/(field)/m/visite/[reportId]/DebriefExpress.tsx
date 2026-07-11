@@ -10,6 +10,8 @@ import { triageCaptureAction, untriageCaptureAction, refreshDebriefCapturesActio
 import { listVisitCapturePreviewsAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import { CaptureTriage } from './CaptureTriage'
 import { SuiteProposals } from './SuiteProposals'
+import { WatchlistDebrief } from './WatchlistDebrief'
+import type { DbVisitWatchlistItem } from '@/types/db'
 import { DeleteVisitButton } from './DeleteVisitButton'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
 import type { VisitImpact, VisitSuiteProposal } from '@/lib/db/visits'
@@ -34,6 +36,7 @@ export function DebriefExpress({
   previews: initialPreviews,
   impact,
   initialSuites,
+  watchlist = [],
 }: {
   reportId: string
   siteId: string
@@ -53,6 +56,8 @@ export function DebriefExpress({
   impact: VisitImpact | null
   /** Suites proposées (tags Action/Réserve à matérialiser au chantier). */
   initialSuites: VisitSuiteProposal[]
+  /** Liste « À vérifier » de la visite (mig 196) — réconciliée ici. */
+  watchlist?: DbVisitWatchlistItem[]
 }) {
   const router = useRouter()
   // Arrivée depuis « Clôturer » du Journal : on surligne le geste de fin —
@@ -242,6 +247,10 @@ export function DebriefExpress({
       {/* Conclusion métier — la SENSATION de fin, selon l'intention :
           Première → mémoire de référence · Suivi → évolution · AO → base d'analyse. */}
       {impact && <VisitImpactCard impact={impact} total={total} motive={motive} isPremiere={isPremiere} isAo={isAo} />}
+
+      {/* Fermeture de la liste « À vérifier » (mig 196) : bilan + points restés
+          ouverts + promotion humaine des « à suivre ». */}
+      <WatchlistDebrief items={watchlist} />
 
       {/* Suites à créer — les tags Action/Réserve deviennent des objets chantier
           (MemorIA propose, l'humain valide). */}

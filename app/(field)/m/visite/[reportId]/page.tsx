@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getVisit, buildVisitImpact, gatherVisitSuites, gatherVisitTextSuites } from '@/lib/db/visits'
+import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { DebriefExpress } from './DebriefExpress'
 
@@ -73,9 +74,10 @@ export default async function VisitDebriefPage({
   // Suites proposées : les tags Action/Réserve (déterministe) + ce que MemorIA a
   // COMPRIS des vocaux/notes (IA, texte seul, gatée). MemorIA propose, l'humain
   // décide — rien n'est créé sans validation. Les deux voies se complètent.
-  const [tagSuites, textSuites] = await Promise.all([
+  const [tagSuites, textSuites, watchlist] = await Promise.all([
     gatherVisitSuites(reportId).catch(() => []),
     gatherVisitTextSuites(reportId, user.id).catch(() => []),
+    listWatchlist(reportId).catch(() => []),
   ])
   const suites = [...tagSuites, ...textSuites]
 
@@ -92,6 +94,7 @@ export default async function VisitDebriefPage({
       previews={previews}
       impact={impact}
       initialSuites={suites}
+      watchlist={watchlist}
     />
   )
 }

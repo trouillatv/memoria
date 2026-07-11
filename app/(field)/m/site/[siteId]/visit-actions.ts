@@ -9,6 +9,9 @@ import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '@/lib/db/visits'
+import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
+import { buildWatchlistProposals } from '@/lib/visits/watchlist-proposals'
+import { seedWatchlist } from '@/lib/db/visit-watchlist'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -50,6 +53,18 @@ export async function startVisitAction(
       createdBy: auth.userId,
       motive: parsed.data.motive ?? null,
     })
+    // « À vérifier » (mig 196) : la liste de contrôle de CETTE visite est figée
+    // au démarrage — déterministe (signaux mémoire × motif), 1 à 7 points,
+    // silencieuse (friction zéro), best-effort (ne bloque JAMAIS le démarrage).
+    try {
+      const signals = await buildSiteMemorySignals(parsed.data.site_id)
+      await seedWatchlist({
+        reportId,
+        siteId: parsed.data.site_id,
+        createdBy: auth.userId,
+        proposals: buildWatchlistProposals(signals, parsed.data.motive ?? null),
+      })
+    } catch { /* une visite sans liste vaut mieux qu'une visite qui ne démarre pas */ }
     revalidatePath(`/m/site/${parsed.data.site_id}`)
     return { ok: true, reportId }
   } catch {

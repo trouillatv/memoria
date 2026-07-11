@@ -34,6 +34,7 @@ import { SitePresenceReminders } from './SitePresenceReminders'
 import { buildSitePresenceReminders } from '@/lib/db/site-presence'
 import { listVisitCaptures, listSiteViewpointRows, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { groupViewpointChains } from '@/lib/visits/viewpoints'
+import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
@@ -204,13 +205,16 @@ export default async function FieldSitePage({
   // Points de repère (mig 195) : séries « même cadrage » du chantier, avec l'URL
   // signée de la DERNIÈRE photo de chaque série (le fantôme de la reprise).
   let visitViewpoints: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }> = []
+  let visitWatchlist: Awaited<ReturnType<typeof listWatchlist>> = []
   if (activeVisit) {
-    const [subs, caps, summaries, vpRows] = await Promise.all([
+    const [subs, caps, summaries, vpRows, watch] = await Promise.all([
       listOpenSiteSubjectsLite(siteId).catch(() => []),
       listVisitCaptures(activeVisit.id).catch(() => []),
       listSubjectsBySite(siteId).catch(() => []),
       listSiteViewpointRows(siteId).catch(() => []),
+      listWatchlist(activeVisit.id).catch(() => []),
     ])
+    visitWatchlist = watch
     visitSubjects = subs
     visitCaptures = caps
     const chains = groupViewpointChains(vpRows)
@@ -332,6 +336,7 @@ export default async function FieldSitePage({
             subjectMemory={subjectMemory}
             initialCaptures={visitCaptures}
             viewpoints={visitViewpoints}
+            watchlist={visitWatchlist}
           />
         </div>
       ) : (

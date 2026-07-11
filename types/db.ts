@@ -546,6 +546,31 @@ export interface DbSiteReportProposal {
   created_at: string
 }
 
+// Liste « À vérifier » d'une visite (mig 196) — ARTEFACT DE SESSION, pas un
+// objet métier. pending = pas encore statué (jamais « non vérifié ») ;
+// verified / to_follow / dismissed = les 3 décisions. Promotion MANUELLE d'un
+// to_follow en action/réserve (promoted_to/promoted_ref), jamais automatique.
+export type WatchlistItemState = 'pending' | 'verified' | 'to_follow' | 'dismissed'
+
+export interface DbVisitWatchlistItem {
+  id: string
+  report_id: string
+  site_id: string
+  organization_id: string | null
+  label: string
+  position: number
+  state: WatchlistItemState
+  note: string | null
+  source_kind: string | null
+  source_ref: string | null
+  capture_id: string | null
+  promoted_to: 'action' | 'reserve' | null
+  promoted_ref: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // Action ouverte (migration 099) — nouvel objet central. Une réunion produit
 // d'abord des actions ouvertes ; seules certaines deviennent des interventions
 // planifiées. open → planned (→ intervention) → done. Regroupée par corps d'état.

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin, Eye, ListChecks, Plus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -24,6 +24,8 @@ import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { GhostCamera } from './GhostCamera'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
+import { setWatchlistItemStateAction, addWatchlistItemAction } from './watchlist-actions'
+import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { createClient } from '@/lib/supabase/client'
@@ -75,6 +77,7 @@ export function VisitBasket({
   subjectMemory,
   initialCaptures,
   viewpoints = [],
+  watchlist = [],
 }: {
   reportId: string
   siteId: string
@@ -88,6 +91,8 @@ export function VisitBasket({
   initialCaptures: VisitCaptureRow[]
   /** Points de repère du chantier (mig 195) : séries « même cadrage » à reprendre. */
   viewpoints?: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }>
+  /** Liste « À vérifier » de CETTE visite (mig 196) — figée au démarrage. */
+  watchlist?: DbVisitWatchlistItem[]
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -101,7 +106,7 @@ export function VisitBasket({
   // Lot B — captures déposées localement, pas encore confirmées par le serveur.
   // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
   const [pending, setPending] = useState<PendingCapture[]>([])
-  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question'>('none')
+  const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question' | 'watch' | 'lastlook'>('none')
   // Caméra fantôme (mig 195) : point de repère en cours de reprise, ou null.
   const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
   // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
@@ -580,8 +585,45 @@ export function VisitBasket({
     })
   }
 
+  // ── « À vérifier » (mig 196) : la liste de contrôle de CETTE visite ─────────
+  // 3 décisions (Vérifié / À suivre / Sans objet), optimistes. Jamais bloquant,
+  // jamais de rappel permanent — un bouton compact, un panneau à la demande.
+  const [watchItems, setWatchItems] = useState<DbVisitWatchlistItem[]>(watchlist ?? [])
+  const [watchNewLabel, setWatchNewLabel] = useState('')
+  const pendingWatch = watchItems.filter((w) => w.state === 'pending')
+  // Le dernier regard ne se pose QU'UNE fois — jamais une app qui harcèle.
+  const lastLookAskedRef = useRef(false)
+
+  function decideWatch(item: DbVisitWatchlistItem, state: WatchlistItemState) {
+    setWatchItems((prev) => prev.map((w) => (w.id === item.id ? { ...w, state } : w)))
+    setWatchlistItemStateAction({ item_id: item.id, state })
+      .then((r) => { if (!r.ok) toast.error(r.error) })
+      .catch(() => toast.error('Échec'))
+  }
+  function addWatch() {
+    const label = watchNewLabel.trim()
+    if (!label) return
+    setWatchNewLabel('')
+    addWatchlistItemAction({ report_id: reportId, site_id: siteId, label })
+      .then((r) => {
+        if (r.ok) setWatchItems((prev) => [...prev, r.item])
+        else toast.error(r.error)
+      })
+      .catch(() => toast.error('Échec'))
+  }
+
   // ── Terminer la visite ──────────────────────────────────────────────────────
   function end() {
+    // LE DERNIER REGARD — une seule question, jamais plusieurs : s'il reste des
+    // points non statués, on montre le premier avant de partir. Une fois.
+    if (!lastLookAskedRef.current && pendingWatch.length > 0) {
+      lastLookAskedRef.current = true
+      setOverlay('lastlook')
+      return
+    }
+    doEnd()
+  }
+  function doEnd() {
     // Visite SANS le moindre élément — ni en base (kept), ni dans la file hors-ligne
     // (pending / queued). On est le SEUL endroit à savoir la file vide, donc le seul
     // à pouvoir l'affirmer sans risque d'effacer du travail non synchronisé. Une
@@ -674,6 +716,25 @@ export function VisitBasket({
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
         <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={openVerify} />
       </div>
+      {/* « À vérifier · N » (mig 196) — accès COMPACT à la liste de contrôle de
+          cette visite. Jamais affichée en permanence : un tap l'ouvre, on décide,
+          on revient à la capture. */}
+      {watchItems.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOverlay('watch')}
+          data-testid="watchlist-chip"
+          className="flex w-full items-center justify-between rounded-xl border border-amber-300 bg-amber-50/60 px-3 py-2 text-sm font-medium text-amber-900 active:scale-[0.99] dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200"
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <ListChecks className="h-4 w-4" /> À vérifier
+          </span>
+          <span className="tabular-nums">
+            {pendingWatch.length > 0 ? `${pendingWatch.length} restant${pendingWatch.length > 1 ? 's' : ''}` : 'tout est vu ✓'}
+          </span>
+        </button>
+      )}
+
       {/* Points de repère (mig 195) : « reprends exactement le même point de vue ».
           Un tap ouvre la caméra avec le FANTÔME de la dernière photo en
           surimpression — on cadre, on déclenche, la série continue. */}
@@ -903,6 +964,82 @@ export function VisitBasket({
         </div>
       )}
 
+      {/* Panneau « À vérifier » — les 3 décisions par point + ajout manuel. */}
+      {overlay === 'watch' && (
+        <Overlay title="À vérifier pendant cette visite" icon={<ListChecks className="h-4 w-4" />} onClose={() => setOverlay('none')}>
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+            {watchItems.map((w) => (
+              <div key={w.id} className="space-y-1.5 rounded-lg border p-2.5" data-testid="watchlist-item">
+                <p className={`text-sm leading-snug ${w.state !== 'pending' ? 'text-muted-foreground' : ''}`}>{w.label}</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <WatchStateButton
+                    active={w.state === 'verified'} icon={<Check className="h-3.5 w-3.5" />} label="Vérifié"
+                    activeCls="border-emerald-600 bg-emerald-600 text-white"
+                    onClick={() => decideWatch(w, w.state === 'verified' ? 'pending' : 'verified')}
+                  />
+                  <WatchStateButton
+                    active={w.state === 'to_follow'} icon={<Eye className="h-3.5 w-3.5" />} label="À suivre"
+                    activeCls="border-amber-500 bg-amber-500 text-white"
+                    onClick={() => decideWatch(w, w.state === 'to_follow' ? 'pending' : 'to_follow')}
+                  />
+                  <WatchStateButton
+                    active={w.state === 'dismissed'} icon={<X className="h-3.5 w-3.5" />} label="Sans objet"
+                    activeCls="border-slate-500 bg-slate-500 text-white"
+                    onClick={() => decideWatch(w, w.state === 'dismissed' ? 'pending' : 'dismissed')}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Ajout manuel — « et vérifie aussi… ». */}
+          <div className="flex gap-1.5">
+            <input
+              value={watchNewLabel}
+              onChange={(e) => setWatchNewLabel(e.target.value)}
+              placeholder="Ajouter un point à vérifier…"
+              maxLength={300}
+              className="w-full rounded-lg border border-input bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              type="button" onClick={addWatch} disabled={!watchNewLabel.trim()}
+              aria-label="Ajouter" className="shrink-0 rounded-lg border px-3 disabled:opacity-40"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </Overlay>
+      )}
+
+      {/* LE DERNIER REGARD — une seule question avant de partir, jamais dix. */}
+      {overlay === 'lastlook' && pendingWatch[0] && (
+        <Overlay title="Un dernier point" icon={<Eye className="h-4 w-4" />} onClose={() => { setOverlay('none'); doEnd() }}>
+          <p className="text-sm leading-snug">
+            Avant de partir — <span className="font-medium">{pendingWatch[0].label}</span>
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            <WatchStateButton
+              icon={<Check className="h-3.5 w-3.5" />} label="Vérifié" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'verified'); setOverlay('none'); doEnd() }}
+            />
+            <WatchStateButton
+              icon={<Eye className="h-3.5 w-3.5" />} label="À suivre" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'to_follow'); setOverlay('none'); doEnd() }}
+            />
+            <WatchStateButton
+              icon={<X className="h-3.5 w-3.5" />} label="Sans objet" activeCls=""
+              onClick={() => { decideWatch(pendingWatch[0], 'dismissed'); setOverlay('none'); doEnd() }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => { setOverlay('none'); doEnd() }}
+            className="w-full py-1.5 text-center text-xs text-muted-foreground"
+          >
+            Terminer sans répondre
+          </button>
+        </Overlay>
+      )}
+
       {/* Caméra fantôme — la photo précédente en surimpression, on aligne, on
           déclenche. Repli : appareil natif, la reprise reste chaînée. */}
       {ghost && (
@@ -1098,6 +1235,23 @@ function SubjectMemoryBlock({ mem }: { mem: SubjectMemoryLite | undefined }) {
         </p>
       )}
     </div>
+  )
+}
+
+function WatchStateButton({
+  icon, label, onClick, active, activeCls,
+}: {
+  icon: React.ReactNode; label: string; onClick: () => void; active?: boolean; activeCls: string
+}) {
+  return (
+    <button
+      type="button" onClick={onClick}
+      className={`inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium active:scale-[0.98] transition-transform ${
+        active ? activeCls : 'border-border bg-background text-muted-foreground'
+      }`}
+    >
+      {icon} {label}
+    </button>
   )
 }
 
