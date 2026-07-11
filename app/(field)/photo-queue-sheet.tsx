@@ -276,10 +276,10 @@ export function PhotoQueueSheet({
                 aria-hidden
               />
               <p className="text-sm font-medium text-foreground">
-                Toutes vos captures sont synchronisées
+                Tout est arrivé.
               </p>
               <p className="text-xs text-muted-foreground">
-                Rien à envoyer pour le moment.
+                Vos captures sont sur le serveur, en sécurité.
               </p>
             </div>
           ) : (
@@ -300,13 +300,17 @@ export function PhotoQueueSheet({
           {activity.recentlySent.length > 0 && (
             <div className="border-t px-4 py-2.5">
               <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Envoyé à l&apos;instant
+                Bien arrivé
               </p>
               <ul className="space-y-1">
                 {activity.recentlySent.map((r, i) => (
                   <li key={i} data-testid="recently-sent-row" className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
-                    <span className="truncate">{r.kindLabel}{r.siteName ? ` — ${r.siteName}` : ''}</span>
+                    {/* « Photo arrivée » — un fait accompli, pas un état à interpréter. */}
+                    <span className="truncate">
+                      {r.kindLabel} {r.kindLabel === 'Vocal' ? 'arrivé' : 'arrivée'}
+                      {r.siteName ? ` — ${r.siteName}` : ''}
+                    </span>
                   </li>
                 ))}
               </ul>

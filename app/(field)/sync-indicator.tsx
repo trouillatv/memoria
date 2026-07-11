@@ -22,7 +22,9 @@ import { useSyncStatus } from '@/lib/field/sync-status'
 import { PhotoQueueSheet } from './photo-queue-sheet'
 
 const LABELS = {
-  green:   'Tout est envoyé',
+  // « Arrivé » (certitude côté mémoire) plutôt qu'« envoyé » (geste du
+  // téléphone) : la pastille dit ce qui EST, pas ce qu'on a tenté.
+  green:   'Tout est arrivé',
   yellow:  'en attente',
   red:     'à renvoyer',
   unknown: 'Synchronisation',
@@ -42,11 +44,11 @@ export function SyncIndicator() {
 
   const ariaLabel = isPending
     ? `${pendingCount} ${pendingCount > 1 ? 'captures en attente' : 'capture en attente'} d'envoi. Voir la file de synchronisation.`
-    : 'Toutes vos captures sont synchronisées. Voir la file de synchronisation.'
+    : 'Toutes vos captures sont arrivées. Voir la file de synchronisation.'
 
   const tooltip = isPending
     ? `${pendingCount} ${pendingCount > 1 ? 'captures en attente' : 'capture en attente'} d'envoi`
-    : 'Tout est synchronisé'
+    : 'Tout est arrivé'
 
   return (
     <PhotoQueueSheet

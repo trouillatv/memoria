@@ -93,7 +93,7 @@ describe('PhotoQueueSheet — empty state', () => {
       expect(screen.getByTestId('photo-queue-empty')).toBeInTheDocument()
     })
     expect(
-      screen.getByText(/toutes vos captures sont synchronisées/i),
+      screen.getByText(/tout est arrivé/i),
     ).toBeInTheDocument()
 
     // Pas de bouton "Re-essayer maintenant" dans l'empty state
@@ -176,7 +176,7 @@ describe('PhotoQueueSheet — file vivante (envoyé à l’instant)', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('recently-sent-row').length).toBeGreaterThanOrEqual(1)
     })
-    expect(screen.getByText(/vocal — cuisine petratiti/i)).toBeInTheDocument()
+    expect(screen.getByText(/vocal arrivé — cuisine petratiti/i)).toBeInTheDocument()
   })
 })
 
