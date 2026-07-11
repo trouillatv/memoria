@@ -25,6 +25,7 @@ import {
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
+import { beginLiveUpload, endLiveUpload } from '@/lib/field/live-uploads'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { createClient } from '@/lib/supabase/client'
@@ -313,12 +314,19 @@ export function VisitBasket({
     }
     const clientUuid = crypto.randomUUID()
     const previewUrl = URL.createObjectURL(file)
-    setPending((prev) => [...prev, { clientUuid, kind: 'video', previewUrl, takenAt: Date.now() }])
-    const dropPending = () => setPending((prev) => {
-      const f = prev.find((p) => p.clientUuid === clientUuid)
-      if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl)
-      return prev.filter((p) => p.clientUuid !== clientUuid)
-    })
+    const takenAt = Date.now()
+    setPending((prev) => [...prev, { clientUuid, kind: 'video', previewUrl, takenAt }])
+    // La vidéo n'entre dans AUCUNE file (upload direct) : on la signale au registre
+    // des uploads directs pour que l'indicateur de synchro du header la reflète.
+    beginLiveUpload({ id: clientUuid, kind: 'video', previewUrl, takenAt })
+    const dropPending = () => {
+      endLiveUpload(clientUuid)
+      setPending((prev) => {
+        const f = prev.find((p) => p.clientUuid === clientUuid)
+        if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl)
+        return prev.filter((p) => p.clientUuid !== clientUuid)
+      })
+    }
     ;(async () => {
       const pos = await getOneShotPosition()
       const prep = await createVisitVideoUploadAction({ report_id: reportId, client_uuid: clientUuid })
