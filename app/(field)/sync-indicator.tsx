@@ -27,7 +27,7 @@ const LABELS = {
   green:   'Tout est arrivé',
   yellow:  'en attente',
   red:     'à renvoyer',
-  unknown: 'Synchronisation',
+  unknown: 'Vérification…',
 } as const
 
 const COLORS = {

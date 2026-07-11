@@ -92,9 +92,8 @@ describe('PhotoQueueSheet — empty state', () => {
     await waitFor(() => {
       expect(screen.getByTestId('photo-queue-empty')).toBeInTheDocument()
     })
-    expect(
-      screen.getByText(/tout est arrivé/i),
-    ).toBeInTheDocument()
+    // « Tout est arrivé » apparaît en titre ET dans l'état vide — les deux sont voulus.
+    expect(screen.getAllByText(/tout est arrivé/i).length).toBeGreaterThanOrEqual(1)
 
     // Pas de bouton "Re-essayer maintenant" dans l'empty state
     expect(screen.queryByTestId('photo-queue-retry')).not.toBeInTheDocument()

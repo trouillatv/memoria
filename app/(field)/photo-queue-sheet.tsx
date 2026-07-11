@@ -257,11 +257,13 @@ export function PhotoQueueSheet({
         data-testid="photo-queue-sheet"
       >
         <DrawerHeader>
-          <DrawerTitle>Synchronisation</DrawerTitle>
+          {/* Aucun mot de développeur ici : l'utilisateur ne « regarde pas la
+              synchronisation », il vérifie que ses photos sont bien arrivées. */}
+          <DrawerTitle>{empty ? 'Tout est arrivé' : 'En route'}</DrawerTitle>
           <DrawerDescription>
             {empty
-              ? 'Tout est à jour sur le serveur.'
-              : `File : ${entries.length} élément${entries.length > 1 ? 's' : ''} — en sécurité sur cet appareil, envoyés dès que possible.`}
+              ? 'Vos captures sont à l’abri dans la mémoire du chantier.'
+              : `${entries.length} élément${entries.length > 1 ? 's' : ''} — à l’abri sur ce téléphone, ils partent dès que possible.`}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -279,7 +281,7 @@ export function PhotoQueueSheet({
                 Tout est arrivé.
               </p>
               <p className="text-xs text-muted-foreground">
-                Vos captures sont sur le serveur, en sécurité.
+                À l&apos;abri dans la mémoire du chantier.
               </p>
             </div>
           ) : (
