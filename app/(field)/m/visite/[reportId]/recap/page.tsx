@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText,
+  Camera, Video, Mic, Pencil, Target, MapPin, Star, Clock, FileText, ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { visitIntentLabel } from '@/lib/field/visit-intents'
@@ -121,9 +121,36 @@ export default async function VisitRecapPage({
       memory={memory}
       patrimoine={patrimoine}
     >
-      {/* Onglet 1 — « Cette visite » : le corps du récap (l'en-tête chantier et
-          la conclusion sont fournis par la grammaire commune des onglets). */}
+      {/* Onglet 1 — « Captures » : la TRACE complète de la session (l'en-tête
+          chantier et la conclusion viennent de la grammaire commune des onglets). */}
       <div className="space-y-4">
+      {/* Deux lectures d'une même visite — on lève la confusion CR ↔ trace :
+          le compte-rendu est une PROJECTION éditoriale (relue, synthétisée,
+          destinée à être transmise) ; ici, c'est la TRACE exhaustive (tout ce
+          qui a été capturé, y compris ce qui n'est pas repris dans le CR). */}
+      <div className="rounded-2xl border bg-muted/20 p-3">
+        <p className="text-[13px] font-medium">Deux lectures de cette visite</p>
+        <div className="mt-2 space-y-1.5">
+          <Link
+            href={`/m/visite/${reportId}/cr`}
+            className="flex items-center gap-2.5 rounded-xl border bg-background px-3 py-2.5 active:bg-accent"
+          >
+            <FileText className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Compte-rendu</span>
+              <span className="block text-[12px] text-muted-foreground">Le document relu, structuré et partageable.</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </Link>
+          <div className="flex items-center gap-2.5 rounded-xl border border-emerald-300 bg-emerald-50/50 px-3 py-2.5 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <Camera className="h-4 w-4 shrink-0 text-emerald-700" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Toutes les captures <span className="font-normal text-muted-foreground">· vous y êtes</span></span>
+              <span className="block text-[12px] text-muted-foreground">Photos, vidéos, vocaux, notes et décisions — la trace complète.</span>
+            </span>
+          </div>
+        </div>
+      </div>
       <p className="text-[13px] text-muted-foreground first-letter:uppercase">
         {dateLabel}
         {durLabel && (
@@ -185,15 +212,10 @@ export default async function VisitRecapPage({
         </ul>
       )}
 
-      {/* Actions d'une visite CONSULTÉE : voir le compte-rendu (aperçu + export)
-          et le partager. Pas de « reprendre » — la visite est figée. */}
-      <div className="grid grid-cols-2 gap-2 pt-2">
-        <Link
-          href={`/m/visite/${reportId}/cr`}
-          className="flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background"
-        >
-          <FileText className="h-4 w-4" /> Compte-rendu
-        </Link>
+      {/* Action de partage — le compte-rendu (le document transmissible) est déjà
+          proposé en tête via la distinction des deux lectures ; on ne le duplique
+          pas ici. Pas de « reprendre » — la visite est figée. */}
+      <div className="grid grid-cols-1 pt-2">
         <VisitShareButton reportId={reportId} siteName={siteName} />
       </div>
       </div>

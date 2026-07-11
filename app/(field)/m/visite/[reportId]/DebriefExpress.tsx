@@ -300,9 +300,10 @@ export function DebriefExpress({
         <DeleteVisitButton reportId={reportId} />
       </div>
 
-      {/* Le POINT FINAL : un seul geste pour VALIDER DÉFINITIVEMENT la visite.
-          On sépare la clôture (l'écran de fin) de la consultation (la récap) —
-          plus d'état intermédiaire « je suis fini mais je peux continuer ». */}
+      {/* Le POINT FINAL : un seul geste pour VALIDER DÉFINITIVEMENT la visite,
+          puis on atterrit sur le compte-rendu (la récompense). La clôture et la
+          consultation sont réunies sur un seul écran — plus de détour par un
+          « C'est terminé » qui casse le rythme avant de voir son travail. */}
       <div className="fixed inset-x-0 bottom-0 border-t bg-background/95 p-3 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-md space-y-2">
           {/* Garde-fou (F12) : une capture non triée est gardée en Mémoire — et
@@ -349,7 +350,13 @@ export function DebriefExpress({
                     toast.error(result.error ?? 'La visite n’a pas pu être terminée — réessayez.')
                     return
                   }
-                  router.push(`/m/visite/${reportId}/fin`)
+                  // Récompense immédiate : on arrive DIRECTEMENT sur le
+                  // compte-rendu (carte, résumé, PDF) — le plus bel écran ne se
+                  // mérite plus après deux détours. `?done=1` bascule le CR en
+                  // mode « clôture » (confirmation + actions de sortie).
+                  // `replace` (et non `push`) : la visite est clôturée, le retour
+                  // arrière Android ne doit PAS ramener sur ce débrief figé.
+                  router.replace(`/m/visite/${reportId}/cr?done=1`)
                 } catch {
                   toast.error('La visite n’a pas pu être terminée (connexion ?). Rien n’est perdu — réessayez.')
                 }
