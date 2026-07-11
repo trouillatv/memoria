@@ -49,7 +49,25 @@ function provenanceLine(digest: OrgMorningDigest): string {
   ].join(' · ')
 }
 
-export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
+interface MorningHeroProps {
+  digest: OrgMorningDigest
+  /** Base des liens chantier — '/sites' (dashboard) ou '/m/site' (terrain). */
+  siteHrefBase?: string
+  /** Destination du CTA. Défaut dashboard : premier chantier focus, sinon
+   *  /aujourdhui. Sur /m : le Journal (règle « mobile → Journal »). */
+  ctaHref?: string
+  ctaLabel?: string
+  /** Destination du lien en silence vert (défaut /aujourdhui ; /m : Journal). */
+  quietHref?: string
+}
+
+export function MorningHero({
+  digest,
+  siteHrefBase = '/sites',
+  ctaHref: ctaHrefProp,
+  ctaLabel: ctaLabelProp,
+  quietHref = '/aujourdhui',
+}: MorningHeroProps) {
   const totalSites = digest.sites.length
   const chantiersRelus = totalSites === 1 ? 'ton chantier' : `tes ${totalSites} chantiers`
 
@@ -71,7 +89,7 @@ export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
               {provenanceLine(digest)} — rien ne réclame ton attention ce matin.
             </p>
             <Link
-              href="/aujourdhui"
+              href={quietHref}
               className="inline-block mt-2 text-sm font-medium text-primary hover:underline"
             >
               Voir ma journée →
@@ -88,7 +106,11 @@ export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
   const othersWithSignals = sitesWithSignals.length - focus.length
   const k = sitesWithSignals.length
   const attention = k === 1 ? 'Un réclame ton attention.' : `${nWord(k)} réclament ton attention.`
-  const ctaHref = focus.length > 0 ? `/sites/${focus[0].siteId}` : '/aujourdhui'
+  const ctaHref = ctaHrefProp ?? (focus.length > 0 ? `${siteHrefBase}/${focus[0].siteId}` : quietHref)
+  const ctaLabel = ctaLabelProp
+    ?? (focus.length > 0 && focus[0].siteName && !ctaHrefProp
+      ? `Commencer ma journée — ${focus[0].siteName} →`
+      : 'Commencer ma journée →')
 
   const restParts: string[] = []
   if (othersWithSignals > 0) {
@@ -119,7 +141,7 @@ export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
 
       <div className="mt-4 space-y-0">
         {focus.map((f) => (
-          <MorningFocusBlock key={f.siteId} focus={f} digest={digest} />
+          <MorningFocusBlock key={f.siteId} focus={f} digest={digest} siteHrefBase={siteHrefBase} />
         ))}
       </div>
 
@@ -135,15 +157,13 @@ export function MorningHero({ digest }: { digest: OrgMorningDigest }) {
         href={ctaHref}
         className="mt-4 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
       >
-        {focus.length > 0 && focus[0].siteName
-          ? `Commencer ma journée — ${focus[0].siteName} →`
-          : 'Commencer ma journée →'}
+        {ctaLabel}
       </Link>
     </section>
   )
 }
 
-function MorningFocusBlock({ focus, digest }: { focus: MorningFocusItem; digest: OrgMorningDigest }) {
+function MorningFocusBlock({ focus, digest, siteHrefBase = '/sites' }: { focus: MorningFocusItem; digest: OrgMorningDigest; siteHrefBase?: string }) {
   const site = digest.sites.find((s) => s.siteId === focus.siteId)
   const otherSignals = (site?.signals ?? []).filter((s) => s !== focus.signal)
   const items = focus.signal.items.slice(0, 2)
@@ -152,7 +172,7 @@ function MorningFocusBlock({ focus, digest }: { focus: MorningFocusItem; digest:
   return (
     <div className="border-t border-border/60 py-3 first:border-t-0 first:pt-1">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <Link href={`/sites/${focus.siteId}`} className="font-semibold text-sm hover:underline">
+        <Link href={`${siteHrefBase}/${focus.siteId}`} className="font-semibold text-sm hover:underline">
           {focus.siteName ?? 'Chantier'}
         </Link>
         <span className="text-sm text-muted-foreground">— {focus.signal.title}</span>

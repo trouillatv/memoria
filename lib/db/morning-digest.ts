@@ -116,6 +116,42 @@ export async function getMyOrgMorningDigest(date = todayLocalIso()): Promise<Org
   return getOrgMorningDigest(orgId, date)
 }
 
+/** Le digest du matin restreint à DES chantiers (le Matin sur /m : les
+ *  chantiers de CELUI qui regarde, jamais l'organisation entière — même
+ *  doctrine de scope que le Journal terrain). */
+export async function getMorningDigestForSites(
+  siteIds: string[],
+  date = todayLocalIso(),
+): Promise<OrgMorningDigest | null> {
+  if (siteIds.length === 0) return null
+  const { data } = await createAdminClient()
+    .from('site_morning_digest')
+    .select('site_id, digest_date, signals, signal_count, computed_at, sites(name)')
+    .in('site_id', siteIds)
+    .eq('digest_date', date)
+    .order('signal_count', { ascending: false })
+  const rows = data ?? []
+  if (rows.length === 0) return null
+  const sites: SiteMorningDigestRow[] = rows.map((r) => {
+    const site = r.sites as { name?: string | null } | { name?: string | null }[] | null
+    const siteName = Array.isArray(site) ? (site[0]?.name ?? null) : (site?.name ?? null)
+    return {
+      siteId: r.site_id as string,
+      siteName,
+      digestDate: r.digest_date as string,
+      signals: (r.signals ?? []) as MemorySignal[],
+      signalCount: (r.signal_count as number) ?? 0,
+      computedAt: r.computed_at as string,
+    }
+  })
+  return {
+    date,
+    sites,
+    totalSignals: sites.reduce((n, s) => n + s.signalCount, 0),
+    computedAt: sites.reduce<string | null>((max, s) => (max && max > s.computedAt ? max : s.computedAt), null),
+  }
+}
+
 /** Le digest du matin pour UN chantier (page site / préparation de visite). */
 export async function getSiteMorningDigest(siteId: string, date = todayLocalIso()): Promise<SiteMorningDigestRow | null> {
   const { data } = await createAdminClient()

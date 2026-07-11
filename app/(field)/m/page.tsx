@@ -20,6 +20,8 @@ import { listActiveVisitsForUser, listPendingTriageForUser, getRecentActivityFor
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
+import { getMorningDigestForSites, getOrgMorningDigest } from '@/lib/db/morning-digest'
+import { MorningHero } from '@/app/(dashboard)/dashboard/MorningHero'
 
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s
@@ -588,6 +590,19 @@ export default async function FieldHomePage({
     getRecentActivityForUser(user.id).catch(() => []),
   ])
 
+  // LE MATIN sur /m (la Nuit → une apparition, tranche « mobile » de la fiche
+  // Nuit) : le digest nocturne des chantiers de CELUI qui regarde — jamais
+  // l'organisation entière, sauf superviseur sans chantier assigné (même repli
+  // que le Journal). Aujourd'hui seulement ; pas de digest → rien (aucune
+  // régression). Règle validée : sur mobile, le CTA mène au Journal.
+  const morningDigest = isToday
+    ? agentSiteIds.length > 0
+      ? await getMorningDigestForSites(agentSiteIds).catch(() => null)
+      : (user.role === 'admin' || user.role === 'manager') && user.organization_id
+        ? await getOrgMorningDigest(user.organization_id).catch(() => null)
+        : null
+    : null
+
   // Narratif : on ouvre sur une salutation + la journée — une feuille de route,
   // pas un tableau de bord. « Qu'est-ce que je fais maintenant ? », pas des chiffres.
   const firstName = user.full_name?.trim().split(/\s+/)[0] || user.email?.split('@')[0] || ''
@@ -599,6 +614,17 @@ export default async function FieldHomePage({
         <h1 className="text-2xl font-bold leading-tight">Bonjour{firstName ? ` ${firstName}` : ''}</h1>
         <p className="text-sm text-muted-foreground first-letter:uppercase">{greetingDate}</p>
       </header>
+
+      {/* Le Matin — la Nuit rend compte à l'ouverture de la journée. */}
+      {morningDigest && (
+        <MorningHero
+          digest={morningDigest}
+          siteHrefBase="/m/site"
+          ctaHref="/m/planning"
+          ctaLabel="Commencer ma journée →"
+          quietHref="/m/planning"
+        />
+      )}
 
       <DateNav todayIso={todayIso} selectedIso={selectedDate} />
 
