@@ -13,6 +13,7 @@ import {
   type QueuedPhoto,
 } from '@/lib/field/photo-queue'
 import { emitSyncEvent } from '@/lib/field/sync-events'
+import { reportUploadStart, reportUploadEnd, reportUploadSuccess } from '@/lib/field/sync-status'
 
 /**
  * V5.1 (2026-05-14) — Hook unifié drain de la queue IndexedDB.
@@ -88,11 +89,13 @@ export function usePhotoUploader() {
         if (!isReadyForRetry(photo)) continue
 
         const attemptStartedAt = Date.now()
+        reportUploadStart(photo.tempId)
         try {
           const result = await uploadOne(photo)
           if (result.ok) {
             await removeQueuedPhoto(photo.tempId)
             successCount += 1
+            reportUploadSuccess({ kindLabel: 'Photo', siteName: photo.siteName })
             router.refresh()
           } else {
             const nextAttempts = photo.attempts + 1
@@ -114,6 +117,7 @@ export function usePhotoUploader() {
           hadFailure = true
           lastFailureAttempts = Math.max(lastFailureAttempts, nextAttempts)
         }
+        reportUploadEnd(photo.tempId)
       }
 
       const remaining = await listQueuedPhotos()

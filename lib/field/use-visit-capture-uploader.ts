@@ -11,7 +11,14 @@ import {
   updateQueuedVisitCapture,
   LIGHT_VISIT_KINDS,
   type QueuedVisitCapture,
+  type QueuedVisitKind,
 } from '@/lib/field/visit-capture-queue'
+import { reportUploadStart, reportUploadEnd, reportUploadSuccess } from '@/lib/field/sync-status'
+
+// Libellés lisibles pour la file de sync vivante (« Vocal — Cuisine Petratiti »).
+const KIND_LABELS: Record<QueuedVisitKind, string> = {
+  photo: 'Photo', video: 'Vidéo', vocal: 'Vocal', note: 'Note', verification: 'Vérification', position: 'Position',
+}
 
 /**
  * Drain de la file IndexedDB des captures de visite (Lot B). Deux usages :
@@ -64,6 +71,7 @@ export function useVisitCaptureUploader(opts?: {
         if (item.kind === 'video') { await removeQueuedVisitCapture(item.tempId); continue }
         if (!isReadyForRetry(item)) continue
         setUploadingUuid(item.clientUuid)
+        reportUploadStart(item.tempId)
         const startedAt = Date.now()
         try {
           let r: Awaited<ReturnType<typeof drainVisitCaptureAction>> | Awaited<ReturnType<typeof drainLightCaptureAction>>
@@ -96,6 +104,7 @@ export function useVisitCaptureUploader(opts?: {
           if (r.ok) {
             await removeQueuedVisitCapture(item.tempId)
             success++
+            reportUploadSuccess({ kindLabel: KIND_LABELS[item.kind] ?? 'Capture', siteName: item.siteName })
             // Vocal : on déclenche la transcription de fond (cf. kickCaptureProcessing).
             if (r.kind === 'vocal') {
               fetch('/api/visit-captures/process', {
@@ -125,6 +134,7 @@ export function useVisitCaptureUploader(opts?: {
           })
         } finally {
           setUploadingUuid(null)
+          reportUploadEnd(item.tempId)
         }
       }
 

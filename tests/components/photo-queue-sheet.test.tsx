@@ -49,6 +49,7 @@ vi.mock('sonner', () => ({
 }))
 
 import { PhotoQueueSheet } from '@/app/(field)/photo-queue-sheet'
+import { reportUploadSuccess } from '@/lib/field/sync-status'
 
 function makeEntry(overrides: Partial<QueuedPhoto> = {}): QueuedPhoto {
   return {
@@ -156,6 +157,26 @@ describe('PhotoQueueSheet — geste léger en attente (PR-2)', () => {
     })
     // Type + chantier lisibles — la ligne est identifiable sans média.
     expect(screen.getByText(/note — cuisine petratiti/i)).toBeInTheDocument()
+  })
+})
+
+describe('PhotoQueueSheet — file vivante (envoyé à l’instant)', () => {
+  it('un envoi réussi apparaît sous « Envoyé à l’instant » avec type + chantier', async () => {
+    reportUploadSuccess({ kindLabel: 'Vocal', siteName: 'Cuisine Petratiti' })
+
+    await act(async () => {
+      render(
+        <PhotoQueueSheet
+          trigger={<button type="button">trigger</button>}
+          open
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('recently-sent-row').length).toBeGreaterThanOrEqual(1)
+    })
+    expect(screen.getByText(/vocal — cuisine petratiti/i)).toBeInTheDocument()
   })
 })
 

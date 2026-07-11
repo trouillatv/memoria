@@ -45,6 +45,35 @@ export interface UnifiedQueueEntry {
 
 const POLL_INTERVAL_MS = 5_000
 
+// ── Activité d'envoi en direct (partagée drains → file de sync) ──────────────
+// La file ne doit pas seulement COMPTER : elle RACONTE ce qui part. Les drains
+// signalent l'élément en cours d'envoi et les derniers envois réussis ; la
+// sheet les affiche (« envoi… », « ✓ envoyée à l'instant »). État de module :
+// il n'a de sens que dans la session d'écran courante, aucune persistance.
+export interface RecentlySent {
+  kindLabel: string
+  siteName?: string
+  sentAt: number
+}
+const RECENT_TTL_MS = 45_000
+let uploadingKey: string | null = null
+let recent: RecentlySent[] = []
+
+export function reportUploadStart(tempId: string): void {
+  uploadingKey = tempId
+}
+export function reportUploadEnd(tempId: string): void {
+  if (uploadingKey === tempId) uploadingKey = null
+}
+export function reportUploadSuccess(e: { kindLabel: string; siteName?: string }): void {
+  recent = [{ ...e, sentAt: Date.now() }, ...recent].slice(0, 5)
+}
+export function getUploadActivity(): { uploadingKey: string | null; recentlySent: RecentlySent[] } {
+  const cutoff = Date.now() - RECENT_TTL_MS
+  recent = recent.filter((r) => r.sentAt >= cutoff)
+  return { uploadingKey, recentlySent: [...recent] }
+}
+
 // Les photos (intervention + spontané) n'ont qu'une nature visuelle : « Photo ».
 const PHOTO_KIND_LABEL = 'Photo'
 
@@ -145,9 +174,13 @@ export function useSyncStatus(): SyncStatus {
  */
 export function useQueueEntries(): {
   entries: UnifiedQueueEntry[]
+  activity: { uploadingKey: string | null; recentlySent: RecentlySent[] }
   refresh: () => Promise<void>
 } {
   const [entries, setEntries] = useState<UnifiedQueueEntry[]>([])
+  const [activity, setActivity] = useState<{ uploadingKey: string | null; recentlySent: RecentlySent[] }>(
+    { uploadingKey: null, recentlySent: [] },
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -155,6 +188,7 @@ export function useQueueEntries(): {
       // Tri stable : plus récent en haut.
       all.sort((a, b) => b.takenAt - a.takenAt)
       setEntries(all)
+      setActivity(getUploadActivity())
     } catch (e) {
       console.error('[useQueueEntries]', e)
     }
@@ -162,9 +196,11 @@ export function useQueueEntries(): {
 
   useEffect(() => {
     refresh()
-    const interval = setInterval(refresh, POLL_INTERVAL_MS)
+    // Cadence resserrée : la file est OUVERTE quand ce hook tourne — l'activité
+    // (« envoi… », « ✓ à l'instant ») doit se raconter presque en direct.
+    const interval = setInterval(refresh, 2_000)
     return () => clearInterval(interval)
   }, [refresh])
 
-  return { entries, refresh }
+  return { entries, activity, refresh }
 }

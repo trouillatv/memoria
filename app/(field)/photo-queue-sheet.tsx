@@ -90,7 +90,7 @@ function formatNextRetry(entry: UnifiedQueueEntry, now = Date.now()): string {
   return `Re-essai dans ${h} h`
 }
 
-function QueueRow({ entry, onDelete }: { entry: UnifiedQueueEntry; onDelete: () => void }) {
+function QueueRow({ entry, uploading, onDelete }: { entry: UnifiedQueueEntry; uploading: boolean; onDelete: () => void }) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
 
@@ -110,7 +110,8 @@ function QueueRow({ entry, onDelete }: { entry: UnifiedQueueEntry; onDelete: () 
     }
   }, [entry.blob])
 
-  const status = formatNextRetry(entry)
+  // « envoi… » prime sur le compte à rebours : c'est ce qui se passe LÀ.
+  const status = uploading ? 'envoi…' : formatNextRetry(entry)
   const ago = formatTakenAgo(entry.takenAt)
 
   return (
@@ -196,7 +197,7 @@ export function PhotoQueueSheet({
   open: controlledOpen,
   onOpenChange,
 }: Props) {
-  const { entries, refresh } = useQueueEntries()
+  const { entries, activity, refresh } = useQueueEntries()
   const [internalOpen, setInternalOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
@@ -256,11 +257,11 @@ export function PhotoQueueSheet({
         data-testid="photo-queue-sheet"
       >
         <DrawerHeader>
-          <DrawerTitle>En attente d&apos;envoi</DrawerTitle>
+          <DrawerTitle>Synchronisation</DrawerTitle>
           <DrawerDescription>
             {empty
               ? 'Tout est à jour sur le serveur.'
-              : 'Vos captures sont en sécurité sur cet appareil. Elles seront envoyées dès que possible.'}
+              : `File : ${entries.length} élément${entries.length > 1 ? 's' : ''} — en sécurité sur cet appareil, envoyés dès que possible.`}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -287,10 +288,29 @@ export function PhotoQueueSheet({
                 <QueueRow
                   key={entry.tempId}
                   entry={entry}
+                  uploading={activity.uploadingKey === entry.tempId}
                   onDelete={() => handleDelete(entry.source, entry.tempId)}
                 />
               ))}
             </ul>
+          )}
+
+          {/* Ce qui vient de PARTIR — la file raconte, elle ne fait pas que compter.
+              Éphémère (45 s) : juste le temps de voir que ça marche. */}
+          {activity.recentlySent.length > 0 && (
+            <div className="border-t px-4 py-2.5">
+              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Envoyé à l&apos;instant
+              </p>
+              <ul className="space-y-1">
+                {activity.recentlySent.map((r, i) => (
+                  <li key={i} data-testid="recently-sent-row" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
+                    <span className="truncate">{r.kindLabel}{r.siteName ? ` — ${r.siteName}` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
 
