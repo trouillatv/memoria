@@ -23,6 +23,7 @@ import {
   getVisitCapturePreviewUrls,
   removeCaptureWhileCollecting,
   setCaptureStarred,
+  setCaptureViewpoint,
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
 import { uploadReportAttachmentAction } from './report-actions'
@@ -242,6 +243,9 @@ export async function drainVisitCaptureAction(
   })
   const lat = geo.success ? geo.data.lat ?? null : null
   const lng = geo.success ? geo.data.lng ?? null : null
+  // Reprise d'un point de repère (mig 195) — best-effort, jamais bloquant.
+  const vpRaw = formData.get('viewpoint_of')
+  const viewpointOf = typeof vpRaw === 'string' && z.string().uuid().safeParse(vpRaw).success ? vpRaw : null
 
   // Idempotence en tête : si la capture existe déjà pour ce client_uuid, on
   // renvoie sans ré-uploader (réponse perdue puis re-drain).
@@ -268,6 +272,7 @@ export async function drainVisitCaptureAction(
         reportId, siteId, kind,
         attachmentId: up.attachmentId,
         clientUuid, lat, lng,
+        viewpointOf,
         createdBy: auth.userId,
       })
       return { ok: true, captureId, kind }
@@ -303,6 +308,30 @@ export async function drainVisitCaptureAction(
     return { ok: true, captureId, kind }
   } catch {
     return { ok: false, error: 'Échec de la capture' }
+  }
+}
+
+// ── Point de repère photographique (mig 195) ─────────────────────────────────
+// Épingler une photo = « je reprendrai ce cadrage à chaque visite ». L'ancre
+// d'une série ; les reprises se font à la caméra fantôme (viewpoint_of).
+
+const viewpointSchema = z.object({
+  capture_id: z.string().uuid(),
+  is_viewpoint: z.boolean(),
+})
+
+export async function setCaptureViewpointAction(
+  input: z.input<typeof viewpointSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = viewpointSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    await setCaptureViewpoint(parsed.data.capture_id, parsed.data.is_viewpoint)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
   }
 }
 

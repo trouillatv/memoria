@@ -90,6 +90,7 @@ export function useVisitCaptureUploader(opts?: {
             fd.set('file', new File([item.blob], item.filename, { type: item.mimeType }))
             if (item.lat != null) fd.set('lat', String(item.lat))
             if (item.lng != null) fd.set('lng', String(item.lng))
+            if (item.viewpointOf) fd.set('viewpoint_of', item.viewpointOf)
             r = await drainVisitCaptureAction(fd)
           }
           if (r.ok) {

@@ -60,6 +60,8 @@ export interface QueuedVisitCapture {
   body?: string
   /** Point suivi visé par une vérification. */
   subjectId?: string
+  /** Reprise d'un point de repère (mig 195) — photo cadrée sur le fantôme. */
+  viewpointOf?: string
   /** Position ponctuelle OPT-IN de l'observation (jamais une trace). */
   lat?: number | null
   lng?: number | null

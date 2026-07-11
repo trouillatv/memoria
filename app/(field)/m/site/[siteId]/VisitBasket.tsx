@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -11,6 +11,7 @@ import { deleteVisitAction } from '@/app/(field)/m/visite/[reportId]/debrief-act
 import {
   removeCaptureAction,
   setCaptureStarAction,
+  setCaptureViewpointAction,
   addQuestionCaptureAction,
   listVisitCapturesAction,
   listVisitCapturePreviewsAction,
@@ -21,6 +22,7 @@ import {
 } from './capture-actions'
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
+import { GhostCamera } from './GhostCamera'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
@@ -72,6 +74,7 @@ export function VisitBasket({
   subjects,
   subjectMemory,
   initialCaptures,
+  viewpoints = [],
 }: {
   reportId: string
   siteId: string
@@ -83,6 +86,8 @@ export function VisitBasket({
   subjects: Array<{ id: string; name: string }>
   subjectMemory: Record<string, SubjectMemoryLite>
   initialCaptures: VisitCaptureRow[]
+  /** Points de repère du chantier (mig 195) : séries « même cadrage » à reprendre. */
+  viewpoints?: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }>
 }) {
   const router = useRouter()
   const [captures, setCaptures] = useState<VisitCaptureRow[]>(initialCaptures)
@@ -97,6 +102,11 @@ export function VisitBasket({
   // Affichées en optimiste DANS la timeline pour que la collecte ne s'arrête jamais.
   const [pending, setPending] = useState<PendingCapture[]>([])
   const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question'>('none')
+  // Caméra fantôme (mig 195) : point de repère en cours de reprise, ou null.
+  const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
+  // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
+  // à ce point de repère (sans fantôme, mais la série reste continue).
+  const nextPhotoViewpointRef = useRef<string | null>(null)
   const [note, setNote] = useState('')
   // ❓ Question ouverte (« à vérifier ») : sur une capture (questionCaptureId) ou libre.
   const [questionText, setQuestionText] = useState('')
@@ -272,7 +282,7 @@ export function VisitBasket({
   // Règle d'or du Lot B : on affiche la capture immédiatement (optimiste), on la
   // pousse dans la file IndexedDB, et le drain de fond la monte avec retry réseau.
   // Aucun `await` réseau dans le geste : on rend la main tout de suite.
-  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal') {
+  function enqueueMedia(file: File, kind: 'photo' | 'video' | 'vocal', viewpointOf?: string) {
     const clientUuid = crypto.randomUUID()
     const previewUrl = kind === 'vocal' ? null : URL.createObjectURL(file)
     // 1) Optimiste, SYNCHRONE : la vignette apparaît dans la timeline sur-le-champ.
@@ -291,6 +301,7 @@ export function VisitBasket({
         mimeType: blob.type || (kind === 'photo' ? 'image/jpeg' : kind === 'video' ? 'video/mp4' : 'audio/webm'),
         lat: pos?.lat ?? null,
         lng: pos?.lng ?? null,
+        viewpointOf,
       })
       void syncNow()
     })().catch(() => {
@@ -306,7 +317,10 @@ export function VisitBasket({
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    enqueueMedia(file, 'photo')
+    // Repli natif d'une reprise de point de repère : la photo reste chaînée.
+    const viewpointOf = nextPhotoViewpointRef.current ?? undefined
+    nextPhotoViewpointRef.current = null
+    enqueueMedia(file, 'photo', viewpointOf)
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
@@ -547,6 +561,16 @@ export function VisitBasket({
       .catch(() => refresh())
   }
 
+  // ── Point de repère : épingler « je reprendrai ce cadrage » (optimiste) ─────
+  function toggleViewpoint(c: VisitCaptureRow) {
+    const next = !c.is_viewpoint
+    setCaptures((prev) => prev.map((x) => (x.id === c.id ? { ...x, is_viewpoint: next } : x)))
+    if (next) toast.success('Point de repère — ce cadrage sera proposé à chaque visite', { duration: 1800 })
+    setCaptureViewpointAction({ capture_id: c.id, is_viewpoint: next })
+      .then((r) => { if (!r.ok) { toast.error(r.error); refresh() } })
+      .catch(() => refresh())
+  }
+
   // ── Retirer une capture (faux geste) ────────────────────────────────────────
   function remove(id: string) {
     startBusy(async () => {
@@ -650,6 +674,34 @@ export function VisitBasket({
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
         <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy} onClick={openVerify} />
       </div>
+      {/* Points de repère (mig 195) : « reprends exactement le même point de vue ».
+          Un tap ouvre la caméra avec le FANTÔME de la dernière photo en
+          surimpression — on cadre, on déclenche, la série continue. */}
+      {viewpoints.filter((v) => v.lastUrl).length > 0 && (
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-medium text-emerald-900/70 dark:text-emerald-200/70">
+            Reprendre le même point de vue
+          </span>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {viewpoints.filter((v) => v.lastUrl).map((v) => (
+              <button
+                key={v.anchorId}
+                type="button"
+                onClick={() => setGhost({ anchorId: v.anchorId, url: v.lastUrl!, label: v.label })}
+                data-testid="viewpoint-chip"
+                className="flex shrink-0 items-center gap-2 rounded-xl border border-emerald-300 bg-background py-1.5 pl-1.5 pr-3 text-left active:scale-[0.98] dark:border-emerald-800"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={v.lastUrl!} alt="" className="h-9 w-9 rounded-lg object-cover" />
+                <span className="max-w-[120px]">
+                  <span className="block truncate text-xs font-medium">{v.label ?? 'Point de repère'}</span>
+                  <span className="block text-[10px] text-muted-foreground">{v.shots} photo{v.shots > 1 ? 's' : ''}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Importer des médias DÉJÀ sur le téléphone (WhatsApp, captures d'écran,
           photos reçues) — le conducteur n'a pas toujours l'appli pendant la visite. */}
       <button
@@ -770,6 +822,16 @@ export function VisitBasket({
                   >
                     <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/40 hover:text-amber-600" />
                   </button>
+                  {c.kind === 'photo' && (
+                    <button
+                      type="button" onClick={() => toggleViewpoint(c)}
+                      aria-label={c.is_viewpoint ? 'Ne plus reprendre ce cadrage' : 'Point de repère — reprendre ce cadrage à chaque visite'}
+                      title={c.is_viewpoint ? 'Point de repère' : 'Reprendre ce cadrage à chaque visite'}
+                      className="shrink-0 pt-0.5"
+                    >
+                      <Pin className={`h-3.5 w-3.5 ${c.is_viewpoint ? 'fill-emerald-500 text-emerald-600' : 'text-muted-foreground/40 hover:text-emerald-600'}`} />
+                    </button>
+                  )}
                   <button
                     type="button" onClick={() => toggleStar(c)}
                     aria-label={c.starred ? 'Retirer « important »' : 'Important — à réutiliser'}
@@ -839,6 +901,22 @@ export function VisitBasket({
             {pendingSyncCount} capture{pendingSyncCount > 1 ? 's' : ''} en attente — envoyée{pendingSyncCount > 1 ? 's' : ''} automatiquement dès que le réseau revient. Rien n&apos;est perdu.
           </span>
         </div>
+      )}
+
+      {/* Caméra fantôme — la photo précédente en surimpression, on aligne, on
+          déclenche. Repli : appareil natif, la reprise reste chaînée. */}
+      {ghost && (
+        <GhostCamera
+          ghostUrl={ghost.url}
+          label={ghost.label}
+          onCapture={(file) => enqueueMedia(file, 'photo', ghost.anchorId)}
+          onClose={() => setGhost(null)}
+          onFallbackNative={() => {
+            nextPhotoViewpointRef.current = ghost.anchorId
+            setGhost(null)
+            fileRef.current?.click()
+          }}
+        />
       )}
 
       <p className="text-[11px] italic text-emerald-800/60 dark:text-emerald-300/60 leading-snug">
