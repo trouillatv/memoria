@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { drainVisitCaptureAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
+import { drainVisitCaptureAction, drainLightCaptureAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 import {
   isReadyForRetry,
   listQueuedVisitCaptures,
   listQueuedVisitCapturesByReport,
   removeQueuedVisitCapture,
   updateQueuedVisitCapture,
+  LIGHT_VISIT_KINDS,
   type QueuedVisitCapture,
 } from '@/lib/field/visit-capture-queue'
 
@@ -65,15 +66,32 @@ export function useVisitCaptureUploader(opts?: {
         setUploadingUuid(item.clientUuid)
         const startedAt = Date.now()
         try {
-          const fd = new FormData()
-          fd.set('report_id', item.reportId)
-          fd.set('site_id', item.siteId)
-          fd.set('kind', item.kind)
-          fd.set('client_uuid', item.clientUuid)
-          fd.set('file', new File([item.blob], item.filename, { type: item.mimeType }))
-          if (item.lat != null) fd.set('lat', String(item.lat))
-          if (item.lng != null) fd.set('lng', String(item.lng))
-          const r = await drainVisitCaptureAction(fd)
+          let r: Awaited<ReturnType<typeof drainVisitCaptureAction>> | Awaited<ReturnType<typeof drainLightCaptureAction>>
+          if (LIGHT_VISIT_KINDS.has(item.kind)) {
+            // Geste léger (note / vérification / position) : payload JSON, pas de fichier.
+            r = await drainLightCaptureAction({
+              report_id: item.reportId,
+              site_id: item.siteId,
+              client_uuid: item.clientUuid,
+              kind: item.kind as 'note' | 'verification' | 'position',
+              body: item.body,
+              subject_id: item.subjectId,
+              lat: item.lat ?? undefined,
+              lng: item.lng ?? undefined,
+            })
+          } else {
+            // Média : entry sans blob = corrompue (ne se réparera jamais) → on la lâche.
+            if (!item.blob || !item.filename) { await removeQueuedVisitCapture(item.tempId); continue }
+            const fd = new FormData()
+            fd.set('report_id', item.reportId)
+            fd.set('site_id', item.siteId)
+            fd.set('kind', item.kind)
+            fd.set('client_uuid', item.clientUuid)
+            fd.set('file', new File([item.blob], item.filename, { type: item.mimeType }))
+            if (item.lat != null) fd.set('lat', String(item.lat))
+            if (item.lng != null) fd.set('lng', String(item.lng))
+            r = await drainVisitCaptureAction(fd)
+          }
           if (r.ok) {
             await removeQueuedVisitCapture(item.tempId)
             success++

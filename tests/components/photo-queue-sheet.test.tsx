@@ -31,11 +31,13 @@ vi.mock('@/lib/field/photo-queue', async () => {
 })
 
 // PR-1 — la sheet agrège désormais la file des captures de visite en plus des
-// photos. On la mocke pour éviter IndexedDB en jsdom (file vide + retry no-op).
+// photos. On la mocke pour éviter IndexedDB en jsdom.
+const listQueuedVisitCapturesMock = vi.fn<() => Promise<unknown[]>>(async () => [])
 vi.mock('@/lib/field/visit-capture-queue', () => ({
-  listQueuedVisitCaptures: vi.fn(async () => []),
+  listQueuedVisitCaptures: () => listQueuedVisitCapturesMock(),
   markAllQueuedVisitCapturesReadyForRetry: vi.fn(async () => 0),
   removeQueuedVisitCapture: vi.fn(async () => {}),
+  LIGHT_VISIT_KINDS: new Set(['note', 'verification', 'position']),
 }))
 
 // Sonner — pas utilisé directement mais importé par les modules autour
@@ -69,6 +71,8 @@ beforeEach(() => {
   listQueuedPhotosMock.mockResolvedValue([])
   markAllReadyForRetryMock.mockReset()
   markAllReadyForRetryMock.mockResolvedValue(0)
+  listQueuedVisitCapturesMock.mockReset()
+  listQueuedVisitCapturesMock.mockResolvedValue([])
 })
 
 describe('PhotoQueueSheet — empty state', () => {
@@ -119,6 +123,39 @@ describe('PhotoQueueSheet — entries listing', () => {
     expect(screen.getByTestId('photo-queue-list')).toBeInTheDocument()
     expect(screen.getByTestId('photo-queue-retry')).toBeInTheDocument()
     expect(screen.queryByTestId('photo-queue-empty')).not.toBeInTheDocument()
+  })
+})
+
+describe('PhotoQueueSheet — geste léger en attente (PR-2)', () => {
+  it('affiche une note de visite en file (sans blob) avec type + chantier', async () => {
+    listQueuedVisitCapturesMock.mockResolvedValue([
+      {
+        tempId: 'v-1',
+        clientUuid: '00000000-0000-0000-0000-00000000000a',
+        reportId: '00000000-0000-0000-0000-000000000002',
+        siteId: '00000000-0000-0000-0000-000000000003',
+        siteName: 'Cuisine Petratiti',
+        kind: 'note',
+        body: 'odeur persistante réserve froide',
+        takenAt: Date.now() - 30_000,
+        attempts: 0,
+      },
+    ])
+
+    await act(async () => {
+      render(
+        <PhotoQueueSheet
+          trigger={<button type="button">trigger</button>}
+          open
+        />,
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('photo-queue-row')).toHaveLength(1)
+    })
+    // Type + chantier lisibles — la ligne est identifiable sans média.
+    expect(screen.getByText(/note — cuisine petratiti/i)).toBeInTheDocument()
   })
 })
 

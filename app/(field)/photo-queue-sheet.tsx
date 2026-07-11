@@ -95,6 +95,8 @@ function QueueRow({ entry, onDelete }: { entry: UnifiedQueueEntry; onDelete: () 
   const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
+    // Geste léger (note / vérification / position) : pas de média → icône seule.
+    if (!entry.blob) { setThumbUrl(null); return }
     let cancelled = false
     blobToDataUrl(entry.blob)
       .then((url) => {

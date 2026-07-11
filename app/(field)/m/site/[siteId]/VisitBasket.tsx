@@ -9,9 +9,6 @@ import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
 import { deleteVisitAction } from '@/app/(field)/m/visite/[reportId]/debrief-actions'
 import {
-  addNoteCaptureAction,
-  addVerificationCaptureAction,
-  addPositionCaptureAction,
   removeCaptureAction,
   setCaptureStarAction,
   addQuestionCaptureAction,
@@ -48,13 +45,16 @@ export type SubjectMemoryLite = {
   criticality: string
 }
 
-// Une capture média déposée localement, en attente de confirmation serveur (Lot B).
-// previewUrl = objectURL pour la vignette photo/vidéo (null pour un vocal).
+// Une capture déposée localement, en attente de confirmation serveur (Lot B,
+// étendu PR-2 aux gestes légers). previewUrl = objectURL pour la vignette
+// photo/vidéo (null sinon). body = texte d'une note / constat de vérification.
 type PendingCapture = {
   clientUuid: string
-  kind: 'photo' | 'video' | 'vocal'
+  kind: 'photo' | 'video' | 'vocal' | 'note' | 'verification' | 'position'
   previewUrl: string | null
   takenAt: number
+  body?: string
+  subjectId?: string
 }
 
 /**
@@ -175,10 +175,12 @@ export function VisitBasket({
     return 'queued'
   }
   // Points suivis déjà vérifiés pendant CETTE visite (progression + ✓). Dérivé des
-  // captures : aucune donnée nouvelle.
-  const verifiedSubjectIds = new Set(
-    kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => c.subject_id as string),
-  )
+  // captures confirmées ET des vérifications encore en file (hors-ligne, la ✓
+  // s'affiche quand même — la donnée est en sécurité localement).
+  const verifiedSubjectIds = new Set([
+    ...kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => c.subject_id as string),
+    ...visiblePending.filter((p) => p.kind === 'verification' && p.subjectId).map((p) => p.subjectId as string),
+  ])
 
   // Chrono de la visite.
   useEffect(() => {
@@ -244,8 +246,10 @@ export function VisitBasket({
           .map((e) => ({
             clientUuid: e.clientUuid,
             kind: e.kind,
-            previewUrl: e.kind === 'vocal' ? null : URL.createObjectURL(e.blob),
+            previewUrl: (e.kind === 'photo' || e.kind === 'video') && e.blob ? URL.createObjectURL(e.blob) : null,
             takenAt: e.takenAt,
+            body: e.body,
+            subjectId: e.subjectId,
           }))
         return additions.length ? [...prev, ...additions] : prev
       })
@@ -432,16 +436,46 @@ export function VisitBasket({
     setRecording(false)
   }
 
+  // ── Dépôt local d'un geste LÉGER (note/vérification/position) — PR-2 ────────
+  // Même règle d'or que les médias : la capture ne bloque JAMAIS. On affiche en
+  // optimiste, on persiste dans la file IndexedDB, le drain monte avec retry.
+  // Fini la note perdue en sous-sol sur un toast d'erreur invisible.
+  function enqueueLight(
+    kind: 'note' | 'verification' | 'position',
+    payload: { body?: string; subjectId?: string; lat?: number | null; lng?: number | null },
+    opts?: { withPosition?: boolean },
+  ) {
+    const clientUuid = crypto.randomUUID()
+    // 1) Optimiste, SYNCHRONE : la ligne apparaît dans la timeline sur-le-champ.
+    setPending((prev) => [...prev, {
+      clientUuid, kind, previewUrl: null, takenAt: Date.now(),
+      body: payload.body, subjectId: payload.subjectId,
+    }])
+    // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
+    ;(async () => {
+      const pos = opts?.withPosition ? await getOneShotPosition() : null
+      await queueVisitCapture({
+        clientUuid, userId, reportId, siteId, siteName, kind,
+        body: payload.body,
+        subjectId: payload.subjectId,
+        lat: payload.lat ?? pos?.lat ?? null,
+        lng: payload.lng ?? pos?.lng ?? null,
+      })
+      void syncNow()
+    })().catch(() => {
+      // Échec d'écriture locale (très rare) : on retire l'optimiste et on prévient.
+      setPending((prev) => prev.filter((p) => p.clientUuid !== clientUuid))
+      toast.error('Échec de l’enregistrement local')
+    })
+  }
+
   // ── Note ───────────────────────────────────────────────────────────────────
   function saveNote() {
     const body = note.trim()
     if (body.length < 1) return
-    startBusy(async () => {
-      const pos = await getOneShotPosition()
-      const r = await addNoteCaptureAction({ report_id: reportId, site_id: siteId, body, lat: pos?.lat, lng: pos?.lng })
-      if (r.ok) { setNote(''); setOverlay('none'); toast.success('Note ajoutée', { duration: 1200 }); refresh() }
-      else toast.error(r.error)
-    })
+    enqueueLight('note', { body }, { withPosition: true })
+    setNote(''); setOverlay('none')
+    toast.success('Note ajoutée', { duration: 1200 })
   }
 
   // ── Question ouverte (❓ « à vérifier ») — sur une capture ou libre ──────────
@@ -483,19 +517,11 @@ export function VisitBasket({
   function saveVerification() {
     const subject = subjects[verifIndex]
     if (!subject) return
-    startBusy(async () => {
-      const r = await addVerificationCaptureAction({
-        report_id: reportId, site_id: siteId, subject_id: subject.id,
-        body: verifNote.trim() || undefined,
-      })
-      if (r.ok) {
-        toast.success('Point vérifié', { duration: 1000 })
-        setVerifNote('')
-        refresh()
-        // Fluide : on enchaîne sur le point suivant s'il en reste.
-        if (verifIndex < subjects.length - 1) setVerifIndex(verifIndex + 1)
-      } else toast.error(r.error)
-    })
+    enqueueLight('verification', { subjectId: subject.id, body: verifNote.trim() || undefined })
+    toast.success('Point vérifié', { duration: 1000 })
+    setVerifNote('')
+    // Fluide : on enchaîne sur le point suivant s'il en reste.
+    if (verifIndex < subjects.length - 1) setVerifIndex(verifIndex + 1)
   }
 
   // ── Position ───────────────────────────────────────────────────────────────
@@ -503,14 +529,9 @@ export function VisitBasket({
     if (!navigator.geolocation) { toast.error('Position indisponible'); return }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        startBusy(async () => {
-          const r = await addPositionCaptureAction({
-            report_id: reportId, site_id: siteId,
-            lat: pos.coords.latitude, lng: pos.coords.longitude,
-          })
-          if (r.ok) { toast.success('Position enregistrée', { duration: 1200 }); refresh() }
-          else toast.error(r.error)
-        })
+        // Le GPS marche sans réseau : la position part dans la file locale.
+        enqueueLight('position', { lat: pos.coords.latitude, lng: pos.coords.longitude })
+        toast.success('Position enregistrée', { duration: 1200 })
       },
       () => toast.error('Position refusée'),
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
@@ -779,7 +800,12 @@ export function VisitBasket({
                   </span>
                   <span className="shrink-0 pt-0.5 text-emerald-700/80 dark:text-emerald-300/80">{KIND_ICON[p.kind]}</span>
                   <span className="min-w-0 flex-1 text-sm leading-snug">
-                    {p.kind === 'photo' ? 'Photo' : p.kind === 'video' ? 'Vidéo' : 'Mémo vocal'}
+                    {p.kind === 'photo' ? 'Photo'
+                      : p.kind === 'video' ? 'Vidéo'
+                      : p.kind === 'vocal' ? 'Mémo vocal'
+                      : p.kind === 'note' ? (p.body ?? 'Note')
+                      : p.kind === 'verification' ? `Point vérifié — ${subjectName(p.subjectId ?? null)}`
+                      : 'Position'}
                     <span className="mt-0.5 flex items-center gap-1 text-[11px]">
                       {st === 'uploading' ? (
                         <span className="inline-flex items-center gap-1 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> envoi…</span>

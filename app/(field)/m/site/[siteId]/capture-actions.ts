@@ -39,66 +39,9 @@ const coords = {
   lng: z.coerce.number().min(-180).max(180).optional(),
 }
 
-const noteSchema = z.object({
-  report_id: z.string().uuid(),
-  site_id: z.string().uuid(),
-  body: z.string().trim().min(1).max(2000),
-  ...coords,
-})
-
-export async function addNoteCaptureAction(
-  input: z.input<typeof noteSchema>,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-  const parsed = noteSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
-  try {
-    const id = await addVisitCapture({
-      reportId: parsed.data.report_id,
-      siteId: parsed.data.site_id,
-      kind: 'note',
-      body: parsed.data.body,
-      lat: parsed.data.lat ?? null,
-      lng: parsed.data.lng ?? null,
-      createdBy: auth.userId,
-    })
-    return { ok: true, id }
-  } catch {
-    return { ok: false, error: 'Échec de la capture' }
-  }
-}
-
-// ── Vérifier un point suivi ──────────────────────────────────────────────────
-
-const verifSchema = z.object({
-  report_id: z.string().uuid(),
-  site_id: z.string().uuid(),
-  subject_id: z.string().uuid(),
-  body: z.string().trim().max(2000).optional(),
-})
-
-export async function addVerificationCaptureAction(
-  input: z.input<typeof verifSchema>,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-  const parsed = verifSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
-  try {
-    const id = await addVisitCapture({
-      reportId: parsed.data.report_id,
-      siteId: parsed.data.site_id,
-      kind: 'verification',
-      subjectId: parsed.data.subject_id,
-      body: parsed.data.body ?? null,
-      createdBy: auth.userId,
-    })
-    return { ok: true, id }
-  } catch {
-    return { ok: false, error: 'Échec de la capture' }
-  }
-}
+// Les gestes légers (note / vérification / position) passent par la file
+// IndexedDB puis drainLightCaptureAction (PR-2) — leurs anciennes actions
+// directes (perdues hors-ligne) ont été retirées : un seul chemin d'écriture.
 
 // ── Photo (la pièce est déjà uploadée via uploadReportAttachmentAction) ──────
 
@@ -186,35 +129,6 @@ export async function addVideoCaptureAction(
 }
 
 // ── Position (one-shot, opt-in) ──────────────────────────────────────────────
-
-const positionSchema = z.object({
-  report_id: z.string().uuid(),
-  site_id: z.string().uuid(),
-  lat: z.coerce.number().min(-90).max(90),
-  lng: z.coerce.number().min(-180).max(180),
-})
-
-export async function addPositionCaptureAction(
-  input: z.input<typeof positionSchema>,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const auth = await requireFieldAgent()
-  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
-  const parsed = positionSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
-  try {
-    const id = await addVisitCapture({
-      reportId: parsed.data.report_id,
-      siteId: parsed.data.site_id,
-      kind: 'position',
-      lat: parsed.data.lat,
-      lng: parsed.data.lng,
-      createdBy: auth.userId,
-    })
-    return { ok: true, id }
-  } catch {
-    return { ok: false, error: 'Échec de la capture' }
-  }
-}
 
 // ── Vocal (upload audio + capture pending ; transcription en async plus tard) ─
 
@@ -387,6 +301,69 @@ export async function drainVisitCaptureAction(
       createdBy: auth.userId,
     })
     return { ok: true, captureId, kind }
+  } catch {
+    return { ok: false, error: 'Échec de la capture' }
+  }
+}
+
+// ── Drain des gestes LÉGERS (note / vérification / position) ─────────────────
+// PR-2 « plus jamais une note perdue » : ces gestes passent désormais par la
+// même file IndexedDB que photo/vocal. Pas de fichier → payload JSON simple.
+// Idempotence identique au drain média : client_uuid (addVisitCapture court-
+// circuite déjà si le dépôt a abouti). Mêmes sémantiques `drop`.
+
+const lightDrainSchema = z.object({
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid(),
+  client_uuid: z.string().uuid(),
+  kind: z.enum(['note', 'verification', 'position']),
+  body: z.string().trim().max(2000).optional(),
+  subject_id: z.string().uuid().optional(),
+  ...coords,
+})
+
+export async function drainLightCaptureAction(
+  input: z.input<typeof lightDrainSchema>,
+): Promise<
+  | { ok: true; captureId: string; kind: 'note' | 'verification' | 'position' }
+  | { ok: false; error: string; drop?: boolean }
+> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+
+  const parsed = lightDrainSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides', drop: true }
+  const d = parsed.data
+
+  // Exigences par geste — une entry qui ne les remplit pas est condamnée
+  // (elle ne deviendra jamais valide en re-tentant).
+  if (d.kind === 'note' && (!d.body || d.body.length < 1)) return { ok: false, error: 'Note vide', drop: true }
+  if (d.kind === 'verification' && !d.subject_id) return { ok: false, error: 'Point suivi manquant', drop: true }
+  if (d.kind === 'position' && (d.lat == null || d.lng == null)) return { ok: false, error: 'Position manquante', drop: true }
+
+  // Idempotence en tête : réponse perdue puis re-drain → on renvoie l'existant.
+  try {
+    const existing = await findVisitCaptureIdByClientUuid(d.client_uuid)
+    if (existing) return { ok: true, captureId: existing, kind: d.kind }
+  } catch { /* on continue : l'insert idempotent rattrapera */ }
+
+  // Visite supprimée entre le dépôt et le drain → entry condamnée.
+  const report = await getSiteReport(d.report_id)
+  if (!report) return { ok: false, error: 'Visite introuvable', drop: true }
+
+  try {
+    const captureId = await addVisitCapture({
+      reportId: d.report_id,
+      siteId: d.site_id,
+      kind: d.kind,
+      body: d.body ?? null,
+      subjectId: d.subject_id ?? null,
+      clientUuid: d.client_uuid,
+      lat: d.lat ?? null,
+      lng: d.lng ?? null,
+      createdBy: auth.userId,
+    })
+    return { ok: true, captureId, kind: d.kind }
   } catch {
     return { ok: false, error: 'Échec de la capture' }
   }

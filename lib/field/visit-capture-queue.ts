@@ -15,9 +15,13 @@
  *
  * Idempotence : clientUuid (uuid v4) généré AVANT tout réseau, porté jusqu'au
  * serveur (visit_capture.client_uuid, mig 177) — un re-drain renvoie la capture
- * déjà créée au lieu d'en dupliquer une. Les gestes sans média (note /
- * vérification / position), quasi instantanés, restent en appel serveur direct
- * et ne passent pas par cette file.
+ * déjà créée au lieu d'en dupliquer une.
+ *
+ * PR-2 (« plus jamais une note perdue ») : les gestes SANS média — note /
+ * vérification / position — passent désormais eux aussi par cette file. Avant,
+ * ils partaient en appel serveur direct : hors réseau, un toast d'erreur fugace
+ * et la note n'existait nulle part. Une entry légère n'a pas de blob ; le drain
+ * la route vers drainLightCaptureAction (payload JSON, même idempotence).
  */
 
 import { isReadyForRetry, nextRetryDelay } from '@/lib/field/photo-queue'
@@ -28,7 +32,10 @@ const DB_NAME = 'memoria-field-visits'
 const STORE_NAME = 'visit-capture-queue'
 const DB_VERSION = 1
 
-export type QueuedVisitKind = 'photo' | 'video' | 'vocal'
+export type QueuedVisitKind = 'photo' | 'video' | 'vocal' | 'note' | 'verification' | 'position'
+
+/** Gestes légers (sans blob) — drainés via payload JSON, pas FormData. */
+export const LIGHT_VISIT_KINDS = new Set<QueuedVisitKind>(['note', 'verification', 'position'])
 
 export interface QueuedVisitCapture {
   tempId: string
@@ -45,9 +52,14 @@ export interface QueuedVisitCapture {
    *  avec les entries déposées avant ce champ). */
   siteName?: string
   kind: QueuedVisitKind
-  blob: Blob
-  filename: string
-  mimeType: string
+  /** Média (photo/vidéo/vocal). Absent pour un geste léger (note/vérif/position). */
+  blob?: Blob
+  filename?: string
+  mimeType?: string
+  /** Texte du geste léger : corps de la note, constat de vérification. */
+  body?: string
+  /** Point suivi visé par une vérification. */
+  subjectId?: string
   /** Position ponctuelle OPT-IN de l'observation (jamais une trace). */
   lat?: number | null
   lng?: number | null

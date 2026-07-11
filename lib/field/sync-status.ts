@@ -35,7 +35,8 @@ export interface UnifiedQueueEntry {
   siteName?: string
   /** Nom de fichier local — utile pour identifier la capture en cas d'échec. */
   filename?: string
-  blob: Blob
+  /** Média local (absent pour un geste léger : note / vérification / position). */
+  blob?: Blob
   takenAt: number
   attempts: number
   lastAttemptAt?: number
@@ -51,6 +52,9 @@ const VISIT_KIND_LABELS: Record<QueuedVisitCapture['kind'], string> = {
   photo: 'Photo',
   video: 'Vidéo',
   vocal: 'Vocal',
+  note: 'Note',
+  verification: 'Vérification',
+  position: 'Position',
 }
 
 function toUnified(
