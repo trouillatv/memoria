@@ -314,7 +314,9 @@ export function DebriefExpress({
                   // compte-rendu (carte, résumé, PDF) — le plus bel écran ne se
                   // mérite plus après deux détours. `?done=1` bascule le CR en
                   // mode « clôture » (confirmation + actions de sortie).
-                  router.push(`/m/visite/${reportId}/cr?done=1`)
+                  // `replace` (et non `push`) : la visite est clôturée, le retour
+                  // arrière Android ne doit PAS ramener sur ce débrief figé.
+                  router.replace(`/m/visite/${reportId}/cr?done=1`)
                 } catch {
                   toast.error('La visite n’a pas pu être terminée (connexion ?). Rien n’est perdu — réessayez.')
                 }

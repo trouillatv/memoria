@@ -39,10 +39,10 @@ const JOURNEY: Array<{
   conclusion: { Icon: typeof BookOpen; text: string }
 }> = [
   {
-    key: 'visite', label: 'Cette visite', step: 'Capture', Icon: BookOpen,
+    key: 'visite', label: 'Captures', step: 'Capture', Icon: BookOpen,
     question: 'Qu’avons-nous capturé ?',
-    lead: 'Voilà exactement ce que vous avez capturé aujourd’hui.',
-    conclusion: { Icon: FileText, text: 'Le compte-rendu est prêt.' },
+    lead: 'La trace complète de la session : tout ce qui a été capturé, y compris ce qui n’a pas été retenu dans le compte-rendu.',
+    conclusion: { Icon: FileText, text: 'Rien n’est perdu : cette trace conserve l’intégralité de la visite.' },
   },
   {
     key: 'evolution', label: 'Impact', step: 'Impact', Icon: TrendingUp,
