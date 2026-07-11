@@ -1179,39 +1179,76 @@ async function resolveAuthorNames(ids: Array<string | null>): Promise<Map<string
 export interface SinceLastVisitSummary {
   at: string
   dateLabel: string
+  /** Jours écoulés depuis cette visite — « il y a 18 j », le temps du récit. */
+  daysAgo: number
+  /** true = la référence est VOTRE dernière visite (récit personnel) ;
+   *  false = celle du chantier (vous n'y êtes jamais venu / repli). */
+  personal: boolean
   actionsDone: number
   newReserves: number
+  /** Réserves LEVÉES depuis — le chantier avance, pas seulement il s'alourdit. */
+  liftedReserves: number
   meetings: number
   newPhotos: number
+  /** « Vous étiez reparti avec un doute — il existe toujours. » : questions
+   *  « à vérifier » posées AVANT/PENDANT cette visite, toujours actives (max 2). */
+  doubts: string[]
   total: number
 }
 
-export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceLastVisitSummary | null> {
+export async function buildSinceLastVisitSummary(siteId: string, userId: string | null = null): Promise<SinceLastVisitSummary | null> {
   const supabase = createAdminClient()
-  const { data: last } = await supabase
-    .from('site_reports')
-    .select('ended_at')
-    .eq('site_id', siteId)
-    .not('origin', 'is', null)
-    .not('ended_at', 'is', null)
-    .order('ended_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const ref = (last as { ended_at: string | null } | null)?.ended_at
+  // LE récit est personnel : « depuis MA dernière visite », pas celle du
+  // chantier (à 25 visites sur 6 mois, à plusieurs, la nuance change tout).
+  // Repli sur la dernière visite du site si cette personne n'y est jamais venue.
+  let ref: string | null = null
+  let personal = false
+  if (userId) {
+    const { data: mine } = await supabase
+      .from('site_reports')
+      .select('ended_at')
+      .eq('site_id', siteId)
+      .eq('created_by', userId)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .is('deleted_at', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    ref = (mine as { ended_at: string | null } | null)?.ended_at ?? null
+    personal = !!ref
+  }
+  if (!ref) {
+    const { data: last } = await supabase
+      .from('site_reports')
+      .select('ended_at')
+      .eq('site_id', siteId)
+      .not('origin', 'is', null)
+      .not('ended_at', 'is', null)
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    ref = (last as { ended_at: string | null } | null)?.ended_at ?? null
+  }
   if (!ref) return null
 
   const { data: missions } = await supabase.from('missions').select('id').eq('site_id', siteId).is('deleted_at', null)
   const missionIds = (missions ?? []).map((m) => m.id as string)
 
-  const [actionsRes, reservesRes, meetingsRes, capPhotosRes] = await Promise.all([
+  const [actionsRes, reservesRes, liftedRes, meetingsRes, capPhotosRes, doubtsRes] = await Promise.all([
     // Actions RÉELLEMENT terminées depuis la visite (done_at postérieur).
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'done').gt('done_at', ref),
     // Réserves ouvertes depuis (création postérieure).
     supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId).gt('created_at', ref),
+    // Réserves LEVÉES depuis — la bonne nouvelle du récit.
+    supabase.from('site_reserve').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'lifted').gt('lifted_at', ref),
     // Réunions/CR tenus depuis.
     supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).is('origin', null).neq('status', 'draft').gt('created_at', ref),
     // Photos captées depuis (chemin mobile), hors captures masquées.
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').is('hidden_at', null).gt('created_at', ref),
+    // Le doute d'alors, toujours ouvert : questions « à vérifier » posées au plus
+    // tard À cette visite, encore actives aujourd'hui.
+    supabase.from('captured_knowledge').select('title').eq('site_id', siteId).eq('kind', 'question').eq('status', 'active').lte('created_at', ref).order('created_at', { ascending: false }).limit(2),
   ])
 
   // Photos d'intervention postérieures à la visite (le chantier bouge entre deux visites).
@@ -1227,11 +1264,17 @@ export async function buildSinceLastVisitSummary(siteId: string): Promise<SinceL
 
   const actionsDone = actionsRes.count ?? 0
   const newReserves = reservesRes.count ?? 0
+  const liftedReserves = liftedRes.count ?? 0
   const meetings = meetingsRes.count ?? 0
   const newPhotos = (capPhotosRes.count ?? 0) + intvPhotos
-  const total = actionsDone + newReserves + meetings + newPhotos
-  if (total === 0) return null
-  return { at: ref, dateLabel: relativeDayLabel(ref), actionsDone, newReserves, meetings, newPhotos, total }
+  const doubts = ((doubtsRes.data ?? []) as Array<{ title: string }>)
+    .map((d) => d.title?.trim())
+    .filter((t): t is string => !!t)
+  const total = actionsDone + newReserves + liftedReserves + meetings + newPhotos
+  // Silence positif — SAUF si un doute d'alors existe toujours : ça, ça se dit.
+  if (total === 0 && doubts.length === 0) return null
+  const daysAgo = Math.max(0, Math.floor((Date.now() - new Date(ref).getTime()) / 86_400_000))
+  return { at: ref, dateLabel: relativeDayLabel(ref), daysAgo, personal, actionsDone, newReserves, liftedReserves, meetings, newPhotos, doubts, total }
 }
 
 // ── Fiche chantier : « Mémoire » — le cumul DEPUIS LA CRÉATION ─────────────────

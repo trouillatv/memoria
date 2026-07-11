@@ -179,7 +179,7 @@ export default async function FieldSitePage({
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
       getSiteRecentActivity(siteId).catch(() => []),
-      buildSinceLastVisitSummary(siteId).catch(() => null),
+      buildSinceLastVisitSummary(siteId, user.id).catch(() => null),
       getSiteMemorySnapshot(siteId).catch(() => null),
       canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
       listSiteViewpointRows(siteId).catch(() => []),
