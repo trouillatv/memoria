@@ -10,6 +10,12 @@ import { DoneToday } from './DoneToday'
 
 export const dynamic = 'force-dynamic'
 
+// CONVENTION DE NOM (revue 2026-07-11) — nom fonctionnel : « Journal » ;
+// route technique HISTORIQUE conservée : /m/planning (renommage 0f51151 :
+// l'écran a changé de nom, pas d'adresse — la renommer casserait liens et
+// tests pour zéro valeur). Dans les rapports/tickets, écrire :
+// « Journal — route technique /m/planning ».
+//
 // Journal terrain = LE COMPAGNON DE LA JOURNÉE du conducteur (cf.
 // docs/foundations/roadmap-terrain-contextuel.md). Décision de design (2026-07-08,
 // arbitrage V2) : cet écran ne doit pas se lire comme une liste d'événements mais
