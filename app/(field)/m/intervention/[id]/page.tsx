@@ -486,7 +486,9 @@ export default async function FieldInterventionPage({
           2026-07-13) : pourquoi je suis là, d'où ça vient, ce que je cherche.
           Même moteur (converted_to_* + originOfSources), rendu carte visite. */}
       {embarkedActions.length > 0 && (
-        <section className="rounded-2xl border border-l-[3px] border-l-emerald-500 bg-card p-4">
+        {/* Liseré BLEU : la mission commence — le vert est réservé au terminé
+            (revue 2026-07-13). */}
+        <section className="rounded-2xl border border-l-[3px] border-l-sky-400 bg-card p-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Mission du jour
           </h2>
