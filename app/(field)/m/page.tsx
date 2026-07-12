@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Briefcase, FileText, HelpCircle } from 'lucide-react'
+import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Briefcase, FileText, ListTodo } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { listSharedHandoverBriefsForChef } from '@/lib/db/handover'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
-import { actionHealth } from '@/lib/actions/health'
+import { actionAttentionOf } from '@/lib/actions/health'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
@@ -527,30 +527,25 @@ export default async function FieldHomePage({
       })
     }
 
-    // 4) Actions ouvertes du chantier qui traînent (le contenu du badge
-    //    « Actions » qui remonte AUTOMATIQUEMENT). 🔴 critique/≥14j ou en retard,
-    //    🟠 7-13j. On masque le rythme (<7j) : seul ce qui mérite l'œil aujourd'hui.
-    //    Une action « faite aujourd'hui » ne re-sollicite pas l'agent.
+    // 4) Actions ouvertes — MÊME modèle que /m/actions (audit 2026-07-12) :
+    //    🔴 échéance dépassée · 🟠 à faire aujourd'hui / suivi décroché (≥7 j
+    //    sans avancée) / reportée mais en retard. Une action EN SUIVI vivante
+    //    ou reportée avec motif ne sollicite PAS l'accueil — fini le rouge à
+    //    vie sur les routines. Icône = l'objet action, plus jamais « ? ».
     const scopedSites = agentSiteIds.length > 0 ? agentSiteIds : undefined
     if (scopedSites || isManager) {
       const openActions = await listOpenSiteActions(scopedSites ? { siteIds: scopedSites } : undefined).catch(() => [] as SiteActionRow[])
-      const nowMs = Date.now()
       let shown = 0
       for (const a of openActions) {
         if (shown >= 4) break
-        // Action « faite aujourd'hui » → ne re-sollicite pas l'agent ce jour.
-        if (a.last_progress_at && a.last_progress_at.slice(0, 10) === todayIso) continue
-        const overdue = a.due_date ? a.due_date.slice(0, 10) < todayIso : false
-        const health = actionHealth(a.created_at, nowMs)
-        const severity: Severity | null =
-          overdue || health === 'critique' ? 'red' : health === 'surveiller' ? 'orange' : null
-        if (!severity) continue
+        const attention = actionAttentionOf(a, todayIso)
+        if (!attention) continue
         attentionItems.push({
           key: `action-${a.id}`,
-          severity,
-          icon: HelpCircle,
+          severity: attention.severity,
+          icon: ListTodo,
           title: a.title,
-          subtitle: [a.site_name, a.corps_etat].filter(Boolean).join(' · ') || null,
+          subtitle: [a.site_name, attention.note].filter(Boolean).join(' · ') || null,
           href: '/m/actions',
         })
         shown++
