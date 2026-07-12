@@ -62,7 +62,10 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]' }: { sit
         m.bindPopup(
           `<strong>${what}</strong>` +
           `<div style="color:#666;font-size:11px">${KIND_LABEL[c.kind] ?? c.kind} · ${date}</div>${excerpt}` +
-          `<a href="/sites/${siteId}/visites/${c.reportId}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir la visite →</a>`,
+          // Consultation → consultation : le récap est la vue DURABLE de la
+          // visite. Le Débrief est un outil de production — on n'y tombe pas
+          // depuis un point de carte (revue 2026-07-12).
+          `<a href="/m/visite/${c.reportId}/recap" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette visite →</a>`,
         )
         // Étiquette « quoi » visible au survol (desktop) ; le tap ouvre le popup (mobile).
         m.bindTooltip(what, { direction: 'top', opacity: 0.9 })
