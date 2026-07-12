@@ -42,6 +42,39 @@ export interface BuiltGroup<T extends GroupableItem = GroupableItem> {
   moreCount: number
 }
 
+// ── Provenance exacte (revue 2026-07-12) ─────────────────────────────────────
+// Un site_report est une RÉUNION ou une VISITE (`origin IS NOT NULL`, mig 162).
+// Une action née en visite ne doit JAMAIS être présentée comme issue d'une
+// réunion — la carte existe précisément pour dire le vrai pourquoi.
+
+export type SourceKind = 'reunion' | 'visite'
+export interface SourceRef {
+  id: string
+  kind: SourceKind
+  /** « 8 juillet » — déjà formatée (fuseau Nouméa) par l'appelant. */
+  dateLabel: string
+}
+
+/** Libellé + lien d'origine d'un groupe, depuis ses sources RÉELLES. PUR.
+ *  0 source (action ajoutée directement) → null, jamais une origine inventée.
+ *  1 source → « Issue de la réunion/visite du … », cliquable vers SA route.
+ *  N sources d'un même type → « Issues de N réunions/visites », sans lien.
+ *  Types mélangés → « Issues de N sources », sans lien. */
+export function originOfSources(sources: SourceRef[]): { label: string; href: string | null } | null {
+  if (sources.length === 0) return null
+  if (sources.length === 1) {
+    const s = sources[0]
+    return s.kind === 'visite'
+      ? { label: `Issue de la visite du ${s.dateLabel}`, href: `/m/visite/${s.id}/recap` }
+      : { label: `Issue de la réunion du ${s.dateLabel}`, href: `/m/reunion/${s.id}` }
+  }
+  const kinds = new Set(sources.map((s) => s.kind))
+  if (kinds.size === 1) {
+    return { label: `Issues de ${sources.length} ${kinds.has('visite') ? 'visites' : 'réunions'}`, href: null }
+  }
+  return { label: `Issues de ${sources.length} sources`, href: null }
+}
+
 export function buildAttentionGroups<T extends GroupableItem>(
   items: T[],
   opts?: { maxSites?: number; maxItems?: number },

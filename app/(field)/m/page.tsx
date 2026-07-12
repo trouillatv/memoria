@@ -8,7 +8,7 @@ import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { listSharedHandoverBriefsForChef } from '@/lib/db/handover'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { actionAttentionOf } from '@/lib/actions/health'
-import { buildAttentionGroups, type GroupableItem, type BuiltGroup } from '@/lib/actions/attention-groups'
+import { buildAttentionGroups, originOfSources, type GroupableItem, type BuiltGroup, type SourceKind, type SourceRef } from '@/lib/actions/attention-groups'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
@@ -601,30 +601,32 @@ export default async function FieldHomePage({
   }))
 
   // L'ORIGINE réelle de chaque groupe, depuis les report_id EXACTS de ses
-  // items : source unique → « Issue de la réunion du 8 juillet » cliquable ;
-  // plusieurs sources → « Issues de N réunions », jamais une origine inventée.
+  // items. Un site_report est une RÉUNION ou une VISITE (origin non-null,
+  // mig 162) — le résolveur pur (originOfSources) dit le vrai type, la vraie
+  // route, ou « Issues de N sources » ; jamais une origine inventée.
   {
     const allReportIds = [...new Set(attentionGroups.flatMap((g) => g.reportIds))]
     if (allReportIds.length > 0) {
       const { data: srcReports } = await supabase
         .from('site_reports')
-        .select('id, created_at')
+        .select('id, created_at, origin')
         .in('id', allReportIds)
-      const dateById = new Map(
-        ((srcReports ?? []) as Array<{ id: string; created_at: string }>).map((r) => [
+      const srcById = new Map(
+        ((srcReports ?? []) as Array<{ id: string; created_at: string; origin: string | null }>).map((r) => [
           r.id,
-          new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' }),
+          {
+            id: r.id,
+            kind: (r.origin ? 'visite' : 'reunion') as SourceKind,
+            dateLabel: new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' }),
+          },
         ]),
       )
       for (const g of attentionGroups) {
-        if (g.reportIds.length === 1) {
-          const d = dateById.get(g.reportIds[0])
-          if (d) {
-            g.origin = `Issue de la réunion du ${d}`
-            g.originHref = `/m/reunion/${g.reportIds[0]}`
-          }
-        } else if (g.reportIds.length > 1) {
-          g.origin = `Issues de ${g.reportIds.length} réunions`
+        const sources = g.reportIds.map((id) => srcById.get(id)).filter((s): s is SourceRef => !!s)
+        const o = originOfSources(sources)
+        if (o) {
+          g.origin = o.label
+          g.originHref = o.href
         }
       }
     }
