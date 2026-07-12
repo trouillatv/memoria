@@ -83,20 +83,24 @@ export function pickNextSteps(
 export async function getSiteNextSteps(siteId: string, max = 5): Promise<NextStep[]> {
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
-  const today = nowIso.slice(0, 10)
   // Préfiltre SQL à l'horizon de l'agenda (le filtre PUR, en jours Nouméa,
   // reste l'autorité) — +1 j de marge pour le décalage UTC / Nouméa.
   const horizonIso = new Date(Date.now() + 15 * 86_400_000).toISOString()
   const horizonDay = horizonIso.slice(0, 10)
 
+  // Jour civil Nouméa courant — les colonnes DATE (réunions, échéances) se
+  // comparent en jours, jamais en instants (le jour UTC peut être la veille).
+  const todayNoumea = dayOf(Date.now())
+
   const [meetings, missionsRes, actionsRes] = await Promise.all([
+    // next_meeting_at est une DATE (mig 131) : jour civil, sans heure.
     supabase
       .from('site_reports')
       .select('next_meeting_at')
       .eq('site_id', siteId)
       .not('next_meeting_at', 'is', null)
-      .gte('next_meeting_at', nowIso)
-      .lte('next_meeting_at', horizonIso)
+      .gte('next_meeting_at', todayNoumea)
+      .lte('next_meeting_at', horizonDay)
       .order('next_meeting_at', { ascending: true })
       .limit(max),
     supabase.from('missions').select('id, name').eq('site_id', siteId).is('deleted_at', null),
@@ -106,7 +110,7 @@ export async function getSiteNextSteps(siteId: string, max = 5): Promise<NextSte
       .eq('site_id', siteId)
       .in('status', ['open', 'planned'])
       .not('due_date', 'is', null)
-      .gte('due_date', today)
+      .gte('due_date', todayNoumea)
       .lte('due_date', horizonDay)
       .order('due_date', { ascending: true })
       .limit(max),
@@ -115,7 +119,9 @@ export async function getSiteNextSteps(siteId: string, max = 5): Promise<NextSte
   const candidates: Array<Pick<NextStep, 'kind' | 'at' | 'label' | 'href'>> = []
 
   for (const m of (meetings.data ?? []) as Array<{ next_meeting_at: string }>) {
-    candidates.push({ kind: 'reunion', at: m.next_meeting_at, label: 'Réunion de chantier', href: `/m/site/${siteId}/reunions` })
+    // Date pure → minuit NOUMÉA explicite (comme les échéances) : bon jour
+    // affiché, pas d'heure fantôme (« 11h00 » = minuit UTC vu de Nouméa).
+    candidates.push({ kind: 'reunion', at: `${m.next_meeting_at}T00:00:00+11:00`, label: 'Réunion de chantier', href: `/m/site/${siteId}/reunions` })
   }
 
   const missionNameById = new Map(

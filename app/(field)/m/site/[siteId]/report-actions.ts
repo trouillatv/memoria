@@ -1018,15 +1018,17 @@ export async function createVigilanceFromRiskAction(
   return { ok: true }
 }
 
-// ── « On se revoit mardi à 9h » (mig 131) ─────────────────────────────────────
-// Programme la PROCHAINE réunion depuis la fin d'une réunion terrain. La date
-// vit sur le report (site_reports.next_meeting_at) — déjà lue par le bloc
-// « Prochaine étape », le planning et les briefs. Le PV (pv-resolvers) sait
-// aussi l'écrire quand l'IA la détecte ; ici c'est le geste HUMAIN direct.
+// ── « On se revoit mardi » (mig 131) ──────────────────────────────────────────
+// Programme la PROCHAINE réunion depuis la fin d'une réunion terrain. La colonne
+// site_reports.next_meeting_at est une DATE (jour civil, sans heure ni fuseau) —
+// déjà lue par l'agenda du chantier, le planning et les briefs. Le PV
+// (pv-resolvers) sait aussi l'écrire ; ici c'est le geste HUMAIN direct.
 
 const nextMeetingSchema = z.object({
   report_id: z.string().uuid(),
-  at: z.string().datetime(),
+  /** Jour civil « YYYY-MM-DD » — JAMAIS un timestamp : la colonne est une date,
+   *  un ISO UTC y perdrait l'heure et pourrait reculer d'un jour (bug corrigé). */
+  at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 })
 
 export async function setNextMeetingAction(
