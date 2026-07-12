@@ -142,11 +142,6 @@ export function PdfAuditViewer({
         label: a.kindLabel,
         active: id === currentId,
       })
-      // Le NUMÉRO au début du surlignage — le même que la marge et la liste :
-      // en lisant le document, on sait immédiatement quel engagement on regarde.
-      m.classList.add('audit-num')
-      m.setAttribute('data-n', String(a.index))
-      m.style.setProperty('--eng-color', a.color)
     })
     next.sort((x, y) => x.top - y.top)
     const nextKey = JSON.stringify(next)
@@ -180,13 +175,8 @@ export function PdfAuditViewer({
         mark.audit-hl { background: rgba(250, 204, 21, .45); color: inherit; border-radius: 2px; padding: 0; }
         mark.audit-hl-flash { background: rgba(245, 158, 11, .85); transition: background .3s; }
         mark.audit-hl-other { color: inherit; padding: 0; border-radius: 2px; cursor: pointer; }
-        /* Le numéro [n] posé AU DÉBUT du surlignage — même identifiant que la
-           marge et la liste : la correspondance est immédiate, écran ou papier. */
-        mark.audit-num::before {
-          content: "[" attr(data-n) "] ";
-          font-weight: 700; font-size: .72em; letter-spacing: .02em;
-          color: var(--eng-color, #92400e);
-        }
+        /* Le TEXTE du document reste intact : le numéro ne vit QUE dans la
+           marge (décision Vincent 2026-07-13) — rien d'incrusté dans la ligne. */
         /* Pulse UNIQUE à la sélection (500 ms), puis plus rien ne bouge. */
         @keyframes audit-pulse { 0% { transform: scale(1) translateY(-50%); } 50% { transform: scale(1.45) translateY(-40%); } 100% { transform: scale(1.25) translateY(-40%); } }
         .react-pdf__Page { margin: 0 auto; }

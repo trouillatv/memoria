@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { ChevronLeft, ChevronRight, FileText, ExternalLink, Loader2 } from 'lucide-react'
-import { KIND_META } from '@/lib/engagements/kind'
+import { KIND_META, KIND_ORDER } from '@/lib/engagements/kind'
 import { citationLevel } from '@/lib/engagements/citation'
 import type { EngagementKind } from '@/types/db'
 
@@ -182,6 +182,19 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
               <a href={src} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline shrink-0">
                 <ExternalLink className="h-3.5 w-3.5" /> Onglet
               </a>
+            </div>
+            {/* LÉGENDE des couleurs — seuls les types présents dans CE dossier. */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b px-3 py-1.5">
+              {KIND_ORDER.filter((k) => engagements.some((e) => e.kind === k)).map((k) => (
+                <span key={k} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: `${KIND_COLOR[k]}55`, boxShadow: `inset 0 0 0 1.5px ${KIND_COLOR[k]}` }} aria-hidden />
+                  {KIND_META[k].label}
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="h-2.5 w-2.5 rounded-sm bg-yellow-300/70" aria-hidden />
+                Sélection
+              </span>
             </div>
             <PdfAuditViewer
               key={iframeKey}
