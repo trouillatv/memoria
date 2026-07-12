@@ -474,13 +474,26 @@ export default async function FieldInterventionPage({
         />
       )}
 
-      {/* ACTIONS EMBARQUÉES (audit 2026-07-13) : uniquement celles explicitement
-          liées à CETTE exécution (« J'y vais » / Planifier) — jamais toutes les
-          actions du chantier, l'intervention n'est pas une 2e page Actions. */}
+      {/* Checklist masquée si vide (cas d'une intervention ponctuelle : pas de
+          tâches obligatoires — le travail est l'objet lui-même). */}
+      {checklistItems.length > 0 && (
+        <ChecklistMobile
+          interventionId={id}
+          items={checklistItems}
+          serverPhotos={photos}
+          signedUrls={signedUrls}
+          canEdit={isInProgress}
+          executorByToken={Object.fromEntries(tokenLabel)}
+        />
+      )}
+
+      {/* POURQUOI JE SUIS LÀ (audit 2026-07-13) : les actions explicitement
+          liées à CETTE exécution (« J'y vais » / Planifier) — un CONTEXTE sous
+          la checklist (qui reste le cœur du travail), jamais une 2e liste. */}
       {embarkedActions.length > 0 && (
-        <section className="rounded-2xl border bg-card p-4">
+        <section className="rounded-2xl border border-foreground/[0.06] bg-muted/20 p-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Actions embarquées
+            Pourquoi je suis là
           </h2>
           <ul className="mt-2 space-y-1.5">
             {embarkedActions.map((a) => (
@@ -494,19 +507,6 @@ export default async function FieldInterventionPage({
             Décidées en amont — la clôture se fait sur l&apos;action (avec preuve), pas ici.
           </p>
         </section>
-      )}
-
-      {/* Checklist masquée si vide (cas d'une intervention ponctuelle : pas de
-          tâches obligatoires — le travail est l'objet lui-même). */}
-      {checklistItems.length > 0 && (
-        <ChecklistMobile
-          interventionId={id}
-          items={checklistItems}
-          serverPhotos={photos}
-          signedUrls={signedUrls}
-          canEdit={isInProgress}
-          executorByToken={Object.fromEntries(tokenLabel)}
-        />
       )}
 
       <VoiceNoteList notes={voiceNotesWithUrls} />

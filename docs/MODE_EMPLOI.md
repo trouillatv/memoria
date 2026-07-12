@@ -46,6 +46,33 @@ Le moat n'est pas de générer du texte, c'est de **contextualiser la mémoire**
 retrouver ce qui s'est vraiment passé, raconter la durée (« ouvert depuis
 143 j »), et survivre aux ruptures humaines (départ, absence, passation).
 
+### Les trois verbes de MemorIA
+
+Sur le terrain, tout part d'une seule question : **que venez-vous faire ?**
+Le bouton ➕ vous propose les trois réponses possibles — chacune ouvre le bon
+outil, sans que vous ayez à connaître le vocabulaire technique.
+
+**👀 Je viens voir** → une **visite**.
+Observer, constater, contrôler. Comparer avec la dernière fois. Photographier,
+dicter, poser des questions. La liste « À vérifier » vous rappelle ce que la
+mémoire du chantier attend. À la fin : un compte-rendu, et éventuellement de
+nouvelles actions.
+
+**🔧 Je viens faire** → une **intervention**.
+Exécuter ce qui a été décidé. Suivre la checklist, prendre les preuves
+(photos, vocal), terminer la mission. Si vous découvrez un imprévu (une poutre
+fissurée, une fuite) : **Signaler une découverte** — vous constatez, le
+conducteur qualifie.
+
+**🎤 Décider ensemble** → une **réunion**.
+Discuter, arbitrer, attribuer. MemorIA écoute, propose les actions et les
+décisions, vous validez — rien ne se crée sans vous. Avant de partir :
+programmez la prochaine réunion, elle apparaîtra sur le chantier.
+
+Et le pont entre décider et faire : sur toute action ouverte, **« J'y vais »**
+crée l'intervention du jour et l'ouvre — l'action décidée devient une
+exécution terrain, en un geste.
+
 ---
 
 ## 2. Première connexion & les rôles
