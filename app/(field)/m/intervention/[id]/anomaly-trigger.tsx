@@ -22,7 +22,9 @@ export function AnomalyTrigger({
         style={{ minHeight: 56 }}
       >
         <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-        Signaler un problème
+        {/* « Découverte » couvre le problème ET l'imprévu (poutre fissurée) —
+            le terrain constate, le conducteur qualifie (audit 2026-07-13). */}
+        Signaler une découverte
       </button>
       <AnomalyModal
         interventionId={interventionId}

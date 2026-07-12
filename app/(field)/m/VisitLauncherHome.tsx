@@ -120,7 +120,11 @@ export function VisitLauncherHome() {
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-emerald-600 dark:bg-white/10 dark:text-emerald-300">
           <Play className="h-7 w-7" />
         </span>
-        <span className="break-words">Nouvelle visite</span>
+        {/* L'INTENTION d'abord, le format en dessous (audit 2026-07-13) :
+            l'utilisateur ne choisit pas un objet technique, il dit ce qu'il
+            vient faire — décider / faire / voir. */}
+        <span className="break-words font-semibold">Je viens voir</span>
+        <span className="-mt-1.5 block text-[11px] font-normal opacity-75">Démarrer une visite</span>
       </button>
 
       {open && (

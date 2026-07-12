@@ -14,7 +14,8 @@ import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, User, Clock, ChevronRight, ChevronDown, Camera, Loader2, Target, MapPin, CheckCircle2, PauseCircle, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction, markActionProgressAction, snoozeActionAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, markActionProgressAction, snoozeActionAction, planActionAction } from '@/app/(dashboard)/actions/actions'
+import { currentSlot } from '@/lib/time/prestation-slot'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 
 type Priority = 'retard' | 'aujourdhui' | 'suivi'
@@ -103,6 +104,35 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
     }
     return [...map.entries()]
   }, [visible, sort, filter, today])
+
+  // « J'Y VAIS » (audit 2026-07-13) : le chaînon décidé → exécuté. L'action
+  // devient une intervention DU JOUR (mission dédiée, créneau courant, lien
+  // explicite markSiteActionPlanned) et on l'ouvre — plus besoin du bureau,
+  // plus de visite-contournement pour aller FAIRE.
+  const [goingId, setGoingId] = useState<string | null>(null)
+  function goExecute(a: SiteActionRow) {
+    if (goingId) return
+    setGoingId(a.id)
+    const fd = new FormData()
+    fd.set('id', a.id)
+    fd.set('site_id', a.site_id)
+    fd.set('scheduled_for', todayIso())
+    fd.set('slot', currentSlot())
+    fd.set('mission_mode', 'new')
+    fd.set('new_mission_name', a.title.slice(0, 120))
+    fd.set('team', 'inherit')
+    planActionAction(fd)
+      .then((r) => {
+        if (r.ok) {
+          toast.success('Intervention créée — c’est parti', { duration: 1200 })
+          router.push(`/m/intervention/${r.interventionId}`)
+        } else {
+          toast.error(r.error)
+          setGoingId(null)
+        }
+      })
+      .catch(() => { toast.error('Échec'); setGoingId(null) })
+  }
 
   function markProgress(a: SiteActionRow) {
     setDoneOverride((p) => new Map(p).set(a.id, true))
@@ -230,6 +260,22 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
                   {/* Choix métier — « est-ce que je reviens ? » */}
                   {isOpen && !isClosing && !isReporting && (
                     <div className="border-t border-foreground/[0.06] px-4 py-3.5 space-y-2.5">
+                      {/* J'Y VAIS — décidé → exécuté, sans détour bureau. Une
+                          action déjà planifiée a déjà son intervention. */}
+                      {a.status === 'open' && (
+                        <button
+                          type="button"
+                          onClick={() => goExecute(a)}
+                          disabled={goingId === a.id}
+                          className="flex w-full flex-col items-center justify-center gap-0.5 rounded-xl bg-foreground px-3 py-3 text-center text-[13px] font-semibold text-background active:scale-[0.98] transition-transform disabled:opacity-60"
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            {goingId === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
+                            J&apos;y vais
+                          </span>
+                          <span className="text-[11px] font-normal opacity-80">crée l&apos;intervention du jour et l&apos;ouvre</span>
+                        </button>
+                      )}
                       <p className="text-[13px] font-medium">Tu reviendras sur cette action&nbsp;?</p>
                       <div className="grid grid-cols-2 gap-2.5">
                         <button type="button" onClick={() => markProgress(a)}

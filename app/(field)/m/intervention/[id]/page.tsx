@@ -131,6 +131,20 @@ export default async function FieldInterventionPage({
     listDelegatedItemIds(id).catch(() => []),
   ])
 
+  // Actions EMBARQUÉES : liées explicitement à cette intervention ou à sa
+  // mission (converted_to_* posé par « J'y vais » / Planifier). Volontaire,
+  // jamais « toutes les actions du chantier ».
+  const { data: embarkedRaw } = await createAdminClient()
+    .from('site_actions')
+    .select('id, title, status, converted_to_type, converted_to_id')
+    .in('converted_to_id', [id, intervention.mission_id])
+    .limit(10)
+  const embarkedActions = (((embarkedRaw ?? []) as Array<{ id: string; title: string; status: string; converted_to_type: string | null; converted_to_id: string | null }>)
+    .filter((a) =>
+      (a.converted_to_type === 'intervention' && a.converted_to_id === id) ||
+      (a.converted_to_type === 'mission' && a.converted_to_id === intervention.mission_id),
+    ))
+
   // Map token → libellé entreprise (pour les badges « Réalisé par … » et le partage).
   const tokenLabel = new Map<string, string>()
   for (const t of allTokens) {
@@ -458,6 +472,28 @@ export default async function FieldInterventionPage({
           canCapture={!isSkipped && (isPlanned || isInProgress || isAdmin)}
           needsReturnPrompt={accessReturn.pickupNeedsReturn}
         />
+      )}
+
+      {/* ACTIONS EMBARQUÉES (audit 2026-07-13) : uniquement celles explicitement
+          liées à CETTE exécution (« J'y vais » / Planifier) — jamais toutes les
+          actions du chantier, l'intervention n'est pas une 2e page Actions. */}
+      {embarkedActions.length > 0 && (
+        <section className="rounded-2xl border bg-card p-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Actions embarquées
+          </h2>
+          <ul className="mt-2 space-y-1.5">
+            {embarkedActions.map((a) => (
+              <li key={a.id} className="flex items-baseline gap-2 text-[14px]">
+                <span aria-hidden className={`h-2 w-2 shrink-0 self-center rounded-full ${a.status === 'done' ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                <span className={`min-w-0 flex-1 ${a.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>{a.title}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Décidées en amont — la clôture se fait sur l&apos;action (avec preuve), pas ici.
+          </p>
+        </section>
       )}
 
       {/* Checklist masquée si vide (cas d'une intervention ponctuelle : pas de
