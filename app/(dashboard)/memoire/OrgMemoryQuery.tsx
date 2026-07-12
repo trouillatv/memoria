@@ -32,7 +32,8 @@ const CONFIDENCE_META: Record<OrgMemorySummary['confidence'], { label: string; c
 const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof StickyNote; cls: string }> = {
   anomaly:      { label: 'Anomalie',     Icon: AlertTriangle, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   site_note:    { label: 'Note',         Icon: StickyNote,    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
-  intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  // Convention app (règle 2026-07-12) : intervention = Wrench/ambre partout.
+  intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   photo:        { label: 'Photo',        Icon: Camera,        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   document:     { label: 'Document',     Icon: BookOpen,      cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   action:       { label: 'Action',       Icon: ListTodo,      cls: 'bg-teal-50 text-teal-700 border-teal-200' },

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import {
-  Mic, Building2, MapPin, AlertTriangle, ListTodo, CalendarClock, ClipboardList,
+  Mic, Building2, MapPin, AlertTriangle, ListTodo, Wrench, ClipboardList,
   Eye, BookOpen, FileCheck2, FileText, ArrowLeft, CheckCircle2, Hourglass, Users,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -41,7 +41,9 @@ type TabKey = (typeof TABS)[number]
 
 const TYPE_META: Record<SiteReportProposalType, { label: string; icon: typeof ListTodo; cls: string }> = {
   action: { label: 'Action', icon: ListTodo, cls: 'text-sky-600' },
-  intervention: { label: 'Intervention', icon: CalendarClock, cls: 'text-indigo-600' },
+  // Convention app (règle 2026-07-12) : intervention = Wrench/ambre partout
+  // (l'icône différencie de l'anomalie, ambre elle aussi).
+  intervention: { label: 'Intervention', icon: Wrench, cls: 'text-amber-600' },
   mission: { label: 'Mission', icon: ClipboardList, cls: 'text-violet-600' },
   anomaly: { label: 'Anomalie', icon: AlertTriangle, cls: 'text-amber-600' },
   vigilance: { label: 'Vigilance', icon: Eye, cls: 'text-orange-600' },

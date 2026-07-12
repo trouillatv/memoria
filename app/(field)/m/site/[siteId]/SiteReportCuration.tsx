@@ -41,7 +41,8 @@ interface Props {
 
 const TYPE_META: Record<SiteReportProposalType, { label: string; icon: typeof Wrench; tone: string }> = {
   action:        { label: 'Action',        icon: ListTodo,      tone: 'text-sky-700 bg-sky-50 border-sky-200' },
-  intervention:  { label: 'Intervention',  icon: CalendarClock, tone: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+  // Convention app (règle 2026-07-12) : intervention = Wrench/ambre partout.
+  intervention:  { label: 'Intervention',  icon: Wrench,        tone: 'text-amber-700 bg-amber-50 border-amber-200' },
   mission:       { label: 'Mission',       icon: ClipboardList, tone: 'text-violet-700 bg-violet-50 border-violet-200' },
   anomaly:       { label: 'Anomalie',      icon: AlertTriangle, tone: 'text-amber-700 bg-amber-50 border-amber-200' },
   vigilance:     { label: 'Vigilance',     icon: Eye,           tone: 'text-orange-700 bg-orange-50 border-orange-200' },

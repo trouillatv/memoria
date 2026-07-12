@@ -34,7 +34,8 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   site_note:    { label: 'Note',         Icon: StickyNote,    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   // P2 — observation terrain (visit_capture : note / mémo vocal / point vérifié).
   observation:  { label: 'Observation',  Icon: Eye,           cls: 'bg-teal-50 text-teal-700 border-teal-200' },
-  intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  // Convention app (règle 2026-07-12) : intervention = Wrench/ambre partout.
+  intervention: { label: 'Intervention', Icon: Wrench,        cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   photo:        { label: 'Photo',        Icon: Camera,        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   // S4a-1 — mémoire récente produite par MemorIA, désormais cherchable.
   site_action:      { label: 'Action',       Icon: ListTodo,   cls: 'bg-sky-50 text-sky-700 border-sky-200' },

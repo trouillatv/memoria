@@ -9,14 +9,19 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  ClipboardList, Hammer, Camera, FileText, ListTodo, Gavel, ClipboardCheck,
+  Users, Wrench, Camera, FileText, ListTodo, Gavel, ClipboardCheck,
   Sparkles, History, AlertTriangle, StickyNote, ShieldAlert, ChevronRight,
 } from 'lucide-react'
 import type { ChronicleCategory, ChronicleEvent } from '@/lib/db/site-chronicle'
 
+// Langage visuel UNIQUE (règle 2026-07-12) : un objet = une représentation
+// partout. Référence = convention terrain (frise, activité, patrimoine) :
+// réunion Users/sky, intervention Wrench/amber. La duplication de teinte
+// entre catégories est déjà la norme ici (violet, ambre, rose…) — l'icône
+// différencie.
 const CAT_META: Record<ChronicleCategory, { label: string; Icon: typeof ListTodo; cls: string }> = {
-  meeting: { label: 'Réunions', Icon: ClipboardList, cls: 'text-violet-600' },
-  intervention: { label: 'Interventions', Icon: Hammer, cls: 'text-indigo-600' },
+  meeting: { label: 'Réunions', Icon: Users, cls: 'text-sky-600' },
+  intervention: { label: 'Interventions', Icon: Wrench, cls: 'text-amber-600' },
   photo: { label: 'Photos', Icon: Camera, cls: 'text-sky-600' },
   document: { label: 'Documents', Icon: FileText, cls: 'text-teal-600' },
   action: { label: 'Actions', Icon: ListTodo, cls: 'text-sky-700' },
