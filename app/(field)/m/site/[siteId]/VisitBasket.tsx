@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin, Eye, ListChecks, Plus,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, ChevronDown, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin, Eye, ListChecks, Plus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -25,7 +25,8 @@ import { PhotoAnnotator } from './PhotoAnnotator'
 import { GhostCamera } from './GhostCamera'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { beginLiveUpload, endLiveUpload } from '@/lib/field/live-uploads'
-import { setWatchlistItemStateAction, addWatchlistItemAction } from './watchlist-actions'
+import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
+import type { WatchContext } from '@/lib/visits/watchlist-context'
 import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
@@ -621,6 +622,26 @@ export function VisitBasket({
       .catch(() => toast.error('Échec'))
   }
 
+  // PROFONDEUR DU CLIC (revue 2026-07-12) : ouvrir un point = comprendre
+  // POURQUOI il apparaît et QUELLE preuve prendre. Contexte chargé une fois,
+  // depuis l'objet source réel — zéro IA.
+  const [openWatchId, setOpenWatchId] = useState<string | null>(null)
+  const [watchCtx, setWatchCtx] = useState<Map<string, WatchContext | 'loading'>>(new Map())
+  function toggleWatchDetail(item: DbVisitWatchlistItem) {
+    if (openWatchId === item.id) { setOpenWatchId(null); return }
+    setOpenWatchId(item.id)
+    if (!watchCtx.has(item.id)) {
+      setWatchCtx((p) => new Map(p).set(item.id, 'loading'))
+      getWatchlistContextAction({ item_id: item.id })
+        .then((r) => {
+          setWatchCtx((p) => new Map(p).set(item.id, r.ok ? r.context : {
+            why: 'Contexte indisponible.', gesture: 'Contrôler sur place et laisser une trace.', sourceLabel: null, sourceHref: null,
+          }))
+        })
+        .catch(() => setWatchCtx((p) => { const m = new Map(p); m.delete(item.id); return m }))
+    }
+  }
+
   // ── Terminer la visite ──────────────────────────────────────────────────────
   function end() {
     // LE DERNIER REGARD — une seule question, jamais plusieurs : s'il reste des
@@ -981,7 +1002,47 @@ export function VisitBasket({
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {watchItems.map((w) => (
               <div key={w.id} className="space-y-1.5 rounded-lg border p-2.5" data-testid="watchlist-item">
-                <p className={`text-sm leading-snug ${w.state !== 'pending' ? 'text-muted-foreground' : ''}`}>{w.label}</p>
+                {/* Le point est OUVRABLE : pourquoi + geste + source. */}
+                <button
+                  type="button"
+                  onClick={() => toggleWatchDetail(w)}
+                  className="flex w-full items-start justify-between gap-2 text-left"
+                  aria-expanded={openWatchId === w.id}
+                >
+                  <p className={`text-sm leading-snug ${w.state !== 'pending' ? 'text-muted-foreground' : ''}`}>{w.label}</p>
+                  <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${openWatchId === w.id ? 'rotate-180' : ''}`} />
+                </button>
+                {openWatchId === w.id && (
+                  <div className="space-y-1.5 rounded-md bg-muted/40 p-2 text-[13px]" data-testid="watchlist-context">
+                    {(() => {
+                      const ctx = watchCtx.get(w.id)
+                      if (!ctx || ctx === 'loading') return <p className="text-muted-foreground">…</p>
+                      return (
+                        <>
+                          <p className="text-muted-foreground">{ctx.why}</p>
+                          <p className="inline-flex items-start gap-1.5 font-medium">
+                            <Camera className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            {ctx.gesture}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => { setOverlay('none'); fileRef.current?.click() }}
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 active:scale-95 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            >
+                              <Camera className="h-3.5 w-3.5" /> Prendre une photo
+                            </button>
+                            {ctx.sourceHref && ctx.sourceLabel && (
+                              <a href={ctx.sourceHref} className="text-xs text-sky-700 underline underline-offset-2 dark:text-sky-300">
+                                {ctx.sourceLabel} →
+                              </a>
+                            )}
+                          </div>
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-1.5">
                   <WatchStateButton
                     active={w.state === 'verified'} icon={<Check className="h-3.5 w-3.5" />} label="Vérifié"
