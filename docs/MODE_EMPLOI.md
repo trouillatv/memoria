@@ -12,6 +12,7 @@ l'information, et les garde-fous appliqués.
 
 ## Sommaire
 
+0. **Comprendre MemorIA en 2 minutes** ← commencez ici
 1. Ce que fait MemorIA (et ce que ce n'est pas)
 2. Première connexion & les rôles
 3. Le cockpit quotidien (Tableau de bord, Aujourd'hui, Semaine, Briefing, Actions)
@@ -20,6 +21,95 @@ l'information, et les garde-fous appliqués.
 6. Contrats, Missions, Équipes, Acteurs, Continuité
 7. Recherche, Dossiers de démarrage, Bibliothèque, Glossaire, Preuves, Outils
 8. Les liens & QR Codes (sans login) — qui sert à quoi
+
+---
+
+## 0. Comprendre MemorIA en 2 minutes
+
+MemorIA ne vous demande jamais de connaître son vocabulaire technique. Tout
+part d'une seule question : **que venez-vous faire ?**
+
+### Le principe — quatre verbes
+
+| Votre intention | L'outil | Ce qu'il produit |
+| --- | --- | --- |
+| 🎤 **Décider** ensemble | Réunion | décisions, actions, réserves, compte-rendu |
+| 🔧 **Faire** ce qui est décidé | Intervention | checklist, photos de preuve, mission terminée |
+| 👀 **Observer**, contrôler | Visite | constats, contrôles, compte-rendu |
+| 📌 **Agir plus tard** | Action | un engagement, suivi jusqu'à sa preuve |
+
+### La boucle
+
+```
+RÉUNION            nous décidons
+   ↓
+ACTIONS            quelqu'un doit agir
+   ↓  « J'y vais »
+INTERVENTION       le travail est exécuté et prouvé
+   ↓
+VISITE             le résultat est observé et contrôlé
+   ↓
+COMPTE-RENDU       la mémoire est transmise
+   ↓
+… et de nouvelles décisions si nécessaire.
+```
+
+### Six situations concrètes
+
+**« Nous devons discuter et décider de la suite. »**
+→ ➕ **Décider ensemble**. MemorIA écoute, propose les décisions et les
+actions, vous validez — rien ne se crée sans vous. Avant de partir :
+programmez la prochaine réunion, elle apparaîtra sur le chantier.
+
+**« Je vais réaliser une tâche décidée en réunion. »**
+→ Ouvrez l'action, puis **« J'y vais »** (maintenant) ou **Planifier** (plus
+tard). MemorIA prépare l'intervention liée — checklist, photos, vocal.
+
+**« Je vais voir où en sont les travaux. »** *(ex. : contrôle du nettoyage
+chez Petratiti)*
+→ ➕ **Je viens voir**. La liste « À vérifier » vous attend : réserves
+ouvertes, actions en retard, preuves à prendre avant qu'il ne soit trop tard.
+
+**« Pendant l'intervention, je découvre un problème imprévu. »** *(une poutre
+fissurée alors que je venais peindre)*
+→ **Signaler une découverte** : photo, vocal ou note. Vous constatez ; le
+conducteur qualifie ensuite (action, réserve, ou visite de contrôle).
+
+**« Il faut caler le prochain rendez-vous. »**
+→ À la fin de la réunion, le champ **« Prochaine réunion ? »** — le jour
+apparaît sur l'agenda du chantier et au planning.
+
+**« Je reviens après plusieurs semaines. »**
+→ Ouvrez la fiche chantier : l'agenda dit ce qui arrive, « Depuis votre
+dernier passage » dit ce qui a bougé, et **Préparer ma visite** fait le point
+avant d'y aller.
+
+### À quoi sert « À vérifier » ?
+
+C'est la **liste de contrôle de la visite en cours** — pas une seconde liste
+d'actions. Elle est préparée automatiquement à partir de la mémoire du
+chantier : réserves encore ouvertes, actions en retard, décisions non
+appliquées, obligations à surveiller, preuves qui risquent de devenir
+impossibles à prendre. **Un point « À vérifier » ne crée rien.** Pendant la
+visite, vous répondez : **Vérifié** · **À suivre** · **Sans objet**. Au
+débrief, un point « À suivre » peut devenir une action ou une réserve —
+uniquement après votre validation.
+
+### Action ou intervention ?
+
+> **Une action dit ce qui doit être fait. Une intervention organise et prouve
+> son exécution.**
+
+```
+Action : « Installer une alarme de sécurité »
+   ↓ « J'y vais » / Planifier
+Intervention : jeudi · entreprise responsable · checklist ·
+               photos avant/après · signature
+```
+
+Toutes les actions n'ont pas besoin d'une intervention : une relance
+téléphonique se termine directement (« C'est terminé », avec un mot de
+preuve). Une tâche **terrain**, elle, devient généralement une intervention.
 
 ---
 
@@ -45,33 +135,6 @@ l'information, et les garde-fous appliqués.
 Le moat n'est pas de générer du texte, c'est de **contextualiser la mémoire** :
 retrouver ce qui s'est vraiment passé, raconter la durée (« ouvert depuis
 143 j »), et survivre aux ruptures humaines (départ, absence, passation).
-
-### Les trois verbes de MemorIA
-
-Sur le terrain, tout part d'une seule question : **que venez-vous faire ?**
-Le bouton ➕ vous propose les trois réponses possibles — chacune ouvre le bon
-outil, sans que vous ayez à connaître le vocabulaire technique.
-
-**👀 Je viens voir** → une **visite**.
-Observer, constater, contrôler. Comparer avec la dernière fois. Photographier,
-dicter, poser des questions. La liste « À vérifier » vous rappelle ce que la
-mémoire du chantier attend. À la fin : un compte-rendu, et éventuellement de
-nouvelles actions.
-
-**🔧 Je viens faire** → une **intervention**.
-Exécuter ce qui a été décidé. Suivre la checklist, prendre les preuves
-(photos, vocal), terminer la mission. Si vous découvrez un imprévu (une poutre
-fissurée, une fuite) : **Signaler une découverte** — vous constatez, le
-conducteur qualifie.
-
-**🎤 Décider ensemble** → une **réunion**.
-Discuter, arbitrer, attribuer. MemorIA écoute, propose les actions et les
-décisions, vous validez — rien ne se crée sans vous. Avant de partir :
-programmez la prochaine réunion, elle apparaîtra sur le chantier.
-
-Et le pont entre décider et faire : sur toute action ouverte, **« J'y vais »**
-crée l'intervention du jour et l'ouvre — l'action décidée devient une
-exécution terrain, en un geste.
 
 ---
 
