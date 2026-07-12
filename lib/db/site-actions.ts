@@ -8,7 +8,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
-import { actionHealth, type ActionHealth } from '@/lib/actions/health'
+import { actionHealth, actionAttentionOf, noumeaDayOf, type ActionHealth } from '@/lib/actions/health'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 
 // Re-export pour compat : la fonction pure vit dans lib/actions/health (sans
@@ -286,12 +286,16 @@ export interface OpenActionsHealth {
   critique: number
   surveiller: number
   rythme: number
+  /** Ce qui mérite l'œil AUJOURD'HUI (même modèle que l'accueil, cf.
+   *  actionAttentionOf) — le badge mobile compte CECI, pas l'inventaire :
+   *  un badge rouge permanent est une alarme par défaut (audit 2026-07-12). */
+  attention: number
 }
 
-/** Compteur santé des actions ouvertes (org) — pour le badge de navigation.
- *  Léger : ne récupère que created_at. Résilient si le socle n'est pas migré. */
+/** Compteur santé des actions ouvertes (org) — pour les badges de navigation.
+ *  Léger. Résilient si le socle n'est pas migré. */
 export async function getOpenActionsHealth(): Promise<OpenActionsHealth> {
-  const empty = { total: 0, critique: 0, surveiller: 0, rythme: 0 }
+  const empty = { total: 0, critique: 0, surveiller: 0, rythme: 0, attention: 0 }
   try {
     const supabase = createAdminClient()
     const orgId = await getOrgId()
@@ -302,15 +306,17 @@ export async function getOpenActionsHealth(): Promise<OpenActionsHealth> {
     if (siteIds.length === 0) return empty
     const { data, error } = await supabase
       .from('site_actions')
-      .select('created_at')
+      .select('created_at, due_date, last_progress_at, snooze_reason')
       .eq('status', 'open')
       .in('site_id', siteIds)
     if (error) return empty
     const now = Date.now()
+    const today = noumeaDayOf(new Date(now).toISOString())
     const out = { ...empty }
-    for (const r of (data ?? []) as Array<{ created_at: string }>) {
+    for (const r of (data ?? []) as Array<{ created_at: string; due_date: string | null; last_progress_at: string | null; snooze_reason: string | null }>) {
       out.total++
       out[actionHealth(r.created_at, now)]++
+      if (actionAttentionOf(r, today)) out.attention++
     }
     return out
   } catch {

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CheckCircle2, CalendarDays, AlertTriangle, History, Bell, Briefcase, FileText, ListTodo } from 'lucide-react'
+import { ArrowRight, ArrowRightLeft, ChevronRight, MapPin, Clock, CalendarDays, AlertTriangle, History, Bell, FileText, ListTodo, Users, CalendarClock } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listInterventionsVisibleToUser } from '@/lib/db/interventions'
@@ -13,7 +13,6 @@ import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { FreePhotoFab, type FreePhotoFabSite } from './FreePhotoFab'
-import { DateNav } from './DateNav'
 import { ResumeWorkCard } from './ResumeWorkCard'
 import { RecentActivityCard } from './RecentActivityCard'
 import { listActiveVisitsForUser, listPendingTriageForUser, getRecentActivityForUser } from '@/lib/db/visits'
@@ -99,6 +98,21 @@ interface AttentionItem {
   subtitle: string | null
   href: string
   urgent?: boolean
+  /** CONTEXTE (règle 2026-07-12 : jamais une action hors de son chantier).
+   *  Les items sont regroupés sous ce libellé — le chantier, ou la famille
+   *  (« Appels d'offres », « Passation »). */
+  group: string
+  /** Fiche du chantier — l'en-tête du groupe y mène (« Ouvrir → »). */
+  groupHref?: string | null
+}
+
+/** Un chantier (ou une famille) qui réclame — l'unité du récit « À reprendre ». */
+interface AttentionGroup {
+  label: string
+  href: string | null
+  /** « Réunion du 8 juillet » — l'ORIGINE des actions, quand elle est connue. */
+  origin: string | null
+  items: AttentionItem[]
 }
 
 // Écart en JOURS CIVILS purs (anti-bascule fuseau Nouméa, cf. formatScheduledTime).
@@ -466,6 +480,10 @@ export default async function FieldHomePage({
   // automatiquement — l'agent ne va plus les chercher dans /m/actions.
   // Silence positif : carte masquée si rien ne mérite l'œil.
   const attentionItems: AttentionItem[] = []
+  // Échéances d'actions DU JOUR → racontées dans l'agenda « Aujourd'hui ».
+  const dueTodayActions: Array<{ id: string; title: string; siteId: string; siteName: string }> = []
+  // Origine par groupe (« Réunion du 8 juillet ») — le POURQUOI du chantier.
+  const originByGroup = new Map<string, string>()
 
   if (isToday) {
     // 1) Échéances AO (tenders) à rendre — la pression réglementaire d'abord.
@@ -498,6 +516,7 @@ export default async function FieldHomePage({
           subtitle: `Date limite : ${dueLabel} (J-${j})`,
           href: `/tenders/${t.id}`,
           urgent: j <= 2,
+          group: 'Appels d’offres',
         })
       }
     }
@@ -510,8 +529,9 @@ export default async function FieldHomePage({
         severity: 'red',
         icon: History,
         title: kpi.missionName,
-        subtitle: [kpi.siteName, `non fait — ${ageLabel}`].filter(Boolean).join(' · '),
+        subtitle: `non fait — ${ageLabel}`,
         href: `/m/intervention/${kpi.interventionId}?date=${selectedDate}`,
+        group: kpi.siteName || 'Interventions',
       })
     }
 
@@ -522,8 +542,9 @@ export default async function FieldHomePage({
         severity: 'orange',
         icon: AlertTriangle,
         title: kpi.missionName,
-        subtitle: [kpi.siteName, `${kpi.missingCount} tâche${kpi.missingCount > 1 ? 's' : ''} à finir`].filter(Boolean).join(' · '),
+        subtitle: `${kpi.missingCount} tâche${kpi.missingCount > 1 ? 's' : ''} à finir`,
         href: `/m/intervention/${kpi.interventionId}?date=${selectedDate}`,
+        group: kpi.siteName || 'Interventions',
       })
     }
 
@@ -536,19 +557,45 @@ export default async function FieldHomePage({
     if (scopedSites || isManager) {
       const openActions = await listOpenSiteActions(scopedSites ? { siteIds: scopedSites } : undefined).catch(() => [] as SiteActionRow[])
       let shown = 0
+      const shownReportIds = new Set<string>()
       for (const a of openActions) {
         if (shown >= 4) break
+        // Échéance du jour → elle vit dans l'agenda « Aujourd'hui », pas ici.
+        if (a.due_date && a.due_date.slice(0, 10) === todayIso) {
+          dueTodayActions.push({ id: a.id, title: a.title, siteId: a.site_id, siteName: a.site_name })
+          continue
+        }
         const attention = actionAttentionOf(a, todayIso)
         if (!attention) continue
+        if (a.report_id) shownReportIds.add(a.report_id)
         attentionItems.push({
           key: `action-${a.id}`,
           severity: attention.severity,
           icon: ListTodo,
           title: a.title,
-          subtitle: [a.site_name, attention.note].filter(Boolean).join(' · ') || null,
-          href: '/m/actions',
+          subtitle: attention.note,
+          // Le CONTEXTE d'abord : l'action ramène à son chantier, pas à une
+          // liste globale (règle : jamais une action hors contexte).
+          href: `/m/site/${a.site_id}`,
+          group: a.site_name,
+          groupHref: `/m/site/${a.site_id}`,
         })
         shown++
+      }
+      // L'ORIGINE des actions montrées : « Réunion du 8 juillet » (report source).
+      if (shownReportIds.size > 0) {
+        const { data: srcReports } = await supabase
+          .from('site_reports')
+          .select('id, created_at, site_id')
+          .in('id', [...shownReportIds])
+        for (const r of (srcReports ?? []) as Array<{ id: string; created_at: string; site_id: string | null }>) {
+          const d = new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' })
+          for (const it of attentionItems) {
+            if (it.key.startsWith('action-') && it.groupHref === `/m/site/${r.site_id}` && !originByGroup.has(it.group)) {
+              originByGroup.set(it.group, `Réunion du ${d}`)
+            }
+          }
+        }
       }
     }
 
@@ -563,6 +610,7 @@ export default async function FieldHomePage({
         title: b.title,
         subtitle: `${siteCount > 0 ? `${siteCount} site${siteCount > 1 ? 's' : ''} · ` : ''}mémoire transmise`,
         href: `/h/${b.shared_token}`,
+        group: 'Passation',
       })
     }
   }
@@ -570,6 +618,44 @@ export default async function FieldHomePage({
   // Tri par urgence (rouge → orange → jaune → info), cap d'affichage.
   attentionItems.sort((x, y) => SEVERITY[x.severity].rank - SEVERITY[y.severity].rank)
   const shownAttention = attentionItems.slice(0, 6)
+
+  // « À reprendre » : le RÉCIT par chantier (règle 2026-07-12 — jamais une
+  // action hors contexte). Groupes ordonnés par l'urgence de leur pire item.
+  const attentionGroups: AttentionGroup[] = []
+  {
+    const byGroup = new Map<string, AttentionGroup>()
+    for (const it of shownAttention) {
+      let g = byGroup.get(it.group)
+      if (!g) {
+        g = { label: it.group, href: it.groupHref ?? null, origin: originByGroup.get(it.group) ?? null, items: [] }
+        byGroup.set(it.group, g)
+        attentionGroups.push(g)
+      }
+      if (!g.href && it.groupHref) g.href = it.groupHref
+      g.items.push(it)
+    }
+  }
+
+  // RÉUNIONS programmées AUJOURD'HUI (next_meeting_at, mig 131 — jour civil) :
+  // le rendez-vous le plus structurant de la journée du conducteur.
+  let todayMeetings: Array<{ siteId: string; siteName: string }> = []
+  if (isToday) {
+    let mq = supabase
+      .from('site_reports')
+      .select('site_id')
+      .eq('next_meeting_at', todayIso)
+      .not('site_id', 'is', null)
+      .limit(6)
+    if (agentSiteIds.length > 0) mq = mq.in('site_id', agentSiteIds)
+    const { data: meetRows } = await mq
+    const meetSiteIds = [...new Set(((meetRows ?? []) as Array<{ site_id: string }>).map((r) => r.site_id))]
+    if (meetSiteIds.length > 0) {
+      let sq = supabase.from('sites').select('id, name').in('id', meetSiteIds).is('deleted_at', null)
+      if (user.organization_id) sq = sq.eq('organization_id', user.organization_id)
+      const { data: meetSites } = await sq
+      todayMeetings = ((meetSites ?? []) as Array<{ id: string; name: string }>).map((s) => ({ siteId: s.id, siteName: s.name }))
+    }
+  }
 
   // « Aujourd'hui » = rendez-vous datés (heure précise = planned_start). Les
   // missions récurrentes (créneau matin/aprèm) tombent dans « Interventions
@@ -621,59 +707,42 @@ export default async function FieldHomePage({
         />
       )}
 
-      <DateNav todayIso={todayIso} selectedIso={selectedDate} />
-
       {/* 0 — Reprendre mon travail : la pile de travail du quotidien (visite en
           cours + tri restant). Au-dessus de tout — on reprend en un geste.
           « Commencer » n'est PAS répété ici : c'est le bouton central ➕ Visite
           de la barre du bas (une seule porte pour démarrer, pas de doublon). */}
       <ResumeWorkCard activeVisits={activeVisits} pendingTriage={pendingTriage} />
 
-      {/* Actions du jour — ce qui demande ton attention (remonté automatiquement).
-          Carte HÉRO : la plus prominente. Une phrase d'état donne l'ensemble
-          avant le détail ; si rien ne remonte, une carte calme rassure. */}
-      {shownAttention.length > 0 ? (
-        <CockpitCard
-          icon={Bell}
-          iconClass="text-red-500"
-          title="Tu dois faire"
-          headerHref="/m/actions"
-          headerExtra={
-            <>
-              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold tabular-nums text-white">
-                {attentionItems.length}
-              </span>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </>
-          }
-        >
-          <p className="-mt-2.5 text-[13px] text-muted-foreground">
-            {attentionItems.length === 1
-              ? 'Un élément demande ton attention aujourd’hui.'
-              : `${attentionItems.length} éléments demandent ton attention aujourd’hui.`}
-          </p>
-          <div className="divide-y divide-foreground/[0.06]">
-            {shownAttention.map((item) => (
-              <AttentionRow key={item.key} item={item} />
+      {/* 1 — AUJOURD'HUI : l'agenda du jour, UN seul récit (refonte narrative
+          2026-07-12). Réunions programmées, rendez-vous datés, interventions,
+          échéances — chacun avec son chantier. La rangée de dates a disparu :
+          le temps long se lit au Journal (pas deux calendriers). */}
+      <CockpitCard
+        icon={CalendarDays}
+        iconClass="text-foreground/70"
+        title={isToday ? "Aujourd'hui" : `Le ${selectedDayLabel}`}
+        flat={todayMeetings.length === 0 && timedToday.length === 0 && recurringToday.length === 0 && dueTodayActions.length === 0 && orgTodaySites.length === 0}
+      >
+        {(todayMeetings.length > 0 || timedToday.length > 0 || recurringToday.length > 0 || dueTodayActions.length > 0) ? (
+          <div className="space-y-1">
+            {/* Réunions programmées — le rendez-vous structurant d'abord. */}
+            {todayMeetings.map((m) => (
+              <Link
+                key={`meet-${m.siteId}`}
+                href={`/m/site/${m.siteId}/reunions`}
+                className="flex items-center gap-4 rounded-xl py-4 -mx-1 px-1 active:bg-muted/40 transition-colors"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-300">
+                  <Users className="h-[22px] w-[22px]" strokeWidth={2} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-medium leading-snug">Réunion de chantier</span>
+                  <span className="mt-1 block truncate text-[13px] text-muted-foreground">{m.siteName}</span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+              </Link>
             ))}
-          </div>
-        </CockpitCard>
-      ) : isToday ? (
-        <CockpitCard icon={CheckCircle2} iconClass="text-emerald-500" title="Tout est sous contrôle" flat>
-          <p className="-mt-2.5 text-[13px] text-muted-foreground">
-            Rien ne demande ton attention aujourd’hui.
-          </p>
-        </CockpitCard>
-      ) : null}
-
-      {/* 2 — Aujourd'hui : les rendez-vous datés du jour, avec une ligne de
-          synthèse pour que la carte « raconte » même avec un seul élément. */}
-      {timedToday.length > 0 && (
-        <CockpitCard icon={CalendarDays} iconClass="text-foreground/70" title="Aujourd'hui">
-          <p className="-mt-2.5 text-[13px] text-muted-foreground">
-            {timedToday.length === 1 ? 'Un rendez-vous prévu.' : `${timedToday.length} rendez-vous prévus.`}
-          </p>
-          <ul className="space-y-1">
+            <ul className="space-y-1">
             {timedToday.map((i) => {
               const mission = missionById.get(i.mission_id)
               const site = mission ? siteById.get(mission.site_id) : null
@@ -706,57 +775,97 @@ export default async function FieldHomePage({
                 </li>
               )
             })}
-          </ul>
-        </CockpitCard>
-      )}
+            </ul>
 
-      {/* Interventions du jour (missions récurrentes).
-          Carte SECONDAIRE (aplatie). État vide compact (~180px) plutôt qu'un
-          grand vide, avec une sortie vers les chantiers. */}
-      <CockpitCard
-        icon={Briefcase}
-        iconClass="text-foreground/70"
-        title={`Interventions planifiées ${isToday ? "aujourd'hui" : selectedDayLabel}`}
-        flat={recurringToday.length === 0 && orgTodaySites.length === 0}
-      >
-        {recurringToday.length > 0 ? (
-          <ul className="space-y-3">
-            {recurringToday.map((i) => {
-              const mission = missionById.get(i.mission_id)
-              const site = mission ? siteById.get(mission.site_id) : null
-              return (
-                <InterventionCard
-                  key={i.id}
-                  interventionId={i.id}
-                  missionName={mission?.name ?? 'Intervention'}
-                  siteName={site?.name ?? null}
-                  siteId={mission?.site_id ?? null}
-                  scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
-                  slot={i.slot ?? null}
-                  plannedStart={i.planned_start}
-                  plannedEnd={i.planned_end}
-                  status={i.status}
-                  skippedReason={i.skipped_reason}
-                  selectedDate={selectedDate}
-                  primary
-                />
-              )
-            })}
-          </ul>
+            {/* Interventions récurrentes du jour — les cartes riches (démarrer…). */}
+            {recurringToday.length > 0 && (
+              <ul className="space-y-3 pt-1">
+                {recurringToday.map((i) => {
+                  const mission = missionById.get(i.mission_id)
+                  const site = mission ? siteById.get(mission.site_id) : null
+                  return (
+                    <InterventionCard
+                      key={i.id}
+                      interventionId={i.id}
+                      missionName={mission?.name ?? 'Intervention'}
+                      siteName={site?.name ?? null}
+                      siteId={mission?.site_id ?? null}
+                      scheduledFor={i.scheduled_for ?? i.scheduled_at.slice(0, 10)}
+                      slot={i.slot ?? null}
+                      plannedStart={i.planned_start}
+                      plannedEnd={i.planned_end}
+                      status={i.status}
+                      skippedReason={i.skipped_reason}
+                      selectedDate={selectedDate}
+                      primary
+                    />
+                  )
+                })}
+              </ul>
+            )}
+
+            {/* Échéances d'actions DU JOUR — avec leur chantier. */}
+            {dueTodayActions.map((a) => (
+              <Link
+                key={`due-${a.id}`}
+                href={`/m/site/${a.siteId}`}
+                className="flex items-center gap-4 rounded-xl py-4 -mx-1 px-1 active:bg-muted/40 transition-colors"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
+                  <CalendarClock className="h-[22px] w-[22px]" strokeWidth={2} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-medium leading-snug line-clamp-2">{a.title}</span>
+                  <span className="mt-1 block truncate text-[13px] text-muted-foreground">{a.siteName} · échéance aujourd&apos;hui</span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+              </Link>
+            ))}
+          </div>
         ) : orgTodaySites.length > 0 ? (
           <ManagerTodayView sites={orgTodaySites} todayLabel={selectedDayLabel} />
         ) : (
           <div className="-mt-1 flex flex-col items-center gap-2.5 py-2 text-center">
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
-              <CheckCircle2 className="h-5 w-5" strokeWidth={1.5} />
-            </span>
-            <p className="text-sm font-medium">Pas d&apos;intervention prévue.</p>
-            <Link href="/m/chantiers" className="text-[13px] font-medium text-foreground/70 underline underline-offset-2 active:opacity-70">
-              Voir mes chantiers
+            <p className="text-sm font-medium">Aucun rendez-vous {isToday ? "aujourd'hui" : `le ${selectedDayLabel}`}.</p>
+            <Link href="/m/planning" className="text-[13px] font-medium text-foreground/70 underline underline-offset-2 active:opacity-70">
+              Voir la semaine →
             </Link>
           </div>
         )}
       </CockpitCard>
+
+      {/* 2 — À REPRENDRE : les chantiers qui réclament, chacun avec son POURQUOI
+          (origine) — jamais une action hors contexte. Vide → silence positif. */}
+      {attentionGroups.length > 0 && (
+        <CockpitCard
+          icon={Bell}
+          iconClass="text-red-500"
+          title="À reprendre"
+          headerHref="/m/actions"
+          headerExtra={<ChevronRight className="h-5 w-5 text-muted-foreground" />}
+        >
+          <div className="space-y-4">
+            {attentionGroups.map((g) => (
+              <div key={g.label}>
+                {g.href ? (
+                  <Link href={g.href} className="flex items-baseline gap-2 active:opacity-70">
+                    <span className="text-[15px] font-semibold">{g.label}</span>
+                    {g.origin && <span className="min-w-0 truncate text-xs text-muted-foreground">{g.origin}</span>}
+                    <span className="ml-auto shrink-0 text-[13px] font-medium text-foreground/70">Ouvrir →</span>
+                  </Link>
+                ) : (
+                  <p className="text-[15px] font-semibold">{g.label}</p>
+                )}
+                <div className="divide-y divide-foreground/[0.06]">
+                  {g.items.map((item) => (
+                    <AttentionRow key={item.key} item={item} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CockpitCard>
+      )}
 
       {/* Absences du lieu — discrètes, sous les interventions. */}
       {mobileAbsences.length > 0 && (

@@ -254,6 +254,19 @@ export function FieldActionsList({ actions }: { actions: SiteActionRow[] }) {
                           </button>
                         )}
                       </div>
+                      {/* PROVENANCE — « pourquoi cette action existe ? » : le fil
+                          remonte à la réunion qui l'a créée (naviguer entre causes). */}
+                      {a.report_id && (
+                        <div className="text-center">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/m/reunion/${a.report_id}`)}
+                            className="text-[12px] text-sky-700 underline underline-offset-2 active:opacity-70 dark:text-sky-300"
+                          >
+                            Née en réunion · voir la source →
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
