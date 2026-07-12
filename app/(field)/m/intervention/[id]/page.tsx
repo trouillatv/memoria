@@ -455,7 +455,7 @@ export default async function FieldInterventionPage({
                 id="site-notes-heading"
                 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2"
               >
-                <MapPin className="h-3 w-3" />À savoir pour ce site
+                <MapPin className="h-3 w-3" />Points d&apos;attention
               </h2>
               <ul className="space-y-1.5 mb-2">
                 {siteNotes.slice(0, 5).map((note) => (
@@ -490,8 +490,9 @@ export default async function FieldInterventionPage({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Mission du jour
           </h2>
+          {/* Court : le cerveau lit le compte, pas une phrase (revue 9,2/10). */}
           <p className="mt-1.5 text-[15.5px] font-semibold leading-snug">
-            Tu viens réaliser {embarkedActions.length} action{embarkedActions.length > 1 ? 's' : ''} sur ce chantier.
+            {embarkedActions.length} action{embarkedActions.length > 1 ? 's' : ''} à réaliser
           </p>
           {missionOrigin && (
             missionOrigin.href ? (
