@@ -120,6 +120,18 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
               <MeetingLauncher />
               <InterventionLauncher />
             </div>
+
+            {/* La grammaire reste consultable À VOLONTÉ (revue 2026-07-13) :
+                le lien rouvre la même fiche courte que la première fois. */}
+            {!showIntro && (
+              <button
+                type="button"
+                onClick={() => setShowIntro(true)}
+                className="mt-3 w-full text-center text-[12px] text-muted-foreground underline underline-offset-2 active:opacity-70"
+              >
+                Réunion, visite ou intervention&nbsp;?
+              </button>
+            )}
           </div>
         </div>
       )}
