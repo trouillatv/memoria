@@ -1030,8 +1030,9 @@ export function VisitBasket({
                               onClick={() => { setOverlay('none'); fileRef.current?.click() }}
                               className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 active:scale-95 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
                             >
-                              {/* « Preuve », pas « photo » : demain vidéo/vocal, même vocabulaire. */}
-                              <Camera className="h-3.5 w-3.5" /> Ajouter une preuve
+                              {/* Le libellé dit EXACTEMENT ce que fait le bouton (une photo).
+                                  « Ajouter une preuve » attendra le geste générique réel. */}
+                              <Camera className="h-3.5 w-3.5" /> Prendre une photo
                             </button>
                             {ctx.sourceHref && ctx.sourceLabel && (
                               <a href={ctx.sourceHref} className="text-xs text-sky-700 underline underline-offset-2 dark:text-sky-300">
