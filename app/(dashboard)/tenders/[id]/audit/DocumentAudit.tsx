@@ -1,14 +1,23 @@
 'use client'
 
-// Niveau 2 — Audit documentaire (Vincent 2026-06-22). PDF du dossier + liste
-// NAVIGABLE de tous les engagements. Le PDF saute à la page de l'engagement courant
-// (#page=N ; remontage de l'iframe au changement de page pour que le saut soit fiable).
-// Pas de surlignage au pixel (on n'a pas les coordonnées). Glissière gauche/droite.
+// Niveau 2 — Audit documentaire (Vincent 2026-06-22, surlignage 2026-07-13).
+// PDF du dossier + liste NAVIGABLE de tous les engagements. Le PDF est rendu
+// par pdf.js AVEC couche texte : l'extrait de l'engagement courant est
+// SURLIGNÉ (halo jaune), la page défile jusqu'à lui, flash d'une seconde —
+// « je clique sur un engagement, mes yeux vont sur la phrase du document ».
+// Glissière gauche/droite. « Onglet » reste la sortie plein écran native.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, FileText, ExternalLink } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { ChevronLeft, ChevronRight, FileText, ExternalLink, Loader2 } from 'lucide-react'
 import { KIND_META } from '@/lib/engagements/kind'
 import { citationLevel } from '@/lib/engagements/citation'
 import type { EngagementKind } from '@/types/db'
+
+// pdf.js n'existe que côté client (worker) — jamais rendu côté serveur.
+const PdfAuditViewer = dynamic(() => import('./PdfAuditViewer').then((m) => m.PdfAuditViewer), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center py-24 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>,
+})
 
 export interface AuditEngagement {
   id: string
@@ -159,11 +168,11 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
                 <ExternalLink className="h-3.5 w-3.5" /> Onglet
               </a>
             </div>
-            <iframe
+            <PdfAuditViewer
               key={iframeKey}
-              src={src}
-              title={`${filename ?? 'Document'} — page ${cur.page ?? 1}`}
-              className="w-full h-[calc(100vh-12rem)] min-h-[460px]"
+              url={pdfUrl!}
+              page={level === 'exact' ? cur.page : null}
+              highlight={cur.excerpt || null}
             />
             {level !== 'exact' && (
               <p className="px-3 py-1.5 text-[11px] text-muted-foreground border-t">
