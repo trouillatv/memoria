@@ -70,8 +70,9 @@ export function MeetingLauncher() {
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-blue-600 dark:bg-white/10 dark:text-blue-300">
           <Mic className="h-7 w-7" />
         </span>
-        {/* L'intention d'abord (audit 2026-07-13). */}
-        <span className="break-words font-semibold">Nous venons décider</span>
+        {/* L'intention d'abord (audit 2026-07-13). « Décider ensemble » plutôt
+            que « Nous venons décider » (revue : la phrase qu'on dirait). */}
+        <span className="break-words font-semibold">Décider ensemble</span>
         <span className="-mt-1.5 block text-[11px] font-normal opacity-75">Enregistrer une réunion</span>
       </button>
 
