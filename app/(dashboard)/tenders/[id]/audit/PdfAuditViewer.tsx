@@ -7,7 +7,7 @@
 // est sélectionné est surligné (halo jaune), la page défile jusqu'à lui,
 // flash d'une seconde, puis le halo reste — comme Acrobat.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -115,7 +115,11 @@ export function PdfAuditViewer({
   }, [pageAnnotations, normHighlight, current, page, currentId])
 
   // Après rendu : badges de marge + défilement/flash sur la sélection.
-  function onRendered() {
+  // STABILISÉ (useCallback) et setState UNIQUEMENT si la valeur change :
+  // sinon Page voit une prop neuve à chaque rendu, re-rend la couche texte,
+  // qui rappelle ce callback → boucle = surlignage qui scintille.
+  const lastBadgesKey = useRef('')
+  const onRendered = useCallback(() => {
     const root = scrollRef.current
     const wrap = pageWrapRef.current
     if (!root || !wrap) return
@@ -123,7 +127,7 @@ export function PdfAuditViewer({
     // 1) Positionner un badge [n] au premier fragment de chaque engagement.
     const wrapRect = wrap.getBoundingClientRect()
     const seen = new Set<string>()
-    const next: typeof badges = []
+    const next: Array<{ id: string; index: number; top: number; color: string; label: string; active: boolean }> = []
     root.querySelectorAll<HTMLElement>('mark[data-eng]').forEach((m) => {
       const id = m.dataset.eng
       if (!id || seen.has(id)) return
@@ -133,25 +137,33 @@ export function PdfAuditViewer({
       next.push({
         id,
         index: a.index,
-        top: m.getBoundingClientRect().top - wrapRect.top,
+        top: Math.round(m.getBoundingClientRect().top - wrapRect.top),
         color: a.color,
         label: a.kindLabel,
         active: id === currentId,
       })
     })
-    setBadges(next.sort((x, y) => x.top - y.top))
+    next.sort((x, y) => x.top - y.top)
+    const nextKey = JSON.stringify(next)
+    if (nextKey !== lastBadgesKey.current) {
+      lastBadgesKey.current = nextKey
+      setBadges(next)
+    }
 
     // 2) Sélection : scroll + flash (une fois par cible), halo persistant.
     const key = `${current}:${normHighlight ?? ''}`
     const first = root.querySelector('mark.audit-hl')
-    setNotFound(!!normHighlight && current === (page ?? -1) && !first)
+    setNotFound((prev) => {
+      const v = !!normHighlight && current === (page ?? -1) && !first
+      return v === prev ? prev : v
+    })
     if (first && flashedRef.current !== key) {
       flashedRef.current = key
       first.scrollIntoView({ block: 'center', behavior: 'smooth' })
       root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.add('audit-hl-flash'))
       setTimeout(() => root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.remove('audit-hl-flash')), 1100)
     }
-  }
+  }, [pageAnnotations, annotations, normHighlight, current, page, currentId])
 
   return (
     <div className="flex min-h-0 flex-col">
