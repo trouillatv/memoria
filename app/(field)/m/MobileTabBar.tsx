@@ -32,10 +32,26 @@ const RIGHT: Item[] = [
 // Parcours immersifs (bas d'écran propre) — on n'y superpose pas la barre.
 const IMMERSIVE = ['/m/visite/', '/m/site/', '/m/import', '/m/intervention/']
 
+// L'intro du ➕ ne se montre qu'UNE fois (revue 2026-07-13) : trente secondes
+// pour comprendre la grammaire voir / faire / décider, puis plus jamais.
+const PLUS_INTRO_KEY = 'memoria_plus_intro_seen'
+
 export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
   const pathname = usePathname() ?? '/m'
   const [createOpen, setCreateOpen] = useState(false)
+  const [showIntro, setShowIntro] = useState(false)
   if (IMMERSIVE.some((p) => pathname.startsWith(p))) return null
+
+  function openCreate() {
+    try {
+      if (!localStorage.getItem(PLUS_INTRO_KEY)) setShowIntro(true)
+    } catch { /* stockage indisponible → pas d'intro, jamais bloquant */ }
+    setCreateOpen(true)
+  }
+  function dismissIntro() {
+    setShowIntro(false)
+    try { localStorage.setItem(PLUS_INTRO_KEY, '1') } catch { /* idem */ }
+  }
 
   return (
     <>
@@ -48,7 +64,7 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
           <div className="flex items-center justify-center pb-2">
             <button
               type="button"
-              onClick={() => setCreateOpen(true)}
+              onClick={openCreate}
               aria-label="Créer"
               className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg ring-4 ring-background active:scale-95 transition-colors ${createOpen ? 'bg-emerald-700' : 'bg-emerald-600'}`}
             >
@@ -76,11 +92,29 @@ export function MobileTabBar({ actionsCount }: { actionsCount: number }) {
             aria-label="Créer"
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Créer</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Que venez-vous faire&nbsp;?
+              </h2>
               <button type="button" onClick={() => setCreateOpen(false)} aria-label="Fermer" className="rounded-lg p-1 text-muted-foreground active:bg-accent">
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {/* PREMIÈRE FOIS seulement : la grammaire en trente secondes. */}
+            {showIntro && (
+              <div className="mb-3 space-y-2 rounded-xl border bg-muted/30 p-3 text-[13px] leading-snug">
+                <p><span className="font-semibold">👀 Je viens voir</span> — observer, contrôler, comparer avec la dernière fois.</p>
+                <p><span className="font-semibold">🔧 Je viens faire</span> — exécuter ce qui a été décidé, avec les preuves.</p>
+                <p><span className="font-semibold">🎤 Décider ensemble</span> — prendre des décisions et préparer la suite.</p>
+                <button
+                  type="button"
+                  onClick={dismissIntro}
+                  className="w-full rounded-lg bg-foreground px-3 py-2 text-[13px] font-semibold text-background active:opacity-80"
+                >
+                  Compris
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <VisitLauncherHome />
               <MeetingLauncher />
