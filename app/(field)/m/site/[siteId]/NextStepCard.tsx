@@ -31,6 +31,10 @@ export function NextStepCard({ steps }: { steps: NextStep[] }) {
   if (steps.length === 0) return null
   const [first] = steps
   const meta = KIND_META[first.kind]
+  // L'œil lit l'ACTION d'abord ; le type est porté par l'icône et la couleur.
+  // On ne le répète en petit que s'il n'ouvre pas déjà le libellé (« Réunion
+  // de chantier » n'a pas besoin d'un second « Réunion »).
+  const showType = !first.label.toLowerCase().startsWith(meta.label.toLowerCase())
 
   // L'agenda regroupe TOUTES les étapes (la première comprise : deux
   // événements le même jour doivent se lire ensemble). Jours vides tus.
@@ -52,9 +56,10 @@ export function NextStepCard({ steps }: { steps: NextStep[] }) {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-semibold leading-tight">
-            {meta.label} — {first.label}
+            {first.label}
           </span>
           <span className="block text-sm text-muted-foreground first-letter:uppercase">
+            {showType ? `${meta.label} · ` : ''}
             {first.dateLabel}
             {first.timeLabel ? ` · ${first.timeLabel}` : ''}
           </span>
