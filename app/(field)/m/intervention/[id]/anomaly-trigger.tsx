@@ -18,12 +18,13 @@ export function AnomalyTrigger({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-card text-base font-medium px-4 py-3 active:bg-muted/40"
+        className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 text-base font-semibold text-amber-800 px-4 py-3 active:scale-[0.99] transition-transform dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
         style={{ minHeight: 56 }}
       >
-        <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+        <AlertTriangle className="h-5 w-5" />
         {/* « Découverte » couvre le problème ET l'imprévu (poutre fissurée) —
-            le terrain constate, le conducteur qualifie (audit 2026-07-13). */}
+            le terrain constate, le conducteur qualifie (audit 2026-07-13).
+            Ambre = le geste transversal, comme sur la visite. */}
         Signaler une découverte
       </button>
       <AnomalyModal
