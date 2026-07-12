@@ -95,6 +95,22 @@ visite, vous répondez : **Vérifié** · **À suivre** · **Sans objet**. Au
 débrief, un point « À suivre » peut devenir une action ou une réserve —
 uniquement après votre validation.
 
+### Les deux mémoires
+
+MemorIA tient **deux mémoires différentes** — savoir laquelle interroger, c'est
+savoir où chercher :
+
+- **La mémoire du chantier** — visites, réunions, interventions, décisions,
+  réserves, preuves. Elle appartient au chantier : elle vit sur sa fiche et ne
+  se mélange jamais avec un autre chantier.
+- **La mémoire de l'entreprise** — méthodes, réponses aux appels d'offres,
+  mémoires techniques, retours d'expérience. Elle appartient à toute votre
+  organisation : ce que vous avez appris sur un chantier il y a deux ans peut
+  servir la réponse de demain (« Interroger l'entreprise », menu Mémoire).
+
+Ce que vos chantiers vous apprennent nourrit votre entreprise — jamais celle
+d'un autre.
+
 ### Action ou intervention ?
 
 > **Une action dit ce qui doit être fait. Une intervention organise et prouve
