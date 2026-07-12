@@ -1,0 +1,138 @@
+// « PROCHAINE ÉTAPE » (décision 2026-07-12) — le chantier dit toujours ce qui
+// vient ensuite. Déterministe, zéro IA : on agrège les trois futurs déjà en
+// base — réunions programmées (site_reports.next_meeting_at, mig 131),
+// interventions planifiées, échéances d'actions — et on raconte le plus proche.
+// La frise répond à « que s'est-il passé ? » ; ce bloc répond à la question
+// qu'un conducteur se pose vraiment : « qu'est-ce que je dois faire ensuite ? »
+
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export type NextStepKind = 'reunion' | 'intervention' | 'echeance'
+
+export interface NextStep {
+  kind: NextStepKind
+  /** Instant ISO de l'étape (échéance d'action : date à minuit, sans heure). */
+  at: string
+  /** « Réunion de chantier », nom de la mission, titre de l'action. */
+  label: string
+  /** « mardi 15 juillet » — calculé serveur (fuseau Nouméa). */
+  dateLabel: string
+  /** « 09h00 » — null quand l'étape n'a pas d'heure (échéance à la journée). */
+  timeLabel: string | null
+  /** « aujourd'hui » / « demain » / « dans 12 j » — le compte à rebours du récit. */
+  inLabel: string
+  href: string
+}
+
+const TZ = 'Pacific/Noumea'
+// « YYYY-MM-DD » en fuseau Nouméa — le jour VÉCU par le conducteur, pas le jour
+// UTC du serveur. Comparable lexicographiquement.
+const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+function dayOf(ms: number): string {
+  return dayFmt.format(ms)
+}
+
+function dateLabelOf(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }).format(new Date(iso))
+}
+function timeLabelOf(iso: string): string | null {
+  const t = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(iso))
+  // Minuit pile (Nouméa) = « pas d'heure » (échéances à la journée).
+  return t === '00:00' ? null : t.replace(':', 'h')
+}
+/** « aujourd'hui » / « demain » / « dans N j » — en JOURS CALENDAIRES Nouméa,
+ *  jamais en blocs de 24 h : demain 9h vu ce soir reste « demain ». PUR. */
+export function inLabelOf(iso: string, now: number): string {
+  const days = Math.round((Date.parse(dayOf(new Date(iso).getTime())) - Date.parse(dayOf(now))) / 86_400_000)
+  if (days <= 0) return "aujourd'hui"
+  if (days === 1) return 'demain'
+  return `dans ${days} j`
+}
+
+/** Trie les candidats, garde le futur, borne à `max` — PUR (testable en CI).
+ *  « Futur » = jour calendaire Nouméa ≥ aujourd'hui : une échéance due
+ *  aujourd'hui reste visible toute la journée même si minuit est passé
+ *  (les étapes horodatées — réunions, interventions — arrivent déjà
+ *  filtrées `>= now` par le SQL). */
+export function pickNextSteps(
+  candidates: Array<Pick<NextStep, 'kind' | 'at' | 'label' | 'href'>>,
+  now: number,
+  max = 3,
+): Array<Pick<NextStep, 'kind' | 'at' | 'label' | 'href'>> {
+  const today = dayOf(now)
+  return candidates
+    .filter((c) => !Number.isNaN(new Date(c.at).getTime()) && dayOf(new Date(c.at).getTime()) >= today)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+    .slice(0, max)
+}
+
+export async function getSiteNextSteps(siteId: string, max = 3): Promise<NextStep[]> {
+  const supabase = createAdminClient()
+  const nowIso = new Date().toISOString()
+  const today = nowIso.slice(0, 10)
+
+  const [meetings, missionsRes, actionsRes] = await Promise.all([
+    supabase
+      .from('site_reports')
+      .select('next_meeting_at')
+      .eq('site_id', siteId)
+      .not('next_meeting_at', 'is', null)
+      .gte('next_meeting_at', nowIso)
+      .order('next_meeting_at', { ascending: true })
+      .limit(max),
+    supabase.from('missions').select('id, name').eq('site_id', siteId).is('deleted_at', null),
+    supabase
+      .from('site_actions')
+      .select('id, title, due_date')
+      .eq('site_id', siteId)
+      .in('status', ['open', 'planned'])
+      .not('due_date', 'is', null)
+      .gte('due_date', today)
+      .order('due_date', { ascending: true })
+      .limit(max),
+  ])
+
+  const candidates: Array<Pick<NextStep, 'kind' | 'at' | 'label' | 'href'>> = []
+
+  for (const m of (meetings.data ?? []) as Array<{ next_meeting_at: string }>) {
+    candidates.push({ kind: 'reunion', at: m.next_meeting_at, label: 'Réunion de chantier', href: `/m/site/${siteId}/reunions` })
+  }
+
+  const missionNameById = new Map(
+    ((missionsRes.data ?? []) as Array<{ id: string; name: string }>).map((m) => [m.id, m.name]),
+  )
+  const missionIds = [...missionNameById.keys()]
+  if (missionIds.length > 0) {
+    const { data: intv } = await supabase
+      .from('interventions')
+      .select('id, mission_id, planned_start, status')
+      .in('mission_id', missionIds)
+      .not('planned_start', 'is', null)
+      .gte('planned_start', nowIso)
+      .neq('status', 'cancelled')
+      .order('planned_start', { ascending: true })
+      .limit(max)
+    for (const i of (intv ?? []) as Array<{ id: string; mission_id: string; planned_start: string }>) {
+      candidates.push({
+        kind: 'intervention',
+        at: i.planned_start,
+        label: missionNameById.get(i.mission_id) ?? 'Intervention',
+        href: `/m/intervention/${i.id}`,
+      })
+    }
+  }
+
+  for (const a of (actionsRes.data ?? []) as Array<{ title: string; due_date: string }>) {
+    // Minuit NOUMÉA explicite (+11, pas de DST) : sans fuseau, le serveur UTC
+    // décalerait l'échéance de 11 h (faux « 11h00 », faux compte de jours).
+    candidates.push({ kind: 'echeance', at: `${a.due_date}T00:00:00+11:00`, label: a.title, href: `/m/actions?site=${siteId}` })
+  }
+
+  const now = Date.now()
+  return pickNextSteps(candidates, now, max).map((c) => ({
+    ...c,
+    dateLabel: dateLabelOf(c.at),
+    timeLabel: timeLabelOf(c.at),
+    inLabel: inLabelOf(c.at, now),
+  }))
+}

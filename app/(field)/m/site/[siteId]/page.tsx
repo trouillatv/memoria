@@ -35,6 +35,8 @@ import { buildSitePresenceReminders } from '@/lib/db/site-presence'
 import { listVisitCaptures, listSiteViewpointRows, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { groupViewpointChains } from '@/lib/visits/viewpoints'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
+import { getSiteNextSteps } from '@/lib/db/site-next-steps'
+import { NextStepCard } from './NextStepCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
@@ -173,8 +175,9 @@ export default async function FieldSitePage({
   let memorySnapshot: Awaited<ReturnType<typeof getSiteMemorySnapshot>> | null = null
   let siteDocCount = 0
   let hasEvolution = false
+  let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
   if (!activeVisit) {
-    const [status, id, reservesRaw, activity, since, snapshot, docList, vpRows] = await Promise.all([
+    const [status, id, reservesRaw, activity, since, snapshot, docList, vpRows, steps] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       getSiteIdentity(siteId).catch(() => null),
       getSiteReserves(siteId).catch(() => []),
@@ -183,6 +186,7 @@ export default async function FieldSitePage({
       getSiteMemorySnapshot(siteId).catch(() => null),
       canSeeDocs ? listDocumentsForTarget('site', siteId).catch(() => []) : Promise.resolve([]),
       listSiteViewpointRows(siteId).catch(() => []),
+      getSiteNextSteps(siteId).catch(() => []),
     ])
     siteStatus = status
     identity = id
@@ -194,6 +198,7 @@ export default async function FieldSitePage({
     memorySnapshot = snapshot
     siteDocCount = docList.length
     hasEvolution = groupViewpointChains(vpRows).length > 0
+    nextSteps = steps
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
@@ -343,6 +348,11 @@ export default async function FieldSitePage({
         <div className="space-y-6">
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard cells={siteStatus} />
+
+          {/* 1bis — PROCHAINE ÉTAPE : « qu'est-ce que je dois faire ensuite ? »
+              Réunion programmée / intervention planifiée / échéance — la plus
+              proche en grand. Silence positif si rien à venir. */}
+          <NextStepCard steps={nextSteps} />
 
           {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}
           {(aSavoir.length > 0 || openAnomalies.length > 0) && (

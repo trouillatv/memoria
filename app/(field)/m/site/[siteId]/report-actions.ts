@@ -1017,3 +1017,38 @@ export async function createVigilanceFromRiskAction(
   revalidatePath(`/sites/${parsed.data.site_id}`)
   return { ok: true }
 }
+
+// ── « On se revoit mardi à 9h » (mig 131) ─────────────────────────────────────
+// Programme la PROCHAINE réunion depuis la fin d'une réunion terrain. La date
+// vit sur le report (site_reports.next_meeting_at) — déjà lue par le bloc
+// « Prochaine étape », le planning et les briefs. Le PV (pv-resolvers) sait
+// aussi l'écrire quand l'IA la détecte ; ici c'est le geste HUMAIN direct.
+
+const nextMeetingSchema = z.object({
+  report_id: z.string().uuid(),
+  at: z.string().datetime(),
+})
+
+export async function setNextMeetingAction(
+  input: z.input<typeof nextMeetingSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = nextMeetingSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  try {
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from('site_reports')
+      .update({ next_meeting_at: parsed.data.at, updated_at: new Date().toISOString() })
+      .eq('id', parsed.data.report_id)
+      .select('site_id')
+      .single()
+    if (error) throw error
+    // La date nourrit le bloc « Prochaine étape » de la fiche chantier.
+    if (data?.site_id) revalidatePath(`/m/site/${data.site_id}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec de la programmation' }
+  }
+}
