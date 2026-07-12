@@ -7,7 +7,7 @@
 // est sélectionné est surligné (halo jaune), la page défile jusqu'à lui,
 // flash d'une seconde, puis le halo reste — comme Acrobat.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -106,14 +106,20 @@ export function PdfAuditViewer({
       }
       const owner = pageAnnotations.find((a) => a.id !== currentId && a.norm.includes(n))
       if (owner) {
-        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="text-decoration-color:${owner.color}">${esc(str)}</mark>`
+        // PERMANENT, dès l'ouverture : fond teinté à la couleur du type —
+        // « comme un correcteur qui a annoté le document », pas un simple trait.
+        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="background:${owner.color}2b;border-bottom:2px solid ${owner.color}">${esc(str)}</mark>`
       }
       return esc(str)
     }
   }, [pageAnnotations, normHighlight, current, page, currentId])
 
   // Après rendu : badges de marge + défilement/flash sur la sélection.
-  function onRendered() {
+  // STABILISÉ (useCallback) et setState UNIQUEMENT si la valeur change :
+  // sinon Page voit une prop neuve à chaque rendu, re-rend la couche texte,
+  // qui rappelle ce callback → boucle = surlignage qui scintille.
+  const lastBadgesKey = useRef('')
+  const onRendered = useCallback(() => {
     const root = scrollRef.current
     const wrap = pageWrapRef.current
     if (!root || !wrap) return
@@ -121,7 +127,7 @@ export function PdfAuditViewer({
     // 1) Positionner un badge [n] au premier fragment de chaque engagement.
     const wrapRect = wrap.getBoundingClientRect()
     const seen = new Set<string>()
-    const next: typeof badges = []
+    const next: Array<{ id: string; index: number; top: number; color: string; label: string; active: boolean }> = []
     root.querySelectorAll<HTMLElement>('mark[data-eng]').forEach((m) => {
       const id = m.dataset.eng
       if (!id || seen.has(id)) return
@@ -131,25 +137,33 @@ export function PdfAuditViewer({
       next.push({
         id,
         index: a.index,
-        top: m.getBoundingClientRect().top - wrapRect.top,
+        top: Math.round(m.getBoundingClientRect().top - wrapRect.top),
         color: a.color,
         label: a.kindLabel,
         active: id === currentId,
       })
     })
-    setBadges(next.sort((x, y) => x.top - y.top))
+    next.sort((x, y) => x.top - y.top)
+    const nextKey = JSON.stringify(next)
+    if (nextKey !== lastBadgesKey.current) {
+      lastBadgesKey.current = nextKey
+      setBadges(next)
+    }
 
     // 2) Sélection : scroll + flash (une fois par cible), halo persistant.
     const key = `${current}:${normHighlight ?? ''}`
     const first = root.querySelector('mark.audit-hl')
-    setNotFound(!!normHighlight && current === (page ?? -1) && !first)
+    setNotFound((prev) => {
+      const v = !!normHighlight && current === (page ?? -1) && !first
+      return v === prev ? prev : v
+    })
     if (first && flashedRef.current !== key) {
       flashedRef.current = key
       first.scrollIntoView({ block: 'center', behavior: 'smooth' })
       root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.add('audit-hl-flash'))
       setTimeout(() => root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.remove('audit-hl-flash')), 1100)
     }
-  }
+  }, [pageAnnotations, annotations, normHighlight, current, page, currentId])
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -158,7 +172,7 @@ export function PdfAuditViewer({
       <style>{`
         mark.audit-hl { background: rgba(250, 204, 21, .45); color: inherit; border-radius: 2px; padding: 0; }
         mark.audit-hl-flash { background: rgba(245, 158, 11, .85); transition: background .3s; }
-        mark.audit-hl-other { background: transparent; color: inherit; padding: 0; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: pointer; }
+        mark.audit-hl-other { color: inherit; padding: 0; border-radius: 2px; cursor: pointer; }
         .react-pdf__Page { margin: 0 auto; }
       `}</style>
 
