@@ -331,8 +331,8 @@ export default async function FieldInterventionPage({
 
   return (
     <div className="space-y-5 max-w-md">
-      <DateNav todayIso={todayIso} selectedIso={selectedDate} basePath={`/m/intervention/${id}`} />
-
+      {/* Pas de rangée de dates ici (revue 2026-07-13) : dans une intervention,
+          on est déjà « dans » sa journée — le temps long vit au Journal. */}
       <SmartBackLink fallbackHref={`/m?date=${selectedDate}`} label="Retour" size="md" />
 
       <header className="space-y-2">
@@ -389,14 +389,23 @@ export default async function FieldInterventionPage({
       )}
 
       {teamHasNoChef && !isSkipped && !isCompleted && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <div>
-            <div className="font-medium">Équipe sans chef d&apos;équipe actif</div>
-            <div className="text-xs text-amber-900/80 mt-0.5">
-              La clôture terrain est prévue par un chef d&apos;équipe. Préviens le gérant si besoin.
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium">Équipe sans chef d&apos;équipe actif</div>
+              <div className="text-xs text-amber-900/80 mt-0.5">
+                La clôture terrain est prévue par un chef d&apos;équipe.
+              </div>
             </div>
           </div>
+          {/* Une alerte PROPOSE sa résolution (revue 2026-07-13) : changer
+              d'équipe ici, ou continuer — jamais un constat sans issue. */}
+          {canManage ? (
+            <AssignTeamMobile interventionId={id} teams={assignableTeams} canManage={canManage} />
+          ) : (
+            <p className="text-xs text-amber-900/80">Préviens le gérant — lui peut réaffecter l&apos;équipe.</p>
+          )}
         </div>
       )}
 
@@ -416,11 +425,8 @@ export default async function FieldInterventionPage({
         </div>
       )}
 
-      {isInProgress && (
-        <div className="rounded-lg border-l-2 border-l-foreground border-y border-r border-border bg-card p-3 text-sm text-muted-foreground">
-          {intervention.label ? 'Intervention' : 'Mission'} en cours — les tâches se cochent au fur et à mesure.
-        </div>
-      )}
+      {/* (Bannière « en cours — les tâches se cochent… » supprimée : c'était
+          l'ancien modèle ; l'écran raconte désormais la mission, pas l'état.) */}
 
       {/* Fiche site — infos pratiques (code entrée, contact, accès).
           Affichée en haut juste après le header (besoin EN ARRIVANT).
