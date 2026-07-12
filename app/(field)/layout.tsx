@@ -56,7 +56,9 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       {/* pb pour dégager la barre de nav fixe (le socle du cockpit). Les réglages
           (compte, thème, déconnexion, bascule bureau) vivent désormais dans Profil. */}
       <main className="max-w-md mx-auto px-3 pt-5 pb-24">{children}</main>
-      <MobileTabBar actionsCount={actionsHealth.total} />
+      {/* Badge = ce qui mérite l'œil AUJOURD'HUI (pas l'inventaire des ouvertes) :
+          silencieux quand rien ne réclame — même modèle que l'accueil. */}
+      <MobileTabBar actionsCount={actionsHealth.attention} />
       {/* Réapplique le thème persisté de l'user en entrant sur le terrain. */}
       <ThemeSync theme={user.theme_preference} />
       {/* Instrumentation : ouverture des surfaces terrain (/m…) — savoir si le
