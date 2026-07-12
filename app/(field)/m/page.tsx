@@ -106,13 +106,20 @@ interface AttentionItem {
   groupHref?: string | null
 }
 
-/** Un chantier (ou une famille) qui réclame — l'unité du récit « À reprendre ». */
+/** Un chantier (ou une famille) qui réclame — l'unité du récit « À reprendre ».
+ *  Le CONTEXTE avant le détail : nom, pourquoi, origine — puis 2 actions max. */
 interface AttentionGroup {
   label: string
   href: string | null
   /** « Réunion du 8 juillet » — l'ORIGINE des actions, quand elle est connue. */
   origin: string | null
+  /** La réunion/visite source, cliquable dès l'accueil. */
+  originHref: string | null
+  /** Tous les éléments qui réclament sur ce chantier (pas seulement montrés). */
+  totalCount: number
+  /** 2 max visibles ; le reste = « + N autres » vers la fiche. */
   items: AttentionItem[]
+  moreCount: number
 }
 
 // Écart en JOURS CIVILS purs (anti-bascule fuseau Nouméa, cf. formatScheduledTime).
@@ -482,8 +489,8 @@ export default async function FieldHomePage({
   const attentionItems: AttentionItem[] = []
   // Échéances d'actions DU JOUR → racontées dans l'agenda « Aujourd'hui ».
   const dueTodayActions: Array<{ id: string; title: string; siteId: string; siteName: string }> = []
-  // Origine par groupe (« Réunion du 8 juillet ») — le POURQUOI du chantier.
-  const originByGroup = new Map<string, string>()
+  // Origine par groupe (« Réunion du 8 juillet », cliquable) — le POURQUOI.
+  const originByGroup = new Map<string, { label: string; href: string }>()
 
   if (isToday) {
     // 1) Échéances AO (tenders) à rendre — la pression réglementaire d'abord.
@@ -559,7 +566,9 @@ export default async function FieldHomePage({
       let shown = 0
       const shownReportIds = new Set<string>()
       for (const a of openActions) {
-        if (shown >= 4) break
+        // Borne large : le CONTEXTE (groupes par chantier) borne l'affichage,
+        // mais le COMPTE par chantier doit rester vrai.
+        if (shown >= 12) break
         // Échéance du jour → elle vit dans l'agenda « Aujourd'hui », pas ici.
         if (a.due_date && a.due_date.slice(0, 10) === todayIso) {
           dueTodayActions.push({ id: a.id, title: a.title, siteId: a.site_id, siteName: a.site_name })
@@ -592,7 +601,7 @@ export default async function FieldHomePage({
           const d = new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' })
           for (const it of attentionItems) {
             if (it.key.startsWith('action-') && it.groupHref === `/m/site/${r.site_id}` && !originByGroup.has(it.group)) {
-              originByGroup.set(it.group, `Réunion du ${d}`)
+              originByGroup.set(it.group, { label: `Réunion du ${d}`, href: `/m/reunion/${r.id}` })
             }
           }
         }
@@ -615,24 +624,46 @@ export default async function FieldHomePage({
     }
   }
 
-  // Tri par urgence (rouge → orange → jaune → info), cap d'affichage.
+  // Tri par urgence (rouge → orange → jaune → info).
   attentionItems.sort((x, y) => SEVERITY[x.severity].rank - SEVERITY[y.severity].rank)
-  const shownAttention = attentionItems.slice(0, 6)
 
   // « À reprendre » : le RÉCIT par chantier (règle 2026-07-12 — jamais une
-  // action hors contexte). Groupes ordonnés par l'urgence de leur pire item.
+  // action hors contexte). Le chantier est le niveau principal : nom, pourquoi,
+  // origine, COMPTE vrai — puis 2 éléments max et « + N autres ». 3 chantiers
+  // max sur l'accueil ; les familles (AO, Passation) passent après.
   const attentionGroups: AttentionGroup[] = []
   {
-    const byGroup = new Map<string, AttentionGroup>()
-    for (const it of shownAttention) {
+    type G = AttentionGroup & { worst: number }
+    const byGroup = new Map<string, G>()
+    const ordered: G[] = []
+    for (const it of attentionItems) {
       let g = byGroup.get(it.group)
       if (!g) {
-        g = { label: it.group, href: it.groupHref ?? null, origin: originByGroup.get(it.group) ?? null, items: [] }
+        const origin = originByGroup.get(it.group) ?? null
+        g = {
+          label: it.group,
+          href: it.groupHref ?? null,
+          origin: origin?.label ?? null,
+          originHref: origin?.href ?? null,
+          totalCount: 0,
+          items: [],
+          moreCount: 0,
+          worst: 9,
+        }
         byGroup.set(it.group, g)
-        attentionGroups.push(g)
+        ordered.push(g)
       }
       if (!g.href && it.groupHref) g.href = it.groupHref
-      g.items.push(it)
+      g.totalCount++
+      g.worst = Math.min(g.worst, SEVERITY[it.severity].rank)
+      if (g.items.length < 2) g.items.push(it)
+    }
+    ordered.sort((a, b) => a.worst - b.worst)
+    const sites = ordered.filter((g) => g.href).slice(0, 3)
+    const familles = ordered.filter((g) => !g.href)
+    for (const g of [...sites, ...familles]) {
+      g.moreCount = g.totalCount - g.items.length
+      attentionGroups.push(g)
     }
   }
 
@@ -845,24 +876,63 @@ export default async function FieldHomePage({
           headerExtra={<ChevronRight className="h-5 w-5 text-muted-foreground" />}
         >
           <div className="space-y-4">
-            {attentionGroups.map((g) => (
-              <div key={g.label}>
-                {g.href ? (
-                  <Link href={g.href} className="flex items-baseline gap-2 active:opacity-70">
-                    <span className="text-[15px] font-semibold">{g.label}</span>
-                    {g.origin && <span className="min-w-0 truncate text-xs text-muted-foreground">{g.origin}</span>}
-                    <span className="ml-auto shrink-0 text-[13px] font-medium text-foreground/70">Ouvrir →</span>
-                  </Link>
-                ) : (
-                  <p className="text-[15px] font-semibold">{g.label}</p>
-                )}
-                <div className="divide-y divide-foreground/[0.06]">
-                  {g.items.map((item) => (
-                    <AttentionRow key={item.key} item={item} />
-                  ))}
+            {attentionGroups.map((g) =>
+              g.href ? (
+                /* CHANTIER — le contexte d'abord : nom + compte, origine
+                   cliquable, 2 éléments max, « + N autres », Ouvrir. */
+                <div key={g.label} className="rounded-2xl border border-foreground/[0.06] bg-muted/20 p-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 truncate text-[15px] font-semibold">{g.label}</span>
+                    <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-foreground/[0.08] px-1.5 text-[11px] font-bold tabular-nums">
+                      {g.totalCount}
+                    </span>
+                  </div>
+                  {g.origin && (
+                    g.originHref ? (
+                      <Link href={g.originHref} className="mt-0.5 inline-block text-xs text-sky-700 underline underline-offset-2 active:opacity-70 dark:text-sky-300">
+                        {g.origin} →
+                      </Link>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{g.origin}</p>
+                    )
+                  )}
+                  <ul className="mt-2 space-y-1.5">
+                    {g.items.map((item) => (
+                      <li key={item.key} className="flex items-baseline gap-2 text-[13.5px]">
+                        <span
+                          aria-hidden
+                          className={`mt-0.5 h-2 w-2 shrink-0 self-center rounded-full ${item.severity === 'red' ? 'bg-red-500' : item.severity === 'orange' ? 'bg-orange-400' : 'bg-amber-400'}`}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                        {item.subtitle && (
+                          <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{item.subtitle}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-2.5 flex items-center justify-between">
+                    {g.moreCount > 0 ? (
+                      <Link href={g.href} className="text-xs text-muted-foreground underline underline-offset-2 active:opacity-70">
+                        + {g.moreCount} autre{g.moreCount > 1 ? 's' : ''}
+                      </Link>
+                    ) : <span />}
+                    <Link href={g.href} className="text-[13px] font-semibold text-foreground/80 active:opacity-70">
+                      Ouvrir le chantier →
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ) : (
+                /* FAMILLES (Appels d'offres, Passation) — lignes riches. */
+                <div key={g.label}>
+                  <p className="text-[15px] font-semibold">{g.label}</p>
+                  <div className="divide-y divide-foreground/[0.06]">
+                    {g.items.map((item) => (
+                      <AttentionRow key={item.key} item={item} />
+                    ))}
+                  </div>
+                </div>
+              ),
+            )}
           </div>
         </CockpitCard>
       )}
