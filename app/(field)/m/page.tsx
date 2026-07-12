@@ -111,10 +111,16 @@ interface AttentionItem {
 interface AttentionGroup {
   label: string
   href: string | null
-  /** « Réunion du 8 juillet » — l'ORIGINE des actions, quand elle est connue. */
+  /** « Issue de la réunion du 8 juillet » — l'ORIGINE, quand elle est connue. */
   origin: string | null
   /** La réunion/visite source, cliquable dès l'accueil. */
   originHref: string | null
+  /** LA RAISON de l'apparition (« pas d'avancée depuis 9 j », « en retard de
+   *  3 j ») — le conducteur ne se demande pas combien, il se demande POURQUOI.
+   *  C'est la note de l'élément le plus urgent du chantier. */
+  reason: string | null
+  /** Sévérité du pire élément — teinte la raison. */
+  worstSeverity: Severity
   /** Tous les éléments qui réclament sur ce chantier (pas seulement montrés). */
   totalCount: number
   /** 2 max visibles ; le reste = « + N autres » vers la fiche. */
@@ -601,7 +607,7 @@ export default async function FieldHomePage({
           const d = new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' })
           for (const it of attentionItems) {
             if (it.key.startsWith('action-') && it.groupHref === `/m/site/${r.site_id}` && !originByGroup.has(it.group)) {
-              originByGroup.set(it.group, { label: `Réunion du ${d}`, href: `/m/reunion/${r.id}` })
+              originByGroup.set(it.group, { label: `Issue de la réunion du ${d}`, href: `/m/reunion/${r.id}` })
             }
           }
         }
@@ -645,6 +651,10 @@ export default async function FieldHomePage({
           href: it.groupHref ?? null,
           origin: origin?.label ?? null,
           originHref: origin?.href ?? null,
+          // attentionItems est trié par urgence → le 1er item du groupe est le
+          // pire : sa note devient LA raison de la carte.
+          reason: it.subtitle,
+          worstSeverity: it.severity,
           totalCount: 0,
           items: [],
           moreCount: 0,
@@ -881,12 +891,14 @@ export default async function FieldHomePage({
                 /* CHANTIER — le contexte d'abord : nom + compte, origine
                    cliquable, 2 éléments max, « + N autres », Ouvrir. */
                 <div key={g.label} className="rounded-2xl border border-foreground/[0.06] bg-muted/20 p-3.5">
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-0 truncate text-[15px] font-semibold">{g.label}</span>
-                    <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-foreground/[0.08] px-1.5 text-[11px] font-bold tabular-nums">
-                      {g.totalCount}
-                    </span>
-                  </div>
+                  <p className="min-w-0 truncate text-[15px] font-semibold">{g.label}</p>
+                  {/* LA RAISON d'abord — « pourquoi ce chantier remonte
+                      aujourd'hui ? » ; le compte devient secondaire. */}
+                  {g.reason && (
+                    <p className={`mt-0.5 text-[13px] font-medium first-letter:uppercase ${SEVERITY[g.worstSeverity].title}`}>
+                      {g.reason}
+                    </p>
+                  )}
                   {g.origin && (
                     g.originHref ? (
                       <Link href={g.originHref} className="mt-0.5 inline-block text-xs text-sky-700 underline underline-offset-2 active:opacity-70 dark:text-sky-300">
@@ -896,7 +908,10 @@ export default async function FieldHomePage({
                       <p className="mt-0.5 text-xs text-muted-foreground">{g.origin}</p>
                     )
                   )}
-                  <ul className="mt-2 space-y-1.5">
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {g.totalCount} point{g.totalCount > 1 ? 's' : ''} à reprendre
+                  </p>
+                  <ul className="mt-1.5 space-y-1.5">
                     {g.items.map((item) => (
                       <li key={item.key} className="flex items-baseline gap-2 text-[13.5px]">
                         <span
