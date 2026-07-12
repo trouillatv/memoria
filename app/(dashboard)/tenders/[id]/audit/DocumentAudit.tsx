@@ -121,6 +121,14 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
                 <button type="button" onClick={() => setI(idx)}
                   className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${active ? 'border-sky-400 bg-sky-50/60' : 'bg-card hover:border-foreground/30'}`}>
                   <span className="flex items-center gap-1.5 mb-0.5">
+                    {/* LE MÊME numéro que sur le PDF (marge + début du surlignage) :
+                        la correspondance liste ↔ document est immédiate. */}
+                    <span
+                      className="inline-flex min-w-5 items-center justify-center rounded-md border px-1 py-0.5 text-[10px] font-bold tabular-nums"
+                      style={{ borderColor: e.kind ? KIND_COLOR[e.kind] ?? '#64748b' : '#64748b', color: e.kind ? KIND_COLOR[e.kind] ?? '#64748b' : '#64748b' }}
+                    >
+                      {idx + 1}
+                    </span>
                     {e.kind && <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${KIND_META[e.kind].badge}`}>{KIND_META[e.kind].label}</span>}
                     <span className="text-[10px] text-muted-foreground tabular-nums">
                       {(() => { const l = citationLevel(e.page, e.section); return l === 'exact' ? `p.${e.page}` : l === 'section' ? `§${e.section}` : 'réf. approximative' })()}

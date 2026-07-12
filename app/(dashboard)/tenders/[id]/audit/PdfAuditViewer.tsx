@@ -106,9 +106,9 @@ export function PdfAuditViewer({
       }
       const owner = pageAnnotations.find((a) => a.id !== currentId && a.norm.includes(n))
       if (owner) {
-        // PERMANENT, dès l'ouverture : fond teinté à la couleur du type —
-        // « comme un correcteur qui a annoté le document », pas un simple trait.
-        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="background:${owner.color}2b;border-bottom:2px solid ${owner.color}">${esc(str)}</mark>`
+        // RÈGLE UNIQUE : le document reste intact, MemorIA n'ajoute qu'un halo
+        // teinté (jamais de soulignement ni de changement du texte lui-même).
+        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="background:${owner.color}2b">${esc(str)}</mark>`
       }
       return esc(str)
     }
@@ -142,6 +142,11 @@ export function PdfAuditViewer({
         label: a.kindLabel,
         active: id === currentId,
       })
+      // Le NUMÉRO au début du surlignage — le même que la marge et la liste :
+      // en lisant le document, on sait immédiatement quel engagement on regarde.
+      m.classList.add('audit-num')
+      m.setAttribute('data-n', String(a.index))
+      m.style.setProperty('--eng-color', a.color)
     })
     next.sort((x, y) => x.top - y.top)
     const nextKey = JSON.stringify(next)
@@ -160,8 +165,10 @@ export function PdfAuditViewer({
     if (first && flashedRef.current !== key) {
       flashedRef.current = key
       first.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      // Flash COURT (450 ms) puis surlignage FIXE — attire une fois, comme un
+      // « go to definition », jamais une animation permanente.
       root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.add('audit-hl-flash'))
-      setTimeout(() => root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.remove('audit-hl-flash')), 1100)
+      setTimeout(() => root.querySelectorAll('mark.audit-hl').forEach((m) => m.classList.remove('audit-hl-flash')), 450)
     }
   }, [pageAnnotations, annotations, normHighlight, current, page, currentId])
 
@@ -173,6 +180,15 @@ export function PdfAuditViewer({
         mark.audit-hl { background: rgba(250, 204, 21, .45); color: inherit; border-radius: 2px; padding: 0; }
         mark.audit-hl-flash { background: rgba(245, 158, 11, .85); transition: background .3s; }
         mark.audit-hl-other { color: inherit; padding: 0; border-radius: 2px; cursor: pointer; }
+        /* Le numéro [n] posé AU DÉBUT du surlignage — même identifiant que la
+           marge et la liste : la correspondance est immédiate, écran ou papier. */
+        mark.audit-num::before {
+          content: "[" attr(data-n) "] ";
+          font-weight: 700; font-size: .72em; letter-spacing: .02em;
+          color: var(--eng-color, #92400e);
+        }
+        /* Pulse UNIQUE à la sélection (500 ms), puis plus rien ne bouge. */
+        @keyframes audit-pulse { 0% { transform: scale(1) translateY(-50%); } 50% { transform: scale(1.45) translateY(-40%); } 100% { transform: scale(1.25) translateY(-40%); } }
         .react-pdf__Page { margin: 0 auto; }
       `}</style>
 
@@ -190,17 +206,19 @@ export function PdfAuditViewer({
           {/* LA MARGE — les badges [n] des engagements de la page. */}
           {badges.map((b) => (
             <button
-              key={b.id}
+              // Clé qui change à la sélection → le pulse (500 ms) rejoue UNE fois.
+              key={`${b.id}${b.active ? '-a' : ''}`}
               type="button"
               title={`${b.label} n°${b.index}`}
               onClick={() => onSelect?.(b.id)}
-              className="absolute left-0 z-10 -translate-y-1/2 rounded-md border bg-card px-1.5 py-0.5 text-[11px] font-bold tabular-nums shadow-sm transition-transform"
+              className="absolute left-0 z-10 -translate-y-1/2 rounded-md border bg-card px-1.5 py-0.5 text-[11px] font-bold tabular-nums shadow-sm"
               style={{
                 top: b.top + 8,
                 borderColor: b.color,
                 color: b.color,
                 transform: b.active ? 'scale(1.25) translateY(-40%)' : undefined,
                 boxShadow: b.active ? `0 0 0 2px ${b.color}33` : undefined,
+                animation: b.active ? 'audit-pulse .5s ease 1' : undefined,
               }}
             >
               {b.index}
