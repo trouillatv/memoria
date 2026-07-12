@@ -40,7 +40,14 @@ function captureWhat(c: MapCapture): string {
   return KIND_LABEL[c.kind] ?? c.kind
 }
 
-export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]' }: { siteId: string; captures: MapCapture[]; heightClass?: string }) {
+export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]', linkPopups = true }: {
+  siteId: string
+  captures: MapCapture[]
+  heightClass?: string
+  /** false = carte INFORMATIVE (fiche observation : elle répond à « où ? »,
+   *  sans lien — un point ne doit pas rouvrir sa propre fiche). */
+  linkPopups?: boolean
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
 
@@ -65,7 +72,9 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]' }: { sit
           // Le point de carte ouvre L'OBSERVATION elle-même (média + contexte),
           // qui mène ensuite à la visite complète. Le Débrief est un outil de
           // production — jamais la destination d'un clic de consultation.
-          `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`,
+          (linkPopups
+            ? `<a href="/m/observation/${c.id}" style="display:inline-block;margin-top:6px;color:#2563eb">Voir cette observation →</a>`
+            : ''),
         )
         // Étiquette « quoi » visible au survol (desktop) ; le tap ouvre le popup (mobile).
         m.bindTooltip(what, { direction: 'top', opacity: 0.9 })
@@ -78,7 +87,7 @@ export function CaptureMap({ siteId, captures, heightClass = 'h-[70vh]' }: { sit
     })
 
     return () => { cancelled = true; mapRef.current?.remove(); mapRef.current = null }
-  }, [captures, siteId])
+  }, [captures, siteId, linkPopups])
 
   return (
     <div className="space-y-2">

@@ -111,6 +111,7 @@ export default async function ObservationPage({
         <CaptureMap
           siteId={site.id}
           heightClass="h-52"
+          linkPopups={false}
           captures={[{
             id: capture.id,
             kind: capture.kind,
