@@ -35,7 +35,9 @@ function StatusPill({ status }: { status: string }) {
 function interventionActionLabel(status: string): string {
   if (status === 'planned') return 'Démarrer'
   if (status === 'in_progress') return 'Continuer'
-  return 'Réouvrir'
+  // Le mobile ne sait PAS rouvrir une intervention terminée (la réouverture
+  // vit sur le panneau bureau) — le bouton ne promet que ce qu'il fait.
+  return 'Consulter'
 }
 
 interface Props {
