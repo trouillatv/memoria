@@ -39,6 +39,7 @@ import {
 } from './report-actions'
 import { createClient } from '@/lib/supabase/client'
 import { SiteReportCuration } from './SiteReportCuration'
+import { NextMeetingPrompt } from './NextMeetingPrompt'
 
 interface Props {
   reportType?: 'site' | 'contract'
@@ -850,6 +851,9 @@ export function SiteReportPanel({
           <p className="text-xs text-muted-foreground">
             Le compte-rendu et ses pièces sont archivés dans le journal du chantier.
           </p>
+          {/* « On se revoit mardi à 9h » — LA phrase de fin de réunion, enfin
+              entendue. Facultatif, jamais bloquant. */}
+          {reportId && <NextMeetingPrompt reportId={reportId} />}
           {doneSummary.hasTomorrowIntervention && (
             <Link
               href="/briefing"
