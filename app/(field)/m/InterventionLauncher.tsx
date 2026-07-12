@@ -90,7 +90,9 @@ export function InterventionLauncher() {
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white/80 text-amber-600 dark:bg-white/10 dark:text-amber-300">
           <Wrench className="h-7 w-7" />
         </span>
-        <span className="break-words">Nouvelle intervention</span>
+        {/* L'intention d'abord (audit 2026-07-13). */}
+        <span className="break-words font-semibold">Je viens faire</span>
+        <span className="-mt-1.5 block text-[11px] font-normal opacity-75">Démarrer une intervention</span>
       </button>
 
       {open && (
