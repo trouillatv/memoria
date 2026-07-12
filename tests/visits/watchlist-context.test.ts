@@ -7,12 +7,12 @@ import { buildWatchContext } from '@/lib/visits/watchlist-context'
 const NOW = new Date('2026-07-12T08:00:00Z').getTime()
 
 describe('buildWatchContext', () => {
-  it('réserve : pourquoi daté + localisation + geste de preuve', () => {
+  it('réserve : le pourquoi parle comme un compagnon, daté et localisé', () => {
     const c = buildWatchContext(
       { source_kind: 'reserve_open', sinceIso: '2026-06-24T08:00:00Z', location: 'toiture' },
       NOW,
     )
-    expect(c.why).toBe('Réserve ouverte — toiture depuis 18 j.')
+    expect(c.why).toBe('Ce point apparaît parce que la réserve est toujours ouverte (toiture) depuis 18 j.')
     expect(c.gesture).toContain('photographier')
   })
 
@@ -21,7 +21,15 @@ describe('buildWatchContext', () => {
       { source_kind: 'action_overdue', sinceIso: '2026-07-02T08:00:00Z', dueIso: '2026-07-09' },
       NOW,
     )
-    expect(c.why).toBe('Action ouverte depuis 10 j, échéance dépassée.')
+    expect(c.why).toBe('Cette action est toujours ouverte depuis 10 j et son échéance est dépassée.')
+  })
+
+  it("décision : « jamais revue sur le terrain »", () => {
+    const c = buildWatchContext(
+      { source_kind: 'decision_unapplied', sinceIso: '2026-07-05T08:00:00Z' },
+      NOW,
+    )
+    expect(c.why).toBe("Cette décision n'a jamais été revue sur le terrain (actée il y a 7 j).")
   })
 
   it('la source garde son vrai type : une visite ne devient jamais une réunion', () => {
@@ -45,6 +53,6 @@ describe('buildWatchContext', () => {
     const c = buildWatchContext({ source_kind: 'manual' }, NOW)
     expect(c.sourceLabel).toBeNull()
     expect(c.sourceHref).toBeNull()
-    expect(c.why).toContain('Ajouté à la main')
+    expect(c.why).toContain('ajouté ce point à la main')
   })
 })

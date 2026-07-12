@@ -40,35 +40,37 @@ function daysSince(iso: string, nowMs: number): number {
 export function buildWatchContext(f: WatchContextFacts, nowMs: number): WatchContext {
   const d = f.sinceIso ? daysSince(f.sinceIso, nowMs) : null
 
+  // Le POURQUOI parle comme un compagnon : « ce point apparaît parce que… » —
+  // la logique de MemorIA s'explique, elle ne s'impose pas (revue 2026-07-12).
   let why: string
   let gesture: string
   switch (f.source_kind) {
     case 'reserve_open':
-      why = `Réserve ouverte${f.location ? ` — ${f.location}` : ''}${d !== null ? ` depuis ${d} j` : ''}.`
+      why = `Ce point apparaît parce que la réserve est toujours ouverte${f.location ? ` (${f.location})` : ''}${d !== null ? ` depuis ${d} j` : ''}.`
       gesture = 'Constater sur place et photographier — la levée se prouve.'
       break
     case 'action_overdue':
-      why = `Action ouverte${d !== null ? ` depuis ${d} j` : ''}${f.dueIso ? ', échéance dépassée' : ''}.`
+      why = `Cette action est toujours ouverte${d !== null ? ` depuis ${d} j` : ''}${f.dueIso ? ' et son échéance est dépassée' : ''}.`
       gesture = "Demander où ça en est, noter l'avancée au retour."
       break
     case 'decision_unapplied':
-      why = `Décision actée${d !== null ? ` il y a ${d} j` : ''}, application non constatée.`
+      why = `Cette décision n'a jamais été revue sur le terrain${d !== null ? ` (actée il y a ${d} j)` : ''}.`
       gesture = "Vérifier l'application sur place — photo si c'est visible."
       break
     case 'proof_window_closing':
-      why = 'La fenêtre de preuve se ferme — bientôt, ce ne sera plus visible.'
+      why = 'Ce point apparaît parce que la fenêtre de preuve se ferme — bientôt, ce ne sera plus visible.'
       gesture = 'Photographier maintenant, même cadrage que la dernière fois si possible.'
       break
     case 'obligation_neglected':
-      why = 'Obligation du chantier sans trace récente.'
+      why = "Cette obligation du chantier n'a pas de trace récente."
       gesture = 'Contrôler et laisser une trace — photo ou note.'
       break
     case 'manual':
-      why = 'Ajouté à la main pour cette visite.'
-      gesture = 'À contrôler comme convenu — une photo vaut trace.'
+      why = 'Vous avez ajouté ce point à la main pour cette visite.'
+      gesture = 'À contrôler comme convenu — une preuve vaut trace.'
       break
     default:
-      why = 'Signalé par la mémoire du chantier.'
+      why = 'Ce point vient de la mémoire du chantier.'
       gesture = 'Contrôler sur place et laisser une trace.'
   }
 
