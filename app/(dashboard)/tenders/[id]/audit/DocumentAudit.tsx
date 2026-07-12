@@ -34,6 +34,13 @@ const MIN_LEFT = 260
 const MIN_RIGHT = 360
 const DEFAULT_LEFT = 380
 
+// Couleur des badges de marge — une teinte par type (mêmes familles que les
+// pastilles de la liste).
+const KIND_COLOR: Record<string, string> = {
+  penalite: '#dc2626', controle: '#059669', livrable: '#7c3aed',
+  obligation: '#0284c7', objectif: '#64748b',
+}
+
 export function DocumentAudit({ pdfUrl, filename, engagements }: {
   pdfUrl: string | null
   filename: string | null
@@ -173,6 +180,24 @@ export function DocumentAudit({ pdfUrl, filename, engagements }: {
               url={pdfUrl!}
               page={level === 'exact' ? cur.page : null}
               highlight={cur.excerpt || null}
+              currentId={cur.id}
+              onSelect={(id) => {
+                const idx = engagements.findIndex((e) => e.id === id)
+                if (idx >= 0) setI(idx)
+              }}
+              // Le PDF porte TOUS les engagements localisables de façon fiable :
+              // badge [n] en marge, passage souligné à la couleur du type.
+              annotations={engagements
+                .map((e, idx) => ({ e, idx }))
+                .filter(({ e }) => citationLevel(e.page, e.section) === 'exact' && !!e.excerpt)
+                .map(({ e, idx }) => ({
+                  id: e.id,
+                  index: idx + 1,
+                  page: e.page as number,
+                  excerpt: e.excerpt,
+                  kindLabel: e.kind ? KIND_META[e.kind].label : 'Engagement',
+                  color: e.kind ? KIND_COLOR[e.kind] ?? '#64748b' : '#64748b',
+                }))}
             />
             {level !== 'exact' && (
               <p className="px-3 py-1.5 text-[11px] text-muted-foreground border-t">

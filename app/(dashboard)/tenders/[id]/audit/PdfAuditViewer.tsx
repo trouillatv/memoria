@@ -1,10 +1,11 @@
 'use client'
 
 // Visionneuse PDF de l'audit documentaire — pdf.js AVEC COUCHE TEXTE
-// (Vincent 2026-07-13) : « je clique sur un engagement → mes yeux vont
-// immédiatement sur la phrase du document. » L'iframe du lecteur natif ne
-// savait pas surligner ; ici l'extrait est marqué (halo jaune), la page
-// défile jusqu'à lui, un flash d'une seconde attire l'œil, puis le halo reste.
+// (Vincent 2026-07-13) : le PDF n'est plus un document consulté, c'est le
+// SUPPORT ANNOTÉ de l'audit. Tous les engagements localisables de la page
+// portent leur badge [n] en marge (couleur par type), cliquable ; celui qui
+// est sélectionné est surligné (halo jaune), la page défile jusqu'à lui,
+// flash d'une seconde, puis le halo reste — comme Acrobat.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
@@ -17,6 +18,18 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString()
 
+/** Une annotation à porter sur le document : un engagement localisable. */
+export interface PdfAnnotation {
+  id: string
+  /** Numéro affiché dans la marge — l'ordre de la liste d'audit. */
+  index: number
+  page: number
+  excerpt: string
+  kindLabel: string
+  /** Couleur du badge (type d'engagement). */
+  color: string
+}
+
 /** Normalisation tolérante : le texte PDF est découpé en fragments arbitraires,
  *  avec espaces/casse/accents variables. */
 function norm(s: string): string {
@@ -28,17 +41,28 @@ function norm(s: string): string {
     .trim()
 }
 
+function esc(s: string): string {
+  return s.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] ?? ch))
+}
+
 export function PdfAuditViewer({
   url,
   page,
   highlight,
+  annotations = [],
+  currentId = null,
+  onSelect,
   heightClass = 'h-[calc(100vh-12rem)]',
 }: {
   url: string
   /** Page cible (1-based) — null : document entier depuis la page 1. */
   page: number | null
-  /** L'extrait à surligner sur la page cible. */
+  /** L'extrait à surligner sur la page cible (engagement sélectionné). */
   highlight: string | null
+  /** TOUS les engagements localisables — badges en marge sur leur page. */
+  annotations?: PdfAnnotation[]
+  currentId?: string | null
+  onSelect?: (id: string) => void
   heightClass?: string
 }) {
   const [numPages, setNumPages] = useState<number | null>(null)
@@ -49,7 +73,10 @@ export function PdfAuditViewer({
   // PDF scanné / OCR absent : l'extrait est attendu mais introuvable dans la
   // couche texte → on le DIT, on ne laisse pas croire que la phrase n'y est pas.
   const [notFound, setNotFound] = useState(false)
+  // Badges de marge : [n] positionné à la hauteur du premier fragment trouvé.
+  const [badges, setBadges] = useState<Array<{ id: string; index: number; top: number; color: string; label: string; active: boolean }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const pageWrapRef = useRef<HTMLDivElement>(null)
   const flashedRef = useRef<string | null>(null)
 
   // L'engagement change → on suit sa page.
@@ -57,26 +84,63 @@ export function PdfAuditViewer({
 
   const normHighlight = useMemo(() => (highlight ? norm(highlight) : null), [highlight])
 
-  // Surligneur : un fragment de la couche texte est marqué s'il appartient
-  // (normalisé) à l'extrait. Les fragments très courts (« de », « le ») ne
-  // comptent que s'ils sont voisins d'un fragment déjà marqué — approximation
-  // honnête : on marque les fragments significatifs de la phrase.
+  // Les annotations de LA page courante (extrait normalisé prêt à matcher).
+  const pageAnnotations = useMemo(
+    () => annotations
+      .filter((a) => a.page === current && a.excerpt.trim())
+      .map((a) => ({ ...a, norm: norm(a.excerpt) }))
+      .filter((a) => a.norm.length >= 8),
+    [annotations, current],
+  )
+
+  // Surligneur : chaque fragment de la couche texte est comparé aux extraits
+  // des engagements de la page. Sélectionné → halo jaune ; autres → teinte
+  // légère + data-eng (le badge de marge s'y accroche).
   const textRenderer = useMemo(() => {
-    if (!normHighlight || current !== (page ?? -1)) return undefined
+    if (pageAnnotations.length === 0 && !normHighlight) return undefined
     return ({ str }: { str: string }) => {
       const n = norm(str)
-      if (n.length >= 4 && normHighlight.includes(n)) {
-        return `<mark class="audit-hl">${str.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] ?? ch))}</mark>`
+      if (n.length < 4) return esc(str)
+      if (normHighlight && current === (page ?? -1) && normHighlight.includes(n)) {
+        return `<mark class="audit-hl" data-eng="${currentId ?? ''}">${esc(str)}</mark>`
       }
-      return str.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] ?? ch))
+      const owner = pageAnnotations.find((a) => a.id !== currentId && a.norm.includes(n))
+      if (owner) {
+        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="text-decoration-color:${owner.color}">${esc(str)}</mark>`
+      }
+      return esc(str)
     }
-  }, [normHighlight, current, page])
+  }, [pageAnnotations, normHighlight, current, page, currentId])
 
-  // Après rendu : défiler jusqu'au premier surlignage + flash (une fois par cible).
+  // Après rendu : badges de marge + défilement/flash sur la sélection.
   function onRendered() {
-    const key = `${current}:${normHighlight ?? ''}`
     const root = scrollRef.current
-    if (!root) return
+    const wrap = pageWrapRef.current
+    if (!root || !wrap) return
+
+    // 1) Positionner un badge [n] au premier fragment de chaque engagement.
+    const wrapRect = wrap.getBoundingClientRect()
+    const seen = new Set<string>()
+    const next: typeof badges = []
+    root.querySelectorAll<HTMLElement>('mark[data-eng]').forEach((m) => {
+      const id = m.dataset.eng
+      if (!id || seen.has(id)) return
+      seen.add(id)
+      const a = pageAnnotations.find((x) => x.id === id) ?? annotations.find((x) => x.id === id)
+      if (!a) return
+      next.push({
+        id,
+        index: a.index,
+        top: m.getBoundingClientRect().top - wrapRect.top,
+        color: a.color,
+        label: a.kindLabel,
+        active: id === currentId,
+      })
+    })
+    setBadges(next.sort((x, y) => x.top - y.top))
+
+    // 2) Sélection : scroll + flash (une fois par cible), halo persistant.
+    const key = `${current}:${normHighlight ?? ''}`
     const first = root.querySelector('mark.audit-hl')
     setNotFound(!!normHighlight && current === (page ?? -1) && !first)
     if (first && flashedRef.current !== key) {
@@ -89,28 +153,61 @@ export function PdfAuditViewer({
 
   return (
     <div className="flex min-h-0 flex-col">
-      {/* Le halo : jaune translucide permanent ; le flash : 1 s plus saturé. */}
+      {/* Halo jaune permanent (sélection) ; flash 1 s ; les AUTRES engagements
+          de la page : soulignés à la couleur de leur type, cliquables. */}
       <style>{`
         mark.audit-hl { background: rgba(250, 204, 21, .45); color: inherit; border-radius: 2px; padding: 0; }
         mark.audit-hl-flash { background: rgba(245, 158, 11, .85); transition: background .3s; }
+        mark.audit-hl-other { background: transparent; color: inherit; padding: 0; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: pointer; }
         .react-pdf__Page { margin: 0 auto; }
       `}</style>
 
-      <div ref={scrollRef} className={`${heightClass} min-h-[460px] overflow-auto bg-muted/30`}>
-        <Document
-          file={url}
-          onLoadSuccess={(d) => setNumPages(d.numPages)}
-          loading={<div className="flex items-center justify-center py-24 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>}
-          error={<p className="py-20 text-center text-sm text-muted-foreground">Impossible d&apos;afficher le PDF ici — utilisez « Onglet ».</p>}
-        >
-          <Page
-            pageNumber={Math.max(1, Math.min(current, numPages ?? current))}
-            width={Math.round(860 * zoom)}
-            customTextRenderer={textRenderer}
-            onRenderTextLayerSuccess={onRendered}
-            renderAnnotationLayer={false}
-          />
-        </Document>
+      <div
+        ref={scrollRef}
+        className={`${heightClass} min-h-[460px] overflow-auto bg-muted/30`}
+        onClick={(e) => {
+          // Cliquer un passage souligné = sélectionner son engagement.
+          const m = (e.target as HTMLElement).closest?.('mark[data-eng]') as HTMLElement | null
+          const id = m?.dataset.eng
+          if (id && onSelect) onSelect(id)
+        }}
+      >
+        <div ref={pageWrapRef} className="relative mx-auto w-fit pl-11">
+          {/* LA MARGE — les badges [n] des engagements de la page. */}
+          {badges.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              title={`${b.label} n°${b.index}`}
+              onClick={() => onSelect?.(b.id)}
+              className="absolute left-0 z-10 -translate-y-1/2 rounded-md border bg-card px-1.5 py-0.5 text-[11px] font-bold tabular-nums shadow-sm transition-transform"
+              style={{
+                top: b.top + 8,
+                borderColor: b.color,
+                color: b.color,
+                transform: b.active ? 'scale(1.25) translateY(-40%)' : undefined,
+                boxShadow: b.active ? `0 0 0 2px ${b.color}33` : undefined,
+              }}
+            >
+              {b.index}
+            </button>
+          ))}
+
+          <Document
+            file={url}
+            onLoadSuccess={(d) => setNumPages(d.numPages)}
+            loading={<div className="flex items-center justify-center py-24 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>}
+            error={<p className="py-20 text-center text-sm text-muted-foreground">Impossible d&apos;afficher le PDF ici — utilisez « Onglet ».</p>}
+          >
+            <Page
+              pageNumber={Math.max(1, Math.min(current, numPages ?? current))}
+              width={Math.round(860 * zoom)}
+              customTextRenderer={textRenderer}
+              onRenderTextLayerSuccess={onRendered}
+              renderAnnotationLayer={false}
+            />
+          </Document>
+        </div>
       </div>
 
       {/* PDF scanné / extrait absent de la couche texte : le dire, honnêtement. */}
