@@ -349,9 +349,10 @@ export default async function FieldSitePage({
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard cells={siteStatus} />
 
-          {/* 1bis — PROCHAINE ÉTAPE : « qu'est-ce que je dois faire ensuite ? »
-              Réunion programmée / intervention planifiée / échéance — la plus
-              proche en grand. Silence positif si rien à venir. */}
+          {/* 1bis — AGENDA DU CHANTIER : « comment va vivre ce chantier ces
+              prochains jours ? » Réunions / interventions / échéances — la plus
+              proche en grand, puis les jours nommés (Aujourd'hui / Demain / …).
+              Silence positif si rien à venir. */}
           <NextStepCard steps={nextSteps} />
 
           {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}

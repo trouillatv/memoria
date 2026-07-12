@@ -11,12 +11,16 @@ export type NextStepKind = 'reunion' | 'intervention' | 'echeance'
 
 export interface NextStep {
   kind: NextStepKind
-  /** Instant ISO de l'étape (échéance d'action : date à minuit, sans heure). */
+  /** Instant ISO de l'étape (échéance d'action : date à minuit Nouméa). */
   at: string
   /** « Réunion de chantier », nom de la mission, titre de l'action. */
   label: string
   /** « mardi 15 juillet » — calculé serveur (fuseau Nouméa). */
   dateLabel: string
+  /** « mardi 15 » — l'en-tête de jour de l'agenda « À venir ». */
+  dayLabel: string
+  /** « 2026-07-15 » (jour Nouméa) — clé de regroupement de l'agenda. */
+  dayKey: string
   /** « 09h00 » — null quand l'étape n'a pas d'heure (échéance à la journée). */
   timeLabel: string | null
   /** « aujourd'hui » / « demain » / « dans 12 j » — le compte à rebours du récit. */
@@ -35,6 +39,9 @@ function dayOf(ms: number): string {
 function dateLabelOf(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ }).format(new Date(iso))
 }
+function dayLabelOf(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', timeZone: TZ }).format(new Date(iso))
+}
 function timeLabelOf(iso: string): string | null {
   const t = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ }).format(new Date(iso))
   // Minuit pile (Nouméa) = « pas d'heure » (échéances à la journée).
@@ -49,27 +56,38 @@ export function inLabelOf(iso: string, now: number): string {
   return `dans ${days} j`
 }
 
-/** Trie les candidats, garde le futur, borne à `max` — PUR (testable en CI).
+/** Trie les candidats, garde le futur PROCHE, borne à `max` — PUR (CI).
  *  « Futur » = jour calendaire Nouméa ≥ aujourd'hui : une échéance due
  *  aujourd'hui reste visible toute la journée même si minuit est passé
  *  (les étapes horodatées — réunions, interventions — arrivent déjà
- *  filtrées `>= now` par le SQL). */
+ *  filtrées `>= now` par le SQL). Horizon borné (14 j par défaut) : au-delà,
+ *  c'est le rôle du Journal — l'agenda du chantier n'est pas un planning. */
 export function pickNextSteps(
   candidates: Array<Pick<NextStep, 'kind' | 'at' | 'label' | 'href'>>,
   now: number,
-  max = 3,
+  max = 5,
+  horizonDays = 14,
 ): Array<Pick<NextStep, 'kind' | 'at' | 'label' | 'href'>> {
   const today = dayOf(now)
+  const lastDay = dayOf(now + horizonDays * 86_400_000)
   return candidates
-    .filter((c) => !Number.isNaN(new Date(c.at).getTime()) && dayOf(new Date(c.at).getTime()) >= today)
+    .filter((c) => {
+      if (Number.isNaN(new Date(c.at).getTime())) return false
+      const day = dayOf(new Date(c.at).getTime())
+      return day >= today && day <= lastDay
+    })
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
     .slice(0, max)
 }
 
-export async function getSiteNextSteps(siteId: string, max = 3): Promise<NextStep[]> {
+export async function getSiteNextSteps(siteId: string, max = 5): Promise<NextStep[]> {
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
   const today = nowIso.slice(0, 10)
+  // Préfiltre SQL à l'horizon de l'agenda (le filtre PUR, en jours Nouméa,
+  // reste l'autorité) — +1 j de marge pour le décalage UTC / Nouméa.
+  const horizonIso = new Date(Date.now() + 15 * 86_400_000).toISOString()
+  const horizonDay = horizonIso.slice(0, 10)
 
   const [meetings, missionsRes, actionsRes] = await Promise.all([
     supabase
@@ -78,6 +96,7 @@ export async function getSiteNextSteps(siteId: string, max = 3): Promise<NextSte
       .eq('site_id', siteId)
       .not('next_meeting_at', 'is', null)
       .gte('next_meeting_at', nowIso)
+      .lte('next_meeting_at', horizonIso)
       .order('next_meeting_at', { ascending: true })
       .limit(max),
     supabase.from('missions').select('id, name').eq('site_id', siteId).is('deleted_at', null),
@@ -88,6 +107,7 @@ export async function getSiteNextSteps(siteId: string, max = 3): Promise<NextSte
       .in('status', ['open', 'planned'])
       .not('due_date', 'is', null)
       .gte('due_date', today)
+      .lte('due_date', horizonDay)
       .order('due_date', { ascending: true })
       .limit(max),
   ])
@@ -109,6 +129,7 @@ export async function getSiteNextSteps(siteId: string, max = 3): Promise<NextSte
       .in('mission_id', missionIds)
       .not('planned_start', 'is', null)
       .gte('planned_start', nowIso)
+      .lte('planned_start', horizonIso)
       .neq('status', 'cancelled')
       .order('planned_start', { ascending: true })
       .limit(max)
@@ -132,6 +153,8 @@ export async function getSiteNextSteps(siteId: string, max = 3): Promise<NextSte
   return pickNextSteps(candidates, now, max).map((c) => ({
     ...c,
     dateLabel: dateLabelOf(c.at),
+    dayLabel: dayLabelOf(c.at),
+    dayKey: dayOf(new Date(c.at).getTime()),
     timeLabel: timeLabelOf(c.at),
     inLabel: inLabelOf(c.at, now),
   }))

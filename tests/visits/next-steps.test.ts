@@ -21,9 +21,18 @@ describe('pickNextSteps', () => {
     expect(out.map((s) => s.kind)).toEqual(['reunion', 'intervention', 'echeance'])
   })
 
-  it('borne à max (3 par défaut) — une étape, pas un agenda', () => {
-    const many = Array.from({ length: 6 }, (_, i) => step('echeance', `2026-07-${13 + i}T00:00:00Z`))
-    expect(pickNextSteps(many, NOW)).toHaveLength(3)
+  it('borne à max (5 par défaut) — un agenda court, pas un planning', () => {
+    const many = Array.from({ length: 7 }, (_, i) => step('echeance', `2026-07-${13 + i}T00:00:00Z`))
+    expect(pickNextSteps(many, NOW)).toHaveLength(5)
+  })
+
+  it("borne à l'horizon (14 j par défaut) — au-delà, c'est le rôle du Journal", () => {
+    const out = pickNextSteps(
+      [step('echeance', '2026-07-20T00:00:00+11:00'), step('reunion', '2026-08-15T09:00:00+11:00')],
+      NOW,
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('echeance')
   })
 
   it('écarte les dates invalides plutôt que de casser le récit', () => {
