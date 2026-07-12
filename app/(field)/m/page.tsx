@@ -8,6 +8,7 @@ import { listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { listSharedHandoverBriefsForChef } from '@/lib/db/handover'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { actionAttentionOf } from '@/lib/actions/health'
+import { buildAttentionGroups, type GroupableItem, type BuiltGroup } from '@/lib/actions/attention-groups'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
@@ -90,42 +91,21 @@ const SEVERITY: Record<Severity, { bar: string; chip: string; title: string; ran
   },
 }
 
-interface AttentionItem {
-  key: string
+interface AttentionItem extends GroupableItem {
   severity: Severity
   icon: LucideIcon
-  title: string
-  subtitle: string | null
-  href: string
-  urgent?: boolean
-  /** CONTEXTE (règle 2026-07-12 : jamais une action hors de son chantier).
-   *  Les items sont regroupés sous ce libellé — le chantier, ou la famille
-   *  (« Appels d'offres », « Passation »). */
-  group: string
-  /** Fiche du chantier — l'en-tête du groupe y mène (« Ouvrir → »). */
-  groupHref?: string | null
 }
 
 /** Un chantier (ou une famille) qui réclame — l'unité du récit « À reprendre ».
- *  Le CONTEXTE avant le détail : nom, pourquoi, origine — puis 2 actions max. */
-interface AttentionGroup {
-  label: string
-  href: string | null
-  /** « Issue de la réunion du 8 juillet » — l'ORIGINE, quand elle est connue. */
+ *  Le CONTEXTE avant le détail : nom, POURQUOI, origine — puis 2 actions max.
+ *  Regroupement pur : lib/actions/attention-groups (compte VRAI, origine par
+ *  report_id réel — testé en CI). */
+type AttentionGroup = BuiltGroup<AttentionItem> & {
+  /** « Issue de la réunion du 8 juillet » (source unique) ou « Issues de N
+   *  réunions » (plusieurs) — jamais une origine inventée. */
   origin: string | null
-  /** La réunion/visite source, cliquable dès l'accueil. */
+  /** Cliquable seulement quand la source est UNIQUE et certaine. */
   originHref: string | null
-  /** LA RAISON de l'apparition (« pas d'avancée depuis 9 j », « en retard de
-   *  3 j ») — le conducteur ne se demande pas combien, il se demande POURQUOI.
-   *  C'est la note de l'élément le plus urgent du chantier. */
-  reason: string | null
-  /** Sévérité du pire élément — teinte la raison. */
-  worstSeverity: Severity
-  /** Tous les éléments qui réclament sur ce chantier (pas seulement montrés). */
-  totalCount: number
-  /** 2 max visibles ; le reste = « + N autres » vers la fiche. */
-  items: AttentionItem[]
-  moreCount: number
 }
 
 // Écart en JOURS CIVILS purs (anti-bascule fuseau Nouméa, cf. formatScheduledTime).
@@ -495,8 +475,6 @@ export default async function FieldHomePage({
   const attentionItems: AttentionItem[] = []
   // Échéances d'actions DU JOUR → racontées dans l'agenda « Aujourd'hui ».
   const dueTodayActions: Array<{ id: string; title: string; siteId: string; siteName: string }> = []
-  // Origine par groupe (« Réunion du 8 juillet », cliquable) — le POURQUOI.
-  const originByGroup = new Map<string, { label: string; href: string }>()
 
   if (isToday) {
     // 1) Échéances AO (tenders) à rendre — la pression réglementaire d'abord.
@@ -569,12 +547,9 @@ export default async function FieldHomePage({
     const scopedSites = agentSiteIds.length > 0 ? agentSiteIds : undefined
     if (scopedSites || isManager) {
       const openActions = await listOpenSiteActions(scopedSites ? { siteIds: scopedSites } : undefined).catch(() => [] as SiteActionRow[])
-      let shown = 0
-      const shownReportIds = new Set<string>()
+      // AUCUNE borne de calcul : le compte par chantier doit être VRAI.
+      // Les bornes (2 items, 3 chantiers) ne portent que sur le rendu.
       for (const a of openActions) {
-        // Borne large : le CONTEXTE (groupes par chantier) borne l'affichage,
-        // mais le COMPTE par chantier doit rester vrai.
-        if (shown >= 12) break
         // Échéance du jour → elle vit dans l'agenda « Aujourd'hui », pas ici.
         if (a.due_date && a.due_date.slice(0, 10) === todayIso) {
           dueTodayActions.push({ id: a.id, title: a.title, siteId: a.site_id, siteName: a.site_name })
@@ -582,7 +557,6 @@ export default async function FieldHomePage({
         }
         const attention = actionAttentionOf(a, todayIso)
         if (!attention) continue
-        if (a.report_id) shownReportIds.add(a.report_id)
         attentionItems.push({
           key: `action-${a.id}`,
           severity: attention.severity,
@@ -594,23 +568,10 @@ export default async function FieldHomePage({
           href: `/m/site/${a.site_id}`,
           group: a.site_name,
           groupHref: `/m/site/${a.site_id}`,
+          // La source EXACTE de cette action — l'origine du groupe s'en déduit,
+          // jamais d'une correspondance indirecte par chantier.
+          reportId: a.report_id,
         })
-        shown++
-      }
-      // L'ORIGINE des actions montrées : « Réunion du 8 juillet » (report source).
-      if (shownReportIds.size > 0) {
-        const { data: srcReports } = await supabase
-          .from('site_reports')
-          .select('id, created_at, site_id')
-          .in('id', [...shownReportIds])
-        for (const r of (srcReports ?? []) as Array<{ id: string; created_at: string; site_id: string | null }>) {
-          const d = new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' })
-          for (const it of attentionItems) {
-            if (it.key.startsWith('action-') && it.groupHref === `/m/site/${r.site_id}` && !originByGroup.has(it.group)) {
-              originByGroup.set(it.group, { label: `Issue de la réunion du ${d}`, href: `/m/reunion/${r.id}` })
-            }
-          }
-        }
       }
     }
 
@@ -630,50 +591,42 @@ export default async function FieldHomePage({
     }
   }
 
-  // Tri par urgence (rouge → orange → jaune → info).
-  attentionItems.sort((x, y) => SEVERITY[x.severity].rank - SEVERITY[y.severity].rank)
-
   // « À reprendre » : le RÉCIT par chantier (règle 2026-07-12 — jamais une
-  // action hors contexte). Le chantier est le niveau principal : nom, pourquoi,
-  // origine, COMPTE vrai — puis 2 éléments max et « + N autres ». 3 chantiers
-  // max sur l'accueil ; les familles (AO, Passation) passent après.
-  const attentionGroups: AttentionGroup[] = []
+  // action hors contexte). Regroupement PUR (compte vrai, 2 items / 3 chantiers
+  // en rendu seulement, report_ids collectés) — testé en CI.
+  const attentionGroups: AttentionGroup[] = buildAttentionGroups(attentionItems).map((g) => ({
+    ...g,
+    origin: null,
+    originHref: null,
+  }))
+
+  // L'ORIGINE réelle de chaque groupe, depuis les report_id EXACTS de ses
+  // items : source unique → « Issue de la réunion du 8 juillet » cliquable ;
+  // plusieurs sources → « Issues de N réunions », jamais une origine inventée.
   {
-    type G = AttentionGroup & { worst: number }
-    const byGroup = new Map<string, G>()
-    const ordered: G[] = []
-    for (const it of attentionItems) {
-      let g = byGroup.get(it.group)
-      if (!g) {
-        const origin = originByGroup.get(it.group) ?? null
-        g = {
-          label: it.group,
-          href: it.groupHref ?? null,
-          origin: origin?.label ?? null,
-          originHref: origin?.href ?? null,
-          // attentionItems est trié par urgence → le 1er item du groupe est le
-          // pire : sa note devient LA raison de la carte.
-          reason: it.subtitle,
-          worstSeverity: it.severity,
-          totalCount: 0,
-          items: [],
-          moreCount: 0,
-          worst: 9,
+    const allReportIds = [...new Set(attentionGroups.flatMap((g) => g.reportIds))]
+    if (allReportIds.length > 0) {
+      const { data: srcReports } = await supabase
+        .from('site_reports')
+        .select('id, created_at')
+        .in('id', allReportIds)
+      const dateById = new Map(
+        ((srcReports ?? []) as Array<{ id: string; created_at: string }>).map((r) => [
+          r.id,
+          new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' }),
+        ]),
+      )
+      for (const g of attentionGroups) {
+        if (g.reportIds.length === 1) {
+          const d = dateById.get(g.reportIds[0])
+          if (d) {
+            g.origin = `Issue de la réunion du ${d}`
+            g.originHref = `/m/reunion/${g.reportIds[0]}`
+          }
+        } else if (g.reportIds.length > 1) {
+          g.origin = `Issues de ${g.reportIds.length} réunions`
         }
-        byGroup.set(it.group, g)
-        ordered.push(g)
       }
-      if (!g.href && it.groupHref) g.href = it.groupHref
-      g.totalCount++
-      g.worst = Math.min(g.worst, SEVERITY[it.severity].rank)
-      if (g.items.length < 2) g.items.push(it)
-    }
-    ordered.sort((a, b) => a.worst - b.worst)
-    const sites = ordered.filter((g) => g.href).slice(0, 3)
-    const familles = ordered.filter((g) => !g.href)
-    for (const g of [...sites, ...familles]) {
-      g.moreCount = g.totalCount - g.items.length
-      attentionGroups.push(g)
     }
   }
 
