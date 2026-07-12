@@ -9,6 +9,7 @@ import {
   getSiteResumeContext,
 } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
+import { originOfSources } from '@/lib/actions/attention-groups'
 import { listSiteASavoirActive } from '@/lib/db/sites'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -136,14 +137,34 @@ export default async function FieldInterventionPage({
   // jamais « toutes les actions du chantier ».
   const { data: embarkedRaw } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, converted_to_type, converted_to_id')
+    .select('id, title, status, converted_to_type, converted_to_id, report_id')
     .in('converted_to_id', [id, intervention.mission_id])
     .limit(10)
-  const embarkedActions = (((embarkedRaw ?? []) as Array<{ id: string; title: string; status: string; converted_to_type: string | null; converted_to_id: string | null }>)
+  const embarkedActions = (((embarkedRaw ?? []) as Array<{ id: string; title: string; status: string; converted_to_type: string | null; converted_to_id: string | null; report_id: string | null }>)
     .filter((a) =>
       (a.converted_to_type === 'intervention' && a.converted_to_id === id) ||
       (a.converted_to_type === 'mission' && a.converted_to_id === intervention.mission_id),
     ))
+
+  // L'ORIGINE de la mission (« Décidées en réunion du 26 juin ») — la carte
+  // raconte une MISSION, pas une liste. Même règle que partout : source
+  // unique et certaine → nommée ; sinon rien d'inventé.
+  let missionOrigin: { label: string; href: string | null } | null = null
+  {
+    const srcIds = [...new Set(embarkedActions.map((a) => a.report_id).filter((r): r is string => !!r))]
+    if (srcIds.length > 0) {
+      const { data: srcReports } = await createAdminClient()
+        .from('site_reports')
+        .select('id, created_at, origin')
+        .in('id', srcIds)
+      const sources = ((srcReports ?? []) as Array<{ id: string; created_at: string; origin: string | null }>).map((r) => ({
+        id: r.id,
+        kind: (r.origin ? 'visite' : 'reunion') as 'visite' | 'reunion',
+        dateLabel: new Date(r.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Pacific/Noumea' }),
+      }))
+      missionOrigin = originOfSources(sources)
+    }
+  }
 
   // Map token → libellé entreprise (pour les badges « Réalisé par … » et le partage).
   const tokenLabel = new Map<string, string>()
@@ -474,14 +495,24 @@ export default async function FieldInterventionPage({
         />
       )}
 
-      {/* POURQUOI JE SUIS LÀ — LA MISSION d'abord, l'exécution ensuite (revue
-          2026-07-13). Le style APLATI le garde contexte : la checklist qui
-          suit reste le cœur du travail, ceci n'est jamais une 2e liste. */}
+      {/* MISSION DU JOUR — LA MISSION d'abord, l'exécution ensuite (revue
+          2026-07-13) : pourquoi je suis là, d'où ça vient, ce que je cherche.
+          Le style APLATI le garde contexte : la checklist qui suit reste le
+          cœur du travail, ceci n'est jamais une 2e liste. */}
       {embarkedActions.length > 0 && (
         <section className="rounded-2xl border border-foreground/[0.06] bg-muted/20 p-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Pourquoi je suis là
+            Mission du jour
           </h2>
+          {missionOrigin && (
+            missionOrigin.href ? (
+              <Link href={missionOrigin.href} className="mt-0.5 inline-block text-xs text-sky-700 underline underline-offset-2 active:opacity-70 dark:text-sky-300">
+                {missionOrigin.label} →
+              </Link>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">{missionOrigin.label}</p>
+            )
+          )}
           <ul className="mt-2 space-y-1.5">
             {embarkedActions.map((a) => (
               <li key={a.id} className="flex items-baseline gap-2 text-[14px]">
