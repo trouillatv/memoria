@@ -21,6 +21,13 @@ export default async function MemoirePage() {
           Toute la mémoire des chantiers — anomalies, notes, interventions — en une question.
           Chaque trace est rattachée à son site.
         </p>
+        {/* Les DEUX mémoires, nommées (doctrine 2026-07-13) : l'utilisateur doit
+            comprendre pourquoi certaines connaissances se réutilisent partout. */}
+        <p className="text-xs text-muted-foreground/80">
+          Ici, c&apos;est la <strong>mémoire de l&apos;entreprise</strong> : ce que vos chantiers
+          vous ont appris, réutilisable sur tous vos projets. La <strong>mémoire du
+          chantier</strong> (visites, réunions, preuves) vit, elle, sur chaque fiche chantier.
+        </p>
       </header>
 
       <OrgMemoryQuery />

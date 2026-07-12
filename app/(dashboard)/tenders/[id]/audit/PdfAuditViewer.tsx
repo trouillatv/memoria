@@ -43,6 +43,12 @@ export function PdfAuditViewer({
 }) {
   const [numPages, setNumPages] = useState<number | null>(null)
   const [current, setCurrent] = useState(page ?? 1)
+  // Zoom : facteur sur la largeur de rendu — la couche texte (et donc le halo)
+  // suit, c'est le même rendu pdf.js à une autre échelle.
+  const [zoom, setZoom] = useState(1)
+  // PDF scanné / OCR absent : l'extrait est attendu mais introuvable dans la
+  // couche texte → on le DIT, on ne laisse pas croire que la phrase n'y est pas.
+  const [notFound, setNotFound] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const flashedRef = useRef<string | null>(null)
 
@@ -72,6 +78,7 @@ export function PdfAuditViewer({
     const root = scrollRef.current
     if (!root) return
     const first = root.querySelector('mark.audit-hl')
+    setNotFound(!!normHighlight && current === (page ?? -1) && !first)
     if (first && flashedRef.current !== key) {
       flashedRef.current = key
       first.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -98,7 +105,7 @@ export function PdfAuditViewer({
         >
           <Page
             pageNumber={Math.max(1, Math.min(current, numPages ?? current))}
-            width={860}
+            width={Math.round(860 * zoom)}
             customTextRenderer={textRenderer}
             onRenderTextLayerSuccess={onRendered}
             renderAnnotationLayer={false}
@@ -106,9 +113,23 @@ export function PdfAuditViewer({
         </Document>
       </div>
 
-      {/* Navigation de pages — lire autour de la citation. */}
-      {numPages !== null && numPages > 1 && (
+      {/* PDF scanné / extrait absent de la couche texte : le dire, honnêtement. */}
+      {notFound && (
+        <p className="border-t px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          Extrait non localisable dans le texte de cette page (document scanné ou OCR imparfait ?)
+          — l&apos;extrait à gauche reste la trace exacte.
+        </p>
+      )}
+
+      {/* Navigation de pages + zoom — lire autour de la citation. */}
+      {numPages !== null && (
         <div className="flex items-center justify-center gap-3 border-t px-3 py-1.5 text-xs">
+          <button type="button" onClick={() => setZoom((z) => Math.max(0.6, Math.round((z - 0.2) * 10) / 10))} disabled={zoom <= 0.6}
+            aria-label="Réduire" className="rounded px-2 py-1 hover:bg-muted/50 disabled:opacity-40">−</button>
+          <span className="w-10 text-center tabular-nums text-muted-foreground">{Math.round(zoom * 100)}%</span>
+          <button type="button" onClick={() => setZoom((z) => Math.min(2.6, Math.round((z + 0.2) * 10) / 10))} disabled={zoom >= 2.6}
+            aria-label="Agrandir" className="rounded px-2 py-1 hover:bg-muted/50 disabled:opacity-40">+</button>
+          <span className="text-border">|</span>
           <button type="button" onClick={() => setCurrent((p) => Math.max(1, p - 1))} disabled={current <= 1}
             className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-muted/50 disabled:opacity-40">
             <ChevronLeft className="h-3.5 w-3.5" /> Page préc.
