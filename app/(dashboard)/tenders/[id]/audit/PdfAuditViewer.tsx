@@ -106,7 +106,9 @@ export function PdfAuditViewer({
       }
       const owner = pageAnnotations.find((a) => a.id !== currentId && a.norm.includes(n))
       if (owner) {
-        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="text-decoration-color:${owner.color}">${esc(str)}</mark>`
+        // PERMANENT, dès l'ouverture : fond teinté à la couleur du type —
+        // « comme un correcteur qui a annoté le document », pas un simple trait.
+        return `<mark class="audit-hl-other" data-eng="${owner.id}" style="background:${owner.color}2b;border-bottom:2px solid ${owner.color}">${esc(str)}</mark>`
       }
       return esc(str)
     }
@@ -158,7 +160,7 @@ export function PdfAuditViewer({
       <style>{`
         mark.audit-hl { background: rgba(250, 204, 21, .45); color: inherit; border-radius: 2px; padding: 0; }
         mark.audit-hl-flash { background: rgba(245, 158, 11, .85); transition: background .3s; }
-        mark.audit-hl-other { background: transparent; color: inherit; padding: 0; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: pointer; }
+        mark.audit-hl-other { color: inherit; padding: 0; border-radius: 2px; cursor: pointer; }
         .react-pdf__Page { margin: 0 auto; }
       `}</style>
 
