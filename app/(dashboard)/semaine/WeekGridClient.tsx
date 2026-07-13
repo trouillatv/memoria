@@ -71,6 +71,8 @@ export interface WeekGridClientProps {
   optionsBySite?: Record<string, Record<string, ResolutionOption[]>>
   /** Exceptions — clé présente = issue d'un roulement ; liste = les déviations. */
   exceptionsById?: Record<string, string[]>
+  /** Vue Mois → tiroir : la cellule à ouvrir à l'arrivée. */
+  initialCellKey?: string | null
   children: React.ReactNode
 }
 
@@ -139,7 +141,7 @@ interface DragPreview {
   teamColor: string | null
 }
 
-export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, optionsBySite, exceptionsById, children }: WeekGridClientProps) {
+export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, optionsBySite, exceptionsById, initialCellKey, children }: WeekGridClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -287,6 +289,7 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
         decisions={decisions}
         optionsBySite={optionsBySite}
         exceptionsById={exceptionsById}
+        initialCellKey={initialCellKey}
       >
         {children}
       </CellDrawer>
