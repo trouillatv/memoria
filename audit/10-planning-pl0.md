@@ -95,7 +95,47 @@ remplacer, jamais les deux en parallèle »), soit **projeter les rythmes
 virtuellement** sur le mois (`matchesFrequency` est privée, ligne 243 — à
 exporter).
 
-## Décision attendue de Vincent (rien ne bouge avant)
+## DÉCISION PRISE (Vincent, 2026-07-13) — le lot est débloqué
+
+1. **Planning natif par personne : NON, pas dans cette vague.** La doctrine et
+   ses tests restent **actifs**. L'unité planifiée reste l'**équipe**. Les
+   équipes d'une personne sont autorisées comme adaptation métier : dans la
+   grille, une équipe mono **peut être présentée par le nom de son membre
+   actif**, mais **toutes les écritures restent liées à `team_id`**.
+   > Frontière à tenir : MemorIA sait quelle équipe intervient, qui la compose à
+   > une date donnée, qui remplace qui sur une occurrence, ce qui est déplacé ou
+   > annulé. MemorIA **ne sait pas** : heures travaillées, pointage, retards,
+   > congés RH, paie. Coordination opérationnelle, jamais RH.
+2. **Feu vert immédiat** : cycles de 1 à 4 semaines + fermetures de site avec
+   alertes (centrés sur le site, la mission et l'équipe — aucun suivi RH).
+3. **Matérialisation : projection à la volée.** Le cap de 7 jours **n'est pas
+   levé**. La vue mois projette virtuellement. Une occurrence ne devient
+   persistante que lorsqu'elle est modifiée, déplacée, annulée, maintenue malgré
+   une fermeture, démarrée, réalisée, ou porteuse d'une preuve.
+   **Un seul moteur de calcul** pour la semaine, le mois, les alertes et la
+   génération glissante.
+
+### Ordre retenu
+
+| Lot | Contenu | État |
+|---|---|---|
+| **PL1** | Moteur de projection pur, testé, période arbitraire — **aucun changement de comportement** | 🚧 **EN COURS** — moteur codé (`lib/planning/projection.ts`), tests dédiés + typecheck + lint verts ; **suite complète en attente de la CI**. Passera à LIVRÉ **après merge**, pas avant. |
+| PL2 | Fermetures de site (`site_closures` + saisie sur la fiche) | à faire |
+| PL3 | Signal « site fermé, prestation prévue » + ses 5 résolutions | à faire |
+| PL4 | Cycles 1-4 semaines (`cycle_length_weeks`, `anchor_date`, `week_index`) | à faire |
+| PL5 | Assistant de construction du cycle | à faire |
+| PL6 | Vue mois (fondée sur la projection) | à faire |
+| PL7 | Exceptions par occurrence (remplacement d'équipe, déplacement, annulation) | à faire |
+
+### Reporté explicitement (ne pas construire)
+
+`user_availability`, planning individuel natif, congés, suspension RH
+structurée, calcul d'heures, optimisation automatique des remplacements, rôle
+Agent créé pour justifier le planning, calendrier RH complet.
+Après quelques semaines d'usage : vérifier si les équipes mono suffisent ou
+deviennent réellement artificielles.
+
+## Décision attendue de Vincent (rien ne bouge avant) — HISTORIQUE, tranché ci-dessus
 
 1. **Le planning de présences par personne est-il ré-ouvert ?** C'est un
    changement de vision produit (refus ERP RH), pas une évolution technique.

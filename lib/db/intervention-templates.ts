@@ -17,7 +17,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
-import { buildScheduledAt, slotFromUtcHour } from '@/lib/time/prestation-slot'
+import { projectOccurrences } from '@/lib/planning/projection'
 import type {
   DbInterventionTemplate,
   InterventionFrequency,
@@ -225,54 +225,12 @@ const MAX_GENERATION_DAYS = 7
 // `@/lib/time/prestation-slot` (Constat fondateur V6.1 — fin des mappings
 // divergents). `buildScheduledAt` est désormais importé.
 
-/** ISO day-of-week : 1=Monday, ..., 7=Sunday. */
-function isoDayOfWeek(date: Date): number {
-  // getUTCDay() : 0=Sun, 1=Mon, ..., 6=Sat
-  const d = date.getUTCDay()
-  return d === 0 ? 7 : d
-}
-
-function isoDayOfMonth(date: Date): number {
-  return date.getUTCDate()
-}
-
-/**
- * Vrai si la date matche la fréquence du template.
- * Travaille en UTC pour éviter les drifts TZ.
- */
-function matchesFrequency(template: DbInterventionTemplate, date: Date): boolean {
-  const dateIso = date.toISOString().slice(0, 10)
-
-  // ends_on check (déjà fait par range mais on garde la garde locale)
-  if (template.ends_on && dateIso > template.ends_on) return false
-  if (dateIso < template.starts_on) return false
-
-  switch (template.frequency) {
-    case 'daily':
-      return true
-    case 'weekdays':
-      return isoDayOfWeek(date) >= 1 && isoDayOfWeek(date) <= 5
-    case 'weekly':
-      return template.day_of_week !== null && isoDayOfWeek(date) === template.day_of_week
-    case 'monthly':
-      return template.day_of_month !== null && isoDayOfMonth(date) === template.day_of_month
-    case 'one_shot':
-      return dateIso === template.starts_on
-    default:
-      return false
-  }
-}
-
-/** Énumère les dates yyyy-mm-dd de fromIso à toIso inclus (UTC). */
-function enumerateDates(fromIso: string, toIso: string): Date[] {
-  const out: Date[] = []
-  const from = new Date(`${fromIso}T00:00:00.000Z`)
-  const to = new Date(`${toIso}T00:00:00.000Z`)
-  for (let d = new Date(from); d.getTime() <= to.getTime(); d = new Date(d.getTime() + 24 * 60 * 60 * 1000)) {
-    out.push(new Date(d))
-  }
-  return out
-}
+// PL1 (2026-07-13) — le calcul « quelles occurrences, quels créneaux, quelles
+// heures » ne vit PLUS ici : il est dans lib/planning/projection.ts, pur et
+// testé, et partagé avec la vue mois, les alertes et le tableau de bord.
+// La génération ci-dessous ne fait plus que : projeter → hériter l'équipe et
+// l'organisation de la mission → filtrer l'existant → insérer.
+// UN SEUL moteur de calcul. Deux logiques divergentes = deux vérités.
 
 function daysBetween(fromIso: string, toIso: string): number {
   const from = new Date(`${fromIso}T00:00:00.000Z`).getTime()
@@ -400,54 +358,34 @@ export async function generateInterventionsFromTemplates(params: {
   }
   const rowsToInsert: Row[] = []
 
-  for (const tpl of templates) {
-    // Fenêtre effective = intersection [fromDate,toDate] ∩ [starts_on, ends_on?]
-    const effectiveStart = tpl.starts_on > params.fromDate ? tpl.starts_on : params.fromDate
-    const effectiveEnd =
-      tpl.ends_on && tpl.ends_on < params.toDate ? tpl.ends_on : params.toDate
-    if (effectiveStart > effectiveEnd) continue
+  // PL1 : LE calcul — projection pure, partagée avec la vue mois et les alertes.
+  const occurrences = projectOccurrences({
+    templates,
+    from: params.fromDate,
+    to: params.toDate,
+  })
 
-    const dates = enumerateDates(effectiveStart, effectiveEnd)
-    // V6.2 — heure précise : un seul créneau DÉRIVÉ de l'heure de début (pour la
-    // grille + l'index d'unicité). Sinon : créneaux du template (legacy) ou null.
-    const hasTime =
-      typeof tpl.planned_start_hhmm === 'string' && /^\d{2}:\d{2}$/.test(tpl.planned_start_hhmm)
-    const slots: (InterventionSlot | null)[] = hasTime
-      ? [slotFromUtcHour(Number(tpl.planned_start_hhmm!.slice(0, 2)))]
-      : tpl.slots && tpl.slots.length > 0
-        ? tpl.slots
-        : [null]
-    const inheritedTeam = teamByMission.get(tpl.mission_id) ?? []
-    const inheritedAssignedTeamId = assignedTeamByMission.get(tpl.mission_id) ?? null
+  for (const occ of occurrences) {
+    const inheritedTeam = teamByMission.get(occ.missionId) ?? []
+    const inheritedAssignedTeamId = assignedTeamByMission.get(occ.missionId) ?? null
     // P1 isolation : FAIL-CLOSED — mission sans org (et pas de session) →
-    // on saute ce template plutôt que de générer des interventions orphelines.
-    const rowOrgId = orgByMission.get(tpl.mission_id) ?? orgId
+    // on saute cette occurrence plutôt que de générer une intervention orpheline.
+    const rowOrgId = orgByMission.get(occ.missionId) ?? orgId
     if (!rowOrgId) continue
 
-    for (const date of dates) {
-      if (!matchesFrequency(tpl, date)) continue
-      const dateIso = date.toISOString().slice(0, 10)
-      for (const slot of slots) {
-        const plannedStart = hasTime
-          ? `${dateIso}T${tpl.planned_start_hhmm}:00.000Z`
-          : buildScheduledAt(dateIso, slot)
-        const plannedEnd =
-          hasTime && tpl.planned_end_hhmm ? `${dateIso}T${tpl.planned_end_hhmm}:00.000Z` : null
-        rowsToInsert.push({
-          mission_id: tpl.mission_id,
-          template_id: tpl.id,
-          scheduled_at: plannedStart,
-          scheduled_for: dateIso,
-          slot,
-          planned_start: plannedStart,
-          planned_end: plannedEnd,
-          status: 'planned',
-          team: inheritedTeam,
-          ...(inheritedAssignedTeamId ? { assigned_team_id: inheritedAssignedTeamId } : {}),
-          organization_id: rowOrgId,
-        })
-      }
-    }
+    rowsToInsert.push({
+      mission_id: occ.missionId,
+      template_id: occ.templateId,
+      scheduled_at: occ.plannedStart,
+      scheduled_for: occ.scheduledFor,
+      slot: occ.slot,
+      planned_start: occ.plannedStart,
+      planned_end: occ.plannedEnd,
+      status: 'planned',
+      team: inheritedTeam,
+      ...(inheritedAssignedTeamId ? { assigned_team_id: inheritedAssignedTeamId } : {}),
+      organization_id: rowOrgId,
+    })
   }
 
   if (rowsToInsert.length === 0) {
