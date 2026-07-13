@@ -82,7 +82,16 @@
   extractible (vignettes, lecteur audio).
 - Critère : pertes d'information n°1-5 de 05-mobile-desktop.md ✓.
 
-### Lot X — Continuité du contexte (ajouté 2026-07-13)
+### Lot X — Continuité du contexte (ajouté 2026-07-13) — LIVRÉ (PR #122)
+> Fiche chantier → « Planifier » → `/semaine?site=<id>` : le planificateur
+> s'ouvre prérempli sur ce chantier. Les 6 revalidations croisées manquantes
+> sont posées. Isolation org des options du planificateur (elles étaient
+> cross-tenant). En-tête de ligne « Client · Contrat » dans la grille.
+> Constat majeur de l'audit : le contexte n'était pas « perdu » — le parcours
+> « Planifier depuis la fiche chantier » **n'existait pas**.
+> Reste : le même geste côté MOBILE (absent).
+
+### Lot X (spec d'origine)
 Généralisation du Lot R. Le vrai bug observé n'est pas seulement « ça ne se
 rafraîchit pas » mais « **les objets nouvellement créés ne vivent pas dans le
 contexte courant** » (je crée une mission → retour semaine → absente ; je crée
@@ -96,7 +105,16 @@ une équipe → retour → refresh manuel).
 - Critère : plus aucun « je crée, je reviens, il n'y est pas » ni « je dois
   re-sélectionner ce que je viens de créer ».
 
-### Lot Y — Navigation sans rupture (ajouté 2026-07-13)
+### Lot Y — Navigation sans rupture (ajouté 2026-07-13) — PARTIEL (PR #123)
+> Livré : « + Nouvelle mission » INLINE dans le planificateur (fin du cul-de-sac
+> « créez-en une depuis un contrat actif »), la mission créée est visible et
+> SÉLECTIONNÉE sans quitter l'écran. Bug de fond corrigé au passage : un
+> chantier sans contrat (`contract_id` nullable) exposait ZÉRO mission au
+> planificateur (jointure `!inner` sur `contracts`).
+> Reste : équipe/intervenant inline, et la re-sélection dans les AUTRES
+> formulaires (le pattern est posé : `mergeMissionOptions`).
+
+### Lot Y (spec d'origine)
 Le film de la session = allers-retours permanents (créer équipe → retour →
 créer mission → retour → créer intervenant → retour → refresh).
 - Principe : **créer → rester → objet créé sélectionné**. L'utilisateur ne
@@ -131,16 +149,28 @@ gestionnaire de fichiers générique au lieu des sélecteurs de médias.
 - Critère : plus jamais un utilisateur en train de chercher un `.opus` dans
   les dossiers système.
 
-### Lot S — Gardes d'appartenance sur les ÉCRITURES
-- **Point d'entrée unique** (précision Vincent) : un wrapper `securedAction()`
-  (auth → rôle → organisation → handler) plutôt que `requireManager()` +
-  `tenantOwns()` répétés — une nouvelle server action ne peut pas « oublier »
-  la garde. Les actions existantes (liste exacte dans 04-rls.md §IDOR :
-  intervention-actions, création intervention/mission, équipes, companies,
-  visites/rapports par site_id) migrent dessus. Admin = super-admin exempté.
-- Fait AVANT les lots D/P pour que toute nouvelle action naisse avec la garde.
-- Tests : unitaires sur les fonctions pures + refus cross-org.
-- Critère : « Sécurité » ✓.
+### Lot S — Gardes d'appartenance sur les ÉCRITURES — LIVRÉ 2026-07-13 (PR #124)
+- **Point d'entrée unique** : `requireOwned(role, table, id)`
+  (`lib/auth/ownership.ts`), appelé APRÈS la garde de rôle. La DÉCISION est
+  isolée dans `lib/auth/ownership-policy.ts` — pure, 8 tests : admin =
+  super-admin plateforme (seule exception) ; objet inexistant et objet
+  étranger renvoient le MÊME message (pas d'oracle d'existence) ; appelant
+  sans org = refus fail-closed ; objet orphelin (`organization_id` null) =
+  refus explicite.
+  > Choix assumé vs la spec initiale (`securedAction()` enveloppant le
+  > handler) : le wrapper aurait imposé de réécrire ~30 signatures d'actions
+  > d'un coup. Une ligne de garde par action donne la même propriété avec un
+  > diff relisible. Le jour où l'on veut rendre l'oubli IMPOSSIBLE (et pas
+  > seulement visible), le wrapper reste la bonne cible.
+- Les 6 surfaces de 04-rls.md §IDOR sont couvertes : les 12 actions
+  `intervention-actions.ts`, les 4 actions `/semaine` (dont l'équipe cible de
+  la réassignation), `createMissionAction` (2 chemins), création
+  d'intervention côté contrat, les 6 actions d'équipe mutant par `teamId`,
+  companies, et le terrain (`startVisitAction`, `importVisitAction`).
+- **Non testé cross-org réellement** : la CI ne fait tourner que les tests
+  unitaires (la garde est prouvée à sec, pas contre deux vraies organisations).
+- Règle pour la suite : toute NOUVELLE action qui mute un objet par id
+  appelle `requireOwned`.
 
 ### Lot C — « Un site ne s'affiche jamais sans son client »
 - Ajouter le join `client:clients(name)` aux sources qui ne l'ont pas
