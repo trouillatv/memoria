@@ -34,6 +34,15 @@ export interface IngestContext {
   siteId: string
   createdBy: string | null
   source: IngestSource
+  /**
+   * La visite CIBLE, quand l'utilisateur en a choisi une.
+   *
+   * Sans elle, le moteur DÉCOUPE le lot en sessions et crée les visites. Avec
+   * elle, tout le lot rejoint CETTE visite — additivement : le contenu déjà
+   * présent n'est jamais remplacé, et un fichier déjà ingéré est sauté
+   * (idempotence par contenu, cf. `contentUuid`).
+   */
+  reportId?: string | null
 }
 
 export interface IngestSession {

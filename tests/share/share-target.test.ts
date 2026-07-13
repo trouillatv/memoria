@@ -12,6 +12,8 @@ import manifest from '@/app/manifest'
 import {
   acceptShared,
   isShareable,
+  describeLot,
+  describeLotFr,
   MAX_FILES,
   MAX_TOTAL_BYTES,
 } from '@/lib/share/share-rules'
@@ -42,6 +44,9 @@ describe('Le manifeste — sans lui, MemorIA n’apparaît pas dans « Partager 
     expect(files).toHaveLength(1)
     expect(files?.[0].name).toBe('files')
     expect(files?.[0].accept).toContain('image/*')
+    // Les VOCAUX aussi : c'est le second usage réel (« partage-moi la réunion »).
+    expect(files?.[0].accept).toContain('audio/*')
+    expect(files?.[0].accept).toContain('video/*')
   })
 
   it('l’action pointe sur la porte réelle', () => {
@@ -74,14 +79,25 @@ describe('La porte — ce qui entre, ce qui est refusé (et pourquoi)', () => {
     expect(v).toEqual({ ok: false, reason: 'trop-lourd' })
   })
 
-  it('une vidéo est refusée avec un motif — elle a ses propres chemins', () => {
-    expect(isShareable('video/mp4')).toBe(false)
-    expect(acceptShared([{ size: 10, type: 'video/mp4' }])).toEqual({ ok: false, reason: 'type' })
+  it('un vocal WhatsApp entre — il pèse quelques dizaines de Ko', () => {
+    expect(isShareable('audio/ogg')).toBe(true)
+    expect(isShareable('audio/mpeg')).toBe(true)
+    const v = acceptShared([{ size: 40_000, type: 'audio/ogg' }])
+    expect(v.ok).toBe(true)
   })
 
-  it('un lot mixte garde ce qui est partageable', () => {
+  it('une petite vidéo entre ; une grosse est refusée AVEC UN MOTIF', () => {
+    expect(isShareable('video/mp4')).toBe(true)
+    expect(acceptShared([{ size: 500_000, type: 'video/mp4' }]).ok).toBe(true)
+    expect(acceptShared([{ size: 50_000_000, type: 'video/mp4' }])).toEqual({
+      ok: false,
+      reason: 'trop-lourd',
+    })
+  })
+
+  it('un type inconnu est écarté, mais le reste du lot passe', () => {
     const v = acceptShared([
-      { size: 10, type: 'video/mp4' },
+      { size: 10, type: 'application/x-zip' },
       { size: 20, type: 'image/jpeg' },
     ])
     expect(v.ok).toBe(true)
@@ -101,3 +117,30 @@ describe('La porte — ce qui entre, ce qui est refusé (et pourquoi)', () => {
     expect(v).toEqual({ ok: false, reason: 'trop-lourd' })
   })
 })
+
+
+describe('Le lot se DIT en français — jamais « 5 fichiers »', () => {
+  it('compte chaque nature', () => {
+    const s = describeLot(['image/jpeg', 'image/png', 'audio/ogg', 'audio/ogg', 'video/mp4'])
+    expect(s).toEqual({ photos: 2, audios: 2, videos: 1, documents: 0, total: 5 })
+  })
+
+  it('« 3 photos et 2 enregistrements »', () => {
+    expect(describeLotFr(describeLot(['image/jpeg', 'image/jpeg', 'image/jpeg', 'audio/ogg', 'audio/ogg'])))
+      .toBe('3 photos et 2 enregistrements')
+  })
+
+  it('un seul élément se dit au singulier', () => {
+    expect(describeLotFr(describeLot(['audio/ogg']))).toBe('1 enregistrement')
+  })
+
+  it('trois natures s’énumèrent proprement', () => {
+    expect(describeLotFr(describeLot(['image/jpeg', 'audio/ogg', 'application/pdf'])))
+      .toBe('1 photo, 1 enregistrement et 1 document')
+  })
+})
+
+// La destination n'est PLUS déduite du contenu : c'est l'utilisateur qui la
+// choisit. Un vocal peut documenter une visite ; une photo peut illustrer une
+// réunion. Aucune fonction ne doit plus deviner — d'où l'absence de test de
+// « shareDestination » : la fonction elle-même a été SUPPRIMÉE.

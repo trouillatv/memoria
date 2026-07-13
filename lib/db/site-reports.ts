@@ -90,7 +90,9 @@ export async function addReportAttachment(input: {
   type_source?: 'audio_meeting' | 'voice_note' | 'phone_call' | 'debrief' | 'other'
   duration_seconds?: number | null
   transcript_status?: 'none' | 'pending' | 'done' | 'failed'
-  source_origin?: 'memoria' | 'phone' | 'import' | null
+  // 'os_share' (mig 201) : arrivé par le partage Android. Ce n'est pas un
+  // « import d'origine inconnue » — on sait exactement d'où il vient.
+  source_origin?: 'memoria' | 'phone' | 'import' | 'os_share' | null
   recorded_started_at?: string | null
   recorded_ended_at?: string | null
 }): Promise<string> {
