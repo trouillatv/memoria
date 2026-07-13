@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
+import { requireOwned } from '@/lib/auth/ownership'
 
 const CADENCES = ['daily', 'weekly', 'biweekly', 'monthly', 'on_demand'] as const
 
@@ -31,6 +32,10 @@ export async function createMissionAction(formData: FormData): Promise<CreateMis
     description: formData.get('description') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Données invalides' }
+
+  // Lot S : on ne crée pas une mission dans le chantier d'un autre tenant.
+  const owned = await requireOwned(role, 'sites', parsed.data.site_id)
+  if (!owned.allowed) return { error: owned.error }
 
   const admin = createAdminClient()
   // P1 isolation : l'organisation vient du CHANTIER (pas de la session) —

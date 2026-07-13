@@ -5,14 +5,16 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { createMission, updateMission } from '@/lib/db/missions'
+import { requireOwned } from '@/lib/auth/ownership'
+import type { UserRole } from '@/types/db'
 
-async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
+async function requireManagerOrAdmin(): Promise<{ userId: string; role: UserRole } | { error: string }> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { error: 'Forbidden' }
-  return { userId: user.id }
+  return { userId: user.id, role }
 }
 
 const cadenceSchema = z.enum(['daily', 'weekly', 'biweekly', 'monthly', 'on_demand'])
@@ -59,6 +61,10 @@ export async function createMissionAction(formData: FormData) {
     default_checklist,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  // Lot S : le chantier ciblé doit être de mon organisation.
+  const owned = await requireOwned(auth.role, 'sites', parsed.data.site_id)
+  if (!owned.allowed) return { error: owned.error }
 
   const missionId = await createMission({
     site_id: parsed.data.site_id,
