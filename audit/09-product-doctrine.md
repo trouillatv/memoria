@@ -91,3 +91,31 @@ Aucun prérequis caché : ce qui manque est nommé,
 et l'objet manquant se crée sans perdre le geste en cours.
 
 Rien n'est déclaré terminé sans preuve.
+
+## L'objet métier avant l'écran (Vincent, 2026-07-13)
+
+> **Toute nouvelle fonctionnalité doit d'abord être rattachée à un objet métier
+> existant, ou justifier la création d'un nouvel objet métier. Aucun écran,
+> aucune vue et aucun composant ne peut être créé directement.**
+
+Ce que cette règle renverse : on ne construit plus des écrans, on construit des
+**objets métier solides que les écrans se contentent de projeter**. Quand les
+objets sont excellents, les vues (Aperçu, Chronologie, Planning, Documents,
+Mémoire) deviennent riches **sans effort** — elles ne font que les regarder.
+
+Trois corollaires, à opposer à toute PR :
+
+- **Un lot n'est pas une architecture.** PL4 (les cycles) ne décide pas du
+  modèle ; il l'applique.
+- **Un audit ne décide pas de l'UX.** Il constate, il ne conçoit pas.
+- **Une contrainte technique ne décide pas d'un concept métier.** Si le schéma
+  gêne, on discute le schéma — on ne déforme pas le métier pour lui plaire.
+
+La référence d'architecture est `docs/design/architecture-espace-chantier.md` :
+le **chantier** est l'agrégat central ; visites, réunions, actions, documents,
+équipes et mémoire sont **ses objets** ; les vues ne créent **jamais** d'objet et
+ne concurrencent **jamais** une fiche canonique.
+
+**Ordre de travail qui en découle** : rendre excellentes les cinq fiches
+canoniques — **Action**, **Visite**, **Réunion**, **Document/Preuve**, puis la
+**Recherche transverse** — avant toute nouvelle vue.
