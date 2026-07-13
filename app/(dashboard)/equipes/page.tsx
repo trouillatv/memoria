@@ -39,14 +39,16 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
         // Appartenance indépendante du rôle : toute personne pouvant intervenir
         // sur un chantier (tout le monde sauf le compte système admin) peut être
         // membre d'une équipe — le planning affecte des équipes, pas des rôles.
-        let q = supabase
+        // P1 isolation : FAIL-CLOSED — pas d'organisation → sélecteur vide,
+        // jamais les personnes d'un autre tenant.
+        if (!orgId) return Promise.resolve({ data: [], error: null })
+        return supabase
           .from('users')
           .select('id, full_name, email, role')
           .neq('role', 'admin')
           .is('deleted_at', null)
+          .eq('organization_id', orgId)
           .order('full_name', { ascending: true })
-        if (orgId) q = q.eq('organization_id', orgId)
-        return q
       })(),
       // Memberships actives + nom de l'équipe associée — pour signaler dans
       // le sélecteur "déjà dans Équipe X" et éviter les doublons cross-équipes.

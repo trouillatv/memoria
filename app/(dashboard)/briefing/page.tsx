@@ -132,12 +132,17 @@ export default async function BriefingPage({
   const briefingUrl = await buildAbsoluteUrl(`/briefing?date=${briefing.date}`)
 
   const supabase = await createServerClient()
-  const { data: usersWithPhone } = await supabase
-    .from('users')
-    .select('id, full_name, email, role, phone')
-    .is('deleted_at', null)
-    .not('phone', 'is', null)
-    .order('full_name')
+  // P1 isolation (2026-07-13) : les destinataires du briefing sont les gens
+  // du TENANT COURANT — fail-closed (pas d'organisation → personne).
+  const { data: usersWithPhone } = user.organization_id
+    ? await supabase
+        .from('users')
+        .select('id, full_name, email, role, phone')
+        .eq('organization_id', user.organization_id)
+        .is('deleted_at', null)
+        .not('phone', 'is', null)
+        .order('full_name')
+    : { data: [] }
 
   const isManager = user.role === 'manager' || user.role === 'admin'
 
