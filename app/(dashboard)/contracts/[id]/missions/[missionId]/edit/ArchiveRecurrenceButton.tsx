@@ -15,7 +15,8 @@ import { archiveRecurrenceAction } from '../../../recurrences-actions'
 
 interface ArchiveRecurrenceButtonProps {
   templateId: string
-  contractId: string
+  /** Optionnel : le contrat n'est plus un prérequis du rythme. */
+  contractId?: string
 }
 
 export function ArchiveRecurrenceButton({

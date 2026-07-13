@@ -32,7 +32,8 @@ import type {
 interface RecurrenceModalProps {
   missionId: string
   missionName: string
-  contractId: string
+  /** Optionnel : le contrat n'est plus un prérequis du rythme. */
+  contractId?: string
   open: boolean
   onClose: () => void
   /** Mode edition si fourni, mode creation sinon. */
@@ -93,6 +94,10 @@ export function RecurrenceModal({
   const [startTime, setStartTime] = useState<string>(initialStart)
   const [endTime, setEndTime] = useState<string>(initialEnd)
   const [startsOn, setStartsOn] = useState<string>(initialStartsOn)
+  // « Jusqu'à quand ? » — la colonne `ends_on` existait depuis 2023 et n'était
+  // écrite par AUCUN écran. Un rythme sans fin est un rythme qu'on n'ose pas
+  // créer. Vide = sans date de fin (le comportement d'avant, préservé).
+  const [endsOn, setEndsOn] = useState<string>(template?.ends_on ?? '')
   const [error, setError] = useState<string | null>(null)
 
   // Resync quand template change (passage d'un template à un autre sans démontage)
@@ -105,6 +110,7 @@ export function RecurrenceModal({
       setStartTime(template.planned_start_hhmm ?? '')
       setEndTime(template.planned_end_hhmm ?? '')
       setStartsOn(template.starts_on)
+      setEndsOn(template.ends_on ?? '')
       setError(null)
     } else {
       setFrequency('daily')
@@ -160,6 +166,7 @@ export function RecurrenceModal({
         planned_start_hhmm: startTime,
         planned_end_hhmm: endTime,
         starts_on: startsOn,
+        ends_on: endsOn || null,
       }
       startTransition(async () => {
         const r = await updateRecurrenceAction(payload)
@@ -185,6 +192,7 @@ export function RecurrenceModal({
       planned_start_hhmm: startTime,
       planned_end_hhmm: endTime,
       starts_on: startsOn,
+      ends_on: endsOn || null,
     }
 
     startTransition(async () => {
@@ -344,6 +352,25 @@ export function RecurrenceModal({
             disabled={pending}
             className="w-full rounded border p-2 text-sm bg-background"
           />
+        </div>
+
+        {/* Q5 — Jusqu'à quand ? (facultatif : vide = sans fin) */}
+        <div className="space-y-1.5" data-testid="q-ends-on">
+          <label className="text-sm font-medium" htmlFor="ends-on">
+            Jusqu&apos;à quand ?
+          </label>
+          <input
+            id="ends-on"
+            type="date"
+            value={endsOn}
+            min={startsOn}
+            onChange={(e) => setEndsOn(e.target.value)}
+            disabled={pending}
+            className="w-full rounded border p-2 text-sm bg-background"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Laisser vide pour un rythme sans date de fin.
+          </p>
         </div>
 
         {error && (
