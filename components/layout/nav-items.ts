@@ -23,7 +23,7 @@ import {
   Building2,
   Mic,
   ListTodo,
-  Compass, GraduationCap, Repeat } from 'lucide-react'
+  Compass, Repeat, CalendarOff } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 export interface NavItem {
@@ -50,14 +50,24 @@ export const NAV: NavItem[] = [
   // — Pilotage quotidien —
   { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'], essential: true },
   { href: '/aujourdhui', label: 'Interventions du jour',  icon: ListChecks,    roles: ['admin', 'manager'] },
-  { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
+  // PLANNING — un domaine, pas un catalogue (arbitrage Vincent 2026-07-15).
+  // La phrase : je definis mes roulements, je declare les jours fermes, puis
+  // j'ajuste ma semaine. Ordonne par frequence d'usage.
+  // « Calendrier » (arbitrage 2026-07-15, 2e passe) : « Fermetures » aurait
+  // vieilli faux (ouverture exceptionnelle, horaires reduits…), « Contraintes »
+  // est le mot du moteur, « Disponibilites » frole le vocabulaire RH interdit.
+  // Calendrier est metier ET extensible.
+  { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'], groupStart: 'Planning' },
   { href: '/roulements', label: 'Roulements',             icon: Repeat,        roles: ['admin', 'manager'] },
+  { href: '/calendrier', label: 'Calendrier',             icon: CalendarOff,   roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
-  { href: '/calendrier-scolaire', label: 'Calendrier scolaire', icon: GraduationCap, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
   { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },
   { href: '/missions',   label: 'Missions',               icon: ClipboardList, roles: ['admin', 'manager'] },
-  { href: '/planning',   label: 'Planning',               icon: CalendarDays,  roles: ['admin', 'manager', 'chef_equipe'] },
+  // « Journal » : c'est ce que cette page EST (le journal terrain). L'appeler
+  // « Planning » devenait un mensonge a double titre avec le domaine ci-dessus.
+  // La route /planning reste (zero regression) ; seul le libelle change.
+  { href: '/planning',   label: 'Journal',                icon: CalendarDays,  roles: ['admin', 'manager', 'chef_equipe'] },
   // Réunions = objet métier central (réunion chantier/contrat → décisions →
   // actions → interventions → briefing). Le compte-rendu n'est que le support brut.
   { href: '/meetings',   label: 'Réunions',               icon: Mic,           roles: ['admin', 'manager'], essential: true },

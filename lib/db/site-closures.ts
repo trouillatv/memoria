@@ -9,6 +9,7 @@
 // d'appartenance passe donc par le SITE parent, dans la server action.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type {
   ClosureReasonKind,
   ClosureResolution,
@@ -186,4 +187,47 @@ export async function softDeleteSiteClosure(id: string): Promise<void> {
     .eq('id', id)
     .is('deleted_at', null)
   if (error) throw new Error(error.message)
+}
+
+
+/** Une fermeture à venir, vue depuis l'organisation. */
+export interface UpcomingClosure extends SiteClosure {
+  siteName: string
+  /** Dérivée d'un calendrier commun (scolaire/férié) → gérée là-bas, pas ici. */
+  fromCalendar: boolean
+}
+
+/**
+ * LES FERMETURES RÉELLES À VENIR, tous chantiers confondus.
+ *
+ * C'est le troisième bloc de la page Fermetures : après « ce que disent les
+ * calendriers » et « qui y adhère », voici « ce qui ferme VRAIMENT, et quand ».
+ * Lecture seule — chaque fermeture s'édite à sa source (fiche chantier, ou
+ * calendrier commun si elle en dérive).
+ */
+export async function listUpcomingClosuresForOrg(limit = 30): Promise<UpcomingClosure[]> {
+  const db = createAdminClient()
+  const orgId = await getOrgId().catch(() => null)
+  const today = new Date().toISOString().slice(0, 10)
+
+  const { data, error } = await db
+    .from('site_closures')
+    .select(`${SELECT}, calendar_period_id, sites!inner(name, organization_id)`)
+    .gte('ends_on', today)
+    .is('deleted_at', null)
+    .order('starts_on', { ascending: true })
+    .limit(limit * 2)
+  if (error) return []
+
+  const rows = (data ?? []) as Array<Record<string, unknown>>
+  // Isolation : le service role contourne la RLS — le filtre org vit dans le code.
+  const scoped = orgId
+    ? rows.filter((r) => (r.sites as { organization_id?: string })?.organization_id === orgId)
+    : rows
+
+  return scoped.slice(0, limit).map((r) => ({
+    ...rowToClosure(r),
+    siteName: (r.sites as { name?: string })?.name ?? 'Chantier',
+    fromCalendar: Boolean(r.calendar_period_id),
+  }))
 }

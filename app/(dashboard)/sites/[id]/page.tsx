@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search, CalendarPlus, Repeat, ChevronRight } from 'lucide-react'
+import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search, CalendarPlus, Repeat, ChevronRight, CalendarDays } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -69,7 +69,7 @@ import { SiteScopesSection } from './SiteScopesSection'
 import { UnattachedContentPanel } from './UnattachedContentPanel'
 import { listSiteScopes } from '@/lib/db/memory-scopes'
 import { listClosuresBySite } from '@/lib/db/site-closures'
-import { siteFollowsCalendar } from '@/lib/db/school-calendar'
+import { siteCalendarFlags } from '@/lib/db/school-calendar'
 import { SiteClosuresCard } from './SiteClosuresCard'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listUnattachedContent } from '@/lib/db/scope-suggestions'
@@ -139,7 +139,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
   const orgId = user.organization_id
-  const followsCalendar = await siteFollowsCalendar(id).catch(() => false)
+  const calendarFlags = await siteCalendarFlags(id).catch(() => ({ scolaire: false, feries: false }))
 
   const [siteScopes, scopeTypeCatalog, unattached, closures, cycles] = await Promise.all([
     orgId ? listSiteScopes(id, orgId).catch(() => []) : Promise.resolve([]),
@@ -471,13 +471,29 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           « Ce magasin est fermé. » Déclarer une fermeture ne déplace ni
           n'annule RIEN : PL3 signalera le conflit, l'humain tranchera. */}
       <div className={tabClass('activite')}>
-        <SiteClosuresCard siteId={id} closures={closures} followsCalendar={followsCalendar} />
+        <SiteClosuresCard siteId={id} closures={closures} followsCalendar={calendarFlags.scolaire} followsHolidays={calendarFlags.feries} />
       </div>
 
-      {/* ── ACTIVITÉ — Roulements (PL5) ─────────────────────────────────────
-          « Qui travaille, quels jours, en rotation. » Le roulement est un objet
-          du CHANTIER : plus besoin de passer par un contrat ni de créer vingt
-          récurrences à la main. */}
+      {/* ── PLANNING — le bloc unique de la fiche (arbitrage 2026-07-15) ────
+          « Je définis mes roulements, je déclare les jours fermés, puis
+          j'ajuste ma semaine. » Tout ce qui concerne le planning du chantier
+          vit ICI — et ce bloc ne fait que PROJETER les objets existants vers
+          leurs écrans canoniques. Aucune seconde source de vérité. */}
+      <div className={cn('pb-1', tabClass('activite'))}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <CalendarDays className="h-4 w-4" /> Planning
+          </h2>
+          <Link
+            href="/semaine"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            Ouvrir la semaine
+          </Link>
+        </div>
+      </div>
+
+      {/* Roulements (PL5) — « qui travaille, quels jours, en rotation ». */}
       <div className={tabClass('activite')}>
         <Link
           href={`/sites/${id}/roulements`}
