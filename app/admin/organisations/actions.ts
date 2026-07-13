@@ -44,7 +44,9 @@ export async function createOrgAction(formData: FormData) {
 const createUserInOrgSchema = z.object({
   email: z.string().email(),
   full_name: z.string().min(1),
-  role: z.enum(['admin', 'manager', 'chef_equipe']),
+  // P1 isolation : jamais de rôle 'admin' (= super-admin plateforme) créé
+  // DANS une organisation — un tenant n'a que manager / chef_equipe.
+  role: z.enum(['manager', 'chef_equipe']),
   org_id: z.string().uuid(),
   mode: z.enum(['invite', 'temp_password']),
 })
