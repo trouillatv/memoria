@@ -17,7 +17,8 @@ import {
 import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
-import { pickInitialMissionId } from './planning-prefill'
+import { createMissionAction } from '../missions/actions'
+import { pickInitialMissionId, mergeMissionOptions } from './planning-prefill'
 
 export interface MissionOption {
   id: string
@@ -36,8 +37,24 @@ export interface TeamOption {
   memberCount: number
 }
 
+/** Chantier de l'org — support de la création INLINE de mission (PR 2). */
+export interface SiteOption {
+  id: string
+  name: string
+  contractName: string | null
+}
+
+const CADENCES = [
+  { value: 'daily', label: 'Quotidienne' },
+  { value: 'weekly', label: 'Hebdomadaire' },
+  { value: 'biweekly', label: 'Bihebdomadaire' },
+  { value: 'monthly', label: 'Mensuelle' },
+  { value: 'on_demand', label: 'À la demande' },
+] as const
+
 interface Props {
   missions: MissionOption[]
+  sites: SiteOption[]
   teams: TeamOption[]
   /** yyyy-mm-dd UTC — date par défaut (typiquement le lundi de la semaine vue). */
   defaultDate: string
@@ -54,15 +71,63 @@ interface Props {
 const INHERIT = '__inherit__'
 const UNASSIGNED = '__unassigned__'
 
-export function CreateInterventionDialog({ missions, teams, defaultDate, initialSiteId }: Props) {
+export function CreateInterventionDialog({ missions: missionsFromServer, sites, teams, defaultDate, initialSiteId }: Props) {
   const router = useRouter()
+  // PR 2 (lot Y) : les missions créées inline sont visibles et sélectionnées
+  // IMMÉDIATEMENT — la version serveur reprend la main au refresh (dédup).
+  const [inlineMissions, setInlineMissions] = useState<MissionOption[]>([])
+  const missions = useMemo(
+    () => mergeMissionOptions(missionsFromServer, inlineMissions),
+    [missionsFromServer, inlineMissions],
+  )
   // Contexte chantier : mission du chantier d'origine présélectionnée, et le
   // dialogue s'ouvre immédiatement (« je clique Planifier sur la fiche, je
-  // retrouve mon chantier déjà choisi »).
-  const initialMissionId = pickInitialMissionId(missions, initialSiteId)
-  const [open, setOpen] = useState(initialMissionId !== '')
+  // retrouve mon chantier déjà choisi »). Chantier neuf sans mission → le
+  // dialogue s'ouvre en mode « créer la première mission ».
+  const initialMissionId = pickInitialMissionId(missionsFromServer, initialSiteId)
+  const [open, setOpen] = useState(initialMissionId !== '' || Boolean(initialSiteId))
   const [pending, startTransition] = useTransition()
   const [missionId, setMissionId] = useState<string>(initialMissionId)
+
+  // ── Création inline de mission (« créer → rester → sélectionné ») ─────────
+  const [creating, setCreating] = useState(Boolean(initialSiteId) && initialMissionId === '')
+  const [newSiteId, setNewSiteId] = useState<string>(initialSiteId ?? '')
+  const [newName, setNewName] = useState('')
+  const [newCadence, setNewCadence] = useState<string>('weekly')
+  const [createPending, startCreate] = useTransition()
+
+  function submitNewMission() {
+    if (!newSiteId || !newName.trim() || createPending) return
+    const fd = new FormData()
+    fd.set('site_id', newSiteId)
+    fd.set('name', newName.trim())
+    fd.set('cadence', newCadence)
+    startCreate(async () => {
+      const r = await createMissionAction(fd)
+      if ('error' in r) {
+        toast.error(r.error)
+        return
+      }
+      const site = sites.find((s) => s.id === newSiteId)
+      // Option optimiste alignée sur fetchMissionOptions (contrat absent → '—').
+      setInlineMissions((prev) => [
+        ...prev,
+        {
+          id: r.missionId,
+          name: newName.trim(),
+          siteId: newSiteId,
+          siteName: site?.name ?? '—',
+          contractName: site?.contractName ?? '—',
+          defaultTeamId: null,
+        },
+      ])
+      setMissionId(r.missionId) // l'objet créé est SÉLECTIONNÉ, on reste ici
+      setCreating(false)
+      setNewName('')
+      toast.success('Mission créée et sélectionnée')
+      router.refresh()
+    })
+  }
   const [scheduledFor, setScheduledFor] = useState<string>(defaultDate)
   const [teamChoice, setTeamChoice] = useState<string>(INHERIT)
   // V6.1 (Vincent 2026-05-20) : l'heure de début est OBLIGATOIRE. Plus de
@@ -113,6 +178,9 @@ export function CreateInterventionDialog({ missions, teams, defaultDate, initial
   function reset() {
     // Le contexte chantier survit à une fermeture/réouverture du dialogue.
     setMissionId(initialMissionId)
+    setCreating(false)
+    setNewName('')
+    setNewSiteId(initialSiteId ?? '')
     setScheduledFor(defaultDate)
     setTeamChoice(INHERIT)
     setPlannedStartHHMM('')
@@ -176,11 +244,7 @@ export function CreateInterventionDialog({ missions, teams, defaultDate, initial
             <label htmlFor="mission-select" className="text-xs font-medium text-muted-foreground">
               Mission *
             </label>
-            {missions.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic rounded-md border border-dashed bg-muted/30 px-3 py-2">
-                Aucune mission disponible — créez-en une depuis un contrat actif.
-              </p>
-            ) : (
+            {missions.length > 0 && (
               <select
                 id="mission-select"
                 value={missionId}
@@ -203,6 +267,73 @@ export function CreateInterventionDialog({ missions, teams, defaultDate, initial
                   </optgroup>
                 ))}
               </select>
+            )}
+
+            {/* PR 2 (lot Y) : plus de cul-de-sac « créez-en une depuis un contrat
+                actif » — la mission manquante se crée ICI, sans quitter le
+                planificateur, et ressort sélectionnée. */}
+            {creating || missions.length === 0 ? (
+              <div className="space-y-2 rounded-md border border-dashed bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">Nouvelle mission</p>
+                <select
+                  aria-label="Chantier de la nouvelle mission"
+                  value={newSiteId}
+                  onChange={(e) => setNewSiteId(e.target.value)}
+                  disabled={createPending || Boolean(initialSiteId)}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-70"
+                >
+                  <option value="" disabled>
+                    Chantier…
+                  </option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.contractName ? ` — ${s.contractName}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  maxLength={200}
+                  placeholder="Nom de la mission (ex : Entretien du magasin)"
+                  disabled={createPending}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <select
+                  aria-label="Cadence de la nouvelle mission"
+                  value={newCadence}
+                  onChange={(e) => setNewCadence(e.target.value)}
+                  disabled={createPending}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {CADENCES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={submitNewMission} disabled={!newSiteId || !newName.trim() || createPending}>
+                    {createPending ? 'Création…' : 'Créer la mission'}
+                  </Button>
+                  {missions.length > 0 && (
+                    <Button size="sm" variant="ghost" onClick={() => setCreating(false)} disabled={createPending}>
+                      Annuler
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                disabled={pending}
+                className="text-xs font-medium text-brand-600 hover:underline"
+              >
+                + Nouvelle mission
+              </button>
             )}
           </div>
 
