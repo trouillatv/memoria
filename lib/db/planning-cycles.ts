@@ -12,6 +12,7 @@ import 'server-only'
 // Une preuve n'est jamais détruite par un geste de rangement.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 
 export type CycleStatus = 'draft' | 'published' | 'stopped'
@@ -103,6 +104,89 @@ export async function listCyclesBySite(siteId: string): Promise<PlanningCycle[]>
     ;(byCycle.get(key) ?? byCycle.set(key, []).get(key)!).push(rowToSlot(s))
   }
   return cycles.map((c) => rowToCycle(c, byCycle.get(c.id as string) ?? []))
+}
+
+/** Un roulement, vu depuis l'organisation : « quels roulements tournent, où ? » */
+export interface CycleOverview extends PlanningCycle {
+  siteName: string
+  missionName: string
+  /** Combien d'équipes tournent dessus. */
+  teamCount: number
+  /** Jours travaillés sur le cycle (toutes équipes, toutes semaines). */
+  workedSlots: number
+  /** Jours du cycle où PERSONNE n'est prévu — le trou qu'il cherche du regard. */
+  uncoveredDays: number
+  updatedAt: string | null
+}
+
+/**
+ * TOUS les roulements de l'organisation.
+ *
+ * Cette vue répond à UNE question : « quels roulements existent, et dans quel
+ * état sont-ils ? » Elle ne rejoue pas la semaine, elle ne projette rien : la
+ * vue Semaine reste l'outil opérationnel, la grille reste l'outil de
+ * configuration. Un troisième planning ne servirait personne.
+ */
+export async function listCyclesForOrg(): Promise<CycleOverview[]> {
+  const db = createAdminClient()
+
+  const { data, error } = await db
+    .from('planning_cycles')
+    .select(`${CYCLE_COLS}, updated_at, sites!inner(name, organization_id), missions(name)`)
+    .is('deleted_at', null)
+    .order('starts_on', { ascending: false })
+
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw new Error(error.message)
+  }
+
+  const rows = (data ?? []) as Array<Record<string, unknown>>
+  if (rows.length === 0) return []
+
+  // Isolation : le service role contourne la RLS — le filtre org vit dans le code.
+  const orgId = await getOrgId().catch(() => null)
+  const scoped = orgId
+    ? rows.filter((r) => (r.sites as { organization_id?: string })?.organization_id === orgId)
+    : rows
+
+  const { data: slotRows } = await db
+    .from('planning_cycle_slots')
+    .select('cycle_id, week_index, weekday, team_id, state, start_time, end_time')
+    .in('cycle_id', scoped.map((c) => c.id as string))
+
+  const byCycle = new Map<string, CycleSlot[]>()
+  for (const r of (slotRows ?? []) as Array<Record<string, unknown>>) {
+    const key = r.cycle_id as string
+    const list = byCycle.get(key) ?? []
+    list.push(rowToSlot(r))
+    byCycle.set(key, list)
+  }
+
+  return scoped.map((r) => {
+    const slots = byCycle.get(r.id as string) ?? []
+    const worked = slots.filter((s) => s.state === 'work')
+
+    // La couverture : un jour du cycle où personne n'est prévu. C'est le seul
+    // signal qu'on calcule ici — déterministe, gratuit, et c'est celui qu'il
+    // cherche du regard sur sa feuille.
+    const weeks = Number(r.cycle_length_weeks ?? 1)
+    const workedDayKeys = new Set(worked.map((s) => `${s.weekIndex}|${s.weekday}`))
+    let uncovered = 0
+    for (let w = 0; w < weeks; w += 1) {
+      for (let d = 1; d <= 7; d += 1) if (!workedDayKeys.has(`${w}|${d}`)) uncovered += 1
+    }
+
+    return {
+      ...rowToCycle(r, slots),
+      siteName: (r.sites as { name?: string })?.name ?? 'Chantier',
+      missionName: (r.missions as { name?: string } | null)?.name ?? 'Prestation',
+      teamCount: new Set(slots.map((s) => s.teamId)).size,
+      workedSlots: worked.length,
+      uncoveredDays: uncovered,
+      updatedAt: (r.updated_at as string | null) ?? null,
+    }
+  })
 }
 
 /** UN roulement, avec sa grille — c'est ce que Guillaume rouvre. */
