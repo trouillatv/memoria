@@ -232,8 +232,9 @@ export default async function MissionsPage({
     return order.map((id) => ({ siteId: id, ...map.get(id)! }))
   }
 
-  const missionHref = (m: { contractId: string | null; id: string; siteId: string }) =>
-    m.contractId ? `/contracts/${m.contractId}/missions/${m.id}/edit` : `/sites/${m.siteId}`
+  // La mission a désormais SA fiche. Avant, une mission sans contrat renvoyait
+  // vers le chantier — un cul-de-sac : ses rythmes étaient inatteignables.
+  const missionHref = (m: { id: string }) => `/missions/${m.id}`
 
   return (
     <div className="space-y-6 w-full">
@@ -562,9 +563,7 @@ function MissionTable({
         {missions.map((m) => {
           const hasAnomaly = m.openAnomalyCount > 0
           const health = healthBy.get(m.id) ?? missionHealth(m, todayLocalIso())
-          const href = m.contractId
-            ? `/contracts/${m.contractId}/missions/${m.id}/edit`
-            : `/sites/${m.siteId}`
+          const href = `/missions/${m.id}`
 
           const hasHistory = !!(m.firstInterventionDate || m.lastInterventionDate || m.nextInterventionDate)
 

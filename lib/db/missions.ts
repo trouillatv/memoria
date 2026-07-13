@@ -95,6 +95,11 @@ export async function updateMission(id: string, patch: Partial<{
   engagement_ids: string[]
   default_checklist: ChecklistTemplateItem[]
   active: boolean
+  // L'ÉQUIPE qui porte la mission. La colonne existait depuis la mig 023 et
+  // n'était écrite par AUCUN écran — seulement par les scripts de seed. D'où
+  // des interventions générées toutes « Non-affectées » : un planning qui ne
+  // disait pas QUI y va. C'est une ÉQUIPE, jamais une personne (doctrine).
+  assigned_team_id: string | null
 }>): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase.from('missions').update(patch).eq('id', id)

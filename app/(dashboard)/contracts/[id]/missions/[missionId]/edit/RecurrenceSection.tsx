@@ -13,7 +13,8 @@ import { RecurrenceModal } from './RecurrenceModal'
 interface RecurrenceSectionProps {
   missionId: string
   missionName: string
-  contractId: string
+  /** Optionnel : le contrat n'est plus un prérequis du rythme. */
+  contractId?: string
 }
 
 export function RecurrenceSection({

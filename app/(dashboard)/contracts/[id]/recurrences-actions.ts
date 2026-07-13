@@ -49,7 +49,9 @@ function deriveTimeFields(
 const createRecurrenceSchema = z
   .object({
     mission_id: z.string().uuid(),
-    contract_id: z.string().uuid(),
+    // Le contrat n'est plus un PRÉREQUIS : il ne sert qu'à revalider sa page si
+    // la mission en a un. Une mission sans contrat a désormais sa propre fiche.
+    contract_id: z.string().uuid().optional(),
     title: z.string().min(1).max(200).optional(),
     frequency: frequencySchema,
     day_of_week: z.number().int().min(1).max(7).nullable().optional(),
@@ -58,8 +60,14 @@ const createRecurrenceSchema = z
     planned_start_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
     planned_end_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
     starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
+    // « Jusqu'à quand ? » — la colonne existait depuis la mig 021 et n'était
+    // écrite NULLE PART. Un rythme sans fin est un rythme qu'on n'ose pas créer.
+    ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis').nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.ends_on && data.ends_on < data.starts_on) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'La fin ne peut pas précéder le début', path: ['ends_on'] })
+    }
     if (data.planned_start_hhmm && data.planned_end_hhmm && data.planned_end_hhmm <= data.planned_start_hhmm) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "L'heure de fin doit être après le début", path: ['planned_end_hhmm'] })
     }
@@ -81,7 +89,7 @@ const createRecurrenceSchema = z
 
 export interface CreateRecurrenceInput {
   mission_id: string
-  contract_id: string
+  contract_id?: string
   title?: string
   frequency: 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'one_shot'
   day_of_week?: number | null
@@ -90,6 +98,7 @@ export interface CreateRecurrenceInput {
   planned_start_hhmm?: string
   planned_end_hhmm?: string
   starts_on: string
+  ends_on?: string | null
 }
 
 export type CreateRecurrenceResult =
@@ -127,6 +136,7 @@ export async function createRecurrenceAction(
       day_of_month:
         parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
       starts_on: parsed.data.starts_on,
+      ends_on: parsed.data.ends_on ?? null,
       created_by: auth.userId,
     })
 
@@ -143,9 +153,13 @@ export async function createRecurrenceAction(
       },
     })
 
-    revalidatePath(
-      `/contracts/${parsed.data.contract_id}/missions/${parsed.data.mission_id}/edit`
-    )
+    // La fiche mission est LE lieu du rythme désormais ; le contrat n'est
+    // revalidé que s'il existe (il n'est plus un prérequis).
+    revalidatePath(`/missions/${parsed.data.mission_id}`)
+    revalidatePath('/missions')
+    if (parsed.data.contract_id) {
+      revalidatePath(`/contracts/${parsed.data.contract_id}/missions/${parsed.data.mission_id}/edit`)
+    }
 
     return { ok: true, templateId: tpl.id }
   } catch (e) {
@@ -161,7 +175,7 @@ export async function createRecurrenceAction(
 const updateRecurrenceSchema = z
   .object({
     templateId: z.string().uuid(),
-    contract_id: z.string().uuid(),
+    contract_id: z.string().uuid().optional(),
     title: z.string().min(1).max(200).optional(),
     frequency: frequencySchema,
     day_of_week: z.number().int().min(1).max(7).nullable().optional(),
@@ -170,8 +184,14 @@ const updateRecurrenceSchema = z
     planned_start_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
     planned_end_hhmm: z.string().regex(hhmmRe, 'Heure invalide (HH:MM)').optional(),
     starts_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis'),
+    // « Jusqu'à quand ? » — la colonne existait depuis la mig 021 et n'était
+    // écrite NULLE PART. Un rythme sans fin est un rythme qu'on n'ose pas créer.
+    ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis').nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.ends_on && data.ends_on < data.starts_on) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'La fin ne peut pas précéder le début', path: ['ends_on'] })
+    }
     if (data.planned_start_hhmm && data.planned_end_hhmm && data.planned_end_hhmm <= data.planned_start_hhmm) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "L'heure de fin doit être après le début", path: ['planned_end_hhmm'] })
     }
@@ -193,7 +213,7 @@ const updateRecurrenceSchema = z
 
 export interface UpdateRecurrenceInput {
   templateId: string
-  contract_id: string
+  contract_id?: string
   title?: string
   frequency: 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'one_shot'
   day_of_week?: number | null
@@ -202,6 +222,7 @@ export interface UpdateRecurrenceInput {
   planned_start_hhmm?: string
   planned_end_hhmm?: string
   starts_on: string
+  ends_on?: string | null
 }
 
 export type UpdateRecurrenceResult =
@@ -242,6 +263,7 @@ export async function updateRecurrenceAction(
       day_of_month:
         parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
       starts_on: parsed.data.starts_on,
+      ends_on: parsed.data.ends_on ?? null,
     })
 
     await logAuditEvent({
@@ -257,9 +279,11 @@ export async function updateRecurrenceAction(
       },
     })
 
-    revalidatePath(
-      `/contracts/${parsed.data.contract_id}/missions/${existing.mission_id}/edit`
-    )
+    revalidatePath(`/missions/${existing.mission_id}`)
+    revalidatePath('/missions')
+    if (parsed.data.contract_id) {
+      revalidatePath(`/contracts/${parsed.data.contract_id}/missions/${existing.mission_id}/edit`)
+    }
 
     return { ok: true, templateId: updated.id }
   } catch (e) {
@@ -274,12 +298,12 @@ export async function updateRecurrenceAction(
 
 const archiveRecurrenceSchema = z.object({
   templateId: z.string().uuid(),
-  contract_id: z.string().uuid(),
+  contract_id: z.string().uuid().optional(),
 })
 
 export interface ArchiveRecurrenceInput {
   templateId: string
-  contract_id: string
+  contract_id?: string
 }
 
 export type ArchiveRecurrenceResult =
@@ -319,9 +343,11 @@ export async function archiveRecurrenceAction(
       },
     })
 
-    revalidatePath(
-      `/contracts/${parsed.data.contract_id}/missions/${existing.mission_id}/edit`
-    )
+    revalidatePath(`/missions/${existing.mission_id}`)
+    revalidatePath('/missions')
+    if (parsed.data.contract_id) {
+      revalidatePath(`/contracts/${parsed.data.contract_id}/missions/${existing.mission_id}/edit`)
+    }
 
     return { ok: true }
   } catch (e) {
