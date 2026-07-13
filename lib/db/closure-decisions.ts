@@ -47,6 +47,39 @@ export async function listKeptInterventionIds(interventionIds: string[]): Promis
   return new Set(((data ?? []) as Array<{ intervention_id: string }>).map((r) => r.intervention_id))
 }
 
+/**
+ * Les décisions prises sur un lot d'interventions.
+ *
+ * C'est ce qui permet au TIROIR de relire la trace : une fois « maintenue », le
+ * conflit disparaît — et sans cette lecture, la décision disparaîtrait AVEC lui.
+ * On ne peut pas relire ce qu'on n'affiche plus.
+ */
+export async function listDecisions(
+  interventionIds: string[],
+): Promise<Record<string, ClosureDecision>> {
+  if (interventionIds.length === 0) return {}
+
+  const { data, error } = await createAdminClient()
+    .from('closure_conflict_decision')
+    .select('intervention_id, closure_id, decision, moved_to, conflict_date, decided_at')
+    .in('intervention_id', interventionIds)
+
+  if (error) return {}
+
+  const out: Record<string, ClosureDecision> = {}
+  for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+    out[r.intervention_id as string] = {
+      interventionId: r.intervention_id as string,
+      closureId: r.closure_id as string,
+      decision: r.decision as ConflictDecision,
+      movedTo: (r.moved_to as string | null) ?? null,
+      conflictDate: r.conflict_date as string,
+      decidedAt: r.decided_at as string,
+    }
+  }
+  return out
+}
+
 /** Ce qui a été décidé sur cette intervention — pour le relire, pas pour le juger. */
 export async function getDecision(interventionId: string): Promise<ClosureDecision | null> {
   const { data, error } = await createAdminClient()

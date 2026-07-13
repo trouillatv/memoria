@@ -33,7 +33,7 @@ import {
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
-import { listKeptInterventionIds } from '@/lib/db/closure-decisions'
+import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisions'
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
@@ -290,10 +290,11 @@ export default async function SemainePage({ searchParams }: PageProps) {
   //
   // Tout est CALCULÉ à chaque lecture, jamais persisté (doctrine des signaux).
   // `{}` si la mig 197 n'est pas appliquée → l'écran reste identique à avant.
-  const { conflictsBySite, closuresBySite } = await (async () => {
+  const { conflictsBySite, closuresBySite, decisions } = await (async () => {
     const empty = {
       conflictsBySite: {} as Record<string, Record<string, import('@/lib/planning/conflicts').ClosureConflict>>,
       closuresBySite: {} as Record<string, Record<string, ProjectableClosure>>,
+      decisions: {} as Record<string, import('@/lib/db/closure-decisions').ClosureDecision>,
     }
     if (view !== 'site' || siteRows.length === 0) return empty
 
@@ -322,6 +323,13 @@ export default async function SemainePage({ searchParams }: PageProps) {
       siteRows.flatMap((r) => Object.values(r.days).flat().map((c) => c.id)),
     ).catch(() => new Set<string>())
 
+    // Les décisions DÉJÀ prises — pour que le tiroir puisse les RELIRE. Une fois
+    // « maintenue », le conflit disparaît : sans cette lecture, la décision
+    // disparaîtrait avec lui, et il n'y aurait plus rien à relire.
+    const decisions = await listDecisions(
+      siteRows.flatMap((r) => Object.values(r.days).flat().map((c) => c.id)),
+    ).catch(() => ({}))
+
     return {
       conflictsBySite: detectClosureConflicts({
         rows: siteRows,
@@ -329,6 +337,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         keptInterventionIds,
       }),
       closuresBySite: byDate,
+      decisions,
     }
   })()
 
@@ -438,7 +447,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite}>
+          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} decisions={decisions}>
             <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
           </WeekGridClient>
         ) : (

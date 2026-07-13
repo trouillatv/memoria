@@ -45,6 +45,8 @@ import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import { ConflictResolver } from './ConflictResolver'
+import { DECISION_FR } from '@/lib/planning/conflict-resolution'
+import type { ClosureDecision } from '@/lib/db/closure-decisions'
 import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { DraggableMission } from './DraggableMission'
@@ -86,6 +88,8 @@ export interface CellDrawerProps {
   /** PL3a — conflits « site fermé, prestation prévue » par site puis par jour.
    *  OPTIONNEL : sans lui, l'aperçu est strictement identique à avant. */
   conflictsBySite?: Record<string, Record<string, ClosureConflict>>
+  /** PL3b — ce qui a DÉJÀ été décidé, par intervention. */
+  decisions?: Record<string, ClosureDecision>
   /** Contenu du conteneur (grille client-rendered). */
   children: React.ReactNode
 }
@@ -122,6 +126,7 @@ export function CellDrawer({
   activeDragId,
   signalsBySite,
   conflictsBySite,
+  decisions,
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
@@ -152,6 +157,16 @@ export function CellDrawer({
   // PL3a — le conflit de la cellule ouverte (site × jour). `undefined` = pas de
   // conflit : la section ne se rend pas du tout (silence positif).
   const conflict = selected ? conflictsBySite?.[selected.siteId]?.[selected.date] : undefined
+
+  // PL3b — les décisions DÉJÀ prises sur les prestations de cette cellule. Une
+  // fois « maintenue », le conflit disparaît : sans ce rappel, la décision
+  // disparaîtrait avec lui, et on ne pourrait plus la relire. Or c'est
+  // précisément ce qu'on a promis : « votre décision se relira plus tard ».
+  const taken = selected
+    ? selected.cells
+        .map((c) => decisions?.[c.id])
+        .filter((d): d is ClosureDecision => Boolean(d))
+    : []
 
   // Cleanup : si rows change (revalidatePath après drop/reassign), reset si la
   // cell n'existe plus.
@@ -253,6 +268,37 @@ export function CellDrawer({
                     conflictDate={selected.date}
                   />
                 )}
+              </section>
+            ) : null}
+
+            {/* PL3b — LA TRACE. Quand le conflit a été tranché, il ne crie plus :
+                il se rappelle, calmement. « Pourquoi on est passé le 16 ? » — la
+                réponse est ici, un an plus tard. */}
+            {!conflict && taken.length > 0 ? (
+              <section
+                data-testid="drawer-closure-decision"
+                className="rounded-md border bg-muted/30 p-3"
+              >
+                <h4 className="mb-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <CalendarOff className="h-3.5 w-3.5" aria-hidden /> Décision prise
+                </h4>
+                <ul className="space-y-1">
+                  {taken.map((d) => (
+                    <li key={d.interventionId} className="text-sm">
+                      <span className="font-medium">{DECISION_FR[d.decision]}</span>
+                      {d.movedTo ? (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          au {frDayMonthLocal(d.movedTo)}
+                        </span>
+                      ) : null}
+                      <span className="block text-xs text-muted-foreground">
+                        Chantier fermé le {frDayMonthLocal(d.conflictDate)} · décidé le{' '}
+                        {frDayMonthLocal(d.decidedAt.slice(0, 10))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </section>
             ) : null}
 
