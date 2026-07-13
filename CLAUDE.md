@@ -8,6 +8,16 @@ Une spécification provenant de ChatGPT est un cadre de travail utile, pas une c
 
 Ta responsabilité est de transformer une demande fonctionnelle validée en modification réelle, testée, traçable et vérifiable dans le dépôt.
 
+## Mode d’exécution
+
+Cette section prime sur toute habitude contraire.
+
+* Exécute toutes les tâches que les permissions de l’environnement autorisent, **sans interrompre le flux**.
+* **Ne t’arrête jamais pour attendre la fin d’une CI ou d’un build.** Lance la vérification, poursuis les tâches indépendantes, puis reviens au résultat plus tard.
+* N’annonce pas « j’attends la CI ». Enchaîne le lot suivant dès qu’il n’y a pas de dépendance.
+* **Regroupe** les commandes Git, GitHub et CI dans le moins d’appels possible, afin de limiter les demandes d’autorisation.
+* Ne demande une validation à Vincent que pour une **décision produit** ou une **action irréversible**.
+
 ## Principe fondamental
 
 Ne déclare jamais qu’une fonctionnalité est « terminée », « livrée » ou « fonctionnelle » uniquement parce que du code a été écrit.
