@@ -7,6 +7,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { requireOwned } from '@/lib/auth/ownership'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '@/lib/db/visits'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
@@ -36,6 +37,10 @@ export async function startVisitAction(
 
   const parsed = startSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  // Lot S : on ne démarre pas une visite sur le chantier d'un autre tenant.
+  const owned = await requireOwned(auth.role, 'sites', parsed.data.site_id)
+  if (!owned.allowed) return { ok: false, error: owned.error }
 
   try {
     // Ne pas EMPILER des visites vides : s'il y a déjà une visite ouverte sur ce

@@ -8,8 +8,7 @@
 
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { requireOwned } from '@/lib/auth/ownership'
 import { ingestBatch } from '@/services/ingestion/ingest-batch'
 import { parseWhatsappZip } from '@/services/ingestion/adapters/whatsapp-zip'
 import { parseUpload, type UploadFile } from '@/services/ingestion/adapters/upload'
@@ -43,19 +42,10 @@ export async function importVisitAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   const { site_id, source } = parsed.data
 
-  // Scope org : on n'importe que dans un chantier de son organisation.
-  const user = await getCurrentUserWithProfile()
-  if (!user?.organization_id) return { ok: false, error: 'Non autorisé' }
-  const supabase = createAdminClient()
-  const { data: site } = await supabase
-    .from('sites')
-    .select('id, organization_id')
-    .eq('id', site_id)
-    .is('deleted_at', null)
-    .maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== user.organization_id) {
-    return { ok: false, error: 'Chantier introuvable' }
-  }
+  // Scope org (Lot S) : on n'importe que dans un chantier de son organisation.
+  // Même garde que partout ailleurs — cf. lib/auth/ownership.ts.
+  const owned = await requireOwned(auth.role, 'sites', site_id)
+  if (!owned.allowed) return { ok: false, error: owned.error }
 
   const files = formData.getAll('files').filter((f): f is File => f instanceof File && f.size > 0)
   if (files.length === 0) return { ok: false, error: 'Aucun fichier' }

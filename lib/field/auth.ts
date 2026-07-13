@@ -9,8 +9,13 @@
 
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
+import type { UserRole } from '@/types/db'
 
-export async function requireFieldAgent(): Promise<{ userId: string } | { error: string }> {
+// Lot S : le rôle est désormais rendu à l'appelant — une action terrain qui
+// mute un objet par id doit pouvoir appeler requireOwned(auth.role, …).
+export async function requireFieldAgent(): Promise<
+  { userId: string; role: UserRole } | { error: string }
+> {
   const supabase = await createServerClient()
   const {
     data: { user },
@@ -20,5 +25,5 @@ export async function requireFieldAgent(): Promise<{ userId: string } | { error:
   if (role !== 'chef_equipe' && role !== 'admin' && role !== 'manager') {
     return { error: 'Forbidden' }
   }
-  return { userId: user.id }
+  return { userId: user.id, role }
 }

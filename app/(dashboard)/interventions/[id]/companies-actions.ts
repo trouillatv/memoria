@@ -9,8 +9,12 @@ import {
   addCompanyToIntervention,
   removeCompanyFromIntervention,
 } from '@/lib/db/intervention-companies'
+import { requireOwned } from '@/lib/auth/ownership'
+import type { UserRole } from '@/types/db'
 
-async function requireManagerOrAdmin(): Promise<{ userId: string; organizationId: string | null } | { error: string }> {
+async function requireManagerOrAdmin(): Promise<
+  { userId: string; role: UserRole; organizationId: string | null } | { error: string }
+> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -22,7 +26,7 @@ async function requireManagerOrAdmin(): Promise<{ userId: string; organizationId
     .select('organization_id')
     .eq('id', user.id)
     .maybeSingle()
-  return { userId: user.id, organizationId: profile?.organization_id ?? null }
+  return { userId: user.id, role, organizationId: profile?.organization_id ?? null }
 }
 
 const addSchema = z.object({
@@ -43,6 +47,10 @@ export async function addCompanyAction(
     role_description: String(formData.get('role_description') ?? '').trim() || undefined,
   })
   if (!parsed.success) return { error: 'Données invalides' }
+
+  // Lot S : l'intervention porteuse doit être de mon organisation.
+  const owned = await requireOwned(auth.role, 'interventions', parsed.data.intervention_id)
+  if (!owned.allowed) return { error: owned.error }
 
   await addCompanyToIntervention({
     interventionId: parsed.data.intervention_id,
@@ -65,6 +73,9 @@ export async function removeCompanyAction(
   const companyId = String(formData.get('company_id') ?? '')
   const interventionId = String(formData.get('intervention_id') ?? '')
   if (!companyId || !interventionId) return { error: 'Paramètres manquants' }
+
+  const owned = await requireOwned(auth.role, 'interventions', interventionId)
+  if (!owned.allowed) return { error: owned.error }
 
   await removeCompanyFromIntervention(companyId)
 
