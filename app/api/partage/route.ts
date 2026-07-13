@@ -38,8 +38,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return fail(req, 'trop-lourd')
   }
 
-  const verdict = acceptShared(form.getAll('files').filter((f): f is File => f instanceof File))
-  if (!verdict.ok) return fail(req, verdict.reason)
+  const incoming = form.getAll('files').filter((f): f is File => f instanceof File)
+
+  // Ce que les applications Android envoient RÉELLEMENT. On ne peut pas le
+  // deviner : chacune choisit son type MIME (video/mp4, video/3gpp, et parfois
+  // application/octet-stream — auquel cas MemorIA n'apparaît même pas dans le
+  // menu, et cette ligne ne s'écrit jamais). Types et tailles seulement :
+  // JAMAIS le contenu, jamais le nom du fichier.
+  console.log(
+    '[partage] reçu',
+    JSON.stringify(incoming.map((f) => ({ type: f.type || '(vide)', size: f.size }))),
+  )
+
+  const verdict = acceptShared(incoming)
+  if (!verdict.ok) {
+    console.log('[partage] refusé —', verdict.reason)
+    return fail(req, verdict.reason)
+  }
   const accepted = verdict.files
 
   const lotId = randomUUID()

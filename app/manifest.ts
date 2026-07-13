@@ -35,10 +35,23 @@ const SHARE_TARGET: ShareTarget = {
     files: [
       {
         name: 'files',
-        // Tout ce qu'on peut recevoir d'un partage : photos, vocaux, vidéos, PDF.
-        // Les gros fichiers seront refusés par la limite de taille — mais AVEC
-        // un motif affiché, jamais en disparaissant du menu Partager.
-        accept: ['image/*', 'audio/*', 'video/*', 'application/pdf'],
+        // Photos, vocaux, vidéos, PDF.
+        //
+        // Les jokers (`video/*`) suffisent en théorie : Android en dérive un
+        // filtre d'intention qui couvre video/mp4, video/3gpp, video/quicktime…
+        // On liste QUAND MÊME les types courants explicitement, car certaines
+        // applications ne se déclarent qu'avec un type exact et ne matchent pas
+        // toujours le joker. Redondant, mais gratuit.
+        //
+        // ⚠️ `application/octet-stream` est volontairement ABSENT : l'accepter
+        // ferait apparaître MemorIA dans le menu Partager pour N'IMPORTE QUEL
+        // fichier (une archive, un APK…). Le remède serait pire que le mal.
+        accept: [
+          'image/*', 'image/jpeg', 'image/png', 'image/webp', 'image/heic',
+          'audio/*', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/opus', 'audio/amr',
+          'video/*', 'video/mp4', 'video/3gpp', 'video/quicktime', 'video/webm',
+          'application/pdf',
+        ],
       },
     ],
   },
