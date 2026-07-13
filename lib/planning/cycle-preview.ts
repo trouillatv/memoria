@@ -40,7 +40,8 @@ export interface PreviewDay {
   working: Array<{ teamId: string; startTime: string | null; endTime: string | null }>
   /** Qui est au repos ce jour-là (le repos se VOIT : sa feuille est faite pour ça). */
   restingTeamIds: string[]
-  /** Combien de personnes présentes. 0 = le trou qu'il cherche du regard. */
+  /** Combien de personnes présentes. 0 = le trou qu'il cherche du regard —
+   *  SAUF si le chantier est fermé ce jour-là : là, zéro est la normale. */
   coverage: number
   /** La fermeture applicable, s'il y en a une. */
   closure: ProjectableClosure | null
@@ -53,8 +54,11 @@ export interface PreviewResult {
   /** Ce qu'il doit regarder avant de publier. */
   summary: {
     workedDays: number
-    /** Jours SANS personne — le trou. */
+    /** Jours SANS personne ALORS QUE le chantier est ouvert — le vrai trou.
+     *  Un jour fermé sans personne n'est pas un trou : c'est ce qui est prévu. */
     uncoveredDays: number
+    /** Jours de fermeture sur la période — vacances, fériés, inventaires. */
+    closedDays: number
     conflicts: number
     /** Jours travaillés par équipe (sa feuille totalise : 9, 23, 22). */
     daysByTeam: Record<string, number>
@@ -132,13 +136,17 @@ export function previewCycle(params: {
   const days: PreviewDay[] = []
   const daysByTeam: Record<string, number> = Object.fromEntries(allTeams.map((t) => [t, 0]))
   let uncoveredDays = 0
+  let closedDays = 0
   let conflicts = 0
   let workedDays = 0
 
   const start = new Date(`${from}T00:00:00.000Z`).getTime()
   const end = new Date(`${to}T00:00:00.000Z`).getTime()
   if (Number.isNaN(start) || Number.isNaN(end) || start > end) {
-    return { days: [], summary: { workedDays: 0, uncoveredDays: 0, conflicts: 0, daysByTeam } }
+    return {
+      days: [],
+      summary: { workedDays: 0, uncoveredDays: 0, closedDays: 0, conflicts: 0, daysByTeam },
+    }
   }
 
   for (let t = start; t <= end; t += DAY_MS) {
@@ -152,8 +160,12 @@ export function previewCycle(params: {
     const conflict = Boolean(closure) && working.length > 0
 
     for (const w of working) daysByTeam[w.teamId] = (daysByTeam[w.teamId] ?? 0) + 1
-    if (working.length === 0) uncoveredDays += 1
-    else workedDays += 1
+    if (closure) closedDays += 1
+    // Un jour FERMÉ sans personne n'est PAS un trou : c'est la normale. Le trou,
+    // c'est un jour OUVERT que personne ne couvre.
+    if (working.length === 0) {
+      if (!closure) uncoveredDays += 1
+    } else workedDays += 1
     if (conflict) conflicts += 1
 
     days.push({
@@ -166,5 +178,5 @@ export function previewCycle(params: {
     })
   }
 
-  return { days, summary: { workedDays, uncoveredDays, conflicts, daysByTeam } }
+  return { days, summary: { workedDays, uncoveredDays, closedDays, conflicts, daysByTeam } }
 }

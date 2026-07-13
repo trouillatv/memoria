@@ -31,8 +31,9 @@ import {
   type TeamRow,
 } from '@/lib/db/week-planning'
 import { isSystemMissionName } from '@/lib/db/system-missions'
-import { listActiveClosuresForSites } from '@/lib/db/site-closures'
+import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
+import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import {
@@ -277,19 +278,46 @@ export default async function SemainePage({ searchParams }: PageProps) {
     if (Object.keys(nonEmpty).length > 0) daysBySite[s.siteId] = nonEmpty
   }
 
-  // PL3a — « site fermé, prestation prévue ». On CONSTATE : rien n'est déplacé,
-  // rien n'est annulé, aucun geste n'est proposé (ce sera PL3b). Le conflit est
-  // CALCULÉ à chaque lecture, jamais persisté (doctrine des signaux).
-  // Une seule requête pour toute la grille ; `{}` si la mig 197 n'est pas
-  // appliquée (dégradation gracieuse) → l'écran reste identique à avant.
-  const conflictsBySite = await (async () => {
-    if (view !== 'site' || siteRows.length === 0) return {}
-    const closuresBySite = await listActiveClosuresForSites(
+  // LE CALENDRIER DU CHANTIER D'ABORD, le conflit ensuite.
+  //
+  //   fermetures du site → jour fermé → si prestation prévue → CONFLIT
+  //
+  // Une fermeture est une INFORMATION MÉTIER (Guillaume s'en sert pour
+  // construire son planning : vacances, fériés, inventaires), pas seulement le
+  // symptôme d'une erreur. Elle se voit donc TOUJOURS, même quand aucune
+  // prestation n'est prévue — discrètement. Le rouge reste réservé au conflit.
+  //
+  // Tout est CALCULÉ à chaque lecture, jamais persisté (doctrine des signaux).
+  // `{}` si la mig 197 n'est pas appliquée → l'écran reste identique à avant.
+  const { conflictsBySite, closuresBySite } = await (async () => {
+    const empty = {
+      conflictsBySite: {} as Record<string, Record<string, import('@/lib/planning/conflicts').ClosureConflict>>,
+      closuresBySite: {} as Record<string, Record<string, ProjectableClosure>>,
+    }
+    if (view !== 'site' || siteRows.length === 0) return empty
+
+    const raw = await listActiveClosuresForSites(
       siteRows.map((r) => r.site_id),
       range.weekStart,
       range.weekEnd,
-    ).catch(() => ({}))
-    return detectClosureConflicts({ rows: siteRows, closuresBySite })
+    ).catch((): Record<string, SiteClosure[]> => ({}))
+
+    // Jour par jour : « ce site est-il fermé ce jour-là, et pourquoi ? »
+    const byDate: Record<string, Record<string, ProjectableClosure>> = {}
+    for (const row of siteRows) {
+      const closures = raw[row.site_id] ?? []
+      if (closures.length === 0) continue
+      byDate[row.site_id] = projectClosures({
+        closures,
+        from: range.weekStart,
+        to: range.weekEnd,
+      })
+    }
+
+    return {
+      conflictsBySite: detectClosureConflicts({ rows: siteRows, closuresBySite: raw }),
+      closuresBySite: byDate,
+    }
   })()
 
   const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
@@ -399,7 +427,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         </p>
         {view === 'site' ? (
           <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite}>
-            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} />
+            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

@@ -15,6 +15,7 @@ import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 import { siteLabel } from '@/lib/labels/site-label'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
+import type { ProjectableClosure } from '@/lib/planning/closures'
 import { WeekGridCell } from './WeekGridCell'
 import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
 import { StandingSignalsBadges } from './StandingSignalsBadges'
@@ -55,9 +56,12 @@ export interface WeekGridProps {
   /** PL3a — conflits « site fermé, prestation prévue », par site puis par jour.
    *  OPTIONNEL : sans lui, la grille est strictement identique à avant. */
   conflictsBySite?: Record<string, Record<string, ClosureConflict>>
+  /** Niveau 1 — le CALENDRIER du chantier : quels jours il est fermé, même sans
+   *  aucune prestation prévue. La fermeture est une information métier. */
+  closuresBySite?: Record<string, Record<string, ProjectableClosure>>
 }
 
-export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite, daysBySite, conflictsBySite }: WeekGridProps) {
+export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite }: WeekGridProps) {
   const days = enumerateDays(range.weekStart)
 
   return (
@@ -112,6 +116,7 @@ export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite,
               standing={standingBySite?.[row.site_id]}
               dayEventsByDate={daysBySite?.[row.site_id]}
               conflictByDate={conflictsBySite?.[row.site_id]}
+              closureByDate={closuresBySite?.[row.site_id]}
             />
           ))}
         </tbody>
@@ -128,6 +133,7 @@ function SiteGridRow({
   standing,
   dayEventsByDate,
   conflictByDate,
+  closureByDate,
 }: {
   row: SiteRow
   days: string[]
@@ -136,6 +142,7 @@ function SiteGridRow({
   standing?: WeekOperationalSignal[]
   dayEventsByDate?: Record<string, WeekOperationalSignal[]>
   conflictByDate?: Record<string, ClosureConflict>
+  closureByDate?: Record<string, ProjectableClosure>
 }) {
   return (
     <tr className="border-t" data-site-id={row.site_id}>
@@ -169,6 +176,7 @@ function SiteGridRow({
             todayIso={todayIso}
             dayEvents={dayEventsByDate?.[d]}
             conflict={conflictByDate?.[d]}
+            closure={closureByDate?.[d]}
           />
         )
       })}

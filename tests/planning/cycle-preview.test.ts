@@ -100,6 +100,29 @@ describe('previewCycle — les quatre questions de Guillaume', () => {
     expect(summary.conflicts).toBe(1)
   })
 
+  it('un jour FERMÉ sans personne n’est PAS un trou — c’est la normale', () => {
+    // Le calendrier du chantier D'ABORD : s'il est fermé, zéro personne est
+    // exactement ce qui est prévu. Le trou, c'est un jour OUVERT que personne
+    // ne couvre. Confondre les deux ferait crier l'écran pour rien.
+    const vacances: ProjectableClosure = {
+      id: 'c1', siteId: 's1', reasonKind: 'holiday', reason: 'Fermeture annuelle',
+      startsOn: '2026-07-07', endsOn: '2026-07-07', defaultResolution: 'none',
+    }
+    const c = cycle([slot(0, 1, MT)], 1) // ne travaille que le lundi
+    const { days, summary } = previewCycle({ cycle: c, closures: [vacances], from: '2026-07-07', to: '2026-07-07' })
+    expect(days[0].coverage).toBe(0)
+    expect(days[0].closure?.reason).toBe('Fermeture annuelle')
+    expect(summary.uncoveredDays).toBe(0) // fermé ≠ trou
+    expect(summary.closedDays).toBe(1)
+  })
+
+  it('un jour OUVERT sans personne reste un trou', () => {
+    const c = cycle([slot(0, 1, MT)], 1)
+    const { summary } = previewCycle({ cycle: c, closures: [], from: '2026-07-07', to: '2026-07-07' })
+    expect(summary.uncoveredDays).toBe(1)
+    expect(summary.closedDays).toBe(0)
+  })
+
   it('une fermeture SANS personne prévue n’est PAS un conflit', () => {
     const ferie: ProjectableClosure = {
       id: 'c1', siteId: 's1', reasonKind: 'holiday', reason: null,

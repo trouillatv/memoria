@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, Eye, CheckCircle2, ChevronRight } from 'lucide-react'
+import { AlertTriangle, Eye, CheckCircle2, ChevronRight, Lock } from 'lucide-react'
 import type { AttentionDigest, AttentionItem } from '@/lib/db/attention'
 
 function Row({ it }: { it: AttentionItem }) {
@@ -19,7 +19,7 @@ function Row({ it }: { it: AttentionItem }) {
 /** « Ce qui mérite votre attention » — bloc de surfaçage déterministe (Temps 2).
  *  Le système décide des priorités du jour ; l'utilisateur ne fouille pas 150 actions. */
 export function AttentionBlock({ digest }: { digest: AttentionDigest }) {
-  const { red, orange, greenSites, totalSites } = digest
+  const { red, orange, greenSites, totalSites, closedToday = [] } = digest
   if (totalSites === 0) return null
   const nothing = red.length === 0 && orange.length === 0
 
@@ -28,6 +28,26 @@ export function AttentionBlock({ digest }: { digest: AttentionDigest }) {
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         Ce qui mérite votre attention
       </h2>
+
+      {/* Fermés aujourd'hui : un fait de la journée, pas une alerte. Il se dit
+          une fois, sans couleur — un magasin fermé n'appelle aucune action. */}
+      {closedToday.length > 0 && (
+        <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <Lock className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            Fermé{closedToday.length > 1 ? 's' : ''} aujourd&apos;hui :{' '}
+            {closedToday.map((c, i) => (
+              <span key={c.siteId}>
+                {i > 0 && ', '}
+                <Link href={`/sites/${c.siteId}`} className="font-medium hover:underline">
+                  {c.siteName}
+                </Link>{' '}
+                <span className="opacity-80">({c.reason.toLowerCase()})</span>
+              </span>
+            ))}
+          </span>
+        </p>
+      )}
 
       {nothing ? (
         <p className="inline-flex items-center gap-2 text-sm text-emerald-700">
