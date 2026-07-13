@@ -144,25 +144,22 @@ export async function getWeekPulse(): Promise<WeekPulse> {
 export async function getCapitalPreuves(): Promise<CapitalPreuves> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → zéros, jamais les
+  // compteurs de tous les tenants.
+  if (!orgId) return { totalPhotos: 0, totalInterventionsExecuted: 0, totalContractsActive: 0 }
 
   const [photosRes, interventionsRes, contractsRes] = await Promise.all([
-    (() => {
-      const q = supabase.from('intervention_photos').select('id', { count: 'exact', head: true })
-      // intervention_photos n'a pas org_id — filtré indirectement via interventions
-      return q
-    })(),
-    (() => {
-      let q = supabase.from('interventions').select('id', { count: 'exact', head: true })
-        .in('status', EXECUTED_STATUSES as unknown as string[])
-      if (orgId) q = q.eq('organization_id', orgId)
-      return q
-    })(),
-    (() => {
-      let q = supabase.from('contracts').select('id', { count: 'exact', head: true })
-        .eq('status', 'active').is('deleted_at', null)
-      if (orgId) q = q.eq('organization_id', orgId)
-      return q
-    })(),
+    // intervention_photos n'a pas org_id — scope via le join interventions.
+    supabase
+      .from('intervention_photos')
+      .select('id, intervention:interventions!inner(organization_id)', { count: 'exact', head: true })
+      .eq('intervention.organization_id', orgId),
+    supabase.from('interventions').select('id', { count: 'exact', head: true })
+      .in('status', EXECUTED_STATUSES as unknown as string[])
+      .eq('organization_id', orgId),
+    supabase.from('contracts').select('id', { count: 'exact', head: true })
+      .eq('status', 'active').is('deleted_at', null)
+      .eq('organization_id', orgId),
   ])
   if (photosRes.error) throw photosRes.error
   if (interventionsRes.error) throw interventionsRes.error
@@ -178,17 +175,23 @@ export async function getCapitalPreuves(): Promise<CapitalPreuves> {
 export async function getTenantCumulativeStats(): Promise<TenantCumulativeStats> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → zéros.
+  if (!orgId) return { totalInterventions: 0, totalPhotos: 0, totalAnomaliesResolved: 0 }
 
   const [interventionsRes, photosRes, anomaliesRes] = await Promise.all([
-    (() => {
-      let q = supabase.from('interventions').select('id', { count: 'exact', head: true })
-        .in('status', EXECUTED_STATUSES as unknown as string[])
-      if (orgId) q = q.eq('organization_id', orgId)
-      return q
-    })(),
-    supabase.from('intervention_photos').select('id', { count: 'exact', head: true }),
-    supabase.from('intervention_anomalies').select('id', { count: 'exact', head: true })
-      .not('resolved_at', 'is', null),
+    supabase.from('interventions').select('id', { count: 'exact', head: true })
+      .in('status', EXECUTED_STATUSES as unknown as string[])
+      .eq('organization_id', orgId),
+    // Tables sans org_id — scope via le join interventions.
+    supabase
+      .from('intervention_photos')
+      .select('id, intervention:interventions!inner(organization_id)', { count: 'exact', head: true })
+      .eq('intervention.organization_id', orgId),
+    supabase
+      .from('intervention_anomalies')
+      .select('id, intervention:interventions!inner(organization_id)', { count: 'exact', head: true })
+      .not('resolved_at', 'is', null)
+      .eq('intervention.organization_id', orgId),
   ])
   if (interventionsRes.error) throw interventionsRes.error
   if (photosRes.error) throw photosRes.error

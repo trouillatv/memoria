@@ -33,6 +33,16 @@ export async function createMissionAction(formData: FormData): Promise<CreateMis
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Données invalides' }
 
   const admin = createAdminClient()
+  // P1 isolation : l'organisation vient du CHANTIER (pas de la session) —
+  // une mission sans org serait invisible sur toute surface scopée
+  // (bug réel : « Entretien du magasin » née orpheline le 2026-07-13).
+  const { data: site } = await admin
+    .from('sites')
+    .select('organization_id')
+    .eq('id', parsed.data.site_id)
+    .maybeSingle()
+  if (!site?.organization_id) return { error: 'Chantier sans organisation — création impossible' }
+
   const { data, error } = await admin
     .from('missions')
     .insert({
@@ -41,6 +51,7 @@ export async function createMissionAction(formData: FormData): Promise<CreateMis
       cadence: parsed.data.cadence,
       description: parsed.data.description ?? null,
       created_by: user.id,
+      organization_id: site.organization_id,
     })
     .select('id')
     .single()

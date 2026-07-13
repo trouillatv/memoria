@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { tenantCtx, tenantOwns } from '@/lib/db/tenant'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteJournal } from '@/lib/db/site-journal'
 import { SiteJournalPdf } from '@/lib/pdf/site-journal'
@@ -27,6 +28,14 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   }
 
   const { id } = await ctx.params
+  // P1 isolation : le journal d'un chantier d'un autre tenant n'existe pas
+  // pour ce manager. Admin = super-admin plateforme.
+  if (user.role !== 'admin') {
+    const tctx = await tenantCtx()
+    if (!tctx || !(await tenantOwns(tctx, 'sites', id))) {
+      return NextResponse.json({ error: 'Site introuvable' }, { status: 404 })
+    }
+  }
   const [identity, entries] = await Promise.all([
     getSiteIdentity(id),
     getSiteJournal(id),

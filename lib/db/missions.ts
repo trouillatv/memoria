@@ -58,7 +58,16 @@ export async function createMission(input: {
   created_by: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  // P1 isolation : l'organisation vient du CHANTIER (pas de la session).
+  // Une mission sans org est invisible sur toute surface scopée — on refuse
+  // de la créer plutôt que de créer une orpheline (fail-closed à l'écriture).
+  const { data: site } = await supabase
+    .from('sites')
+    .select('organization_id')
+    .eq('id', input.site_id)
+    .maybeSingle()
+  const orgId = site?.organization_id ?? (await getOrgId())
+  if (!orgId) throw new Error('Chantier sans organisation — création de mission impossible')
   const { data, error } = await supabase
     .from('missions')
     .insert({
@@ -70,7 +79,7 @@ export async function createMission(input: {
       engagement_ids: input.engagement_ids ?? [],
       default_checklist: input.default_checklist ?? [],
       created_by: input.created_by,
-      ...(orgId ? { organization_id: orgId } : {}),
+      organization_id: orgId,
     })
     .select('id')
     .single()

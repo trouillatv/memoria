@@ -31,6 +31,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
   const report = await getSiteReport(id)
   if (!report) return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
+  // P1 isolation : un report d'un autre tenant n'existe pas pour ce manager
+  // (ni lecture ni INJECTION de version). Admin = super-admin plateforme.
+  if (user.role !== 'admin' && (!user.organization_id || report.organization_id !== user.organization_id)) {
+    return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
+  }
 
   const form = await req.formData()
   const file = form.get('file')
@@ -76,12 +81,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (process.env.NODE_ENV === 'production') {
-    const user = await getCurrentUserWithProfile()
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-    if (user.role !== 'admin' && user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  // P1 isolation : auth PARTOUT (le bypass hors-production laissait le
+  // téléchargement 100 % public en preview) + garde d'appartenance org.
+  const user = await getCurrentUserWithProfile()
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  if (user.role !== 'admin' && user.role !== 'manager') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { id } = await ctx.params
+  const report = await getSiteReport(id)
+  if (!report) return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
+  if (user.role !== 'admin' && (!user.organization_id || report.organization_id !== user.organization_id)) {
+    return NextResponse.json({ error: 'Réunion introuvable' }, { status: 404 })
+  }
   const versions = await listReportFinalVersions(id)
   if (versions.length === 0) return NextResponse.json({ error: 'Aucune version finale diffusée.' }, { status: 404 })
 

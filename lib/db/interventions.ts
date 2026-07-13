@@ -298,7 +298,19 @@ export async function createIntervention(input: {
   }
 
   const supabase = createAdminClient()
-  const orgId = input.organization_id !== undefined ? input.organization_id : await getOrgId()
+  // P1 isolation : org explicite (scripts) > org de la MISSION > org session.
+  // Fail-closed : une intervention sans org est invisible sur toute surface
+  // scopée — on refuse de créer une orpheline.
+  let orgId = input.organization_id !== undefined ? input.organization_id : null
+  if (!orgId) {
+    const { data: mission } = await supabase
+      .from('missions')
+      .select('organization_id')
+      .eq('id', input.mission_id)
+      .maybeSingle()
+    orgId = mission?.organization_id ?? (await getOrgId())
+  }
+  if (!orgId) throw new Error('Mission sans organisation — création d’intervention impossible')
   const { data, error } = await supabase
     .from('interventions')
     .insert({

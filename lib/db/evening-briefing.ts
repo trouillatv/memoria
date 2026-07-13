@@ -113,9 +113,27 @@ export interface EveningBriefing {
 export async function buildEveningBriefing(targetDate: string): Promise<EveningBriefing> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → briefing vide, jamais
+  // les sites/contrats/anomalies de tous les tenants. ⚠️ Si ce helper est un
+  // jour câblé en cron (docs/dev/evening-briefing-cron.md), il n'y a pas de
+  // session → le refondre pour itérer PAR organisation, jamais tel quel.
+  if (!orgId) {
+    return {
+      date: targetDate,
+      interventionsCount: 0,
+      teamsCount: 0,
+      sitesWithoutCoverage: [],
+      unassignedInterventions: [],
+      coverageBySite: [],
+      contractsExpiringSoon: [],
+      oldOpenAnomalies: [],
+      unassignedTeams: [],
+      interventionList: [],
+    }
+  }
 
   // 1) Interventions prévues à la date cible (status planned ou in_progress)
-  let qEvening = supabase
+  const qEvening = supabase
     .from('interventions')
     .select(
       `id, slot, assigned_team_id,
@@ -124,7 +142,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     )
     .eq('scheduled_for', targetDate)
     .in('status', ['planned', 'in_progress'])
-  if (orgId) qEvening = qEvening.eq('organization_id', orgId)
+    .eq('organization_id', orgId)
   const { data: rows, error } = await qEvening
   if (error) throw error
 
@@ -257,6 +275,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .from('sites')
     .select('id, name, contract:contracts(id, name, end_date)')
     .is('deleted_at', null)
+    .eq('organization_id', orgId)
   const sitesWithoutCoverage: EveningBriefing['sitesWithoutCoverage'] = []
   const today = todayLocalIso()
   for (const s of (allActiveSites ?? []) as Array<{
@@ -365,6 +384,7 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
     .gte('end_date', todayShort)
     .lte('end_date', horizonIso)
     .in('status', ['active', 'paused'])
+    .eq('organization_id', orgId)
     .order('end_date', { ascending: true })
   const contractsExpiringSoon = ((expiringRows ?? []) as Array<{
     id: string
@@ -391,15 +411,19 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
 
   // 7) Anomalies ouvertes depuis plus de 3 jours — signal de vigilance.
   const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
+  // intervention_anomalies n'a pas org_id — scope via le join interventions
+  // (!inner : une anomalie d'un autre tenant est exclue, pas juste dé-jointe).
   const { data: oldAnomalyRows } = await supabase
     .from('intervention_anomalies')
     .select(`
       id, category, category_other, description, created_at, intervention_id,
-      intervention:interventions(
+      intervention:interventions!inner(
+        organization_id,
         mission:missions(site:sites(name))
       )
     `)
     .eq('status', 'open')
+    .eq('intervention.organization_id', orgId)
     .lt('created_at', threeDaysAgo)
     .order('created_at', { ascending: true })
     .limit(20)
@@ -441,12 +465,12 @@ export async function buildEveningBriefing(targetDate: string): Promise<EveningB
 
   // 8.b) Équipes actives sans affectation — capacité disponible planning.
   // Signal logistique. Jamais un KPI. Sujet = équipe, jamais individu isolé.
-  let allOrgTeamsQ = supabase
+  const allOrgTeamsQ = supabase
     .from('teams')
     .select('id, name, color')
     .is('deleted_at', null)
+    .eq('organization_id', orgId)
     .order('name')
-  if (orgId) allOrgTeamsQ = allOrgTeamsQ.eq('organization_id', orgId)
   const { data: allOrgTeams } = await allOrgTeamsQ
 
   const unassignedTeams: EveningBriefing['unassignedTeams'] = []

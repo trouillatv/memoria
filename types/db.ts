@@ -1022,6 +1022,8 @@ export interface DbDocumentCollection {
 export interface DbDocument {
   id: string
   tenant_id: string | null
+  // Migration 089 — isolation multi-tenant.
+  organization_id: string | null
   collection_id: string | null
   document_type: DocumentType
   tags: string[]
