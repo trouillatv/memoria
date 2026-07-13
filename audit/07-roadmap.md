@@ -14,12 +14,38 @@
   v2 — ce que Guillaume a réellement fait » (jamais « ce que nous imaginons ») —
   application directe de la doctrine « l'usage observé, jamais une hypothèse
   seule ».**
+  **Constats terrain déjà gravés pour ce futur RFC (photo du planning réel
+  Servinor, 2026-07-13) — des intrants, pas des specs :**
+  - Guillaume ne planifie pas des tâches, il planifie des **présences** :
+    par agent, deux états (Travail / Repos), en rotation. Il pense
+    « rotation d'équipes », pas « interventions ».
+  - Son modèle mental : Agent → calendrier de présence → les missions du
+    jour s'en déduisent. Objet pressenti : **Affectation** (agent, chantier,
+    équipe, période, modèle horaire) — c'est l'affectation qui se répète,
+    pas le planning.
+  - Il ouvre le planning PAR MAGASIN (« Discount Pointière → qui travaille
+    aujourd'hui ? ») : mode **site-centrique**. D'autres métiers (BTP,
+    maintenance, SAV) seront **agent-centriques**. Un seul moteur, deux
+    vues principales — ne pas figer un seul mode.
 - Import WhatsApp groupé, analyse multi-documents AO : chantiers séparés, audits propres.
 - Restauration exposée (« Récemment retirés ») : le soft-delete la permet, on ne la
   construit pas en V1.
 - Renommages structurels client/site (client_id nullable, FK contracts.client_id).
+- **Observation gravée (revue ChatGPT+Vincent 2026-07-13, à ne pas oublier) :
+  Guillaume pense naturellement en TROIS niveaux — organisation → dossier →
+  lieu (Servinor → Discount Pointière → Magasin ; AGP → P3 Titi → Cuisine).
+  Le modèle actuel en a deux (client → site) et le dossier d'opportunité
+  (mig 172) porte déjà l'identité d'opération. On ne développe RIEN
+  maintenant ; on observe son usage réel avant toute décision de modèle.**
 
 ## Les lots, dans l'ordre
+
+> Ordre révisé 2026-07-13 (revue ChatGPT, validée Vincent) :
+> **R ✓ → V → X → Y → S → D → C → P.** Deux lots ajoutés (X, Y) ; D passe
+> avant C (le nettoyage débloque les tests de Guillaume, la clarification
+> des sélecteurs vient ensuite). Lot M ajouté le même jour (constat terrain
+> Guillaume) : sa phase 1 est livrée hors ordre car triviale et débloquante ;
+> ses phases 2-3 s'insèrent après Y.
 
 ### Lot R — Rafraîchissement fiable (le plus petit, le plus sûr)
 - `NewMissionDialog.tsx` : `router.refresh()` après `{ok}` (LE cas « je crée, rien
@@ -42,6 +68,55 @@
 - Réutilisation avant doublon : AUCUN nouveau composant si un composant mobile est
   extractible (vignettes, lecteur audio).
 - Critère : pertes d'information n°1-5 de 05-mobile-desktop.md ✓.
+
+### Lot X — Continuité du contexte (ajouté 2026-07-13)
+Généralisation du Lot R. Le vrai bug observé n'est pas seulement « ça ne se
+rafraîchit pas » mais « **les objets nouvellement créés ne vivent pas dans le
+contexte courant** » (je crée une mission → retour semaine → absente ; je crée
+une équipe → retour → refresh manuel).
+- Règle : tout objet créé (mission, équipe, intervenant, client, site,
+  chantier) doit — sans action manuelle — (1) apparaître immédiatement,
+  (2) rester SÉLECTIONNÉ dans le formulaire appelant, (3) conserver le
+  contexte courant (chantier, semaine, filtre).
+- Passer systématiquement chaque point de création : les six objets × leurs
+  écrans d'origine (semaine, missions, équipes, mobile, contrat).
+- Critère : plus aucun « je crée, je reviens, il n'y est pas » ni « je dois
+  re-sélectionner ce que je viens de créer ».
+
+### Lot Y — Navigation sans rupture (ajouté 2026-07-13)
+Le film de la session = allers-retours permanents (créer équipe → retour →
+créer mission → retour → créer intervenant → retour → refresh).
+- Principe : **créer → rester → objet créé sélectionné**. L'utilisateur ne
+  quitte presque jamais son écran ; les créations satellites se font inline
+  (pattern « + Nouveau client » de CreateSiteDialog:254-296).
+- Absorbe le MÉCANISME du Lot P (création inline mission/équipe) ; ce qui
+  reste au Lot P = la détection des prérequis annoncés d'un coup (et
+  l'intervention « équipe à définir »).
+
+### Lot M — Import de preuves (ajouté 2026-07-13, constat terrain Guillaume)
+Constat : « Visite → Importer → gestionnaire de fichiers → où sont mes vocaux
+WhatsApp ? ». Le vrai problème n'est pas « WhatsApp est caché » mais
+**« l'utilisateur ne sait pas où Android a rangé ses fichiers — et on ne doit
+pas le lui demander »** (Scoped Storage : les médias WhatsApp vivent sous
+`Android/media/com.whatsapp/...`, en sous-dossiers datés).
+Cause dans le code : `ImportVisit.tsx` utilisait UN input avec `accept` mixte
+(`image/*,video/*,audio/*,application/pdf`) → Android retombe sur le
+gestionnaire de fichiers générique au lieu des sélecteurs de médias.
+- **Phase 1 — LIVRÉE 2026-07-13** : un bouton PAR type de preuve (Photos /
+  Vidéos / Vocaux / Documents), chacun avec son `accept` PUR → Android ouvre
+  le Photo Picker ou le sélecteur audio (où WhatsApp apparaît) sans naviguer
+  dans l'arborescence. Vocabulaire : « Ajouter des preuves ». Export WhatsApp
+  .zip conservé comme voie séparée (la reconstruction chronologique reste
+  la voie riche).
+- **Phase 2** : après sélection → rattacher à une visite EXISTANTE (pas
+  seulement créer une visite) + commentaire + créer action/réserve. C'est là
+  que « Ajouter des preuves » remplacera vraiment « Importer une visite ».
+- **Phase 3** : Web Share Target (PWA) — depuis WhatsApp : Partager → MemorIA
+  → choisir chantier/visite. L'utilisateur ne quitte jamais WhatsApp.
+  Nécessite manifest `share_target` + réception POST ; à tester sur le
+  téléphone de Guillaume avant de généraliser.
+- Critère : plus jamais un utilisateur en train de chercher un `.opus` dans
+  les dossiers système.
 
 ### Lot S — Gardes d'appartenance sur les ÉCRITURES
 - **Point d'entrée unique** (précision Vincent) : un wrapper `securedAction()`

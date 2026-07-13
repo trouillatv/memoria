@@ -208,7 +208,7 @@ export function VisitLauncherHome() {
                   {/* Modes alternatifs de démarrage — secondaires. */}
                   <p className="pt-1 text-[13px] text-muted-foreground">Ou importer</p>
                   <ModeBtn onClick={() => importMode('whatsapp_zip')} disabled={pending} icon={<MessageSquare className="h-5 w-5" />} title="Importer depuis WhatsApp" hint="Un export .zip de la discussion" />
-                  <ModeBtn onClick={() => importMode('upload')} disabled={pending} icon={<FolderUp className="h-5 w-5" />} title="Importer des fichiers" hint="Photos, vidéos, vocaux, PDF" />
+                  <ModeBtn onClick={() => importMode('upload')} disabled={pending} icon={<FolderUp className="h-5 w-5" />} title="Ajouter des preuves" hint="Photos, vidéos, vocaux, PDF déjà sur le téléphone" />
                 </div>
               ) : mode === 'pick' ? (
                 <>
