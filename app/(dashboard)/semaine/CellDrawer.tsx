@@ -45,6 +45,7 @@ import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import { ConflictResolver } from './ConflictResolver'
+import { ExceptionBadge } from './ExceptionBadge'
 import { DECISION_FR, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import type { ClosureDecision } from '@/lib/db/closure-decisions'
 import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
@@ -92,6 +93,8 @@ export interface CellDrawerProps {
   decisions?: Record<string, ClosureDecision>
   /** PL3b — les dates proposées, calculées côté serveur. */
   optionsBySite?: Record<string, Record<string, ResolutionOption[]>>
+  /** Exceptions — clé présente = issue d'un roulement ; liste = les déviations. */
+  exceptionsById?: Record<string, string[]>
   /** Contenu du conteneur (grille client-rendered). */
   children: React.ReactNode
 }
@@ -130,6 +133,7 @@ export function CellDrawer({
   conflictsBySite,
   decisions,
   optionsBySite,
+  exceptionsById,
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
@@ -328,6 +332,12 @@ export function CellDrawer({
                     data-dragging={isDragging ? 'true' : 'false'}
                     className="rounded-md border bg-card p-3 space-y-2 transition-opacity duration-200"
                   >
+                    {/* Issue d'un roulement : on le DIT — et si elle dévie, on
+                        offre le retour. La déviation silencieuse ferait mentir
+                        la grille. */}
+                    {exceptionsById?.[c.id] !== undefined && (
+                      <ExceptionBadge interventionId={c.id} deviations={exceptionsById[c.id]} />
+                    )}
                     <Link
                       href={`/interventions/${c.id}`}
                       className="block space-y-2 -m-1 p-1 rounded hover:bg-muted/40 transition-colors group"

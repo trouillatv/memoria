@@ -23,6 +23,9 @@ export interface WeekRange {
 
 export interface WeekInterventionCell {
   id: string
+  /** Le rythme dont cette occurrence est issue. NULL = saisie à la main.
+   *  C'est lui qui permet de dire « ceci est une EXCEPTION au roulement ». */
+  template_id: string | null
   mission_id: string
   mission_name: string
   site_id: string
