@@ -120,7 +120,7 @@ exporter).
 | Lot | Contenu | État |
 |---|---|---|
 | **PL1** | Moteur de projection pur, testé, période arbitraire — **aucun changement de comportement** | ✅ **LIVRÉ** — PR #127 mergée le 2026-07-13, **CI verte** (`build-and-test` 5m14s). `lib/planning/projection.ts` ; 52 tests dont l'équivalence avec l'algorithme d'avant (oracle recopié verbatim). Cap de 7 jours inchangé, aucune migration. |
-| PL2 | Fermetures de site (`site_closures` + saisie sur la fiche) | à faire |
+| PL2 | Fermetures de site (`site_closures` + saisie sur la fiche) | ✅ **LIVRÉ** — PR #129 mergée, CI verte (`build-and-test` + **`db-reset`** : la mig 197 est rejouée sur base neuve). Moteur pur `lib/planning/closures.ts` (`findClosureForDate` renvoie LA fermeture, pas un booléen ; règle de chevauchement fixée), 18 tests. ⚠️ **Migration 197 NON APPLIQUÉE** en base — fichier livré seulement. ⚠️ **Carte pas encore montée** sur la fiche chantier (fichier en refactor par une autre session) : branchement de 3 lignes à faire. |
 | PL3 | Signal « site fermé, prestation prévue » + ses 5 résolutions | à faire |
 | PL4 | Cycles 1-4 semaines (`cycle_length_weeks`, `anchor_date`, `week_index`) | à faire |
 | PL5 | Assistant de construction du cycle | à faire |
