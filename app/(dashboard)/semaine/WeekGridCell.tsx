@@ -23,7 +23,7 @@ import { Lock, CalendarOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { fmtHourFr } from '@/lib/time/prestation-slot'
-import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
+import { CLOSURE_REASON_FR, type ProjectableClosure } from '@/lib/planning/closures'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
 import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
@@ -128,9 +128,13 @@ export interface WeekGridCellProps {
   /** PL3a — conflit « site fermé, prestation prévue » ce jour-là. OPTIONNEL :
    *  sans lui, la cellule est strictement identique à avant. */
   conflict?: ClosureConflict
+  /** NIVEAU 1 — le chantier est FERMÉ ce jour-là, prestation ou pas.
+   *  Information métier (vacances, férié, inventaire), pas une erreur : elle se
+   *  voit calmement. Le rouge reste réservé au conflit (niveau 2). */
+  closure?: ProjectableClosure
 }
 
-export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents, conflict }: WeekGridCellProps) {
+export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents, conflict, closure }: WeekGridCellProps) {
   const cellKey = `${siteId}::${date}`
   const isPast = !!(todayIso && date < todayIso)
 
@@ -264,6 +268,11 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
         draggable && 'cursor-grab',
         isLocked && 'cursor-default',
         isDragging && 'opacity-50',
+        // NIVEAU 1 — jour fermé : fond bleu discret. Il INFORME (« ici, c'est
+        // fermé »), il n'alarme pas. NIVEAU 2 — fermé ET prestation prévue :
+        // le fond passe au rouge pâle, et la pastille rouge ci-dessous le dit.
+        closure && !conflict && 'bg-sky-50/70',
+        conflict && 'bg-rose-50/60',
         cellDroppable.isOver && !isPast && !isSourceCell &&
           'bg-brand-50/60 outline outline-2 outline-brand-300 outline-offset-[-2px]',
         // UX V5 : isPast applique un hachuré sobre via inline style (cf. pastCellStyle
@@ -331,6 +340,23 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
           sinon un clic dessus démarrerait un drag fantôme. Il informe, il ne
           bloque rien — le geste vit dans l'aperçu (PL3b). Zone top-1 left-1 :
           la seule libre (droite = Lock, bas-droite = icônes d'événements). */}
+      {/* NIVEAU 1 — fermé, sans prestation prévue. Le calendrier du chantier se
+          lit d'abord : vacances, jour férié, inventaire. Aucune alarme.
+          Non-interactif (pointer-events-none) : ne démarre aucun drag fantôme. */}
+      {closure && !conflict && (
+        <span
+          data-testid="cell-closure"
+          data-closure="true"
+          className="absolute top-1 left-1 pointer-events-none inline-flex items-center rounded-full bg-sky-100 p-0.5 text-sky-700 ring-1 ring-sky-200"
+          title={`Chantier fermé — ${CLOSURE_REASON_FR[closure.reasonKind]}${
+            closure.reason ? ` · ${closure.reason}` : ''
+          }`}
+          aria-label={`Chantier fermé ce jour-là — ${CLOSURE_REASON_FR[closure.reasonKind]}`}
+        >
+          <CalendarOff className="h-3 w-3" aria-hidden />
+        </span>
+      )}
+
       {conflict && (
         <span
           data-testid="cell-closure-conflict"

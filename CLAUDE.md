@@ -453,6 +453,33 @@ Une correction de libellé ne nécessite pas :
 Une évolution touchant l’authentification, les autorisations, la base de données, les données personnelles ou un parcours central nécessite davantage de vérifications.
 
 Ne transforme jamais les règles de qualité en bureaucratie inutile.
+
+## Enchaînement des demandes
+
+Un rapport marque la fin d’un **run**, pas la fin de chaque message.
+
+Vincent envoie souvent plusieurs demandes d’affilée, parfois pendant que tu travailles. Ces messages sont des **priorités à intégrer au run en cours**, jamais un ordre de t’arrêter.
+
+Règles :
+
+1. Un message qui arrive pendant le travail se traite dans la continuité : intègre-le, réordonne si besoin, et continue. Ne recommence pas un cycle complet d’analyse pour lui.
+2. Ne produis **qu’un seul rapport**, à la fin du run — pas un rapport par message ni un rapport par lot intermédiaire.
+3. Entre deux étapes, une phrase suffit pour dire ce que tu viens de trouver ou ce que tu attaques. Pas de bilan intermédiaire.
+4. Quand une demande est claire, exécute-la jusqu’au bout (y compris commit, PR, CI, merge) sans demander de confirmation. Arrête-toi seulement pour les cas listés dans « Cas nécessitant une validation humaine ».
+5. Une demande arrivée en cours de route ne fait pas repartir en analyse : elle rejoint le périmètre en cours ou devient l’étape suivante.
+
+## Format du rapport
+
+Un seul format, proportionné à ce qui a été fait. Il n’y a pas trois rapports à empiler : les sections ci-dessous sont la **liste des questions auxquelles répondre**, pas un gabarit à remplir intégralement.
+
+* Modification mineure → 4 lignes : ce qui a changé, les fichiers, les vérifications, ce qui reste.
+* Modification significative → statut réel (échelle d’états), résultat fonctionnel, changements, tableau des vérifications, ce qui reste, risques, Git.
+
+Dans tous les cas :
+
+* le statut annoncé est **le plus faible des états réellement atteints** ;
+* une preuve absente s’écrit **NON TESTÉ / NON PROUVÉ / NON VÉRIFIABLE**, jamais « devrait fonctionner » ;
+* ce qui n’a pas été vérifié est dit avant ce qui a été réussi.
 Lorsque Vincent donne une idée, une tâche ou une correction, tu peux utiliser
 les sous-agents disponibles afin de limiter les relais manuels.
 

@@ -105,6 +105,15 @@ export function CyclePreview({
         />
       </section>
 
+      {/* Les fermetures se disent, elles n'alarment pas : vacances, fériés,
+          inventaires. Guillaume s'en sert pour CONSTRUIRE son planning. */}
+      {summary.closedDays > 0 && (
+        <p className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          <Lock className="h-3.5 w-3.5 shrink-0" />
+          {summary.closedDays} jour{summary.closedDays > 1 ? 's' : ''} de fermeture ce mois-ci.
+        </p>
+      )}
+
       {/* « 9 / 23 / 22 » — les totaux de sa feuille. C'est SA vérification. */}
       {Object.keys(summary.daysByTeam).length > 0 && (
         <section className="flex flex-wrap gap-x-4 gap-y-1 rounded-2xl border bg-card px-4 py-3 text-sm">
@@ -128,12 +137,22 @@ export function CyclePreview({
         )}
         {days.map((d) => {
           const { dow, num, weekend } = dayLabel(d.date)
+          const ferme = Boolean(d.closure)
+          // Un jour FERMÉ sans personne n'est pas un trou : c'est la normale.
+          // Le trou, c'est un jour OUVERT que personne ne couvre.
+          const trou = d.coverage === 0 && !ferme
           const vide = d.coverage === 0
           return (
             <div
               key={d.date}
               className={`flex items-start gap-3 px-3 py-2 ${weekend ? 'bg-muted/30' : ''} ${
-                d.conflict ? 'bg-rose-50/70' : vide ? 'bg-rose-50/40' : ''
+                d.conflict
+                  ? 'bg-rose-50/70' // fermé ET du monde prévu → il faut décider
+                  : ferme
+                    ? 'bg-sky-50/70' // fermé, rien de prévu → information, pas alarme
+                    : trou
+                      ? 'bg-rose-50/40' // ouvert, personne → le trou
+                      : ''
               }`}
             >
               <div className="w-14 shrink-0 pt-0.5 text-right">
@@ -142,8 +161,10 @@ export function CyclePreview({
               </div>
 
               <div className="min-w-0 flex-1 space-y-1">
-                {vide ? (
+                {trou ? (
                   <p className="text-sm font-medium text-rose-700">Personne ce jour-là</p>
+                ) : vide ? (
+                  <p className="text-sm font-medium text-sky-800">Chantier fermé</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {d.working.map((w) => (
@@ -180,7 +201,7 @@ export function CyclePreview({
                 {d.closure && (
                   <p
                     className={`inline-flex items-center gap-1 text-[11px] ${
-                      d.conflict ? 'font-medium text-rose-700' : 'text-muted-foreground'
+                      d.conflict ? 'font-medium text-rose-700' : 'text-sky-800'
                     }`}
                   >
                     {d.conflict ? <AlertTriangle className="h-3 w-3" /> : <Lock className="h-3 w-3" />}

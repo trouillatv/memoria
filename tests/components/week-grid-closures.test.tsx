@@ -26,6 +26,7 @@ import { WeekGridCell } from '@/app/(dashboard)/semaine/WeekGridCell'
 import { CellDrawer } from '@/app/(dashboard)/semaine/CellDrawer'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
+import type { ProjectableClosure } from '@/lib/planning/closures'
 
 function makeCell(overrides: Partial<WeekInterventionCell> = {}): WeekInterventionCell {
   return {
@@ -217,5 +218,60 @@ describe('CellDrawer — le bloc « Conflit de planning »', () => {
     expect(screen.getByTestId('drawer-closure-conflict').textContent).toContain(
       'Ces 3 interventions restent planifiées',
     )
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NIVEAU 1 — le CALENDRIER du chantier, avant tout conflit.
+//
+// Guillaume se sert des fermetures pour CONSTRUIRE son planning (vacances,
+// fériés, inventaires), pas seulement pour corriger des erreurs. Une fermeture
+// doit donc se voir même quand aucune prestation n'est prévue — calmement.
+// Le rouge reste réservé au niveau 2 : fermé ET du monde prévu.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CLOSURE: ProjectableClosure = {
+  id: 'cl-9',
+  siteId: 'site-1',
+  reasonKind: 'holiday',
+  reason: null,
+  startsOn: '2026-07-14',
+  endsOn: '2026-07-14',
+  defaultResolution: 'none',
+}
+
+const cellWith = (props: Partial<React.ComponentProps<typeof WeekGridCell>>) => (
+  <WeekGridCell date="2026-07-14" siteId="site-1" siteName="Pointière" cells={[]} {...props} />
+)
+
+describe('Niveau 1 — le jour fermé se VOIT, même sans prestation', () => {
+  it('une cellule vide sur un jour fermé porte le signal de fermeture', () => {
+    renderCell(cellWith({ closure: CLOSURE }))
+    const mark = screen.getByTestId('cell-closure')
+    expect(mark).toBeInTheDocument()
+    expect(mark.getAttribute('title')).toContain('Chantier fermé')
+    // Ce n'est PAS une alerte : aucun badge de conflit.
+    expect(screen.queryByTestId('cell-closure-conflict')).toBeNull()
+  })
+
+  it('le signal de fermeture ne capture aucun événement de pointeur', () => {
+    // Le <td> est draggable ET droppable : un signal interactif démarrerait un
+    // drag fantôme.
+    renderCell(cellWith({ closure: CLOSURE }))
+    expect(screen.getByTestId('cell-closure').className).toContain('pointer-events-none')
+  })
+
+  it('sans fermeture, la cellule est strictement identique à avant', () => {
+    renderCell(cellWith({}))
+    expect(screen.queryByTestId('cell-closure')).toBeNull()
+    expect(screen.queryByTestId('cell-closure-conflict')).toBeNull()
+  })
+
+  it('NIVEAU 2 prime : fermé + prestation prévue → le conflit, pas deux signaux', () => {
+    renderCell(cellWith({ cells: [makeCell()], closure: CONFLICT.closure, conflict: CONFLICT }))
+    expect(screen.getByTestId('cell-closure-conflict')).toBeInTheDocument()
+    // On ne dit pas deux fois la même chose : le signal calme s'efface.
+    expect(screen.queryByTestId('cell-closure')).toBeNull()
   })
 })
