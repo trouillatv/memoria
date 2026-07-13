@@ -23,7 +23,7 @@ import {
   Building2,
   Mic,
   ListTodo,
-  Compass, GraduationCap } from 'lucide-react'
+  Compass, GraduationCap, Repeat } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 export interface NavItem {
@@ -51,6 +51,7 @@ export const NAV: NavItem[] = [
   { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'], essential: true },
   { href: '/aujourdhui', label: 'Interventions du jour',  icon: ListChecks,    roles: ['admin', 'manager'] },
   { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
+  { href: '/roulements', label: 'Roulements',             icon: Repeat,        roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   { href: '/calendrier-scolaire', label: 'Calendrier scolaire', icon: GraduationCap, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
