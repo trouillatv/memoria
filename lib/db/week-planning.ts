@@ -21,6 +21,7 @@
 //   - Toute fonction qui agrège un KPI par personne ou par équipe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { ProjectableTemplate } from '@/lib/planning/projection'
 import { getOrgId } from '@/lib/db/users'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 
@@ -339,20 +340,9 @@ export async function getWeekByTeam(range: WeekRange): Promise<TeamRow[]> {
 // Pour dire « ceci est une exception », il faut comparer l'occurrence à ce que
 // son rythme prescrit. Une requête pour toute la grille.
 
-export interface WeekTemplate {
-  id: string
-  mission_id: string
-  frequency: 'daily' | 'weekly' | 'monthly'
-  slots: string[] | null
-  day_of_week: number | null
-  day_of_month: number | null
-  planned_start_hhmm: string | null
-  planned_end_hhmm: string | null
-  starts_on: string | null
-  ends_on: string | null
-  cycle_length_weeks: number | null
-  anchor_date: string | null
-  week_index: number | null
+// Le MEME contrat que le moteur de projection : c'est lui qui compare
+// l'occurrence au rythme. Un type parallele divergerait un jour.
+export interface WeekTemplate extends ProjectableTemplate {
   assigned_team_id: string | null
 }
 

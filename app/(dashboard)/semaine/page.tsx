@@ -377,7 +377,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
     const allCells = siteRows.flatMap((r) => Object.values(r.days).flat())
     const templatesById = await listTemplatesByIds(
       allCells.map((c) => c.template_id).filter((v): v is string => !!v),
-    ).catch(() => ({}))
+    ).catch((): Record<string, import('@/lib/db/week-planning').WeekTemplate> => ({}))
 
     const exceptionsById: Record<string, string[]> = {}
     for (const c of allCells) {
