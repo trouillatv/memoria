@@ -17,7 +17,7 @@ import { RemoveButton } from '@/components/removal/RemoveButton'
 import { todayLocalIso, frDayMonthLocal } from '@/lib/time/local-date'
 import { CLOSURE_REASON_FR, type ClosureReasonKind } from '@/lib/planning/closures'
 import { createClosureAction, updateClosureAction, removeClosureAction } from './closures-actions'
-import { setSiteFollowsCalendarAction } from '../../calendrier-scolaire/actions'
+import { setSiteFollowsCalendarAction, setSiteFollowsHolidaysAction } from '../../calendrier-scolaire/actions'
 
 export interface ClosureRow {
   id: string
@@ -42,11 +42,15 @@ export function SiteClosuresCard({
   siteId,
   closures,
   followsCalendar = false,
+  followsHolidays = false,
 }: {
   siteId: string
   closures: ClosureRow[]
   /** « Ce chantier ferme pendant les vacances scolaires. » */
   followsCalendar?: boolean
+  /** « Ce chantier ferme les jours fériés. » Séparé : un férié ne ferme PAS
+   *  tous les sites — le magasin ouvre peut-être le 14 juillet. */
+  followsHolidays?: boolean
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState<ClosureRow | 'new' | null>(null)
@@ -64,6 +68,21 @@ export function SiteClosuresCard({
         next
           ? 'Ce chantier ferme pendant les vacances scolaires.'
           : 'Ce chantier ne suit plus le calendrier scolaire.',
+      )
+      router.refresh()
+    })
+  }
+
+  function toggleHolidays(next: boolean) {
+    if (pendingFollow) return
+    startFollow(async () => {
+      const r = await setSiteFollowsHolidaysAction(siteId, next)
+      if ('error' in r) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(
+        next ? 'Ce chantier ferme les jours fériés.' : 'Ce chantier ouvre les jours fériés.',
       )
       router.refresh()
     })
@@ -100,8 +119,34 @@ export function SiteClosuresCard({
           </span>
           <span className="block text-xs text-muted-foreground">
             Les périodes se saisissent une fois, dans le{' '}
-            <Link href="/calendrier-scolaire" className="underline underline-offset-2">
-              calendrier scolaire
+            <Link href="/fermetures" className="underline underline-offset-2">
+              Fermetures
+            </Link>
+            .
+          </span>
+        </span>
+      </label>
+
+      {/* Les FÉRIÉS, séparément : un jour férié ne ferme PAS tous les sites.
+          Le magasin ouvre peut-être le 14 juillet ; l'école, jamais. */}
+      <label className="flex items-start gap-2.5 rounded-xl border bg-muted/20 px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={followsHolidays}
+          onChange={(e) => toggleHolidays(e.target.checked)}
+          disabled={pendingFollow}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 text-sm font-medium">
+            <CalendarOff className="h-3.5 w-3.5 text-muted-foreground" />
+            Ce chantier ferme les jours fériés
+            {pendingFollow && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            Les fériés se saisissent une fois, dans{' '}
+            <Link href="/fermetures" className="underline underline-offset-2">
+              Fermetures
             </Link>
             .
           </span>

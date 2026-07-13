@@ -17,9 +17,16 @@ import { savePeriodAction, removePeriodAction } from './actions'
 export function CalendarEditor({
   periods,
   followingCount,
+  kind = 'scolaire',
+  placeholder = 'ex : Vacances de juillet',
+  emptyText = 'Aucune période. Saisissez-les depuis le calendrier officiel — MemorIA n’en invente aucune.',
 }: {
   periods: CalendarPeriod[]
   followingCount: number
+  /** Vacances scolaires ou jours fériés — même mécanique, deux calendriers. */
+  kind?: 'scolaire' | 'ferie'
+  placeholder?: string
+  emptyText?: string
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -55,6 +62,7 @@ export function CalendarEditor({
     start(async () => {
       const r = await savePeriodAction({
         ...(editing ? { id: editing } : {}),
+        kind,
         label: label.trim(),
         startsOn,
         endsOn,
@@ -89,10 +97,7 @@ export function CalendarEditor({
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4">
       {periods.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Aucune période. Saisissez-les depuis le calendrier officiel — MemorIA n’en invente
-          aucune.
-        </p>
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
       ) : (
         <ul className="divide-y">
           {periods.map((p) => {
@@ -137,7 +142,7 @@ export function CalendarEditor({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             maxLength={120}
-            placeholder="ex : Vacances de juillet"
+            placeholder={placeholder}
             disabled={pending}
             className="w-full rounded-md border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
           />

@@ -23,7 +23,10 @@ import {
   type CalendarPeriod,
 } from '@/lib/planning/school-calendar'
 
+export type CalendarKind = 'scolaire' | 'ferie'
+
 export interface SchoolPeriod extends CalendarPeriod {
+  kind: CalendarKind
   /** Combien de chantiers cette période ferme réellement. */
   sitesCount?: number
 }
@@ -31,6 +34,7 @@ export interface SchoolPeriod extends CalendarPeriod {
 function rowToPeriod(r: Record<string, unknown>): SchoolPeriod {
   return {
     id: r.id as string,
+    kind: ((r.kind as string) ?? 'scolaire') as CalendarKind,
     label: (r.label as string) ?? '',
     startsOn: (r.starts_on as string) ?? '',
     endsOn: (r.ends_on as string) ?? '',
@@ -43,17 +47,20 @@ function isMissing(error: { code?: string; message?: string }): boolean {
 }
 
 /** Les périodes du calendrier de l'organisation, de la plus proche à la plus lointaine. */
-export async function listPeriods(): Promise<SchoolPeriod[]> {
+export async function listPeriods(kind?: CalendarKind): Promise<SchoolPeriod[]> {
   const db = createAdminClient()
   const orgId = await getOrgId().catch(() => null)
   if (!orgId) return []
 
-  const { data, error } = await db
+  let q = db
     .from('school_calendar_period')
-    .select('id, label, starts_on, ends_on')
+    .select('id, kind, label, starts_on, ends_on')
     .eq('organization_id', orgId)
     .is('deleted_at', null)
     .order('starts_on', { ascending: true })
+  if (kind) q = q.eq('kind', kind)
+
+  const { data, error } = await q
   if (error) {
     if (isMissing(error)) return []
     throw new Error(error.message)
@@ -62,6 +69,7 @@ export async function listPeriods(): Promise<SchoolPeriod[]> {
 }
 
 export interface PeriodInput {
+  kind: CalendarKind
   label: string
   startsOn: string
   endsOn: string
@@ -77,6 +85,7 @@ export async function createPeriod(input: PeriodInput): Promise<string> {
     .from('school_calendar_period')
     .insert({
       organization_id: orgId,
+      kind: input.kind,
       label: input.label,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
@@ -150,12 +159,43 @@ export async function siteFollowsCalendar(siteId: string): Promise<boolean> {
   return Boolean((data as { follows_school_calendar: boolean } | null)?.follows_school_calendar)
 }
 
+/** Les DEUX adhésions d'un chantier — scolaire ET fériés. Séparées : une école
+ *  suit les deux, un magasin peut-être aucun. */
+export async function siteCalendarFlags(
+  siteId: string,
+): Promise<{ scolaire: boolean; feries: boolean }> {
+  const { data } = await createAdminClient()
+    .from('sites')
+    .select('follows_school_calendar, follows_public_holidays')
+    .eq('id', siteId)
+    .maybeSingle()
+  const r = data as { follows_school_calendar?: boolean; follows_public_holidays?: boolean } | null
+  return { scolaire: Boolean(r?.follows_school_calendar), feries: Boolean(r?.follows_public_holidays) }
+}
+
+/** « Ce chantier ferme les jours fériés. » Explicite, jamais déduit : un jour
+ *  férié ne ferme PAS tous les sites. */
+export async function setSiteFollowsHolidays(siteId: string, follows: boolean): Promise<void> {
+  const db = createAdminClient()
+  const { error } = await db
+    .from('sites')
+    .update({ follows_public_holidays: follows })
+    .eq('id', siteId)
+  if (error) throw new Error(error.message)
+
+  await syncSiteClosures(siteId)
+}
+
 /** Les chantiers de l'organisation qui suivent le calendrier. */
 export async function listFollowingSiteIds(): Promise<string[]> {
   const db = createAdminClient()
   const orgId = await getOrgId().catch(() => null)
 
-  let q = db.from('sites').select('id').eq('follows_school_calendar', true).is('deleted_at', null)
+  let q = db
+    .from('sites')
+    .select('id')
+    .or('follows_school_calendar.eq.true,follows_public_holidays.eq.true')
+    .is('deleted_at', null)
   if (orgId) q = q.eq('organization_id', orgId)
 
   const { data, error } = await q
@@ -179,10 +219,14 @@ export async function syncSiteClosures(siteId: string): Promise<{ created: numbe
 
   const { data: siteRow } = await db
     .from('sites')
-    .select('follows_school_calendar')
+    .select('follows_school_calendar, follows_public_holidays')
     .eq('id', siteId)
     .maybeSingle()
-  const follows = (siteRow as { follows_school_calendar: boolean } | null)?.follows_school_calendar
+  const flags = siteRow as {
+    follows_school_calendar?: boolean
+    follows_public_holidays?: boolean
+  } | null
+  const follows = Boolean(flags?.follows_school_calendar || flags?.follows_public_holidays)
 
   // On retire d'abord les dérivées à venir — qu'on suive encore ou non.
   const { error: delErr } = await db
@@ -196,8 +240,12 @@ export async function syncSiteClosures(siteId: string): Promise<{ created: numbe
 
   if (!follows) return { created: 0 }
 
-  const periods = upcomingPeriods(await listPeriods(), today)
-  const rows = derivedClosuresFor(siteId, periods)
+  // Chaque calendrier s'applique SELON L'ADHÉSION du chantier — jamais en bloc.
+  const all = upcomingPeriods(await listPeriods(), today) as SchoolPeriod[]
+  const applicable = all.filter((p) =>
+    p.kind === 'ferie' ? flags?.follows_public_holidays : flags?.follows_school_calendar,
+  )
+  const rows = derivedClosuresFor(siteId, applicable)
   if (rows.length === 0) return { created: 0 }
 
   const { error } = await db.from('site_closures').insert(
