@@ -58,6 +58,8 @@ export async function createMissionAction(formData: FormData): Promise<CreateMis
 
   if (error || !data) return { error: 'Impossible de créer la mission' }
 
+  // Règle d'or (lot R) : la mission apparaît aussi dans le picker de /semaine.
   revalidatePath('/missions')
+  revalidatePath('/semaine')
   return { ok: true, missionId: data.id }
 }

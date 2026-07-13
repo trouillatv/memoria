@@ -150,7 +150,9 @@ export async function createTeamAction(input: {
       action: 'created',
       metadata: { kind: 'team', name: team.name, color: team.color, icon: team.icon },
     })
+    // Règle d'or (lot R) : l'équipe apparaît aussi dans le sélecteur de /semaine.
     revalidatePath('/equipes')
+    revalidatePath('/semaine')
     return { ok: true, teamId: team.id }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur création équipe'

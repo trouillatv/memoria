@@ -99,6 +99,7 @@ export async function listInterventionsForWeek(
         site:sites!inner(
           id,
           name,
+          client:clients(name),
           contract:contracts(id, name)
         )
       ),
@@ -132,11 +133,12 @@ export async function listInterventionsForWeek(
     if (isSystemMissionName(mission.name)) continue
     const site = pickOne(
       mission.site as
-        | { id: string; name: string; contract: unknown }
-        | Array<{ id: string; name: string; contract: unknown }>
+        | { id: string; name: string; client: unknown; contract: unknown }
+        | Array<{ id: string; name: string; client: unknown; contract: unknown }>
         | null
     )
     if (!site) continue
+    const client = pickOne(site.client as { name: string } | Array<{ name: string }> | null)
     const contract = pickOne(
       site.contract as
         | { id: string; name: string }
@@ -156,6 +158,7 @@ export async function listInterventionsForWeek(
       mission_name: mission.name,
       site_id: site.id,
       site_name: site.name,
+      client_name: client?.name ?? null,
       contract_id: contract?.id ?? '',
       contract_name: contract?.name ?? '—',
       scheduled_for: r.scheduled_for,
@@ -209,6 +212,7 @@ export async function getWeekBySite(range: WeekRange): Promise<SiteRow[]> {
       row = {
         site_id: c.site_id,
         site_name: c.site_name,
+        client_name: c.client_name ?? null,
         contract_id: c.contract_id,
         contract_name: c.contract_name,
         days: Object.fromEntries(days.map((d) => [d, []])),

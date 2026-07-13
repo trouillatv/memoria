@@ -115,6 +115,10 @@ export async function createSiteAction(formData: FormData) {
 
   revalidatePath(`/contracts/${parsed.data.contract_id}/sites`)
   revalidatePath(`/contracts/${parsed.data.contract_id}`)
+  // Règle d'or (lot R) : le site (et son client, créé au besoin par
+  // ensureClientForContract) apparaît aussi dans les listes globales.
+  revalidatePath('/sites')
+  revalidatePath('/clients')
   return { ok: true as const, siteId }
 }
 

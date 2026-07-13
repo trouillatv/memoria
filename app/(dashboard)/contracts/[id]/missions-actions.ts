@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { createMission, updateMission } from '@/lib/db/missions'
@@ -75,6 +76,12 @@ export async function createMissionAction(formData: FormData) {
     })),
     created_by: auth.userId,
   })
+
+  // Règle d'or (lot R) : ce chemin ne revalidait RIEN — incohérent avec le
+  // chemin global (/missions). La mission doit apparaître partout où elle
+  // est listée, y compris le picker de /semaine.
+  revalidatePath('/missions')
+  revalidatePath('/semaine')
 
   return { ok: true as const, missionId }
 }

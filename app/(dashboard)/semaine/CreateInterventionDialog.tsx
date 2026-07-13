@@ -17,10 +17,12 @@ import {
 import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
+import { pickInitialMissionId } from './planning-prefill'
 
 export interface MissionOption {
   id: string
   name: string
+  siteId: string
   siteName: string
   contractName: string
   /** Équipe par défaut de la mission, héritée si l'utilisateur ne change rien. */
@@ -39,6 +41,10 @@ interface Props {
   teams: TeamOption[]
   /** yyyy-mm-dd UTC — date par défaut (typiquement le lundi de la semaine vue). */
   defaultDate: string
+  /** Contexte chantier (PR 1) : arrivée depuis une fiche chantier
+   *  (`/semaine?site=<id>`) → le dialogue s'ouvre tout seul, prérempli sur la
+   *  première mission de ce chantier. Déjà validé côté serveur (org). */
+  initialSiteId?: string
 }
 
 /** Sentinelle UI :
@@ -48,11 +54,15 @@ interface Props {
 const INHERIT = '__inherit__'
 const UNASSIGNED = '__unassigned__'
 
-export function CreateInterventionDialog({ missions, teams, defaultDate }: Props) {
+export function CreateInterventionDialog({ missions, teams, defaultDate, initialSiteId }: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  // Contexte chantier : mission du chantier d'origine présélectionnée, et le
+  // dialogue s'ouvre immédiatement (« je clique Planifier sur la fiche, je
+  // retrouve mon chantier déjà choisi »).
+  const initialMissionId = pickInitialMissionId(missions, initialSiteId)
+  const [open, setOpen] = useState(initialMissionId !== '')
   const [pending, startTransition] = useTransition()
-  const [missionId, setMissionId] = useState<string>('')
+  const [missionId, setMissionId] = useState<string>(initialMissionId)
   const [scheduledFor, setScheduledFor] = useState<string>(defaultDate)
   const [teamChoice, setTeamChoice] = useState<string>(INHERIT)
   // V6.1 (Vincent 2026-05-20) : l'heure de début est OBLIGATOIRE. Plus de
@@ -77,7 +87,6 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
         site,
         missions: ms.sort((a, b) => fr(a.name, b.name) || fr(a.contractName, b.contractName)),
       }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missions])
 
   const sortedTeams = useMemo(() => {
@@ -102,7 +111,8 @@ export function CreateInterventionDialog({ missions, teams, defaultDate }: Props
     !pending
 
   function reset() {
-    setMissionId('')
+    // Le contexte chantier survit à une fermeture/réouverture du dialogue.
+    setMissionId(initialMissionId)
     setScheduledFor(defaultDate)
     setTeamChoice(INHERIT)
     setPlannedStartHHMM('')

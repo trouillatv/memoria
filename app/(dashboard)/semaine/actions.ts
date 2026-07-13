@@ -518,7 +518,16 @@ export async function createInterventionFromWeekAction(
     },
   })
 
+  // Règle d'or (lot R) : toute mutation revalide TOUS les paths qui affichent
+  // l'objet — la semaine, mais aussi les missions, le jour courant et la fiche
+  // du chantier (desktop + mobile « Aujourd'hui ici »).
   revalidatePath('/semaine')
+  revalidatePath('/missions')
+  revalidatePath('/aujourdhui')
+  if (mission.site_id) {
+    revalidatePath(`/sites/${mission.site_id}`)
+    revalidatePath(`/m/site/${mission.site_id}`)
+  }
   return { ok: true, interventionId }
 }
 

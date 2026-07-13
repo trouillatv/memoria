@@ -135,6 +135,9 @@ export async function createIntervenantAction(
     },
   })
 
+  // Règle d'or (lot R) : le nouvel intervenant est sélectionnable dans
+  // « ajouter un membre » sur /equipes sans rafraîchissement manuel.
   revalidatePath('/intervenants')
+  revalidatePath('/equipes')
   return { ok: true, userId: data.user.id }
 }

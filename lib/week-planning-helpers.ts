@@ -27,6 +27,8 @@ export interface WeekInterventionCell {
   mission_name: string
   site_id: string
   site_name: string
+  /** Nom du client du site — désambiguïsation (« Discount — Pointière »). */
+  client_name?: string | null
   contract_id: string
   contract_name: string
   scheduled_for: string
@@ -44,6 +46,8 @@ export interface WeekInterventionCell {
 export interface SiteRow {
   site_id: string
   site_name: string
+  /** Nom du client — affiché dans l'en-tête de ligne (jamais dans les cellules). */
+  client_name?: string | null
   contract_id: string
   contract_name: string
   /** Map yyyy-mm-dd → interventions du jour. */
