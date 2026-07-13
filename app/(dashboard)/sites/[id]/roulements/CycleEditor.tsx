@@ -83,6 +83,7 @@ export function CycleEditor({
   teams,
   initial,
   knownPrestations = [],
+  isCopy = false,
 }: {
   siteId: string
   missions: MissionOption[]
@@ -93,11 +94,17 @@ export function CycleEditor({
    *  pas DIFFÉREMMENT (trois orthographes = trois prestations = une mémoire qui
    *  se fragmente). */
   knownPrestations?: string[]
+  /** DUPLIQUER : la grille de départ vient d'un autre roulement, mais on en
+   *  CRÉE un nouveau. L'original n'est jamais touché — les deux vivent ensuite
+   *  séparément. */
+  isCopy?: boolean
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
 
-  const [name, setName] = useState(initial?.name ?? '')
+  const [name, setName] = useState(
+    initial?.name ? (isCopy ? `${initial.name} (copie)` : initial.name) : '',
+  )
   // La prestation se DIT, elle ne se choisit pas dans une liste fermée : sur un
   // chantier neuf, il n'y a rien à choisir. On propose ce qui existe, on accepte
   // ce qui n'existe pas encore.
@@ -175,7 +182,8 @@ export function CycleEditor({
   // intentions existent, on ne devine JAMAIS : on demande, au moment de publier.
   const [effect, setEffect] = useState<EffectChoice>('next_monday')
   const [effectDate, setEffectDate] = useState('')
-  const askEffect = Boolean(initial && initial.status === 'published')
+  // Une COPIE est une création : pas de passé à protéger, pas de date d'effet.
+  const askEffect = Boolean(initial && !isCopy && initial.status === 'published')
 
   /** Toutes les cases — travail ET repos. Sa feuille se relit telle qu'il l'a
    *  dessinée : le repos est un état, pas une absence. */
@@ -268,7 +276,9 @@ export function CycleEditor({
 
     start(async () => {
       const r = await saveCycleAction({
-        ...(initial ? { cycleId: initial.id } : {}),
+        // Une copie N'ENVOIE PAS l'identifiant d'origine : elle crée, elle ne
+        // modifie pas. L'original reste exactement ce qu'il était.
+        ...(initial && !isCopy ? { cycleId: initial.id } : {}),
         ...cycleShape(),
         name: name.trim(),
         status,

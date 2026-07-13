@@ -5,7 +5,7 @@
 
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeft, Plus, Repeat, CalendarRange } from 'lucide-react'
+import { ArrowLeft, Plus, Repeat, CalendarRange, Copy } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
@@ -85,7 +85,15 @@ export default async function RoulementsPage({ params }: { params: Promise<{ id:
                       {c.endsOn ? `, jusqu’au ${frDayMonthLocal(c.endsOn)}` : ' — sans date de fin'}
                     </p>
                   </Link>
-                  <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    {/* Dupliquer : le même rythme, un NOUVEAU roulement. Souvent
+                        pour une autre équipe — les deux vivent ensuite séparément. */}
+                    <Link
+                      href={`/sites/${id}/roulements/nouveau?copier=${c.id}`}
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Dupliquer
+                    </Link>
                     <RemoveCycleButton cycleId={c.id} name={c.name} />
                   </div>
                 </div>
