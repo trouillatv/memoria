@@ -31,6 +31,31 @@ Les vues ne racontent pas toutes la même histoire :
 
 Cette idée prime sur la structure technique. Quand deux organisations sont possibles, choisir celle qui raconte le mieux le chantier pour le conducteur.
 
+## References obligatoires
+
+Deux references guident toute modification de l'espace chantier :
+
+- doctrine produit : `docs/design/architecture-espace-chantier.md` ;
+- reference visuelle : `docs/design/AGP.png`.
+
+La doctrine produit definit ce qu'est un chantier, ses objets, ses vues, ses relations et ses regles. `AGP.png` definit comment le premier slice doit se ressentir visuellement : hierarchie, densite, repartition desktop/mobile, poids des blocs, couleurs et vocabulaire visible.
+
+Toute modification de l'espace chantier doit respecter les deux references. En cas de conflit :
+
+1. la doctrine produit prime sur la composition visuelle ;
+2. `AGP.png` prime sur les choix de presentation non specifies par la doctrine.
+
+Pour le premier slice, `AGP.png` est la reference visuelle normative du shell chantier et de la vue `Apercu`. Toute divergence doit etre explicitee avant implementation.
+
+La livraison du premier slice doit prouver que :
+
+- l'`Apercu` desktop reprend la structure et la hierarchie de la maquette ;
+- le mobile utilise les memes sections, libelles et priorites ;
+- les blocs absents de la maquette ne sont pas reintroduits sans justification ;
+- les autres vues ne sont pas simulees ;
+- les couleurs conservent le meme sens ;
+- les composants sont conformes a la hierarchie visuelle attendue, pas seulement proches dans l'esprit.
+
 ## 0. Workflow conducteur
 
 L'espace chantier ne doit pas seulement organiser des données. Il doit accompagner le parcours mental du conducteur.

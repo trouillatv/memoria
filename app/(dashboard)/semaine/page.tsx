@@ -58,6 +58,9 @@ import { TeamWeekGrid } from './TeamWeekGrid'
 import { TeamWeekGridClient } from './TeamWeekGridClient'
 import { ViewModeToggle } from './ViewModeToggle'
 import { parseViewMode } from './view-mode-storage'
+import { describeTemplate } from '@/lib/recurrence/describe'
+import type { DbInterventionTemplate } from '@/types/db'
+import type { RotationOption } from './planning-prefill'
 
 export const dynamic = 'force-dynamic'
 
@@ -234,6 +237,33 @@ async function fetchTeamMemberCounts(orgId: string | null): Promise<Map<string, 
   return counts
 }
 
+async function fetchRotationOptions(missions: MissionOption[]): Promise<RotationOption[]> {
+  if (missions.length === 0) return []
+  const missionById = new Map(missions.map((m) => [m.id, m]))
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('intervention_templates')
+    .select('*')
+    .in('mission_id', missions.map((m) => m.id))
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+
+  return ((data ?? []) as DbInterventionTemplate[]).flatMap((template) => {
+    const mission = missionById.get(template.mission_id)
+    if (!mission) return []
+    return [{
+      id: template.id,
+      missionId: mission.id,
+      missionName: mission.name,
+      siteId: mission.siteId,
+      title: template.title,
+      label: describeTemplate(template),
+    }]
+  })
+}
+
 export default async function SemainePage({ searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
@@ -262,6 +292,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
       // Niveau 1 : signaux opérationnels (standing) par site — vue site uniquement.
       view === 'site' ? getWeekOperationalSignals(range) : Promise.resolve<SiteWeekSignals[]>([]),
     ])
+  const rotationOptions = await fetchRotationOptions(missionOptions).catch(() => [])
 
   // Regroupement par site (conflits résolus, fragilité d'abord) — filtrage par
   // site fait ici, jamais un collect par cellule.
@@ -457,6 +488,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
             missions={missionOptions}
             sites={siteOptions}
             teams={teamOptions}
+            rotations={rotationOptions}
             defaultDate={range.weekStart > todayIso ? range.weekStart : todayIso}
             initialSiteId={initialSiteId}
           />

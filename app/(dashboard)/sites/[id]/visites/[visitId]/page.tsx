@@ -274,7 +274,7 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
               <p className="mb-3 text-xs text-muted-foreground">Photos, vocal, video et compte rendu.</p>
               <VisitShareButton reportId={visit.id} siteName={identity.name} />
             </div>
-            <ActionTile href={`/m/visite/${visit.id}/pdf`} icon={<FileDown className="h-4 w-4" />} title="Telecharger le CR" />
+            <ActionTile href={`/m/visite/${visit.id}/pdf`} icon={<FileDown className="h-4 w-4" />} title="Telecharger le CR" newTab />
             <ActionTile href={`/sites/${id}/actions`} icon={<ListTodo className="h-4 w-4" />} title="Creer une action" />
             <ActionTile href={`/sites/${id}/reserves`} icon={<ClipboardCheck className="h-4 w-4" />} title="Creer une reserve" />
           </div>
@@ -354,9 +354,14 @@ function SourceList({ title, items, icon, muted = false }: { title: string; item
   )
 }
 
-function ActionTile({ href, icon, title }: { href: string; icon: React.ReactNode; title: string }) {
+function ActionTile({ href, icon, title, newTab = false }: { href: string; icon: React.ReactNode; title: string; newTab?: boolean }) {
   return (
-    <Link href={href} className="flex min-h-28 flex-col justify-between rounded-xl border p-3 text-sm font-semibold hover:bg-muted/50">
+    <Link
+      href={href}
+      target={newTab ? '_blank' : undefined}
+      rel={newTab ? 'noopener noreferrer' : undefined}
+      className="flex min-h-28 flex-col justify-between rounded-xl border p-3 text-sm font-semibold hover:bg-muted/50"
+    >
       <span className="flex items-center gap-2">{icon}{title}</span>
       <span className="text-xs font-normal text-muted-foreground">Ouvrir</span>
     </Link>

@@ -7,7 +7,9 @@ import { describe, it, expect } from 'vitest'
 import {
   pickInitialMissionId,
   mergeMissionOptions,
+  visibleRotationOptions,
   type PrefillMission,
+  type RotationOption,
 } from '@/app/(dashboard)/semaine/planning-prefill'
 
 const m = (id: string, name: string, siteId: string, contractName = 'Contrat'): PrefillMission => ({
@@ -16,6 +18,21 @@ const m = (id: string, name: string, siteId: string, contractName = 'Contrat'): 
 
 const POINTIERE = 'site-pointiere'
 const AUTRE = 'site-autre'
+
+const r = (
+  id: string,
+  missionId: string,
+  missionName: string,
+  siteId: string,
+  label = 'Toutes les semaines',
+): RotationOption => ({
+  id,
+  missionId,
+  missionName,
+  siteId,
+  title: `Roulement ${id}`,
+  label,
+})
 
 describe('pickInitialMissionId — contexte chantier', () => {
   it('sans contexte → aucun préremplissage', () => {
@@ -70,5 +87,32 @@ describe('mergeMissionOptions — mission créée inline visible immédiatement'
 
   it('rien créé inline → options serveur telles quelles', () => {
     expect(mergeMissionOptions(server, [])).toEqual(server)
+  })
+})
+
+describe('visibleRotationOptions — roulements visibles dans le planning de site', () => {
+  it('depuis une fiche chantier sans mission choisie, affiche les roulements actifs du chantier', () => {
+    const rotations = [
+      r('r1', 'm-vitres', 'Vitres', POINTIERE),
+      r('r2', 'm-sol', 'Entretien sol', POINTIERE),
+      r('r3', 'm-autre', 'Autre site', AUTRE),
+    ]
+
+    expect(visibleRotationOptions(rotations, null, POINTIERE).map((x) => x.id)).toEqual(['r2', 'r1'])
+  })
+
+  it('quand une mission est choisie, affiche les roulements de son chantier', () => {
+    const mission = m('m-vitres', 'Vitres', POINTIERE)
+    const rotations = [
+      r('r1', 'm-vitres', 'Vitres', POINTIERE),
+      r('r2', 'm-sol', 'Entretien sol', POINTIERE),
+      r('r3', 'm-autre', 'Autre site', AUTRE),
+    ]
+
+    expect(visibleRotationOptions(rotations, mission, undefined).map((x) => x.id)).toEqual(['r2', 'r1'])
+  })
+
+  it('sans chantier résolu, ne montre aucun roulement', () => {
+    expect(visibleRotationOptions([r('r1', 'm1', 'Mission', POINTIERE)], null, undefined)).toEqual([])
   })
 })

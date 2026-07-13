@@ -18,7 +18,12 @@ import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
 import { createMissionAction } from '../missions/actions'
-import { pickInitialMissionId, mergeMissionOptions } from './planning-prefill'
+import {
+  pickInitialMissionId,
+  mergeMissionOptions,
+  visibleRotationOptions,
+  type RotationOption,
+} from './planning-prefill'
 import { siteLabel } from '@/lib/labels/site-label'
 
 export interface MissionOption {
@@ -60,6 +65,7 @@ interface Props {
   missions: MissionOption[]
   sites: SiteOption[]
   teams: TeamOption[]
+  rotations: RotationOption[]
   /** yyyy-mm-dd UTC — date par défaut (typiquement le lundi de la semaine vue). */
   defaultDate: string
   /** Contexte chantier (PR 1) : arrivée depuis une fiche chantier
@@ -80,7 +86,7 @@ interface Props {
 const INHERIT = '__inherit__'
 const UNASSIGNED = '__unassigned__'
 
-export function CreateInterventionDialog({ missions: missionsFromServer, sites, teams, defaultDate, initialSiteId, open: openProp, onOpenChange }: Props) {
+export function CreateInterventionDialog({ missions: missionsFromServer, sites, teams, rotations, defaultDate, initialSiteId, open: openProp, onOpenChange }: Props) {
   const router = useRouter()
   // PR 2 (lot Y) : les missions créées inline sont visibles et sélectionnées
   // IMMÉDIATEMENT — la version serveur reprend la main au refresh (dédup).
@@ -180,6 +186,7 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   }, [teams])
 
   const selectedMission = missions.find((m) => m.id === missionId) ?? null
+  const visibleRotations = visibleRotationOptions(rotations, selectedMission, initialSiteId)
   const defaultTeamName = selectedMission?.defaultTeamId
     ? (teams.find((t) => t.id === selectedMission.defaultTeamId)?.name ?? 'Équipe par défaut')
     : null
@@ -357,6 +364,28 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
               </button>
             )}
           </div>
+
+          {visibleRotations.length > 0 && (
+            <section className="rounded-md border bg-sky-50/50 p-3 text-xs text-sky-950 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-100">
+              <p className="font-medium">Roulements disponibles sur ce chantier</p>
+              <ul className="mt-2 space-y-1.5">
+                {visibleRotations.slice(0, 6).map((rotation) => (
+                  <li key={rotation.id} className="rounded-md bg-background/80 px-2 py-1.5">
+                    <span className="font-medium">{rotation.missionName}</span>
+                    <span className="text-muted-foreground"> · {rotation.label}</span>
+                  </li>
+                ))}
+              </ul>
+              {visibleRotations.length > 6 && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  +{visibleRotations.length - 6} autre{visibleRotations.length - 6 > 1 ? 's' : ''} roulement{visibleRotations.length - 6 > 1 ? 's' : ''}
+                </p>
+              )}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Pour modifier un roulement complet, passe par Missions.
+              </p>
+            </section>
+          )}
 
           <div className="space-y-1.5">
             <label htmlFor="schedule-date" className="text-xs font-medium text-muted-foreground">

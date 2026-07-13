@@ -6,7 +6,6 @@ import type { SiteMemoryMeta } from '@/lib/db/site-cockpit'
 import { salienceOf } from '@/lib/perception/salience'
 import { opacityOf, ageDaysSince } from '@/lib/perception/fading'
 import {
-  gapHeightPx,
   silenceLabel,
   shouldRenderSilenceMarker,
 } from '@/lib/perception/gaps'
@@ -79,7 +78,7 @@ const TYPE_BADGE_LABEL: Record<SiteMemoryEvent['type'], string> = {
   intervention: 'Note d’intervention',
   photo: 'Photo',
   anomaly: 'Signalement',
-  note: 'Note de site',
+  note: 'Note de chantier',
   a_savoir: 'À savoir',
   access: 'Accès',
   report: 'Compte-rendu',
@@ -149,7 +148,7 @@ export function TraceStream({ events, meta }: Props) {
     }
     return (
       <p className="text-sm text-muted-foreground italic">
-        Le lieu commence à se documenter.
+        Le chantier commence à se documenter.
       </p>
     )
   }
