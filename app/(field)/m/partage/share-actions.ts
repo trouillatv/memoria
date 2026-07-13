@@ -336,9 +336,22 @@ export interface ShareTargetOption {
   at: string
   /** Combien d'éléments cet objet porte déjà : c'est ce qui le rend reconnaissable. */
   items: number
+  /** Encore ouverte (pas de fin) — elle passe DEVANT tout le reste. */
+  open: boolean
 }
 
-/** Les visites récentes du chantier — celles qu'on peut encore enrichir. */
+/**
+ * Les visites du chantier qu'on peut enrichir — **les ouvertes d'abord**.
+ *
+ * Le partage doit TOUJOURS privilégier le rattachement à un objet existant
+ * plutôt que d'en créer un nouveau : sans ça, cinq partages font cinq visites,
+ * et la mémoire du chantier se fracture en confettis.
+ *
+ * ⚠️ La colonne s'appelle `visit_motive`, pas `motive`. Demander `motive` faisait
+ * échouer la requête EN SILENCE (data = null) : aucune visite n'était proposée,
+ * et l'écran ne montrait que « Nouvelle visite ». Un bug qui se déguisait en
+ * comportement normal.
+ */
 export async function listRecentVisitsAction(siteId: string): Promise<ShareTargetOption[]> {
   const auth = await requireFieldAgent()
   if (!auth.ok) return []
@@ -347,20 +360,28 @@ export async function listRecentVisitsAction(siteId: string): Promise<ShareTarge
   if (!owned.allowed) return []
 
   const db = createAdminClient()
-  const { data } = await db
+  const { data, error } = await db
     .from('site_reports')
-    .select('id, title, motive, started_at, created_at')
+    .select('id, title, objective, visit_motive, started_at, ended_at, created_at')
     .eq('site_id', siteId)
     .not('origin', 'is', null) // une VISITE (une réunion a origin null)
     .is('deleted_at', null)
     .order('started_at', { ascending: false, nullsFirst: false })
-    .limit(6)
+    .limit(10)
+
+  // Un échec de requête ne doit JAMAIS se déguiser en « aucune visite ».
+  if (error) {
+    console.error('[partage] listRecentVisits', error.message)
+    return []
+  }
 
   const rows = (data ?? []) as Array<{
     id: string
     title: string | null
-    motive: string | null
+    objective: string | null
+    visit_motive: string | null
     started_at: string | null
+    ended_at: string | null
     created_at: string
   }>
   if (rows.length === 0) return []
@@ -376,12 +397,25 @@ export async function listRecentVisitsAction(siteId: string): Promise<ShareTarge
     counts.set(c.report_id, (counts.get(c.report_id) ?? 0) + 1)
   }
 
-  return rows.map((r) => ({
+  const options = rows.map((r) => ({
     id: r.id,
-    title: r.title?.trim() || r.motive?.trim() || 'Visite',
+    title: r.title?.trim() || r.objective?.trim() || MOTIVE_FR[r.visit_motive ?? ''] || 'Visite',
     at: r.started_at ?? r.created_at,
     items: counts.get(r.id) ?? 0,
+    open: r.ended_at === null,
   }))
+
+  // Une visite EN COURS passe devant : c'est presque toujours celle qu'il vise.
+  return options.sort((a, b) => (a.open === b.open ? 0 : a.open ? -1 : 1)).slice(0, 6)
+}
+
+/** Le motif d'une visite, dit en français. */
+const MOTIVE_FR: Record<string, string> = {
+  premiere: 'Première visite',
+  controle: 'Contrôle',
+  suivi: 'Suivi',
+  reception: 'Réception',
+  incident: 'Incident',
 }
 
 /** Les réunions récentes du chantier. */
@@ -395,14 +429,19 @@ export async function listRecentMeetingsAction(siteId: string): Promise<ShareTar
   const db = createAdminClient()
   const { data } = await db
     .from('site_reports')
-    .select('id, title, created_at')
+    .select('id, title, status, created_at')
     .eq('site_id', siteId)
     .is('origin', null) // une RÉUNION
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(6)
 
-  const rows = (data ?? []) as Array<{ id: string; title: string | null; created_at: string }>
+  const rows = (data ?? []) as Array<{
+    id: string
+    title: string | null
+    status: string | null
+    created_at: string
+  }>
   if (rows.length === 0) return []
 
   const { data: atts } = await db
@@ -420,6 +459,8 @@ export async function listRecentMeetingsAction(siteId: string): Promise<ShareTar
     title: r.title?.trim() || 'Réunion',
     at: r.created_at,
     items: counts.get(r.id) ?? 0,
+    // Une réunion encore en brouillon n'est pas finalisée : on peut l'enrichir.
+    open: r.status === 'draft',
   }))
 }
 

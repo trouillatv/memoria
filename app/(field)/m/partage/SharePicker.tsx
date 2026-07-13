@@ -182,7 +182,9 @@ export function SharePicker({
         <header className="space-y-1">
           <h1 className="text-lg font-semibold leading-tight">{lotLabel}</h1>
           <p className="text-sm text-muted-foreground">
-            {targets.length > 0 ? `Dans quelle ${mot} ?` : `Créer une ${mot} ?`}
+            {targets.length > 0
+              ? `Dans quelle ${mot} ?`
+              : `Aucune ${mot} sur ce chantier — on en ouvre une ?`}
           </p>
         </header>
 
@@ -196,8 +198,16 @@ export function SharePicker({
                 className="flex w-full items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3.5 text-left transition-colors hover:bg-muted/50 disabled:opacity-60"
               >
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">
-                    {whenFr(t.at)} — {t.title}
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate font-medium">
+                      {whenFr(t.at)} — {t.title}
+                    </span>
+                    {/* Une visite EN COURS est presque toujours celle qu'il vise. */}
+                    {t.open && (
+                      <span className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+                        en cours
+                      </span>
+                    )}
                   </span>
                   {t.items > 0 && (
                     <span className="block text-xs text-muted-foreground">
