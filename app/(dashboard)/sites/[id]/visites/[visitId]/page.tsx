@@ -1,32 +1,59 @@
-import { redirect, notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, StickyNote, ListTodo, ClipboardCheck, Camera, Mic, Clock, CheckCircle2, FileDown, Images } from 'lucide-react'
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  ClipboardCheck,
+  FileDown,
+  Home,
+  Images,
+  ListTodo,
+  Mic,
+  Share2,
+  StickyNote,
+  Video,
+  X,
+} from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { gatherVisitDebriefContext } from '@/lib/db/visits'
-import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
+import { listVisitCaptures } from '@/lib/db/visit-captures'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
-import { VisitDebriefPanel } from './VisitDebriefPanel'
-import { CapturedKnowledgePanel } from './CapturedKnowledgePanel'
-import { GenerateCrButton } from './GenerateCrButton'
 import { listCapturedKnowledgeBySource } from '@/lib/db/captured-knowledge'
 import { listVisitTouchedDossiers } from '@/lib/db/living-dossier'
+import {
+  buildVisitPreparationCopy,
+  buildVisitSourceItems,
+  describePreparationConfidence,
+  estimatePreparationQuality,
+} from '@/lib/visits/debrief-preparation'
+import { VisitShareButton } from '@/app/(field)/m/visite/[reportId]/VisitShareButton'
+import { VisitDebriefPanel } from './VisitDebriefPanel'
+import { CapturedKnowledgePanel } from './CapturedKnowledgePanel'
 
 export const dynamic = 'force-dynamic'
 
-const ORIGIN_LABEL: Record<string, string> = { planned: 'Planifiée', spontaneous: 'Spontanée', qr: 'QR', gps: 'GPS' }
-const STATE_FR: Record<string, string> = { bloqué: 'Bloqué', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
+const ORIGIN_LABEL: Record<string, string> = { planned: 'Planifiee', spontaneous: 'Spontanee', qr: 'QR', gps: 'GPS' }
+const STATE_FR: Record<string, string> = { 'bloqué': 'Bloque', en_attente: 'En attente', dormant: 'En sommeil', ouvert: 'Ouvert', clos: 'Clos' }
 const STATE_CLS: Record<string, string> = {
-  bloqué: 'bg-rose-100 text-rose-700', en_attente: 'bg-amber-100 text-amber-800',
-  dormant: 'bg-slate-100 text-slate-600', ouvert: 'bg-sky-100 text-sky-700', clos: 'bg-emerald-100 text-emerald-700',
+  'bloqué': 'bg-rose-100 text-rose-700',
+  en_attente: 'bg-amber-100 text-amber-800',
+  dormant: 'bg-slate-100 text-slate-600',
+  ouvert: 'bg-sky-100 text-sky-700',
+  clos: 'bg-emerald-100 text-emerald-700',
 }
-// Bilan de la liste « à vérifier » — mêmes états que le mobile (mig 196).
 const WATCH_FR: Record<string, string> = {
-  verified: 'Vérifié', to_follow: 'À suivre', dismissed: 'Écarté', pending: 'Non traité',
+  verified: 'Verifie',
+  to_follow: 'A suivre',
+  dismissed: 'Ecarte',
+  pending: 'Non traite',
 }
 const WATCH_CLS: Record<string, string> = {
-  verified: 'bg-emerald-100 text-emerald-700', to_follow: 'bg-amber-100 text-amber-800',
-  dismissed: 'bg-slate-100 text-slate-500', pending: 'bg-muted text-muted-foreground',
+  verified: 'bg-emerald-100 text-emerald-700',
+  to_follow: 'bg-amber-100 text-amber-800',
+  dismissed: 'bg-slate-100 text-slate-500',
+  pending: 'bg-muted text-muted-foreground',
 }
 
 export default async function VisitDebriefPage({ params }: { params: Promise<{ id: string; visitId: string }> }) {
@@ -37,219 +64,301 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
   const { id, visitId } = await params
   const [identity, ctx] = await Promise.all([getSiteIdentity(id), gatherVisitDebriefContext(visitId)])
   if (!identity || !ctx || ctx.visit.site_id !== id) notFound()
+
   const { visit } = ctx
-  // Doctrine (audit/09 §Mémoire) : une visite possède UNE seule source de
-  // vérité — visit_capture. Le desktop PRÉSENTE la même donnée que le mobile,
-  // il ne la reconstruit plus par fenêtre temporelle.
   const [knowledge, touchedDossiers, capturesAll, watchlist] = await Promise.all([
     listCapturedKnowledgeBySource(visit.id).catch(() => []),
-    // Les dossiers (points suivis) touchés par cette visite, avec leur état
-    // actuel — lu du même moteur que la page point suivi et le brief.
     listVisitTouchedDossiers(visit.id).catch(() => []),
     listVisitCaptures(visit.id).catch(() => []),
     listWatchlist(visit.id).catch(() => []),
   ])
-  const captures = capturesAll.filter((c) => c.status !== 'discarded')
-  const previews = await getVisitCapturePreviewUrls(captures).catch(() => ({} as Record<string, { url: string; mime: string | null }>))
-  const photos = captures.filter((c) => c.kind === 'photo' || c.kind === 'video')
-  const vocals = captures.filter((c) => c.kind === 'vocal')
-  const capNotes = captures.filter((c) => c.kind === 'note' && c.body)
-  const capVerifs = captures.filter((c) => c.kind === 'verification')
+
+  const captures = capturesAll.filter((capture) => capture.status !== 'discarded')
+  const photos = captures.filter((capture) => capture.kind === 'photo')
+  const videos = captures.filter((capture) => capture.kind === 'video')
+  const vocals = captures.filter((capture) => capture.kind === 'vocal')
+  const capNotes = captures.filter((capture) => capture.kind === 'note' && capture.body)
+
+  const preparationInput = {
+    photos: photos.length,
+    videos: videos.length,
+    vocals: vocals.length,
+    notes: capNotes.length,
+  }
+  const preparationCopy = buildVisitPreparationCopy(preparationInput)
+  const sourceItems = buildVisitSourceItems(preparationInput)
+  const qualityLevel = estimatePreparationQuality(preparationInput)
+  const preparationConfidence = describePreparationConfidence(qualityLevel)
 
   const fr = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
-  const durMins = visit.started_at && visit.ended_at
-    ? Math.max(0, Math.round((new Date(visit.ended_at).getTime() - new Date(visit.started_at).getTime()) / 60000))
-    : null
-  const durLabel = durMins == null ? null : durMins < 60 ? `${durMins} min` : `${Math.floor(durMins / 60)} h ${durMins % 60} min`
+    iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'
 
   return (
-    <div className="max-w-3xl space-y-6 py-6">
+    <div className="mx-auto max-w-5xl space-y-6 py-6">
       <Link href={`/sites/${id}/visites`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Visites
       </Link>
 
-      <header className="space-y-1">
+      <header className="space-y-2">
         <p className="text-sm text-muted-foreground">{identity.name}</p>
-        <h1 className="text-2xl font-bold">Débrief de chantier</h1>
-        <p className="text-sm text-muted-foreground">
-          Déclenché par une visite · {fr(visit.started_at ?? visit.created_at)} · {ORIGIN_LABEL[visit.origin ?? ''] ?? 'Visite'}
-          {visit.ended_at ? '' : ' · en cours'}
-        </p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">Debrief de chantier</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Visite terminee - {fr(visit.started_at ?? visit.created_at)} - {ORIGIN_LABEL[visit.origin ?? ''] ?? 'Visite'}
+              {visit.ended_at ? '' : ' - en cours'}
+            </p>
+          </div>
+          <Link
+            href={`/sites/${id}`}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <Home className="h-4 w-4" /> Retour au chantier
+          </Link>
+        </div>
       </header>
 
-      {/* Ce que MemorIA a VU — la matière brute (visit_capture), la même que
-          le mobile. Photos en images, vocaux écoutables, notes réelles. */}
-      <section className="rounded-2xl border bg-card p-4 space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Ce que MemorIA a vu</h2>
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          {durLabel && <Stat icon={<Clock className="h-3.5 w-3.5" />} n={null} label={durLabel} />}
-          <Stat icon={<Camera className="h-3.5 w-3.5" />} n={photos.length} label="photo" />
-          <Stat icon={<Mic className="h-3.5 w-3.5" />} n={vocals.length} label="vocal" />
-          <Stat icon={<StickyNote className="h-3.5 w-3.5" />} n={capNotes.length} label="note" />
-          <Stat icon={<CheckCircle2 className="h-3.5 w-3.5" />} n={capVerifs.length} label="point vérifié" />
-          <Stat icon={<ClipboardCheck className="h-3.5 w-3.5" />} n={ctx.capturedReserves.length} label="réserve" />
-          <Stat icon={<ListTodo className="h-3.5 w-3.5" />} n={ctx.capturedActions.length} label="action" />
+      <nav className="grid gap-2 sm:grid-cols-4">
+        <StepPill number="1" label="Collecte" className="border-sky-200 bg-sky-50 text-sky-900" />
+        <StepPill number="2" label="Preparation" className="border-violet-200 bg-violet-50 text-violet-900" />
+        <StepPill number="3" label="Compte rendu" className="border-emerald-200 bg-emerald-50 text-emerald-900" />
+        <StepPill number="4" label="Retour chantier" className="border-orange-200 bg-orange-50 text-orange-900" />
+      </nav>
+
+      <StepCard
+        number="1"
+        title="Collecte"
+        kicker="Ce qui a ete enregistre"
+        tone="border-sky-200 bg-sky-50/50"
+      >
+        <div className="grid gap-3 sm:grid-cols-4">
+          <SummaryPill icon={<Camera className="h-4 w-4" />} label={`${photos.length} photo${photos.length > 1 ? 's' : ''}`} />
+          <SummaryPill icon={<Video className="h-4 w-4" />} label={`${videos.length} video${videos.length > 1 ? 's' : ''}`} />
+          <SummaryPill icon={<Mic className="h-4 w-4" />} label={`${vocals.length} vocal${vocals.length > 1 ? 's' : ''}`} />
+          <SummaryPill icon={<StickyNote className="h-4 w-4" />} label={`${capNotes.length} note${capNotes.length > 1 ? 's' : ''}`} />
         </div>
 
-        {photos.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {photos.map((c) => {
-              const p = c.attachment_id ? previews[c.id] : null
-              if (!p) return null
-              return p.mime?.startsWith('video/') ? (
-                <video key={c.id} src={p.url} controls preload="metadata" className="h-24 w-full rounded-lg border object-cover" />
-              ) : (
-                <a key={c.id} href={p.url} target="_blank" rel="noreferrer" className="group relative block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={c.body ?? 'Photo de visite'} className="h-24 w-full rounded-lg border object-cover transition group-hover:opacity-90" />
-                </a>
-              )
-            })}
+        <div className="rounded-xl border bg-background p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Captures de la visite</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Les photos, vocaux, videos, notes et positions restent consultables dans l experience mobile.
+              </p>
+            </div>
+            <Link
+              href={`/m/visite/${visit.id}/recap`}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <Images className="h-4 w-4" /> Ouvrir la visite mobile
+            </Link>
+          </div>
+        </div>
+
+        {watchlist.length > 0 && (
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="text-sm font-semibold">Points verifies</h3>
+            <ul className="mt-2 space-y-1.5">
+              {watchlist.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                  <span className="min-w-0 truncate text-sm">{item.label}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${WATCH_CLS[item.state] ?? 'bg-muted text-muted-foreground'}`}>
+                    {WATCH_FR[item.state] ?? item.state}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </StepCard>
+
+      <StepCard
+        number="2"
+        title="Preparation du compte rendu"
+        kicker={preparationCopy.title}
+        tone="border-violet-200 bg-violet-50/50"
+      >
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="rounded-xl border bg-background p-4">
+            <p className="text-sm leading-relaxed">{preparationCopy.body}</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <SourceList title="MemorIA utilisera" items={sourceItems.used} icon="check" />
+              <SourceList title="Ne sera pas utilise" items={sourceItems.missing} icon="x" muted />
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="text-sm font-semibold">Sources disponibles</h3>
+            <p className="mt-3 inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-800">
+              {preparationConfidence.label}
+            </p>
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              {preparationConfidence.body}
+            </p>
+          </div>
+        </div>
+      </StepCard>
+
+      <StepCard
+        number="3"
+        title="Premiere version"
+        kicker="Relire puis valider"
+        tone="border-emerald-200 bg-emerald-50/50"
+      >
+        <VisitDebriefPanel
+          siteId={id}
+          reportId={visit.id}
+          openSubjects={ctx.openSubjects}
+          initial={{
+            objective: visit.objective ?? '',
+            outcome: visit.outcome,
+            resolution: visit.resolution,
+            targetSubjectId: visit.target_subject_id,
+          }}
+        />
+      </StepCard>
+
+      <StepCard
+        number="4"
+        title="Retour chantier"
+        kicker="Apres validation"
+        tone="border-orange-200 bg-orange-50/50"
+      >
+        {touchedDossiers.length > 0 && (
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="text-sm font-semibold">Dossiers touches par cette visite</h3>
+            <ul className="mt-2 space-y-1.5">
+              {touchedDossiers.map((dossier) => (
+                <li key={dossier.id} className="rounded-lg border px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={`/sites/${id}/subjects/${dossier.id}`} className="min-w-0 truncate text-sm font-medium hover:underline">
+                      {dossier.name}
+                    </Link>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATE_CLS[dossier.state] ?? 'bg-muted text-muted-foreground'}`}>
+                      {STATE_FR[dossier.state] ?? dossier.state}
+                    </span>
+                  </div>
+                  {dossier.cause && <p className="mt-0.5 text-[11px] text-muted-foreground">{dossier.cause}</p>}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {vocals.length > 0 && (
-          <ul className="space-y-2">
-            {vocals.map((c) => {
-              const p = c.attachment_id ? previews[c.id] : null
-              return (
-                <li key={c.id} className="rounded-lg bg-muted/50 px-3 py-2 space-y-1.5">
-                  {p && <audio src={p.url} controls preload="none" className="h-8 w-full" />}
-                  {c.body && <p className="text-sm text-muted-foreground">{c.body}</p>}
-                  {!p && !c.body && <p className="text-xs text-muted-foreground">Vocal en cours de transcription…</p>}
-                </li>
-              )
-            })}
-          </ul>
-        )}
+        <CapturedKnowledgePanel
+          siteId={id}
+          reportId={visit.id}
+          openSubjects={ctx.openSubjects}
+          initial={knowledge}
+        />
 
-        {capNotes.length > 0 && (
-          <ul className="space-y-1 text-sm">
-            {capNotes.map((c) => (
-              <li key={c.id} className="rounded-lg bg-muted/50 px-3 py-2">{c.body}</li>
-            ))}
-          </ul>
-        )}
+        <div className="rounded-xl border bg-background p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Debrief termine</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Le chantier a ete mis a jour. Que souhaitez-vous faire maintenant ?</p>
+            </div>
+            <Link
+              href={`/sites/${id}`}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+            >
+              <Home className="h-4 w-4" /> Retour au chantier
+            </Link>
+          </div>
 
-        {capVerifs.length > 0 && (
-          <ul className="space-y-1 text-sm">
-            {capVerifs.map((c) => (
-              <li key={c.id} className="flex items-start gap-2 rounded-lg bg-emerald-50/60 px-3 py-2 text-emerald-900">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                <span>{c.body ?? 'Point vérifié'}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Share2 className="h-4 w-4" /> Partager
+              </div>
+              <p className="mb-3 text-xs text-muted-foreground">Photos, vocal, video et compte rendu.</p>
+              <VisitShareButton reportId={visit.id} siteName={identity.name} />
+            </div>
+            <ActionTile href={`/m/visite/${visit.id}/pdf`} icon={<FileDown className="h-4 w-4" />} title="Telecharger le CR" />
+            <ActionTile href={`/sites/${id}/actions`} icon={<ListTodo className="h-4 w-4" />} title="Creer une action" />
+            <ActionTile href={`/sites/${id}/reserves`} icon={<ClipboardCheck className="h-4 w-4" />} title="Creer une reserve" />
+          </div>
 
-        {ctx.transcript && (
-          <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground line-clamp-4">{ctx.transcript}</p>
-        )}
-        {captures.length === 0 && !ctx.transcript && (
-          <p className="text-sm text-muted-foreground">Rien n’a encore été capturé pour cette visite.</p>
-        )}
-
-        <div className="flex flex-wrap gap-2 pt-1">
-          <a
-            href={`/m/visite/${visit.id}/pdf`}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
-          >
-            <FileDown className="h-3.5 w-3.5" /> Ouvrir le CR PDF
-          </a>
-          <Link
-            href={`/m/visite/${visit.id}/recap`}
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
-          >
-            <Images className="h-3.5 w-3.5" /> Voir toutes les captures
-          </Link>
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">Plus</summary>
+            <div className="mt-2">
+              <Link href={`/m/visite/${visit.id}/recap`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+                <Images className="h-4 w-4" /> Ouvrir la visite dans l experience mobile
+              </Link>
+            </div>
+          </details>
         </div>
-      </section>
-
-      {/* Ce qu'il fallait VÉRIFIER — la liste de contrôle de cette visite
-          (visit_watchlist), avec son bilan. Même donnée que le mobile. */}
-      {watchlist.length > 0 && (
-        <section className="rounded-2xl border bg-card p-4 space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Ce qu’il fallait vérifier</h2>
-          <ul className="space-y-1.5">
-            {watchlist.map((w) => (
-              <li key={w.id} className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2">
-                <span className="min-w-0 truncate text-sm">{w.label}</span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${WATCH_CLS[w.state] ?? 'bg-muted text-muted-foreground'}`}>
-                  {WATCH_FR[w.state] ?? w.state}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Dossiers touchés — « tu as vérifié ces points : voici où en sont leurs
-          dossiers » (état lu du moteur unique). La visite parle aux dossiers. */}
-      {touchedDossiers.length > 0 && (
-        <section className="rounded-2xl border bg-card p-4 space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Dossiers touchés par cette visite
-          </h2>
-          <ul className="space-y-1.5">
-            {touchedDossiers.map((d) => (
-              <li key={d.id} className="rounded-lg border bg-background px-3 py-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Link href={`/sites/${id}/subjects/${d.id}`} className="min-w-0 truncate text-sm font-medium hover:underline">
-                    {d.name}
-                  </Link>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATE_CLS[d.state] ?? 'bg-muted text-muted-foreground'}`}>
-                    {STATE_FR[d.state] ?? d.state}
-                  </span>
-                </div>
-                {d.cause && <p className="mt-0.5 text-[11px] text-muted-foreground">{d.cause}</p>}
-                {(d.openActions > 0 || d.openReserves > 0) && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {[
-                      d.openActions ? `${d.openActions} action${d.openActions > 1 ? 's' : ''}` : null,
-                      d.openReserves ? `${d.openReserves} réserve${d.openReserves > 1 ? 's' : ''}` : null,
-                    ].filter(Boolean).join(' · ')} ouvert{d.openActions + d.openReserves > 1 ? 'es' : 'e'}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* À retenir — capter la connaissance utile (promesses, risques, pièges…),
-          reliée à un point pour ressortir plus tard. Saisie manuelle (l'IA viendra). */}
-      <CapturedKnowledgePanel
-        siteId={id}
-        reportId={visit.id}
-        openSubjects={ctx.openSubjects}
-        initial={knowledge}
-      />
-
-      {/* Débrief IA : propose, l'humain valide. Rien n'est écrit sans validation. */}
-      <VisitDebriefPanel
-        siteId={id}
-        reportId={visit.id}
-        openSubjects={ctx.openSubjects}
-        initial={{
-          objective: visit.objective ?? '',
-          outcome: visit.outcome,
-          resolution: visit.resolution,
-          targetSubjectId: visit.target_subject_id,
-        }}
-      />
-
-      {/* Le CR : projection du Débrief validé (une sortie, pas le cœur). */}
-      <GenerateCrButton reportId={visit.id} />
+      </StepCard>
     </div>
   )
 }
 
-function Stat({ icon, n, label }: { icon: React.ReactNode; n: number | null; label: string }) {
+function StepPill({ number, label, className }: { number: string; label: string; className: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
+    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium ${className}`}>
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-xs font-bold">{number}</span>
+      {label}
+    </div>
+  )
+}
+
+function StepCard({
+  number,
+  title,
+  kicker,
+  tone,
+  children,
+}: {
+  number: string
+  title: string
+  kicker: string
+  tone: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className={`space-y-4 rounded-2xl border p-4 ${tone}`}>
+      <div className="flex items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-background text-sm font-bold">{number}</span>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{kicker}</p>
+          <h2 className="text-lg font-semibold">{title}</h2>
+        </div>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function SummaryPill({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-sm font-medium">
       {icon}
-      {n == null ? label : `${n} ${label}${n > 1 ? 's' : ''}`}
-    </span>
+      {label}
+    </div>
+  )
+}
+
+function SourceList({ title, items, icon, muted = false }: { title: string; items: Array<{ label: string }>; icon: 'check' | 'x'; muted?: boolean }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <ul className="mt-2 space-y-1.5">
+        {items.map((item) => (
+          <li key={item.label} className={`flex items-center gap-2 text-sm ${muted ? 'text-muted-foreground' : ''}`}>
+            {icon === 'check' ? <Check className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-muted-foreground" />}
+            {item.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ActionTile({ href, icon, title }: { href: string; icon: React.ReactNode; title: string }) {
+  return (
+    <Link href={href} className="flex min-h-28 flex-col justify-between rounded-xl border p-3 text-sm font-semibold hover:bg-muted/50">
+      <span className="flex items-center gap-2">{icon}{title}</span>
+      <span className="text-xs font-normal text-muted-foreground">Ouvrir</span>
+    </Link>
   )
 }
