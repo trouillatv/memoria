@@ -12,6 +12,25 @@ Les vues principales `Aperçu`, `Travail`, `Chronologie`, `Planning`, `Documents
 
 Cette distinction doit guider le desktop et le mobile. Le mobile condense les vues ; le desktop les enrichit. Les deux surfaces partagent le même modèle.
 
+## Principe fondateur
+
+Le chantier n'est pas une collection de données.
+
+C'est un récit vivant.
+
+Chaque visite, réunion, décision, action, réserve ou document ajoute un nouveau chapitre. MemorIA doit aider le conducteur à comprendre ce récit, à y contribuer, puis à le transmettre.
+
+Les vues ne racontent pas toutes la même histoire :
+
+- `Aperçu` raconte le présent ;
+- `Travail` raconte ce qu'il reste à accomplir ;
+- `Chronologie` raconte le passé ;
+- `Planning` raconte le futur ;
+- `Documents & preuves` raconte les preuves ;
+- `Mémoire` raconte ce qui doit survivre au temps.
+
+Cette idée prime sur la structure technique. Quand deux organisations sont possibles, choisir celle qui raconte le mieux le chantier pour le conducteur.
+
 ## 0. Workflow conducteur
 
 L'espace chantier ne doit pas seulement organiser des données. Il doit accompagner le parcours mental du conducteur.
@@ -43,6 +62,26 @@ Conséquence :
 ### Chantier
 
 Le chantier est un agrégat métier. Il possède une identité, un état, des acteurs, des événements, des preuves et une mémoire.
+
+La chaîne métier principale est la suivante :
+
+```text
+Visite / réunion / intervention
+↓ produit
+Observation
+↓ qualifie
+Réserve / blocage / décision
+↓ déclenche
+Action
+↓ planifie ou demande
+Intervention / correction
+↓ génère
+Preuve
+↓ clôture ou confirme
+Mémoire
+```
+
+Cette chaîne n'est pas le seul chemin possible, mais elle doit servir de référence. Elle explique pourquoi MemorIA relie les objets au lieu de seulement les stocker.
 
 ```text
 Chantier
@@ -156,6 +195,14 @@ La réserve reste un objet qualité. Le blocage reste un objet opérationnel pou
 
 La navigation principale de l'espace chantier doit rester limitée aux vues de travail permanentes.
 
+Une vue ne possède jamais de données. Elle présente les objets métier sous un angle particulier.
+
+Conséquence :
+
+- une visite reste une visite, qu'elle apparaisse dans `Aperçu`, `Chronologie`, `Planning` ou `Documents & preuves` ;
+- une photo reste une preuve, qu'elle apparaisse dans `Documents & preuves`, une fiche visite ou une fiche réserve ;
+- une action reste une action, qu'elle soit visible dans `Aperçu`, `Travail`, `Chronologie` ou `Recherche`.
+
 ```text
 Aperçu
 Travail
@@ -245,6 +292,8 @@ Actions permises :
 - transformer une observation en action.
 
 `Travail` est la vue d'exécution. Elle ne remplace pas `Aperçu` : elle développe ce que l'aperçu signale.
+
+Le nom `Travail` désigne ici la notion produit. Le libellé d'interface pourra être testé avec les utilisateurs : `À faire`, `Suivi` ou `Pilotage` peuvent être plus naturels selon le contexte. La décision de nommage ne doit pas changer le rôle de la vue.
 
 ### Chronologie
 
@@ -458,7 +507,7 @@ Une fiche canonique contient au minimum :
 - relations avec les autres objets ;
 - commentaires ou notes ;
 - actions possibles ;
-- URL stable.
+- lien stable.
 
 Exemples :
 
@@ -567,29 +616,7 @@ Exemples :
 - cliquer sur une équipe dans `Organisation` ouvre l'équipe ;
 - cliquer sur `Frise` change le mode d'affichage de `Chronologie`, pas de section métier.
 
-## 7. URLs canoniques
-
-Les URLs visibles peuvent évoluer, mais le modèle cible est le suivant :
-
-```text
-/chantiers/:id
-/chantiers/:id/travail
-/chantiers/:id/chronologie
-/chantiers/:id/planning
-/chantiers/:id/documents
-/chantiers/:id/memoire
-/chantiers/:id/organisation
-
-/chantiers/:id/visites/:visitId
-/chantiers/:id/reunions/:meetingId
-/chantiers/:id/actions/:actionId
-/chantiers/:id/documents/:documentId
-/chantiers/:id/equipes/:teamId
-```
-
-Le modèle interne peut conserver `site` tant que nécessaire. L'interface doit parler de `chantier`.
-
-## 8. Matrice des vues
+## 7. Matrice des vues
 
 | Vue | Question | Objets affichés | Actions |
 | --- | --- | --- | --- |
@@ -607,7 +634,7 @@ Outils et configuration :
 | Recherche | Retrouver une information dans tout le chantier | tous les objets du chantier | rechercher, ouvrir |
 | Organisation | Configurer la structure du chantier | identité, zones, équipes, missions, cycles, paramètres | configurer |
 
-## 9. Actions transverses
+## 8. Actions transverses
 
 Les actions ne doivent pas être confondues avec les vues.
 
@@ -629,10 +656,10 @@ Actions d'ajout :
 
 Ces actions peuvent apparaître dans plusieurs vues, mais leur comportement reste le même.
 
-## 10. Règles de conception
+## 9. Règles de conception
 
 1. Un objet existe une seule fois.
-   Il peut apparaître dans plusieurs vues, mais conserve la même fiche et la même URL canonique.
+   Il peut apparaître dans plusieurs vues, mais conserve la même fiche et le même lien stable.
 
 2. Une vue répond à une question utilisateur.
    Elle ne correspond pas à une catégorie technique.
@@ -665,13 +692,31 @@ Ces actions peuvent apparaître dans plusieurs vues, mais leur comportement rest
 10. Les relations entre objets sont navigables.
     Une action doit pouvoir remonter à sa décision, sa visite, sa preuve ou sa réserve d'origine.
 
+## 10. Principes d'interface
+
+Le conducteur ne navigue jamais pour comprendre l'application. Il navigue pour comprendre son chantier.
+
+L'interface doit donc :
+
+- réduire le nombre de décisions ;
+- raconter une histoire ;
+- montrer les urgences avant les archives ;
+- privilégier les actions aux statistiques ;
+- éviter les doublons ;
+- ouvrir les mêmes fiches quel que soit le point d'entrée ;
+- distinguer clairement contenu réel, résumé, filtre, lien et action ;
+- garder le vocabulaire métier visible : chantier, visite, réunion, preuve, action, mémoire ;
+- utiliser la couleur pour porter un état ou une famille stable, jamais seulement pour décorer.
+
+Une carte répond à une question. Elle ne doit pas servir à la fois de KPI, de menu, de filtre, de résumé et d'action.
+
 ## 11. Checklist avant modification
 
 Avant toute modification de l'espace chantier, la PR doit répondre clairement à ces questions :
 
 1. Est-ce un objet, une vue, une action ou un mode d'affichage ?
 2. Quelle question utilisateur résout cet écran ou ce composant ?
-3. Quelle est l'URL canonique de l'objet ouvert ?
+3. Quelle fiche canonique est ouverte, créée ou modifiée ?
 4. Cette information existe-t-elle déjà ailleurs ?
 5. Mobile et desktop utilisent-ils le même vocabulaire ?
 6. La couleur porte-t-elle un état ou sert-elle seulement à décorer ?
