@@ -10,6 +10,10 @@
 - Planning cyclique (PlanningTemplate→Cycle→Occurrence) : optimisation métier, pas
   une condition d'adoption — Guillaume a commencé SANS. À concevoir depuis son
   usage réel, chantier séparé (l'état actuel/cible est documenté dans 01-model.md).
+  **Après la vague : quelques semaines d'usage réel, puis un document « Planning
+  v2 — ce que Guillaume a réellement fait » (jamais « ce que nous imaginons ») —
+  application directe de la doctrine « l'usage observé, jamais une hypothèse
+  seule ».**
 - Import WhatsApp groupé, analyse multi-documents AO : chantiers séparés, audits propres.
 - Restauration exposée (« Récemment retirés ») : le soft-delete la permet, on ne la
   construit pas en V1.
@@ -40,9 +44,12 @@
 - Critère : pertes d'information n°1-5 de 05-mobile-desktop.md ✓.
 
 ### Lot S — Gardes d'appartenance sur les ÉCRITURES
-- `tenantOwns(ctx, table, id)` en tête de chaque server action mutante (liste
-  exacte dans 04-rls.md §IDOR : intervention-actions, création intervention/mission,
-  équipes, companies, visites/rapports par site_id). Admin = super-admin exempté.
+- **Point d'entrée unique** (précision Vincent) : un wrapper `securedAction()`
+  (auth → rôle → organisation → handler) plutôt que `requireManager()` +
+  `tenantOwns()` répétés — une nouvelle server action ne peut pas « oublier »
+  la garde. Les actions existantes (liste exacte dans 04-rls.md §IDOR :
+  intervention-actions, création intervention/mission, équipes, companies,
+  visites/rapports par site_id) migrent dessus. Admin = super-admin exempté.
 - Fait AVANT les lots D/P pour que toute nouvelle action naisse avec la garde.
 - Tests : unitaires sur les fonctions pures + refus cross-org.
 - Critère : « Sécurité » ✓.
@@ -52,6 +59,9 @@
   (06-client-site.md §B : listMeetingSitesAction, m/chantiers, meetings/page,
   missions/page, litige) puis rendu unifié `{site} — {client}` dans les 13
   sélecteurs/listes inventoriés. Badge client sur la fiche mobile.
+- **Ne pas surcorriger** (précision Vincent) : l'invariant est « le client est
+  toujours visible », pas un rendu unique — sélecteur = « Site — Client »,
+  fiche = titre + badge client. La présentation s'adapte au contexte.
 - Dédup client dans `createClientAction` (ilike org-scopé existant) — warning non
   bloquant.
 - Étendre la détection de doublon site (trigram existant) à la création rapide
@@ -78,6 +88,10 @@ Doctrine 03-delete-strategy.md. Un seul verbe UI, mécanique interne par objet :
 - Chaque geste : confirmation avec conséquences (« … et ses 12 captures seront
   retirées de vos écrans. Les preuves restent conservées. »), garde rôle + org
   (héritée du Lot S), revalidation (règle du Lot R).
+- **« Retirer » n'est jamais ambigu** (précision Vincent) : la conséquence est
+  toujours dite selon l'objet — retiré des vues courantes / archivé / annulé /
+  preuves conservées. L'utilisateur ignore la mécanique, jamais le devenir de
+  ses données.
 - Critères : « Visite », « Réunion », « Intervention », « Client » ✓.
 
 ### Lot P — Fin des prérequis cachés
