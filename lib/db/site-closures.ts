@@ -70,6 +70,44 @@ export async function listClosuresBySite(siteId: string): Promise<SiteClosure[]>
   return (data ?? []).map(rowToClosure)
 }
 
+/**
+ * PL3a — fermetures ACTIVES de PLUSIEURS chantiers, chevauchant une fenêtre.
+ * Une seule requête pour toute la grille de la semaine (jamais N requêtes).
+ *
+ * Chevauchement : une fermeture concerne la fenêtre dès que
+ * `starts_on <= to` ET `ends_on >= from` — une fermeture annuelle
+ * (24 déc → 2 janv) est donc bien retenue pour la semaine du 28 décembre.
+ *
+ * Sortie indexée par `site_id` : prête pour `detectClosureConflicts`.
+ */
+export async function listActiveClosuresForSites(
+  siteIds: string[],
+  from: string,
+  to: string,
+): Promise<Record<string, SiteClosure[]>> {
+  if (siteIds.length === 0) return {}
+
+  const { data, error } = await createAdminClient()
+    .from('site_closures')
+    .select(SELECT)
+    .in('site_id', siteIds)
+    .is('deleted_at', null)
+    .lte('starts_on', to)
+    .gte('ends_on', from)
+  if (error) {
+    // Migration 197 pas encore appliquée → aucun conflit, jamais un plantage.
+    if (isMissingTable(error)) return {}
+    throw new Error(error.message)
+  }
+
+  const out: Record<string, SiteClosure[]> = {}
+  for (const row of data ?? []) {
+    const closure = rowToClosure(row as Record<string, unknown>)
+    ;(out[closure.siteId] ??= []).push(closure)
+  }
+  return out
+}
+
 /** Une fermeture par id (garde d'appartenance : l'appelant vérifie le SITE). */
 export async function getClosure(id: string): Promise<SiteClosure | null> {
   const { data, error } = await createAdminClient()

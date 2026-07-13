@@ -31,6 +31,8 @@ import {
   type TeamRow,
 } from '@/lib/db/week-planning'
 import { isSystemMissionName } from '@/lib/db/system-missions'
+import { listActiveClosuresForSites } from '@/lib/db/site-closures'
+import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import {
@@ -273,6 +275,22 @@ export default async function SemainePage({ searchParams }: PageProps) {
     }
     if (Object.keys(nonEmpty).length > 0) daysBySite[s.siteId] = nonEmpty
   }
+
+  // PL3a — « site fermé, prestation prévue ». On CONSTATE : rien n'est déplacé,
+  // rien n'est annulé, aucun geste n'est proposé (ce sera PL3b). Le conflit est
+  // CALCULÉ à chaque lecture, jamais persisté (doctrine des signaux).
+  // Une seule requête pour toute la grille ; `{}` si la mig 197 n'est pas
+  // appliquée (dégradation gracieuse) → l'écran reste identique à avant.
+  const conflictsBySite = await (async () => {
+    if (view !== 'site' || siteRows.length === 0) return {}
+    const closuresBySite = await listActiveClosuresForSites(
+      siteRows.map((r) => r.site_id),
+      range.weekStart,
+      range.weekEnd,
+    ).catch(() => ({}))
+    return detectClosureConflicts({ rows: siteRows, closuresBySite })
+  })()
+
   const activeTeams = allTeams.filter((t) => t.active && !t.deleted_at)
   const teams = activeTeams.map((t) => ({ id: t.id, name: t.name, color: t.color }))
   const teamOptions = activeTeams.map((t) => ({
@@ -376,8 +394,8 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite}>
-            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} />
+          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite}>
+            <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { CalendarDays, MapPin, Users, ArrowRight } from 'lucide-react'
+import { CalendarDays, MapPin, Users, ArrowRight, CalendarOff } from 'lucide-react'
 import {
   formatInterventionTimeLabel,
   extractHHMM,
@@ -43,6 +43,9 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { TeamBadge } from '@/components/ui/team-badge'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
+import type { ClosureConflict } from '@/lib/planning/conflicts'
+import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
+import { frDayMonthLocal } from '@/lib/time/local-date'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
 import { MemorySignalLine } from '@/components/memory/MemorySignalBadge'
@@ -79,6 +82,9 @@ export interface CellDrawerProps {
   activeDragId?: string | null
   /** Signaux mémoire par site (Planning-1) — « mémoire du lieu » dans le drawer. */
   signalsBySite?: Record<string, MemorySignal[]>
+  /** PL3a — conflits « site fermé, prestation prévue » par site puis par jour.
+   *  OPTIONNEL : sans lui, l'aperçu est strictement identique à avant. */
+  conflictsBySite?: Record<string, Record<string, ClosureConflict>>
   /** Contenu du conteneur (grille client-rendered). */
   children: React.ReactNode
 }
@@ -114,6 +120,7 @@ export function CellDrawer({
   pendingMove,
   activeDragId,
   signalsBySite,
+  conflictsBySite,
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
@@ -141,6 +148,9 @@ export function CellDrawer({
   )
 
   const selected = selectedKey ? cellsIndex.get(selectedKey) ?? null : null
+  // PL3a — le conflit de la cellule ouverte (site × jour). `undefined` = pas de
+  // conflit : la section ne se rend pas du tout (silence positif).
+  const conflict = selected ? conflictsBySite?.[selected.siteId]?.[selected.date] : undefined
 
   // Cleanup : si rows change (revalidatePath après drop/reassign), reset si la
   // cell n'existe plus.
@@ -203,6 +213,33 @@ export function CellDrawer({
                     <MemorySignalLine key={`${s.kind}-${s.subjectId}`} signal={s} />
                   ))}
                 </ul>
+              </section>
+            ) : null}
+
+            {/* PL3a — « site fermé, prestation prévue ». On CONSTATE, on
+                n'agit pas : aucun geste ici (ce sera PL3b), et rien n'a été
+                modifié. Section sœur de « Mémoire du lieu » : même altitude
+                (site × jour), même silence positif. */}
+            {conflict ? (
+              <section
+                data-testid="drawer-closure-conflict"
+                className="rounded-md border border-rose-200 bg-rose-50/60 p-3"
+              >
+                <h4 className="mb-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-rose-700">
+                  <CalendarOff className="h-3.5 w-3.5" aria-hidden /> Conflit de planning
+                </h4>
+                <p className="text-sm text-rose-900">
+                  Le site est déclaré fermé{selected ? ` le ${frDayMonthLocal(selected.date)}` : ''}.
+                  <br />
+                  Motif&nbsp;: {CLOSURE_REASON_FR[conflict.closure.reasonKind].toLowerCase()}
+                  {conflict.closure.reason ? ` — ${conflict.closure.reason}` : ''}.
+                </p>
+                <p className="mt-1.5 text-[12px] text-rose-900/80">
+                  {conflict.expectedCount > 1
+                    ? `Ces ${conflict.expectedCount} interventions restent planifiées.`
+                    : 'Cette intervention reste planifiée.'}{' '}
+                  Aucune décision n’a encore été prise.
+                </p>
               </section>
             ) : null}
 
