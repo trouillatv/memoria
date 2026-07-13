@@ -10,8 +10,7 @@ import { useState, useEffect, useTransition, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Search, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2,
-  ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch,
-} from 'lucide-react'
+  ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen } from 'lucide-react'
 import { searchMemoryAction } from './search-action'
 import type { MemoryHit, MemoryHitType } from '@/lib/db/memory-search'
 import { HIT_LABEL_FR } from '@/lib/memory/search-grouping'
@@ -36,6 +35,7 @@ const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string 
   blocage: Ban,
   obligation: ClipboardCheck,
   subject: GitBranch,
+  document: BookOpen,
 }
 
 function formatDate(iso: string): string {
