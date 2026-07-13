@@ -1,26 +1,21 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import type { ComponentType, ReactNode } from 'react'
+import QRCode from 'qrcode'
 import {
   AlertTriangle,
   ArrowLeft,
-  BookText,
   Calendar,
   CalendarPlus,
   Clock,
-  Download,
-  FileSearch,
   Filter,
-  FolderOpen,
   History,
   Layers,
   ListTodo,
   MoreHorizontal,
-  QrCode,
   Search,
   ShieldAlert,
-  ShieldCheck,
-  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -39,6 +34,10 @@ import {
   type RecentActivityItem,
 } from '@/lib/db/site-cockpit'
 import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
+import { listDocumentsForTarget } from '@/lib/db/documents'
+import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
+import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
+import { listSubjectsBySite } from '@/lib/db/subjects'
 import { todayLocalIso } from '@/lib/time/local-date'
 import {
   buildOverviewAttention,
@@ -61,6 +60,11 @@ import { SiteAddMenu } from './SiteAddMenu'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { TogglePanel } from './TogglePanel'
+import {
+  SiteChronologyComposition,
+} from './SiteViewComposition'
+import { DocumentsWorkspace, type DocumentsQrState } from './views/documents/DocumentsWorkspace'
+import { MemoryWorkspace } from './views/memory/MemoryWorkspace'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -453,48 +457,38 @@ function ChronologieView({
   changes: OverviewChangeInput[]
   visits: VisitWithCounts[]
 }) {
-  return (
-    <main className="space-y-5">
-      <ViewHeader
-        icon={History}
-        title="Chronologie"
-        description="Tout ce qui s'est passé sur ce chantier, dans l'ordre."
-        actions={<InlineFilters items={['Tous', 'Visites', 'Réunions', 'Actions', 'Interventions', 'Preuves']} />}
-      />
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        {visits.length > 0 ? (
-          <div className="space-y-6">
-            <div>
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Visites terrain</h2>
-                  <p className="text-sm text-muted-foreground">Les dernières visites capturées sur ce chantier.</p>
-                </div>
-                <Link href={`/sites/${siteId}/visites`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-                  Voir toutes les visites
-                </Link>
-              </div>
-              <VisitTimeline visits={visits} siteId={siteId} />
-            </div>
-            {changes.length > 0 && (
-              <div className="border-t pt-5">
-                <h2 className="mb-4 text-lg font-semibold">Autres changements</h2>
-                <TimelineList changes={changes} />
-              </div>
-            )}
+  const flux = visits.length > 0 ? (
+    <div className="space-y-6">
+      <div>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Visites terrain</h2>
+            <p className="text-sm text-muted-foreground">Les dernières visites capturées sur ce chantier.</p>
           </div>
-        ) : changes.length > 0 ? (
+          <Link href={`/sites/${siteId}/visites`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
+            Voir toutes les visites
+          </Link>
+        </div>
+        <VisitTimeline visits={visits} siteId={siteId} />
+      </div>
+      {changes.length > 0 && (
+        <div className="border-t pt-5">
+          <h2 className="mb-4 text-lg font-semibold">Autres changements</h2>
           <TimelineList changes={changes} />
-        ) : (
-          <SmartEmptyState
-            icon={History}
-            title="Aucun événement significatif récemment."
-            detail="Les visites, réunions, interventions, réserves, blocages, décisions et preuves apparaîtront ici."
-          />
-        )}
-      </section>
-    </main>
+        </div>
+      )}
+    </div>
+  ) : changes.length > 0 ? (
+    <TimelineList changes={changes} />
+  ) : (
+    <SmartEmptyState
+      icon={History}
+      title="Aucun événement significatif récemment."
+      detail="Les visites, réunions, interventions, réserves, blocages, décisions et preuves apparaîtront ici."
+    />
   )
+
+  return <SiteChronologyComposition siteId={siteId}>{flux}</SiteChronologyComposition>
 }
 
 function PlanningView({ siteId, nextEvent }: { siteId: string; nextEvent: OverviewEventInput | null }) {
@@ -544,107 +538,109 @@ function PlanningView({ siteId, nextEvent }: { siteId: string; nextEvent: Overvi
   )
 }
 
-function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; canExport: boolean }) {
-  const links = [
-    {
-      href: `/sites/${siteId}/preuves`,
-      icon: ShieldCheck,
-      title: 'Dossier de preuve',
-      detail: 'Déclarations, photos et preuves reçues par QR/lien.',
-    },
-    {
-      href: `/sites/${siteId}/qr`,
-      icon: QrCode,
-      title: 'QR Code',
-      detail: 'Accès externe au journal du chantier.',
-    },
-    ...(canExport ? [{
-      href: `/sites/${siteId}/export`,
-      icon: Download,
-      title: 'Exporter',
-      detail: 'Export ZIP avec données et pièces du chantier.',
-    }] : []),
-  ]
+async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; canExport: boolean }) {
+  const [documents, proofDossiers, qr] = await Promise.all([
+    listDocumentsForTarget('site', siteId).catch(() => []),
+    listSiteProofDossiers(siteId).catch(() => []),
+    buildDocumentsQrState(siteId).catch((): DocumentsQrState => ({
+      siteName: 'Chantier',
+      status: 'none',
+      publicUrl: null,
+      qrDataUrl: null,
+      accessCount: 0,
+      generatedAt: null,
+      lastAccessedAt: null,
+      history: [],
+    })),
+  ])
 
   return (
-    <main className="space-y-5">
-      <ViewIntro
-        icon={FolderOpen}
-        title="Documents & preuves"
-        question="Où est la preuve ou le fichier que je cherche ?"
-        detail="Une bibliothèque unique, filtrée par type, origine, date et zone."
-      />
-      <QuickLinkGrid links={links} />
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-          <label className="relative block">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input className="h-11 w-full rounded-xl border bg-background pl-9 pr-3 text-sm" placeholder="Rechercher une photo, un plan, un PV..." />
-          </label>
-          <Link href={`/documents/import?target_type=site&target_id=${siteId}`} className="inline-flex items-center justify-center rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90">
-            Ajouter un document
-          </Link>
-        </div>
-        <div className="mt-4">
-          <InlineFilters items={['Tous', 'Photos', 'Vidéos', 'Vocaux', 'Plans', 'PV', 'Justificatifs', 'Comptes rendus']} />
-        </div>
-        <div className="mt-6 rounded-2xl border border-dashed p-10 text-center">
-          <FileSearch className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 font-medium">Aucun document à afficher dans cette vue.</p>
-          <p className="text-sm text-muted-foreground">Les catégories ci-dessus sont des filtres, pas des pages séparées.</p>
-        </div>
-      </section>
-    </main>
+    <DocumentsWorkspace
+      siteId={siteId}
+      canExport={canExport}
+      documents={documents.map((document) => ({
+        id: document.id,
+        filename: document.filename,
+        document_type: document.document_type,
+        created_at: document.created_at,
+      }))}
+      proofDossiers={proofDossiers}
+      qr={qr}
+    />
   )
 }
 
-function MemoireView({ siteId, signals }: { siteId: string; signals: MemorySignal[] }) {
-  const links = [
-    {
-      href: `/memoire/${siteId}`,
-      icon: Sparkles,
-      title: 'Atelier mémoire',
-      detail: 'Poser une question et explorer les traces du chantier.',
-    },
-    {
-      href: `/sites/${siteId}/subjects`,
-      icon: Layers,
-      title: 'Sujets',
-      detail: "Suivre l'histoire complète des problèmes et dossiers vivants.",
-    },
-    {
-      href: `/sites/${siteId}/recit`,
-      icon: BookText,
-      title: 'Récit',
-      detail: 'Lire le chantier sous forme narrative.',
-    },
-  ]
+async function MemoireView({ siteId, signals }: { siteId: string; signals: MemorySignal[] }) {
+  const subjects = await listSubjectsBySite(siteId).catch(() => [])
 
-  return (
-    <main className="space-y-5">
-      <ViewHeader
-        icon={Sparkles}
-        title="Mémoire"
-        description="Ce qui doit rester utile dans trois mois, même pour quelqu'un qui reprend le chantier."
-        actions={<InlineFilters items={['À savoir', 'Décisions', 'Contraintes', 'Risques', 'Relais']} />}
-      />
-      <QuickLinkGrid links={links} />
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        {signals.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {signals.slice(0, 6).map((signal) => (
-              <div key={`${signal.kind}-${signal.title}`} className="rounded-2xl border p-4">
-                <p className="font-medium">{signal.title}</p>
-                {signal.items[0] && <p className="mt-1 text-sm text-muted-foreground">{signal.items[0].label}</p>}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyLine>Aucune connaissance durable à afficher pour l'instant.</EmptyLine>
-        )}
-      </section>
-    </main>
-  )
+  return <MemoryWorkspace siteId={siteId} signals={signals} subjects={subjects} />
+}
+
+async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> {
+  const [info, history] = await Promise.all([
+    getSiteQrInfo(siteId),
+    getSiteQrHistory(siteId),
+  ])
+
+  if (!info) {
+    return {
+      siteName: 'Chantier',
+      status: 'none',
+      publicUrl: null,
+      qrDataUrl: null,
+      accessCount: 0,
+      generatedAt: null,
+      lastAccessedAt: null,
+      history,
+    }
+  }
+
+  const token = info.token
+  const hasRevokedToken = history.some((event) => event.type === 'revoked')
+  if (!token) {
+    return {
+      siteName: info.name,
+      status: hasRevokedToken ? 'revoked' : 'none',
+      publicUrl: null,
+      qrDataUrl: null,
+      accessCount: 0,
+      generatedAt: null,
+      lastAccessedAt: null,
+      history,
+    }
+  }
+
+  const headersList = await headers()
+  const host = headersList.get('x-forwarded-host') ?? headersList.get('host')
+  const proto = headersList.get('x-forwarded-proto') ?? (host?.startsWith('localhost') ? 'http' : 'https')
+  const baseUrl = host
+    ? `${proto}://${host}`
+    : (process.env.NEXT_PUBLIC_BASE_URL ??
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3001'))
+  const publicUrl = `${baseUrl}/qr/${token.token}`
+
+  let qrDataUrl: string | null = null
+  try {
+    qrDataUrl = await QRCode.toDataURL(publicUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 320,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    })
+  } catch {
+    qrDataUrl = null
+  }
+
+  return {
+    siteName: info.name,
+    status: 'active',
+    publicUrl,
+    qrDataUrl,
+    accessCount: token.access_count,
+    generatedAt: token.created_at,
+    lastAccessedAt: token.last_accessed_at,
+    history,
+  }
 }
 
 function OrganisationView() {
@@ -975,29 +971,6 @@ function OverviewRow({
 
 function EmptyLine({ children }: { children: ReactNode }) {
   return <p className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{children}</p>
-}
-
-function QuickLinkGrid({
-  links,
-}: {
-  links: Array<{
-    href: string
-    icon: ComponentType<{ className?: string }>
-    title: string
-    detail: string
-  }>
-}) {
-  return (
-    <section className="grid gap-3 md:grid-cols-3">
-      {links.map(({ href, icon: Icon, title, detail }) => (
-        <Link key={href} href={href} className="rounded-[18px] border bg-card p-4 shadow-sm transition hover:border-foreground/30 hover:bg-muted/30">
-          <Icon className="h-5 w-5 text-sky-600" />
-          <p className="mt-3 font-semibold">{title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-        </Link>
-      ))}
-    </section>
-  )
 }
 
 const toneClass = {

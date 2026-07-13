@@ -1,12 +1,22 @@
 # Architecture cible de l'espace Chantier
 
+## Principes fondateurs
+
+1. Le chantier est le jumeau numérique vivant du chantier réel.
+2. Les objets métier sont la source de vérité.
+3. Les vues sont des projections du même modèle métier.
+4. La navigation suit les relations métier, pas la structure des écrans.
+5. Un même objet possède toujours une seule fiche canonique, quel que soit le point d'entrée.
+
+MemorIA n'est pas un logiciel de modules. MemorIA est le jumeau numérique vivant d'un chantier : il évolue, apprend, garde une mémoire, produit des preuves, génère des engagements et possède une histoire.
+
 ## Décision centrale
 
 Le chantier est l'objet central de MemorIA.
 
 Les visites, réunions, actions, documents, équipes et éléments de mémoire sont ses objets métier.
 
-Les vues principales `Aperçu`, `Travail`, `Chronologie`, `Planning`, `Documents & preuves` et `Mémoire` sont des façons de regarder ces objets. Elles ne doivent pas créer de nouveaux objets, ni concurrencer les fiches canoniques.
+Les vues principales `Aperçu`, `Travail`, `Chronologie`, `Planning`, `Documents & preuves` et `Mémoire` sont des façons de regarder ces objets. Une vue n'est jamais la source de vérité d'un objet. Elles ne doivent pas créer de nouveaux objets, ni concurrencer les fiches canoniques.
 
 `Recherche` est un outil transverse d'accès à l'information. `Organisation` est une vue secondaire de configuration.
 
@@ -16,7 +26,7 @@ Cette distinction doit guider le desktop et le mobile. Le mobile condense les vu
 
 Le chantier n'est pas une collection de données.
 
-C'est un récit vivant.
+C'est un jumeau numérique vivant et un récit vivant.
 
 Chaque visite, réunion, décision, action, réserve ou document ajoute un nouveau chapitre. MemorIA doit aider le conducteur à comprendre ce récit, à y contribuer, puis à le transmettre.
 
@@ -30,6 +40,37 @@ Les vues ne racontent pas toutes la même histoire :
 - `Mémoire` raconte ce qui doit survivre au temps.
 
 Cette idée prime sur la structure technique. Quand deux organisations sont possibles, choisir celle qui raconte le mieux le chantier pour le conducteur.
+
+## Principe des projections
+
+Une vue projette le même modèle métier selon une intention différente. Elle ne possède pas la vérité métier des objets qu'elle affiche.
+
+Chaque vue doit pouvoir être décrite par une seule phrase commençant par `Ici je peux...` :
+
+- `Aperçu` : Ici je peux comprendre immédiatement où en est le chantier.
+- `Travail` : Ici je peux savoir ce qui reste à produire et pourquoi.
+- `Chronologie` : Ici je peux comprendre comment le chantier a évolué.
+- `Planning` : Ici je peux organiser les engagements dans le temps.
+- `Documents & preuves` : Ici je peux retrouver ou recevoir une preuve.
+- `Mémoire` : Ici je peux retrouver ce que le chantier sait.
+
+Si une vue répond à deux phrases différentes, elle mélange deux responsabilités. Si une fonctionnalité ne sert pas directement cette phrase, elle doit être secondaire, intégrée ailleurs, ou rester sur une route objet.
+
+## Invariants des objets
+
+Il n'existe pas d'objet métier isolé.
+
+Chaque objet métier possède au minimum :
+
+- une identité ;
+- une origine ;
+- un état ;
+- des relations ;
+- éventuellement des conséquences.
+
+Une action, une réserve, une mission, une intervention, un document ou une photo doivent pouvoir être compris par leurs liens avec le chantier : d'où ils viennent, où ils en sont, ce qu'ils concernent, et ce qu'ils produisent.
+
+La navigation suit ces relations métier entre les objets, et non la structure des écrans. Un utilisateur ne doit jamais perdre le fil d'un objet : une action, une photo ou une mission ouvre toujours la même fiche canonique, qu'elle soit atteinte depuis `Travail`, `Chronologie`, `Planning`, `Documents & preuves`, `Mémoire` ou `Recherche`.
 
 ## References obligatoires
 
@@ -740,14 +781,17 @@ Une carte répond à une question. Elle ne doit pas servir à la fois de KPI, de
 Avant toute modification de l'espace chantier, la PR doit répondre clairement à ces questions :
 
 1. Est-ce un objet, une vue, une action ou un mode d'affichage ?
-2. Quelle question utilisateur résout cet écran ou ce composant ?
-3. Quelle fiche canonique est ouverte, créée ou modifiée ?
-4. Cette information existe-t-elle déjà ailleurs ?
-5. Mobile et desktop utilisent-ils le même vocabulaire ?
-6. La couleur porte-t-elle un état ou sert-elle seulement à décorer ?
-7. Le composant est-il un contenu réel, un résumé, un filtre ou un lien ?
-8. Quelle relation entre objets devient plus claire grâce à ce changement ?
-9. Est-ce que cela respecte le workflow conducteur : arriver, comprendre, agir, clôturer ?
+2. Quelle phrase `Ici je peux...` cette vue sert-elle ?
+3. Quel objet métier canonique est affiché, ouvert, créé ou modifié ?
+4. Quelle est son origine, son état, ses relations et ses conséquences connues ?
+5. Cette vue est-elle une projection ou prétend-elle devenir une source de vérité ?
+6. Cette information existe-t-elle déjà ailleurs ?
+7. Mobile et desktop utilisent-ils le même vocabulaire ?
+8. La couleur porte-t-elle un état ou sert-elle seulement à décorer ?
+9. Le composant est-il un contenu réel, un résumé, un filtre, un lien ou une action ?
+10. Quelle relation entre objets devient plus claire grâce à ce changement ?
+11. L'utilisateur peut-il continuer à suivre le même objet quel que soit son point d'entrée ?
+12. Est-ce que cela respecte le workflow conducteur : arriver, comprendre, agir, clôturer ?
 
 Si ces réponses ne sont pas claires, l'élément ne doit pas être ajouté à la navigation.
 
