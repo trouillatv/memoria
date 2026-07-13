@@ -77,7 +77,10 @@ export async function listInterventionsForWeek(
 ): Promise<WeekInterventionCell[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
-  let qWeek = supabase
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → semaine vide, jamais
+  // les interventions de tous les tenants.
+  if (!orgId) return []
+  const qWeek = supabase
     .from('interventions')
     .select(
       `
@@ -112,7 +115,7 @@ export async function listInterventionsForWeek(
     // depuis le backfill migration 071. Fallback NULLS LAST pour les
     // éventuelles legacy qui auraient échappé.
     .order('planned_start', { ascending: true, nullsFirst: false })
-  if (orgId) qWeek = qWeek.eq('organization_id', orgId)
+    .eq('organization_id', orgId)
 
   const { data, error } = await qWeek
   if (error) throw error
@@ -239,16 +242,21 @@ export async function getWeekBySite(range: WeekRange): Promise<SiteRow[]> {
  */
 export async function getWeekByTeam(range: WeekRange): Promise<TeamRow[]> {
   const supabase = createAdminClient()
+  const orgId = await getOrgId()
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → aucune ligne, jamais
+  // les équipes de tous les tenants.
+  if (!orgId) return []
   const cells = await listInterventionsForWeek(range)
   const days = enumerateWeekDays(range.weekStart)
 
-  // 1) Fetch équipes actives + comptage membres en parallèle
+  // 1) Fetch équipes actives DE L'ORGANISATION + comptage membres en parallèle
   const [teamsRes, membersRes] = await Promise.all([
     supabase
       .from('teams')
       .select('id, name, color')
       .is('deleted_at', null)
       .eq('active', true)
+      .eq('organization_id', orgId)
       .order('name', { ascending: true }),
     supabase
       .from('team_members')

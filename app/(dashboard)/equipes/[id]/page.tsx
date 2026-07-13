@@ -102,6 +102,9 @@ export default async function TeamProfilePage({
 
   const overview = await getTeamOverview(id)
   if (!overview) notFound()
+  // P1 isolation : une équipe d'un autre tenant est invisible, même par id
+  // direct — FAIL-CLOSED (viewer sans org ou org différente → 404).
+  if (!me.organization_id || overview.organizationId !== me.organization_id) notFound()
 
   // Chargements parallèles
   const [
@@ -125,12 +128,15 @@ export default async function TeamProfilePage({
     listTeamRecentPhotos(id, 8),
     listMembersOfTeam(id),
     // Sprint Équipes C : pour le sélecteur de site dans le bouton « Prise de site »
+    // P1 isolation : sites DU TENANT uniquement (la garde plus haut assure
+    // me.organization_id non-null).
     (async () => {
       const admin = createAdminClient()
       const { data } = await admin
         .from('sites')
         .select('id, name, client:clients(name)')
         .is('deleted_at', null)
+        .eq('organization_id', me.organization_id!)
         .order('name', { ascending: true })
       type Row = {
         id: string
