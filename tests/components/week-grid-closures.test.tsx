@@ -189,7 +189,7 @@ describe('CellDrawer — le bloc « Conflit de planning »', () => {
     expect(screen.queryByTestId('drawer-closure-conflict')).toBeNull()
   })
 
-  it('avec conflit → explique le POURQUOI et dit qu’AUCUNE DÉCISION n’a été prise', () => {
+  it('avec conflit → explique le POURQUOI, et rien n’a été modifié', () => {
     const { getByText } = renderDrawer({ 'site-1': { '2026-07-14': CONFLICT } })
     fireEvent.click(getByText('ouvrir'))
 
@@ -199,7 +199,11 @@ describe('CellDrawer — le bloc « Conflit de planning »', () => {
     expect(section.textContent).toContain('fermeture du client')
     expect(section.textContent).toContain('Magasin fermé')
     expect(section.textContent).toContain('reste planifiée')
-    expect(section.textContent).toContain('Aucune décision n’a encore été prise')
+    // PL3a disait « aucune décision n'a encore été prise » parce qu'aucun geste
+    // n'existait. PL3b LES DONNE (« Que fait-on ? ») : la phrase serait fausse.
+    // Ce qui reste vrai, et qu'il faut continuer de dire : rien n'a bougé.
+    expect(section.textContent).toContain('Rien n’a été modifié')
+    expect(section.textContent).toContain('Que fait-on')
   })
 
   it('PL3a ne propose AUCUN geste dans le bloc de conflit', () => {
