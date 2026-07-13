@@ -20,10 +20,13 @@ import { findOrCreateMissionByName } from '@/lib/db/missions'
 import {
   createCycle,
   updateCycle,
+  supersedeCycle,
   softDeleteCycle,
   getCycle,
   type CycleSlot,
 } from '@/lib/db/planning-cycles'
+import { resolveEffectiveDate, isRealSplit } from '@/lib/planning/cycle-effect'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { previewCycle, type PreviewResult } from '@/lib/planning/cycle-preview'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -61,6 +64,12 @@ const cycleSchema = z
     slots: z.array(slotSchema).max(4 * 7 * 20),
     /** PL5b — « Enregistrer comme brouillon » ou « Publier ». */
     status: z.enum(['draft', 'published']).default('published'),
+    /** LA DATE D'EFFET (mig 206). Quatre intentions, jamais devinées :
+     *  rewrite = « je me suis trompé » (corrige la règle sur place) ;
+     *  immediate / next_monday / date = le passé reste vrai, une nouvelle
+     *  VERSION démarre à la date d'effet. */
+    effect: z.enum(['rewrite', 'immediate', 'next_monday', 'date']).optional(),
+    effectDate: dateIso.nullable().optional(),
   })
   .superRefine((d, ctx) => {
     // Il faut une prestation : choisie, ou écrite. Sans elle, le roulement ne
@@ -158,8 +167,22 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     if (!existing) return { error: 'Objet introuvable' }
     const ownedCycleSite = await requireOwned(auth.role, 'sites', existing.siteId)
     if (!ownedCycleSite.allowed) return { error: ownedCycleSite.error }
-    await updateCycle(d.cycleId, payload)
-    cycleId = d.cycleId
+
+    // LA DATE D'EFFET. Un roulement PUBLIÉ a un passé : il a produit des
+    // interventions et des preuves. Le modifier « à partir de » ne réécrit
+    // donc pas ce passé — il CLÔT l'ancienne version et en ouvre une nouvelle.
+    // « rewrite » (ou un brouillon, qui n'a pas d'histoire) corrige sur place.
+    const resolved = resolveEffectiveDate(d.effect ?? 'rewrite', d.effectDate ?? null, todayLocalIso())
+    if ('error' in resolved) return { error: resolved.error }
+
+    if (existing.status === 'published' && resolved.date && isRealSplit(resolved.date, existing.startsOn)) {
+      cycleId = await supersedeCycle(d.cycleId, payload, resolved.date)
+    } else {
+      // Effet avant le premier jour = il n'y a rien à découper : c'est une
+      // réécriture qui ne dit pas son nom, on la traite comme telle.
+      await updateCycle(d.cycleId, payload)
+      cycleId = d.cycleId
+    }
   } else {
     cycleId = await createCycle(payload)
   }
@@ -172,6 +195,8 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     metadata: {
       kind: 'planning_cycle',
       cycle_id: cycleId,
+      superseded: d.cycleId && cycleId !== d.cycleId ? d.cycleId : null,
+      effect: d.effect ?? null,
       weeks: d.cycleLengthWeeks,
       mission_id: missionId,
       worked_slots: slots.filter((s) => s.state === 'work').length,
