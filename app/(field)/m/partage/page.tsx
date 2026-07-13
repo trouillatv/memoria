@@ -10,6 +10,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listStaged, signStaged } from '@/lib/share/staging'
 import { describeLot, describeLotFr } from '@/lib/share/share-rules'
 import { listMeetingSitesAction } from '../meeting-actions'
+import { lastShareTargetAction } from './share-actions'
 import { SharePicker } from './SharePicker'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +43,17 @@ export default async function PartagePage({
           {ERREURS[erreur ?? ''] ??
             'Depuis WhatsApp (ou la galerie), utilisez « Partager » puis choisissez MemorIA.'}
         </p>
+
+        {/* Ce n'est PAS un bug de MemorIA, et aucune application web ne peut le
+            contourner : c'est le menu de WhatsApp. Le dire évite de chercher un
+            bouton qui n'existera jamais. */}
+        <p className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
+          Dans WhatsApp, si vous sélectionnez <strong>plusieurs messages</strong>, « Partager »
+          disparaît — il ne reste que « Transférer », qui garde tout chez WhatsApp. Partagez donc{' '}
+          <strong>un élément à la fois</strong> : MemorIA vous proposera d’ajouter chacun à la même
+          visite, en un seul geste. Depuis la galerie Android, plusieurs fichiers à la fois
+          fonctionnent normalement.
+        </p>
         <Link href="/m" className="inline-block text-sm font-medium text-brand-700 hover:underline">
           Retour à mes chantiers
         </Link>
@@ -64,9 +76,12 @@ export default async function PartagePage({
     )
   }
 
-  const [urls, sites] = await Promise.all([
+  const [urls, sites, last] = await Promise.all([
     signStaged(staged.map((f) => f.path)),
     listMeetingSitesAction().catch(() => [] as Array<{ id: string; name: string }>),
+    // WhatsApp n'autorise qu'un partage à la fois : la 2ᵉ photo doit rejoindre
+    // la 1ʳᵉ en UN geste, pas en trois.
+    lastShareTargetAction().catch(() => null),
   ])
 
   return (
@@ -81,6 +96,7 @@ export default async function PartagePage({
       sites={sites}
       // « 3 photos et 2 enregistrements » — jamais « 5 fichiers ».
       lotLabel={describeLotFr(describeLot(staged.map((f) => f.mime)))}
+      last={last}
     />
   )
 }

@@ -336,9 +336,22 @@ export interface ShareTargetOption {
   at: string
   /** Combien d'éléments cet objet porte déjà : c'est ce qui le rend reconnaissable. */
   items: number
+  /** Encore ouverte (pas de fin) — elle passe DEVANT tout le reste. */
+  open: boolean
 }
 
-/** Les visites récentes du chantier — celles qu'on peut encore enrichir. */
+/**
+ * Les visites du chantier qu'on peut enrichir — **les ouvertes d'abord**.
+ *
+ * Le partage doit TOUJOURS privilégier le rattachement à un objet existant
+ * plutôt que d'en créer un nouveau : sans ça, cinq partages font cinq visites,
+ * et la mémoire du chantier se fracture en confettis.
+ *
+ * ⚠️ La colonne s'appelle `visit_motive`, pas `motive`. Demander `motive` faisait
+ * échouer la requête EN SILENCE (data = null) : aucune visite n'était proposée,
+ * et l'écran ne montrait que « Nouvelle visite ». Un bug qui se déguisait en
+ * comportement normal.
+ */
 export async function listRecentVisitsAction(siteId: string): Promise<ShareTargetOption[]> {
   const auth = await requireFieldAgent()
   if (!auth.ok) return []
@@ -347,20 +360,28 @@ export async function listRecentVisitsAction(siteId: string): Promise<ShareTarge
   if (!owned.allowed) return []
 
   const db = createAdminClient()
-  const { data } = await db
+  const { data, error } = await db
     .from('site_reports')
-    .select('id, title, motive, started_at, created_at')
+    .select('id, title, objective, visit_motive, started_at, ended_at, created_at')
     .eq('site_id', siteId)
     .not('origin', 'is', null) // une VISITE (une réunion a origin null)
     .is('deleted_at', null)
     .order('started_at', { ascending: false, nullsFirst: false })
-    .limit(6)
+    .limit(10)
+
+  // Un échec de requête ne doit JAMAIS se déguiser en « aucune visite ».
+  if (error) {
+    console.error('[partage] listRecentVisits', error.message)
+    return []
+  }
 
   const rows = (data ?? []) as Array<{
     id: string
     title: string | null
-    motive: string | null
+    objective: string | null
+    visit_motive: string | null
     started_at: string | null
+    ended_at: string | null
     created_at: string
   }>
   if (rows.length === 0) return []
@@ -376,12 +397,25 @@ export async function listRecentVisitsAction(siteId: string): Promise<ShareTarge
     counts.set(c.report_id, (counts.get(c.report_id) ?? 0) + 1)
   }
 
-  return rows.map((r) => ({
+  const options = rows.map((r) => ({
     id: r.id,
-    title: r.title?.trim() || r.motive?.trim() || 'Visite',
+    title: r.title?.trim() || r.objective?.trim() || MOTIVE_FR[r.visit_motive ?? ''] || 'Visite',
     at: r.started_at ?? r.created_at,
     items: counts.get(r.id) ?? 0,
+    open: r.ended_at === null,
   }))
+
+  // Une visite EN COURS passe devant : c'est presque toujours celle qu'il vise.
+  return options.sort((a, b) => (a.open === b.open ? 0 : a.open ? -1 : 1)).slice(0, 6)
+}
+
+/** Le motif d'une visite, dit en français. */
+const MOTIVE_FR: Record<string, string> = {
+  premiere: 'Première visite',
+  controle: 'Contrôle',
+  suivi: 'Suivi',
+  reception: 'Réception',
+  incident: 'Incident',
 }
 
 /** Les réunions récentes du chantier. */
@@ -395,14 +429,19 @@ export async function listRecentMeetingsAction(siteId: string): Promise<ShareTar
   const db = createAdminClient()
   const { data } = await db
     .from('site_reports')
-    .select('id, title, created_at')
+    .select('id, title, status, created_at')
     .eq('site_id', siteId)
     .is('origin', null) // une RÉUNION
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(6)
 
-  const rows = (data ?? []) as Array<{ id: string; title: string | null; created_at: string }>
+  const rows = (data ?? []) as Array<{
+    id: string
+    title: string | null
+    status: string | null
+    created_at: string
+  }>
   if (rows.length === 0) return []
 
   const { data: atts } = await db
@@ -420,7 +459,93 @@ export async function listRecentMeetingsAction(siteId: string): Promise<ShareTar
     title: r.title?.trim() || 'Réunion',
     at: r.created_at,
     items: counts.get(r.id) ?? 0,
+    // Une réunion encore en brouillon n'est pas finalisée : on peut l'enrichir.
+    open: r.status === 'draft',
   }))
+}
+
+/**
+ * LÀ OÙ LE DERNIER PARTAGE EST ALLÉ.
+ *
+ * WhatsApp n'autorise **qu'un partage à la fois** dès qu'on sélectionne
+ * plusieurs messages : « Partager » disparaît, il ne reste que « Transférer »
+ * (qui garde tout chez WhatsApp). Ce n'est pas contournable — c'est leur menu.
+ *
+ * Conséquence : cinq photos = cinq partages. Reposer trois questions à chaque
+ * fois serait insupportable. On propose donc, en un seul geste, de continuer
+ * là où on vient d'aller : « Ajouter à la visite du 14 juillet ».
+ *
+ * La fenêtre est courte (6 h) : au-delà, ce n'est plus « la suite du même
+ * geste », c'est un nouveau contexte — et on repose la question.
+ */
+export interface LastShareTarget {
+  reportId: string
+  siteId: string
+  siteName: string
+  title: string
+  type: 'visit' | 'meeting'
+}
+
+const CONTINUATION_WINDOW_MS = 6 * 60 * 60 * 1000
+
+export async function lastShareTargetAction(): Promise<LastShareTarget | null> {
+  const auth = await requireFieldAgent()
+  if (!auth.ok || !auth.userId) return null
+
+  const db = createAdminClient()
+  const since = new Date(Date.now() - CONTINUATION_WINDOW_MS).toISOString()
+
+  // La dernière pièce arrivée PAR LE PARTAGE, de cet utilisateur.
+  const { data: att } = await db
+    .from('site_report_attachments')
+    .select('report_id, created_at')
+    .eq('added_by', auth.userId)
+    .eq('source_origin', 'os_share')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const reportId = (att as { report_id: string } | null)?.report_id
+  if (!reportId) return null
+
+  const { data: rep } = await db
+    .from('site_reports')
+    .select('id, site_id, title, motive, origin, started_at, created_at, deleted_at')
+    .eq('id', reportId)
+    .maybeSingle()
+
+  const r = rep as {
+    site_id: string | null
+    title: string | null
+    motive: string | null
+    origin: string | null
+    started_at: string | null
+    created_at: string
+    deleted_at: string | null
+  } | null
+  if (!r || r.deleted_at || !r.site_id) return null
+
+  // L'objet a-t-il encore un sens pour cet utilisateur ? (tenant, droits)
+  const owned = await requireOwned(auth.role, 'sites', r.site_id)
+  if (!owned.allowed) return null
+
+  const { data: site } = await db.from('sites').select('name').eq('id', r.site_id).maybeSingle()
+
+  const isVisit = r.origin !== null
+  const when = new Date(r.started_at ?? r.created_at).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+  })
+  const base = r.title?.trim() || r.motive?.trim() || (isVisit ? 'Visite' : 'Réunion')
+
+  return {
+    reportId,
+    siteId: r.site_id,
+    siteName: (site as { name: string } | null)?.name ?? 'Chantier',
+    title: `${base} — ${when}`,
+    type: isVisit ? 'visit' : 'meeting',
+  }
 }
 
 /** Ce que contient le lot en attente — pour l'annoncer avant tout choix. */
