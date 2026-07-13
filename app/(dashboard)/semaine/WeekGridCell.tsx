@@ -19,10 +19,12 @@
 //     elle-même → renvoyer vers /missions (toast hint, doctrine V3 référent).
 
 import { useDraggable, useDroppable, useDndContext } from '@dnd-kit/core'
-import { Lock } from 'lucide-react'
+import { Lock, CalendarOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { fmtHourFr } from '@/lib/time/prestation-slot'
+import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
+import type { ClosureConflict } from '@/lib/planning/conflicts'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
 import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 import type { InterventionSlot } from '@/types/db'
@@ -123,9 +125,12 @@ export interface WeekGridCellProps {
   todayIso?: string
   /** Niveau 2 — événements datés du jour (réunion/échéance/livraison) → icônes. */
   dayEvents?: WeekOperationalSignal[]
+  /** PL3a — conflit « site fermé, prestation prévue » ce jour-là. OPTIONNEL :
+   *  sans lui, la cellule est strictement identique à avant. */
+  conflict?: ClosureConflict
 }
 
-export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents }: WeekGridCellProps) {
+export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents, conflict }: WeekGridCellProps) {
   const cellKey = `${siteId}::${date}`
   const isPast = !!(todayIso && date < todayIso)
 
@@ -319,6 +324,25 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
           className="absolute top-1 right-1 h-3 w-3 text-muted-foreground/50 pointer-events-none"
           aria-hidden
         />
+      )}
+
+      {/* PL3a — « site fermé, prestation prévue ». Le <td> est draggable ET
+          droppable : ce badge DOIT rester non-interactif (pointer-events-none),
+          sinon un clic dessus démarrerait un drag fantôme. Il informe, il ne
+          bloque rien — le geste vit dans l'aperçu (PL3b). Zone top-1 left-1 :
+          la seule libre (droite = Lock, bas-droite = icônes d'événements). */}
+      {conflict && (
+        <span
+          data-testid="cell-closure-conflict"
+          data-closure-conflict="true"
+          className="absolute top-1 left-1 pointer-events-none inline-flex items-center rounded-full bg-rose-100 p-0.5 text-rose-700 ring-1 ring-rose-200"
+          title={`Site fermé — ${CLOSURE_REASON_FR[conflict.closure.reasonKind]}${
+            conflict.closure.reason ? ` · ${conflict.closure.reason}` : ''
+          }`}
+          aria-label={`Site fermé ce jour-là — ${CLOSURE_REASON_FR[conflict.closure.reasonKind]}`}
+        >
+          <CalendarOff className="h-3 w-3" aria-hidden />
+        </span>
       )}
 
       {/* Niveau 2 — icônes d'événements datés (réunion/échéance/livraison).
