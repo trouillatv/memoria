@@ -57,6 +57,7 @@ export default async function RoulementPage({
         teams={teams}
         initial={{
           id: cycle.id,
+          status: cycle.status,
           missionId: cycle.missionId,
           name: cycle.name,
           cycleLengthWeeks: cycle.cycleLengthWeeks,

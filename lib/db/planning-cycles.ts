@@ -14,6 +14,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
+import { previousDayIso } from '@/lib/planning/cycle-effect'
 
 export type CycleStatus = 'draft' | 'published' | 'stopped'
 export type SlotState = 'work' | 'rest'
@@ -38,11 +39,13 @@ export interface PlanningCycle {
   startsOn: string
   endsOn: string | null
   status: CycleStatus
+  /** La version que ce roulement remplace (mig 206). Une chaîne, pas un arbre. */
+  supersedesCycleId: string | null
   slots: CycleSlot[]
 }
 
 const CYCLE_COLS =
-  'id, site_id, mission_id, name, cycle_length_weeks, anchor_date, starts_on, ends_on, status'
+  'id, site_id, mission_id, name, cycle_length_weeks, anchor_date, starts_on, ends_on, status, supersedes_cycle_id'
 
 /** Dégradation gracieuse tant que la mig 199 n'est pas appliquée. */
 function isMissingTable(error: { code?: string; message?: string }): boolean {
@@ -62,6 +65,7 @@ function rowToCycle(r: Record<string, unknown>, slots: CycleSlot[]): PlanningCyc
     startsOn: (r.starts_on as string) ?? '',
     endsOn: (r.ends_on as string | null) ?? null,
     status: (r.status as CycleStatus) ?? 'draft',
+    supersedesCycleId: (r.supersedes_cycle_id as string | null) ?? null,
     slots,
   }
 }
@@ -230,6 +234,8 @@ export interface SaveCycleInput {
    *  génère AUCUN rythme : rien n'arrive dans la semaine tant qu'il n'est pas
    *  publié. */
   status?: CycleStatus
+  /** Mig 206 — la version que ce roulement remplace. */
+  supersedesCycleId?: string | null
 }
 
 /** Crée le roulement + sa grille, puis DÉRIVE ses rythmes. */
@@ -247,6 +253,7 @@ export async function createCycle(input: SaveCycleInput): Promise<string> {
       starts_on: input.startsOn,
       ends_on: input.endsOn,
       status: input.status ?? 'published',
+      supersedes_cycle_id: input.supersedesCycleId ?? null,
       created_by: input.userId,
     })
     .select('id')
@@ -281,6 +288,100 @@ export async function updateCycle(cycleId: string, input: SaveCycleInput): Promi
 
   await replaceSlots(cycleId, input.slots)
   await regenerateTemplates(cycleId, input)
+}
+
+/**
+ * REMPLACE un roulement publié par une nouvelle version, à partir d'une date.
+ *
+ * L'ancienne version n'est PAS réécrite : elle a produit des interventions, des
+ * preuves, des décisions — réécrire sa grille mentirait sur le passé. Elle est
+ * CLOSE la veille de la date d'effet, et ses rythmes régénérés avec cette borne
+ * (archivés puis recréés : les interventions déjà générées restent).
+ *
+ * La nouvelle version démarre à la date d'effet et pointe l'ancienne
+ * (`supersedes_cycle_id`). Guillaume voit toujours « Roulement magasin » ;
+ * MemorIA garde l'histoire :
+ *
+ *     Version 1   01/01 → 31/08
+ *     Version 2   01/09 → …
+ */
+export async function supersedeCycle(
+  oldCycleId: string,
+  input: SaveCycleInput,
+  effectiveFrom: string,
+): Promise<string> {
+  const db = createAdminClient()
+  const old = await getCycle(oldCycleId)
+  if (!old) throw new Error('Roulement introuvable')
+
+  const oldEndsOn = previousDayIso(effectiveFrom)
+
+  // 1. Clore l'ancienne version — sa grille reste EXACTEMENT ce qu'elle était.
+  const { error } = await db
+    .from('planning_cycles')
+    .update({
+      ends_on: oldEndsOn,
+      updated_by: input.userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', oldCycleId)
+    .is('deleted_at', null)
+  if (error) throw new Error(error.message)
+
+  // 2. Rebornner ses rythmes (archive + recrée, jamais DELETE) : ils s'arrêtent
+  //    désormais la veille de la date d'effet.
+  await regenerateTemplates(oldCycleId, {
+    siteId: old.siteId,
+    missionId: old.missionId,
+    organizationId: input.organizationId,
+    name: old.name,
+    cycleLengthWeeks: old.cycleLengthWeeks,
+    anchorDate: old.anchorDate,
+    startsOn: old.startsOn,
+    endsOn: oldEndsOn,
+    slots: old.slots,
+    userId: input.userId,
+    status: 'published',
+  })
+
+  // 3. La nouvelle version, qui démarre à la date d'effet.
+  return createCycle({
+    ...input,
+    startsOn: effectiveFrom,
+    supersedesCycleId: oldCycleId,
+  })
+}
+
+/**
+ * TERMINER un roulement : il s'arrête à une date, mais reste VISIBLE — c'est de
+ * l'histoire, pas un déchet. (« Retirer », lui, le sort des écrans.)
+ */
+export async function endCycle(cycleId: string, lastDayIso: string, userId: string | null): Promise<void> {
+  const db = createAdminClient()
+  const cycle = await getCycle(cycleId)
+  if (!cycle) throw new Error('Roulement introuvable')
+
+  const { error } = await db
+    .from('planning_cycles')
+    .update({ ends_on: lastDayIso, updated_by: userId, updated_at: new Date().toISOString() })
+    .eq('id', cycleId)
+    .is('deleted_at', null)
+  if (error) throw new Error(error.message)
+
+  // Les rythmes s'arrêtent à la même borne.
+  await regenerateTemplates(cycleId, {
+    siteId: cycle.siteId,
+    missionId: cycle.missionId,
+    organizationId: null,
+    name: cycle.name,
+    cycleLengthWeeks: cycle.cycleLengthWeeks,
+    anchorDate: cycle.anchorDate,
+    startsOn: cycle.startsOn,
+    endsOn: lastDayIso,
+    slots: cycle.slots,
+    userId,
+    status: cycle.status === 'draft' ? 'draft' : 'published',
+  })
 }
 
 /** Retirer un roulement : il sort des écrans, ses rythmes s'arrêtent — mais

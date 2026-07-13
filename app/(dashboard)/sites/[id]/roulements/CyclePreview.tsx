@@ -59,6 +59,7 @@ export function CyclePreview({
   onPublish,
   saving,
   isEdit,
+  effectPicker,
 }: {
   preview: PreviewResult
   month: string
@@ -70,6 +71,8 @@ export function CyclePreview({
   onPublish: () => void
   saving: boolean
   isEdit: boolean
+  /** Le choix de la date d'effet — présent seulement sur un roulement publié. */
+  effectPicker?: React.ReactNode
 }) {
   const { days, summary } = preview
   const busy = loading || saving
@@ -214,6 +217,8 @@ export function CyclePreview({
           )
         })}
       </section>
+
+      {effectPicker}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" onClick={onBack} disabled={busy}>

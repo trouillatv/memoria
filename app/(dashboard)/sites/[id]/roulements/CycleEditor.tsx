@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { suggestExisting, samePrestation } from '@/lib/planning/prestation-name'
 import type { PreviewResult } from '@/lib/planning/cycle-preview'
+import type { EffectChoice } from '@/lib/planning/cycle-effect'
 import { saveCycleAction, previewCycleAction } from './actions'
 import { CyclePreview, monthBounds } from './CyclePreview'
 
@@ -46,6 +47,8 @@ export interface MissionOption {
 
 export interface InitialCycle {
   id: string
+  /** Publié → toute modification demande une DATE D'EFFET. */
+  status?: 'draft' | 'published' | 'stopped'
   missionId: string
   name: string
   cycleLengthWeeks: number
@@ -168,6 +171,12 @@ export function CycleEditor({
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
 
+  // LA DATE D'EFFET. « Guillaume modifie un jeudi » — que veut-il dire ? Quatre
+  // intentions existent, on ne devine JAMAIS : on demande, au moment de publier.
+  const [effect, setEffect] = useState<EffectChoice>('next_monday')
+  const [effectDate, setEffectDate] = useState('')
+  const askEffect = Boolean(initial && initial.status === 'published')
+
   /** Toutes les cases — travail ET repos. Sa feuille se relit telle qu'il l'a
    *  dessinée : le repos est un état, pas une absence. */
   const buildSlots = useCallback(
@@ -263,6 +272,9 @@ export function CycleEditor({
         ...cycleShape(),
         name: name.trim(),
         status,
+        // La date d'effet n'a de sens que sur un roulement PUBLIÉ : un
+        // brouillon n'a pas d'histoire à protéger.
+        ...(askEffect ? { effect, effectDate: effect === 'date' ? effectDate || null : null } : {}),
       })
       if ('error' in r) {
         toast.error(r.error)
@@ -286,6 +298,17 @@ export function CycleEditor({
     return (
       <CyclePreview
         preview={preview}
+        effectPicker={
+          askEffect ? (
+            <EffectPicker
+              effect={effect}
+              onEffect={setEffect}
+              effectDate={effectDate}
+              onEffectDate={setEffectDate}
+              disabled={pending}
+            />
+          ) : null
+        }
         month={month}
         labelOf={labelOf}
         loading={loadingPreview}
@@ -596,5 +619,92 @@ export function CycleEditor({
         </p>
       </div>
     </div>
+  )
+}
+
+
+/**
+ * « Ce changement prend effet : … » — la question qu'on pose TOUJOURS avant de
+ * modifier un roulement publié.
+ *
+ * Sauf « depuis le début », l'ancienne version est CLOSE la veille et une
+ * nouvelle démarre : le passé — interventions, preuves, décisions — reste vrai.
+ */
+/** Une intention. Hors du rendu — recréer un composant à chaque rendu remet
+ *  l'arbre React à zéro. */
+function Choice({
+  value,
+  label,
+  hint,
+  effect,
+  onEffect,
+  disabled,
+}: {
+  value: EffectChoice
+  label: string
+  hint?: string
+  effect: EffectChoice
+  onEffect: (e: EffectChoice) => void
+  disabled: boolean
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/40">
+      <input
+        type="radio"
+        name="effect"
+        checked={effect === value}
+        onChange={() => onEffect(value)}
+        disabled={disabled}
+        className="mt-0.5"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm">{label}</span>
+        {hint && <span className="block text-[11px] text-muted-foreground">{hint}</span>}
+      </span>
+    </label>
+  )
+}
+
+function EffectPicker({
+  effect,
+  onEffect,
+  effectDate,
+  onEffectDate,
+  disabled,
+}: {
+  effect: EffectChoice
+  onEffect: (e: EffectChoice) => void
+  effectDate: string
+  onEffectDate: (d: string) => void
+  disabled: boolean
+}) {
+  const common = { effect, onEffect, disabled }
+  return (
+    <section className="space-y-1 rounded-2xl border bg-card p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Ce changement prend effet
+      </p>
+      <Choice {...common} value="next_monday" label="Lundi prochain" hint="La semaine en cours reste comme prévue." />
+      <Choice {...common} value="immediate" label="Immédiatement" hint="Les jours déjà passés restent vrais." />
+      <Choice {...common} value="date" label="À partir d’une date…" hint="Préparer une rentrée, un nouveau contrat." />
+      {effect === 'date' && (
+        <input
+          type="date"
+          value={effectDate}
+          onChange={(e) => onEffectDate(e.target.value)}
+          disabled={disabled}
+          className="ml-6 rounded-md border bg-background px-2 py-1.5 text-sm"
+        />
+      )}
+      <Choice
+        {...common}
+        value="rewrite"
+        label="Depuis le début (je me suis trompé)"
+        hint="Corrige la règle sur place. Les interventions déjà générées et leurs preuves restent — mais la grille ne dira plus ce qui était prévu avant."
+      />
+      <p className="pt-1 text-[11px] text-muted-foreground">
+        Sauf « depuis le début », l’ancienne version est conservée : le roulement garde son histoire.
+      </p>
+    </section>
   )
 }
