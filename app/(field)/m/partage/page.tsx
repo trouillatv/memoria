@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation'
 import { AlertTriangle } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listStaged, signStaged } from '@/lib/share/staging'
+import { describeLot, describeLotFr } from '@/lib/share/share-rules'
 import { listMeetingSitesAction } from '../meeting-actions'
 import { SharePicker } from './SharePicker'
 
@@ -15,10 +16,10 @@ export const dynamic = 'force-dynamic'
 
 const ERREURS: Record<string, string> = {
   'trop-lourd':
-    'Trop de photos d’un coup pour un partage. Envoyez-en moins, ou passez par « Importer » depuis le chantier.',
+    'Trop lourd pour un partage (les vidéos pèsent vite). Envoyez-en moins, ou passez par « Importer » depuis le chantier.',
   vide: 'Aucun fichier n’est arrivé.',
-  type: 'Ce type de fichier ne peut pas être partagé ici — photos, enregistrements et PDF seulement (pas de vidéo).',
-  stockage: 'Les photos ne sont pas arrivées jusqu’au bout. Réessayez.',
+  type: 'Ce type de fichier ne peut pas être partagé ici — photos, enregistrements, vidéos et PDF.',
+  stockage: 'Les fichiers ne sont pas arrivés jusqu’au bout. Réessayez.',
 }
 
 export default async function PartagePage({
@@ -78,6 +79,8 @@ export default async function PartagePage({
         url: urls[f.path] ?? null,
       }))}
       sites={sites}
+      // « 3 photos et 2 enregistrements » — jamais « 5 fichiers ».
+      lotLabel={describeLotFr(describeLot(staged.map((f) => f.mime)))}
     />
   )
 }

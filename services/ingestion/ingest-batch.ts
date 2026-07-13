@@ -63,8 +63,11 @@ export async function ingestBatch(items: IngestItem[], ctx: IngestContext): Prom
     return a.ms - b.ms
   })
 
-  // 3. Découpe en sessions (déterministe).
-  const groups = splitByGap(enriched.map((e) => e.ms))
+  // 3. Découpe en sessions (déterministe) — SAUF si l'utilisateur a désigné la
+  //    visite : dans ce cas le lot est UN seul groupe, qui rejoint cette visite.
+  const groups = ctx.reportId
+    ? enriched.map(() => 0)
+    : splitByGap(enriched.map((e) => e.ms))
 
   const sessions: IngestResult['sessions'] = []
   let created = 0
@@ -91,13 +94,16 @@ export async function ingestBatch(items: IngestItem[], ctx: IngestContext): Prom
 
     // La visite démarre au 1ᵉʳ instant réel du groupe (sinon maintenant).
     const startedAt = fresh.find((e) => e.ms !== null)?.it.capturedAt ?? new Date().toISOString()
-    const reportId = await createVisit({
-      siteId: ctx.siteId,
-      origin: 'import',
-      source: ctx.source,
-      startedAt,
-      createdBy: ctx.createdBy,
-    })
+    // Visite désignée → on l'ENRICHIT. Sinon → on en ouvre une.
+    const reportId =
+      ctx.reportId ??
+      (await createVisit({
+        siteId: ctx.siteId,
+        origin: 'import',
+        source: ctx.source,
+        startedAt,
+        createdBy: ctx.createdBy,
+      }))
 
     let count = 0
     for (const e of fresh) {
