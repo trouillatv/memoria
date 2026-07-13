@@ -13,6 +13,7 @@
 import type { SiteRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
+import { siteLabel } from '@/lib/labels/site-label'
 import { WeekGridCell } from './WeekGridCell'
 import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
 import { StandingSignalsBadges } from './StandingSignalsBadges'
@@ -136,11 +137,14 @@ function SiteGridRow({
         className="text-left align-top px-3 py-2 sticky left-0 bg-card z-10 border-r"
       >
         <div className="flex flex-col gap-1 min-w-[9rem]">
-          <span className="font-medium text-foreground leading-tight">{row.site_name}</span>
-          {/* Client + contrat : deux sites homonymes restent distinguables
-              (« Discount — Pointière » vs « Mairie — Pointière »). */}
+          {/* Client + chantier : deux sites homonymes restent distinguables
+              (« Discount — Pointière » vs « Mairie — Pointière »). Le contrat
+              reste en seconde ligne — c'est un détail, pas une identité. */}
+          <span className="font-medium text-foreground leading-tight">
+            {siteLabel(row.site_name, row.client_name)}
+          </span>
           <span className="text-[11px] text-muted-foreground leading-tight">
-            {row.client_name ? `${row.client_name} · ${row.contract_name}` : row.contract_name}
+            {row.contract_name}
           </span>
           {topSignal && <MemorySignalBadge signal={topSignal} />}
           <StandingSignalsBadges signals={standing} todayIso={todayIso} />

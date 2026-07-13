@@ -19,12 +19,15 @@ import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
 import { createMissionAction } from '../missions/actions'
 import { pickInitialMissionId, mergeMissionOptions } from './planning-prefill'
+import { siteLabel } from '@/lib/labels/site-label'
 
 export interface MissionOption {
   id: string
   name: string
   siteId: string
   siteName: string
+  /** Client du chantier — désambiguïsation « Discount — Pointière » (PR 4). */
+  clientName?: string | null
   contractName: string
   /** Équipe par défaut de la mission, héritée si l'utilisateur ne change rien. */
   defaultTeamId: string | null
@@ -41,6 +44,7 @@ export interface TeamOption {
 export interface SiteOption {
   id: string
   name: string
+  clientName?: string | null
   contractName: string | null
 }
 
@@ -117,6 +121,7 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
           name: newName.trim(),
           siteId: newSiteId,
           siteName: site?.name ?? '—',
+          clientName: site?.clientName ?? null,
           contractName: site?.contractName ?? '—',
           defaultTeamId: null,
         },
@@ -140,11 +145,14 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   // Picker GROUPÉ PAR SITE (sinon, à plat, on s'y perd dès qu'il y a beaucoup de
   // missions). optgroup = site ; à l'intérieur, missions triées par nom puis contrat.
   const fr = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' })
+  // PR 4 : l'en-tête d'optgroup porte « Client — Chantier », jamais le nom de
+  // chantier seul (deux « Pointière » resteraient indistinguables).
   const missionsBySite = useMemo(() => {
     const bySite = new Map<string, MissionOption[]>()
     for (const m of missions) {
-      if (!bySite.has(m.siteName)) bySite.set(m.siteName, [])
-      bySite.get(m.siteName)!.push(m)
+      const label = siteLabel(m.siteName, m.clientName)
+      if (!bySite.has(label)) bySite.set(label, [])
+      bySite.get(label)!.push(m)
     }
     return [...bySite.entries()]
       .sort((a, b) => fr(a[0], b[0]))
@@ -287,8 +295,8 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
                   </option>
                   {sites.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.contractName ? ` — ${s.contractName}` : ''}
+                      {siteLabel(s.name, s.clientName)}
+                      {s.contractName ? ` · ${s.contractName}` : ''}
                     </option>
                   ))}
                 </select>

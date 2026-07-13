@@ -141,26 +141,28 @@ async function fetchMissionOptions(orgId: string | null): Promise<MissionOption[
     .from('missions')
     .select(
       `id, name, assigned_team_id,
-       site:sites!inner(id, name, deleted_at, contract:contracts(name, deleted_at))`,
+       site:sites!inner(id, name, deleted_at, client:clients(name), contract:contracts(name, deleted_at))`,
     )
     .is('deleted_at', null)
     .eq('active', true)
     .eq('organization_id', orgId)
   if (error) throw error
+  type Named = { name: string }
   const out: MissionOption[] = []
   for (const m of (data ?? []) as Array<{
     id: string
     name: string
     assigned_team_id: string | null
     site:
-      | { id: string; name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }
-      | Array<{ id: string; name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }>
+      | { id: string; name: string; deleted_at: string | null; client: Named | Named[] | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }
+      | Array<{ id: string; name: string; deleted_at: string | null; client: Named | Named[] | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }>
   }>) {
     // V5.1 — Exclure les missions système ("Traces libres du site") du picker
     // de planification. Cf. lib/db/system-missions.ts.
     if (isSystemMissionName(m.name)) continue
     const site = Array.isArray(m.site) ? m.site[0] : m.site
     if (!site || site.deleted_at) continue
+    const client = Array.isArray(site.client) ? site.client[0] : site.client
     const contract = Array.isArray(site.contract) ? site.contract[0] : site.contract
     // Contrat soft-deleted → on le tait, mais la mission reste planifiable.
     out.push({
@@ -168,6 +170,7 @@ async function fetchMissionOptions(orgId: string | null): Promise<MissionOption[
       name: m.name,
       siteId: site.id,
       siteName: site.name,
+      clientName: client?.name ?? null,
       contractName: contract && !contract.deleted_at ? contract.name : '—',
       defaultTeamId: m.assigned_team_id,
     })
@@ -182,20 +185,24 @@ async function fetchSiteOptions(orgId: string | null): Promise<SiteOption[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('sites')
-    .select('id, name, contract:contracts(name, deleted_at)')
+    .select('id, name, client:clients(name), contract:contracts(name, deleted_at)')
     .is('deleted_at', null)
     .eq('organization_id', orgId)
     .order('name')
   if (error) throw error
+  type Named = { name: string }
   return ((data ?? []) as Array<{
     id: string
     name: string
+    client: Named | Named[] | null
     contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null
   }>).map((s) => {
+    const client = Array.isArray(s.client) ? s.client[0] : s.client
     const contract = Array.isArray(s.contract) ? s.contract[0] : s.contract
     return {
       id: s.id,
       name: s.name,
+      clientName: client?.name ?? null,
       contractName: contract && !contract.deleted_at ? contract.name : null,
     }
   })

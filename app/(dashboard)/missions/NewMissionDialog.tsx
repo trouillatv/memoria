@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { createMissionAction } from './actions'
+import { siteLabel } from '@/lib/labels/site-label'
 
 const CADENCES = [
   { value: 'daily',     label: 'Quotidienne' },
@@ -24,7 +25,7 @@ const CADENCES = [
 ] as const
 
 interface Props {
-  sites: Array<{ id: string; name: string; contractName: string | null }>
+  sites: Array<{ id: string; name: string; clientName?: string | null; contractName: string | null }>
 }
 
 export function NewMissionDialog({ sites }: Props) {
@@ -79,9 +80,11 @@ export function NewMissionDialog({ sites }: Props) {
               className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="" disabled>Sélectionner un site…</option>
+              {/* PR 4 : « Client — Chantier · Contrat » — deux chantiers
+                  homonymes restent distinguables. */}
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}{s.contractName ? ` — ${s.contractName}` : ''}
+                  {siteLabel(s.name, s.clientName)}{s.contractName ? ` · ${s.contractName}` : ''}
                 </option>
               ))}
             </select>
