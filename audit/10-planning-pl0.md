@@ -119,13 +119,26 @@ exporter).
 
 | Lot | Contenu | État |
 |---|---|---|
-| **PL1** | Moteur de projection pur, testé, période arbitraire — **aucun changement de comportement** | 🚧 **EN COURS** — moteur codé (`lib/planning/projection.ts`), tests dédiés + typecheck + lint verts ; **suite complète en attente de la CI**. Passera à LIVRÉ **après merge**, pas avant. |
+| **PL1** | Moteur de projection pur, testé, période arbitraire — **aucun changement de comportement** | ✅ **LIVRÉ** — PR #127 mergée le 2026-07-13, **CI verte** (`build-and-test` 5m14s). `lib/planning/projection.ts` ; 52 tests dont l'équivalence avec l'algorithme d'avant (oracle recopié verbatim). Cap de 7 jours inchangé, aucune migration. |
 | PL2 | Fermetures de site (`site_closures` + saisie sur la fiche) | à faire |
 | PL3 | Signal « site fermé, prestation prévue » + ses 5 résolutions | à faire |
 | PL4 | Cycles 1-4 semaines (`cycle_length_weeks`, `anchor_date`, `week_index`) | à faire |
 | PL5 | Assistant de construction du cycle | à faire |
 | PL6 | Vue mois (fondée sur la projection) | à faire |
 | PL7 | Exceptions par occurrence (remplacement d'équipe, déplacement, annulation) | à faire |
+
+### Dette identifiée pendant PL1 (à traiter à part, PAS dans un lot PL)
+
+Les tests d'**intégration** `tests/lib/intervention-templates.test.ts` et
+`intervention-templates-generation.test.ts` (hors CI — ils frappent une vraie
+base Supabase) échouent **dans leur fixture**, à `createMission` :
+« Chantier sans organisation ». Le chantier de test est créé sans
+`organization_id`, et `lib/db/missions.ts:70` est fail-closed depuis P1.
+
+**Prouvé antérieur à PL1** : rejoué par `git stash` sans une seule ligne du lot →
+même erreur, même ligne. Aucun échec n'atteint le moteur de projection.
+À corriger dans un changement dédié (la fixture doit poser une organisation),
+jamais dans un lot PL — sinon le lot perd son isolement.
 
 ### Reporté explicitement (ne pas construire)
 
