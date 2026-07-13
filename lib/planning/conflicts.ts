@@ -19,6 +19,7 @@ import { findClosureForDate, type ProjectableClosure } from './closures'
 /** Ce qu'une cellule de la grille sait d'une intervention (sous-ensemble de
  *  `WeekInterventionCell` — on ne dépend que du strict nécessaire). */
 export interface ConflictCandidate {
+  id?: string
   status: string
 }
 
@@ -67,16 +68,29 @@ export function detectClosureConflicts<C extends ConflictCandidate>(params: {
   rows: Array<{ site_id: string; days: Record<string, C[]> }>
   /** Fermetures ACTIVES par chantier (les retirées sont déjà exclues). */
   closuresBySite: Record<string, ProjectableClosure[]>
+  /**
+   * PL3b — les interventions que l'humain a décidé de MAINTENIR malgré la
+   * fermeture (« on y va quand même » : le magasin est fermé au public, pas au
+   * prestataire).
+   *
+   * Elles restent `planned`, mais elles ne sont PLUS un conflit : la décision a
+   * été prise, et redemander tous les matins ce qui a déjà été tranché est le
+   * meilleur moyen de faire ignorer les alertes.
+   */
+  keptInterventionIds?: ReadonlySet<string>
 }): Record<string, Record<string, ClosureConflict>> {
   const out: Record<string, Record<string, ClosureConflict>> = {}
+  const kept = params.keptInterventionIds
 
   for (const row of params.rows) {
     const closures = params.closuresBySite[row.site_id]
     if (!closures || closures.length === 0) continue
 
     for (const [dateIso, cells] of Object.entries(row.days)) {
-      const expectedCount = cells.filter((c) => isStillExpected(c.status)).length
-      if (expectedCount === 0) continue // fermé mais rien de prévu : pas un conflit
+      const expectedCount = cells.filter(
+        (c) => isStillExpected(c.status) && !(c.id && kept?.has(c.id)),
+      ).length
+      if (expectedCount === 0) continue // fermé mais rien de prévu (ou déjà tranché)
 
       const closure = findClosureForDate(closures, dateIso)
       if (!closure) continue // ouvert ce jour-là

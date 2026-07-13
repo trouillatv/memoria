@@ -44,6 +44,7 @@ import { TeamBadge } from '@/components/ui/team-badge'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
+import { ConflictResolver } from './ConflictResolver'
 import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { DraggableMission } from './DraggableMission'
@@ -238,8 +239,20 @@ export function CellDrawer({
                   {conflict.expectedCount > 1
                     ? `Ces ${conflict.expectedCount} interventions restent planifiées.`
                     : 'Cette intervention reste planifiée.'}{' '}
-                  Aucune décision n’a encore été prise.
+                  Rien n’a été modifié.
                 </p>
+
+                {/* PL3b — les gestes. MemorIA propose des dates réellement
+                    ouvertes ; l'humain tranche ; la décision est tracée. */}
+                {selected && (
+                  <ConflictResolver
+                    interventionIds={selected.cells
+                      .filter((c) => c.status === 'planned')
+                      .map((c) => c.id)}
+                    closureId={conflict.closure.id}
+                    conflictDate={selected.date}
+                  />
+                )}
               </section>
             ) : null}
 

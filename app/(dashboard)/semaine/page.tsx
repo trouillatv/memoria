@@ -33,6 +33,7 @@ import {
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
+import { listKeptInterventionIds } from '@/lib/db/closure-decisions'
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
@@ -314,8 +315,19 @@ export default async function SemainePage({ searchParams }: PageProps) {
       })
     }
 
+    // PL3b — ce que l'humain a décidé de MAINTENIR ne réalerte plus. Redemander
+    // tous les matins ce qui a déjà été tranché est le meilleur moyen de faire
+    // ignorer les alertes.
+    const keptInterventionIds = await listKeptInterventionIds(
+      siteRows.flatMap((r) => Object.values(r.days).flat().map((c) => c.id)),
+    ).catch(() => new Set<string>())
+
     return {
-      conflictsBySite: detectClosureConflicts({ rows: siteRows, closuresBySite: raw }),
+      conflictsBySite: detectClosureConflicts({
+        rows: siteRows,
+        closuresBySite: raw,
+        keptInterventionIds,
+      }),
       closuresBySite: byDate,
     }
   })()
