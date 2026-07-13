@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search, CalendarPlus } from 'lucide-react'
+import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search, CalendarPlus, Repeat, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -70,6 +70,7 @@ import { UnattachedContentPanel } from './UnattachedContentPanel'
 import { listSiteScopes } from '@/lib/db/memory-scopes'
 import { listClosuresBySite } from '@/lib/db/site-closures'
 import { SiteClosuresCard } from './SiteClosuresCard'
+import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listUnattachedContent } from '@/lib/db/scope-suggestions'
 import { listOrgCatalog } from '@/lib/db/org-catalog'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
@@ -137,14 +138,17 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
   const orgId = user.organization_id
-  const [siteScopes, scopeTypeCatalog, unattached, closures] = await Promise.all([
+  const [siteScopes, scopeTypeCatalog, unattached, closures, cycles] = await Promise.all([
     orgId ? listSiteScopes(id, orgId).catch(() => []) : Promise.resolve([]),
     listOrgCatalog(orgId, 'corps_etat').catch(() => []),
     orgId ? listUnattachedContent(id, orgId).catch(() => []) : Promise.resolve([]),
     // PL2 — fermetures du site. `[]` tant que la migration 197 n'est pas
     // appliquée (dégradation gracieuse, cf. lib/db/site-closures.ts).
     listClosuresBySite(id).catch(() => []),
+    // PL5 — combien de roulements sur ce chantier ?
+    listCyclesBySite(id).catch(() => []),
   ])
+  const cycleCount = cycles.length
   const scopeTypeOptions = scopeTypeCatalog.map((c) => ({ key: c.key, label: c.label }))
   const scopeChoices = siteScopes.map((s) => ({ id: s.id, label: s.label }))
 
@@ -465,6 +469,29 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           n'annule RIEN : PL3 signalera le conflit, l'humain tranchera. */}
       <div className={tabClass('activite')}>
         <SiteClosuresCard siteId={id} closures={closures} />
+      </div>
+
+      {/* ── ACTIVITÉ — Roulements (PL5) ─────────────────────────────────────
+          « Qui travaille, quels jours, en rotation. » Le roulement est un objet
+          du CHANTIER : plus besoin de passer par un contrat ni de créer vingt
+          récurrences à la main. */}
+      <div className={tabClass('activite')}>
+        <Link
+          href={`/sites/${id}/roulements`}
+          className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4 transition-colors hover:bg-muted/30"
+        >
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <Repeat className="h-4 w-4 text-muted-foreground" /> Roulements
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {cycleCount === 0
+                ? 'Aucun roulement — les prestations sont saisies une par une.'
+                : `${cycleCount} roulement${cycleCount > 1 ? 's' : ''} en cours`}
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </Link>
       </div>
 
       {/* ── ÉQUIPE — all-time ────────────────────────────────────────────── */}
