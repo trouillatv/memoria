@@ -1,9 +1,11 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, StickyNote, ListTodo, ClipboardCheck, Paperclip, Mic, Clock } from 'lucide-react'
+import { ArrowLeft, StickyNote, ListTodo, ClipboardCheck, Camera, Mic, Clock, CheckCircle2, FileDown, Images } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { gatherVisitDebriefContext } from '@/lib/db/visits'
+import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
+import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { VisitDebriefPanel } from './VisitDebriefPanel'
 import { CapturedKnowledgePanel } from './CapturedKnowledgePanel'
 import { GenerateCrButton } from './GenerateCrButton'
@@ -18,6 +20,14 @@ const STATE_CLS: Record<string, string> = {
   bloqué: 'bg-rose-100 text-rose-700', en_attente: 'bg-amber-100 text-amber-800',
   dormant: 'bg-slate-100 text-slate-600', ouvert: 'bg-sky-100 text-sky-700', clos: 'bg-emerald-100 text-emerald-700',
 }
+// Bilan de la liste « à vérifier » — mêmes états que le mobile (mig 196).
+const WATCH_FR: Record<string, string> = {
+  verified: 'Vérifié', to_follow: 'À suivre', dismissed: 'Écarté', pending: 'Non traité',
+}
+const WATCH_CLS: Record<string, string> = {
+  verified: 'bg-emerald-100 text-emerald-700', to_follow: 'bg-amber-100 text-amber-800',
+  dismissed: 'bg-slate-100 text-slate-500', pending: 'bg-muted text-muted-foreground',
+}
 
 export default async function VisitDebriefPage({ params }: { params: Promise<{ id: string; visitId: string }> }) {
   const user = await getCurrentUserWithProfile()
@@ -28,10 +38,23 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
   const [identity, ctx] = await Promise.all([getSiteIdentity(id), gatherVisitDebriefContext(visitId)])
   if (!identity || !ctx || ctx.visit.site_id !== id) notFound()
   const { visit } = ctx
-  const knowledge = await listCapturedKnowledgeBySource(visit.id).catch(() => [])
-  // Les dossiers (points suivis) touchés par cette visite, avec leur état actuel
-  // — lu du même moteur que la page point suivi et le brief (une seule vérité).
-  const touchedDossiers = await listVisitTouchedDossiers(visit.id).catch(() => [])
+  // Doctrine (audit/09 §Mémoire) : une visite possède UNE seule source de
+  // vérité — visit_capture. Le desktop PRÉSENTE la même donnée que le mobile,
+  // il ne la reconstruit plus par fenêtre temporelle.
+  const [knowledge, touchedDossiers, capturesAll, watchlist] = await Promise.all([
+    listCapturedKnowledgeBySource(visit.id).catch(() => []),
+    // Les dossiers (points suivis) touchés par cette visite, avec leur état
+    // actuel — lu du même moteur que la page point suivi et le brief.
+    listVisitTouchedDossiers(visit.id).catch(() => []),
+    listVisitCaptures(visit.id).catch(() => []),
+    listWatchlist(visit.id).catch(() => []),
+  ])
+  const captures = capturesAll.filter((c) => c.status !== 'discarded')
+  const previews = await getVisitCapturePreviewUrls(captures).catch(() => ({} as Record<string, { url: string; mime: string | null }>))
+  const photos = captures.filter((c) => c.kind === 'photo' || c.kind === 'video')
+  const vocals = captures.filter((c) => c.kind === 'vocal')
+  const capNotes = captures.filter((c) => c.kind === 'note' && c.body)
+  const capVerifs = captures.filter((c) => c.kind === 'verification')
 
   const fr = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -55,34 +78,111 @@ export default async function VisitDebriefPage({ params }: { params: Promise<{ i
         </p>
       </header>
 
-      {/* Ce que MemorIA a VU — la matière brute, avant toute interprétation. */}
+      {/* Ce que MemorIA a VU — la matière brute (visit_capture), la même que
+          le mobile. Photos en images, vocaux écoutables, notes réelles. */}
       <section className="rounded-2xl border bg-card p-4 space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Ce que MemorIA a vu</h2>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           {durLabel && <Stat icon={<Clock className="h-3.5 w-3.5" />} n={null} label={durLabel} />}
-          <Stat icon={<Mic className="h-3.5 w-3.5" />} n={ctx.transcript ? 1 : 0} label="vocal" />
-          <Stat icon={<Paperclip className="h-3.5 w-3.5" />} n={ctx.attachmentNames.length} label="pièce" />
-          <Stat icon={<StickyNote className="h-3.5 w-3.5" />} n={ctx.capturedNotes.length} label="note" />
+          <Stat icon={<Camera className="h-3.5 w-3.5" />} n={photos.length} label="photo" />
+          <Stat icon={<Mic className="h-3.5 w-3.5" />} n={vocals.length} label="vocal" />
+          <Stat icon={<StickyNote className="h-3.5 w-3.5" />} n={capNotes.length} label="note" />
+          <Stat icon={<CheckCircle2 className="h-3.5 w-3.5" />} n={capVerifs.length} label="point vérifié" />
           <Stat icon={<ClipboardCheck className="h-3.5 w-3.5" />} n={ctx.capturedReserves.length} label="réserve" />
           <Stat icon={<ListTodo className="h-3.5 w-3.5" />} n={ctx.capturedActions.length} label="action" />
         </div>
-        {ctx.attachmentNames.length > 0 && (
-          <p className="text-xs text-muted-foreground">Documents : {ctx.attachmentNames.join(' · ')}</p>
+
+        {photos.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {photos.map((c) => {
+              const p = c.attachment_id ? previews[c.id] : null
+              if (!p) return null
+              return p.mime?.startsWith('video/') ? (
+                <video key={c.id} src={p.url} controls preload="metadata" className="h-24 w-full rounded-lg border object-cover" />
+              ) : (
+                <a key={c.id} href={p.url} target="_blank" rel="noreferrer" className="group relative block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={c.body ?? 'Photo de visite'} className="h-24 w-full rounded-lg border object-cover transition group-hover:opacity-90" />
+                </a>
+              )
+            })}
+          </div>
         )}
-        {ctx.capturedNotes.length > 0 && (
+
+        {vocals.length > 0 && (
+          <ul className="space-y-2">
+            {vocals.map((c) => {
+              const p = c.attachment_id ? previews[c.id] : null
+              return (
+                <li key={c.id} className="rounded-lg bg-muted/50 px-3 py-2 space-y-1.5">
+                  {p && <audio src={p.url} controls preload="none" className="h-8 w-full" />}
+                  {c.body && <p className="text-sm text-muted-foreground">{c.body}</p>}
+                  {!p && !c.body && <p className="text-xs text-muted-foreground">Vocal en cours de transcription…</p>}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        {capNotes.length > 0 && (
           <ul className="space-y-1 text-sm">
-            {ctx.capturedNotes.map((n, i) => (
-              <li key={i} className="rounded-lg bg-muted/50 px-3 py-2">{n}</li>
+            {capNotes.map((c) => (
+              <li key={c.id} className="rounded-lg bg-muted/50 px-3 py-2">{c.body}</li>
             ))}
           </ul>
         )}
+
+        {capVerifs.length > 0 && (
+          <ul className="space-y-1 text-sm">
+            {capVerifs.map((c) => (
+              <li key={c.id} className="flex items-start gap-2 rounded-lg bg-emerald-50/60 px-3 py-2 text-emerald-900">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                <span>{c.body ?? 'Point vérifié'}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {ctx.transcript && (
           <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground line-clamp-4">{ctx.transcript}</p>
         )}
-        {ctx.capturedNotes.length === 0 && !ctx.transcript && ctx.attachmentNames.length === 0 && (
+        {captures.length === 0 && !ctx.transcript && (
           <p className="text-sm text-muted-foreground">Rien n’a encore été capturé pour cette visite.</p>
         )}
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <a
+            href={`/m/visite/${visit.id}/pdf`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+          >
+            <FileDown className="h-3.5 w-3.5" /> Ouvrir le CR PDF
+          </a>
+          <Link
+            href={`/m/visite/${visit.id}/recap`}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+          >
+            <Images className="h-3.5 w-3.5" /> Voir toutes les captures
+          </Link>
+        </div>
       </section>
+
+      {/* Ce qu'il fallait VÉRIFIER — la liste de contrôle de cette visite
+          (visit_watchlist), avec son bilan. Même donnée que le mobile. */}
+      {watchlist.length > 0 && (
+        <section className="rounded-2xl border bg-card p-4 space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Ce qu’il fallait vérifier</h2>
+          <ul className="space-y-1.5">
+            {watchlist.map((w) => (
+              <li key={w.id} className="flex items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2">
+                <span className="min-w-0 truncate text-sm">{w.label}</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${WATCH_CLS[w.state] ?? 'bg-muted text-muted-foreground'}`}>
+                  {WATCH_FR[w.state] ?? w.state}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Dossiers touchés — « tu as vérifié ces points : voici où en sont leurs
           dossiers » (état lu du moteur unique). La visite parle aux dossiers. */}
