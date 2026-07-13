@@ -23,6 +23,8 @@ import {
   getCycle,
   type CycleSlot,
 } from '@/lib/db/planning-cycles'
+import { listActiveClosuresForSites } from '@/lib/db/site-closures'
+import { previewCycle, type PreviewResult } from '@/lib/planning/cycle-preview'
 import { logAuditEvent } from '@/lib/audit/log'
 
 type Result = { ok: true; cycleId: string } | { error: string }
@@ -50,6 +52,8 @@ const cycleSchema = z
     startsOn: dateIso,
     endsOn: dateIso.nullable(),
     slots: z.array(slotSchema).max(4 * 7 * 20),
+    /** PL5b — « Enregistrer comme brouillon » ou « Publier ». */
+    status: z.enum(['draft', 'published']).default('published'),
   })
   .superRefine((d, ctx) => {
     if (d.endsOn && d.endsOn < d.startsOn) {
@@ -110,6 +114,7 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     endsOn: d.endsOn,
     slots,
     userId: auth.userId,
+    status: d.status,
   }
 
   let cycleId: string
@@ -173,4 +178,58 @@ function revalidateAll(siteId: string, cycleId: string): void {
   revalidatePath(`/sites/${siteId}`)
   revalidatePath('/semaine')
   revalidatePath('/missions')
+}
+
+
+// ── PL5b — l'APERÇU. Il ne matérialise RIEN. ────────────────────────────────
+//
+// Aucune intervention n'est créée, aucun rythme n'est écrit. On projette la
+// grille (même en brouillon, même pas enregistrée) avec le moteur PL1, et on la
+// croise avec les fermetures (PL2). Guillaume corrige AVANT de publier.
+
+const previewSchema = z.object({
+  siteId: z.string().uuid(),
+  missionId: z.string().uuid(),
+  cycleLengthWeeks: z.number().int().min(1).max(4),
+  anchorDate: dateIso,
+  startsOn: dateIso,
+  endsOn: dateIso.nullable(),
+  slots: z.array(slotSchema).max(4 * 7 * 20),
+  /** Le mois regardé : yyyy-mm-01. */
+  from: dateIso,
+  to: dateIso,
+})
+
+export async function previewCycleAction(
+  input: unknown,
+): Promise<{ ok: true; preview: PreviewResult } | { error: string }> {
+  const auth = await requireManagerOrAdmin()
+  if (!auth.ok) return { error: auth.error }
+
+  const parsed = previewSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
+  const d = parsed.data
+
+  const owned = await requireOwned(auth.role, 'sites', d.siteId)
+  if (!owned.allowed) return { error: owned.error }
+
+  // Les fermetures RÉELLES du chantier sur la période — pour que le conflit
+  // affiché soit le vrai.
+  const closuresBySite = await listActiveClosuresForSites([d.siteId], d.from, d.to).catch(() => ({}))
+
+  const preview = previewCycle({
+    cycle: {
+      missionId: d.missionId,
+      cycleLengthWeeks: d.cycleLengthWeeks,
+      anchorDate: d.anchorDate,
+      startsOn: d.startsOn,
+      endsOn: d.endsOn,
+      slots: d.slots,
+    },
+    closures: closuresBySite[d.siteId] ?? [],
+    from: d.from,
+    to: d.to,
+  })
+
+  return { ok: true, preview }
 }

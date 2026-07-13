@@ -10,13 +10,15 @@
 // Le REPOS est un ÉTAT, pas une absence : sa feuille est faite pour LIRE LES
 // REPOS. Il se voit, il se stocke — il ne génère simplement aucune intervention.
 
-import { useMemo, useState, useTransition } from 'react'
+import { useCallback, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, X, CalendarRange } from 'lucide-react'
+import { Loader2, Plus, X, CalendarRange, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { todayLocalIso } from '@/lib/time/local-date'
-import { saveCycleAction } from './actions'
+import type { PreviewResult } from '@/lib/planning/cycle-preview'
+import { saveCycleAction, previewCycleAction } from './actions'
+import { CyclePreview, monthBounds } from './CyclePreview'
 
 const DAYS = [
   { iso: 1, label: 'Lun' },
@@ -120,55 +122,139 @@ export function CycleEditor({
     })
   }
 
-  function save() {
-    if (pending) return
-    if (!name.trim()) return toast.error('Donnez un nom au roulement')
-    if (!missionId) return toast.error('Choisissez la mission')
-    if (rows.length === 0) return toast.error('Ajoutez au moins une équipe')
+  // PL5b — l'aperçu. `view` bascule entre la grille et « à quoi ressemblera mon
+  // mois ». Rien n'est écrit tant qu'il n'a pas choisi Brouillon ou Publier.
+  const [view, setView] = useState<'grid' | 'preview'>('grid')
+  const [month, setMonth] = useState(() => (initial?.startsOn ?? todayLocalIso()).slice(0, 7))
+  const [preview, setPreview] = useState<PreviewResult | null>(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
 
-    // Toutes les cases sont écrites — travail ET repos. Sa feuille se relit
-    // telle qu'il l'a dessinée.
-    const slots = rows.flatMap((teamId) =>
-      Array.from({ length: weeks }, (_, w) =>
-        DAYS.map((day) => {
-          const isWork = worked.has(key(w, day.iso, teamId))
-          return {
-            weekIndex: w,
-            weekday: day.iso,
-            teamId,
-            state: isWork ? ('work' as const) : ('rest' as const),
-            startTime: isWork ? startTime : null,
-            endTime: isWork ? endTime : null,
-          }
-        }),
-      ).flat(),
-    )
+  /** Toutes les cases — travail ET repos. Sa feuille se relit telle qu'il l'a
+   *  dessinée : le repos est un état, pas une absence. */
+  const buildSlots = useCallback(
+    () =>
+      rows.flatMap((teamId) =>
+        Array.from({ length: weeks }, (_, w) =>
+          DAYS.map((day) => {
+            const isWork = worked.has(key(w, day.iso, teamId))
+            return {
+              weekIndex: w,
+              weekday: day.iso,
+              teamId,
+              state: isWork ? ('work' as const) : ('rest' as const),
+              startTime: isWork ? startTime : null,
+              endTime: isWork ? endTime : null,
+            }
+          }),
+        ).flat(),
+      ),
+    [rows, weeks, worked, startTime, endTime],
+  )
+
+  /** Ce qui est commun à l'aperçu et à l'enregistrement. */
+  const cycleShape = useCallback(
+    () => ({
+      siteId,
+      missionId,
+      cycleLengthWeeks: weeks,
+      // L'ancrage est le lundi de la date de début : c'est lui qui définit
+      // « la semaine A ».
+      anchorDate: mondayOf(startsOn),
+      startsOn,
+      endsOn: endsOn || null,
+      slots: buildSlots(),
+    }),
+    [siteId, missionId, weeks, startsOn, endsOn, buildSlots],
+  )
+
+  function valid(): boolean {
+    const manque =
+      (!name.trim() && 'Donnez un nom au roulement') ||
+      (!missionId && 'Choisissez la mission') ||
+      (rows.length === 0 && 'Ajoutez au moins une équipe') ||
+      (worked.size === 0 && 'Aucun jour travaillé : la grille est vide')
+    if (manque) {
+      toast.error(manque)
+      return false
+    }
+    return true
+  }
+
+  /** Charge l'aperçu d'un mois. **N'écrit rien.** */
+  const loadPreview = useCallback(
+    async (m: string) => {
+      setLoadingPreview(true)
+      const r = await previewCycleAction({ ...cycleShape(), ...monthBounds(m) })
+      setLoadingPreview(false)
+      if ('error' in r) {
+        toast.error(r.error)
+        return false
+      }
+      setPreview(r.preview)
+      return true
+    },
+    [cycleShape],
+  )
+
+  function openPreview() {
+    if (pending || loadingPreview) return
+    if (!valid()) return
+    // On ouvre sur le mois du DÉBUT : c'est le mois qu'il a sous les yeux.
+    const m = startsOn.slice(0, 7)
+    setMonth(m)
+    void loadPreview(m).then((ok) => ok && setView('preview'))
+  }
+
+  function changeMonth(m: string) {
+    setMonth(m)
+    void loadPreview(m)
+  }
+
+  function save(status: 'draft' | 'published') {
+    if (pending) return
+    if (!valid()) return
 
     start(async () => {
       const r = await saveCycleAction({
         ...(initial ? { cycleId: initial.id } : {}),
-        siteId,
-        missionId,
+        ...cycleShape(),
         name: name.trim(),
-        cycleLengthWeeks: weeks,
-        // L'ancrage est le lundi de la date de début : c'est lui qui définit
-        // « la semaine A ».
-        anchorDate: mondayOf(startsOn),
-        startsOn,
-        endsOn: endsOn || null,
-        slots,
+        status,
       })
       if ('error' in r) {
         toast.error(r.error)
         return
       }
-      toast.success(initial ? 'Roulement modifié' : 'Roulement enregistré')
+      toast.success(
+        status === 'draft'
+          ? 'Brouillon enregistré — rien n’est encore placé dans la semaine'
+          : initial
+            ? 'Roulement publié'
+            : 'Roulement publié — il apparaît dans la semaine',
+      )
       router.push(`/sites/${siteId}/roulements`)
       router.refresh()
     })
   }
 
   const workedCount = worked.size
+
+  if (view === 'preview' && preview) {
+    return (
+      <CyclePreview
+        preview={preview}
+        month={month}
+        labelOf={labelOf}
+        loading={loadingPreview}
+        onMonth={changeMonth}
+        onBack={() => setView('grid')}
+        onDraft={() => save('draft')}
+        onPublish={() => save('published')}
+        saving={pending}
+        isEdit={Boolean(initial)}
+      />
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -409,9 +495,18 @@ export function CycleEditor({
       </section>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={save} disabled={pending || rows.length === 0 || missions.length === 0}>
-          {pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-          {initial ? 'Enregistrer les modifications' : 'Enregistrer le roulement'}
+        {/* On ne publie JAMAIS depuis la grille : on passe par l'aperçu. C'est là
+            qu'il compare l'écran à sa feuille. */}
+        <Button
+          onClick={openPreview}
+          disabled={pending || loadingPreview || rows.length === 0 || missions.length === 0}
+        >
+          {loadingPreview ? (
+            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+          ) : (
+            <Eye className="mr-1.5 h-4 w-4" />
+          )}
+          Voir l’aperçu
         </Button>
         <p className="text-xs text-muted-foreground">
           {workedCount === 0

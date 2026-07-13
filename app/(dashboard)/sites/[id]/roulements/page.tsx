@@ -66,7 +66,15 @@ export default async function RoulementsPage({ params }: { params: Promise<{ id:
               <li key={c.id} className="group rounded-2xl border bg-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <Link href={`/sites/${id}/roulements/${c.id}`} className="min-w-0 flex-1">
-                    <p className="font-medium">{c.name}</p>
+                    <p className="flex items-center gap-2 font-medium">
+                      <span className="truncate">{c.name}</span>
+                      {/* Un brouillon ne place RIEN dans la semaine : il faut que ça se voie. */}
+                      {c.status === 'draft' && (
+                        <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+                          Brouillon
+                        </span>
+                      )}
+                    </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {WEEK_LABEL(c.cycleLengthWeeks)} ·{' '}
                       {worked === 0 ? 'aucun jour travaillé' : `${worked} jour${worked > 1 ? 's' : ''} travaillé${worked > 1 ? 's' : ''}`}
