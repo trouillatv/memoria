@@ -68,7 +68,7 @@ export default async function RoulementsPage({ params }: { params: Promise<{ id:
                   <Link href={`/sites/${id}/roulements/${c.id}`} className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 font-medium">
                       <span className="truncate">{c.name}</span>
-                      {/* Un brouillon ne place RIEN dans la semaine : il faut que ça se voie. */}
+                      {/* Un brouillon ne place RIEN dans la semaine : ça doit se voir. */}
                       {c.status === 'draft' && (
                         <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
                           Brouillon
