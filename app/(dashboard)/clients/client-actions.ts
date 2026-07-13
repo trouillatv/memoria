@@ -4,6 +4,10 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireOwned } from '@/lib/auth/ownership'
+import { countActiveSitesForClient, softDeleteClient } from '@/lib/db/clients'
+import { decideClientRemoval } from '@/lib/removal/policy'
+import { logAuditEvent } from '@/lib/audit/log'
 
 const Schema = z.object({
   name: z.string().trim().min(1, 'Nom requis').max(200),
@@ -49,4 +53,44 @@ export async function createClientAction(
 
   revalidatePath('/clients')
   return { ok: true, id: (client as { id: string }).id }
+}
+
+// ── Retirer un client (lot D) ───────────────────────────────────────────────
+// Bloqué tant qu'il reste un chantier actif : `sites.client_id` est en
+// ON DELETE CASCADE (mig 003) — la cascade irait client → sites → missions →
+// interventions → PHOTOS. On ne l'expose jamais. Cf. audit/03.
+
+export async function removeClientAction(
+  clientId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager') {
+    return { ok: false, error: 'Action non autorisée' }
+  }
+  if (!z.string().uuid().safeParse(clientId).success) {
+    return { ok: false, error: 'Identifiant invalide' }
+  }
+
+  // Lot S : garde d'organisation.
+  const owned = await requireOwned(user.role, 'clients', clientId)
+  if (!owned.allowed) return { ok: false, error: owned.error }
+
+  const activeSites = await countActiveSitesForClient(clientId)
+  const decision = decideClientRemoval(activeSites)
+  if (!decision.allowed) return { ok: false, error: decision.reason }
+
+  await softDeleteClient(clientId)
+
+  await logAuditEvent({
+    userId: user.id,
+    entityType: 'client',
+    entityId: clientId,
+    action: 'removed',
+    metadata: { kind: 'client_removed', mode: 'soft' },
+  })
+
+  revalidatePath('/clients')
+  revalidatePath('/sites')
+  return { ok: true }
 }

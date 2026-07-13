@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { NewMissionDialog } from './NewMissionDialog'
 import { MissionFilters } from './MissionFilters'
+import { RemoveMissionButton } from './RemoveMissionButton'
 import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
@@ -565,8 +566,15 @@ function MissionTable({
             ? `/contracts/${m.contractId}/missions/${m.id}/edit`
             : `/sites/${m.siteId}`
 
+          const hasHistory = !!(m.firstInterventionDate || m.lastInterventionDate || m.nextInterventionDate)
+
           return (
-            <li key={m.id} className={muted ? 'opacity-60' : ''}>
+            <li key={m.id} className={`${muted ? 'opacity-60' : ''} group/row relative`}>
+              {/* Lot D : « Retirer » — hors du Link (un clic dessus ne doit pas
+                  naviguer). Discret au repos, visible au survol / au focus. */}
+              <div className="absolute right-3 top-1/2 z-10 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
+                <RemoveMissionButton missionId={m.id} missionName={m.name} hasHistory={hasHistory} />
+              </div>
               <Link
                 href={href}
                 className="grid sm:grid-cols-[1fr_160px_200px] gap-x-4 gap-y-1 px-4 py-3 items-center hover:bg-muted/20 transition-colors block"

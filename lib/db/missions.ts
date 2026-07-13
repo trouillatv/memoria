@@ -100,3 +100,41 @@ export async function updateMission(id: string, patch: Partial<{
   const { error } = await supabase.from('missions').update(patch).eq('id', id)
   if (error) throw error
 }
+
+// ── Retirer une mission (lot D) ─────────────────────────────────────────────
+// La décision hard/soft vit dans lib/removal/policy.ts ; ici on ne fait
+// qu'écrire. `missions.deleted_at` existait depuis la mig 018 mais n'avait
+// JAMAIS été écrite — d'où « je ne peux pas nettoyer mes essais ».
+
+/** Nombre d'interventions rattachées (toutes, y compris passées : ce sont
+ *  elles qui portent les preuves). Décide hard vs soft. */
+export async function countInterventionsForMission(missionId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { count, error } = await supabase
+    .from('interventions')
+    .select('id', { count: 'exact', head: true })
+    .eq('mission_id', missionId)
+  if (error) throw error
+  return count ?? 0
+}
+
+/** Retire la mission des écrans. L'historique des interventions reste lisible. */
+export async function softDeleteMission(missionId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('missions')
+    .update({ deleted_at: new Date().toISOString(), active: false })
+    .eq('id', missionId)
+    .is('deleted_at', null)
+  if (error) throw error
+}
+
+/** Supprime définitivement une mission SANS descendance (brouillon d'essai).
+ *  L'appelant DOIT avoir vérifié countInterventionsForMission() === 0 : la FK
+ *  interventions.mission_id est en ON DELETE CASCADE (mig 018:66) et
+ *  emporterait les photos-preuves. */
+export async function hardDeleteMission(missionId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('missions').delete().eq('id', missionId)
+  if (error) throw error
+}
