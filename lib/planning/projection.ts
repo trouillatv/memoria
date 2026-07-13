@@ -64,6 +64,16 @@ export interface ProjectableTemplate {
   planned_end_hhmm: string | null
   starts_on: string
   ends_on: string | null
+
+  // PL4 — le rythme peut appartenir à un ROULEMENT. Ces trois champs sont
+  // OPTIONNELS : un rythme legacy (sans cycle) se comporte EXACTEMENT comme
+  // avant — la branche cyclique est un no-op. C'est ce qui garde l'oracle vert.
+  /** 1 à 4. Absent = pas de cycle. */
+  cycle_length_weeks?: number | null
+  /** Le lundi de la « semaine A ». Sans lui, un cycle se décalerait. */
+  anchor_date?: string | null
+  /** 0 = semaine A, 1 = semaine B… */
+  week_index?: number | null
 }
 
 /** Une occurrence PROJETÉE — elle n'existe pas en base (pas d'id). Elle devient
@@ -97,11 +107,38 @@ function isoDayOfWeek(date: Date): number {
  * Travaille en UTC — les dates de planning sont des dates PURES (yyyy-mm-dd),
  * jamais des instants ; c'est ce qui garde Nouméa hors de l'équation ici.
  */
+/**
+ * PL4 — dans quelle semaine du cycle tombe cette date ?
+ * 0 = semaine A, 1 = semaine B… L'ancrage est le point fixe : sans lui, la
+ * rotation se décalerait à la première modification.
+ *
+ * Les semaines sont comptées depuis l'ancrage, pas depuis le calendrier ISO :
+ * c'est le lundi d'ancrage qui définit « la semaine A ».
+ */
+export function cycleWeekIndex(
+  anchorDateIso: string,
+  dateIso: string,
+  cycleLengthWeeks: number,
+): number {
+  const anchor = new Date(`${anchorDateIso}T00:00:00.000Z`).getTime()
+  const target = new Date(`${dateIso}T00:00:00.000Z`).getTime()
+  const weeks = Math.floor((target - anchor) / (7 * DAY_MS))
+  // Modulo POSITIF : une date avant l'ancrage ne doit pas renvoyer un index négatif.
+  return ((weeks % cycleLengthWeeks) + cycleLengthWeeks) % cycleLengthWeeks
+}
+
 export function matchesFrequency(template: ProjectableTemplate, date: Date): boolean {
   const dateIso = date.toISOString().slice(0, 10)
 
   if (template.ends_on && dateIso > template.ends_on) return false
   if (dateIso < template.starts_on) return false
+
+  // PL4 — le rythme n'appartient à un cycle que si les TROIS champs sont là.
+  // Sinon : no-op total, comportement d'avant, à la ligne près.
+  const { cycle_length_weeks: len, anchor_date: anchor, week_index: wi } = template
+  if (len && anchor && wi !== null && wi !== undefined) {
+    if (cycleWeekIndex(anchor, dateIso, len) !== wi) return false
+  }
 
   switch (template.frequency) {
     case 'daily':

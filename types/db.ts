@@ -738,6 +738,14 @@ export interface DbInterventionTemplate {
   created_at: string
   created_by: string | null
   deleted_at: string | null
+  // Migration 199 (PL4) — le rythme peut être la PROJECTION d'un roulement.
+  // Nullable : un rythme legacy n'en a pas, et se comporte comme avant.
+  cycle_id?: string | null
+  cycle_length_weeks?: number | null
+  anchor_date?: string | null
+  week_index?: number | null
+  /** L'ÉQUIPE du rythme — elle prime sur celle de la mission. Jamais une personne. */
+  assigned_team_id?: string | null
 }
 
 export interface DbIntervention {
