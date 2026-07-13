@@ -121,7 +121,8 @@ exporter).
 |---|---|---|
 | **PL1** | Moteur de projection pur, testé, période arbitraire — **aucun changement de comportement** | ✅ **LIVRÉ** — PR #127 mergée le 2026-07-13, **CI verte** (`build-and-test` 5m14s). `lib/planning/projection.ts` ; 52 tests dont l'équivalence avec l'algorithme d'avant (oracle recopié verbatim). Cap de 7 jours inchangé, aucune migration. |
 | PL2 | Fermetures de site (`site_closures` + saisie sur la fiche) | ✅ **LIVRÉ** — PR #129 mergée, CI verte (`build-and-test` + **`db-reset`** : la mig 197 est rejouée sur base neuve). Moteur pur `lib/planning/closures.ts` (`findClosureForDate` renvoie LA fermeture, pas un booléen ; règle de chevauchement fixée), 18 tests. ⚠️ **Migration 197 NON APPLIQUÉE** en base — fichier livré seulement. ⚠️ **Carte pas encore montée** sur la fiche chantier (fichier en refactor par une autre session) : branchement de 3 lignes à faire. |
-| PL3 | Signal « site fermé, prestation prévue » + ses 5 résolutions | à faire |
+| **PL2a** | **Brancher `SiteClosuresCard` sur la fiche chantier** (3 lignes) — sans quoi PL2 n'est pas UTILISABLE | 🚧 **BLOQUÉ** : `sites/[id]/page.tsx` porte 453 lignes non commitées d'un refactor mené par une autre session ; les indexer publierait leur travail non relu. Le branchement est **écrit et prêt** dans l'arbre (page.tsx:39,40,164,288) — il part dès que leur refactor est mergé. |
+| PL3 | Signal « site fermé, prestation prévue » + ses 5 résolutions | à faire — **après PL2a** (règle : chaque brique doit être VISIBLE et testable avant d'empiler la suivante) |
 | PL4 | Cycles 1-4 semaines (`cycle_length_weeks`, `anchor_date`, `week_index`) | à faire |
 | PL5 | Assistant de construction du cycle | à faire |
 | PL6 | Vue mois (fondée sur la projection) | à faire |
@@ -139,6 +140,21 @@ base Supabase) échouent **dans leur fixture**, à `createMission` :
 même erreur, même ligne. Aucun échec n'atteint le moteur de projection.
 À corriger dans un changement dédié (la fixture doit poser une organisation),
 jamais dans un lot PL — sinon le lot perd son isolement.
+
+### Règle de livraison des lots PL (Vincent, 2026-07-13)
+
+**« Mergé » ne veut pas dire « utilisable ».** Un lot dont le modèle, l'API, la
+sécurité et les tests sont livrés mais dont l'écran n'est pas branché est
+**techniquement terminé, produit en attente** :
+
+```
+PL2   ✔ infrastructure  ✔ modèle  ✔ API  ✔ sécurité  ✔ tests
+      ✖ intégration UI finale
+```
+
+Conséquence : **on ne démarre pas le lot suivant tant que le précédent n'est pas
+VISIBLE et testable par l'utilisateur.** Chaque brique se voit avant qu'on
+empile la suivante.
 
 ### Reporté explicitement (ne pas construire)
 
