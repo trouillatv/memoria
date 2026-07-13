@@ -4,7 +4,11 @@
 // sélectionné. Le préremplissage est un helper pur : on le teste à sec.
 
 import { describe, it, expect } from 'vitest'
-import { pickInitialMissionId, type PrefillMission } from '@/app/(dashboard)/semaine/planning-prefill'
+import {
+  pickInitialMissionId,
+  mergeMissionOptions,
+  type PrefillMission,
+} from '@/app/(dashboard)/semaine/planning-prefill'
 
 const m = (id: string, name: string, siteId: string, contractName = 'Contrat'): PrefillMission => ({
   id, name, siteId, contractName,
@@ -46,5 +50,25 @@ describe('pickInitialMissionId — contexte chantier', () => {
 
   it('chantier inconnu (id étranger, déjà filtré serveur) → ignoré', () => {
     expect(pickInitialMissionId([m('m1', 'Vitres', AUTRE)], 'site-inexistant')).toBe('')
+  })
+})
+
+describe('mergeMissionOptions — mission créée inline visible immédiatement', () => {
+  const server = [{ id: 'm1', v: 'serveur' }, { id: 'm2', v: 'serveur' }]
+
+  it('la mission créée inline est ajoutée aux options', () => {
+    const merged = mergeMissionOptions(server, [{ id: 'm-new', v: 'inline' }])
+    expect(merged.map((x) => x.id)).toEqual(['m1', 'm2', 'm-new'])
+  })
+
+  it('après router.refresh, la version SERVEUR gagne (dédup par id)', () => {
+    const refreshed = [...server, { id: 'm-new', v: 'serveur' }]
+    const merged = mergeMissionOptions(refreshed, [{ id: 'm-new', v: 'inline' }])
+    expect(merged).toHaveLength(3)
+    expect(merged.find((x) => x.id === 'm-new')?.v).toBe('serveur')
+  })
+
+  it('rien créé inline → options serveur telles quelles', () => {
+    expect(mergeMissionOptions(server, [])).toEqual(server)
   })
 })

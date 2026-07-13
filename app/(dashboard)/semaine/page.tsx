@@ -43,7 +43,7 @@ import { planningSignalsBySite } from '@/lib/memory/signals/surface'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { WeekNavigation } from './WeekNavigation'
 import { WeekVigilanceSection } from './WeekVigilance'
-import { CreateInterventionDialog, type MissionOption } from './CreateInterventionDialog'
+import { CreateInterventionDialog, type MissionOption, type SiteOption } from './CreateInterventionDialog'
 import { WeekGrid } from './WeekGrid'
 import { WeekGridClient } from './WeekGridClient'
 import { TeamWeekGrid } from './TeamWeekGrid'
@@ -133,11 +133,15 @@ function totalTeam(rows: TeamRow[]): number {
 async function fetchMissionOptions(orgId: string | null): Promise<MissionOption[]> {
   if (!orgId) return []
   const supabase = createAdminClient()
+  // Contrat en LEFT join (PR 2) : un chantier créé sans contrat (cas réel
+  // « Pointière Discount », contract_id nullable dans CreateSiteDialog) doit
+  // quand même exposer ses missions au planificateur. L'ancien `!inner` les
+  // rendait invisibles — LE « ma mission n'apparaît pas » résiduel.
   const { data, error } = await supabase
     .from('missions')
     .select(
       `id, name, assigned_team_id,
-       site:sites!inner(id, name, deleted_at, contract:contracts!inner(name, deleted_at))`,
+       site:sites!inner(id, name, deleted_at, contract:contracts(name, deleted_at))`,
     )
     .is('deleted_at', null)
     .eq('active', true)
@@ -158,17 +162,43 @@ async function fetchMissionOptions(orgId: string | null): Promise<MissionOption[
     const site = Array.isArray(m.site) ? m.site[0] : m.site
     if (!site || site.deleted_at) continue
     const contract = Array.isArray(site.contract) ? site.contract[0] : site.contract
-    if (!contract || contract.deleted_at) continue
+    // Contrat soft-deleted → on le tait, mais la mission reste planifiable.
     out.push({
       id: m.id,
       name: m.name,
       siteId: site.id,
       siteName: site.name,
-      contractName: contract.name,
+      contractName: contract && !contract.deleted_at ? contract.name : '—',
       defaultTeamId: m.assigned_team_id,
     })
   }
   return out
+}
+
+/** Chantiers de l'org pour la création INLINE de mission dans le planificateur
+ * (PR 2, lot Y « créer → rester → sélectionné »). Fail-closed org. */
+async function fetchSiteOptions(orgId: string | null): Promise<SiteOption[]> {
+  if (!orgId) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('sites')
+    .select('id, name, contract:contracts(name, deleted_at)')
+    .is('deleted_at', null)
+    .eq('organization_id', orgId)
+    .order('name')
+  if (error) throw error
+  return ((data ?? []) as Array<{
+    id: string
+    name: string
+    contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null
+  }>).map((s) => {
+    const contract = Array.isArray(s.contract) ? s.contract[0] : s.contract
+    return {
+      id: s.id,
+      name: s.name,
+      contractName: contract && !contract.deleted_at ? contract.name : null,
+    }
+  })
 }
 
 /** Compte les membres actifs par équipe (left_at IS NULL). Info descriptive,
@@ -202,12 +232,13 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
-  const [siteRows, teamRows, allTeams, missionOptions, memberCounts, vigilance, memorySignals, weekSignals] =
+  const [siteRows, teamRows, allTeams, missionOptions, siteOptions, memberCounts, vigilance, memorySignals, weekSignals] =
     await Promise.all([
       view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
       view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
       listTeams(),
       fetchMissionOptions(orgId),
+      fetchSiteOptions(orgId),
       fetchTeamMemberCounts(orgId),
       getWeekVigilance(range.weekStart, range.weekEnd),
       // Planning-1 : collecte UNE SEULE FOIS au niveau page (vue site uniquement).
@@ -249,8 +280,10 @@ export default async function SemainePage({ searchParams }: PageProps) {
   // `/semaine?site=<id>` ouvre le planificateur prérempli sur ce chantier.
   // Le param n'est honoré que s'il correspond à un chantier de l'ORG (les
   // options sont déjà fail-closed) — un id étranger est simplement ignoré.
+  // PR 2 : validé contre les CHANTIERS (pas les missions) — un chantier neuf
+  // sans mission ouvre le planificateur en mode « créer la première mission ».
   const initialSiteId =
-    params.site && missionOptions.some((m) => m.siteId === params.site) ? params.site : undefined
+    params.site && siteOptions.some((s) => s.id === params.site) ? params.site : undefined
 
   const total = view === 'site' ? totalSite(siteRows) : totalTeam(teamRows)
   const isEmpty =
@@ -281,6 +314,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           <WeekNavigation range={range} />
           <CreateInterventionDialog
             missions={missionOptions}
+            sites={siteOptions}
             teams={teamOptions}
             defaultDate={range.weekStart > todayIso ? range.weekStart : todayIso}
             initialSiteId={initialSiteId}

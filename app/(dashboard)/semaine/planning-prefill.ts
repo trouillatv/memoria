@@ -25,3 +25,17 @@ export function pickInitialMissionId(
     .sort((a, b) => fr(a.name, b.name) || fr(a.contractName, b.contractName))
   return ofSite[0]?.id ?? ''
 }
+
+/**
+ * PR 2 (lot Y) — fusion des options serveur et des missions créées INLINE
+ * pendant la session du dialogue. La mission créée est visible et sélectionnable
+ * IMMÉDIATEMENT (optimiste) ; quand router.refresh() fait redescendre les props,
+ * la version serveur prend le dessus (dédup par id, serveur prioritaire).
+ */
+export function mergeMissionOptions<T extends { id: string }>(
+  fromServer: T[],
+  createdInline: T[],
+): T[] {
+  const seen = new Set(fromServer.map((m) => m.id))
+  return [...fromServer, ...createdInline.filter((m) => !seen.has(m.id))]
+}
