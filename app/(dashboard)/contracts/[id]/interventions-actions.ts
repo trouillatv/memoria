@@ -7,15 +7,16 @@ import { getUserRoleById } from '@/lib/db/users'
 import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/interventions'
 import { getMission } from '@/lib/db/missions'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
-import type { ChecklistTemplateItem } from '@/types/db'
+import { requireOwned } from '@/lib/auth/ownership'
+import type { ChecklistTemplateItem, UserRole } from '@/types/db'
 
-async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
+async function requireManagerOrAdmin(): Promise<{ userId: string; role: UserRole } | { error: string }> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { error: 'Forbidden' }
-  return { userId: user.id }
+  return { userId: user.id, role }
 }
 
 const hhmmRe = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -43,6 +44,10 @@ export async function createInterventionAction(formData: FormData) {
     planned_end_hhmm: formData.get('planned_end_hhmm'),
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  // Lot S : on ne planifie pas sur la mission d'un autre tenant.
+  const owned = await requireOwned(auth.role, 'missions', parsed.data.mission_id)
+  if (!owned.allowed) return { error: owned.error }
 
   const mission = await getMission(parsed.data.mission_id)
   if (!mission) return { error: 'Mission introuvable' }

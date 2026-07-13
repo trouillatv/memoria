@@ -22,14 +22,24 @@ import {
 import { analyzeAnomalyPhoto } from '@/lib/ai/analyze-photo'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
+import { requireOwned } from '@/lib/auth/ownership'
+import type { UserRole } from '@/types/db'
 
-async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
+async function requireManagerOrAdmin(): Promise<{ userId: string; role: UserRole } | { error: string }> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { error: 'Forbidden' }
-  return { userId: user.id }
+  return { userId: user.id, role }
+}
+
+/** Lot S — garde d'appartenance : le rôle ne suffit pas, l'intervention doit
+ *  appartenir à l'organisation de l'appelant (admin = super-admin exempté).
+ *  Toute action de ce fichier qui mute par id DOIT passer par ici. */
+async function guardIntervention(role: UserRole, id: string): Promise<{ error: string } | null> {
+  const owned = await requireOwned(role, 'interventions', id)
+  return owned.allowed ? null : { error: owned.error }
 }
 
 const idSchema = z.object({ id: z.string().uuid() })
@@ -39,6 +49,8 @@ export async function startInterventionAction(formData: FormData) {
   if ('error' in auth) return auth
   const parsed = idSchema.safeParse({ id: formData.get('id') })
   if (!parsed.success) return { error: 'Invalid id' }
+  const denied = await guardIntervention(auth.role, parsed.data.id)
+  if (denied) return denied
 
   const intervention = await getIntervention(parsed.data.id)
   if (!intervention) return { error: 'Intervention introuvable' }
@@ -70,6 +82,8 @@ export async function completeInterventionAction(formData: FormData) {
     comment: formData.get('comment') || undefined,
   })
   if (!parsed.success) return { error: 'Invalid id' }
+  const denied = await guardIntervention(auth.role, parsed.data.id)
+  if (denied) return denied
 
   const intervention = await getIntervention(parsed.data.id)
   if (!intervention) return { error: 'Intervention introuvable' }
@@ -116,6 +130,8 @@ export async function toggleChecklistItemAction(formData: FormData) {
     done: formData.get('done') === 'true',
   })
   if (!parsed.success) return { error: 'Invalid input' }
+  const denied = await guardIntervention(auth.role, parsed.data.intervention_id)
+  if (denied) return denied
 
   const supabase = createAdminClient()
 
@@ -173,6 +189,8 @@ export async function uploadInterventionPhotoAction(formData: FormData) {
     caption: formData.get('caption') || undefined,
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+  const denied = await guardIntervention(auth.role, parsed.data.intervention_id)
+  if (denied) return denied
 
   const intervention = await getIntervention(parsed.data.intervention_id)
   if (!intervention) return { error: 'Intervention introuvable' }
@@ -247,6 +265,8 @@ export async function createAnomalyAction(formData: FormData) {
   if (parsed.data.category === 'autre' && !parsed.data.category_other?.trim()) {
     return { error: 'Précisez la catégorie pour "Autre"' }
   }
+  const denied = await guardIntervention(auth.role, parsed.data.intervention_id)
+  if (denied) return denied
 
   await createAnomaly({
     intervention_id: parsed.data.intervention_id,
@@ -276,6 +296,17 @@ export async function resolveAnomalyAction(formData: FormData) {
   if (!parsed.success) return { error: 'Invalid input' }
 
   const supabase = createAdminClient()
+  // Lot S : on résout l'intervention porteuse AVANT d'écrire — l'anomalie d'un
+  // autre tenant ne doit pas être résolue par un id deviné.
+  const { data: target } = await supabase
+    .from('intervention_anomalies')
+    .select('intervention_id')
+    .eq('id', parsed.data.id)
+    .maybeSingle()
+  if (!target?.intervention_id) return { error: 'Anomalie introuvable' }
+  const denied = await guardIntervention(auth.role, target.intervention_id)
+  if (denied) return denied
+
   const { data: anom, error: anomErr } = await supabase
     .from('intervention_anomalies')
     .update({
@@ -313,6 +344,8 @@ export async function skipInterventionSupervisorAction(formData: FormData) {
   if (!parsed.success) {
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Données invalides' }
   }
+  const denied = await guardIntervention(auth.role, parsed.data.intervention_id)
+  if (denied) return { ok: false as const, error: denied.error }
 
   const intervention = await getIntervention(parsed.data.intervention_id)
   if (!intervention) return { ok: false as const, error: 'Intervention introuvable' }
@@ -369,6 +402,8 @@ export async function rescheduleInterventionAction(formData: FormData) {
     new_slot: formData.get('new_slot'),
   })
   if (!parsed.success) return { error: 'Données invalides' }
+  const denied = await guardIntervention(auth.role, parsed.data.intervention_id)
+  if (denied) return denied
 
   const intervention = await getIntervention(parsed.data.intervention_id)
   if (!intervention) return { error: 'Intervention introuvable' }
@@ -439,6 +474,8 @@ export async function rescheduleInterventionAction(formData: FormData) {
 export async function getAvailableSlotsAction(interventionId: string) {
   const auth = await requireManagerOrAdmin()
   if ('error' in auth) return { error: auth.error }
+  const denied = await guardIntervention(auth.role, interventionId)
+  if (denied) return denied
 
   const intervention = await getIntervention(interventionId)
   if (!intervention) return { error: 'Intervention introuvable' }
@@ -473,6 +510,8 @@ export async function reopenInterventionAction(formData: FormData) {
     password: formData.get('password'),
   })
   if (!parsed.success) return { error: 'Données invalides' }
+  const denied = await guardIntervention(role, parsed.data.intervention_id)
+  if (denied) return denied
 
   const intervention = await getIntervention(parsed.data.intervention_id)
   if (!intervention) return { error: 'Intervention introuvable' }
@@ -519,6 +558,8 @@ export async function deleteInterventionPhotoAction(
     .eq('id', photoId)
     .maybeSingle()
   if (!photo) return { error: 'Photo introuvable' }
+  const denied = await guardIntervention(auth.role, photo.intervention_id)
+  if (denied) return denied
   await supabase.storage.from('intervention-photos').remove([photo.storage_path])
   const { error } = await supabase.from('intervention_photos').delete().eq('id', photoId)
   if (error) return { error: error.message }
@@ -543,6 +584,8 @@ export async function analyzeInterventionPhotoAction(
     .maybeSingle()
 
   if (!photo) return { error: 'Photo introuvable' }
+  const denied = await guardIntervention(auth.role, photo.intervention_id)
+  if (denied) return denied
   if (!photo.anomaly_id) return { error: 'Photo non liée à une anomalie' }
 
   const { data: fileData, error: dlErr } = await supabase.storage

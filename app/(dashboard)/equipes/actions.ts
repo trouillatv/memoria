@@ -26,6 +26,8 @@ import {
   setTeamReferent,
 } from '@/lib/db/teams'
 import { logAuditEvent } from '@/lib/audit/log'
+import { requireOwned } from '@/lib/auth/ownership'
+import type { UserRole } from '@/types/db'
 import { TEAM_BADGE_COLORS } from '@/components/ui/team-badge'
 // team-meta = SERVER-SAFE. Ne JAMAIS réimporter ces constantes depuis
 // team-icon-picker / team-specialties ('use client') : côté serveur elles
@@ -36,7 +38,7 @@ import { TEAM_ICON_KEYS, TEAM_SPECIALTY_MAX } from '@/components/ui/team-meta'
 // Auth helper
 // ----------------------------------------------------------------------------
 
-type AuthOk = { userId: string }
+type AuthOk = { userId: string; role: UserRole }
 type AuthFail = { error: string }
 
 async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
@@ -45,7 +47,15 @@ async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
   if (!user) return { error: 'Non authentifié' }
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { error: 'Accès refusé' }
-  return { userId: user.id }
+  return { userId: user.id, role }
+}
+
+/** Lot S — l'équipe mutée doit appartenir à l'organisation de l'appelant
+ *  (getTeam() n'est pas scopé : sans cette garde, un teamId d'un autre tenant
+ *  passait). Admin = super-admin plateforme, exempté. */
+async function guardTeam(role: UserRole, teamId: string): Promise<string | null> {
+  const owned = await requireOwned(role, 'teams', teamId)
+  return owned.allowed ? null : owned.error
 }
 
 // ----------------------------------------------------------------------------
@@ -178,6 +188,8 @@ export async function updateTeamAction(input: {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
@@ -223,6 +235,8 @@ export async function archiveTeamAction(input: {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
@@ -255,6 +269,8 @@ export async function addMemberToTeamAction(input: {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
@@ -294,6 +310,8 @@ export async function removeMemberFromTeamAction(input: {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
@@ -358,6 +376,8 @@ export async function setTeamSpecialtiesAction(input: {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
@@ -413,6 +433,8 @@ export async function setTeamReferentAction(input: {
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }

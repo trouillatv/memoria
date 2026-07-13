@@ -30,13 +30,14 @@ import { createIntervention, bulkInsertChecklistItems } from '@/lib/db/intervent
 import { findTeamSiteConflict } from '@/lib/scheduling/team-conflict'
 import { buildScheduledAt, isPlannedStartPrecise, extractHHMM, slotFromUtcHour } from '@/lib/time/prestation-slot'
 import { getMission } from '@/lib/db/missions'
-import type { ChecklistTemplateItem, InterventionSlot } from '@/types/db'
+import { requireOwned, type OwnedTable } from '@/lib/auth/ownership'
+import type { ChecklistTemplateItem, InterventionSlot, UserRole } from '@/types/db'
 
 // ----------------------------------------------------------------------------
 // Auth helper
 // ----------------------------------------------------------------------------
 
-type AuthOk = { userId: string }
+type AuthOk = { userId: string; role: UserRole }
 type AuthFail = { error: string }
 
 async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
@@ -45,7 +46,14 @@ async function requireManagerOrAdmin(): Promise<AuthOk | AuthFail> {
   if (!user) return { error: 'Non authentifié' }
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { error: 'Accès refusé' }
-  return { userId: user.id }
+  return { userId: user.id, role }
+}
+
+/** Lot S — l'objet muté doit appartenir à l'organisation de l'appelant
+ *  (admin = super-admin plateforme, exempté). Cf. lib/auth/ownership.ts. */
+async function guardOwned(role: UserRole, table: OwnedTable, id: string): Promise<string | null> {
+  const owned = await requireOwned(role, table, id)
+  return owned.allowed ? null : owned.error
 }
 
 // ----------------------------------------------------------------------------
@@ -181,6 +189,8 @@ export async function moveInterventionToDayAction(
   if (parsed.data.newScheduledFor < todayUtcIso()) {
     return { ok: false, error: 'Replanification vers une date passée refusée' }
   }
+  const denied = await guardOwned(auth.role, 'interventions', parsed.data.interventionId)
+  if (denied) return { ok: false, error: denied }
 
   const admin = createAdminClient()
   const { data: existing, error: fetchErr } = await admin
@@ -411,6 +421,10 @@ export async function createInterventionFromWeekAction(
     }
   }
 
+  // Lot S : la mission (donc l'intervention créée) doit être de mon organisation.
+  const deniedMission = await guardOwned(auth.role, 'missions', parsed.data.missionId)
+  if (deniedMission) return { ok: false, error: deniedMission }
+
   const mission = await getMission(parsed.data.missionId)
   if (!mission) return { ok: false, error: 'Mission introuvable' }
 
@@ -556,6 +570,13 @@ export async function reassignInterventionTeamAction(
   const parsed = reassignSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+  // Lot S : l'intervention ET l'équipe cible doivent être de mon organisation.
+  const denied = await guardOwned(auth.role, 'interventions', parsed.data.interventionId)
+  if (denied) return { ok: false, error: denied }
+  if (parsed.data.newTeamId !== null) {
+    const deniedTeam = await guardOwned(auth.role, 'teams', parsed.data.newTeamId)
+    if (deniedTeam) return { ok: false, error: 'Équipe inconnue ou archivée' }
   }
 
   const admin = createAdminClient()
@@ -833,6 +854,8 @@ export async function updateInterventionTimeAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+  const denied = await guardOwned(auth.role, 'interventions', parsed.data.interventionId)
+  if (denied) return { ok: false, error: denied }
 
   const admin = createAdminClient()
   const { data: existing } = await admin
