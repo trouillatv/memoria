@@ -18,6 +18,32 @@ Cette section prime sur toute habitude contraire.
 * **Regroupe** les commandes Git, GitHub et CI dans le moins d’appels possible, afin de limiter les demandes d’autorisation.
 * Ne demande une validation à Vincent que pour une **décision produit** ou une **action irréversible**.
 
+## CI GitHub — ne jamais bloquer le travail
+
+* Ne **jamais** utiliser `gh run watch` ni `gh pr checks --watch` au premier plan : ces commandes attendent volontairement la fin du workflow et immobilisent le run.
+* Après avoir poussé une pull request, lancer **au maximum une** vérification non bloquante :
+
+  ```
+  gh pr checks <PR_NUMBER>
+  ```
+
+* Si les checks sont encore en cours, **poursuivre immédiatement** toutes les tâches indépendantes.
+* Revenir consulter la CI plus tard, par une commande ponctuelle, sans boucle d’attente :
+
+  ```
+  gh run view <RUN_ID> --json status,conclusion
+  ```
+
+* Ne consulter les logs qu’en cas d’échec **réellement confirmé** :
+
+  ```
+  gh run view <RUN_ID> --log-failed | grep -E "error TS|##\[error\]" | head -4
+  ```
+
+* Ne jamais écrire « j’attends la CI ». Ne jamais interrompre le run au seul motif que GitHub Actions travaille.
+* Une CI en cours **n’est pas un blocage**, sauf si l’étape suivante dépend explicitement de son résultat (par exemple un merge).
+* Ne pas enchaîner par `;` la surveillance, la vérification et la lecture des logs : la lecture des logs ne s’exécute **que** si l’échec est confirmé.
+
 ## Principe fondamental
 
 Ne déclare jamais qu’une fonctionnalité est « terminée », « livrée » ou « fonctionnelle » uniquement parce que du code a été écrit.
