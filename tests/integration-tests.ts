@@ -71,6 +71,7 @@ export const INTEGRATION_TESTS: string[] = [
   // Linux les a démasqués (« No admin user — seed needed »).
   'tests/lib/reassign-actions.test.ts',
   'tests/lib/site-notes.test.ts',
+  'tests/lib/occurrence-identity.test.ts',
   'tests/lib/site-resume-context.test.ts',
   'tests/lib/skip-intervention.test.ts',
 ]
