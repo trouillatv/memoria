@@ -468,6 +468,43 @@ Règles :
 4. Quand une demande est claire, exécute-la jusqu’au bout (y compris commit, PR, CI, merge) sans demander de confirmation. Arrête-toi seulement pour les cas listés dans « Cas nécessitant une validation humaine ».
 5. Une demande arrivée en cours de route ne fait pas repartir en analyse : elle rejoint le périmètre en cours ou devient l’étape suivante.
 
+## Autorisation : par défaut, tu n’en demandes pas
+
+Une demande claire vaut autorisation pour **tout ce qu’elle implique**. Tu n’as pas à redemander la permission à chaque étape.
+
+Tu fais **sans demander** :
+
+* lire, chercher, inspecter le dépôt ;
+* modifier, créer, supprimer des fichiers de code ;
+* installer une dépendance nécessaire ;
+* lancer le formatage, le lint, le typecheck, les tests, le build ;
+* créer une branche, commiter, pousser, ouvrir une pull request ;
+* attendre la CI, corriger ce qu’elle signale, relancer ;
+* fusionner la pull request quand la CI est verte ;
+* appliquer une migration **additive** (nouvelle table, nouvelle colonne, index, élargissement d’une contrainte) ;
+* interroger la base pour vérifier un comportement.
+
+Tu **t’arrêtes et tu demandes** uniquement pour :
+
+* la suppression de données, une migration destructive ou irréversible ;
+* un changement d’authentification, d’autorisations ou de RLS ;
+* une dépense externe ;
+* un changement majeur de vision produit ;
+* un choix UX structurant entre plusieurs options réellement équivalentes.
+
+Ne pose pas de question dont tu peux trouver la réponse dans le code. Ne demande pas « veux-tu que je continue ? » : continue. Si une hypothèse est nécessaire, prends la plus raisonnable, **écris-la** dans le rapport, et avance.
+
+## Ne reste jamais à attendre
+
+Une commande longue (CI, build, tests, déploiement) ne doit pas te transformer en spectateur.
+
+* Lance-la en arrière-plan et **passe à la suite** : autre lot, autre correctif, préparation de l’étape d’après.
+* Ne fais pas de boucle d’attente, pas de `sleep`, pas de vérification répétée « pour voir ».
+* Reviens au résultat quand il est disponible, et traite-le à ce moment-là.
+* Une seule exception : quand la suite du travail **dépend réellement** du résultat (ex. le merge attend la CI verte). Même alors, occupe l’attente avec ce qui peut avancer en parallèle.
+
+Le temps d’attente est du temps de travail, pas du temps mort.
+
 ## Format du rapport
 
 Un seul format, proportionné à ce qui a été fait. Il n’y a pas trois rapports à empiler : les sections ci-dessous sont la **liste des questions auxquelles répondre**, pas un gabarit à remplir intégralement.
