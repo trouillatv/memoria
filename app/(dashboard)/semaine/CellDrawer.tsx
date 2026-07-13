@@ -45,7 +45,7 @@ import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import { ConflictResolver } from './ConflictResolver'
-import { DECISION_FR } from '@/lib/planning/conflict-resolution'
+import { DECISION_FR, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import type { ClosureDecision } from '@/lib/db/closure-decisions'
 import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
 import { frDayMonthLocal } from '@/lib/time/local-date'
@@ -90,6 +90,8 @@ export interface CellDrawerProps {
   conflictsBySite?: Record<string, Record<string, ClosureConflict>>
   /** PL3b — ce qui a DÉJÀ été décidé, par intervention. */
   decisions?: Record<string, ClosureDecision>
+  /** PL3b — les dates proposées, calculées côté serveur. */
+  optionsBySite?: Record<string, Record<string, ResolutionOption[]>>
   /** Contenu du conteneur (grille client-rendered). */
   children: React.ReactNode
 }
@@ -127,6 +129,7 @@ export function CellDrawer({
   signalsBySite,
   conflictsBySite,
   decisions,
+  optionsBySite,
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
@@ -266,6 +269,7 @@ export function CellDrawer({
                       .map((c) => c.id)}
                     closureId={conflict.closure.id}
                     conflictDate={selected.date}
+                    options={optionsBySite?.[selected.siteId]?.[selected.date] ?? []}
                   />
                 )}
               </section>

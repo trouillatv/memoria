@@ -43,6 +43,7 @@ import type { InterventionSlot } from '@/types/db'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import type { ClosureDecision } from '@/lib/db/closure-decisions'
+import type { ResolutionOption } from '@/lib/planning/conflict-resolution'
 import { CellDrawer } from './CellDrawer'
 import { moveInterventionToDayAction } from './actions'
 import type { ReassignTeamOption } from './ReassignTeamDialog'
@@ -66,6 +67,8 @@ export interface WeekGridClientProps {
   /** PL3b — ce qui a DÉJÀ été décidé, par intervention. Le tiroir doit pouvoir
    *  relire la trace même quand le conflit a disparu. */
   decisions?: Record<string, ClosureDecision>
+  /** PL3b — les dates proposées, calculées côté serveur. */
+  optionsBySite?: Record<string, Record<string, ResolutionOption[]>>
   children: React.ReactNode
 }
 
@@ -134,7 +137,7 @@ interface DragPreview {
   teamColor: string | null
 }
 
-export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, children }: WeekGridClientProps) {
+export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, optionsBySite, children }: WeekGridClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -280,6 +283,7 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
         signalsBySite={signalsBySite}
         conflictsBySite={conflictsBySite}
         decisions={decisions}
+        optionsBySite={optionsBySite}
       >
         {children}
       </CellDrawer>

@@ -142,58 +142,9 @@ export async function resolveConflictAction(input: unknown): Promise<ResolveResu
   return { ok: true, message }
 }
 
-
-/**
- * Les dates PROPOSÉES pour ce conflit — calculées sur les vraies fermetures du
- * chantier, jamais devinées à l'écran.
- *
- * On regarde ±14 jours autour du conflit : au-delà, proposer une date n'aiderait
- * personne (une fermeture annuelle ne se règle pas par un déplacement de trois
- * semaines). Si rien n'est ouvert, on ne propose RIEN — un bouton qui mène à un
- * autre conflit est pire qu'un bouton absent.
- */
-export async function conflictOptionsAction(input: {
-  interventionId: string
-  conflictDate: string
-}): Promise<{ ok: true; options: ResolutionOption[] } | { error: string }> {
-  const auth = await requireManagerOrAdmin()
-  if (!auth.ok) return { error: auth.error }
-
-  const parsed = z
-    .object({ interventionId: z.string().uuid(), conflictDate: dateIso })
-    .safeParse(input)
-  if (!parsed.success) return { error: 'Saisie invalide' }
-
-  const owned = await requireOwned(auth.role, 'interventions', parsed.data.interventionId)
-  if (!owned.allowed) return { error: owned.error }
-
-  const db = createAdminClient()
-  const { data: row } = await db
-    .from('interventions')
-    .select('id, missions!inner(site_id)')
-    .eq('id', parsed.data.interventionId)
-    .maybeSingle()
-
-  const siteId = (row as { missions?: { site_id?: string } } | null)?.missions?.site_id
-  if (!siteId) return { error: 'Intervention introuvable' }
-
-  const from = shiftIso(parsed.data.conflictDate, -14)
-  const to = shiftIso(parsed.data.conflictDate, 14)
-  const closures = await listActiveClosuresForSites([siteId], from, to).catch(
-    (): Record<string, SiteClosure[]> => ({}),
-  )
-
-  const today = todayLocalIso()
-  const options = resolutionOptions(closures[siteId] ?? [], parsed.data.conflictDate).filter(
-    // On ne propose jamais de replanifier dans le passé.
-    (o) => o.date >= today,
-  )
-
-  return { ok: true, options }
-}
-
-function shiftIso(dateIso: string, days: number): string {
-  const t = new Date(`${dateIso}T00:00:00.000Z`).getTime()
-  if (Number.isNaN(t)) return dateIso
-  return new Date(t + days * 86_400_000).toISOString().slice(0, 10)
-}
+// `conflictOptionsAction` a été SUPPRIMÉE : le tiroir l'appelait depuis un
+// `useEffect`, au montage. Un aller-retour réseau pour afficher deux dates —
+// et un `cookies()` hors requête dès qu'on rendait le composant hors navigateur
+// (la CI l'a attrapé). Les dates sont désormais calculées CÔTÉ SERVEUR dans
+// /semaine et descendues en props : le tiroir est instantané, et il n'appelle
+// plus rien pour s'afficher.

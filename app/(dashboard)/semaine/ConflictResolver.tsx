@@ -10,13 +10,13 @@
 // ±14 jours, on ne propose pas de déplacement. Un geste impossible affiché est
 // pire qu'un geste absent.
 
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, ArrowLeft, ArrowRight, CalendarPlus, Check, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { gapFr, type ResolutionOption } from '@/lib/planning/conflict-resolution'
-import { conflictOptionsAction, resolveConflictAction } from './conflict-actions'
+import { resolveConflictAction } from './conflict-actions'
 
 /** Un geste. Défini HORS du composant : le recréer à chaque rendu remonterait
  *  l'arbre React à zéro (et le lint le refuse, à juste titre). */
@@ -54,34 +54,31 @@ export function ConflictResolver({
   interventionIds,
   closureId,
   conflictDate,
+  options,
 }: {
   /** Les prestations encore prévues ce jour-là. */
   interventionIds: string[]
   closureId: string
   conflictDate: string
+  /**
+   * Les dates proposées — calculées CÔTÉ SERVEUR, contre les vraies fermetures
+   * du chantier.
+   *
+   * Elles étaient d'abord chargées depuis un `useEffect` : une action serveur
+   * au montage du tiroir. C'était faux à deux titres — un aller-retour réseau
+   * pour afficher deux dates, et un `cookies()` hors requête dès qu'on rend le
+   * composant hors navigateur. Le tiroir est maintenant instantané.
+   */
+  options: ResolutionOption[]
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
-  const [options, setOptions] = useState<ResolutionOption[] | null>(null)
   const [customOpen, setCustomOpen] = useState(false)
   const [custom, setCustom] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
 
   const first = interventionIds[0]
   const many = interventionIds.length > 1
-
-  // Les dates proposées viennent du SERVEUR : elles sont vérifiées contre les
-  // vraies fermetures du chantier. On ne devine pas à l'écran.
-  useEffect(() => {
-    let alive = true
-    if (!first) return
-    void conflictOptionsAction({ interventionId: first, conflictDate }).then((r) => {
-      if (alive) setOptions('error' in r ? [] : r.options)
-    })
-    return () => {
-      alive = false
-    }
-  }, [first, conflictDate])
 
   function decide(
     decision: 'moved' | 'kept' | 'cancelled',
@@ -132,12 +129,7 @@ export function ConflictResolver({
         Que fait-on ?
       </p>
 
-      {options === null ? (
-        <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" /> Recherche des jours ouverts…
-        </p>
-      ) : (
-        <>
+      <>
           {/* Les dates proposées — jamais une date fermée. */}
           {options.map((o) => (
             <Btn
@@ -225,8 +217,7 @@ export function ConflictResolver({
           <p className="pt-0.5 text-[11px] text-muted-foreground">
             Votre décision est enregistrée : elle se relira plus tard.
           </p>
-        </>
-      )}
+      </>
     </div>
   )
 }

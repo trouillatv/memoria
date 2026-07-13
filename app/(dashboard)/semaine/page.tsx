@@ -35,6 +35,7 @@ import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-clos
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisions'
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
+import { resolutionOptions, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import { listTeams } from '@/lib/db/teams'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import {
@@ -290,11 +291,12 @@ export default async function SemainePage({ searchParams }: PageProps) {
   //
   // Tout est CALCULÉ à chaque lecture, jamais persisté (doctrine des signaux).
   // `{}` si la mig 197 n'est pas appliquée → l'écran reste identique à avant.
-  const { conflictsBySite, closuresBySite, decisions } = await (async () => {
+  const { conflictsBySite, closuresBySite, decisions, optionsBySite } = await (async () => {
     const empty = {
       conflictsBySite: {} as Record<string, Record<string, import('@/lib/planning/conflicts').ClosureConflict>>,
       closuresBySite: {} as Record<string, Record<string, ProjectableClosure>>,
       decisions: {} as Record<string, import('@/lib/db/closure-decisions').ClosureDecision>,
+      optionsBySite: {} as Record<string, Record<string, ResolutionOption[]>>,
     }
     if (view !== 'site' || siteRows.length === 0) return empty
 
@@ -302,6 +304,21 @@ export default async function SemainePage({ searchParams }: PageProps) {
       siteRows.map((r) => r.site_id),
       range.weekStart,
       range.weekEnd,
+    ).catch((): Record<string, SiteClosure[]> => ({}))
+
+    // PL3b — les dates PROPOSÉES se calculent ICI, côté serveur.
+    //
+    // Le composant les appelait d'abord depuis un `useEffect` : une action
+    // serveur déclenchée au montage du tiroir. C'est faux à deux titres — un
+    // aller-retour réseau pour afficher deux dates, et un `cookies()` hors
+    // requête dès qu'on rend le composant hors navigateur (la CI l'a attrapé).
+    //
+    // On regarde ±14 jours autour de la semaine : c'est la fenêtre dans laquelle
+    // un déplacement a un sens.
+    const wide = await listActiveClosuresForSites(
+      siteRows.map((r) => r.site_id),
+      shiftIso(range.weekStart, -14),
+      shiftIso(range.weekEnd, 14),
     ).catch((): Record<string, SiteClosure[]> => ({}))
 
     // Jour par jour : « ce site est-il fermé ce jour-là, et pourquoi ? »
@@ -330,14 +347,31 @@ export default async function SemainePage({ searchParams }: PageProps) {
       siteRows.flatMap((r) => Object.values(r.days).flat().map((c) => c.id)),
     ).catch(() => ({}))
 
+    const conflictsBySite = detectClosureConflicts({
+      rows: siteRows,
+      closuresBySite: raw,
+      keptInterventionIds,
+    })
+
+    // Une proposition par (chantier, jour de conflit). Jamais une date fermée :
+    // la règle est pure et testée (lib/planning/conflict-resolution.ts).
+    const optionsBySite: Record<string, Record<string, ResolutionOption[]>> = {}
+    for (const [siteId, byDateConflict] of Object.entries(conflictsBySite)) {
+      const closures = wide[siteId] ?? []
+      optionsBySite[siteId] = {}
+      for (const conflictDate of Object.keys(byDateConflict)) {
+        optionsBySite[siteId][conflictDate] = resolutionOptions(closures, conflictDate).filter(
+          // On ne propose jamais de replanifier dans le passé.
+          (o) => o.date >= todayUtcIso(),
+        )
+      }
+    }
+
     return {
-      conflictsBySite: detectClosureConflicts({
-        rows: siteRows,
-        closuresBySite: raw,
-        keptInterventionIds,
-      }),
+      conflictsBySite,
       closuresBySite: byDate,
       decisions,
+      optionsBySite,
     }
   })()
 
@@ -447,7 +481,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} decisions={decisions}>
+          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} decisions={decisions} optionsBySite={optionsBySite}>
             <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
           </WeekGridClient>
         ) : (
@@ -471,4 +505,12 @@ export default async function SemainePage({ searchParams }: PageProps) {
       </div>
     </div>
   )
+}
+
+
+/** Décale une date ISO de N jours. */
+function shiftIso(dateIso: string, days: number): string {
+  const t = new Date(`${dateIso}T00:00:00.000Z`).getTime()
+  if (Number.isNaN(t)) return dateIso
+  return new Date(t + days * 86_400_000).toISOString().slice(0, 10)
 }
