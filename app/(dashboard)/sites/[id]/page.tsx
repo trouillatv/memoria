@@ -68,6 +68,8 @@ import { FoldableSection } from './FoldableSection'
 import { SiteScopesSection } from './SiteScopesSection'
 import { UnattachedContentPanel } from './UnattachedContentPanel'
 import { listSiteScopes } from '@/lib/db/memory-scopes'
+import { listClosuresBySite } from '@/lib/db/site-closures'
+import { SiteClosuresCard } from './SiteClosuresCard'
 import { listUnattachedContent } from '@/lib/db/scope-suggestions'
 import { listOrgCatalog } from '@/lib/db/org-catalog'
 import { SiteHeatmapCalendar } from './SiteHeatmapCalendar'
@@ -135,10 +137,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
   const orgId = user.organization_id
-  const [siteScopes, scopeTypeCatalog, unattached] = await Promise.all([
+  const [siteScopes, scopeTypeCatalog, unattached, closures] = await Promise.all([
     orgId ? listSiteScopes(id, orgId).catch(() => []) : Promise.resolve([]),
     listOrgCatalog(orgId, 'corps_etat').catch(() => []),
     orgId ? listUnattachedContent(id, orgId).catch(() => []) : Promise.resolve([]),
+    // PL2 — fermetures du site. `[]` tant que la migration 197 n'est pas
+    // appliquée (dégradation gracieuse, cf. lib/db/site-closures.ts).
+    listClosuresBySite(id).catch(() => []),
   ])
   const scopeTypeOptions = scopeTypeCatalog.map((c) => ({ key: c.key, label: c.label }))
   const scopeChoices = siteScopes.map((s) => ({ id: s.id, label: s.label }))
@@ -454,6 +459,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <AnomaliesList anomalies={anomalies} meta={memoryMeta} />
         </CardContent>
       </Card>
+
+      {/* ── ACTIVITÉ — Fermetures du site (PL2) ──────────────────────────────
+          « Ce magasin est fermé. » Déclarer une fermeture ne déplace ni
+          n'annule RIEN : PL3 signalera le conflit, l'humain tranchera. */}
+      <div className={tabClass('activite')}>
+        <SiteClosuresCard siteId={id} closures={closures} />
+      </div>
 
       {/* ── ÉQUIPE — all-time ────────────────────────────────────────────── */}
       <div className={tabClass('equipe')}>
