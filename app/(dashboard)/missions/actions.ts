@@ -6,6 +6,13 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { requireOwned } from '@/lib/auth/ownership'
+import {
+  countInterventionsForMission,
+  softDeleteMission,
+  hardDeleteMission,
+} from '@/lib/db/missions'
+import { decideMissionRemoval } from '@/lib/removal/policy'
+import { logAuditEvent } from '@/lib/audit/log'
 
 const CADENCES = ['daily', 'weekly', 'biweekly', 'monthly', 'on_demand'] as const
 
@@ -67,4 +74,61 @@ export async function createMissionAction(formData: FormData): Promise<CreateMis
   revalidatePath('/missions')
   revalidatePath('/semaine')
   return { ok: true, missionId: data.id }
+}
+
+// ── Retirer une mission (lot D) ─────────────────────────────────────────────
+// Un seul verbe côté utilisateur : « Retirer ». En interne, la doctrine
+// (audit/03) décide : essai vierge → supprimé pour de bon ; mission avec des
+// interventions → retirée des écrans, preuves conservées.
+
+export type RemoveMissionResult =
+  | { ok: true; mode: 'hard' | 'soft' }
+  | { error: string }
+
+export async function removeMissionAction(missionId: string): Promise<RemoveMissionResult> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Non authentifié' }
+  const role = await getUserRoleById(user.id)
+  if (role !== 'admin' && role !== 'manager') return { error: 'Accès refusé' }
+
+  if (!z.string().uuid().safeParse(missionId).success) return { error: 'Identifiant invalide' }
+
+  // Lot S : on ne retire pas la mission d'un autre tenant.
+  const owned = await requireOwned(role, 'missions', missionId)
+  if (!owned.allowed) return { error: owned.error }
+
+  const admin = createAdminClient()
+  const { data: mission } = await admin
+    .from('missions')
+    .select('id, site_id')
+    .eq('id', missionId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (!mission) return { error: 'Mission introuvable' }
+
+  const count = await countInterventionsForMission(missionId)
+  const decision = decideMissionRemoval(count)
+  if (!decision.allowed) return { error: decision.reason }
+
+  if (decision.mode === 'hard') await hardDeleteMission(missionId)
+  else await softDeleteMission(missionId)
+
+  await logAuditEvent({
+    userId: user.id,
+    entityType: 'mission',
+    entityId: missionId,
+    action: 'removed',
+    metadata: { kind: 'mission_removed', mode: decision.mode, intervention_count: count },
+  })
+
+  // Règle d'or : tous les paths qui affichaient la mission.
+  revalidatePath('/missions')
+  revalidatePath('/semaine')
+  const siteId = (mission as { site_id: string }).site_id
+  if (siteId) {
+    revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/m/site/${siteId}`)
+  }
+  return { ok: true, mode: decision.mode }
 }

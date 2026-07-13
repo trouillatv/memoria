@@ -32,6 +32,9 @@ export type AuditAction =
   | 'validated'
   | 'created'
   | 'updated'
+  // Lot D (2026-07-13) : le VERBE du produit. Le mode réel (hard pour un essai
+  // vierge, soft sinon) est dans les métadonnées — cf. lib/removal/policy.ts.
+  | 'removed'
   | 'evidence_inserted'
   | 'opened'
   | 'downloaded'

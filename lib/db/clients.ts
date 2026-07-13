@@ -11,6 +11,35 @@ import { getSiteRecentRhythm, type SiteRhythmDay } from '@/lib/db/site-cockpit'
 
 const EMPTY_UUID = '00000000-0000-0000-0000-000000000000'
 
+// ── Retirer un client (lot D) ───────────────────────────────────────────────
+// `clients.deleted_at` existe depuis la mig 003 mais n'a JAMAIS été écrite.
+// La décision (bloqué / soft) vit dans lib/removal/policy.ts.
+
+/** Chantiers ACTIFS (non retirés) du client — un seul suffit à bloquer. */
+export async function countActiveSitesForClient(clientId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { count, error } = await supabase
+    .from('sites')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .is('deleted_at', null)
+  if (error) throw error
+  return count ?? 0
+}
+
+/** Archive le client (sort des écrans, l'historique reste). JAMAIS de hard
+ *  delete ici : `sites.client_id` est en ON DELETE CASCADE (mig 003:19) —
+ *  la cascade irait jusqu'aux photos-preuves. */
+export async function softDeleteClient(clientId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('clients')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', clientId)
+    .is('deleted_at', null)
+  if (error) throw error
+}
+
 /**
  * Rythme agrégé d'un client : somme des traces de TOUS ses sites par jour,
  * sur N jours glissants. Réutilise getSiteRecentRhythm par site puis fusionne

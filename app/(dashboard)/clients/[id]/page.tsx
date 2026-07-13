@@ -27,6 +27,7 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import { HealthRing } from '@/components/ui/health-ring'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SmartBackLink } from '@/components/nav/SmartBackLink'
+import { RemoveClientButton } from './RemoveClientButton'
 
 const SLOT_FR: Record<string, string> = {
   morning: 'Matin',
@@ -96,6 +97,15 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         <div className="flex items-center gap-2">
           <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
           <h1 className="text-2xl font-semibold leading-tight">{client.name}</h1>
+          {/* Lot D : « Retirer » — bloqué tant qu'un chantier actif subsiste
+              (la cascade client → sites → … → photos n'est jamais exposée). */}
+          <span className="ml-auto">
+            <RemoveClientButton
+              clientId={client.id}
+              clientName={client.name}
+              activeSiteCount={siteCount}
+            />
+          </span>
         </div>
         <div className="pl-7 flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
           {client.contact_name && <span>{client.contact_name}</span>}
