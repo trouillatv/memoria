@@ -233,6 +233,9 @@ export async function createSiteGlobalAction(
   })
 
   revalidatePath('/sites')
+  // Doctrine (audit/09) : un client peut être créé inline ici (« + Nouveau
+  // client ») — la liste /clients doit le montrer sans refresh manuel.
+  revalidatePath('/clients')
   return { ok: true, siteId }
 }
 

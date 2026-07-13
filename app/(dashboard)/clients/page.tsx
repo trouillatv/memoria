@@ -7,6 +7,10 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { redirect } from 'next/navigation'
 import { CreateClientButton } from './CreateClientButton'
 
+// Doctrine (audit/09) : une mutation rafraîchit toutes les vues concernées —
+// aligné sur /sites, /missions, /semaine, /equipes (toutes force-dynamic).
+export const dynamic = 'force-dynamic'
+
 export default async function ClientsPage() {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')

@@ -78,6 +78,10 @@ export async function createInterventionAction(formData: FormData) {
   if (site?.contract_id) {
     revalidatePath(`/contracts/${site.contract_id}/interventions`)
   }
+  // Doctrine (audit/09) : une mutation rafraîchit toutes les vues concernées —
+  // l'intervention créée ici apparaît aussi dans la semaine et les missions.
+  revalidatePath('/semaine')
+  revalidatePath('/missions')
 
   return { ok: true as const, interventionId }
 }

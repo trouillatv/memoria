@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Loader2 } from 'lucide-react'
 import {
   Dialog,
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function NewMissionDialog({ sites }: Props) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -43,6 +45,10 @@ export function NewMissionDialog({ sites }: Props) {
       } else {
         setOpen(false)
         form.reset()
+        // Doctrine (audit/09) : une mutation rafraîchit toutes les vues
+        // concernées — sans ce refresh, la mission créée n'apparaît pas
+        // tant qu'on ne navigue pas (cache routeur client).
+        router.refresh()
       }
     })
   }
