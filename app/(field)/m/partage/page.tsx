@@ -17,7 +17,7 @@ const ERREURS: Record<string, string> = {
   'trop-lourd':
     'Trop de photos d’un coup pour un partage. Envoyez-en moins, ou passez par « Importer » depuis le chantier.',
   vide: 'Aucun fichier n’est arrivé.',
-  type: 'Ce type de fichier ne peut pas être partagé ici — seulement des photos et des PDF.',
+  type: 'Ce type de fichier ne peut pas être partagé ici — photos, enregistrements et PDF seulement (pas de vidéo).',
   stockage: 'Les photos ne sont pas arrivées jusqu’au bout. Réessayez.',
 }
 

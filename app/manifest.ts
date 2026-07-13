@@ -35,9 +35,10 @@ const SHARE_TARGET: ShareTarget = {
     files: [
       {
         name: 'files',
-        // Images et PDF seulement. La vidéo dépasserait la taille qu'une requête
-        // de partage peut porter : elle reste sur les chemins d'upload dédiés.
-        accept: ['image/*', 'application/pdf'],
+        // Photos, VOCAUX (un vocal WhatsApp pèse quelques dizaines de Ko) et PDF.
+        // La vidéo reste dehors : elle dépasserait la taille qu'une requête de
+        // partage peut porter — elle garde ses chemins d'upload dédiés.
+        accept: ['image/*', 'audio/*', 'application/pdf'],
       },
     ],
   },

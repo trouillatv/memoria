@@ -12,6 +12,7 @@ import manifest from '@/app/manifest'
 import {
   acceptShared,
   isShareable,
+  shareDestination,
   MAX_FILES,
   MAX_TOTAL_BYTES,
 } from '@/lib/share/share-rules'
@@ -42,6 +43,8 @@ describe('Le manifeste — sans lui, MemorIA n’apparaît pas dans « Partager 
     expect(files).toHaveLength(1)
     expect(files?.[0].name).toBe('files')
     expect(files?.[0].accept).toContain('image/*')
+    // Les VOCAUX aussi : c'est le second usage réel (« partage-moi la réunion »).
+    expect(files?.[0].accept).toContain('audio/*')
   })
 
   it('l’action pointe sur la porte réelle', () => {
@@ -74,6 +77,13 @@ describe('La porte — ce qui entre, ce qui est refusé (et pourquoi)', () => {
     expect(v).toEqual({ ok: false, reason: 'trop-lourd' })
   })
 
+  it('un vocal WhatsApp entre — il pèse quelques dizaines de Ko', () => {
+    expect(isShareable('audio/ogg')).toBe(true)
+    expect(isShareable('audio/mpeg')).toBe(true)
+    const v = acceptShared([{ size: 40_000, type: 'audio/ogg' }])
+    expect(v.ok).toBe(true)
+  })
+
   it('une vidéo est refusée avec un motif — elle a ses propres chemins', () => {
     expect(isShareable('video/mp4')).toBe(false)
     expect(acceptShared([{ size: 10, type: 'video/mp4' }])).toEqual({ ok: false, reason: 'type' })
@@ -99,5 +109,24 @@ describe('La porte — ce qui entre, ce qui est refusé (et pourquoi)', () => {
     // toujours trop lourd. Le refus doit rester cohérent avec ce qu'on garde.
     const v = acceptShared(Array.from({ length: 40 }, () => photo()))
     expect(v).toEqual({ ok: false, reason: 'trop-lourd' })
+  })
+})
+
+
+describe('La destination — c’est le CONTENU qui décide, pas une question de plus', () => {
+  it('des photos → une visite', () => {
+    expect(shareDestination(['image/jpeg', 'image/png'])).toBe('visit')
+  })
+
+  it('des vocaux → une réunion (une réunion = un objet, PLUSIEURS sources)', () => {
+    expect(shareDestination(['audio/ogg', 'audio/ogg', 'audio/ogg'])).toBe('meeting')
+  })
+
+  it('un lot mixte contenant un vocal part en réunion — on ne coupe pas un lot en deux', () => {
+    expect(shareDestination(['image/jpeg', 'audio/ogg'])).toBe('meeting')
+  })
+
+  it('un PDF seul reste une visite', () => {
+    expect(shareDestination(['application/pdf'])).toBe('visit')
   })
 })

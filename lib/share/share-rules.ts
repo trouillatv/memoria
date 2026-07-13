@@ -12,10 +12,26 @@ export const MAX_FILES = 30
 /** Au-delà, la requête de partage ne traverse pas la couche réseau. */
 export const MAX_TOTAL_BYTES = 4 * 1024 * 1024
 
-/** Photos et PDF. La vidéo est trop lourde pour un partage : elle a ses propres
- *  chemins d'upload. */
+/** Photos, VOCAUX et PDF. La vidéo reste dehors : elle est trop lourde pour une
+ *  requête de partage, et elle a ses propres chemins d'upload signés. */
 export function isShareable(mime: string): boolean {
-  return /^image\//.test(mime) || mime === 'application/pdf'
+  return /^image\//.test(mime) || /^audio\//.test(mime) || mime === 'application/pdf'
+}
+
+export function isAudio(mime: string): boolean {
+  return /^audio\//.test(mime)
+}
+
+/**
+ * OÙ va ce lot — c'est son CONTENU qui le dit, pas un choix de plus à faire.
+ *
+ * Un vocal partagé depuis WhatsApp, c'est presque toujours une réunion (ou un
+ * relais d'enregistrement) : il devient une SOURCE de réunion. Des photos, c'est
+ * une visite. Un lot mixte contenant un vocal part en réunion : les photos
+ * l'accompagnent comme pièces jointes — on ne coupe pas un lot en deux.
+ */
+export function shareDestination(mimes: string[]): 'meeting' | 'visit' {
+  return mimes.some(isAudio) ? 'meeting' : 'visit'
 }
 
 export interface ShareCandidate {
