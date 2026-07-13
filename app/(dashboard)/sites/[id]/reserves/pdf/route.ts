@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { tenantCtx, tenantOwns } from '@/lib/db/tenant'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { listSiteActionsByReserve } from '@/lib/db/site-actions'
@@ -33,6 +34,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   const { id } = await ctx.params
+  // P1 isolation : les réserves d'un chantier d'un autre tenant n'existent pas
+  // pour ce manager. Admin = super-admin plateforme.
+  if (user.role !== 'admin') {
+    const tctx = await tenantCtx()
+    if (!tctx || !(await tenantOwns(tctx, 'sites', id))) {
+      return NextResponse.json({ error: 'Site introuvable' }, { status: 404 })
+    }
+  }
   const [identity, reserves] = await Promise.all([getSiteIdentity(id), getSiteReserves(id)])
   if (!identity) return NextResponse.json({ error: 'Site introuvable' }, { status: 404 })
 

@@ -69,7 +69,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params
   const data = await gatherSiteExport(id)
   if (!data) return new NextResponse('Chantier introuvable', { status: 404 })
-  if (user.organization_id && data.site.organizationId && data.site.organizationId !== user.organization_id) {
+  // P1 isolation : FAIL-CLOSED — org du viewer ou du site manquante ≠ accès
+  // libre. Admin = super-admin plateforme, seule exception.
+  if (user.role !== 'admin' && (!user.organization_id || data.site.organizationId !== user.organization_id)) {
     return new NextResponse('Accès refusé', { status: 403 })
   }
 

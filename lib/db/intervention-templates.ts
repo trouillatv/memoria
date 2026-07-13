@@ -139,7 +139,15 @@ export async function getTemplate(id: string): Promise<DbInterventionTemplate | 
 
 export async function createTemplate(input: CreateTemplateInput): Promise<DbInterventionTemplate> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
+  // P1 isolation : org de la MISSION > org session — fail-closed, jamais de
+  // template orphelin (invisible sur toute surface scopée).
+  const { data: missionOrg } = await supabase
+    .from('missions')
+    .select('organization_id')
+    .eq('id', input.mission_id)
+    .maybeSingle()
+  const orgId = missionOrg?.organization_id ?? (await getOrgId())
+  if (!orgId) throw new Error('Mission sans organisation — création de rythme impossible')
   const { data, error } = await supabase
     .from('intervention_templates')
     .insert({
@@ -360,15 +368,19 @@ export async function generateInterventionsFromTemplates(params: {
   const missionIdsForTeam = Array.from(new Set(templates.map((t) => t.mission_id)))
   const teamByMission = new Map<string, string[]>()
   const assignedTeamByMission = new Map<string, string | null>()
+  // P1 isolation — org de chaque mission : les interventions générées
+  // héritent de l'org de LEUR mission, jamais de la session du déclencheur.
+  const orgByMission = new Map<string, string | null>()
   if (missionIdsForTeam.length > 0) {
     const { data: missionsTeam, error: mtErr } = await supabase
       .from('missions')
-      .select('id, default_team, assigned_team_id')
+      .select('id, default_team, assigned_team_id, organization_id')
       .in('id', missionIdsForTeam)
     if (mtErr) throw mtErr
-    for (const m of (missionsTeam ?? []) as Array<{ id: string; default_team: unknown; assigned_team_id: string | null }>) {
+    for (const m of (missionsTeam ?? []) as Array<{ id: string; default_team: unknown; assigned_team_id: string | null; organization_id: string | null }>) {
       teamByMission.set(m.id, Array.isArray(m.default_team) ? m.default_team : [])
       assignedTeamByMission.set(m.id, m.assigned_team_id ?? null)
+      orgByMission.set(m.id, m.organization_id ?? null)
     }
   }
 
@@ -384,6 +396,7 @@ export async function generateInterventionsFromTemplates(params: {
     status: InterventionStatus
     team: string[]
     assigned_team_id?: string
+    organization_id: string
   }
   const rowsToInsert: Row[] = []
 
@@ -406,6 +419,10 @@ export async function generateInterventionsFromTemplates(params: {
         : [null]
     const inheritedTeam = teamByMission.get(tpl.mission_id) ?? []
     const inheritedAssignedTeamId = assignedTeamByMission.get(tpl.mission_id) ?? null
+    // P1 isolation : FAIL-CLOSED — mission sans org (et pas de session) →
+    // on saute ce template plutôt que de générer des interventions orphelines.
+    const rowOrgId = orgByMission.get(tpl.mission_id) ?? orgId
+    if (!rowOrgId) continue
 
     for (const date of dates) {
       if (!matchesFrequency(tpl, date)) continue
@@ -427,7 +444,7 @@ export async function generateInterventionsFromTemplates(params: {
           status: 'planned',
           team: inheritedTeam,
           ...(inheritedAssignedTeamId ? { assigned_team_id: inheritedAssignedTeamId } : {}),
-          ...(orgId ? { organization_id: orgId } : {}),
+          organization_id: rowOrgId,
         })
       }
     }

@@ -119,7 +119,14 @@ export async function findOrCreateSpontaneousIntervention(
   // scheduled_at dérivé du slot via le module canonique (V6.1).
   const scheduledAt = buildScheduledAt(today, slot)
 
-  const orgId = await getOrgId()
+  // P1 isolation : org de la mission système, sinon session — fail-closed.
+  const { data: sysMissionOrg } = await supabase
+    .from('missions')
+    .select('organization_id')
+    .eq('id', systemMission.id)
+    .maybeSingle()
+  const orgId = sysMissionOrg?.organization_id ?? (await getOrgId())
+  if (!orgId) throw new Error('Mission système sans organisation — intervention spontanée impossible')
   const { data: inserted, error: insertErr } = await supabase
     .from('interventions')
     .insert({
