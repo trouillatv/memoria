@@ -6,6 +6,70 @@
 > **Aucune ligne de code PL3 n'a été écrite.** Tous les faits ci-dessous sont
 > vérifiés — plusieurs le sont directement contre la base réelle.
 
+## LA CONTRAINTE QUI PRIME SUR TOUT (Vincent, 2026-07-13)
+
+> **La vue planning existante RESTE l'interface principale. Les lots ajoutent
+> des données, des signaux et des gestes DANS cette vue ; ils ne la remplacent
+> jamais.**
+
+Ce que cela interdit, explicitement :
+
+- ❌ créer une seconde vue planning qui concurrence `/semaine` ;
+- ❌ remplacer `WeekGrid` ;
+- ❌ supprimer le drag-and-drop ;
+- ❌ reconstruire les cartes d'intervention ;
+- ❌ déplacer les aperçus dans un nouveau module ;
+- ❌ rendre la vue actuelle obsolète au profit d'une vue mois ;
+- ❌ introduire un modèle d'intervention incompatible.
+
+Relecture des lots à cette aune :
+
+| Lot | Ce qu'il change à l'écran |
+|---|---|
+| **PL1** | **RIEN.** Il remplace le moteur INTERNE de calcul des occurrences. Même vue. |
+| **PL2** | Une carte « Fermetures » sur la fiche chantier. **La vue planning est intacte.** |
+| **PL3** | Un **badge** sur la carte existante quand elle tombe un jour fermé, et un **bloc conflit** dans l'aperçu existant. **Rien d'autre ne bouge.** |
+
+Et le geste principal **reste le drag-and-drop** :
+
+```
+drag (14 → 15)
+      ↓
+matérialisation ciblée SI l'occurrence n'existe pas encore en base
+      ↓
+moveInterventionToDayAction  ← l'action EXISTANTE
+      ↓
+exactement la même interaction qu'aujourd'hui
+```
+
+Les cinq boutons de l'aperçu sont des **raccourcis**, pas le chemin obligé. Un
+déplacement au drag **est** une résolution de conflit — l'utilisateur n'a pas à
+passer par un formulaire différent.
+
+**Règle technique qui découle de tout ça** : `materializeOccurrence` est une
+**couche SOUS la vue**, jamais une nouvelle expérience. La vue planning ne doit
+pas savoir si l'occurrence était projetée ou déjà matérialisée — elle manipule
+un objet d'affichage **uniforme**, et la matérialisation se déclenche **au
+moment du geste**, de façon invisible.
+
+**Critères de non-régression, à tenir :**
+
+- une intervention **sans** fermeture s'affiche et se déplace **exactement**
+  comme aujourd'hui ;
+- l'aperçu actuel reste **inchangé**, hors ajout d'un bloc conflit ;
+- **aucun** nouveau calendrier ne remplace la vue existante ;
+- les **tests actuels du drag-and-drop restent verts** (27/27 sur `week-grid`).
+
+La future vue mois sera une vue **supplémentaire**, nourrie par le **même**
+moteur :
+
+```
+Moteur unique (PL1 × PL2)
+├── vue semaine existante   ← l'interface principale, conservée
+├── future vue mois         ← une vue de plus, jamais un remplacement
+└── alertes du tableau de bord
+```
+
 ## 0. Deux découvertes qui changent le design
 
 ### a) Je m'étais alarmé à tort sur `occurrenceKey`
