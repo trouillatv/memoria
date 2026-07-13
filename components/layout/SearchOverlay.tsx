@@ -8,20 +8,17 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2, ShieldCheck } from 'lucide-react'
+import {
+  Search, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2,
+  ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch,
+} from 'lucide-react'
 import { searchMemoryAction } from './search-action'
 import type { MemoryHit, MemoryHitType } from '@/lib/db/memory-search'
+import { HIT_LABEL_FR } from '@/lib/memory/search-grouping'
 
-const TYPE_LABEL: Record<MemoryHitType, string> = {
-  anomaly: 'Anomalie',
-  site_note: 'Note de site',
-  intervention: 'Intervention',
-  photo: 'Photo',
-  site_action: 'Action',
-  meeting_decision: 'Décision',
-  site_reserve: 'Réserve',
-  report_document: 'Compte-rendu',
-}
+// Un seul vocabulaire pour toutes les surfaces de recherche (⌘K et /recherche) :
+// deux listes de libellés divergeraient au premier ajout de corpus.
+const TYPE_LABEL: Record<MemoryHitType, string> = HIT_LABEL_FR
 
 const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string }>> = {
   anomaly: AlertTriangle,
@@ -32,6 +29,13 @@ const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string 
   meeting_decision: FileCheck2,
   site_reserve: ShieldCheck,
   report_document: FileText,
+  // Mig 200 — le reste de la mémoire.
+  observation: Eye,
+  site_decision: Gavel,
+  knowledge: Lightbulb,
+  blocage: Ban,
+  obligation: ClipboardCheck,
+  subject: GitBranch,
 }
 
 function formatDate(iso: string): string {

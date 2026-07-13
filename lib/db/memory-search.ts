@@ -16,6 +16,12 @@ export type MemoryHitType =
   // S4a-1 — mémoire récente produite par MemorIA (actions, décisions de CR
   // validées, réserves, PV validés), désormais dans le corpus de recherche.
   | 'site_action' | 'meeting_decision' | 'site_reserve' | 'report_document'
+  // Mig 200 — le reste de la mémoire. `observation` est le corpus le plus
+  // vivant du produit (note de terrain ou transcription d'un vocal) : il était
+  // INVISIBLE à la recherche jusqu'ici.
+  | 'observation' | 'site_decision' | 'knowledge' | 'blocage' | 'obligation'
+  // Le SUJET lui-même : pas un fait, mais LE FIL auquel les faits se rattachent.
+  | 'subject'
 
 export interface MemoryHit {
   type: MemoryHitType
@@ -26,6 +32,9 @@ export interface MemoryHit {
   siteId: string | null
   contractId: string | null
   rank: number
+  /** Le fil auquel ce fait est rattaché, s'il l'est. C'est lui qui transforme
+   *  une liste de résultats en histoire (« on avait déjà vu cette fuite ? »). */
+  subjectId: string | null
 }
 
 export interface SearchMemoryOptions {
@@ -65,6 +74,7 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
     site_id: string | null
     contract_id: string | null
     rank: number
+    subject_id: string | null
   }) => ({
     type: row.type,
     id: row.id,
@@ -74,28 +84,26 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
     siteId: row.site_id,
     contractId: row.contract_id,
     rank: row.rank,
+    subjectId: row.subject_id ?? null,
   }))
 }
 
+/**
+ * Où mène un résultat.
+ *
+ * Règle : on emmène TOUJOURS vers le fil s'il existe. Un fait isolé répond
+ * « oui, on en a parlé » ; le fil répond « voilà toute l'histoire » — c'est ce
+ * que Guillaume cherche vraiment quand il demande « on avait déjà vu ça ? ».
+ */
 export function memoryHitHref(hit: MemoryHit): string {
-  switch (hit.type) {
-    case 'anomaly':
-    case 'photo':
-    case 'intervention':
-      // Pas d'URL directe à l'anomalie/photo : on renvoie vers la preuve ou
-      // l'intervention parent quand on l'aura. Pour l'instant on tape la
-      // page site qui agrégera tout.
-      return hit.siteId ? `/sites/${hit.siteId}` : '/sites'
-    case 'site_note':
-    case 'site_action':
-    case 'meeting_decision':
-    case 'site_reserve':
-    case 'report_document':
-      // Tout pointe vers la fiche site, qui agrège la mémoire (pas de deep-link
-      // par objet au MVP). report_document/meeting_decision : pas de report_id
-      // dans le hit → site.
-      return hit.siteId ? `/sites/${hit.siteId}` : '/sites'
-    default:
-      return '/'
-  }
+  if (!hit.siteId) return '/sites'
+
+  // Le sujet EST le fil.
+  if (hit.type === 'subject') return `/sites/${hit.siteId}/subjects/${hit.id}`
+
+  // Un fait rattaché à un sujet : on ouvre le fil, pas le fait isolé.
+  if (hit.subjectId) return `/sites/${hit.siteId}/subjects/${hit.subjectId}`
+
+  // Sinon la fiche chantier, qui agrège la mémoire (pas de deep-link par objet).
+  return `/sites/${hit.siteId}`
 }

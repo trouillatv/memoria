@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteMemoryTermsAction,
@@ -44,6 +44,12 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   report_document:  { label: 'Compte-rendu', Icon: FileText,   cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   // S4a-2 — couche Connaissance (CCTP, marché, procédure…). Recall sémantique.
   document:         { label: 'Document',     Icon: BookOpen,   cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  // Mig 200 — le reste de la mémoire entre dans la recherche.
+  site_decision:    { label: 'Décision de chantier', Icon: Gavel,           cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  knowledge:        { label: 'Connaissance',  Icon: Lightbulb,       cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  blocage:          { label: 'Blocage',       Icon: Ban,             cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  obligation:       { label: 'Obligation',    Icon: ClipboardCheck,  cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+  subject:          { label: 'Sujet suivi',   Icon: GitBranch,       cls: 'bg-brand-50 text-brand-800 border-brand-200' },
 }
 
 function fmtDate(iso: string | null): string {
