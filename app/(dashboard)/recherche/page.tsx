@@ -22,6 +22,7 @@ import { searchMemory, memoryHitHref, type MemoryHit } from '@/lib/db/memory-sea
 import {
   groupSearchHits,
   applyFilters,
+  splitHighlights,
   HIT_LABEL_FR,
   ALL_MEMORY_DAYS,
 } from '@/lib/memory/search-grouping'
