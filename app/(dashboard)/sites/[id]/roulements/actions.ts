@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { requireManagerOrAdmin } from '@/lib/auth/require'
 import { requireOwned } from '@/lib/auth/ownership'
 import { getOrgId } from '@/lib/db/users'
+import { findOrCreateMissionByName } from '@/lib/db/missions'
 import {
   createCycle,
   updateCycle,
@@ -45,7 +46,13 @@ const cycleSchema = z
   .object({
     cycleId: z.string().uuid().optional(),
     siteId: z.string().uuid(),
-    missionId: z.string().uuid(),
+    /** La prestation choisie dans la liste. Absent si Guillaume en a tapé une
+     *  nouvelle — voir `missionName`. */
+    missionId: z.string().uuid().optional(),
+    /** La prestation ÉCRITE au clavier. Si elle existe déjà sur ce chantier, on
+     *  la réutilise ; sinon on l'ouvre — et elle sera proposée la prochaine fois,
+     *  ici comme ailleurs dans l'organisation. */
+    missionName: z.string().trim().min(1).max(200).optional(),
     name: z.string().trim().min(1, 'Donnez un nom au roulement').max(200),
     cycleLengthWeeks: z.number().int().min(1).max(4),
     anchorDate: dateIso,
@@ -56,6 +63,15 @@ const cycleSchema = z
     status: z.enum(['draft', 'published']).default('published'),
   })
   .superRefine((d, ctx) => {
+    // Il faut une prestation : choisie, ou écrite. Sans elle, le roulement ne
+    // sait pas ce qu'il fait faire.
+    if (!d.missionId && !d.missionName) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Dites quelle prestation',
+        path: ['missionName'],
+      })
+    }
     if (d.endsOn && d.endsOn < d.startsOn) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'La fin ne peut pas précéder le début', path: ['endsOn'] })
     }
@@ -87,8 +103,26 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   // Garde d'appartenance : le chantier, la mission, et chaque équipe citée.
   const ownedSite = await requireOwned(auth.role, 'sites', d.siteId)
   if (!ownedSite.allowed) return { error: ownedSite.error }
-  const ownedMission = await requireOwned(auth.role, 'missions', d.missionId)
-  if (!ownedMission.allowed) return { error: ownedMission.error }
+
+  // La prestation : celle qu'il a choisie, ou celle qu'il vient d'écrire.
+  // On la crée sur CE chantier, APRÈS avoir vérifié qu'il lui appartient.
+  let missionId: string
+  if (d.missionId) {
+    const ownedMission = await requireOwned(auth.role, 'missions', d.missionId)
+    if (!ownedMission.allowed) return { error: ownedMission.error }
+    missionId = d.missionId
+  } else {
+    try {
+      missionId = await findOrCreateMissionByName({
+        siteId: d.siteId,
+        name: d.missionName!,
+        userId: auth.userId,
+      })
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Prestation impossible à créer' }
+    }
+  }
+
   for (const teamId of new Set(d.slots.map((s) => s.teamId))) {
     const ownedTeam = await requireOwned(auth.role, 'teams', teamId)
     if (!ownedTeam.allowed) return { error: 'Équipe inconnue' }
@@ -105,7 +139,7 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
 
   const payload = {
     siteId: d.siteId,
-    missionId: d.missionId,
+    missionId,
     organizationId: await getOrgId(),
     name: d.name,
     cycleLengthWeeks: d.cycleLengthWeeks,
@@ -139,6 +173,7 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
       kind: 'planning_cycle',
       cycle_id: cycleId,
       weeks: d.cycleLengthWeeks,
+      mission_id: missionId,
       worked_slots: slots.filter((s) => s.state === 'work').length,
     },
   })
@@ -189,7 +224,9 @@ function revalidateAll(siteId: string, cycleId: string): void {
 
 const previewSchema = z.object({
   siteId: z.string().uuid(),
-  missionId: z.string().uuid(),
+  // L'aperçu ne matérialise rien : la prestation peut n'exister QUE dans sa tête.
+  // On projette la grille sans avoir besoin d'une mission en base.
+  missionId: z.string().uuid().nullable().optional(),
   cycleLengthWeeks: z.number().int().min(1).max(4),
   anchorDate: dateIso,
   startsOn: dateIso,
@@ -221,7 +258,7 @@ export async function previewCycleAction(
 
   const preview = previewCycle({
     cycle: {
-      missionId: d.missionId,
+      missionId: d.missionId ?? 'draft',
       cycleLengthWeeks: d.cycleLengthWeeks,
       anchorDate: d.anchorDate,
       startsOn: d.startsOn,

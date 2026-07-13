@@ -78,17 +78,43 @@ export function CycleEditor({
   missions,
   teams,
   initial,
+  knownPrestations = [],
 }: {
   siteId: string
   missions: MissionOption[]
   teams: TeamOption[]
   initial?: InitialCycle
+  /** Ce qui a DÉJÀ été écrit dans l'organisation. Guillaume écrit « Nettoyage
+   *  magasin » une fois ; ensuite il le retrouve — et surtout il ne le retape
+   *  pas DIFFÉREMMENT (trois orthographes = trois prestations = une mémoire qui
+   *  se fragmente). */
+  knownPrestations?: string[]
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
 
   const [name, setName] = useState(initial?.name ?? '')
-  const [missionId, setMissionId] = useState(initial?.missionId ?? missions[0]?.id ?? '')
+  // La prestation se DIT, elle ne se choisit pas dans une liste fermée : sur un
+  // chantier neuf, il n'y a rien à choisir. On propose ce qui existe, on accepte
+  // ce qui n'existe pas encore.
+  const [prestation, setPrestation] = useState(
+    () => missions.find((m) => m.id === initial?.missionId)?.name ?? missions[0]?.name ?? '',
+  )
+
+  /** La mission de CE chantier portant ce nom — sinon on l'ouvrira au serveur. */
+  const missionIdOf = (name: string): string | undefined =>
+    missions.find((m) => m.name.trim().toLowerCase() === name.trim().toLowerCase())?.id
+
+  /** Toutes les propositions : celles du chantier, plus celles de l'organisation. */
+  const suggestions = useMemo(() => {
+    const all = [...missions.map((m) => m.name), ...knownPrestations]
+    const seen = new Map<string, string>()
+    for (const n of all) {
+      const name = n.trim()
+      if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [missions, knownPrestations])
   const [weeks, setWeeks] = useState(initial?.cycleLengthWeeks ?? 1)
   const [startsOn, setStartsOn] = useState(initial?.startsOn ?? todayLocalIso())
   const [endsOn, setEndsOn] = useState(initial?.endsOn ?? '')
@@ -155,7 +181,10 @@ export function CycleEditor({
   const cycleShape = useCallback(
     () => ({
       siteId,
-      missionId,
+      // Une prestation CONNUE de ce chantier → son identifiant. Une prestation
+      // NEUVE → son nom : le serveur l'ouvrira, et elle sera proposée ensuite.
+      missionId: missionIdOf(prestation) ?? null,
+      missionName: missionIdOf(prestation) ? undefined : prestation.trim(),
       cycleLengthWeeks: weeks,
       // L'ancrage est le lundi de la date de début : c'est lui qui définit
       // « la semaine A ».
@@ -164,13 +193,14 @@ export function CycleEditor({
       endsOn: endsOn || null,
       slots: buildSlots(),
     }),
-    [siteId, missionId, weeks, startsOn, endsOn, buildSlots],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- missionIdOf dérive de `missions`, stable
+    [siteId, prestation, missions, weeks, startsOn, endsOn, buildSlots],
   )
 
   function valid(): boolean {
     const manque =
       (!name.trim() && 'Donnez un nom au roulement') ||
-      (!missionId && 'Choisissez la mission') ||
+      (!prestation.trim() && 'Dites quelle prestation') ||
       (rows.length === 0 && 'Ajoutez au moins une équipe') ||
       (worked.size === 0 && 'Aucun jour travaillé : la grille est vide')
     if (manque) {
@@ -272,21 +302,30 @@ export function CycleEditor({
           />
         </label>
 
+        {/* La prestation s'ÉCRIT. On propose ce qui a déjà été employé dans
+            l'organisation ; on accepte ce qui n'existe pas encore — et ce qu'il
+            écrit aujourd'hui lui sera proposé demain, ici comme ailleurs. */}
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Quelle prestation ?</span>
-          <select
-            value={missionId}
-            onChange={(e) => setMissionId(e.target.value)}
-            disabled={pending || missions.length === 0}
-            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {missions.length === 0 && <option value="">Aucune mission sur ce chantier</option>}
-            {missions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
+          <input
+            value={prestation}
+            onChange={(e) => setPrestation(e.target.value)}
+            list="prestations-connues"
+            maxLength={200}
+            placeholder="ex : Nettoyage magasin"
+            disabled={pending}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <datalist id="prestations-connues">
+            {suggestions.map((n) => (
+              <option key={n} value={n} />
             ))}
-          </select>
+          </datalist>
+          <span className="block text-[11px] text-muted-foreground">
+            {prestation.trim() && !missionIdOf(prestation)
+              ? 'Nouvelle prestation — elle sera créée, et proposée la prochaine fois.'
+              : 'Écrivez-la, ou choisissez-en une déjà employée.'}
+          </span>
         </label>
 
         <fieldset className="space-y-1">
@@ -499,7 +538,7 @@ export function CycleEditor({
             qu'il compare l'écran à sa feuille. */}
         <Button
           onClick={openPreview}
-          disabled={pending || loadingPreview || rows.length === 0 || missions.length === 0}
+          disabled={pending || loadingPreview || rows.length === 0}
         >
           {loadingPreview ? (
             <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
