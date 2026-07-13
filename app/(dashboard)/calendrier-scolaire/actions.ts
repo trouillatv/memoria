@@ -125,7 +125,7 @@ export async function setSiteFollowsHolidaysAction(
 }
 
 function revalidateAll(): void {
-  revalidatePath('/fermetures')
+  revalidatePath('/calendrier')
   revalidatePath('/calendrier-scolaire')
   revalidatePath('/semaine')
   revalidatePath('/dashboard')

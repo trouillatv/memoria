@@ -53,10 +53,13 @@ export const NAV: NavItem[] = [
   // PLANNING — un domaine, pas un catalogue (arbitrage Vincent 2026-07-15).
   // La phrase : je definis mes roulements, je declare les jours fermes, puis
   // j'ajuste ma semaine. Ordonne par frequence d'usage.
-  // « Fermetures », pas « Contraintes » : le mot du conducteur, pas du moteur.
+  // « Calendrier » (arbitrage 2026-07-15, 2e passe) : « Fermetures » aurait
+  // vieilli faux (ouverture exceptionnelle, horaires reduits…), « Contraintes »
+  // est le mot du moteur, « Disponibilites » frole le vocabulaire RH interdit.
+  // Calendrier est metier ET extensible.
   { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'], groupStart: 'Planning' },
   { href: '/roulements', label: 'Roulements',             icon: Repeat,        roles: ['admin', 'manager'] },
-  { href: '/fermetures', label: 'Fermetures',             icon: CalendarOff,   roles: ['admin', 'manager'] },
+  { href: '/calendrier', label: 'Calendrier',             icon: CalendarOff,   roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
   { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },

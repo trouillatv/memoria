@@ -119,8 +119,8 @@ export function SiteClosuresCard({
           </span>
           <span className="block text-xs text-muted-foreground">
             Les périodes se saisissent une fois, dans le{' '}
-            <Link href="/fermetures" className="underline underline-offset-2">
-              Fermetures
+            <Link href="/calendrier" className="underline underline-offset-2">
+              Calendrier
             </Link>
             .
           </span>
@@ -145,8 +145,8 @@ export function SiteClosuresCard({
           </span>
           <span className="block text-xs text-muted-foreground">
             Les fériés se saisissent une fois, dans{' '}
-            <Link href="/fermetures" className="underline underline-offset-2">
-              Fermetures
+            <Link href="/calendrier" className="underline underline-offset-2">
+              Calendrier
             </Link>
             .
           </span>

@@ -1,4 +1,4 @@
-// FERMETURES — « je déclare les jours fermés ».
+// CALENDRIER — « je déclare ce qui influence le planning ».
 //
 // Le deuxième temps de la phrase de Guillaume : « je définis mes roulements,
 // je déclare les jours fermés, puis j'ajuste ma semaine. »
@@ -30,7 +30,7 @@ import { CalendarEditor } from '../calendrier-scolaire/CalendarEditor'
 
 export const dynamic = 'force-dynamic'
 
-export default async function FermeturesPage() {
+export default async function CalendrierPage() {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
@@ -63,11 +63,11 @@ export default async function FermeturesPage() {
       <header className="space-y-1">
         <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
           <CalendarOff className="h-5 w-5 text-muted-foreground" />
-          Fermetures
+          Calendrier
         </h1>
         <p className="text-sm text-muted-foreground">
-          Les jours où les chantiers sont fermés — et pourquoi. La semaine, les roulements et le
-          tableau de bord s&apos;en servent partout.
+          Ce qui influence le planning : vacances, fériés, fermetures. La semaine, les roulements
+          et le tableau de bord s&apos;en servent partout.
         </p>
       </header>
 
