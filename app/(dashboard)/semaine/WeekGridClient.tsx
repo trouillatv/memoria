@@ -69,6 +69,8 @@ export interface WeekGridClientProps {
   decisions?: Record<string, ClosureDecision>
   /** PL3b — les dates proposées, calculées côté serveur. */
   optionsBySite?: Record<string, Record<string, ResolutionOption[]>>
+  /** Exceptions — clé présente = issue d'un roulement ; liste = les déviations. */
+  exceptionsById?: Record<string, string[]>
   children: React.ReactNode
 }
 
@@ -137,7 +139,7 @@ interface DragPreview {
   teamColor: string | null
 }
 
-export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, optionsBySite, children }: WeekGridClientProps) {
+export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, optionsBySite, exceptionsById, children }: WeekGridClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -284,6 +286,7 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
         conflictsBySite={conflictsBySite}
         decisions={decisions}
         optionsBySite={optionsBySite}
+        exceptionsById={exceptionsById}
       >
         {children}
       </CellDrawer>

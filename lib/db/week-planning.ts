@@ -21,6 +21,7 @@
 //   - Toute fonction qui agrège un KPI par personne ou par équipe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { ProjectableTemplate } from '@/lib/planning/projection'
 import { getOrgId } from '@/lib/db/users'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 
@@ -47,6 +48,7 @@ import type { WeekRange, WeekInterventionCell, SiteRow, TeamRow } from '@/lib/we
 type RawIntervention = {
   id: string
   mission_id: string
+  template_id: string | null
   scheduled_for: string | null
   slot: string | null
   status: string
@@ -86,6 +88,7 @@ export async function listInterventionsForWeek(
       `
       id,
       mission_id,
+      template_id,
       scheduled_for,
       slot,
       status,
@@ -168,6 +171,7 @@ export async function listInterventionsForWeek(
       assigned_team_id: r.assigned_team_id,
       assigned_team_name: team?.name ?? null,
       assigned_team_color: team?.color ?? null,
+      template_id: r.template_id ?? null,
       planned_start: (r as { planned_start?: string | null }).planned_start ?? null,
       planned_end: (r as { planned_end?: string | null }).planned_end ?? null,
     })
@@ -328,4 +332,31 @@ export async function getWeekByTeam(range: WeekRange): Promise<TeamRow[]> {
     a.team_name.localeCompare(b.team_name, 'fr', { sensitivity: 'base' })
   )
   return [...teamRows, unaffected]
+}
+
+
+// ── PL exceptions — les RYTHMES dont les occurrences affichées sont issues ──
+//
+// Pour dire « ceci est une exception », il faut comparer l'occurrence à ce que
+// son rythme prescrit. Une requête pour toute la grille.
+
+// Le MEME contrat que le moteur de projection : c'est lui qui compare
+// l'occurrence au rythme. Un type parallele divergerait un jour.
+export interface WeekTemplate extends ProjectableTemplate {
+  assigned_team_id: string | null
+}
+
+export async function listTemplatesByIds(ids: string[]): Promise<Record<string, WeekTemplate>> {
+  if (ids.length === 0) return {}
+  const { data, error } = await createAdminClient()
+    .from('intervention_templates')
+    .select(
+      'id, mission_id, frequency, slots, day_of_week, day_of_month, planned_start_hhmm, planned_end_hhmm, starts_on, ends_on, cycle_length_weeks, anchor_date, week_index, assigned_team_id',
+    )
+    .in('id', [...new Set(ids)])
+  if (error) return {}
+
+  const out: Record<string, WeekTemplate> = {}
+  for (const r of (data ?? []) as WeekTemplate[]) out[r.id] = r
+  return out
 }

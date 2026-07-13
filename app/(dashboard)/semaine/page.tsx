@@ -32,6 +32,8 @@ import {
 } from '@/lib/db/week-planning'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
+import { listTemplatesByIds } from '@/lib/db/week-planning'
+import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisions'
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
@@ -291,12 +293,13 @@ export default async function SemainePage({ searchParams }: PageProps) {
   //
   // Tout est CALCULÉ à chaque lecture, jamais persisté (doctrine des signaux).
   // `{}` si la mig 197 n'est pas appliquée → l'écran reste identique à avant.
-  const { conflictsBySite, closuresBySite, decisions, optionsBySite } = await (async () => {
+  const { conflictsBySite, closuresBySite, decisions, optionsBySite, exceptionsById } = await (async () => {
     const empty = {
       conflictsBySite: {} as Record<string, Record<string, import('@/lib/planning/conflicts').ClosureConflict>>,
       closuresBySite: {} as Record<string, Record<string, ProjectableClosure>>,
       decisions: {} as Record<string, import('@/lib/db/closure-decisions').ClosureDecision>,
       optionsBySite: {} as Record<string, Record<string, ResolutionOption[]>>,
+      exceptionsById: {} as Record<string, string[]>,
     }
     if (view !== 'site' || siteRows.length === 0) return empty
 
@@ -367,11 +370,37 @@ export default async function SemainePage({ searchParams }: PageProps) {
       }
     }
 
+    // EXCEPTIONS PONCTUELLES — chaque occurrence issue d'un roulement est
+    // comparée à ce que son rythme PRESCRIT. Présente dans la carte = issue d'un
+    // roulement ; liste non vide = elle dévie (jour, équipe, horaire, annulée).
+    // Une déviation silencieuse ferait mentir la grille.
+    const allCells = siteRows.flatMap((r) => Object.values(r.days).flat())
+    const templatesById = await listTemplatesByIds(
+      allCells.map((c) => c.template_id).filter((v): v is string => !!v),
+    ).catch((): Record<string, import('@/lib/db/week-planning').WeekTemplate> => ({}))
+
+    const exceptionsById: Record<string, string[]> = {}
+    for (const c of allCells) {
+      const tpl = c.template_id ? templatesById[c.template_id] : undefined
+      if (!tpl) continue
+      exceptionsById[c.id] = detectDeviations(
+        {
+          scheduledFor: c.scheduled_for,
+          status: c.status,
+          assignedTeamId: c.assigned_team_id,
+          startHHMM: hhmmOf(c.planned_start),
+          endHHMM: hhmmOf(c.planned_end),
+        },
+        tpl,
+      ).map((d) => d.label)
+    }
+
     return {
       conflictsBySite,
       closuresBySite: byDate,
       decisions,
       optionsBySite,
+      exceptionsById,
     }
   })()
 
@@ -481,7 +510,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} decisions={decisions} optionsBySite={optionsBySite}>
+          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} decisions={decisions} optionsBySite={optionsBySite} exceptionsById={exceptionsById}>
             <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
           </WeekGridClient>
         ) : (
