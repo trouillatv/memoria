@@ -185,3 +185,59 @@ describe('detectClosureConflicts — une semaine entière', () => {
     expect(out).toEqual({})
   })
 })
+
+
+describe('PL3b — une prestation MAINTENUE cesse d’alerter', () => {
+  const closures = {
+    s1: [
+      {
+        id: 'c1',
+        siteId: 's1',
+        reasonKind: 'holiday' as const,
+        reason: null,
+        startsOn: '2026-07-15',
+        endsOn: '2026-07-15',
+        defaultResolution: 'none' as const,
+      },
+    ],
+  }
+  const rows = [
+    { site_id: 's1', days: { '2026-07-15': [{ id: 'i1', status: 'planned' }] } },
+  ]
+
+  it('sans décision, le conflit est signalé (comportement PL3a inchangé)', () => {
+    const out = detectClosureConflicts({ rows, closuresBySite: closures })
+    expect(out.s1['2026-07-15'].expectedCount).toBe(1)
+  })
+
+  it('« on y va quand même » → plus aucun conflit', () => {
+    // Redemander tous les matins ce qui a DÉJÀ été tranché est le meilleur moyen
+    // de faire ignorer les alertes — et le jour où une vraie arrive, plus
+    // personne ne la lit.
+    const out = detectClosureConflicts({
+      rows,
+      closuresBySite: closures,
+      keptInterventionIds: new Set(['i1']),
+    })
+    expect(out.s1).toBeUndefined()
+  })
+
+  it('une AUTRE intervention du même jour reste en conflit', () => {
+    const out = detectClosureConflicts({
+      rows: [
+        {
+          site_id: 's1',
+          days: {
+            '2026-07-15': [
+              { id: 'i1', status: 'planned' },
+              { id: 'i2', status: 'planned' },
+            ],
+          },
+        },
+      ],
+      closuresBySite: closures,
+      keptInterventionIds: new Set(['i1']),
+    })
+    expect(out.s1['2026-07-15'].expectedCount).toBe(1)
+  })
+})

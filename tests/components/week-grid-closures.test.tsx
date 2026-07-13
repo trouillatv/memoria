@@ -189,7 +189,7 @@ describe('CellDrawer — le bloc « Conflit de planning »', () => {
     expect(screen.queryByTestId('drawer-closure-conflict')).toBeNull()
   })
 
-  it('avec conflit → explique le POURQUOI et dit qu’AUCUNE DÉCISION n’a été prise', () => {
+  it('avec conflit → explique le POURQUOI, et rien n’a été modifié', () => {
     const { getByText } = renderDrawer({ 'site-1': { '2026-07-14': CONFLICT } })
     fireEvent.click(getByText('ouvrir'))
 
@@ -199,15 +199,33 @@ describe('CellDrawer — le bloc « Conflit de planning »', () => {
     expect(section.textContent).toContain('fermeture du client')
     expect(section.textContent).toContain('Magasin fermé')
     expect(section.textContent).toContain('reste planifiée')
-    expect(section.textContent).toContain('Aucune décision n’a encore été prise')
+    // PL3a disait « aucune décision n'a encore été prise » parce qu'aucun geste
+    // n'existait. PL3b LES DONNE (« Que fait-on ? ») : la phrase serait fausse.
+    // Ce qui reste vrai, et qu'il faut continuer de dire : rien n'a bougé.
+    expect(section.textContent).toContain('Rien n’a été modifié')
+    expect(section.textContent).toContain('Que fait-on')
   })
 
-  it('PL3a ne propose AUCUN geste dans le bloc de conflit', () => {
+  it('PL3b PROPOSE les gestes — mais aucun n’est appliqué tant qu’on ne clique pas', () => {
+    // PL3a n'offrait RIEN : il constatait. PL3b donne les cinq gestes. Ce qui
+    // reste vrai — et qui compte — c'est qu'AUCUN n'est appliqué tout seul :
+    // MemorIA propose, l'humain tranche.
     const { getByText } = renderDrawer({ 'site-1': { '2026-07-14': CONFLICT } })
     fireEvent.click(getByText('ouvrir'))
     const section = screen.getByTestId('drawer-closure-conflict')
-    expect(section.querySelector('button')).toBeNull()
-    expect(section.textContent).not.toMatch(/déplacer|annuler|maintenir/i)
+    expect(section.textContent).toMatch(/maintenir/i)
+    expect(section.textContent).toMatch(/annuler/i)
+    // Rien n'a bougé : c'est dit, noir sur blanc.
+    expect(section.textContent).toContain('Rien n’a été modifié')
+  })
+
+  it('sans jour ouvert proposé, AUCUN bouton « déplacer » — un geste impossible est pire qu’absent', () => {
+    const { getByText } = renderDrawer({ 'site-1': { '2026-07-14': CONFLICT } })
+    fireEvent.click(getByText('ouvrir'))
+    const section = screen.getByTestId('drawer-closure-conflict')
+    // Le tiroir de test ne reçoit aucune option (fermeture longue) : on ne
+    // propose donc pas de déplacement, et on le DIT.
+    expect(section.textContent).toContain('Aucun jour ouvert')
   })
 
   it('plusieurs prestations → le compte est dit au pluriel', () => {

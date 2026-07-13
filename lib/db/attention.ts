@@ -16,6 +16,7 @@ import { getWeekRange } from '@/lib/week-planning-helpers'
 import { getWeekBySite } from '@/lib/db/week-planning'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
+import { listKeptInterventionIds } from '@/lib/db/closure-decisions'
 import {
   buildConflictItems,
   buildDebriefItems,
@@ -98,9 +99,20 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
   const flagged = new Set<string>()
 
   // 🔴 CONFLITS — le même détecteur que la vue Semaine (PL3). Une seule vérité.
+  //
+  // ⚠️ Y COMPRIS LES DÉCISIONS. Sans cette lecture, une prestation MAINTENUE
+  // continuerait d'alerter ici alors que la semaine, elle, se tairait : deux
+  // écrans qui se contredisent sur le même fait. Le matin, c'est le pire endroit
+  // pour crier une alerte déjà tranchée.
+  const rowsInScope = weekRows.filter((r) => siteIds.includes(r.site_id))
+  const keptInterventionIds = await listKeptInterventionIds(
+    rowsInScope.flatMap((r) => Object.values(r.days).flat().map((c) => c.id)),
+  ).catch(() => new Set<string>())
+
   const conflictsBySite = detectClosureConflicts({
-    rows: weekRows.filter((r) => siteIds.includes(r.site_id)),
+    rows: rowsInScope,
     closuresBySite,
+    keptInterventionIds,
   })
   for (const item of buildConflictItems(conflictsBySite, nameOf)) red.push(item)
   for (const siteId of Object.keys(conflictsBySite)) flagged.add(siteId)
