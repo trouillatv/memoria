@@ -45,7 +45,7 @@ export async function confirmShareAction(
       bytes,
       filename: f.filename,
       mime: f.mime,
-      lastModifiedMs: f.lastModifiedMs ?? undefined,
+      lastModifiedMs: f.lastModifiedMs,
     })
   }
   if (uploads.length === 0) return { error: 'Ces photos ne sont plus disponibles' }
