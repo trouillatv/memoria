@@ -142,6 +142,10 @@ export interface SaveCycleInput {
   endsOn: string | null
   slots: CycleSlot[]
   userId: string | null
+  /** PL5b — « Enregistrer comme brouillon » ou « Publier ». Un brouillon ne
+   *  génère AUCUN rythme : rien n'arrive dans la semaine tant qu'il n'est pas
+   *  publié. */
+  status?: CycleStatus
 }
 
 /** Crée le roulement + sa grille, puis DÉRIVE ses rythmes. */
@@ -158,7 +162,7 @@ export async function createCycle(input: SaveCycleInput): Promise<string> {
       anchor_date: input.anchorDate,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
-      status: 'published',
+      status: input.status ?? 'published',
       created_by: input.userId,
     })
     .select('id')
@@ -183,6 +187,7 @@ export async function updateCycle(cycleId: string, input: SaveCycleInput): Promi
       starts_on: input.startsOn,
       ends_on: input.endsOn,
       mission_id: input.missionId,
+      status: input.status ?? 'published',
       updated_by: input.userId,
       updated_at: new Date().toISOString(),
     })
@@ -254,6 +259,12 @@ async function archiveTemplatesOfCycle(cycleId: string): Promise<void> {
  */
 async function regenerateTemplates(cycleId: string, input: SaveCycleInput): Promise<void> {
   await archiveTemplatesOfCycle(cycleId)
+
+  // Un BROUILLON ne génère aucun rythme : rien n'arrive dans la semaine tant que
+  // Guillaume n'a pas publié. (Et s'il repasse en brouillon, les rythmes déjà
+  // dérivés viennent d'être archivés — les interventions générées, elles,
+  // restent : une preuve n'est jamais détruite par un geste de rangement.)
+  if ((input.status ?? 'published') !== 'published') return
 
   const work = input.slots.filter((s) => s.state === 'work')
   if (work.length === 0) return
