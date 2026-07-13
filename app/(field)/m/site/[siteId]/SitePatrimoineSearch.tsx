@@ -8,7 +8,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import {
   Search, Camera, Pencil, AlertTriangle, ListTodo, Gavel, FileText, Wrench, X,
-  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch,
+  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen,
 } from 'lucide-react'
 import { searchPatrimoineAction, type SearchPatrimoineResult } from './patrimoine-actions'
 import type { MemoryHitType } from '@/lib/db/memory-search'
@@ -29,6 +29,7 @@ const META: Record<MemoryHitType, { label: string; Icon: typeof Camera; cls: str
   blocage: { label: 'Blocages', Icon: Ban, cls: 'text-rose-600', ring: 'bg-rose-100 dark:bg-rose-950/40' },
   obligation: { label: 'Obligations', Icon: ClipboardCheck, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
   subject: { label: 'Sujets suivis', Icon: GitBranch, cls: 'text-brand-700', ring: 'bg-brand-100 dark:bg-brand-950/40' },
+  document: { label: 'Documents', Icon: BookOpen, cls: 'text-indigo-600', ring: 'bg-indigo-100 dark:bg-indigo-950/40' },
 }
 
 export function SitePatrimoineSearch({ siteId, suggestions }: { siteId: string; suggestions: string[] }) {

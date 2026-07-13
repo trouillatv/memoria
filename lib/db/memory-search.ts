@@ -22,6 +22,9 @@ export type MemoryHitType =
   | 'observation' | 'site_decision' | 'knowledge' | 'blocage' | 'obligation'
   // Le SUJET lui-même : pas un fait, mais LE FIL auquel les faits se rattachent.
   | 'subject'
+  // Mig 204 — le texte extrait des DOCUMENTS. Les LITIGES en sont exclus, à la
+  // source (index partiel + filtre SQL) : jamais dans l'écran seulement.
+  | 'document'
 
 export interface MemoryHit {
   type: MemoryHitType
@@ -96,6 +99,9 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
  * que Guillaume cherche vraiment quand il demande « on avait déjà vu ça ? ».
  */
 export function memoryHitHref(hit: MemoryHit): string {
+  // Un document se lit DANS SA FICHE — jamais réduit à son extrait.
+  if (hit.type === 'document') return `/documents/${hit.id}`
+
   if (!hit.siteId) return '/sites'
 
   // Le sujet EST le fil.

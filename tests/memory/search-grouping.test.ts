@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest'
 import {
   groupSearchHits,
   applyFilters,
+  splitHighlights,
   HIT_LABEL_FR,
   ALL_MEMORY_DAYS,
   PERIODS,
@@ -142,7 +143,7 @@ describe('Chaque nature de trace porte un nom de chantier, pas un nom de table',
     const types: MemoryHitType[] = [
       'observation', 'anomaly', 'site_note', 'intervention', 'photo',
       'site_action', 'site_decision', 'meeting_decision', 'site_reserve',
-      'report_document', 'knowledge', 'blocage', 'obligation', 'subject',
+      'report_document', 'knowledge', 'blocage', 'obligation', 'subject', 'document',
     ]
     for (const t of types) {
       expect(HIT_LABEL_FR[t]).toBeTruthy()
@@ -184,5 +185,29 @@ describe('RM4 — les filtres RÉDUISENT, ils ne cherchent pas', () => {
     // il y a deux ans ? ». Le pire mensonge possible pour une mémoire.
     expect(PERIODS[0].days).toBe(ALL_MEMORY_DAYS)
     expect(PERIODS[0].label).toBe('Toute la mémoire')
+  })
+})
+
+
+describe('L’extrait d’un document met le mot en évidence — sans charabia', () => {
+  it('les marqueurs de Postgres ne sont JAMAIS affichés tels quels', () => {
+    const parts = splitHighlights('la fermeture pendant les <<vacances>> <<scolaires>> du site')
+    expect(parts.filter((p) => p.hit).map((p) => p.text)).toEqual(['vacances', 'scolaires'])
+    // Recollé, le texte est propre : plus aucun « << » ne subsiste.
+    expect(parts.map((p) => p.text).join('')).toBe(
+      'la fermeture pendant les vacances scolaires du site',
+    )
+  })
+
+  it('un extrait sans marqueur reste intact', () => {
+    expect(splitHighlights('texte simple')).toEqual([{ text: 'texte simple', hit: false }])
+  })
+
+  it('un extrait vide ne casse rien', () => {
+    expect(splitHighlights('')).toEqual([])
+  })
+
+  it('un document se lit DANS SA FICHE — jamais réduit à son extrait', () => {
+    expect(memoryHitHref(hit({ type: 'document', id: 'doc-1' }))).toBe('/documents/doc-1')
   })
 })

@@ -31,6 +31,23 @@ export const HIT_LABEL_FR: Record<MemoryHitType, string> = {
   blocage: 'Blocage',
   obligation: 'Obligation',
   subject: 'Sujet',
+  document: 'Document',
+}
+
+/**
+ * L'extrait d'un document arrive de `ts_headline` avec des marqueurs `<<…>>`
+ * autour des mots trouvés. On les DÉCOUPE pour les mettre en évidence — on ne
+ * les laisse jamais à l'écran (« <<fermeture>> » serait du charabia).
+ */
+export function splitHighlights(snippet: string): Array<{ text: string; hit: boolean }> {
+  return snippet
+    .split(/(<<[^>]*>>)/g)
+    .filter((part) => part.length > 0)
+    .map((part) =>
+      part.startsWith('<<') && part.endsWith('>>')
+        ? { text: part.slice(2, -2), hit: true }
+        : { text: part, hit: false },
+    )
 }
 
 export interface SiteGroup {

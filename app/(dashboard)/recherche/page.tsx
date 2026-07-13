@@ -15,7 +15,7 @@
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Search, MapPin, GitBranch, ChevronRight } from 'lucide-react'
+import { Search, MapPin, GitBranch, ChevronRight, BookOpen } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { searchMemory, memoryHitHref, type MemoryHit } from '@/lib/db/memory-search'
@@ -55,6 +55,7 @@ async function siteNames(ids: string[]): Promise<Map<string, string>> {
 }
 
 function HitRow({ hit }: { hit: MemoryHit }) {
+  const isDoc = hit.type === 'document'
   return (
     <Link
       href={memoryHitHref(hit)}
@@ -65,6 +66,14 @@ function HitRow({ hit }: { hit: MemoryHit }) {
           <span className="rounded border border-dashed px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
             {HIT_LABEL_FR[hit.type]}
           </span>
+          {/* Un document se cite par son NOM : une phrase sortie d'un fichier
+              anonyme ne serait pas remontable à sa source. */}
+          {isDoc && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium">
+              <BookOpen className="h-3 w-3 text-muted-foreground" />
+              {hit.title}
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">{frDate(hit.occurredAt)}</span>
           {/* Rattaché à un fil : le clic ouvre l'HISTOIRE, pas le fait isolé. */}
           {hit.subjectId && (
@@ -73,7 +82,25 @@ function HitRow({ hit }: { hit: MemoryHit }) {
             </span>
           )}
         </span>
-        <span className="block text-sm leading-snug">{trunc(hit.snippet || hit.title)}</span>
+        <span className={`block text-sm leading-snug ${isDoc ? 'italic text-muted-foreground' : ''}`}>
+          {isDoc ? (
+            <>
+              {'« '}
+              {splitHighlights(trunc(hit.snippet, 220)).map((part, i) =>
+                part.hit ? (
+                  <mark key={i} className="rounded bg-amber-100 px-0.5 not-italic text-foreground">
+                    {part.text}
+                  </mark>
+                ) : (
+                  <span key={i}>{part.text}</span>
+                ),
+              )}
+              {' »'}
+            </>
+          ) : (
+            trunc(hit.snippet || hit.title)
+          )}
+        </span>
       </span>
       <ChevronRight className="mt-1.5 h-4 w-4 shrink-0 text-muted-foreground" />
     </Link>
@@ -136,8 +163,8 @@ export default async function RecherchePage({
           Recherche
         </h1>
         <p className="text-sm text-muted-foreground">
-          Observations, réunions, décisions, actions, réserves, comptes-rendus — sur toute la
-          mémoire, sans limite de date.
+          Observations, réunions, décisions, actions, réserves, comptes-rendus, documents — sur
+          toute la mémoire, sans limite de date.
         </p>
       </header>
 
