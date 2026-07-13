@@ -33,11 +33,17 @@ Trois conséquences honnêtes :
 3. **PL3a fonctionne quand même** : il détecte les conflits sur les interventions
    **matérialisées**, or les 42 le sont. Le signal est donc bien vivant.
 
-> **La vraie question produit** que cela soulève, et qui t'appartient : Guillaume
-> n'utilise pas les rythmes. Soit il ne les a pas trouvés, soit ils ne
-> correspondent pas à sa façon de planifier (il pense en **présences**, cf.
-> `audit/10-planning-pl0.md`). Cela ne bloque pas PL3-0a — mais cela questionne
-> l'urgence de PL3-0b.
+> **Ce que la base prouve, et ce qu'elle NE prouve PAS** (nuance de Vincent, à
+> tenir) : elle prouve **qu'aucun rythme n'a été créé**. Elle ne prouve PAS que
+> les rythmes soient inutiles. Six causes possibles, et je ne peux pas trancher
+> entre elles : Guillaume ne les a pas trouvés ; le parcours exige trop de
+> prérequis ; la mission créée n'apparaissait pas dans la semaine lors de la
+> démo (bug corrigé depuis) ; la fréquence plate ne correspond pas à son cycle
+> pluri-hebdomadaire ; il n'a pas eu le temps ; ou les rythmes sont pensés
+> « tâche récurrente » quand il raisonne en **rotation travail/repos**.
+> L'entretien penche vers la dernière — c'est une **hypothèse forte, pas une
+> preuve**. J'avais écrit « Guillaume n'utilise pas les rythmes » comme un
+> constat : c'était un raccourci, je le corrige.
 
 ## 1. L'index actuel — définition exacte
 
@@ -145,5 +151,26 @@ Mais **différer `materializeOccurrence` (PL3-0b)** : il n'a aucun usage tant
 qu'aucun rythme n'existe. Le construire maintenant, ce serait bâtir une fondation
 sous une maison que personne n'habite.
 
-**Aucune migration n'a été créée. Aucun code n'a été écrit. Ce document attend ta
-décision.**
+## ÉPILOGUE — livré le 2026-07-13 (PR #138)
+
+La migration **198** est **créée, validée par la CI (dont `db-reset`), mergée, et
+APPLIQUÉE** sur la base réelle. Vérifié après application :
+
+```
+CREATE UNIQUE INDEX idx_interventions_template_unique
+  ON public.interventions (template_id, scheduled_for, slot)
+  NULLS NOT DISTINCT
+  WHERE (template_id IS NOT NULL);
+```
+
+`tests/lib/occurrence-identity.test.ts` **échouait avant** (la seconde insertion
+avec `slot = NULL` était acceptée) et **passe après** (4/4). C'est la preuve du
+bug, puis de sa correction.
+
+**`materializeOccurrence` reste DIFFÉRÉ.** Avec 0 rythme actif, il n'aurait rien
+à matérialiser. On le construira quand PL4/PL5 produiront de vrais rythmes — et
+peut-être découvrira-t-on alors une solution plus simple.
+
+**Le prochain lot est PL4 : les cycles de 1 à 4 semaines.** C'est là qu'est la
+valeur : le moteur existe, c'est la **capacité de Guillaume à créer un rythme**
+qui manque.
