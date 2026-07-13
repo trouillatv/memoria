@@ -34,6 +34,8 @@ import type { DbTeam } from '@/types/db'
 export interface TeamOverview {
   id: string
   name: string
+  /** P1 isolation — pour la garde d'appartenance au tenant côté page. */
+  organizationId: string | null
   color: string | null
   icon: string | null
   specialties: string[]
@@ -296,6 +298,7 @@ export async function getTeamOverview(teamId: string): Promise<TeamOverview | nu
   return {
     id: team.id,
     name: team.name,
+    organizationId: team.organization_id ?? null,
     color: team.color,
     icon: team.icon,
     specialties: team.specialties ?? [],

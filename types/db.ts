@@ -790,6 +790,8 @@ export interface DbTeam {
   deleted_at: string | null
   // Phase 10 — Référent d'équipe (point de contact opérationnel stable).
   referent_user_id: string | null
+  // Migration 089 — isolation multi-tenant.
+  organization_id: string | null
 }
 
 /** Sprint Équipes C (Vincent 2026-05-22, migration 079) — Passage de témoin. */

@@ -74,8 +74,10 @@ export interface UpdateTeamInput {
 export async function listTeams(): Promise<DbTeam[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
-  let q = supabase.from('teams').select('*').is('deleted_at', null).order('name', { ascending: true })
-  if (orgId) q = q.eq('organization_id', orgId)
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → aucune équipe.
+  if (!orgId) return []
+  const q = supabase.from('teams').select('*').is('deleted_at', null)
+    .eq('organization_id', orgId).order('name', { ascending: true })
   const { data, error } = await q
   if (error) throw error
   return data ?? []
@@ -194,8 +196,10 @@ export interface TeamWithMemberCount extends DbTeam {
 export async function listTeamsWithMemberCount(): Promise<TeamWithMemberCount[]> {
   const supabase = createAdminClient()
   const orgId = await getOrgId()
-  let tQ = supabase.from('teams').select('*').is('deleted_at', null).order('name', { ascending: true })
-  if (orgId) tQ = tQ.eq('organization_id', orgId)
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → aucune équipe.
+  if (!orgId) return []
+  const tQ = supabase.from('teams').select('*').is('deleted_at', null)
+    .eq('organization_id', orgId).order('name', { ascending: true })
   const { data: teams, error: tErr } = await tQ
   if (tErr) throw tErr
   if (!teams || teams.length === 0) return []
