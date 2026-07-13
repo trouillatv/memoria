@@ -10,6 +10,14 @@
 - Planning cyclique (PlanningTemplate→Cycle→Occurrence) : optimisation métier, pas
   une condition d'adoption — Guillaume a commencé SANS. À concevoir depuis son
   usage réel, chantier séparé (l'état actuel/cible est documenté dans 01-model.md).
+  > **MISE À JOUR 2026-07-13 — l'usage réel est arrivé** (photo du planning
+  > Servinor + spec PL0→PL9). Audit fait : **`audit/10-planning-pl0.md`**.
+  > Verdict : deux tiers du besoin (cycles, fermetures de site, alertes) sont
+  > **additifs et constructibles** ; le troisième — la personne comme ligne de
+  > planning — est une **ligne rouge produit armée par la CI**
+  > (`forbidden-symbols.test.ts`, `planning-doctrine.md:404`). **Décision
+  > Vincent requise avant toute ligne de code.** Voie recommandée sans
+  > arbitrage : « équipes-mono × jours » (même écran, doctrine intacte).
   **Après la vague : quelques semaines d'usage réel, puis un document « Planning
   v2 — ce que Guillaume a réellement fait » (jamais « ce que nous imaginons ») —
   application directe de la doctrine « l'usage observé, jamais une hypothèse
