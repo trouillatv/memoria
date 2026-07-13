@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import type { DbMission, MissionCadence, ChecklistTemplateItem } from '@/types/db'
+import { normalizePrestation } from '@/lib/planning/prestation-name'
 
 export async function listMissionsBySite(siteId: string): Promise<DbMission[]> {
   const supabase = createAdminClient()
@@ -98,16 +99,21 @@ export async function findOrCreateMissionByName(input: {
   const name = input.name.trim()
   if (!name) throw new Error('Nommez la prestation')
 
-  const { data: existing } = await supabase
+  // ⚠️ `ilike` ignore la casse mais PAS les accents ni les espaces doubles.
+  // « Nettoyage magasin » et « nettoyage  magasin » passeraient pour deux
+  // prestations différentes — et la mémoire se fragmenterait en silence. On
+  // compare donc sur la forme canonique, côté code.
+  const { data: rows } = await supabase
     .from('missions')
-    .select('id')
+    .select('id, name')
     .eq('site_id', input.siteId)
     .is('deleted_at', null)
-    .ilike('name', name) // insensible à la casse : on ne duplique pas pour une majuscule
-    .limit(1)
-    .maybeSingle()
 
-  if (existing) return (existing as { id: string }).id
+  const target = normalizePrestation(name)
+  const existing = ((rows ?? []) as Array<{ id: string; name: string }>).find(
+    (m) => normalizePrestation(m.name ?? '') === target,
+  )
+  if (existing) return existing.id
 
   // Le RYTHME vient du roulement, pas de la mission : la cadence n'est ici qu'une
   // valeur de départ, jamais ce qui décide des jours.

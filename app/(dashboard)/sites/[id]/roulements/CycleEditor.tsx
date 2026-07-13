@@ -16,6 +16,7 @@ import { Loader2, Plus, X, CalendarRange, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { suggestExisting, samePrestation } from '@/lib/planning/prestation-name'
 import type { PreviewResult } from '@/lib/planning/cycle-preview'
 import { saveCycleAction, previewCycleAction } from './actions'
 import { CyclePreview, monthBounds } from './CyclePreview'
@@ -101,11 +102,17 @@ export function CycleEditor({
     () => missions.find((m) => m.id === initial?.missionId)?.name ?? missions[0]?.name ?? '',
   )
 
-  /** La mission de CE chantier portant ce nom — sinon on l'ouvrira au serveur. */
+  /** La mission de CE chantier portant ce nom — sinon on l'ouvrira au serveur.
+   *  Comparaison sans casse NI accents : « Nettoyage » et « nettoyage » sont le
+   *  même travail. */
   const missionIdOf = (name: string): string | undefined =>
-    missions.find((m) => m.name.trim().toLowerCase() === name.trim().toLowerCase())?.id
+    missions.find((m) => samePrestation(m.name, name))?.id
 
   /** Toutes les propositions : celles du chantier, plus celles de l'organisation. */
+  // « Créer quand même » : il a vu la proposition, il l'a écartée. On ne la
+  // représente pas — insister serait le prendre pour un distrait.
+  const [forceNew, setForceNew] = useState(false)
+
   const suggestions = useMemo(() => {
     const all = [...missions.map((m) => m.name), ...knownPrestations]
     const seen = new Map<string, string>()
@@ -133,6 +140,12 @@ export function CycleEditor({
   // écrit en base (voir `slots` à l'enregistrement).
   const [worked, setWorked] = useState<Set<string>>(
     () => new Set((initial?.slots ?? []).filter((s) => s.state === 'work').map((s) => key(s.weekIndex, s.weekday, s.teamId))),
+  )
+
+  /** Une prestation qui désigne le même travail, mais s'écrit autrement. */
+  const proche = useMemo(
+    () => (forceNew ? null : suggestExisting(prestation, suggestions)),
+    [prestation, suggestions, forceNew],
   )
 
   const available = useMemo(() => teams.filter((t) => !rows.includes(t.id)), [teams, rows])
@@ -321,11 +334,40 @@ export function CycleEditor({
               <option key={n} value={n} />
             ))}
           </datalist>
-          <span className="block text-[11px] text-muted-foreground">
-            {prestation.trim() && !missionIdOf(prestation)
-              ? 'Nouvelle prestation — elle sera créée, et proposée la prochaine fois.'
-              : 'Écrivez-la, ou choisissez-en une déjà employée.'}
-          </span>
+          {/* ⚠️ LA FRAGMENTATION SILENCIEUSE. « Nettoyage Magasin » quand
+              « Nettoyage magasin » existe déjà : rien ne casse, rien n'alerte, et
+              la mémoire se coupe en deux. On le DIT — sans l'imposer : deux noms
+              proches peuvent désigner deux vrais travaux. */}
+          {proche ? (
+            <span className="block rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+              Une prestation proche existe déjà : <strong>{proche}</strong>
+              <span className="mt-1 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPrestation(proche)}
+                  disabled={pending}
+                  className="font-medium underline underline-offset-2"
+                >
+                  Utiliser l’existante
+                </button>
+                <span className="opacity-60">·</span>
+                <button
+                  type="button"
+                  onClick={() => setForceNew(true)}
+                  disabled={pending}
+                  className="underline underline-offset-2"
+                >
+                  Créer quand même
+                </button>
+              </span>
+            </span>
+          ) : (
+            <span className="block text-[11px] text-muted-foreground">
+              {prestation.trim() && !missionIdOf(prestation)
+                ? 'Nouvelle prestation — elle sera créée, et proposée la prochaine fois.'
+                : 'Écrivez-la, ou choisissez-en une déjà employée.'}
+            </span>
+          )}
         </label>
 
         <fieldset className="space-y-1">
