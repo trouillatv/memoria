@@ -127,3 +127,35 @@ export function groupSearchHits(
  * répondrait « non » à tort — le pire mensonge possible pour une mémoire.
  */
 export const ALL_MEMORY_DAYS = 3650
+
+
+// ── RM4 — LES FILTRES ────────────────────────────────────────────────────────
+//
+// Trois questions, pas plus : OÙ (le chantier), QUOI (la nature de la trace),
+// QUAND (la période). Ce sont les trois seules dont Guillaume dispose vraiment
+// quand il cherche — il ne sait ni qui a écrit, ni dans quelle table.
+//
+// Le filtre ne relance PAS de recherche : il réduit ce qu'on a déjà. Une
+// recherche coûte, un filtre est instantané — et il doit le rester.
+
+export interface SearchFilters {
+  /** Un seul chantier. `null` = tous. */
+  siteId?: string | null
+  /** Une seule nature de trace. `null` = toutes. */
+  type?: MemoryHitType | null
+}
+
+export function applyFilters(hits: MemoryHit[], f: SearchFilters): MemoryHit[] {
+  return hits.filter(
+    (h) => (!f.siteId || h.siteId === f.siteId) && (!f.type || h.type === f.type),
+  )
+}
+
+/** Les périodes proposées. « Toute la mémoire » est le DÉFAUT : c'est la
+ *  question « on avait déjà vu ça ? » qui commande, pas l'année en cours. */
+export const PERIODS: Array<{ days: number; label: string }> = [
+  { days: ALL_MEMORY_DAYS, label: 'Toute la mémoire' },
+  { days: 365, label: 'Cette année' },
+  { days: 90, label: '3 mois' },
+  { days: 30, label: '30 jours' },
+]

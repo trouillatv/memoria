@@ -19,8 +19,14 @@ import { Search, MapPin, GitBranch, ChevronRight } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { searchMemory, memoryHitHref, type MemoryHit } from '@/lib/db/memory-search'
-import { groupSearchHits, HIT_LABEL_FR, ALL_MEMORY_DAYS } from '@/lib/memory/search-grouping'
+import {
+  groupSearchHits,
+  applyFilters,
+  HIT_LABEL_FR,
+  ALL_MEMORY_DAYS,
+} from '@/lib/memory/search-grouping'
 import { SearchBar } from './SearchBar'
+import { SearchFilters } from './SearchFilters'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,27 +85,48 @@ const EXAMPLES = ['fuite', 'chambre froide', 'porte', 'sol', 'vitrine', 'climati
 export default async function RecherchePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>
+  searchParams: Promise<{ q?: string; site?: string; type?: string; days?: string }>
 }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
-  const { q } = await searchParams
-  const query = q?.trim() ?? ''
+  const sp = await searchParams
+  const query = sp.q?.trim() ?? ''
 
-  // TOUTE la mémoire, pas l'année en cours : « on avait déjà vu ça il y a deux
-  // ans ? » porte précisément sur l'ancien. Une fenêtre d'un an répondrait
-  // « non » à tort — le pire mensonge possible pour une mémoire.
+  // TOUTE la mémoire par défaut : « on avait déjà vu ça il y a deux ans ? » porte
+  // précisément sur l'ancien. Une fenêtre d'un an répondrait « non » à tort —
+  // le pire mensonge possible pour une mémoire.
+  const days = Number(sp.days) > 0 ? Number(sp.days) : ALL_MEMORY_DAYS
+
   const hits =
-    query.length >= 2
-      ? await searchMemory({ q: query, periodDays: ALL_MEMORY_DAYS, limit: 80 })
-      : []
+    query.length >= 2 ? await searchMemory({ q: query, periodDays: days, limit: 120 }) : []
 
   const names = await siteNames([
     ...new Set(hits.map((h) => h.siteId).filter((v): v is string => !!v)),
   ])
-  const grouped = groupSearchHits(hits, (id) => names.get(id))
+
+  // Les filtres possibles se lisent sur TOUS les résultats — sinon filtrer par
+  // « Observation » ferait disparaître le filtre lui-même.
+  const allTypes = groupSearchHits(hits, (id) => names.get(id)).countsByType
+  const allSites = [...names.entries()]
+    .map(([id, name]) => ({
+      id,
+      name,
+      count: hits.filter((h) => h.siteId === id).length,
+    }))
+    .sort((a, b) => b.count - a.count)
+
+  const filters = {
+    q: query,
+    siteId: sp.site ?? null,
+    type: (sp.type as MemoryHit['type'] | undefined) ?? null,
+    days,
+  }
+
+  // Le filtre RÉDUIT ce qu'on a déjà : il ne relance pas de recherche.
+  const shown = applyFilters(hits, filters)
+  const grouped = groupSearchHits(shown, (id) => names.get(id))
 
   return (
     <div className="w-full max-w-3xl space-y-6">
@@ -116,17 +143,40 @@ export default async function RecherchePage({
 
       <SearchBar defaultValue={query} />
 
+      {hits.length > 0 && (
+        <SearchFilters state={filters} types={allTypes} sites={allSites} />
+      )}
+
       {query.length >= 2 && (
         <div className="space-y-5">
-          {hits.length === 0 ? (
+          {shown.length === 0 ? (
             <div className="space-y-1 py-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                Rien sur «&nbsp;{query}&nbsp;» dans toute la mémoire.
-              </p>
-              <p className="text-xs text-muted-foreground/80">
-                Ce n&apos;est pas « pas encore indexé » : c&apos;est qu&apos;on ne l&apos;a jamais
-                écrit.
-              </p>
+              {/* Ne JAMAIS dire « rien dans la mémoire » quand c'est un filtre
+                  qui a tout masqué : ce serait un mensonge sur la mémoire. */}
+              {hits.length > 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Rien avec ces filtres — mais {hits.length} trace
+                    {hits.length > 1 ? 's' : ''} sur «&nbsp;{query}&nbsp;».
+                  </p>
+                  <Link
+                    href={`/recherche?q=${encodeURIComponent(query)}`}
+                    className="inline-block text-xs text-brand-700 underline underline-offset-2"
+                  >
+                    Tout revoir
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Rien sur «&nbsp;{query}&nbsp;» dans toute la mémoire.
+                  </p>
+                  <p className="text-xs text-muted-foreground/80">
+                    Ce n&apos;est pas « pas encore indexé » : c&apos;est qu&apos;on ne l&apos;a
+                    jamais écrit.
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <>

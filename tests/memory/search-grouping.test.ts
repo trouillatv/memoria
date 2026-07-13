@@ -9,7 +9,13 @@
 //     y a deux ans ? » ne doit jamais recevoir un « non » faux.
 
 import { describe, it, expect } from 'vitest'
-import { groupSearchHits, HIT_LABEL_FR, ALL_MEMORY_DAYS } from '@/lib/memory/search-grouping'
+import {
+  groupSearchHits,
+  applyFilters,
+  HIT_LABEL_FR,
+  ALL_MEMORY_DAYS,
+  PERIODS,
+} from '@/lib/memory/search-grouping'
 import { memoryHitHref, type MemoryHit, type MemoryHitType } from '@/lib/db/memory-search'
 
 const NAMES = new Map([
@@ -142,5 +148,41 @@ describe('Chaque nature de trace porte un nom de chantier, pas un nom de table',
       expect(HIT_LABEL_FR[t]).toBeTruthy()
       expect(HIT_LABEL_FR[t]).not.toMatch(/_/) // jamais « site_action » à l'écran
     }
+  })
+})
+
+
+describe('RM4 — les filtres RÉDUISENT, ils ne cherchent pas', () => {
+  const jeu = [
+    hit({ id: 'a', type: 'observation', siteId: 's1' }),
+    hit({ id: 'b', type: 'site_action', siteId: 's1' }),
+    hit({ id: 'c', type: 'observation', siteId: 's2' }),
+  ]
+
+  it('sans filtre, rien ne bouge', () => {
+    expect(applyFilters(jeu, {})).toHaveLength(3)
+  })
+
+  it('QUOI — une seule nature', () => {
+    expect(applyFilters(jeu, { type: 'observation' }).map((h) => h.id)).toEqual(['a', 'c'])
+  })
+
+  it('OÙ — un seul chantier', () => {
+    expect(applyFilters(jeu, { siteId: 's1' }).map((h) => h.id)).toEqual(['a', 'b'])
+  })
+
+  it('les deux se combinent', () => {
+    expect(applyFilters(jeu, { siteId: 's1', type: 'observation' }).map((h) => h.id)).toEqual(['a'])
+  })
+
+  it('un filtre qui ne garde rien rend une liste vide — pas une erreur', () => {
+    expect(applyFilters(jeu, { siteId: 's2', type: 'site_action' })).toEqual([])
+  })
+
+  it('QUAND — « Toute la mémoire » est le DÉFAUT, en tête', () => {
+    // Une fenêtre d'un an par défaut répondrait « non » à « on avait déjà vu ça
+    // il y a deux ans ? ». Le pire mensonge possible pour une mémoire.
+    expect(PERIODS[0].days).toBe(ALL_MEMORY_DAYS)
+    expect(PERIODS[0].label).toBe('Toute la mémoire')
   })
 })
