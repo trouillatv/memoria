@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch } from 'lucide-react'
 import {
   askOrgMemoryAction,
   getOrgMemoryTermsAction,
@@ -44,6 +44,13 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   meeting_decision: { label: 'Décision',     Icon: Check,    cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   site_reserve:     { label: 'Réserve',      Icon: Flag,     cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   report_document:  { label: 'Compte-rendu', Icon: Archive,  cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+  // Mig 200 — le reste de la mémoire entre dans la recherche.
+  observation:      { label: 'Observation',  Icon: Eye,           cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+  site_decision:    { label: 'Décision de chantier', Icon: Gavel, cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  knowledge:        { label: 'Connaissance', Icon: Lightbulb,     cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  blocage:          { label: 'Blocage',      Icon: Ban,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  obligation:       { label: 'Obligation',   Icon: ClipboardCheck, cls: 'bg-slate-50 text-slate-700 border-slate-200' },
+  subject:          { label: 'Sujet suivi',  Icon: GitBranch,     cls: 'bg-brand-50 text-brand-800 border-brand-200' },
 }
 
 function fmtDate(iso: string | null): string {

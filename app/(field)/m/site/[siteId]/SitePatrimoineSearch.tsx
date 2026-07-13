@@ -8,6 +8,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import {
   Search, Camera, Pencil, AlertTriangle, ListTodo, Gavel, FileText, Wrench, X,
+  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch,
 } from 'lucide-react'
 import { searchPatrimoineAction, type SearchPatrimoineResult } from './patrimoine-actions'
 import type { MemoryHitType } from '@/lib/db/memory-search'
@@ -21,6 +22,13 @@ const META: Record<MemoryHitType, { label: string; Icon: typeof Camera; cls: str
   report_document: { label: 'Documents', Icon: FileText, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
   intervention: { label: 'Interventions', Icon: Wrench, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
   anomaly: { label: 'Anomalies', Icon: AlertTriangle, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
+  // Mig 200 — le reste de la mémoire entre dans la recherche.
+  observation: { label: 'Observations', Icon: Eye, cls: 'text-teal-600', ring: 'bg-teal-100 dark:bg-teal-950/40' },
+  site_decision: { label: 'Décisions', Icon: Gavel, cls: 'text-indigo-600', ring: 'bg-indigo-100 dark:bg-indigo-950/40' },
+  knowledge: { label: 'Connaissances', Icon: Lightbulb, cls: 'text-amber-600', ring: 'bg-amber-100 dark:bg-amber-950/40' },
+  blocage: { label: 'Blocages', Icon: Ban, cls: 'text-rose-600', ring: 'bg-rose-100 dark:bg-rose-950/40' },
+  obligation: { label: 'Obligations', Icon: ClipboardCheck, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
+  subject: { label: 'Sujets suivis', Icon: GitBranch, cls: 'text-brand-700', ring: 'bg-brand-100 dark:bg-brand-950/40' },
 }
 
 export function SitePatrimoineSearch({ siteId, suggestions }: { siteId: string; suggestions: string[] }) {
