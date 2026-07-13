@@ -41,11 +41,24 @@
 ## Les lots, dans l'ordre
 
 > Ordre révisé 2026-07-13 (revue ChatGPT, validée Vincent) :
-> **R ✓ → V → X → Y → S → D → C → P.** Deux lots ajoutés (X, Y) ; D passe
+> **R ✓ → V ✓ → X → Y → S → D → C → P.** Deux lots ajoutés (X, Y) ; D passe
 > avant C (le nettoyage débloque les tests de Guillaume, la clarification
 > des sélecteurs vient ensuite). Lot M ajouté le même jour (constat terrain
 > Guillaume) : sa phase 1 est livrée hors ordre car triviale et débloquante ;
 > ses phases 2-3 s'insèrent après Y.
+>
+> **Plan ChatGPT « 16 lots » (2026-07-13)** : même matière, découpage plus
+> fin — correspondance : lots 1-2 ≈ X, lot 3 ≈ C, lot 4 ≈ P/Y, lot 5 ≈ D,
+> lot 7 ≈ V (✓), lot 8 ≈ M (ph.1 ✓), lots 9-10 = multi-entités/rôles
+> (nouveaux, gated pilote), lots 11-14 = planning métier (⚠ liés au futur
+> RFC Affectation — ne pas construire les cycles avant), lot 15 = AO
+> multi-documents (backlog existant). **PR 1 livrée** (continuité fiche
+> chantier → planificateur, cf. ci-dessous) = cœur des lots 0-1-2.
+> L'audit Lot 0 a aussi établi : les équipes sont org-level (aucun lien
+> chantier dans le schéma — la spec « équipe rattachée au chantier » décrit
+> un modèle qui n'existe pas), et `missions.site_id` est en ON DELETE
+> CASCADE (mig 018, pas RESTRICT comme le disait 02-dependencies) — preuves
+> d'intervention détruites en cascade, à traiter au lot D.
 
 ### Lot R — Rafraîchissement fiable (le plus petit, le plus sûr)
 - `NewMissionDialog.tsx` : `router.refresh()` après `{ok}` (LE cas « je crée, rien

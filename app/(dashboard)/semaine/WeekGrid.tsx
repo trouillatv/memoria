@@ -137,8 +137,10 @@ function SiteGridRow({
       >
         <div className="flex flex-col gap-1 min-w-[9rem]">
           <span className="font-medium text-foreground leading-tight">{row.site_name}</span>
+          {/* Client + contrat : deux sites homonymes restent distinguables
+              (« Discount — Pointière » vs « Mairie — Pointière »). */}
           <span className="text-[11px] text-muted-foreground leading-tight">
-            {row.contract_name}
+            {row.client_name ? `${row.client_name} · ${row.contract_name}` : row.contract_name}
           </span>
           {topSignal && <MemorySignalBadge signal={topSignal} />}
           <StandingSignalsBadges signals={standing} todayIso={todayIso} />

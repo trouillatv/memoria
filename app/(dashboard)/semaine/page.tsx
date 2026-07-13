@@ -19,7 +19,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, CalendarOff, FileDown, Info } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   formatWeekParam,
@@ -109,7 +109,7 @@ function todayUtcIso(): string {
 }
 
 interface PageProps {
-  searchParams: Promise<{ week?: string; view?: string; debug?: string }>
+  searchParams: Promise<{ week?: string; view?: string; debug?: string; site?: string }>
 }
 
 function totalSite(rows: SiteRow[]): number {
@@ -127,18 +127,21 @@ function totalTeam(rows: TeamRow[]): number {
 }
 
 /** Liste toutes les missions actives (non archivées) avec site + contrat pour le
- * picker du dialogue de planification. Requête admin (manager+ uniquement, déjà
- * vérifié plus haut). */
-async function fetchMissionOptions(): Promise<MissionOption[]> {
+ * picker du dialogue de planification. Requête admin (manager+ déjà vérifié plus
+ * haut) — P1 isolation : FAIL-CLOSED sur l'organisation, comme
+ * listInterventionsForWeek (jamais les missions de tous les tenants). */
+async function fetchMissionOptions(orgId: string | null): Promise<MissionOption[]> {
+  if (!orgId) return []
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('missions')
     .select(
       `id, name, assigned_team_id,
-       site:sites!inner(name, deleted_at, contract:contracts!inner(name, deleted_at))`,
+       site:sites!inner(id, name, deleted_at, contract:contracts!inner(name, deleted_at))`,
     )
     .is('deleted_at', null)
     .eq('active', true)
+    .eq('organization_id', orgId)
   if (error) throw error
   const out: MissionOption[] = []
   for (const m of (data ?? []) as Array<{
@@ -146,8 +149,8 @@ async function fetchMissionOptions(): Promise<MissionOption[]> {
     name: string
     assigned_team_id: string | null
     site:
-      | { name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }
-      | Array<{ name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }>
+      | { id: string; name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }
+      | Array<{ id: string; name: string; deleted_at: string | null; contract: { name: string; deleted_at: string | null } | { name: string; deleted_at: string | null }[] | null }>
   }>) {
     // V5.1 — Exclure les missions système ("Traces libres du site") du picker
     // de planification. Cf. lib/db/system-missions.ts.
@@ -159,6 +162,7 @@ async function fetchMissionOptions(): Promise<MissionOption[]> {
     out.push({
       id: m.id,
       name: m.name,
+      siteId: site.id,
       siteName: site.name,
       contractName: contract.name,
       defaultTeamId: m.assigned_team_id,
@@ -168,13 +172,15 @@ async function fetchMissionOptions(): Promise<MissionOption[]> {
 }
 
 /** Compte les membres actifs par équipe (left_at IS NULL). Info descriptive,
- * doctrine V2 : JAMAIS exploité comme KPI. */
-async function fetchTeamMemberCounts(): Promise<Map<string, number>> {
+ * doctrine V2 : JAMAIS exploité comme KPI. P1 isolation : fail-closed org. */
+async function fetchTeamMemberCounts(orgId: string | null): Promise<Map<string, number>> {
+  if (!orgId) return new Map()
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('team_members')
     .select('team_id')
     .is('left_at', null)
+    .eq('organization_id', orgId)
   if (error) throw error
   const counts = new Map<string, number>()
   for (const row of data ?? []) {
@@ -192,6 +198,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
   const range = parseWeekParam(params.week)
   const view = parseViewMode(params.view)
   const isDebug = params.debug === 'true'
+  const orgId = await getOrgId()
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
@@ -200,8 +207,8 @@ export default async function SemainePage({ searchParams }: PageProps) {
       view === 'site' ? getWeekBySite(range) : Promise.resolve<SiteRow[]>([]),
       view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
       listTeams(),
-      fetchMissionOptions(),
-      fetchTeamMemberCounts(),
+      fetchMissionOptions(orgId),
+      fetchTeamMemberCounts(orgId),
       getWeekVigilance(range.weekStart, range.weekEnd),
       // Planning-1 : collecte UNE SEULE FOIS au niveau page (vue site uniquement).
       // La vue équipe viendra plus tard (sujet team non activé ici).
@@ -238,6 +245,13 @@ export default async function SemainePage({ searchParams }: PageProps) {
   }))
   const todayIso = todayUtcIso()
 
+  // Contexte chantier (PR 1) : arriver depuis une fiche chantier via
+  // `/semaine?site=<id>` ouvre le planificateur prérempli sur ce chantier.
+  // Le param n'est honoré que s'il correspond à un chantier de l'ORG (les
+  // options sont déjà fail-closed) — un id étranger est simplement ignoré.
+  const initialSiteId =
+    params.site && missionOptions.some((m) => m.siteId === params.site) ? params.site : undefined
+
   const total = view === 'site' ? totalSite(siteRows) : totalTeam(teamRows)
   const isEmpty =
     (view === 'site' && (siteRows.length === 0 || total === 0)) ||
@@ -269,6 +283,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
             missions={missionOptions}
             teams={teamOptions}
             defaultDate={range.weekStart > todayIso ? range.weekStart : todayIso}
+            initialSiteId={initialSiteId}
           />
           <Link
             href={`/semaine/export?week=${formatWeekParam(range)}`}

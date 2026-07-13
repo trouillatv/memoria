@@ -14,7 +14,7 @@
 
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search } from 'lucide-react'
+import { MapPin, BookText, ListTodo, ArrowRightLeft, ClipboardCheck, Search, CalendarPlus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -257,6 +257,15 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         <SiteReportLauncher siteId={id} siteName={identity.name} variant="desktop" />
         {/* ➕ Action standalone — capturer une intention sans compte-rendu */}
         <QuickActionButton source="desktop_site" siteId={id} variant="desktop" />
+        {/* Planifier (PR 1 continuité) : ouvre /semaine avec CE chantier déjà
+            sélectionné dans le planificateur — le contexte voyage avec le clic. */}
+        <Link
+          href={`/semaine?site=${id}`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          <CalendarPlus className="h-4 w-4" />
+          Planifier
+        </Link>
       </div>
 
       {/* Navigation (CONSULTER) — HUB chantier. Les 4 domaines restent visibles, mais
