@@ -49,15 +49,22 @@ export function SiteDomainHub({ siteId, data, signals }: { siteId: string; data:
   const lastVisit = relDate(data.lastVisitAt)
 
   const domains: HubDomain[] = [
+    // ── CHRONOLOGIE ──────────────────────────────────────────────────────
+    // « Tout ce qui s'est passé, dans l'ordre. » Le RÉCIT est un MODE DE
+    // LECTURE de la chronologie, pas une fonction indépendante — il vit donc
+    // ici, plus dans « Mémoire ». Pas de « Frise » tant qu'elle n'existe pas :
+    // un segment qui mène à un écran vide est une navigation factice.
     {
-      question: "Que s'est-il passé ?",
+      question: 'Chronologie',
       icon: <BookText className="h-4 w-4 text-sky-600" />,
-      hint: lastVisit ? `dernière visite ${lastVisit}` : null,
+      hint: lastVisit ? `dernière visite ${lastVisit}` : 'tout ce qui s’est passé, dans l’ordre',
       children: [
-        { label: 'Le journal', href: `/sites/${siteId}/chronicle` },
+        { label: 'Flux', href: `/sites/${siteId}/chronicle` },
+        { label: 'Lire le récit', href: `/sites/${siteId}/recit` },
         { label: 'Visites', href: `/sites/${siteId}/visites`, count: data.visits },
       ],
     },
+    // ── OPÉRATIONNEL — inchangé : la composition validée ne le couvre pas. ──
     {
       question: 'Que reste-t-il à faire ?',
       icon: <ListTodo className="h-4 w-4 text-amber-600" />,
@@ -69,23 +76,34 @@ export function SiteDomainHub({ siteId, data, signals }: { siteId: string; data:
         { label: 'Obligations', href: `/sites/${siteId}/obligations`, count: data.oblToDo },
       ],
     },
+    // ── MÉMOIRE ──────────────────────────────────────────────────────────
+    // Ce qui restera utile dans trois mois, même pour quelqu'un qui reprend le
+    // chantier. Jamais le mot « signaux » ici : ce sont des connaissances
+    // DURABLES, pas des alertes. « Dossiers vivants » est le nom montré ;
+    // la route et le vocabulaire technique (subjects) restent inchangés.
     {
-      question: 'Que faut-il savoir ?',
+      question: 'Mémoire',
       icon: <Sparkles className="h-4 w-4 text-violet-600" />,
-      hint: data.blockedDossiers > 0 ? `${data.blockedDossiers} dossier${data.blockedDossiers > 1 ? 's' : ''} bloqué${data.blockedDossiers > 1 ? 's' : ''}` : null,
+      hint: 'ce qui restera utile dans trois mois',
       children: [
-        { label: 'Dossiers suivis', href: `/sites/${siteId}/subjects`, count: data.subjectsOpen },
-        { label: 'Atelier mémoire', href: `/memoire/${siteId}` },
-        { label: 'Récit', href: `/sites/${siteId}/recit` },
+        { label: 'Dossiers vivants', href: `/sites/${siteId}/subjects`, count: data.subjectsOpen },
+        { label: 'Explorer la mémoire', href: `/memoire/${siteId}` },
       ],
     },
+    // ── DOCUMENTS & PREUVES ──────────────────────────────────────────────
+    // La BIBLIOTHÈQUE est l'entrée principale (tous les documents du chantier).
+    // Le dossier de preuves est un accès CONTEXTUALISÉ — une sélection pour
+    // démontrer ou valider — jamais un nom concurrent de la bibliothèque.
+    // QR Code : « Ouvrir » seulement — pas de « Gérer » tant qu'aucune vraie
+    // fonction de gestion n'existe.
     {
-      question: 'Quelles preuves a-t-on ?',
+      question: 'Documents & preuves',
       icon: <ShieldCheck className="h-4 w-4 text-emerald-600" />,
       hint: data.docs > 0 ? `${data.docs} document${data.docs > 1 ? 's' : ''}` : null,
       children: [
-        { label: 'Dossier de preuve', href: `/sites/${siteId}/preuves`, count: data.docs },
-        { label: 'QR Code', href: `/sites/${siteId}/qr` },
+        { label: 'Bibliothèque', href: `/sites/${siteId}/documents`, count: data.docs },
+        { label: 'Dossiers de preuves', href: `/sites/${siteId}/preuves` },
+        { label: 'Ouvrir le QR Code', href: `/sites/${siteId}/qr` },
         ...(data.canExport ? [{ label: 'Exporter', href: `/sites/${siteId}/export` }] : []),
       ],
     },
