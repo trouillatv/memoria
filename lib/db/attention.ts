@@ -14,7 +14,7 @@ import { listOpenSiteActions, actionHealth, type SiteActionRow } from '@/lib/db/
 import { todayLocalIso } from '@/lib/time/local-date'
 import { getWeekRange } from '@/lib/week-planning-helpers'
 import { getWeekBySite } from '@/lib/db/week-planning'
-import { listActiveClosuresForSites } from '@/lib/db/site-closures'
+import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import {
   buildConflictItems,
@@ -76,7 +76,9 @@ export async function getAttentionDigest(limit = 5): Promise<AttentionDigest> {
     listOpenSiteActions({ siteIds }).catch(() => [] as SiteActionRow[]),
     sb.from('site_reserve').select('site_id, label, created_at').in('site_id', siteIds).eq('status', 'open'),
     getWeekBySite(week).catch(() => []),
-    listActiveClosuresForSites(siteIds, week.weekStart, week.weekEnd).catch(() => ({})),
+    listActiveClosuresForSites(siteIds, week.weekStart, week.weekEnd).catch(
+      (): Record<string, SiteClosure[]> => ({}),
+    ),
     listPendingDebriefs(siteIds).catch(() => [] as PendingDebrief[]),
   ])
 

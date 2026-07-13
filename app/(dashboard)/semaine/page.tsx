@@ -31,7 +31,7 @@ import {
   type TeamRow,
 } from '@/lib/db/week-planning'
 import { isSystemMissionName } from '@/lib/db/system-missions'
-import { listActiveClosuresForSites } from '@/lib/db/site-closures'
+import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { listTeams } from '@/lib/db/teams'
@@ -300,7 +300,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
       siteRows.map((r) => r.site_id),
       range.weekStart,
       range.weekEnd,
-    ).catch(() => ({}))
+    ).catch((): Record<string, SiteClosure[]> => ({}))
 
     // Jour par jour : « ce site est-il fermé ce jour-là, et pourquoi ? »
     const byDate: Record<string, Record<string, ProjectableClosure>> = {}
