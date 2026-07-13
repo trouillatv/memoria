@@ -134,15 +134,27 @@ export default async function MissionsPage({
       const orgId = await getOrgId()
       let q = supabase
         .from('sites')
-        .select('id, name, contract:contracts(id, name)')
+        .select('id, name, client:clients(name), contract:contracts(id, name)')
         .is('deleted_at', null)
         .order('name')
       if (orgId) q = q.eq('organization_id', orgId)
       const { data } = await q
       type ContractRow = { id: string; name: string }
-      return ((data ?? []) as Array<{ id: string; name: string; contract: ContractRow | ContractRow[] | null }>).map((s) => {
+      type ClientRow = { name: string }
+      return ((data ?? []) as Array<{
+        id: string
+        name: string
+        client: ClientRow | ClientRow[] | null
+        contract: ContractRow | ContractRow[] | null
+      }>).map((s) => {
         const contract = Array.isArray(s.contract) ? (s.contract[0] ?? null) : s.contract
-        return { id: s.id, name: s.name, contractName: contract?.name ?? null }
+        const client = Array.isArray(s.client) ? (s.client[0] ?? null) : s.client
+        return {
+          id: s.id,
+          name: s.name,
+          clientName: client?.name ?? null,
+          contractName: contract?.name ?? null,
+        }
       })
     })(),
     listTeams(),
