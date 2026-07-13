@@ -8,7 +8,7 @@ import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listMissionsBySite } from '@/lib/db/missions'
+import { listMissionsBySite, listPrestationNamesForOrg } from '@/lib/db/missions'
 import { getCycle } from '@/lib/db/planning-cycles'
 import { CycleEditor } from '../CycleEditor'
 import { listTeamsWithDisplayName } from '../team-labels'
@@ -25,11 +25,12 @@ export default async function RoulementPage({
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, cycleId } = await params
-  const [identity, cycle, missions, teams] = await Promise.all([
+  const [identity, cycle, missions, teams, knownPrestations] = await Promise.all([
     getSiteIdentity(id),
     getCycle(cycleId),
     listMissionsBySite(id).catch(() => []),
     listTeamsWithDisplayName(),
+    listPrestationNamesForOrg().catch(() => [] as string[]),
   ])
   // Garde anti-IDOR : le roulement doit bien appartenir à CE chantier.
   if (!identity || !cycle || cycle.siteId !== id) notFound()
@@ -49,6 +50,8 @@ export default async function RoulementPage({
       </header>
 
       <CycleEditor
+        // La mémoire du tenant : ce qui a déjà été écrit ailleurs.
+        knownPrestations={knownPrestations}
         siteId={id}
         missions={missions.filter((m) => m.active).map((m) => ({ id: m.id, name: m.name }))}
         teams={teams}

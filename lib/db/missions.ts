@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import type { DbMission, MissionCadence, ChecklistTemplateItem } from '@/types/db'
+import { normalizePrestation } from '@/lib/planning/prestation-name'
 
 export async function listMissionsBySite(siteId: string): Promise<DbMission[]> {
   const supabase = createAdminClient()
@@ -45,6 +46,83 @@ export async function getMission(id: string): Promise<DbMission | null> {
     .maybeSingle()
   if (error) throw error
   return data
+}
+
+/**
+ * LES PRESTATIONS DÉJÀ NOMMÉES DANS L'ORGANISATION.
+ *
+ * Guillaume écrit « Nettoyage magasin » une fois. La fois suivante, sur un autre
+ * chantier, il doit le retrouver — pas le retaper, et surtout pas le retaper
+ * DIFFÉREMMENT (« nettoyage magasin », « Nettoyage Magasin », « Ntge magasin » :
+ * trois prestations pour une, et une mémoire qui se fragmente).
+ *
+ * La mémoire du tenant, c'est donc simplement ce qu'il a déjà écrit. Aucun
+ * catalogue à maintenir, aucune table de plus : les noms EXISTENT déjà, ils
+ * n'étaient juste pas proposés.
+ */
+export async function listPrestationNamesForOrg(): Promise<string[]> {
+  const supabase = createAdminClient()
+  const orgId = await getOrgId().catch(() => null)
+
+  let q = supabase.from('missions').select('name').is('deleted_at', null)
+  if (orgId) q = q.eq('organization_id', orgId)
+
+  const { data, error } = await q
+  if (error) return []
+
+  // Dédoublonnage insensible à la casse : « Nettoyage » et « nettoyage » sont le
+  // même travail. On garde la PREMIÈRE orthographe rencontrée — la sienne.
+  const seen = new Map<string, string>()
+  for (const r of (data ?? []) as Array<{ name: string | null }>) {
+    const name = (r.name ?? '').trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (!seen.has(key)) seen.set(key, name)
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+}
+
+/**
+ * La mission de CE chantier portant CE nom — ou on la crée.
+ *
+ * C'est ce qui permet d'écrire une prestation au clavier sans se demander si
+ * elle « existe » : si le chantier l'a déjà, on la réutilise ; sinon on
+ * l'ouvre. Réutiliser plutôt que dupliquer — sinon un chantier finit avec trois
+ * « Nettoyage magasin » et la mémoire se fragmente.
+ */
+export async function findOrCreateMissionByName(input: {
+  siteId: string
+  name: string
+  userId: string | null
+}): Promise<string> {
+  const supabase = createAdminClient()
+  const name = input.name.trim()
+  if (!name) throw new Error('Nommez la prestation')
+
+  // ⚠️ `ilike` ignore la casse mais PAS les accents ni les espaces doubles.
+  // « Nettoyage magasin » et « nettoyage  magasin » passeraient pour deux
+  // prestations différentes — et la mémoire se fragmenterait en silence. On
+  // compare donc sur la forme canonique, côté code.
+  const { data: rows } = await supabase
+    .from('missions')
+    .select('id, name')
+    .eq('site_id', input.siteId)
+    .is('deleted_at', null)
+
+  const target = normalizePrestation(name)
+  const existing = ((rows ?? []) as Array<{ id: string; name: string }>).find(
+    (m) => normalizePrestation(m.name ?? '') === target,
+  )
+  if (existing) return existing.id
+
+  // Le RYTHME vient du roulement, pas de la mission : la cadence n'est ici qu'une
+  // valeur de départ, jamais ce qui décide des jours.
+  return createMission({
+    site_id: input.siteId,
+    name,
+    cadence: 'weekly',
+    created_by: input.userId,
+  })
 }
 
 export async function createMission(input: {

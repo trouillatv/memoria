@@ -5,7 +5,7 @@ import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listMissionsBySite } from '@/lib/db/missions'
+import { listMissionsBySite, listPrestationNamesForOrg } from '@/lib/db/missions'
 import { CycleEditor } from '../CycleEditor'
 import { listTeamsWithDisplayName } from '../team-labels'
 
@@ -17,10 +17,11 @@ export default async function NouveauRoulementPage({ params }: { params: Promise
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, missions, teams] = await Promise.all([
+  const [identity, missions, teams, knownPrestations] = await Promise.all([
     getSiteIdentity(id),
     listMissionsBySite(id).catch(() => []),
     listTeamsWithDisplayName(),
+    listPrestationNamesForOrg().catch(() => [] as string[]),
   ])
   if (!identity) notFound()
 
@@ -39,6 +40,8 @@ export default async function NouveauRoulementPage({ params }: { params: Promise
       </header>
 
       <CycleEditor
+        // La mémoire du tenant : ce qui a déjà été écrit ailleurs.
+        knownPrestations={knownPrestations}
         siteId={id}
         missions={missions.filter((m) => m.active).map((m) => ({ id: m.id, name: m.name }))}
         teams={teams}

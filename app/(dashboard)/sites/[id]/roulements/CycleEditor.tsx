@@ -16,6 +16,7 @@ import { Loader2, Plus, X, CalendarRange, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { todayLocalIso } from '@/lib/time/local-date'
+import { suggestExisting, samePrestation } from '@/lib/planning/prestation-name'
 import type { PreviewResult } from '@/lib/planning/cycle-preview'
 import { saveCycleAction, previewCycleAction } from './actions'
 import { CyclePreview, monthBounds } from './CyclePreview'
@@ -78,17 +79,49 @@ export function CycleEditor({
   missions,
   teams,
   initial,
+  knownPrestations = [],
 }: {
   siteId: string
   missions: MissionOption[]
   teams: TeamOption[]
   initial?: InitialCycle
+  /** Ce qui a DÉJÀ été écrit dans l'organisation. Guillaume écrit « Nettoyage
+   *  magasin » une fois ; ensuite il le retrouve — et surtout il ne le retape
+   *  pas DIFFÉREMMENT (trois orthographes = trois prestations = une mémoire qui
+   *  se fragmente). */
+  knownPrestations?: string[]
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
 
   const [name, setName] = useState(initial?.name ?? '')
-  const [missionId, setMissionId] = useState(initial?.missionId ?? missions[0]?.id ?? '')
+  // La prestation se DIT, elle ne se choisit pas dans une liste fermée : sur un
+  // chantier neuf, il n'y a rien à choisir. On propose ce qui existe, on accepte
+  // ce qui n'existe pas encore.
+  const [prestation, setPrestation] = useState(
+    () => missions.find((m) => m.id === initial?.missionId)?.name ?? missions[0]?.name ?? '',
+  )
+
+  /** La mission de CE chantier portant ce nom — sinon on l'ouvrira au serveur.
+   *  Comparaison sans casse NI accents : « Nettoyage » et « nettoyage » sont le
+   *  même travail. */
+  const missionIdOf = (name: string): string | undefined =>
+    missions.find((m) => samePrestation(m.name, name))?.id
+
+  /** Toutes les propositions : celles du chantier, plus celles de l'organisation. */
+  // « Créer quand même » : il a vu la proposition, il l'a écartée. On ne la
+  // représente pas — insister serait le prendre pour un distrait.
+  const [forceNew, setForceNew] = useState(false)
+
+  const suggestions = useMemo(() => {
+    const all = [...missions.map((m) => m.name), ...knownPrestations]
+    const seen = new Map<string, string>()
+    for (const n of all) {
+      const name = n.trim()
+      if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name)
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, 'fr'))
+  }, [missions, knownPrestations])
   const [weeks, setWeeks] = useState(initial?.cycleLengthWeeks ?? 1)
   const [startsOn, setStartsOn] = useState(initial?.startsOn ?? todayLocalIso())
   const [endsOn, setEndsOn] = useState(initial?.endsOn ?? '')
@@ -107,6 +140,12 @@ export function CycleEditor({
   // écrit en base (voir `slots` à l'enregistrement).
   const [worked, setWorked] = useState<Set<string>>(
     () => new Set((initial?.slots ?? []).filter((s) => s.state === 'work').map((s) => key(s.weekIndex, s.weekday, s.teamId))),
+  )
+
+  /** Une prestation qui désigne le même travail, mais s'écrit autrement. */
+  const proche = useMemo(
+    () => (forceNew ? null : suggestExisting(prestation, suggestions)),
+    [prestation, suggestions, forceNew],
   )
 
   const available = useMemo(() => teams.filter((t) => !rows.includes(t.id)), [teams, rows])
@@ -155,7 +194,10 @@ export function CycleEditor({
   const cycleShape = useCallback(
     () => ({
       siteId,
-      missionId,
+      // Une prestation CONNUE de ce chantier → son identifiant. Une prestation
+      // NEUVE → son nom : le serveur l'ouvrira, et elle sera proposée ensuite.
+      missionId: missionIdOf(prestation) ?? null,
+      missionName: missionIdOf(prestation) ? undefined : prestation.trim(),
       cycleLengthWeeks: weeks,
       // L'ancrage est le lundi de la date de début : c'est lui qui définit
       // « la semaine A ».
@@ -164,13 +206,14 @@ export function CycleEditor({
       endsOn: endsOn || null,
       slots: buildSlots(),
     }),
-    [siteId, missionId, weeks, startsOn, endsOn, buildSlots],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- missionIdOf dérive de `missions`, stable
+    [siteId, prestation, missions, weeks, startsOn, endsOn, buildSlots],
   )
 
   function valid(): boolean {
     const manque =
       (!name.trim() && 'Donnez un nom au roulement') ||
-      (!missionId && 'Choisissez la mission') ||
+      (!prestation.trim() && 'Dites quelle prestation') ||
       (rows.length === 0 && 'Ajoutez au moins une équipe') ||
       (worked.size === 0 && 'Aucun jour travaillé : la grille est vide')
     if (manque) {
@@ -272,21 +315,59 @@ export function CycleEditor({
           />
         </label>
 
+        {/* La prestation s'ÉCRIT. On propose ce qui a déjà été employé dans
+            l'organisation ; on accepte ce qui n'existe pas encore — et ce qu'il
+            écrit aujourd'hui lui sera proposé demain, ici comme ailleurs. */}
         <label className="space-y-1">
           <span className="text-xs font-medium text-muted-foreground">Quelle prestation ?</span>
-          <select
-            value={missionId}
-            onChange={(e) => setMissionId(e.target.value)}
-            disabled={pending || missions.length === 0}
-            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {missions.length === 0 && <option value="">Aucune mission sur ce chantier</option>}
-            {missions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
+          <input
+            value={prestation}
+            onChange={(e) => setPrestation(e.target.value)}
+            list="prestations-connues"
+            maxLength={200}
+            placeholder="ex : Nettoyage magasin"
+            disabled={pending}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <datalist id="prestations-connues">
+            {suggestions.map((n) => (
+              <option key={n} value={n} />
             ))}
-          </select>
+          </datalist>
+          {/* ⚠️ LA FRAGMENTATION SILENCIEUSE. « Nettoyage Magasin » quand
+              « Nettoyage magasin » existe déjà : rien ne casse, rien n'alerte, et
+              la mémoire se coupe en deux. On le DIT — sans l'imposer : deux noms
+              proches peuvent désigner deux vrais travaux. */}
+          {proche ? (
+            <span className="block rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900">
+              Une prestation proche existe déjà : <strong>{proche}</strong>
+              <span className="mt-1 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPrestation(proche)}
+                  disabled={pending}
+                  className="font-medium underline underline-offset-2"
+                >
+                  Utiliser l’existante
+                </button>
+                <span className="opacity-60">·</span>
+                <button
+                  type="button"
+                  onClick={() => setForceNew(true)}
+                  disabled={pending}
+                  className="underline underline-offset-2"
+                >
+                  Créer quand même
+                </button>
+              </span>
+            </span>
+          ) : (
+            <span className="block text-[11px] text-muted-foreground">
+              {prestation.trim() && !missionIdOf(prestation)
+                ? 'Nouvelle prestation — elle sera créée, et proposée la prochaine fois.'
+                : 'Écrivez-la, ou choisissez-en une déjà employée.'}
+            </span>
+          )}
         </label>
 
         <fieldset className="space-y-1">
@@ -499,7 +580,7 @@ export function CycleEditor({
             qu'il compare l'écran à sa feuille. */}
         <Button
           onClick={openPreview}
-          disabled={pending || loadingPreview || rows.length === 0 || missions.length === 0}
+          disabled={pending || loadingPreview || rows.length === 0}
         >
           {loadingPreview ? (
             <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
