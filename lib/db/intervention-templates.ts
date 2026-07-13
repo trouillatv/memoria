@@ -365,9 +365,21 @@ export async function generateInterventionsFromTemplates(params: {
     to: params.toDate,
   })
 
+  // PL4 — l'équipe du RYTHME prime sur celle de la mission. C'est ce qui rend
+  // possible « équipe A le lundi, équipe B le mardi » : chaque case du roulement
+  // porte son équipe. Un rythme legacy (sans équipe propre) hérite de la mission,
+  // exactement comme avant.
+  const teamByTemplate = new Map<string, string | null>(
+    templates.map((t) => [
+      t.id,
+      (t as unknown as { assigned_team_id?: string | null }).assigned_team_id ?? null,
+    ]),
+  )
+
   for (const occ of occurrences) {
     const inheritedTeam = teamByMission.get(occ.missionId) ?? []
-    const inheritedAssignedTeamId = assignedTeamByMission.get(occ.missionId) ?? null
+    const inheritedAssignedTeamId =
+      teamByTemplate.get(occ.templateId) ?? assignedTeamByMission.get(occ.missionId) ?? null
     // P1 isolation : FAIL-CLOSED — mission sans org (et pas de session) →
     // on saute cette occurrence plutôt que de générer une intervention orpheline.
     const rowOrgId = orgByMission.get(occ.missionId) ?? orgId
