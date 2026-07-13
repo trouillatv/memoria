@@ -9,13 +9,15 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarOff, Plus, Loader2, Pencil } from 'lucide-react'
+import Link from 'next/link'
+import { CalendarOff, Plus, Loader2, Pencil, GraduationCap, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { RemoveButton } from '@/components/removal/RemoveButton'
 import { todayLocalIso, frDayMonthLocal } from '@/lib/time/local-date'
 import { CLOSURE_REASON_FR, type ClosureReasonKind } from '@/lib/planning/closures'
 import { createClosureAction, updateClosureAction, removeClosureAction } from './closures-actions'
+import { setSiteFollowsCalendarAction } from '../../calendrier-scolaire/actions'
 
 export interface ClosureRow {
   id: string
@@ -23,6 +25,9 @@ export interface ClosureRow {
   reason: string | null
   startsOn: string
   endsOn: string
+  /** Dérivée du calendrier scolaire → la source est le calendrier, pas cette
+   *  ligne. On ne la modifie pas ici : on décoche, ou on corrige le calendrier. */
+  calendarPeriodId?: string | null
 }
 
 const KINDS = Object.entries(CLOSURE_REASON_FR) as Array<[ClosureReasonKind, string]>
@@ -33,9 +38,36 @@ function periodLabel(startsOn: string, endsOn: string): string {
   return startsOn === endsOn ? start : `${start} → ${frDayMonthLocal(endsOn)}`
 }
 
-export function SiteClosuresCard({ siteId, closures }: { siteId: string; closures: ClosureRow[] }) {
+export function SiteClosuresCard({
+  siteId,
+  closures,
+  followsCalendar = false,
+}: {
+  siteId: string
+  closures: ClosureRow[]
+  /** « Ce chantier ferme pendant les vacances scolaires. » */
+  followsCalendar?: boolean
+}) {
   const router = useRouter()
   const [editing, setEditing] = useState<ClosureRow | 'new' | null>(null)
+  const [pendingFollow, startFollow] = useTransition()
+
+  function toggleCalendar(next: boolean) {
+    if (pendingFollow) return
+    startFollow(async () => {
+      const r = await setSiteFollowsCalendarAction(siteId, next)
+      if ('error' in r) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(
+        next
+          ? 'Ce chantier ferme pendant les vacances scolaires.'
+          : 'Ce chantier ne suit plus le calendrier scolaire.',
+      )
+      router.refresh()
+    })
+  }
 
   return (
     <section className="rounded-2xl border bg-card p-4 space-y-3">
@@ -49,6 +81,32 @@ export function SiteClosuresCard({ siteId, closures }: { siteId: string; closure
           </Button>
         )}
       </header>
+
+      {/* Le calendrier scolaire : un fait d'ORGANISATION appliqué ici. Coché, il
+          ferme ce chantier sur toutes les périodes de vacances — sans saisie. */}
+      <label className="flex items-start gap-2.5 rounded-xl border bg-muted/20 px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={followsCalendar}
+          onChange={(e) => toggleCalendar(e.target.checked)}
+          disabled={pendingFollow}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5 text-sm font-medium">
+            <GraduationCap className="h-3.5 w-3.5 text-muted-foreground" />
+            Ce chantier ferme pendant les vacances scolaires
+            {pendingFollow && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            Les périodes se saisissent une fois, dans le{' '}
+            <Link href="/calendrier-scolaire" className="underline underline-offset-2">
+              calendrier scolaire
+            </Link>
+            .
+          </span>
+        </span>
+      </label>
 
       {editing !== null && (
         <ClosureForm
@@ -80,6 +138,14 @@ export function SiteClosuresCard({ siteId, closures }: { siteId: string; closure
                   {c.reason ? ` · ${c.reason}` : ''}
                 </p>
               </div>
+              {/* Une fermeture DÉRIVÉE du calendrier ne se modifie pas ici : sa
+                  source est le calendrier. On décoche, ou on corrige la période.
+                  (Même doctrine que les rythmes d'un roulement.) */}
+              {c.calendarPeriodId ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <Lock className="h-3 w-3" /> calendrier
+                </span>
+              ) : (
               <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                 <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setEditing(c)}>
                   <Pencil className="h-3.5 w-3.5" /> Modifier
@@ -93,6 +159,7 @@ export function SiteClosuresCard({ siteId, closures }: { siteId: string; closure
                   }}
                 />
               </div>
+              )}
             </li>
           ))}
         </ul>

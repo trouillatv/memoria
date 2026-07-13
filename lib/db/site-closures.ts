@@ -19,10 +19,13 @@ export interface SiteClosure extends ProjectableClosure {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  /** Dérivée du calendrier scolaire (mig 203) → NON modifiable à la main : la
+   *  source est le calendrier, pas la copie. NULL = saisie à la main. */
+  calendarPeriodId: string | null
 }
 
 const SELECT =
-  'id, site_id, reason_kind, reason, starts_on, ends_on, default_resolution, created_by, created_at, updated_at'
+  'id, site_id, reason_kind, reason, starts_on, ends_on, default_resolution, created_by, created_at, updated_at, calendar_period_id'
 
 const REASON_KINDS: readonly string[] = [
   'holiday', 'client', 'maintenance', 'inventory', 'exceptional', 'other',
@@ -40,6 +43,7 @@ function rowToClosure(r: Record<string, unknown>): SiteClosure {
     startsOn: (r.starts_on as string) ?? '',
     endsOn: (r.ends_on as string) ?? '',
     defaultResolution: (RESOLUTIONS.includes(resolution) ? resolution : 'none') as ClosureResolution,
+    calendarPeriodId: (r.calendar_period_id as string | null) ?? null,
     createdBy: (r.created_by as string | null) ?? null,
     createdAt: (r.created_at as string) ?? '',
     updatedAt: (r.updated_at as string) ?? '',
