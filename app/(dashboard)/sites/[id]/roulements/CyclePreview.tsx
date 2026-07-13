@@ -169,6 +169,14 @@ export function CyclePreview({
                   </p>
                 )}
 
+                {/* La couverture, dite en toutes lettres : c'est la ligne qu'il
+                    cherche du regard sur sa feuille. */}
+                {!vide && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Couverture : {d.coverage} équipe{d.coverage > 1 ? 's' : ''}
+                  </p>
+                )}
+
                 {d.closure && (
                   <p
                     className={`inline-flex items-center gap-1 text-[11px] ${
