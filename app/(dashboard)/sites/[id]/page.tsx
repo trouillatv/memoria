@@ -69,6 +69,7 @@ import { SiteScopesSection } from './SiteScopesSection'
 import { UnattachedContentPanel } from './UnattachedContentPanel'
 import { listSiteScopes } from '@/lib/db/memory-scopes'
 import { listClosuresBySite } from '@/lib/db/site-closures'
+import { siteFollowsCalendar } from '@/lib/db/school-calendar'
 import { SiteClosuresCard } from './SiteClosuresCard'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listUnattachedContent } from '@/lib/db/scope-suggestions'
@@ -138,6 +139,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
 
   // Sprint 3 — Nœuds de mémoire (sous-périmètres) + vocabulaire de types du métier.
   const orgId = user.organization_id
+  const followsCalendar = await siteFollowsCalendar(id).catch(() => false)
+
   const [siteScopes, scopeTypeCatalog, unattached, closures, cycles] = await Promise.all([
     orgId ? listSiteScopes(id, orgId).catch(() => []) : Promise.resolve([]),
     listOrgCatalog(orgId, 'corps_etat').catch(() => []),
@@ -468,7 +471,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           « Ce magasin est fermé. » Déclarer une fermeture ne déplace ni
           n'annule RIEN : PL3 signalera le conflit, l'humain tranchera. */}
       <div className={tabClass('activite')}>
-        <SiteClosuresCard siteId={id} closures={closures} />
+        <SiteClosuresCard siteId={id} closures={closures} followsCalendar={followsCalendar} />
       </div>
 
       {/* ── ACTIVITÉ — Roulements (PL5) ─────────────────────────────────────
