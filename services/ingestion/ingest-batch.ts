@@ -21,7 +21,7 @@ import {
 } from '@/lib/db/visit-captures'
 import type { SiteReportAttachmentKind } from '@/types/db'
 import { splitByGap } from './visit-session'
-import type { IngestContext, IngestItem, IngestResult, IngestKind } from './types'
+import type { IngestContext, IngestItem, IngestResult, IngestKind, IngestSource } from './types'
 
 const BUCKET = 'site-reports'
 
@@ -107,7 +107,13 @@ export async function ingestBatch(items: IngestItem[], ctx: IngestContext): Prom
 
     let count = 0
     for (const e of fresh) {
-      const ok = await ingestOne(e.it, e.clientUuid, { reportId, siteId: ctx.siteId, tenantId, createdBy: ctx.createdBy })
+      const ok = await ingestOne(e.it, e.clientUuid, {
+        reportId,
+        siteId: ctx.siteId,
+        tenantId,
+        createdBy: ctx.createdBy,
+        source: ctx.source,
+      })
       if (ok) count += 1
     }
     created += count
@@ -120,7 +126,13 @@ export async function ingestBatch(items: IngestItem[], ctx: IngestContext): Prom
 async function ingestOne(
   it: IngestItem,
   clientUuid: string,
-  ctx: { reportId: string; siteId: string; tenantId: string; createdBy: string | null },
+  ctx: {
+    reportId: string
+    siteId: string
+    tenantId: string
+    createdBy: string | null
+    source: IngestSource
+  },
 ): Promise<boolean> {
   const captureKind = CAPTURE_KIND[it.kind]
   const attachmentKind = ATTACHMENT_KIND[it.kind]
@@ -143,6 +155,12 @@ async function ingestOne(
       mime_type: it.mime,
       size_bytes: it.bytes.byteLength,
       client_uuid: clientUuid,
+      added_by: ctx.createdBy,
+      // La PROVENANCE de chaque pièce (mig 201). On sait d'où elle vient : on
+      // l'écrit. C'est aussi ce qui permet de retrouver « le dernier endroit où
+      // j'ai partagé » — WhatsApp n'autorisant qu'un partage à la fois, on ne
+      // peut pas se permettre de reposer trois questions à chaque photo.
+      source_origin: ctx.source === 'os_share' ? 'os_share' : null,
     })
   }
 

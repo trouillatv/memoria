@@ -423,6 +423,90 @@ export async function listRecentMeetingsAction(siteId: string): Promise<ShareTar
   }))
 }
 
+/**
+ * LÀ OÙ LE DERNIER PARTAGE EST ALLÉ.
+ *
+ * WhatsApp n'autorise **qu'un partage à la fois** dès qu'on sélectionne
+ * plusieurs messages : « Partager » disparaît, il ne reste que « Transférer »
+ * (qui garde tout chez WhatsApp). Ce n'est pas contournable — c'est leur menu.
+ *
+ * Conséquence : cinq photos = cinq partages. Reposer trois questions à chaque
+ * fois serait insupportable. On propose donc, en un seul geste, de continuer
+ * là où on vient d'aller : « Ajouter à la visite du 14 juillet ».
+ *
+ * La fenêtre est courte (6 h) : au-delà, ce n'est plus « la suite du même
+ * geste », c'est un nouveau contexte — et on repose la question.
+ */
+export interface LastShareTarget {
+  reportId: string
+  siteId: string
+  siteName: string
+  title: string
+  type: 'visit' | 'meeting'
+}
+
+const CONTINUATION_WINDOW_MS = 6 * 60 * 60 * 1000
+
+export async function lastShareTargetAction(): Promise<LastShareTarget | null> {
+  const auth = await requireFieldAgent()
+  if (!auth.ok || !auth.userId) return null
+
+  const db = createAdminClient()
+  const since = new Date(Date.now() - CONTINUATION_WINDOW_MS).toISOString()
+
+  // La dernière pièce arrivée PAR LE PARTAGE, de cet utilisateur.
+  const { data: att } = await db
+    .from('site_report_attachments')
+    .select('report_id, created_at')
+    .eq('added_by', auth.userId)
+    .eq('source_origin', 'os_share')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const reportId = (att as { report_id: string } | null)?.report_id
+  if (!reportId) return null
+
+  const { data: rep } = await db
+    .from('site_reports')
+    .select('id, site_id, title, motive, origin, started_at, created_at, deleted_at')
+    .eq('id', reportId)
+    .maybeSingle()
+
+  const r = rep as {
+    site_id: string | null
+    title: string | null
+    motive: string | null
+    origin: string | null
+    started_at: string | null
+    created_at: string
+    deleted_at: string | null
+  } | null
+  if (!r || r.deleted_at || !r.site_id) return null
+
+  // L'objet a-t-il encore un sens pour cet utilisateur ? (tenant, droits)
+  const owned = await requireOwned(auth.role, 'sites', r.site_id)
+  if (!owned.allowed) return null
+
+  const { data: site } = await db.from('sites').select('name').eq('id', r.site_id).maybeSingle()
+
+  const isVisit = r.origin !== null
+  const when = new Date(r.started_at ?? r.created_at).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+  })
+  const base = r.title?.trim() || r.motive?.trim() || (isVisit ? 'Visite' : 'Réunion')
+
+  return {
+    reportId,
+    siteId: r.site_id,
+    siteName: (site as { name: string } | null)?.name ?? 'Chantier',
+    title: `${base} — ${when}`,
+    type: isVisit ? 'visit' : 'meeting',
+  }
+}
+
 /** Ce que contient le lot en attente — pour l'annoncer avant tout choix. */
 export async function describeLotAction(lotId: string): Promise<ReturnType<typeof describeLot> | null> {
   const auth = await requireFieldAgent()

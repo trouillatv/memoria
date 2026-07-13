@@ -28,6 +28,7 @@ import {
   listRecentVisitsAction,
   listRecentMeetingsAction,
   type ShareTargetOption,
+  type LastShareTarget,
 } from './share-actions'
 
 export interface SharedFile {
@@ -57,12 +58,15 @@ export function SharePicker({
   files,
   sites,
   lotLabel,
+  last,
 }: {
   lotId: string
   files: SharedFile[]
   sites: Site[]
   /** « 3 photos et 2 enregistrements ». */
   lotLabel: string
+  /** Là où le partage précédent est allé, il y a moins de 6 h. */
+  last: LastShareTarget | null
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -87,6 +91,26 @@ export function SharePicker({
       setKind(k)
       setTargets(list)
       setBusyId(null)
+    })
+  }
+
+  /** Le raccourci : continuer là où on vient d'aller, sans reposer une question. */
+  function continueLast() {
+    if (!last || pending) return
+    setBusyId('__last__')
+    start(async () => {
+      const r = await attachSharedBatchAction({
+        lotId,
+        siteId: last.siteId,
+        destination: { type: last.type, id: last.reportId },
+      })
+      if ('error' in r) {
+        setBusyId(null)
+        toast.error(r.error)
+        return
+      }
+      toast.success(`${lotLabel} — ajouté${r.added > 1 ? 's' : ''} à « ${last.title} ».`)
+      router.replace(r.destination === 'meeting' ? `/meetings/${r.reportId}` : `/m/visite/${r.reportId}`)
     })
   }
 
@@ -295,6 +319,39 @@ export function SharePicker({
       </header>
 
       {Vignettes}
+
+      {/* WhatsApp n'autorise qu'UN partage à la fois dès qu'on sélectionne
+          plusieurs messages : « Partager » disparaît, il ne reste que
+          « Transférer ». Cinq photos = cinq partages. Reposer trois questions à
+          chaque fois serait insupportable — alors on propose de continuer là où
+          on vient d'aller, en UN geste. */}
+      {last && (
+        <button
+          type="button"
+          onClick={continueLast}
+          disabled={pending}
+          className="flex w-full items-center justify-between gap-2 rounded-2xl border-2 border-brand-300 bg-brand-50 px-4 py-3.5 text-left transition-colors hover:bg-brand-100 disabled:opacity-60"
+        >
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-brand-900">
+              Ajouter à « {last.title} »
+            </span>
+            <span className="block truncate text-xs text-brand-800/80">
+              {last.siteName} — {last.type === 'visit' ? 'la visite' : 'la réunion'} que vous venez
+              d’alimenter
+            </span>
+          </span>
+          {pending && busyId === '__last__' ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-brand-700" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-brand-700" />
+          )}
+        </button>
+      )}
+
+      {last && sites.length > 0 && (
+        <p className="text-center text-xs text-muted-foreground">ou rangez-le ailleurs :</p>
+      )}
 
       {sites.length === 0 ? (
         <p className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
