@@ -23,7 +23,7 @@ import {
   getCycle,
   type CycleSlot,
 } from '@/lib/db/planning-cycles'
-import { listActiveClosuresForSites } from '@/lib/db/site-closures'
+import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { previewCycle, type PreviewResult } from '@/lib/planning/cycle-preview'
 import { logAuditEvent } from '@/lib/audit/log'
 
@@ -215,7 +215,9 @@ export async function previewCycleAction(
 
   // Les fermetures RÉELLES du chantier sur la période — pour que le conflit
   // affiché soit le vrai.
-  const closuresBySite = await listActiveClosuresForSites([d.siteId], d.from, d.to).catch(() => ({}))
+  const closuresBySite = await listActiveClosuresForSites([d.siteId], d.from, d.to).catch(
+    (): Record<string, SiteClosure[]> => ({}),
+  )
 
   const preview = previewCycle({
     cycle: {
