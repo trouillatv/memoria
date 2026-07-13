@@ -39,19 +39,21 @@ export async function getOrgId(): Promise<string | null> {
 }
 
 /**
- * Liste des utilisateurs (admin only) — DU TENANT COURANT UNIQUEMENT.
- * P1 isolation (2026-07-13) : le service role bypasse la RLS, le filtre vit
- * donc ici. FAIL-CLOSED : pas d'organisation → personne, jamais « tout le
- * monde » (les personnes d'un autre tenant ne doivent JAMAIS apparaître).
+ * Liste TOUTES les personnes, toutes organisations — CONSOLE PLATEFORME
+ * UNIQUEMENT (/admin/personnes, layout gated rôle 'admin').
+ *
+ * P1 isolation (2026-07-13) : le rôle 'admin' EST le super-admin plateforme
+ * (un seul compte, système) — c'est l'une des deux seules exceptions à
+ * l'isolation des tenants. Le rôle 'admin' ne peut pas être attribué par un
+ * flux tenant (cf. createUserInOrgSchema). Toute surface TENANT
+ * (manager/chef_equipe) doit utiliser une requête scopée organization_id,
+ * fail-closed — JAMAIS cette fonction.
  */
 export async function listUsersForAdmin(): Promise<DbUser[]> {
   const supabase = createAdminClient()
-  const orgId = await getOrgId()
-  if (!orgId) return []
   const { data, error } = await supabase
     .from('users')
     .select('id, email, full_name, role, must_change_password, created_at, deleted_at, phone, commune, employment_type, organization_id')
-    .eq('organization_id', orgId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
