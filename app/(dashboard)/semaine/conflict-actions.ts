@@ -85,7 +85,8 @@ export async function resolveConflictAction(input: unknown): Promise<ResolveResu
       interventionId: d.interventionId,
       newScheduledFor: d.movedTo,
     })
-    if (!moved.ok) return { error: moved.error }
+    // `MoveResult.error` est optionnel : un refus sans message resterait muet.
+    if (!moved.ok) return { error: moved.error ?? 'Déplacement refusé' }
     message = 'Prestation déplacée.'
   }
 
