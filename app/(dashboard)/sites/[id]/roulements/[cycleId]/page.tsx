@@ -5,7 +5,7 @@
 
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Copy } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listMissionsBySite, listPrestationNamesForOrg } from '@/lib/db/missions'
@@ -44,9 +44,17 @@ export default async function RoulementPage({
         <ArrowLeft className="h-3.5 w-3.5" /> Roulements
       </Link>
 
-      <header>
-        <h1 className="text-2xl font-semibold leading-tight">{cycle.name}</h1>
-        <p className="mt-0.5 text-sm text-muted-foreground">{identity.name}</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold leading-tight">{cycle.name}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{identity.name}</p>
+        </div>
+        <Link
+          href={`/sites/${id}/roulements/nouveau?copier=${cycle.id}`}
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Copy className="h-3.5 w-3.5" /> Dupliquer
+        </Link>
       </header>
 
       <CycleEditor
