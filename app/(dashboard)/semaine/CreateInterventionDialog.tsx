@@ -66,6 +66,11 @@ interface Props {
    *  (`/semaine?site=<id>`) → le dialogue s'ouvre tout seul, prérempli sur la
    *  première mission de ce chantier. Déjà validé côté serveur (org). */
   initialSiteId?: string
+  /** PL5a.1 — piloté par le menu « Planifier ». Quand ces deux props sont
+   *  fournies, le dialogue n'affiche plus son propre bouton : c'est le menu qui
+   *  l'ouvre. Sans elles, comportement d'avant, à l'identique. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /** Sentinelle UI :
@@ -75,7 +80,7 @@ interface Props {
 const INHERIT = '__inherit__'
 const UNASSIGNED = '__unassigned__'
 
-export function CreateInterventionDialog({ missions: missionsFromServer, sites, teams, defaultDate, initialSiteId }: Props) {
+export function CreateInterventionDialog({ missions: missionsFromServer, sites, teams, defaultDate, initialSiteId, open: openProp, onOpenChange }: Props) {
   const router = useRouter()
   // PR 2 (lot Y) : les missions créées inline sont visibles et sélectionnées
   // IMMÉDIATEMENT — la version serveur reprend la main au refresh (dédup).
@@ -89,7 +94,13 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   // retrouve mon chantier déjà choisi »). Chantier neuf sans mission → le
   // dialogue s'ouvre en mode « créer la première mission ».
   const initialMissionId = pickInitialMissionId(missionsFromServer, initialSiteId)
-  const [open, setOpen] = useState(initialMissionId !== '' || Boolean(initialSiteId))
+  const controlled = openProp !== undefined
+  const [openInternal, setOpenInternal] = useState(initialMissionId !== '' || Boolean(initialSiteId))
+  const open = controlled ? openProp : openInternal
+  const setOpen = (next: boolean) => {
+    if (controlled) onOpenChange?.(next)
+    else setOpenInternal(next)
+  }
   const [pending, startTransition] = useTransition()
   const [missionId, setMissionId] = useState<string>(initialMissionId)
 
@@ -231,14 +242,16 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
         if (!next) reset()
       }}
     >
-      <DialogTrigger
-        render={
-          <Button variant="default" size="sm">
-            <Plus className="h-4 w-4" />
-            Planifier
-          </Button>
-        }
-      />
+      {!controlled && (
+        <DialogTrigger
+          render={
+            <Button variant="default" size="sm">
+              <Plus className="h-4 w-4" />
+              Planifier
+            </Button>
+          }
+        />
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Planifier une intervention</DialogTitle>

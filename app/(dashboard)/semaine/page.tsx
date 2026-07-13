@@ -45,7 +45,8 @@ import { planningSignalsBySite } from '@/lib/memory/signals/surface'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import { WeekNavigation } from './WeekNavigation'
 import { WeekVigilanceSection } from './WeekVigilance'
-import { CreateInterventionDialog, type MissionOption, type SiteOption } from './CreateInterventionDialog'
+import { type MissionOption, type SiteOption } from './CreateInterventionDialog'
+import { PlanMenu } from './PlanMenu'
 import { WeekGrid } from './WeekGrid'
 import { WeekGridClient } from './WeekGridClient'
 import { TeamWeekGrid } from './TeamWeekGrid'
@@ -337,7 +338,10 @@ export default async function SemainePage({ searchParams }: PageProps) {
         <div className="flex flex-wrap items-center gap-2">
           <ViewModeToggle mode={view} />
           <WeekNavigation range={range} />
-          <CreateInterventionDialog
+          {/* PL5a.1 — « Planifier » ouvre les DEUX objets : une intervention
+              ponctuelle, ou un ROULEMENT (qui renvoie vers l'unique éditeur,
+              /sites/[id]/roulements/nouveau — jamais un second formulaire). */}
+          <PlanMenu
             missions={missionOptions}
             sites={siteOptions}
             teams={teamOptions}
