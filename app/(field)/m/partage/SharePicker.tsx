@@ -83,6 +83,10 @@ export function SharePicker({
     return needle ? sites.filter((s) => s.name.toLowerCase().includes(needle)) : sites
   }, [q, sites])
 
+  // Un vocal est transcrit À L'ARRIVÉE : ça prend quelques secondes, et il faut
+  // le DIRE — sinon l'attente ressemble à un bug.
+  const audios = files.filter((f) => f.mime.startsWith('audio/')).length
+
   function pickKind(k: Kind) {
     if (!site || pending) return
     setBusyId(k)
@@ -109,7 +113,11 @@ export function SharePicker({
         toast.error(r.error)
         return
       }
-      toast.success(`${lotLabel} — ajouté${r.added > 1 ? 's' : ''} à « ${last.title} ».`)
+      toast.success(
+        r.transcribed > 0
+          ? `Ajouté à « ${last.title} » — ${r.transcribed} ${r.transcribed > 1 ? 'enregistrements écrits' : 'enregistrement écrit'}.`
+          : `${lotLabel} — ajouté${r.added > 1 ? 's' : ''} à « ${last.title} ».`,
+      )
       router.replace(r.destination === 'meeting' ? `/meetings/${r.reportId}` : `/m/visite/${r.reportId}`)
     })
   }
@@ -131,7 +139,9 @@ export function SharePicker({
       toast.success(
         r.duplicates > 0
           ? `${r.added} ajouté${r.added > 1 ? 's' : ''} — ${r.duplicates} était${r.duplicates > 1 ? 'ent' : ''} déjà là.`
-          : `${lotLabel} — c’est à l’abri.`,
+          : r.transcribed > 0
+            ? `${lotLabel} — ${r.transcribed > 1 ? 'les enregistrements sont écrits' : 'l’enregistrement est écrit'}.`
+            : `${lotLabel} — c’est à l’abri.`,
       )
       router.replace(r.destination === 'meeting' ? `/meetings/${r.reportId}` : `/m/visite/${r.reportId}`)
     })
@@ -357,6 +367,16 @@ export function SharePicker({
             <ChevronRight className="h-4 w-4 shrink-0 text-brand-700" />
           )}
         </button>
+      )}
+
+      {audios > 0 && (
+        <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          {pending
+            ? 'On écrit ce qui a été dit… quelques secondes.'
+            : audios > 1
+              ? 'Les enregistrements seront écrits à l’arrivée : vous pourrez les relire et les chercher.'
+              : 'L’enregistrement sera écrit à l’arrivée : vous pourrez le relire et le chercher.'}
+        </p>
       )}
 
       {last && sites.length > 0 && (

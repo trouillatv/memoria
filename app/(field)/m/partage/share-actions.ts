@@ -37,6 +37,7 @@ import { isAudio, describeLot } from '@/lib/share/share-rules'
 import { parseUpload } from '@/services/ingestion/adapters/upload'
 import { ingestBatch } from '@/services/ingestion/ingest-batch'
 import { createSiteReport, addReportSites, addReportAttachment } from '@/lib/db/site-reports'
+import { transcribeVisitAudios, transcribeMeetingAudios } from '@/lib/share/transcribe-shared'
 
 const BUCKET = 'site-reports'
 
@@ -61,6 +62,9 @@ export type ShareResult =
       added: number
       /** Ce qui était DÉJÀ là (même fichier repartagé) — on le dit, on ne le cache pas. */
       duplicates: number
+      /** Enregistrements transcrits À L'ARRIVÉE. Un audio muet n'est pas de la
+       *  mémoire : c'est une pièce jointe. */
+      transcribed: number
     }
   | { error: string }
 
@@ -107,11 +111,31 @@ export async function attachSharedBatchAction(input: unknown): Promise<ShareResu
   // Le sas a fait son travail. Ce qui compte vit maintenant dans la mémoire.
   await clearStaged(auth.userId, lotId).catch(() => {})
 
+  // LA TRANSCRIPTION, TOUT DE SUITE. Un vocal partagé ne doit pas attendre le
+  // cron du lendemain pour devenir du texte : d'ici là, il n'est ni cherchable,
+  // ni lisible, ni analysable. Ce n'est pas de la mémoire, c'est un fichier.
+  //
+  // Tourne DANS la requête (jamais dans after(), que Vercel coupe). Ce qui
+  // échoue reste rattrapable : le cron pour une visite, le bouton
+  // « Retranscrire » pour une source de réunion. L'audio, lui, n'est jamais
+  // perdu.
+  const audios = files.filter((f) => isAudio(f.mime)).length
+  let transcribed = 0
+  if (audios > 0) {
+    const out =
+      result.destination === 'visit'
+        ? await transcribeVisitAudios(result.reportId).catch(() => null)
+        : await transcribeMeetingAudios(result.reportId).catch(() => null)
+    transcribed = out?.transcribed ?? 0
+  }
+
   revalidatePath('/m')
   revalidatePath(`/sites/${siteId}`)
   revalidatePath('/meetings')
+  revalidatePath(`/meetings/${result.reportId}`)
+  revalidatePath(`/m/visite/${result.reportId}`)
 
-  return result
+  return { ...result, transcribed }
 }
 
 /**
@@ -162,6 +186,7 @@ async function intoVisit(params: {
     reportId,
     added: out.created,
     duplicates: out.skippedDuplicates,
+    transcribed: 0, // renseigné par l'appelant, après transcription
   }
 }
 
@@ -312,7 +337,7 @@ async function intoMeeting(params: {
   }
 
   revalidatePath(`/meetings/${reportId}`)
-  return { ok: true, destination: 'meeting', reportId, added, duplicates }
+  return { ok: true, destination: 'meeting', reportId, added, duplicates, transcribed: 0 }
 }
 
 /**
