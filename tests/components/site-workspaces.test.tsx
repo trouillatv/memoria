@@ -1,10 +1,18 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { DocumentsWorkspace } from '@/app/(dashboard)/sites/[id]/views/documents/DocumentsWorkspace'
 import { MemoryWorkspace } from '@/app/(dashboard)/sites/[id]/views/memory/MemoryWorkspace'
 import { WorkWorkspace } from '@/app/(dashboard)/sites/[id]/views/work/WorkWorkspace'
 import { ChronologyWorkspace } from '@/app/(dashboard)/sites/[id]/views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from '@/app/(dashboard)/sites/[id]/views/planning/PlanningWorkspace'
+
+// Mémoire porte désormais la passation, donc un composant client (useRouter).
+vi.mock('@/app/(dashboard)/handovers/actions', () => ({
+  createTeamTakesSiteBriefAction: vi.fn(),
+}))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}))
 
 describe('site workspaces', () => {
   it('makes memory a workspace for retrieving what the site knows', () => {

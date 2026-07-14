@@ -9,9 +9,7 @@ import {
   Calendar,
   CalendarPlus,
   Clock,
-  Layers,
   ListTodo,
-  MoreHorizontal,
   Search,
   ShieldAlert,
 } from 'lucide-react'
@@ -21,10 +19,10 @@ import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
-import { listCyclesBySite, type PlanningCycle } from '@/lib/db/planning-cycles'
+import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listTeams } from '@/lib/db/teams'
 import { listHandoverBriefsBySite } from '@/lib/db/handover'
-import type { DbMission, DbTeam } from '@/types/db'
+import type { DbTeam } from '@/types/db'
 import {
   buildSiteStatusSummary,
   getLastEndedVisitForSite,
@@ -35,7 +33,6 @@ import {
   getSiteIdentity,
   getSiteRecentActivity,
   type RecentActivityItem,
-  type SiteIdentity,
 } from '@/lib/db/site-cockpit'
 import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
 import { listDocumentsForTarget } from '@/lib/db/documents'
@@ -72,15 +69,14 @@ import { MemoryWorkspace, type SiteRelay } from './views/memory/MemoryWorkspace'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
-import { OrganisationWorkspace } from './views/organisation/OrganisationWorkspace'
 
 interface PageProps {
   params: Promise<{ id: string }>
   searchParams: Promise<{ tab?: string }>
 }
 
-type ChantierViewKey = SiteTabKey | 'organisation'
-const CHANTIER_VIEW_KEYS = [...SITE_TAB_KEYS, 'organisation'] as const
+type ChantierViewKey = SiteTabKey
+const CHANTIER_VIEW_KEYS = SITE_TAB_KEYS
 
 export default async function SitePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()
@@ -189,14 +185,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                 <Link href={`/semaine?site=${id}`} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
                   <CalendarPlus className="h-4 w-4" /> Planifier
                 </Link>
-                <SiteAddMenu siteId={id} />
-                <OrganizationMenu siteId={id} />
-              </div>
+                <SiteAddMenu siteId={id} />              </div>
             </div>
           </div>
 
           <div className="mt-5">
-            <SiteTabsNav active={tab === 'organisation' ? 'apercu' : tab} siteId={id} />
+            <SiteTabsNav active={tab} siteId={id} />
           </div>
         </div>
 
@@ -243,18 +237,11 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         ) : tab === 'memoire' ? (
           <MemoireView
             siteId={id}
+            siteName={identity.name}
             signals={memorySignals}
             interventions={interventionsResult.items}
-            traceCount={visits.length}
-          />
-        ) : tab === 'organisation' ? (
-          <OrganisationView
-            siteId={id}
-            identity={identity}
-            missions={missions}
-            cycles={cycles}
             teams={teams}
-            relays={toSiteRelays(interventionsResult.items)}
+            traceCount={visits.length}
           />
         ) : (
           null
@@ -519,23 +506,33 @@ function captureKindLabel(kind: string): string {
 
 async function MemoireView({
   siteId,
+  siteName,
   signals,
   interventions,
+  teams,
   traceCount,
 }: {
   siteId: string
+  siteName: string
   signals: MemorySignal[]
   interventions: SupervisorInterventionRow[]
+  teams: DbTeam[]
   traceCount: number
 }) {
-  const subjects = await listSubjectsBySite(siteId).catch(() => [])
+  const [subjects, passations] = await Promise.all([
+    listSubjectsBySite(siteId).catch(() => []),
+    listHandoverBriefsBySite(siteId).catch(() => []),
+  ])
 
   return (
     <MemoryWorkspace
       siteId={siteId}
+      siteName={siteName}
       signals={signals}
       subjects={subjects}
       relays={toSiteRelays(interventions)}
+      teams={teams}
+      passations={passations}
       traceCount={traceCount}
     />
   )
@@ -634,62 +631,6 @@ async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> 
     lastAccessedAt: token.last_accessed_at,
     history,
   }
-}
-
-async function OrganisationView({
-  siteId,
-  identity,
-  missions,
-  cycles,
-  teams,
-  relays,
-}: {
-  siteId: string
-  identity: SiteIdentity
-  missions: DbMission[]
-  cycles: PlanningCycle[]
-  teams: DbTeam[]
-  relays: SiteRelay[]
-}) {
-  const passations = await listHandoverBriefsBySite(siteId).catch(() => [])
-
-  return (
-    <OrganisationWorkspace
-      siteId={siteId}
-      identity={identity}
-      missions={missions}
-      cycles={cycles}
-      teams={teams}
-      relays={relays}
-      passations={passations}
-    />
-  )
-}
-
-function OrganizationMenu({ siteId }: { siteId: string }) {
-  return (
-    <div className="group relative">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"
-        aria-haspopup="menu"
-      >
-        <MoreHorizontal className="h-4 w-4" /> Organisation
-      </button>
-      <div className="invisible absolute right-0 z-20 mt-2 w-64 rounded-xl border bg-popover p-2 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-        <MenuLink href={`/sites/${siteId}?tab=organisation`} icon={Layers} label="Ouvrir l'organisation" />
-      </div>
-    </div>
-  )
-}
-
-function MenuLink({ href, icon: Icon, label }: { href: string; icon: ComponentType<{ className?: string }>; label: string }) {
-  return (
-    <Link href={href} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-muted">
-      <Icon className="h-4 w-4 text-muted-foreground" />
-      <span>{label}</span>
-    </Link>
-  )
 }
 
 function StateCard({
