@@ -16,6 +16,7 @@ import {
 } from '@/lib/db/interventions'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
+import { requireOwned } from '@/lib/auth/ownership'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
@@ -33,6 +34,15 @@ export async function claimInterventionTeamAction(formData: FormData) {
   if (!user) return { error: 'Non authentifié' }
   const parsed = claimSchema.safeParse({ id: formData.get('id'), teamId: formData.get('teamId') })
   if (!parsed.success) return { error: 'Requête invalide' }
+
+  // Isolation : le service role contourne la RLS, et `getIntervention` ne filtre
+  // PAS l'organisation. Sans ces deux gardes, l'intervention et l'équipe pouvaient
+  // appartenir à des organisations différentes — voire à un autre client que le
+  // nôtre. Les DEUX objets sont gardés, jamais un seul.
+  const ownedIntervention = await requireOwned(user.role, 'interventions', parsed.data.id)
+  if (!ownedIntervention.allowed) return { error: ownedIntervention.error }
+  const ownedTeam = await requireOwned(user.role, 'teams', parsed.data.teamId)
+  if (!ownedTeam.allowed) return { error: ownedTeam.error }
 
   const intervention = await getIntervention(parsed.data.id)
   if (!intervention) return { error: 'Intervention introuvable' }

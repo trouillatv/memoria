@@ -441,6 +441,14 @@ export async function createInterventionFromWeekAction(
   } else if (teamFromInput === null) {
     finalTeamId = null
   } else {
+    // L'équipe doit être de MON organisation. L'écran ne propose jamais celle
+    // d'un autre tenant — mais teamId arrive du client, et le service role
+    // contourne la RLS : sans ce contrôle, une équipe Servinor pouvait être
+    // affectée à un chantier AGP. La mission est déjà gardée ci-dessus ; il
+    // faut garder les DEUX objets, pas un seul.
+    const deniedTeam = await guardOwned(auth.role, 'teams', teamFromInput)
+    if (deniedTeam) return { ok: false, error: deniedTeam }
+
     const { data: team, error: tErr } = await admin
       .from('teams')
       .select('id, active, deleted_at')
