@@ -652,6 +652,32 @@ export async function listHandoverBriefs(
 }
 
 /**
+ * Passations rattachées à UN chantier — la passation se prépare depuis le
+ * chantier qu'elle transmet, pas depuis une liste globale.
+ *
+ * Isolation P1 : FAIL-CLOSED — pas d'organisation → aucune passation.
+ */
+export async function listHandoverBriefsBySite(
+  siteId: string,
+  limit = 5,
+): Promise<DbHandoverBrief[]> {
+  const admin = createAdminClient()
+  const orgId = await getOrgId()
+  if (!orgId) return []
+  const { data, error } = await admin
+    .from('handover_briefs')
+    .select('*')
+    .eq('site_id', siteId)
+    .eq('organization_id', orgId)
+    .is('deleted_at', null)
+    .neq('status', 'archived')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as DbHandoverBrief[]
+}
+
+/**
  * Briefs de passation qu'un chef d'équipe doit pouvoir RETROUVER dans l'app
  * terrain (`/m`) — même si le lien SMS est perdu (P1 audit live 2026-05-26).
  *
