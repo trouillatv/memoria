@@ -9,6 +9,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logAuditEvent } from '@/lib/audit/log'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const IdSchema = z.string().uuid()
@@ -31,29 +32,91 @@ async function deleteReportRows(supabase: SupabaseClient, ids: string[]): Promis
   if (error) throw error
 }
 
+/**
+ * Supprimer une RÉUNION. Jamais une visite.
+ *
+ * `site_reports` porte DEUX objets : la réunion (`origin IS NULL`) et la visite
+ * terrain (`origin` non nul). Et seize tables cascadent sur elle — dont
+ * `visit_capture`, c'est-à-dire les PHOTOS et les VOCAUX du terrain.
+ *
+ * Le nettoyage en masse (plus bas) porte le garde `origin IS NULL`, et son
+ * commentaire dit pourquoi : « les visites fuyaient ici et un clic aurait détruit
+ * des captures ». Ce garde n'avait JAMAIS été reporté ici. La suppression
+ * unitaire ne lisait même pas `origin` : seule la liste à l'écran empêchait le
+ * drame. Une protection qui n'existe que dans l'interface n'est pas une
+ * protection.
+ *
+ * Trois verrous désormais, fail-closed :
+ *   1. ce doit être une réunion — sinon on refuse, en disant quoi faire ;
+ *   2. aucune capture terrain ne doit y pendre — sinon on refuse plutôt que de
+ *      détruire une preuve « au cas où » ;
+ *   3. la suppression la plus destructive de l'application est TRACÉE.
+ */
 export async function deleteMeetingAction(
   reportId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!IdSchema.safeParse(reportId).success) return { ok: false, error: 'Réunion invalide' }
-  const auth = await requireManager()
-  if (!auth.ok) return auth
+  const user = await getCurrentUserWithProfile()
+  if (!user) return { ok: false, error: 'Non authentifié' }
+  if (user.role !== 'admin' && user.role !== 'manager') return { ok: false, error: 'Accès refusé' }
 
   const supabase = createAdminClient()
   const orgId = await getOrgId()
   const { data: rep } = await supabase
     .from('site_reports')
-    .select('id, organization_id')
+    .select('id, organization_id, origin, title')
     .eq('id', reportId)
     .maybeSingle()
   if (!rep) return { ok: false, error: 'Réunion introuvable' }
-  if (orgId && (rep as { organization_id: string | null }).organization_id && (rep as { organization_id: string | null }).organization_id !== orgId) {
+
+  const report = rep as {
+    organization_id: string | null
+    origin: string | null
+    title: string | null
+  }
+
+  if (orgId && report.organization_id && report.organization_id !== orgId) {
     return { ok: false, error: 'Accès refusé' }
   }
+
+  // VERROU 1 — ce n'est pas une réunion : c'est une visite terrain.
+  if (report.origin !== null) {
+    return {
+      ok: false,
+      error:
+        "Ce n'est pas une réunion, c'est une visite terrain. La supprimer ici détruirait ses photos et ses vocaux. Passez par la visite elle-même.",
+    }
+  }
+
+  // VERROU 2 — une réunion ne devrait porter aucune capture terrain. S'il y en a,
+  // quelque chose ne va pas : on ne détruit pas une preuve « au cas où ».
+  const { count: captureCount } = await supabase
+    .from('visit_capture')
+    .select('id', { count: 'exact', head: true })
+    .eq('report_id', reportId)
+  if ((captureCount ?? 0) > 0) {
+    return {
+      ok: false,
+      error: `Cette réunion porte ${captureCount} capture${(captureCount ?? 0) > 1 ? 's' : ''} terrain (photos, vocaux). La suppression est refusée : ces traces seraient détruites définitivement.`,
+    }
+  }
+
   try {
     await deleteReportRows(supabase, [reportId])
   } catch {
     return { ok: false, error: 'Échec de la suppression' }
   }
+
+  // VERROU 3 — la suppression la plus destructive de l'application ne peut pas
+  // rester muette.
+  await logAuditEvent({
+    userId: user.id,
+    entityType: 'report',
+    entityId: reportId,
+    action: 'removed',
+    metadata: { kind: 'meeting', title: report.title, hard_delete: true },
+  }).catch(() => {})
+
   revalidatePath('/meetings')
   return { ok: true }
 }
