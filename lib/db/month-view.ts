@@ -18,7 +18,7 @@ import { isStillExpected } from '@/lib/planning/conflicts'
 import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { listKeptInterventionIds } from '@/lib/db/closure-decisions'
-import type { DayFacts } from '@/lib/planning/month-view'
+import type { DayFacts, TeamDayFacts } from '@/lib/planning/month-view'
 
 export interface MonthRow {
   siteId: string
@@ -214,4 +214,195 @@ export async function buildMonthRows(params: {
   }
 
   return rows.sort((a, b) => a.siteName.localeCompare(b.siteName, 'fr'))
+}
+
+export interface TeamMonthRow {
+  teamId: string
+  teamName: string
+  /**
+   * Qui compose l'équipe. Vincent, 2026-07-14 : exception ASSUMÉE à la règle
+   * « nominatif seulement sur /equipes » — le conducteur doit savoir QUI tourne.
+   *
+   * La limite tient : ces noms sont la COMPOSITION de la ligne, jamais des
+   * lignes eux-mêmes. Aucune grille de jours travaillés par personne, aucun
+   * total individuel — ce serait une feuille de présence, pas un planning.
+   */
+  members: string[]
+  days: Record<string, TeamDayFacts>
+}
+
+/**
+ * LE MÊME MOIS, vu par équipe. Aucun second moteur : ce sont exactement les
+ * mêmes faits (interventions matérialisées + projection des roulements +
+ * fermetures + exceptions), regroupés sur l'axe équipe au lieu de l'axe
+ * chantier. Une occurrence sans équipe affectée n'appartient à aucune ligne :
+ * elle reste visible en mode chantier, là où le trou se traite.
+ */
+export async function buildTeamMonthRows(params: {
+  from: string
+  to: string
+  /** Les lignes chantier déjà assemblées — la page les a pour le verdict : on ne
+   *  refait pas le travail, et surtout on ne recalcule pas les mêmes faits. */
+  siteRows?: MonthRow[]
+}): Promise<TeamMonthRow[]> {
+  const { from, to } = params
+  const db = createAdminClient()
+  const orgId = await getOrgId().catch(() => null)
+
+  const [siteRows, teamRows] = await Promise.all([
+    params.siteRows ?? buildMonthRows({ from, to }),
+    db.from('teams').select('id, name, organization_id').is('deleted_at', null),
+  ])
+  if (siteRows.length === 0) return []
+
+  const teamNames = new Map<string, string>()
+  for (const t of ((teamRows.data ?? []) as Array<{
+    id: string
+    name: string
+    organization_id: string | null
+  }>)) {
+    // Isolation : le service role contourne la RLS — le filtre org vit ici.
+    if (orgId && t.organization_id !== orgId) continue
+    teamNames.set(t.id, t.name)
+  }
+
+  // La composition des équipes actives (voir TeamMonthRow.members).
+  const membersByTeam = new Map<string, string[]>()
+  if (teamNames.size > 0) {
+    const { data: memberRows } = await db
+      .from('team_members')
+      .select('team_id, user:users(full_name, email)')
+      .in('team_id', [...teamNames.keys()])
+      .is('left_at', null)
+      .order('joined_at', { ascending: true })
+
+    type MemberRow = {
+      team_id: string
+      user: { full_name: string | null; email: string } | Array<{ full_name: string | null; email: string }> | null
+    }
+    for (const m of ((memberRows ?? []) as unknown as MemberRow[])) {
+      const u = Array.isArray(m.user) ? m.user[0] ?? null : m.user
+      if (!u) continue
+      const label = (u.full_name ?? '').trim() || u.email.split('@')[0]
+      const list = membersByTeam.get(m.team_id) ?? []
+      list.push(label)
+      membersByTeam.set(m.team_id, list)
+    }
+  }
+
+  const days: string[] = []
+  {
+    const start = new Date(`${from}T00:00:00.000Z`).getTime()
+    const end = new Date(`${to}T00:00:00.000Z`).getTime()
+    for (let t = start; t <= end; t += 86_400_000) {
+      days.push(new Date(t).toISOString().slice(0, 10))
+    }
+  }
+
+  // Ce que le mode chantier sait déjà : où c'est fermé, où ça dévie.
+  const closedBySiteDay = new Set<string>()
+  const exceptionBySiteDay = new Set<string>()
+  for (const row of siteRows) {
+    for (const [day, facts] of Object.entries(row.days)) {
+      if (facts.closed) closedBySiteDay.add(`${row.siteId}::${day}`)
+      if (facts.hasException) exceptionBySiteDay.add(`${row.siteId}::${day}`)
+    }
+  }
+
+  const { data: intvRows } = await db
+    .from('interventions')
+    .select(
+      'id, scheduled_for, status, assigned_team_id, template_id, missions!inner(site_id, sites!inner(id, organization_id))',
+    )
+    .gte('scheduled_for', from)
+    .lte('scheduled_for', to)
+
+  type Raw = {
+    id: string
+    scheduled_for: string
+    status: string
+    assigned_team_id: string | null
+    template_id: string | null
+    missions?: { sites?: { id?: string; organization_id?: string | null } }
+  }
+  const intv = ((intvRows ?? []) as unknown as Raw[])
+
+  const rows = new Map<string, TeamMonthRow>()
+  const ensure = (teamId: string): TeamMonthRow => {
+    const existing = rows.get(teamId)
+    if (existing) return existing
+    const created: TeamMonthRow = {
+      teamId,
+      teamName: teamNames.get(teamId) ?? 'Équipe',
+      members: membersByTeam.get(teamId) ?? [],
+      days: Object.fromEntries(
+        days.map((d) => [d, { worked: 0, projected: 0, conflicts: 0, hasException: false }]),
+      ),
+    }
+    rows.set(teamId, created)
+    return created
+  }
+
+  for (const r of intv) {
+    const site = r.missions?.sites
+    if (!site?.id) continue
+    if (orgId && site.organization_id !== orgId) continue
+    if (!r.assigned_team_id || !teamNames.has(r.assigned_team_id)) continue
+    if (r.status === 'skipped') continue
+
+    const facts = ensure(r.assigned_team_id).days[r.scheduled_for]
+    if (!facts) continue
+    facts.worked += 1
+    if (closedBySiteDay.has(`${site.id}::${r.scheduled_for}`)) facts.conflicts += 1
+    if (exceptionBySiteDay.has(`${site.id}::${r.scheduled_for}`)) facts.hasException = true
+  }
+
+  // Ce que les roulements PROJETTENT au-delà de l'horizon de génération : sans
+  // eux, la fin du mois paraîtrait vide alors qu'elle est déjà engagée.
+  const { data: tplRows } = await db
+    .from('intervention_templates')
+    .select(
+      'id, frequency, slots, day_of_week, day_of_month, planned_start_hhmm, planned_end_hhmm, starts_on, ends_on, cycle_length_weeks, anchor_date, week_index, assigned_team_id, mission_id, missions!inner(id, site_id, sites!inner(id, organization_id))',
+    )
+    .eq('active', true)
+    .is('deleted_at', null)
+
+  type RawTpl = ProjectableTemplate & {
+    assigned_team_id: string | null
+    missions?: { id?: string; site_id?: string; sites?: { id?: string; organization_id?: string | null } }
+  }
+
+  const templates: RawTpl[] = []
+  const siteOfTemplate = new Map<string, string>()
+  for (const t of ((tplRows ?? []) as unknown as RawTpl[])) {
+    const site = t.missions?.sites
+    if (!site?.id) continue
+    if (orgId && site.organization_id !== orgId) continue
+    if (!t.assigned_team_id || !teamNames.has(t.assigned_team_id)) continue
+    templates.push({ ...t, mission_id: t.missions?.id ?? t.mission_id })
+    siteOfTemplate.set(t.id, site.id)
+  }
+
+  if (templates.length > 0) {
+    // Jamais deux fois la même occurrence : si elle existe en base, elle est
+    // déjà comptée au-dessus (identité d'occurrence, mig 198).
+    const materialized = new Set(
+      intv.filter((r) => r.template_id).map((r) => `${r.template_id}::${r.scheduled_for}`),
+    )
+    const teamOfTemplate = new Map(templates.map((t) => [t.id, t.assigned_team_id as string]))
+
+    for (const o of projectOccurrences({ templates, from, to })) {
+      if (materialized.has(`${o.templateId}::${o.scheduledFor}`)) continue
+      const teamId = teamOfTemplate.get(o.templateId)
+      if (!teamId) continue
+
+      const facts = ensure(teamId).days[o.scheduledFor]
+      if (!facts) continue
+      facts.projected += 1
+      const siteId = siteOfTemplate.get(o.templateId)
+      if (siteId && closedBySiteDay.has(`${siteId}::${o.scheduledFor}`)) facts.conflicts += 1
+    }
+  }
+
+  return [...rows.values()].sort((a, b) => a.teamName.localeCompare(b.teamName, 'fr'))
 }
