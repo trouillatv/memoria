@@ -65,6 +65,11 @@ describe('site operational workspaces', () => {
     expect(screen.getByText('Ce que cette visite a produit')).toBeInTheDocument()
     expect(screen.getByText('Actions créées')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Vérifier la toiture/ })).toHaveAttribute('href', '/sites/site-1/actions')
+
+    // Règle reprise de SiteViewComposition (supprimé) : la lecture narrative reste
+    // un MODE de la chronologie — atteignable depuis elle, sans onglet « Frise » factice.
+    expect(screen.getByRole('link', { name: 'Lire le récit' })).toHaveAttribute('href', '/sites/site-1/recit')
+    expect(screen.queryByRole('link', { name: 'Frise' })).not.toBeInTheDocument()
   })
 
   it('shows planning as a coordination view with seven days and real cycles', () => {
