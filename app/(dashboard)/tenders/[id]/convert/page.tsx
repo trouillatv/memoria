@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getTender } from '@/lib/db/tenders'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { ConvertWizard } from './convert-wizard'
@@ -7,6 +8,7 @@ import { ConvertWizard } from './convert-wizard'
 const ELIGIBLE_STATUSES = ['ready', 'submitted', 'archived'] as const
 
 export default async function ConvertPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireDeskUser()
   const { id } = await params
   const tender = await getTender(id)
   if (!tender) notFound()

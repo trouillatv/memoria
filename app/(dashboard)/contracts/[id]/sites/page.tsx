@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { listSitesByContract, listSiteNotes } from '@/lib/db/sites'
 import { ContractTabs } from '../contract-tabs'
@@ -9,6 +10,7 @@ import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 const NOTES_PER_SITE = 5
 
 export default async function ContractSitesPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireDeskUser()
   const { id } = await params
   const contract = await getContract(id)
   if (!contract) notFound()

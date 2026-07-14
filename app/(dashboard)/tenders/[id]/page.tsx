@@ -16,6 +16,7 @@ import { listTenderDocumentSources } from '@/lib/db/tender-document-sources'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getTenderClientCapital } from '@/lib/db/tender-client-capital'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getDossier, listDossiersLite } from '@/lib/db/dossiers'
 import { setTenderDossierAction } from './actions'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -46,6 +47,7 @@ export default async function TenderDetailPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ view?: string }>
 }) {
+  await requireDeskUser()
   const { id } = await params
   const { view: viewParam } = await searchParams
 

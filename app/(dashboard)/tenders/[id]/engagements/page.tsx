@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ScanSearch } from 'lucide-react'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { getOrgId } from '@/lib/db/users'
 import { getAoExperience } from '@/lib/db/ao-experience'
@@ -9,6 +10,7 @@ import { ExtractEngagementsButton } from './ExtractEngagementsButton'
 import { BackButton } from './BackButton'
 
 export default async function TenderEngagementsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireDeskUser()
   const { id } = await params
   const engagements = await listEngagementsByTender(id)
   // A3 — confronte les libellés de cet AO à l'expérience accumulée (sujets de l'org).

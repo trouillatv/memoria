@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listKnowledgeItems, listAllTags } from '@/lib/db/knowledge'
 import { getLibraryUsageCounts, countTendersUsingLibraryThisMonth } from '@/lib/db/library-usage'
 import { KnowledgeCategoryFilter } from './KnowledgeCategoryFilter'
@@ -16,6 +17,7 @@ export default async function LibraryPage({
 }: {
   searchParams: Promise<{ category?: string; tags?: string; search?: string }>
 }) {
+  await requireDeskUser()
   const params = await searchParams
   const category = params.category as KnowledgeCategory | undefined
   const tags = params.tags ? params.tags.split(',').filter(Boolean) : undefined

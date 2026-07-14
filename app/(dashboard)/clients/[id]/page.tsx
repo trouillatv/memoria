@@ -22,6 +22,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import type { StatusValue } from '@/components/ui/status-badge'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getClientDetail, getClientCockpit } from '@/lib/db/clients'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { HealthRing } from '@/components/ui/health-ring'
@@ -69,6 +70,7 @@ function TodaySignal({ tone, label, dot, icon }: {
 }
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireDeskUser()
   const { id } = await params
   const client = await getClientDetail(id)
   if (!client) notFound()
