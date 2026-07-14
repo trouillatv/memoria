@@ -8,11 +8,11 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, X, Pencil } from 'lucide-react'
+import { Loader2, Plus, X, Pencil, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { periodRangeFr, periodDays, type CalendarPeriod } from '@/lib/planning/school-calendar'
-import { savePeriodAction, removePeriodAction } from './actions'
+import { savePeriodAction, removePeriodAction, importNcCalendar2026Action } from './actions'
 
 export function CalendarEditor({
   periods,
@@ -51,6 +51,26 @@ export function CalendarEditor({
     setStartsOn(p.startsOn)
     setEndsOn(p.endsOn)
     setOpen(true)
+  }
+
+  function importNc2026() {
+    if (pending) return
+    start(async () => {
+      const r = await importNcCalendar2026Action()
+      if ('error' in r) {
+        toast.error(r.error)
+        return
+      }
+      if (r.created === 0) {
+        toast.info('Le calendrier 2026 est déjà là — rien à ajouter.')
+      } else {
+        toast.success(
+          `${r.created} période${r.created > 1 ? 's' : ''} ajoutée${r.created > 1 ? 's' : ''}` +
+            (r.sites > 0 ? ` · ${r.sites} chantier${r.sites > 1 ? 's' : ''} mis à jour` : ''),
+        )
+      }
+      router.refresh()
+    })
   }
 
   function save() {
@@ -185,14 +205,29 @@ export function CalendarEditor({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <Plus className="h-4 w-4" /> Ajouter une période
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            disabled={pending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Plus className="h-4 w-4" /> Ajouter une période
+          </button>
+
+          {/* Les dates calédoniennes 2026, prêtes à importer. Un humain clique :
+              l'écran ne pré-remplit toujours rien de lui-même. Rejouable — une
+              période déjà là n'est pas recréée. */}
+          <button
+            type="button"
+            onClick={importNc2026}
+            disabled={pending}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Importer le calendrier 2026 (Nouvelle-Calédonie)
+          </button>
+        </div>
       )}
     </section>
   )

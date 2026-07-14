@@ -12,11 +12,13 @@ import { requireManagerOrAdmin } from '@/lib/auth/require'
 import { requireOwned } from '@/lib/auth/ownership'
 import {
   createPeriod,
+  listPeriods,
   updatePeriod,
   removePeriod,
   setSiteCalendarEffect,
   syncAllFollowingSites,
 } from '@/lib/db/school-calendar'
+import { missingFrom, NC_CALENDAR_2026 } from '@/lib/planning/nc-calendar-2026'
 import { logAuditEvent } from '@/lib/audit/log'
 
 const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide')
@@ -61,6 +63,62 @@ export async function savePeriodAction(
 
   revalidateAll()
   return { ok: true, sites }
+}
+
+/**
+ * IMPORTER LE CALENDRIER CALÉDONIEN 2026 — jours fériés et vacances scolaires.
+ *
+ * Déclenché par un humain, jamais au démarrage : l'écran ne pré-remplit rien,
+ * et cette action ne change pas cette règle — elle propose, on accepte.
+ *
+ * Rejouable : une période déjà présente (même type, mêmes dates) n'est pas
+ * recréée. Cliquer deux fois ne produit pas deux Noël.
+ *
+ * Ce que l'import NE fait PAS : fermer des chantiers. Une période ne ferme que
+ * les chantiers qui la SUIVENT — un magasin reste ouvert quand l'école ferme.
+ */
+export async function importNcCalendar2026Action(): Promise<
+  { ok: true; created: number; alreadyThere: number; sites: number } | { error: string }
+> {
+  const auth = await requireManagerOrAdmin()
+  if (!auth.ok) return { error: auth.error }
+
+  const existing = await listPeriods()
+  const missing = missingFrom(existing)
+
+  for (const seed of missing) {
+    await createPeriod({
+      kind: seed.kind,
+      label: seed.label,
+      startsOn: seed.startsOn,
+      endsOn: seed.endsOn,
+      userId: auth.userId,
+    })
+  }
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'organization',
+    entityId: auth.userId,
+    action: 'created',
+    metadata: {
+      kind: 'school_calendar_import',
+      source: 'nc_2026',
+      created: missing.length,
+    },
+  })
+
+  // Les fermetures se propagent tout de suite : un calendrier importé qui n'a
+  // encore rien fermé ne sert à rien.
+  const { sites } = await syncAllFollowingSites()
+
+  revalidateAll()
+  return {
+    ok: true,
+    created: missing.length,
+    alreadyThere: NC_CALENDAR_2026.length - missing.length,
+    sites,
+  }
 }
 
 export async function removePeriodAction(
