@@ -51,12 +51,12 @@ export default async function SitesGlobalPage() {
         <div>
           <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
             <MapPin className="h-6 w-6 text-sky-600" />
-            Sites
+            Chantiers
           </h1>
           <p className="text-sm text-muted-foreground">
-            Tous les sites, groupés par client. Un site avec des données liées
-            ne peut pas être supprimé — il bascule en « Inactif » après 6 mois
-            sans intervention.
+            Tous les chantiers, groupés par client. Un chantier avec des données
+            liées ne peut pas être supprimé — il bascule en « Inactif » après
+            6 mois sans intervention.
           </p>
         </div>
         <CreateSiteDialog clients={clients} contracts={contracts} allSites={allSites} />
@@ -65,7 +65,7 @@ export default async function SitesGlobalPage() {
       {sites.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center">
           <p className="text-sm text-muted-foreground italic">
-            Aucun site enregistré. Cliquez sur « Nouveau site » pour commencer.
+            Aucun chantier enregistré. Cliquez sur « Nouveau chantier » pour commencer.
           </p>
         </div>
       ) : (

@@ -76,7 +76,7 @@ export const NAV: NavItem[] = [
   // Actions = cockpit des « actions ouvertes » (site_actions) issues des réunions.
   // Répond à « qu'est-ce qui reste à faire, tous sites confondus ? » (≠ Planning).
   { href: '/actions',    label: 'Actions',                icon: ListTodo,      roles: ['admin', 'manager'], essential: true },
-  { href: '/sites',      label: 'Sites',                  icon: MapPin,        roles: ['admin', 'manager'], essential: true },
+  { href: '/sites',      label: 'Chantiers',              icon: MapPin,        roles: ['admin', 'manager'], essential: true },
   // Affaires = le mot du chargé d'affaires. Une affaire naît à la prévisite (avant
   // le contrat), porte le site/l'AO/la mémoire, devient chantier si gagnée. L'AO
   // n'est qu'un épisode de l'affaire. (Interne : table `dossiers`.)
