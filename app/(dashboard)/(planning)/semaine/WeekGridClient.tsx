@@ -42,6 +42,7 @@ import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { InterventionSlot } from '@/types/db'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
+import { CLOSURE_REASON_FR, type ProjectableClosure } from '@/lib/planning/closures'
 import type { ClosureDecision } from '@/lib/db/closure-decisions'
 import type { ResolutionOption } from '@/lib/planning/conflict-resolution'
 import { CellDrawer } from './CellDrawer'
@@ -64,6 +65,9 @@ export interface WeekGridClientProps {
   /** PL3a — conflits « site fermé, prestation prévue ». Relayés tels quels au
    *  drawer. Le drag-and-drop, lui, n'en sait RIEN et n'en a pas besoin. */
   conflictsBySite?: Record<string, Record<string, ClosureConflict>>
+  /** Fermetures du chantier, par date. Sert à AVERTIR au moment du drop —
+   *  jamais à l'empêcher : le chantier décide, pas l'outil. */
+  closuresBySite?: Record<string, Record<string, ProjectableClosure>>
   /** PL3b — ce qui a DÉJÀ été décidé, par intervention. Le tiroir doit pouvoir
    *  relire la trace même quand le conflit a disparu. */
   decisions?: Record<string, ClosureDecision>
@@ -141,7 +145,7 @@ interface DragPreview {
   teamColor: string | null
 }
 
-export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, decisions, optionsBySite, exceptionsById, initialCellKey, children }: WeekGridClientProps) {
+export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflictsBySite, closuresBySite, decisions, optionsBySite, exceptionsById, initialCellKey, children }: WeekGridClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -225,12 +229,28 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
           const title = result.rescheduled
             ? `Rattrapée → ${dateText}`
             : `Replanifiée → ${dateText}`
-          toast.success(title, {
-            description: result.rescheduled
-              ? 'Intervention ratée remise en planifié. Cette intervention uniquement.'
-              : 'Cette intervention uniquement.',
-            duration: result.rescheduled ? 5000 : 3000,
-          })
+
+          // On peut déposer sur un jour FERMÉ — et c'est volontaire : le chantier
+          // décide, pas l'outil. Mais jusqu'ici on ne le disait pas : le geste
+          // réussissait en silence et le conflit n'apparaissait qu'au rendu
+          // suivant. On avertit, on ne bloque pas.
+          const closure = closuresBySite?.[parsed.siteId]?.[parsed.date]
+          if (closure) {
+            const labels: Record<string, string> = CLOSURE_REASON_FR
+            const why = closure.reason ? labels[closure.reason] : null
+            const because = why ? ` (${why.toLowerCase()})` : ''
+            toast.warning(`${title} — un jour fermé`, {
+              description: `Ce chantier est fermé ce jour-là${because}. L'intervention est bien déplacée : à vous de décider de la maintenir ou de la replanifier.`,
+              duration: 8000,
+            })
+          } else {
+            toast.success(title, {
+              description: result.rescheduled
+                ? 'Intervention ratée remise en planifié. Cette intervention uniquement.'
+                : 'Cette intervention uniquement.',
+              duration: result.rescheduled ? 5000 : 3000,
+            })
+          }
           router.refresh()
         } else if (result.conflict) {
           // Conflit d'affectation : message long, durée étendue pour qu'on
@@ -244,7 +264,7 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
         }
       })
     },
-    [interventionIndex, router, todayIso],
+    [interventionIndex, router, todayIso, closuresBySite],
   )
 
   // Slice 9.7 — Collision custom :
