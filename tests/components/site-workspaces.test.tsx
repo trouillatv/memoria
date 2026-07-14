@@ -119,7 +119,7 @@ describe('site workspaces', () => {
     expect(within(qr).getByAltText('QR de collecte externe - Chantier A')).toBeInTheDocument()
     expect(within(qr).getByRole('button', { name: 'Copier le lien' })).toBeInTheDocument()
     expect(within(qr).getByRole('link', { name: 'Télécharger' })).toHaveAttribute('download', 'qr-chantier-a.png')
-    expect(within(qr).getByText('2 accès anonymes')).toBeInTheDocument()
+    expect(within(qr).getByText(/2 accès anonymes/)).toBeInTheDocument()
     expect(within(qr).getByText('1 accès anonyme · aucun contributeur identifié.')).toBeInTheDocument()
     expect(within(qr).queryByText('Vincent')).not.toBeInTheDocument()
     expect(within(qr).queryByRole('link', { name: 'Ouvrir le QR Code' })).not.toBeInTheDocument()

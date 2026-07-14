@@ -112,7 +112,7 @@ export function DocumentsWorkspace({
             {canExport && (
               <Link href={`/sites/${siteId}/export`} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
                 <Download className="h-4 w-4" />
-                Exporter
+                Exporter la bibliothèque
               </Link>
             )}
             <Link href={`/documents/import?target_type=site&target_id=${siteId}`} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90">
@@ -257,50 +257,71 @@ function SiteQrCollectionPanel({ siteId, qr }: { siteId: string; qr: DocumentsQr
   }
 
   return (
-    <div className="mt-4 grid gap-5 rounded-2xl border p-4 lg:grid-cols-[260px_1fr]">
-      <div className="rounded-xl bg-white p-4 text-center">
-        {qr.qrDataUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={qr.qrDataUrl}
-            alt={`QR de collecte externe - ${qr.siteName}`}
-            width={220}
-            height={220}
-            className="mx-auto rounded"
-          />
-        )}
-        {qr.qrDataUrl && (
-          <a
-            href={qr.qrDataUrl}
-            download={`qr-${slugify(qr.siteName)}.png`}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Télécharger
-          </a>
-        )}
-      </div>
-      <div className="flex flex-col justify-between gap-4">
-        <div>
-          <p className="font-medium">QR de collecte externe</p>
-          <p className="mt-1 text-sm text-muted-foreground">Accès en lecture seule.</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
-            <span className="rounded-full border px-2 py-1">{qr.accessCount} accès anonyme{qr.accessCount > 1 ? 's' : ''}</span>
-            {qr.lastAccessedAt && <span className="rounded-full border px-2 py-1">Dernier accès {formatDate(qr.lastAccessedAt)}</span>}
-            {qr.generatedAt && <span className="rounded-full border px-2 py-1">Généré le {formatDate(qr.generatedAt)}</span>}
-          </div>
+    // Le QR n'a plus besoin de toute la largeur : la moitié droite sert à montrer
+    // ce que le canal a réellement rapporté.
+    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 rounded-2xl border p-4 sm:grid-cols-[150px_1fr]">
+        <div className="rounded-xl bg-white p-2 text-center">
+          {qr.qrDataUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={qr.qrDataUrl}
+              alt={`QR de collecte externe - ${qr.siteName}`}
+              width={134}
+              height={134}
+              className="mx-auto rounded"
+            />
+          )}
         </div>
-        {qr.publicUrl && <QrShareActions siteName={qr.siteName} publicUrl={qr.publicUrl} />}
-        <details className="rounded-xl border p-3">
-          <summary className="cursor-pointer text-sm font-medium">Historique et sécurité</summary>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {anonymousScans} accès anonyme{anonymousScans > 1 ? 's' : ''} · aucun contributeur identifié.
-          </p>
-          <QrHistory history={qr.history} />
-          <div className="mt-4 border-t pt-4">
-            <RevokeQrButton siteId={siteId} />
+        <div className="flex min-w-0 flex-col gap-3">
+          <div>
+            <p className="font-medium">QR de collecte externe</p>
+            <p className="mt-1 text-sm text-muted-foreground">Accès en lecture seule.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {qr.accessCount} accès anonyme{qr.accessCount > 1 ? 's' : ''}
+              {qr.generatedAt && ` · généré le ${formatDate(qr.generatedAt)}`}
+            </p>
           </div>
-        </details>
+          <div className="flex flex-wrap items-center gap-2">
+            {qr.publicUrl && <QrShareActions siteName={qr.siteName} publicUrl={qr.publicUrl} />}
+            {qr.qrDataUrl && (
+              <a
+                href={qr.qrDataUrl}
+                download={`qr-${slugify(qr.siteName)}.png`}
+                className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Télécharger
+              </a>
+            )}
+          </div>
+          <details className="rounded-xl border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Historique et sécurité</summary>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {anonymousScans} accès anonyme{anonymousScans > 1 ? 's' : ''} · aucun contributeur identifié.
+            </p>
+            <QrHistory history={qr.history} />
+            <div className="mt-4 border-t pt-4">
+              <RevokeQrButton siteId={siteId} />
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border p-4">
+        <p className="font-medium">Dernières contributions externes</p>
+        {qr.lastAccessedAt ? (
+          <>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Dernier accès le {formatDate(qr.lastAccessedAt)}. Les contributions reçues rejoignent la bibliothèque ci-dessus.
+            </p>
+            <QrHistory history={qr.history.filter((event) => event.type === 'scanned')} />
+          </>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Aucune contribution reçue. Partagez le QR pour qu’une preuve puisse arriver du chantier.
+          </p>
+        )}
       </div>
     </div>
   )

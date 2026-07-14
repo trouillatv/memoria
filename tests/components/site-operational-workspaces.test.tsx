@@ -25,9 +25,15 @@ describe('site operational workspaces', () => {
     expect(screen.getByText('Missions (1)')).toBeInTheDocument()
     expect(screen.getByText('Interventions (1)')).toBeInTheDocument()
     expect(screen.getByText('Actions (1)')).toBeInTheDocument()
-    expect(screen.getAllByText('Issue de').length).toBeGreaterThan(0)
-    expect(screen.getByText('Destination')).toBeInTheDocument()
-    expect(screen.getByText('Intervention à planifier')).toBeInTheDocument()
+    // Origine : l'intervention porte la mission dont elle vient, et l'ouvre.
+    expect(screen.getByRole('link', { name: 'Nettoyage général' })).toHaveAttribute(
+      'href',
+      '/interventions/intervention-1',
+    )
+    // Destination : ce que l'intervention doit produire.
+    expect(screen.getByText('Preuve attendue : réalisation confirmée')).toBeInTheDocument()
+    // La priorité est suggérée, jamais imposée sans lien vers l'objet concerné.
+    expect(screen.getByText('Priorité suggérée :')).toBeInTheDocument()
   })
 
   it('makes chronology causal with produced objects under events', () => {

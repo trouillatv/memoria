@@ -862,6 +862,11 @@ export interface HandoverPayload {
     openActionsMore: number
     /** Décisions de réunion VALIDÉES récentes (capped 3). */
     recentDecisions: Array<{ id: string; label: string; corpsEtat: string | null; at: string }>
+    /**
+     * Prochaines échéances planifiées (capped 4) — ce qui arrive après la reprise.
+     * Optionnel : les briefs générés avant 2026-07-14 n'ont pas ce champ.
+     */
+    nextEvents?: Array<{ id: string; label: string; on: string; teamName: string | null }>
     /** Équipes voisines qui connaissent ce site (back-up). */
     neighborTeams: Array<{ team_id: string; team_name: string; team_color: string | null }>
     /** Nombre d'interventions documentées sur ce site (descriptif). */

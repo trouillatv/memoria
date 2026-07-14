@@ -9,8 +9,6 @@ import {
   Calendar,
   CalendarPlus,
   Clock,
-  Filter,
-  History,
   Layers,
   ListTodo,
   MoreHorizontal,
@@ -22,20 +20,22 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
-import { listInterventionsSupervisor } from '@/lib/db/interventions'
-import { listCyclesBySite } from '@/lib/db/planning-cycles'
+import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
+import { listCyclesBySite, type PlanningCycle } from '@/lib/db/planning-cycles'
 import { listTeams } from '@/lib/db/teams'
+import { listHandoverBriefsBySite } from '@/lib/db/handover'
+import type { DbMission, DbTeam } from '@/types/db'
 import {
   buildSiteStatusSummary,
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
-  type VisitWithCounts,
 } from '@/lib/db/visits'
 import {
   getSiteCurrentState,
   getSiteIdentity,
   getSiteRecentActivity,
   type RecentActivityItem,
+  type SiteIdentity,
 } from '@/lib/db/site-cockpit'
 import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
 import { listDocumentsForTarget } from '@/lib/db/documents'
@@ -67,14 +67,12 @@ import { SiteAddMenu } from './SiteAddMenu'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
 import { SiteTabsNav, SITE_TAB_KEYS, type SiteTabKey } from './SiteTabsNav'
 import { TogglePanel } from './TogglePanel'
-import {
-  SiteChronologyComposition,
-} from './SiteViewComposition'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
-import { MemoryWorkspace } from './views/memory/MemoryWorkspace'
+import { MemoryWorkspace, type SiteRelay } from './views/memory/MemoryWorkspace'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
+import { OrganisationWorkspace } from './views/organisation/OrganisationWorkspace'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -243,9 +241,21 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         ) : tab === 'documents-preuves' ? (
           <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
         ) : tab === 'memoire' ? (
-          <MemoireView siteId={id} signals={memorySignals} />
+          <MemoireView
+            siteId={id}
+            signals={memorySignals}
+            interventions={interventionsResult.items}
+            traceCount={visits.length}
+          />
         ) : tab === 'organisation' ? (
-          <OrganisationView />
+          <OrganisationView
+            siteId={id}
+            identity={identity}
+            missions={missions}
+            cycles={cycles}
+            teams={teams}
+            relays={toSiteRelays(interventionsResult.items)}
+          />
         ) : (
           null
         )}
@@ -423,160 +433,6 @@ function ChantierOverview({
   )
 }
 
-function TravailView({
-  siteId,
-  actions,
-  attention,
-}: {
-  siteId: string
-  actions: OverviewActionInput[]
-  attention: OverviewSignalInput[]
-}) {
-  const todayIso = todayLocalIso()
-  const todo = selectPriorityActions(actions, { todayIso, limit: 8 })
-
-  return (
-    <main className="grid gap-5 xl:grid-cols-[320px_1fr]">
-      <aside className="space-y-4">
-        <ViewIntro
-          icon={ListTodo}
-          title="Travail"
-          question="Que dois-je faire, suivre ou lever sur ce chantier ?"
-          detail="Actions, réserves, blocages et échéances à traiter."
-        />
-        <FilterPanel
-          title="Filtres de suivi"
-          items={['Tout', 'En retard', "Aujourd'hui", 'Cette semaine', 'Sans échéance']}
-        />
-      </aside>
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">À traiter</h2>
-            <p className="text-sm text-muted-foreground">Les éléments les plus actionnables remontent en premier.</p>
-          </div>
-          <Link href={`/sites/${siteId}/actions`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-            Ouvrir les actions
-          </Link>
-        </div>
-        {todo.length > 0 ? (
-          <div className="divide-y rounded-2xl border">
-            {todo.map((action) => (
-              <Link key={action.id} href={action.href ?? `/sites/${siteId}/actions`} className="grid gap-2 p-4 hover:bg-muted/40 md:grid-cols-[1fr_150px_110px] md:items-center">
-                <span className="font-medium">{action.title}</span>
-                <span className={cn('text-sm', toneClass[getActionDueTone(action, todayIso)].icon)}>{getActionDueLabel(action, todayIso)}</span>
-                <span className="text-sm text-muted-foreground">{action.status === 'planned' ? 'Planifiée' : 'Ouverte'}</span>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <EmptyLine>Aucun travail ouvert pour ce chantier.</EmptyLine>
-        )}
-        {attention.length > 0 && (
-          <div className="mt-5 rounded-2xl border bg-orange-50/40 p-4 dark:bg-orange-950/15">
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">À surveiller</h3>
-            <div className="grid gap-2 md:grid-cols-3">
-              {attention.map((signal) => (
-                <OverviewRow key={signal.id} href={signal.href} icon={attentionIcon(signal.kind)} tone={attentionTone(signal.kind)} title={signal.title} detail={signal.detail} />
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-    </main>
-  )
-}
-
-function ChronologieView({
-  siteId,
-  changes,
-  visits,
-}: {
-  siteId: string
-  changes: OverviewChangeInput[]
-  visits: VisitWithCounts[]
-}) {
-  const flux = visits.length > 0 ? (
-    <div className="space-y-6">
-      <div>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Visites terrain</h2>
-            <p className="text-sm text-muted-foreground">Les dernières visites capturées sur ce chantier.</p>
-          </div>
-          <Link href={`/sites/${siteId}/visites`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-            Voir toutes les visites
-          </Link>
-        </div>
-        <VisitTimeline visits={visits} siteId={siteId} />
-      </div>
-      {changes.length > 0 && (
-        <div className="border-t pt-5">
-          <h2 className="mb-4 text-lg font-semibold">Autres changements</h2>
-          <TimelineList changes={changes} />
-        </div>
-      )}
-    </div>
-  ) : changes.length > 0 ? (
-    <TimelineList changes={changes} />
-  ) : (
-    <SmartEmptyState
-      icon={History}
-      title="Aucun événement significatif récemment."
-      detail="Les visites, réunions, interventions, réserves, blocages, décisions et preuves apparaîtront ici."
-    />
-  )
-
-  return <SiteChronologyComposition siteId={siteId}>{flux}</SiteChronologyComposition>
-}
-
-function PlanningView({ siteId, nextEvent }: { siteId: string; nextEvent: OverviewEventInput | null }) {
-  return (
-    <main className="grid gap-5 xl:grid-cols-[1fr_300px]">
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Planning du chantier</h2>
-            <p className="text-sm text-muted-foreground">Qui vient quand, et pour quoi faire.</p>
-          </div>
-          <Link href={`/semaine?site=${siteId}`} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-            Ouvrir la semaine
-          </Link>
-        </div>
-        <div className="grid grid-cols-5 gap-2">
-          {['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.'].map((day) => (
-            <div key={day} className="min-h-[260px] rounded-2xl border bg-muted/20 p-3">
-              <p className="text-sm font-semibold">{day}</p>
-              {nextEvent && day === 'Mar.' ? (
-                <div className="mt-4 rounded-xl border bg-sky-50 p-3 text-sm dark:bg-sky-950/20">
-                  <p className="font-medium">{nextEvent.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{formatLongEventDate(nextEvent.startsAt)}</p>
-                </div>
-              ) : (
-                <p className="mt-4 text-xs text-muted-foreground">Rien de planifié.</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-      <aside className="space-y-4">
-        <SideSummary
-          title="Cette semaine"
-          rows={[
-            ['Interventions', nextEvent?.kind === 'intervention' ? '1' : '0'],
-            ['Visites', nextEvent?.kind === 'visit' ? '1' : '0'],
-            ['Réunions', nextEvent?.kind === 'meeting' ? '1' : '0'],
-            ['Équipe prévue', 'Non affectée'],
-          ]}
-        />
-        <OverviewPanel title="Contraintes">
-          <EmptyLine>Aucune contrainte planifiée.</EmptyLine>
-        </OverviewPanel>
-      </aside>
-    </main>
-  )
-}
-
 async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; canExport: boolean }) {
   const [documents, sitePhotos, visitCaptures, proofDossiers, qr] = await Promise.all([
     listDocumentsForTarget('site', siteId).catch(() => []),
@@ -661,10 +517,56 @@ function captureKindLabel(kind: string): string {
   return 'Capture de visite'
 }
 
-async function MemoireView({ siteId, signals }: { siteId: string; signals: MemorySignal[] }) {
+async function MemoireView({
+  siteId,
+  signals,
+  interventions,
+  traceCount,
+}: {
+  siteId: string
+  signals: MemorySignal[]
+  interventions: SupervisorInterventionRow[]
+  traceCount: number
+}) {
   const subjects = await listSubjectsBySite(siteId).catch(() => [])
 
-  return <MemoryWorkspace siteId={siteId} signals={signals} subjects={subjects} />
+  return (
+    <MemoryWorkspace
+      siteId={siteId}
+      signals={signals}
+      subjects={subjects}
+      relays={toSiteRelays(interventions)}
+      traceCount={traceCount}
+    />
+  )
+}
+
+/** Qui connaît ce chantier : uniquement les équipes réellement venues (intervention
+ *  terminée ou validée). Une intervention planifiée ne prouve aucune présence. */
+function toSiteRelays(interventions: SupervisorInterventionRow[]): SiteRelay[] {
+  const byTeam = new Map<string, SiteRelay>()
+
+  for (const intervention of interventions) {
+    if (intervention.status !== 'completed' && intervention.status !== 'validated') continue
+    const teamId = intervention.assigned_team_id ?? intervention.team?.id
+    if (!teamId) continue
+
+    const passage = (intervention.scheduled_for ?? intervention.scheduled_at).slice(0, 10)
+    const existing = byTeam.get(teamId)
+    if (existing) {
+      existing.interventions += 1
+      if (!existing.lastPassage || passage > existing.lastPassage) existing.lastPassage = passage
+    } else {
+      byTeam.set(teamId, {
+        id: teamId,
+        name: intervention.team?.name ?? 'Équipe',
+        lastPassage: passage,
+        interventions: 1,
+      })
+    }
+  }
+
+  return [...byTeam.values()].sort((a, b) => (b.lastPassage ?? '').localeCompare(a.lastPassage ?? ''))
 }
 
 async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> {
@@ -734,228 +636,33 @@ async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> 
   }
 }
 
-function OrganisationView() {
-  return (
-    <main className="space-y-5">
-      <ViewHeader
-        icon={Layers}
-        title="Organisation"
-        description="Comment ce chantier est structuré, exploité et transmis."
-        actions={<InlineFilters items={['Identité', 'Zones', 'Équipes', 'Missions', 'Cycles']} />}
-      />
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        <div className="divide-y">
-          {[
-            ['Identité et structure', 'Client, adresse, statut, zones et sous-périmètres.'],
-            ['Acteurs', 'Équipes, intervenants, entreprises et référents.'],
-            ['Missions et cycles', 'Missions récurrentes, cycles, fermetures et habitudes.'],
-            ['Droits et paramètres', 'Droits, rattachements et configuration du chantier.'],
-          ].map(([title, detail]) => (
-            <div key={title} className="grid gap-2 py-5 first:pt-0 last:pb-0 md:grid-cols-[220px_1fr_auto] md:items-center">
-              <h2 className="font-semibold">{title}</h2>
-              <p className="text-sm text-muted-foreground">{detail}</p>
-              <span className="text-sm text-muted-foreground">À compléter</span>
-            </div>
-          ))}
-        </div>
-      </section>
-    </main>
-  )
-}
-
-function ViewIntro({
-  icon: Icon,
-  title,
-  question,
-  detail,
+async function OrganisationView({
+  siteId,
+  identity,
+  missions,
+  cycles,
+  teams,
+  relays,
 }: {
-  icon: ComponentType<{ className?: string }>
-  title: string
-  question: string
-  detail: string
+  siteId: string
+  identity: SiteIdentity
+  missions: DbMission[]
+  cycles: PlanningCycle[]
+  teams: DbTeam[]
+  relays: SiteRelay[]
 }) {
-  return (
-    <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-      <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900">
-        <Icon className="h-5 w-5" />
-      </span>
-      <h1 className="mt-4 text-xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-2 text-sm font-medium">{question}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-    </section>
-  )
-}
+  const passations = await listHandoverBriefsBySite(siteId).catch(() => [])
 
-function ViewHeader({
-  icon: Icon,
-  title,
-  description,
-  actions,
-}: {
-  icon: ComponentType<{ className?: string }>
-  title: string
-  description: string
-  actions?: ReactNode
-}) {
   return (
-    <section className="flex flex-col gap-4 rounded-[22px] border bg-card px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900">
-          <Icon className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      {actions && <div className="shrink-0">{actions}</div>}
-    </section>
-  )
-}
-
-function InlineFilters({ items }: { items: string[] }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item, index) => (
-        <span
-          key={item}
-          className={cn(
-            'rounded-full border px-3 py-1.5 text-sm',
-            index === 0 ? 'bg-foreground text-background' : 'text-muted-foreground',
-          )}
-        >
-          {item}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-function FilterPanel({ title, items }: { title: string; items: string[] }) {
-  return (
-    <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        <Filter className="h-4 w-4" />
-        {title}
-      </h2>
-      <div className="flex flex-wrap gap-2">
-        {items.map((item, index) => (
-          <span
-            key={item}
-            className={cn(
-              'rounded-full border px-3 py-1.5 text-sm',
-              index === 0 ? 'bg-foreground text-background' : 'text-muted-foreground',
-            )}
-          >
-            {item}
-          </span>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function SmartEmptyState({
-  icon: Icon,
-  title,
-  detail,
-}: {
-  icon: ComponentType<{ className?: string }>
-  title: string
-  detail: string
-}) {
-  return (
-    <div className="rounded-2xl border border-dashed bg-muted/20 p-8 text-center">
-      <Icon className="mx-auto h-8 w-8 text-muted-foreground" />
-      <p className="mt-3 font-medium">{title}</p>
-      <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">{detail}</p>
-    </div>
-  )
-}
-
-function SideSummary({ title, rows }: { title: string; rows: Array<[string, string]> }) {
-  return (
-    <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
-      <dl className="space-y-3">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-3">
-            <dt className="text-sm text-muted-foreground">{label}</dt>
-            <dd className="text-sm font-medium">{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  )
-}
-
-function TimelineList({ changes }: { changes: OverviewChangeInput[] }) {
-  return (
-    <ol className="relative space-y-5 border-l border-border pl-5">
-      {changes.map((change) => (
-        <li key={change.id} className="relative">
-          <span className="absolute -left-[25px] top-1.5 h-3 w-3 rounded-full bg-primary ring-4 ring-background" />
-          {change.href ? (
-            <Link href={change.href} className="block rounded-xl p-2 hover:bg-muted/50">
-              <TimelineContent change={change} />
-            </Link>
-          ) : (
-            <div className="rounded-xl p-2">
-              <TimelineContent change={change} />
-            </div>
-          )}
-        </li>
-      ))}
-    </ol>
-  )
-}
-
-function VisitTimeline({ visits, siteId }: { visits: VisitWithCounts[]; siteId: string }) {
-  return (
-    <ol className="relative space-y-4 border-l border-border pl-5">
-      {visits.map(({ visit, photos, notes, reserves, actions }) => (
-        <li key={visit.id} className="relative">
-          <span className="absolute -left-[25px] top-4 h-3 w-3 rounded-full bg-sky-500 ring-4 ring-background" />
-          <Link
-            href={`/sites/${siteId}/visites/${visit.id}`}
-            className="block rounded-2xl border p-4 transition hover:border-foreground/30 hover:bg-muted/30"
-          >
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold">{formatVisitDate(visit.started_at ?? visit.created_at)}</p>
-                  {!visit.ended_at && (
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-                      En cours
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {visit.objective?.trim() || 'Visite terrain'}
-                  {visit.started_at && visit.ended_at ? ` · ${formatDuration(visit.started_at, visit.ended_at)}` : ''}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span>{photos} photo{photos > 1 ? 's' : ''}</span>
-                <span>{notes} note{notes > 1 ? 's' : ''}</span>
-                <span>{reserves} réserve{reserves > 1 ? 's' : ''}</span>
-                <span>{actions} action{actions > 1 ? 's' : ''}</span>
-              </div>
-            </div>
-          </Link>
-        </li>
-      ))}
-    </ol>
-  )
-}
-
-function TimelineContent({ change }: { change: OverviewChangeInput }) {
-  return (
-    <>
-      <p className="text-sm font-semibold">{change.title}</p>
-      {change.detail && <p className="mt-1 text-sm text-muted-foreground">{change.detail}</p>}
-      <p className="mt-1 text-xs text-muted-foreground">{formatRelativeDate(change.occurredAt)}</p>
-    </>
+    <OrganisationWorkspace
+      siteId={siteId}
+      identity={identity}
+      missions={missions}
+      cycles={cycles}
+      teams={teams}
+      relays={relays}
+      passations={passations}
+    />
   )
 }
 
@@ -1218,15 +925,6 @@ function formatLongEventDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-
-function formatVisitDate(iso: string): string {
-  return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-}
-
-function formatDuration(start: string, end: string): string {
-  const minutes = Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000))
-  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
 
 function formatRelativeDate(iso: string): string {

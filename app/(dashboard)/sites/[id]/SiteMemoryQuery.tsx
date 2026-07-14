@@ -155,8 +155,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           <Search className="h-4 w-4 text-muted-foreground" /> Interroger ce chantier
         </h2>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          MemorIA retrouve dans la mémoire du chantier (observations de visite, anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus, documents : CCTP, marché, procédures…).
-          Il vous montre les traces&nbsp;: il ne répond pas à votre place.
+          MemorIA vous montre les traces du chantier&nbsp;: il ne répond pas à votre place.
         </p>
       </div>
 
@@ -199,6 +198,14 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
                 {question}
               </button>
             ))}
+        </div>
+      </div>
+
+      {/* Explorer ≠ chercher. Les équipes et les photos ne sont pas des suggestions de
+          recherche : ce sont deux entrées directes dans la mémoire. */}
+      <div className="space-y-1.5">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Explorer</p>
+        <div className="flex flex-wrap gap-1.5">
           <button type="button" onClick={loadTeams} disabled={pending}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
             <Users className="h-3 w-3" /> Qui connaît ce chantier&nbsp;?
