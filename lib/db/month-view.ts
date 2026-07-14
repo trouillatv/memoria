@@ -23,6 +23,12 @@ import type { DayFacts, TeamDayFacts } from '@/lib/planning/month-view'
 export interface MonthRow {
   siteId: string
   siteName: string
+  /**
+   * Le client. Sans lui, « Pointière » ne désigne rien : il y a le magasin
+   * Discount de Pointière et la mairie de Pointière. C'est le couple
+   * client + lieu qui identifie un chantier (cf. lib/labels/site-label).
+   */
+  clientName: string | null
   /** date → faits. Toutes les dates du mois sont présentes. */
   days: Record<string, DayFacts>
 }
@@ -50,7 +56,7 @@ export async function buildMonthRows(params: {
   const { data: intvRows } = await db
     .from('interventions')
     .select(
-      'id, template_id, scheduled_for, status, assigned_team_id, planned_start, planned_end, missions!inner(site_id, sites!inner(id, name, organization_id))',
+      'id, template_id, scheduled_for, status, assigned_team_id, planned_start, planned_end, missions!inner(site_id, sites!inner(id, name, organization_id, client:clients(name)))',
     )
     .gte('scheduled_for', from)
     .lte('scheduled_for', to)
@@ -63,17 +69,23 @@ export async function buildMonthRows(params: {
     assigned_team_id: string | null
     planned_start: string | null
     planned_end: string | null
-    missions?: { site_id?: string; sites?: { id?: string; name?: string; organization_id?: string | null } }
+    missions?: { site_id?: string; sites?: { id?: string; name?: string; organization_id?: string | null; client?: { name?: string } | Array<{ name?: string }> | null } }
   }
 
   const interventions: MonthIntervention[] = []
   const siteNames = new Map<string, string>()
+  // Le client du chantier — « Pointière » seul ne désigne rien.
+  const clientNames = new Map<string, string | null>()
   for (const r of ((intvRows ?? []) as unknown as Raw[])) {
     const site = r.missions?.sites
     if (!site?.id) continue
     // Isolation : le service role contourne la RLS — le filtre org vit ici.
     if (orgId && site.organization_id !== orgId) continue
     siteNames.set(site.id, site.name ?? 'Chantier')
+    {
+      const c = Array.isArray(site.client) ? site.client[0] : site.client
+      clientNames.set(site.id, c?.name ?? null)
+    }
     interventions.push({
       id: r.id,
       site_id: site.id,
@@ -91,7 +103,7 @@ export async function buildMonthRows(params: {
   const { data: tplRows } = await db
     .from('intervention_templates')
     .select(
-      'id, frequency, slots, day_of_week, day_of_month, planned_start_hhmm, planned_end_hhmm, starts_on, ends_on, cycle_length_weeks, anchor_date, week_index, assigned_team_id, cycle_id, missions!inner(id, site_id, sites!inner(id, name, organization_id))',
+      'id, frequency, slots, day_of_week, day_of_month, planned_start_hhmm, planned_end_hhmm, starts_on, ends_on, cycle_length_weeks, anchor_date, week_index, assigned_team_id, cycle_id, missions!inner(id, site_id, sites!inner(id, name, organization_id, client:clients(name)))',
     )
     .eq('active', true)
     .is('deleted_at', null)
@@ -99,7 +111,7 @@ export async function buildMonthRows(params: {
   type RawTpl = ProjectableTemplate & {
     assigned_team_id: string | null
     cycle_id: string | null
-    missions?: { id?: string; site_id?: string; sites?: { id?: string; name?: string; organization_id?: string | null } }
+    missions?: { id?: string; site_id?: string; sites?: { id?: string; name?: string; organization_id?: string | null; client?: { name?: string } | Array<{ name?: string }> | null } }
   }
 
   const templatesBySite = new Map<string, RawTpl[]>()
@@ -111,6 +123,10 @@ export async function buildMonthRows(params: {
     if (!site?.id) continue
     if (orgId && site.organization_id !== orgId) continue
     siteNames.set(site.id, site.name ?? 'Chantier')
+    {
+      const c = Array.isArray(site.client) ? site.client[0] : site.client
+      clientNames.set(site.id, c?.name ?? null)
+    }
     const list = templatesBySite.get(site.id) ?? []
     list.push({ ...t, mission_id: t.missions?.id ?? t.mission_id })
     templatesBySite.set(site.id, list)
@@ -210,7 +226,12 @@ export async function buildMonthRows(params: {
       }
     }
 
-    rows.push({ siteId, siteName: siteNames.get(siteId) ?? 'Chantier', days: dayFacts })
+    rows.push({
+      siteId,
+      siteName: siteNames.get(siteId) ?? 'Chantier',
+      clientName: clientNames.get(siteId) ?? null,
+      days: dayFacts,
+    })
   }
 
   return rows.sort((a, b) => a.siteName.localeCompare(b.siteName, 'fr'))
