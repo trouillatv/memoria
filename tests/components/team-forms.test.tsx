@@ -268,7 +268,7 @@ describe('EditTeamMembersDialog', () => {
     expect(arg.userId).toBe('u-1')
   })
 
-  it('affiche un message quand il n’y a aucun candidat à ajouter', () => {
+  it('offre un GESTE quand il n’y a aucun candidat à ajouter', () => {
     render(
       <EditTeamMembersDialog
         teamId="t-1"
@@ -278,7 +278,12 @@ describe('EditTeamMembersDialog', () => {
       />
     )
     fireEvent.click(screen.getByTestId('edit-members-trigger-t-1'))
-    expect(screen.getByText(/aucune personne disponible/i)).toBeInTheDocument()
+    expect(screen.getByText(/personne à ajouter pour l['’]instant/i)).toBeInTheDocument()
+    // Nommer un manque sans offrir le geste qui le comble, c'est une impasse :
+    // l'ancien message renvoyait vers « la page Intervenants ou Administration »
+    // sans même un lien. Désormais on ouvre la porte.
+    const create = screen.getByRole('link', { name: /créer une personne/i })
+    expect(create).toHaveAttribute('href', '/intervenants')
     expect(screen.queryByTestId('add-member-submit')).not.toBeInTheDocument()
   })
 

@@ -10,7 +10,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { UserPlus, UserMinus, Users } from 'lucide-react'
+import Link from 'next/link'
+import { UserPlus, UserMinus, Users, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -167,10 +168,20 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
               Ajouter un membre
             </Label>
             {candidates.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground italic">
-                Aucune personne disponible. Créez d’abord un compte depuis la
-                page Intervenants ou Administration.
-              </p>
+              // Nommer un manque sans offrir le geste, c'est une impasse : ce
+              // message n'avait même pas de lien. On ouvre la porte.
+              <div className="mt-2 space-y-1.5 rounded-lg border border-dashed p-3">
+                <p className="text-sm text-muted-foreground">
+                  Personne à ajouter pour l&apos;instant.
+                </p>
+                <Link
+                  href="/intervenants"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-foreground underline underline-offset-4 hover:no-underline"
+                >
+                  Créer une personne
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                </Link>
+              </div>
             ) : (
               <div className="mt-2 flex gap-2">
                 <Select

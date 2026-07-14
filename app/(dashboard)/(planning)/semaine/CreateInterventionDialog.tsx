@@ -18,6 +18,7 @@ import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
 import { createMissionAction } from '@/app/(dashboard)/missions/actions'
+import { createTeamAction } from '@/app/(dashboard)/equipes/actions'
 import {
   pickInitialMissionId,
   mergeMissionOptions,
@@ -91,6 +92,13 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   // PR 2 (lot Y) : les missions créées inline sont visibles et sélectionnées
   // IMMÉDIATEMENT — la version serveur reprend la main au refresh (dédup).
   const [inlineMissions, setInlineMissions] = useState<MissionOption[]>([])
+  // Même principe pour l'équipe. Le maillon manquant : on pouvait créer une
+  // mission sans quitter l'écran, mais pas une équipe — et sans équipe, le
+  // planificateur laissait l'utilisateur devant un select vide, sans un mot.
+  const [inlineTeams, setInlineTeams] = useState<TeamOption[]>([])
+  const [creatingTeam, setCreatingTeam] = useState(false)
+  const [newTeamName, setNewTeamName] = useState('')
+  const [teamPending, startTeamCreate] = useTransition()
   const missions = useMemo(
     () => mergeMissionOptions(missionsFromServer, inlineMissions),
     [missionsFromServer, inlineMissions],
@@ -180,10 +188,31 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   }, [missions])
 
   const sortedTeams = useMemo(() => {
-    return [...teams].sort((a, b) =>
+    const byId = new Map<string, TeamOption>()
+    for (const t of [...teams, ...inlineTeams]) byId.set(t.id, t)
+    return [...byId.values()].sort((a, b) =>
       a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }),
     )
-  }, [teams])
+  }, [teams, inlineTeams])
+
+  function submitNewTeam() {
+    const name = newTeamName.trim()
+    if (!name || teamPending) return
+    startTeamCreate(async () => {
+      const r = await createTeamAction({ name })
+      if (!r.ok || !r.teamId) {
+        toast.error(r.error ?? 'Création impossible')
+        return
+      }
+      const teamId = r.teamId
+      setInlineTeams((prev) => [...prev, { id: teamId, name, color: null, memberCount: 0 }])
+      setTeamChoice(teamId) // l'équipe créée est SÉLECTIONNÉE, on reste ici
+      setCreatingTeam(false)
+      setNewTeamName('')
+      toast.success('Équipe créée et sélectionnée')
+      router.refresh()
+    })
+  }
 
   const selectedMission = missions.find((m) => m.id === missionId) ?? null
   const visibleRotations = visibleRotationOptions(rotations, selectedMission, initialSiteId)
@@ -470,9 +499,71 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
                 </optgroup>
               )}
             </select>
-            <p className="text-[11px] text-muted-foreground">
-              Tu peux toujours réassigner plus tard par drag&nbsp;&amp;&nbsp;drop dans la grille.
-            </p>
+
+            {/* Le maillon manquant. On pouvait créer une mission sans quitter
+                l'écran — pas une équipe. Sans équipe, le select se contentait de
+                masquer son groupe : l'utilisateur voyait un choix vide, sans un
+                mot lui disant quoi faire. */}
+            {creatingTeam ? (
+              <div className="space-y-1.5 rounded-lg border border-dashed p-2.5">
+                <label htmlFor="new-team-name" className="text-[11px] font-medium text-muted-foreground">
+                  Nom de la nouvelle équipe
+                </label>
+                <input
+                  id="new-team-name"
+                  type="text"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      submitNewTeam()
+                    }
+                  }}
+                  placeholder="ex. Équipe Nord, Jean-Paul…"
+                  autoFocus
+                  disabled={teamPending}
+                  className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={submitNewTeam}
+                    disabled={teamPending || newTeamName.trim().length === 0}
+                  >
+                    {teamPending ? 'Création…' : 'Créer et sélectionner'}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => { setCreatingTeam(false); setNewTeamName('') }}
+                    disabled={teamPending}
+                    className="text-xs text-muted-foreground underline hover:text-foreground"
+                  >
+                    Annuler
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Vous ajouterez les personnes plus tard, depuis la fiche de l&apos;équipe.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-[11px] text-muted-foreground">
+                  {sortedTeams.length === 0
+                    ? "Aucune équipe pour l'instant — vous pouvez en créer une ici, ou planifier sans équipe."
+                    : 'Vous pouvez toujours réassigner plus tard par glisser-déposer dans la grille.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCreatingTeam(true)}
+                  disabled={pending}
+                  className="text-xs text-muted-foreground underline hover:text-foreground shrink-0"
+                >
+                  + Nouvelle équipe
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
