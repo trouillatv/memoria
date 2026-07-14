@@ -493,7 +493,8 @@ export async function updateSite(id: string, patch: SiteFieldsPatch): Promise<vo
 }
 
 export async function createSite(input: {
-  client_id: string
+  /** null = chantier sans client (prévisite, repérage, urgence). Assumé, mig 210. */
+  client_id: string | null
   contract_id: string | null
   name: string
   address?: string | null
