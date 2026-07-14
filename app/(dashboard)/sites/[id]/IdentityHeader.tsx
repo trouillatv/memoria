@@ -18,11 +18,18 @@ export function IdentityHeader({ site }: { site: SiteIdentity }) {
 
   return (
     <div className="space-y-1.5">
-      {/* Badge client — la "catégorie" du lieu */}
-      {site.clientName && (
+      {/* Badge client — la "catégorie" du lieu. Son absence se DIT : un chantier
+          sans client est une décision assumée (prévisite, repérage, urgence),
+          pas un oubli à masquer. Le rattachement reste possible à tout moment. */}
+      {site.clientName ? (
         <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/60 border text-xs text-muted-foreground">
           <Building2 className="h-3 w-3 shrink-0" aria-hidden />
           {site.clientName}
+        </div>
+      ) : (
+        <div className="inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground">
+          <Building2 className="h-3 w-3 shrink-0" aria-hidden />
+          Client non renseigné
         </div>
       )}
       {metaParts.length > 0 && (

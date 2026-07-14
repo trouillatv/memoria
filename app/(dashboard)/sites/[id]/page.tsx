@@ -59,6 +59,8 @@ import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbPr
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLauncher'
 import { IdentityHeader } from './IdentityHeader'
+import { AttachClientButton } from './AttachClientButton'
+import { listClients } from '@/lib/db/sites'
 import { SiteBriefButton } from './SiteBriefButton'
 import { SiteAddMenu } from './SiteAddMenu'
 import { SiteMemoryQuery } from './SiteMemoryQuery'
@@ -169,6 +171,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                 <div className="mt-2 text-sm text-muted-foreground">
                   <IdentityHeader site={identity} />
                 </div>
+                {/* Le « sans client » ne doit jamais être une impasse (mig 210). */}
+                {!identity.clientName && (
+                  <div className="mt-2">
+                    <AttachClientButton siteId={id} clients={await listClients().catch(() => [])} />
+                  </div>
+                )}
               </div>
             </div>
 

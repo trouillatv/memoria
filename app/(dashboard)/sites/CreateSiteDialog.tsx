@@ -69,6 +69,8 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
   const [clientId, setClientId] = useState('')
   const [clientNameNew, setClientNameNew] = useState('')
   const [showNewClient, setShowNewClient] = useState(false)
+  /** « Continuer sans client » — une décision explicite, jamais un champ vide. */
+  const [noClient, setNoClient] = useState(false)
   const [contractId, setContractId] = useState('')
   const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
@@ -82,7 +84,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
   const [serverSimilar, setServerSimilar] = useState<SimilarSiteResult[]>([])
 
   function reset() {
-    setName(''); setClientId(''); setClientNameNew(''); setShowNewClient(false)
+    setName(''); setClientId(''); setClientNameNew(''); setShowNewClient(false); setNoClient(false)
     setContractId(''); setAddress(''); setNotes('')
     setExtended(emptySiteExtendedState())
     setLiveSimilar([]); setServerSimilar([])
@@ -109,7 +111,9 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
   async function submit(force: boolean) {
     const fd = new FormData()
     fd.set('name', name.trim())
-    if (showNewClient) {
+    if (noClient) {
+      fd.set('no_client', 'true')
+    } else if (showNewClient) {
       fd.set('client_name_new', clientNameNew.trim())
     } else {
       fd.set('client_id', clientId)
@@ -138,9 +142,11 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
     })
   }
 
+  // « Sans client » est une décision valide : elle débloque la création, mais
+  // seulement parce qu'elle a été prise — pas parce qu'un champ est resté vide.
   const canSubmit =
     name.trim().length > 0 &&
-    (showNewClient ? clientNameNew.trim().length > 0 : clientId.length > 0)
+    (noClient || (showNewClient ? clientNameNew.trim().length > 0 : clientId.length > 0))
 
   // -------------------------------------------------------------------------
   if (step === 'closed') {
@@ -234,8 +240,23 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
 
             {/* Client */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Client *</label>
-              {!showNewClient ? (
+              <label className="text-xs font-medium text-muted-foreground">Client</label>
+              {noClient ? (
+                <div className="space-y-1.5 rounded-lg border border-dashed px-3 py-2">
+                  <p className="text-xs font-medium">Sans client pour l&apos;instant</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Vous pourrez associer ce chantier à un client plus tard.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setNoClient(false)}
+                    className="text-xs text-muted-foreground underline hover:text-foreground"
+                    disabled={pending}
+                  >
+                    Choisir un client finalement
+                  </button>
+                </div>
+              ) : !showNewClient ? (
                 <div className="space-y-1.5">
                   <div className="relative">
                     <select
@@ -260,16 +281,17 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                     >
                       + Nouveau client
                     </button>
-                    {/* F1 — chantier sans client commercial (sinistre, interne…) :
-                        on ne bloque JAMAIS la création. Classé sous « Interne »
-                        (client réel créé/réutilisé — zéro impact schéma/droits). */}
+                    {/* Le VRAI « sans client » (mig 210). Avant, ce bouton créait un
+                        client FICTIF nommé « Interne » — un contournement du NOT NULL
+                        qui polluait la base d'un client qui n'existe pas. Le chantier
+                        peut désormais n'en avoir aucun, et c'est une DÉCISION. */}
                     <button
                       type="button"
-                      onClick={() => { setShowNewClient(true); setClientId(''); setClientNameNew('Interne') }}
+                      onClick={() => { setNoClient(true); setShowNewClient(false); setClientId(''); setClientNameNew('') }}
                       className="text-xs text-muted-foreground hover:text-foreground underline"
                       disabled={pending}
                     >
-                      Sans client (interne)
+                      Continuer sans client
                     </button>
                   </div>
                 </div>

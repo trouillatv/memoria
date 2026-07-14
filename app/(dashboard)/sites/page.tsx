@@ -79,10 +79,14 @@ export default async function SitesGlobalPage() {
                 <div className="flex items-center gap-2 pb-1 border-b">
                   <Building2 className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
                   <h2 className="text-sm font-semibold">
-                    {g.clientName ?? 'Client non associé'}
+                    {g.clientName ?? 'Sans client'}
                   </h2>
                   <span className="text-xs text-muted-foreground ml-auto tabular-nums">
-                    {g.sites.length} site{g.sites.length > 1 ? 's' : ''}
+                    {/* Un chantier sans client se voit — l'administration corrige,
+                        sans jamais bloquer le travail sur le terrain. */}
+                    {g.clientId === null
+                      ? `${g.sites.length} chantier${g.sites.length > 1 ? 's' : ''} à rattacher`
+                      : `${g.sites.length} chantier${g.sites.length > 1 ? 's' : ''}`}
                   </span>
                 </div>
 
