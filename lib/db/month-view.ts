@@ -68,7 +68,7 @@ export async function buildMonthRows(params: {
 
   const interventions: MonthIntervention[] = []
   const siteNames = new Map<string, string>()
-  for (const r of ((intvRows ?? []) as Raw[])) {
+  for (const r of ((intvRows ?? []) as unknown as Raw[])) {
     const site = r.missions?.sites
     if (!site?.id) continue
     // Isolation : le service role contourne la RLS — le filtre org vit ici.
@@ -104,7 +104,9 @@ export async function buildMonthRows(params: {
 
   const templatesBySite = new Map<string, RawTpl[]>()
   const templatesById = new Map<string, RawTpl>()
-  for (const t of ((tplRows ?? []) as RawTpl[])) {
+  // Supabase type la jointure `missions` en tableau ; au runtime c'est un objet
+  // (relation N→1). Le passage par `unknown` est le constat, pas un contournement.
+  for (const t of ((tplRows ?? []) as unknown as RawTpl[])) {
     const site = t.missions?.sites
     if (!site?.id) continue
     if (orgId && site.organization_id !== orgId) continue
