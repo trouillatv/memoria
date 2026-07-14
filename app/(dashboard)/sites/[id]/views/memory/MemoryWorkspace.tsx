@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { BookOpen, GitBranch, Search, Users } from 'lucide-react'
+import { BookOpen, GitBranch, Search, Send, Users } from 'lucide-react'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 import type { SubjectSummary } from '@/lib/db/subjects'
+import type { DbHandoverBrief, DbTeam } from '@/types/db'
 import { SiteMemoryQuery } from '../../SiteMemoryQuery'
+import { PrepareSitePassationButton } from './PrepareSitePassationButton'
 
 export interface SiteRelay {
   id: string
@@ -14,16 +16,22 @@ export interface SiteRelay {
 
 export function MemoryWorkspace({
   siteId,
+  siteName = 'ce chantier',
   signals,
   subjects,
   relays = [],
+  teams = [],
+  passations = [],
   traceCount = 0,
   questionSlot,
 }: {
   siteId: string
+  siteName?: string
   signals: MemorySignal[]
   subjects: SubjectSummary[]
   relays?: SiteRelay[]
+  teams?: DbTeam[]
+  passations?: DbHandoverBrief[]
   traceCount?: number
   questionSlot?: ReactNode
 }) {
@@ -170,8 +178,67 @@ export function MemoryWorkspace({
           />
         )}
       </section>
+
+      {/* La passation n'est pas une donnée de structure : c'est une LECTURE CONDENSÉE
+          de la mémoire du chantier. La mémoire répond « que sait ce chantier ? » ;
+          la passation répond « que faut-il transmettre de ce savoir, maintenant ? ».
+          Même domaine, donc même onglet — et un onglet réel, atteignable au doigt. */}
+      <section className="rounded-[22px] border border-violet-100 bg-card p-5 shadow-sm dark:border-violet-950/50" aria-labelledby="passation-title">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <Send className="mt-0.5 h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" />
+            <div className="min-w-0">
+              <h2 id="passation-title" className="text-lg font-semibold">Transmettre ce chantier</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Tout ce qu&apos;il faut comprendre pour reprendre {siteName} sans repartir de zéro : situation,
+                travail restant, réserves, décisions, prochaines échéances, équipes, documents, et ce qu&apos;il
+                faut savoir du lieu.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0">
+            <PrepareSitePassationButton siteId={siteId} siteName={siteName} teams={teams} />
+          </div>
+        </div>
+
+        {passations.length > 0 && (
+          <div className="mt-4 divide-y rounded-2xl border">
+            {passations.map((brief) => (
+              <Link
+                key={brief.id}
+                href={`/handovers/${brief.id}`}
+                className="flex flex-wrap items-center justify-between gap-2 p-4 hover:bg-muted/40"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{brief.title}</span>
+                  <span className="mt-0.5 block text-sm text-muted-foreground">
+                    {passationStatusLabel(brief.status)}
+                    {brief.effective_date && ` · à partir du ${formatPassationDate(brief.effective_date)}`}
+                  </span>
+                </span>
+                <span className="text-sm text-muted-foreground">Ouvrir</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   )
+}
+
+function passationStatusLabel(status: string): string {
+  if (status === 'shared') return 'Partagée'
+  if (status === 'acknowledged') return 'Reçue et confirmée'
+  if (status === 'archived') return 'Archivée'
+  return 'Brouillon — pas encore partagée'
+}
+
+function formatPassationDate(iso: string): string {
+  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
 }
 
 function UsefulEmpty({
