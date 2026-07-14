@@ -17,9 +17,12 @@ export function SourceList({ sources }: { sources: Source[] }) {
             <div className="text-foreground/85 italic leading-snug">« {s.quote} »</div>
             <div className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
               {s.type === 'pdf' && (
+                // « Page 7 » ne veut rien dire quand le dossier compte huit pièces
+                // et que chacune redémarre à la page 1. On nomme la pièce d'abord.
                 <span className="inline-flex items-center gap-1">
                   <FileText className="h-2.5 w-2.5" />
-                  PDF{typeof s.page === 'number' ? ` page ${s.page}` : ''}
+                  {s.document ?? 'PDF'}
+                  {typeof s.page === 'number' ? ` · page ${s.page}` : ''}
                 </span>
               )}
               {s.type === 'library' && (

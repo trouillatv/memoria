@@ -36,12 +36,28 @@ export function validateSources(
       if (!haystack) continue
       const needle = normalize(src.quote)
       if (haystack.includes(needle)) {
-        result.push({ ...src, verified: true })
+        // Le dossier d'AO est LU EN ENTIER : le corpus concatène les pièces, et
+        // chacune redémarre à [[page 1]]. On retrouve donc la pièce, et la page
+        // DANS cette pièce — au lieu de laisser l'agent deviner un numéro qui,
+        // seul, ne désigne plus rien.
+        const located = locateQuote(opts.extractedText!, needle)
+        result.push({
+          ...src,
+          ...(located.document ? { document: located.document } : {}),
+          ...(located.page !== undefined ? { page: located.page } : {}),
+          verified: true,
+        })
       } else {
         // Tolerance : si les 40 premiers caractères matchent, on garde mais marque non-verified
         const prefix = needle.slice(0, 40)
         if (prefix.length >= 30 && haystack.includes(prefix)) {
-          result.push({ ...src, verified: false })
+          const located = locateQuote(opts.extractedText!, prefix)
+          result.push({
+            ...src,
+            ...(located.document ? { document: located.document } : {}),
+            ...(located.page !== undefined ? { page: located.page } : {}),
+            verified: false,
+          })
         }
         // Sinon drop : on préfère pas de source à une fausse source
       }
@@ -71,6 +87,70 @@ export function validateSources(
 
 function normalize(s: string): string {
   return s.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/**
+ * OÙ, EXACTEMENT ? — la pièce, puis la page DANS cette pièce.
+ *
+ * Le corpus d'un appel d'offres est la concaténation de toutes ses pièces, chacune
+ * introduite par « === CCTP — cctp.pdf === » (cf. buildTenderCorpus). Et chaque
+ * pièce redémarre à [[page 1]] : « page 7 » ne désigne donc plus rien tant qu'on
+ * n'a pas dit DE QUELLE pièce il s'agit.
+ *
+ * On ne le demande pas à l'agent : on le CHERCHE. Une provenance devinée n'est pas
+ * une provenance — et au clic, une page fausse détruit la confiance.
+ *
+ * Un dossier mono-pièce (pas d'en-tête) reste traité comme avant : pas de document,
+ * page relative au document unique.
+ */
+const PIECE_HEADER = /^=== (.+) ===$/gm
+const PAGE_MARKER = /\[\[page (\d+)\]\]/
+
+export function locateQuote(
+  corpus: string,
+  normalizedNeedle: string,
+): { document?: string; page?: number } {
+  // 1) Découper le corpus en pièces, par leurs en-têtes.
+  const pieces: Array<{ label: string | null; text: string }> = []
+  const headers = [...corpus.matchAll(PIECE_HEADER)]
+
+  if (headers.length === 0) {
+    pieces.push({ label: null, text: corpus })
+  } else {
+    // Ce qui précède le premier en-tête (rare, mais ne doit pas disparaître).
+    const firstAt = headers[0]!.index ?? 0
+    if (firstAt > 0) pieces.push({ label: null, text: corpus.slice(0, firstAt) })
+
+    headers.forEach((h, i) => {
+      const start = (h.index ?? 0) + h[0].length
+      const end = i + 1 < headers.length ? (headers[i + 1]!.index ?? corpus.length) : corpus.length
+      pieces.push({ label: h[1]!.trim(), text: corpus.slice(start, end) })
+    })
+  }
+
+  // 2) Dans quelle pièce la citation vit-elle ?
+  for (const piece of pieces) {
+    if (!normalize(piece.text).includes(normalizedNeedle)) continue
+    const page = pageWithin(piece.text, normalizedNeedle)
+    return {
+      ...(piece.label ? { document: piece.label } : {}),
+      ...(page !== undefined ? { page } : {}),
+    }
+  }
+  return {}
+}
+
+/** La page DANS la pièce — le marqueur [[page N]] qui précède la citation. */
+function pageWithin(pieceText: string, normalizedNeedle: string): number | undefined {
+  const parts = pieceText.split(new RegExp(PAGE_MARKER.source, 'g'))
+  // parts = [avant, "1", corps1, "2", corps2, …]
+  for (let i = 1; i < parts.length; i += 2) {
+    const n = Number(parts[i])
+    const body = parts[i + 1] ?? ''
+    if (!Number.isFinite(n)) continue
+    if (normalize(body).includes(normalizedNeedle)) return n
+  }
+  return undefined
 }
 
 /**
