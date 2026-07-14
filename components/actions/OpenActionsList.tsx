@@ -9,9 +9,9 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock, Link2, AlertTriangle } from 'lucide-react'
+import { Check, MapPin, Mic, HardHat, User, Loader2, Clock, Camera, X, CalendarClock, Link2, AlertTriangle, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import { closeActionAction, markActionProgressAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction, associateActionToElementAction, listSiteSubjectsForAssociationAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, reopenActionAction, markActionProgressAction, planActionAction, listSiteMissionsForPlanningAction, listActiveTeamsForPlanningAction, associateActionToElementAction, listSiteSubjectsForAssociationAction } from '@/app/(dashboard)/actions/actions'
 import { actionHealth } from '@/lib/actions/health'
 import { looksLikeAction } from '@/lib/db/subject-doctrine'
 import type { SiteActionRow } from '@/lib/db/site-actions'
@@ -50,6 +50,7 @@ export function OpenActionsList({
   // « Fait aujourd'hui » — override local optimiste (id → fait aujourd'hui ?).
   const [progress, setProgress] = useState<Map<string, boolean>>(new Map())
   const [, startProgress] = useTransition()
+  const [reopening, startReopen] = useTransition()
 
   function dropAndRefresh(id: string) {
     setRemoved((prev) => new Set(prev).add(id))
@@ -65,6 +66,21 @@ export function OpenActionsList({
   const isDoneToday = (a: SiteActionRow) => (progress.has(a.id) ? progress.get(a.id)! : isTodayLocal(a.last_progress_at))
   const todo = visible.filter((a) => !isDoneToday(a))
   const doneToday = visible.filter((a) => isDoneToday(a))
+
+  function reopen(a: SiteActionRow) {
+    startReopen(async () => {
+      const fd = new FormData()
+      fd.set('id', a.id)
+      if (a.site_id) fd.set('site_id', a.site_id)
+      const r = await reopenActionAction(fd)
+      if (r.ok) {
+        toast.success('Action rouverte')
+        router.refresh()
+      } else {
+        toast.error(r.error)
+      }
+    })
+  }
 
   function markProgress(a: SiteActionRow, on: boolean) {
     setProgress((prev) => new Map(prev).set(a.id, on))
@@ -95,17 +111,35 @@ export function OpenActionsList({
         return (
           <li key={a.id} className={`rounded-lg border bg-card ${compact ? 'p-2.5' : 'p-3'} ${borderCls}`}>
             <div className="flex items-start gap-2.5">
-              <button
-                type="button"
-                onClick={() => setMode(isClosing ? null : { id: a.id, kind: 'close' })}
-                aria-label="Marquer l'action comme définitivement traitée"
-                aria-expanded={isClosing}
-                className={`mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors active:scale-95 ${
-                  isClosing ? 'border-emerald-500 bg-emerald-50' : 'border-foreground/30 hover:border-emerald-500 hover:bg-emerald-50'
-                }`}
-              >
-                <Check className={`h-3.5 w-3.5 ${isClosing ? 'text-emerald-600' : 'text-transparent hover:text-emerald-600'}`} />
-              </button>
+              {a.status === 'done' ? (
+                // Une action clôturée par erreur n'avait AUCUN recours : le clic
+                // était définitif. L'anomalie se rouvre, l'intervention se rouvre,
+                // le dossier de preuve se rouvre. Pas l'action. Une clôture n'est
+                // pas une preuve — c'est une déclaration, et elle peut être fausse.
+                <button
+                  type="button"
+                  onClick={() => reopen(a)}
+                  disabled={reopening}
+                  aria-label={`Rouvrir l'action « ${a.title} »`}
+                  title="Rouvrir cette action"
+                  className="mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 border-emerald-500 bg-emerald-50 flex items-center justify-center transition-colors hover:border-amber-500 hover:bg-amber-50 active:scale-95 group/reopen"
+                >
+                  <Check className="h-3.5 w-3.5 text-emerald-600 group-hover/reopen:hidden" />
+                  <RotateCcw className="hidden h-3.5 w-3.5 text-amber-700 group-hover/reopen:block" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMode(isClosing ? null : { id: a.id, kind: 'close' })}
+                  aria-label="Marquer l'action comme définitivement traitée"
+                  aria-expanded={isClosing}
+                  className={`mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors active:scale-95 ${
+                    isClosing ? 'border-emerald-500 bg-emerald-50' : 'border-foreground/30 hover:border-emerald-500 hover:bg-emerald-50'
+                  }`}
+                >
+                  <Check className={`h-3.5 w-3.5 ${isClosing ? 'text-emerald-600' : 'text-transparent hover:text-emerald-600'}`} />
+                </button>
+              )}
 
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium leading-snug">{a.title}</div>

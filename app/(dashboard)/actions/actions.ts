@@ -194,6 +194,42 @@ export async function closeActionAction(
   return { ok: true }
 }
 
+/**
+ * ROUVRIR une action clôturée par erreur.
+ *
+ * L'anomalie se rouvre. L'intervention se rouvre. Le dossier de preuve se rouvre.
+ * L'action, non : un clic sur « Terminé » était définitif — et il n'existait aucun
+ * recours. Une clôture par mégarde effaçait le suivi d'un engagement, sans retour.
+ *
+ * La clôture n'est pas une preuve : c'est une déclaration. Elle peut être fausse,
+ * et donc se défaire. Ce qu'on ne détruit pas, en revanche, c'est ce qui a été
+ * DÉCLARÉ à la clôture (commentaire, photo) : la trace reste, même rouverte —
+ * on ne réécrit pas ce qui a été dit.
+ */
+export async function reopenActionAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = formData.get('id')
+  if (typeof id !== 'string' || !IdSchema.safeParse(id).success) {
+    return { ok: false, error: 'Action invalide' }
+  }
+  const siteId = typeof formData.get('site_id') === 'string' ? (formData.get('site_id') as string) : undefined
+
+  const auth = await requireOperator()
+  if (!auth.ok) return auth
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('site_actions')
+    .update({ status: 'open', done_at: null })
+    .eq('id', id)
+    .eq('status', 'done')
+  if (error) return { ok: false, error: 'Échec de la réouverture' }
+
+  revalidateActionSurfaces(siteId)
+  return { ok: true }
+}
+
 /** Missions du site (pour le sélecteur de planification). Chargé à la demande. */
 export async function listSiteMissionsForPlanningAction(
   siteId: string,
