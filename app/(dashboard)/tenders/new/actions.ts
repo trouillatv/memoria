@@ -14,6 +14,7 @@ import {
   countAnalysesToday,
   attachTenderToDossier,
 } from '@/lib/db/tenders'
+import { detectPieceKind } from '@/lib/tenders/pieces'
 
 async function requireManagerOrAdmin() {
   const supabase = await createServerClient()
@@ -25,6 +26,8 @@ async function requireManagerOrAdmin() {
 }
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
+/** Un dossier d'AO tient en une dizaine de pièces ; au-delà, c'est une erreur de dépôt. */
+const MAX_PIECES = 12
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -37,10 +40,15 @@ const createSchema = z.object({
 export async function createTenderAction(formData: FormData) {
   const userId = await requireManagerOrAdmin()
 
-  const file = formData.get('file')
-  if (!(file instanceof File)) return { error: 'PDF manquant' }
-  if (file.type !== 'application/pdf') return { error: 'Format PDF requis' }
-  if (file.size > MAX_PDF_BYTES) return { error: 'PDF > 20 MB' }
+  // Un AO n'est pas un document : c'est un dossier de pièces (RC, CCAP, CCTP,
+  // DPGF, BPU, plans). On accepte donc N fichiers — un seul reste valide.
+  const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
+  if (files.length === 0) return { error: 'Aucune pièce jointe' }
+  if (files.length > MAX_PIECES) return { error: `Trop de pièces (${files.length}, maximum ${MAX_PIECES})` }
+  for (const f of files) {
+    if (f.type !== 'application/pdf') return { error: `Format PDF requis : ${f.name}` }
+    if (f.size > MAX_PDF_BYTES) return { error: `Pièce trop lourde (> 20 Mo) : ${f.name}` }
+  }
 
   const parsed = createSchema.safeParse({
     title: formData.get('title'),
@@ -70,31 +78,37 @@ export async function createTenderAction(formData: FormData) {
     await attachTenderToDossier(tenderId, parsed.data.dossier_id).catch(() => {})
   }
 
-  // 2. Upload PDF to bucket
+  // 2-3. Déposer CHAQUE pièce et créer sa ligne. Le PDF est stocké ; le TEXTE
+  //      n'est PAS extrait ici — l'extraction synchrone (pdf-parse) bloquait le
+  //      formulaire à l'infini. Elle a lieu dans la route /analyze, pièce par pièce.
+  //
+  //      La nature de la pièce est DÉDUITE du nom de fichier (déterministe, zéro
+  //      IA). Elle peut être nulle : « pièce non qualifiée » est une réponse
+  //      honnête, l'utilisateur corrigera.
   const supabase = createAdminClient()
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
-  const storagePath = `${tenderId}/${Date.now()}-${safeName}`
-  const buffer = Buffer.from(await file.arrayBuffer())
+  for (const file of files) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
+    const storagePath = `${tenderId}/${Date.now()}-${safeName}`
+    const buffer = Buffer.from(await file.arrayBuffer())
 
-  const { error: uploadErr } = await supabase.storage
-    .from('tender-documents')
-    .upload(storagePath, buffer, { contentType: 'application/pdf', upsert: false })
-  if (uploadErr) {
-    await updateTenderStatus(tenderId, 'failed', uploadErr.message)
-    return { error: `Upload échoué : ${uploadErr.message}` }
+    const { error: uploadErr } = await supabase.storage
+      .from('tender-documents')
+      .upload(storagePath, buffer, { contentType: 'application/pdf', upsert: false })
+    if (uploadErr) {
+      await updateTenderStatus(tenderId, 'failed', uploadErr.message)
+      return { error: `Dépôt échoué (${file.name}) : ${uploadErr.message}` }
+    }
+
+    await createTenderDocument({
+      tender_id: tenderId,
+      storage_path: storagePath,
+      filename: file.name,
+      size_bytes: file.size,
+      page_count: 0,
+      extracted_text: null,
+      kind: detectPieceKind(file.name),
+    })
   }
-
-  // 3. Créer la ligne document (le PDF est stocké ; le TEXTE n'est PAS extrait
-  //    ici). L'extraction synchrone (pdf-parse) bloquait le formulaire à l'infini
-  //    (« Upload + analyse en cours… » figé). On extrait dans la route /analyze.
-  await createTenderDocument({
-    tender_id: tenderId,
-    storage_path: storagePath,
-    filename: file.name,
-    size_bytes: file.size,
-    page_count: 0,
-    extracted_text: null,
-  })
 
   // 4. Statut 'extracting' → le loader de la page AO déclenche POST /analyze, qui
   //    fait extraction + analyse dans une vraie requête HTTP (fiable sur Vercel).
@@ -103,7 +117,11 @@ export async function createTenderAction(formData: FormData) {
   await logAuditEvent({
     userId, entityType: 'tender', entityId: tenderId,
     action: 'created',
-    metadata: { title: parsed.data.title, size_bytes: file.size },
+    metadata: {
+      title: parsed.data.title,
+      pieces: files.length,
+      size_bytes: files.reduce((sum, f) => sum + f.size, 0),
+    },
   })
   revalidatePath('/tenders')
 

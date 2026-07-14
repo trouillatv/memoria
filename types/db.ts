@@ -10,6 +10,8 @@ export type MissionStatus = 'pending' | 'in_progress' | 'completed' | 'issue'
 export type TenderStatus =
   | 'draft' | 'extracting' | 'analyzing' | 'ready' | 'failed' | 'submitted' | 'archived'
 export type TenderOutcome = 'pending' | 'won' | 'lost' | 'withdrawn' | 'not_responded'
+/** Pièces d'un dossier d'appel d'offres (mig 209) — un AO est une bibliothèque. */
+export type TenderPieceKind = 'rc' | 'ccap' | 'cctp' | 'dpgf' | 'bpu' | 'plan' | 'annexe' | 'autre'
 export type TenderOutcomeTag = 'prix' | 'qualite' | 'relation' | 'timing' | 'autre'
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
 export type AIProviderName = 'mock' | 'gemini' | 'anthropic' | 'openai'
@@ -113,6 +115,8 @@ export interface DbTenderDocument {
   page_count: number | null
   extracted_text: string | null
   uploaded_at: string
+  /** Nature de la pièce (mig 209). `null` = pièce non qualifiée, jamais une erreur. */
+  kind: TenderPieceKind | null
 }
 
 export interface DbTenderAnalysisConstraint {

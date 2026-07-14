@@ -14,7 +14,8 @@ import {
   rejectEngagements,
 } from '@/lib/db/engagements'
 import { createContract } from '@/lib/db/contracts'
-import { getTender, getTenderDocument, getLatestTenderAnalysis } from '@/lib/db/tenders'
+import { getTender, listTenderDocuments, getLatestTenderAnalysis } from '@/lib/db/tenders'
+import { buildTenderCorpus } from '@/lib/tenders/pieces'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 
@@ -42,11 +43,16 @@ export async function extractEngagementsAction(formData: FormData) {
   const tender = await getTender(parsed.data.tender_id)
   if (!tender) return { error: 'Dossier introuvable' }
 
-  const [doc, analysis] = await Promise.all([
-    getTenderDocument(parsed.data.tender_id),
+  // Les engagements vivent dans le CCAP et le CCTP — pas dans « le » document.
+  // Extraire depuis une seule pièce laisserait passer l'essentiel des obligations.
+  const [docs, analysis] = await Promise.all([
+    listTenderDocuments(parsed.data.tender_id),
     getLatestTenderAnalysis(parsed.data.tender_id),
   ])
-  if (!doc?.extracted_text) return { error: 'Pas de texte extrait sur le document du dossier' }
+  const aoText = buildTenderCorpus(
+    docs.map((d) => ({ kind: d.kind, filename: d.filename, text: d.extracted_text ?? '' })),
+  )
+  if (!aoText) return { error: 'Aucune pièce lisible dans ce dossier' }
 
   // Toute exception (parse IA, contrainte DB…) est CAPTURÉE et renvoyée comme
   // erreur lisible inline. Sans ce filet, un throw remonte à la page d'erreur
@@ -54,7 +60,7 @@ export async function extractEngagementsAction(formData: FormData) {
   let count = 0
   try {
     const result = await runEngagementExtractionAgent({
-      aoText: doc.extracted_text,
+      aoText,
       memoireTechniqueText: analysis?.technical_memo ?? null,
       userId: auth.userId,
     })
