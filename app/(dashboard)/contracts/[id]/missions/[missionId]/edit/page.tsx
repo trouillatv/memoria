@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { getMission } from '@/lib/db/missions'
 import { listSitesByContract } from '@/lib/db/sites'
@@ -29,6 +30,7 @@ export default async function EditMissionPage({
 }: {
   params: Promise<{ id: string; missionId: string }>
 }) {
+  await requireDeskUser()
   const { id, missionId } = await params
   const [contract, mission] = await Promise.all([
     getContract(id),

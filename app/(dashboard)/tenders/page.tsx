@@ -6,6 +6,7 @@ import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 import { FileText, History, Plus, SearchX } from 'lucide-react'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listTendersPaged } from '@/lib/db/tenders'
 import { TenderListTable } from './TenderListTable'
 import type { TenderStatus } from '@/types/db'
@@ -35,6 +36,7 @@ export default async function TendersPage({
 }: {
   searchParams: Promise<{ status?: string; search?: string; page?: string }>
 }) {
+  await requireDeskUser()
   const params = await searchParams
   const page = parsePage(params.page)
   const { items, total } = await listTendersPaged({

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { listSitesByContract } from '@/lib/db/sites'
 import { listMissionsByContract } from '@/lib/db/missions'
@@ -23,6 +24,7 @@ export default async function ContractMissionsPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ site?: string }>
 }) {
+  await requireDeskUser()
   const { id } = await params
   const { site: filterSiteId } = await searchParams
   const contract = await getContract(id)

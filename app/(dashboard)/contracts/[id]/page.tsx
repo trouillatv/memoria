@@ -15,6 +15,7 @@ import { listSitesByContract } from '@/lib/db/sites'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { canViewDocument } from '@/lib/documents/access'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { LinkedDocumentsList } from '@/components/documents/LinkedDocumentsList'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
@@ -31,6 +32,7 @@ import type { EngagementComplianceRatios } from '@/types/db'
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
 
 export default async function ContractPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireDeskUser()
   const { id } = await params
   const contract = await getContract(id)
   if (!contract) notFound()

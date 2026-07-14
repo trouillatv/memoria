@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { listSitesByContract, listSitesGlobal } from '@/lib/db/sites'
 import { listEngagementsByContract } from '@/lib/db/engagements'
@@ -11,6 +12,7 @@ export default async function NewMissionPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ site?: string }>
 }) {
+  await requireDeskUser()
   const { id } = await params
   const { site: defaultSiteId } = await searchParams
   const contract = await getContract(id)

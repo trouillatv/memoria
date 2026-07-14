@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getSiteIdentity, getSiteRecentPhotos } from '@/lib/db/site-cockpit'
 
 interface PageProps {
@@ -9,6 +10,7 @@ interface PageProps {
 export const dynamic = 'force-dynamic'
 
 export default async function SitePhotosPage({ params }: PageProps) {
+  await requireDeskUser()
   const { id } = await params
   const [identity, photos] = await Promise.all([
     getSiteIdentity(id),

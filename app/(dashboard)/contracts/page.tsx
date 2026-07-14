@@ -7,6 +7,7 @@ import { FiltersBar } from '@/components/ui/filters-bar'
 import { FilterSelect } from '@/components/ui/filter-select'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listContractsPaged } from '@/lib/db/contracts'
 import { countEngagementsByContracts } from '@/lib/db/engagements'
 import { listSitesForContracts } from '@/lib/db/sites'
@@ -38,6 +39,7 @@ export default async function ContractsPage({
 }: {
   searchParams: Promise<{ status?: string; search?: string; page?: string }>
 }) {
+  await requireDeskUser()
   const params = await searchParams
   const page = parsePage(params.page)
   const { items: contracts, total } = await listContractsPaged({

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, AlertTriangle, Users } from 'lucide-react'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { listInterventionsByContract } from '@/lib/db/interventions'
 import { listMissionsByContract } from '@/lib/db/missions'
@@ -37,6 +38,7 @@ function hexToPale(hex: string | null | undefined): string | undefined {
 }
 
 export default async function ContractInterventionsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireDeskUser()
   const { id } = await params
   const contract = await getContract(id)
   if (!contract) notFound()

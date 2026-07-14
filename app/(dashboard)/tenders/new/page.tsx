@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
+import { requireDeskUser } from '@/lib/auth/page-guard'
 import { listKnowledgeItems } from '@/lib/db/knowledge'
 import { TenderUploadForm } from './TenderUploadForm'
 
 export default async function NewTenderPage({ searchParams }: { searchParams: Promise<{ dossier_id?: string }> }) {
+  await requireDeskUser()
   const items = await listKnowledgeItems({})
   const { dossier_id: dossierId } = await searchParams
 
