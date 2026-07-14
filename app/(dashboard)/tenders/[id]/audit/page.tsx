@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, ScanSearch } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getTender, getTenderDocument } from '@/lib/db/tenders'
+import { getTenderCorpus } from '@/lib/tenders/corpus'
 import { listEngagementsByTender } from '@/lib/db/engagements'
 import { paragraphAround } from '@/lib/pdf/paragraph'
 import { pagesContaining, glossaryFormsForLabel } from '@/lib/pdf/occurrences'
@@ -20,8 +21,10 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/')
 
   const { id } = await params
-  const [tender, doc, engagements, glossary] = await Promise.all([
-    getTender(id), getTenderDocument(id), listEngagementsByTender(id),
+  // `doc` sert UNIQUEMENT a ouvrir un PDF ; le texte audite est celui du DOSSIER
+  // entier (toutes les pieces), sinon l'audit porterait sur la derniere deposee.
+  const [tender, doc, corpus, engagements, glossary] = await Promise.all([
+    getTender(id), getTenderDocument(id), getTenderCorpus(id), listEngagementsByTender(id),
     listGlossaryTerms().catch(() => []),
   ])
   if (!tender) notFound()
@@ -34,7 +37,7 @@ export default async function TenderAuditPage({ params }: { params: Promise<{ id
   }
 
   // Tri par page (l'audit suit le document) ; pages inconnues à la fin.
-  const docText = doc?.extracted_text ?? null
+  const docText = corpus || null
   const items: AuditEngagement[] = engagements
     .map((e) => {
       const ref = (e.source_ref ?? {}) as { page?: unknown; section?: unknown }

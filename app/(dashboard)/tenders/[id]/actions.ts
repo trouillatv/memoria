@@ -7,8 +7,9 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, listTenderDocuments, createTenderDocument, countAnalysesToday, attachTenderToDossier } from '@/lib/db/tenders'
+import { updateTenderStatus, softDeleteTender, getTender, listTenderDocuments, createTenderDocument, countAnalysesToday, attachTenderToDossier } from '@/lib/db/tenders'
 import { detectPieceKind } from '@/lib/tenders/pieces'
+import { getTenderCorpus } from '@/lib/tenders/corpus'
 import { getEvidenceForEngagement } from '@/lib/db/engagements'
 
 async function requireManagerOrAdmin() {
@@ -106,8 +107,10 @@ export async function relaunchAnalysisAction(formData: FormData) {
   const tender = await getTender(parsed.data.id)
   if (!tender) return { error: 'Dossier introuvable' }
 
-  const doc = await getTenderDocument(parsed.data.id)
-  if (!doc || !doc.extracted_text) return { error: 'Pas de texte extrait — re-uploader le PDF' }
+  // On verifie que le DOSSIER a du texte, pas la derniere piece deposee : un plan
+  // scanne ajoute en dernier bloquait la relance d'un dossier pourtant lisible.
+  const corpus = await getTenderCorpus(parsed.data.id)
+  if (!corpus) return { error: 'Aucune piece lisible dans ce dossier — deposer un PDF texte' }
 
   const todayCount = await countAnalysesToday()
   const limit = parseInt(process.env.MAX_AO_ANALYSES_PER_DAY ?? '20', 10)

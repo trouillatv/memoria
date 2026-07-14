@@ -7,7 +7,8 @@ import { after } from 'next/server'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
-import { getTender, getLatestTenderAnalysis, getTenderDocument } from '@/lib/db/tenders'
+import { getTender, getLatestTenderAnalysis } from '@/lib/db/tenders'
+import { getTenderCorpus } from '@/lib/tenders/corpus'
 import { listChatMessages, insertChatMessage, insertChatAttachment, listConversations, createConversation, renameConversation } from '@/lib/db/atelier-ia'
 import { upsertAgentAnalysis } from '@/lib/db/agent-analyses'
 import { buildLibraryContext } from '@/services/ai/library-context'
@@ -194,7 +195,12 @@ export async function promoteMessageToEngagementAction(formData: FormData) {
   return { ok: true as const }
 }
 
-function buildTenderContext(tender: { title: string; client_name: string | null; status: string; opportunity_score: number | null }, doc: { extracted_text: string | null } | null, analysis: { summary: string | null; constraints: unknown; risks: unknown; technical_memo: string | null } | null): string {
+/**
+ * `aoText` = le corpus du DOSSIER (toutes les pièces annoncées par leur nature),
+ * plus le dernier document. Les agents citent donc le CCTP ET le CCAP, et savent
+ * de quelle pièce vient chaque phrase.
+ */
+function buildTenderContext(tender: { title: string; client_name: string | null; status: string; opportunity_score: number | null }, aoText: string, analysis: { summary: string | null; constraints: unknown; risks: unknown; technical_memo: string | null } | null): string {
   const lines: string[] = []
   lines.push(`Titre : ${tender.title}`)
   if (tender.client_name) lines.push(`Donneur d'ordre : ${tender.client_name}`)
@@ -203,9 +209,9 @@ function buildTenderContext(tender: { title: string; client_name: string | null;
   if (analysis?.constraints) lines.push(`\nContraintes :\n${JSON.stringify(analysis.constraints, null, 2).slice(0, 2000)}`)
   if (analysis?.risks) lines.push(`\nRisques :\n${JSON.stringify(analysis.risks, null, 2).slice(0, 2000)}`)
   if (analysis?.technical_memo) lines.push(`\nMémoire technique :\n${analysis.technical_memo.slice(0, 4000)}`)
-  if (!analysis && doc?.extracted_text) lines.push(`\nTexte AO (extrait) :\n${doc.extracted_text.slice(0, 6000)}`)
-  if (doc?.extracted_text) {
-    lines.push(`\n=== Texte du PDF (pour citations verbatim) ===\n${doc.extracted_text.slice(0, 8000)}`)
+  if (!analysis && aoText) lines.push(`\nTexte du dossier (extrait) :\n${aoText.slice(0, 6000)}`)
+  if (aoText) {
+    lines.push(`\n=== Pièces du dossier (pour citations verbatim) ===\n${aoText.slice(0, 8000)}`)
   }
   return lines.join('\n')
 }
@@ -334,9 +340,9 @@ export async function sendChatMessageAction(formData: FormData) {
   // user message, so that history contains only previous turns (le message
   // courant est passé séparément comme userMessage à chatWithAgent).
   // fetchTerrainContext tourne en parallèle : ~150ms, jamais bloquant.
-  const [doc, analysis, lib, history, knowledgeItems, terrainCtx, knowledgeCtx, documentCtx] =
+  const [aoText, analysis, lib, history, knowledgeItems, terrainCtx, knowledgeCtx, documentCtx] =
     await Promise.all([
-      getTenderDocument(parsed.data.tender_id),
+      getTenderCorpus(parsed.data.tender_id),
       getLatestTenderAnalysis(parsed.data.tender_id),
       buildLibraryContext(),
       listChatMessages(parsed.data.tender_id),
@@ -345,7 +351,7 @@ export async function sendChatMessageAction(formData: FormData) {
       fetchKnowledgeContext(parsed.data.tender_id, role),
       fetchDocumentContext(parsed.data.message, role),
     ])
-  const tenderContext = buildTenderContext(tender, doc, analysis) + terrainCtx + knowledgeCtx
+  const tenderContext = buildTenderContext(tender, aoText, analysis) + terrainCtx + knowledgeCtx
 
   // Common turn_id — groups the user message and all agent responses
   const turnId = randomUUID()
@@ -418,7 +424,7 @@ export async function sendChatMessageAction(formData: FormData) {
         let validatedSources: Source[] = []
         if (r.sources && r.sources.length > 0) {
           validatedSources = validateSources(r.sources, {
-            extractedText: doc?.extracted_text ?? null,
+            extractedText: aoText || null,
             knowledgeItems,
           })
         }
@@ -524,13 +530,13 @@ export async function runAgentInitialAnalysisAction(formData: FormData) {
     try {
       const tender = await getTender(parsed.data.tender_id)
       if (!tender) throw new Error('Tender introuvable')
-      const doc = await getTenderDocument(parsed.data.tender_id)
-      if (!doc?.extracted_text) throw new Error('Pas de texte extrait')
+      const aoText = await getTenderCorpus(parsed.data.tender_id)
+      if (!aoText) throw new Error('Aucune pièce lisible dans ce dossier')
       const lib = await buildLibraryContext()
 
       const result = await runInitialAnalysisAgent({
         agentName: parsed.data.agent_name,
-        rawText: doc.extracted_text,
+        rawText: aoText,
         libraryContext: lib.markdown,
         userId,
       })
@@ -599,15 +605,15 @@ export async function runChallengeRoundAction(formData: FormData) {
   const tender = await getTender(parsed.data.tender_id)
   if (!tender) return { error: 'Tender introuvable' }
 
-  const [doc, analysis, lib, history, terrainCtx, knowledgeCtx] = await Promise.all([
-    getTenderDocument(parsed.data.tender_id),
+  const [aoText, analysis, lib, history, terrainCtx, knowledgeCtx] = await Promise.all([
+    getTenderCorpus(parsed.data.tender_id),
     getLatestTenderAnalysis(parsed.data.tender_id),
     buildLibraryContext(),
     listChatMessages(parsed.data.tender_id),
     fetchTerrainContext(parsed.data.tender_id),
     fetchKnowledgeContext(parsed.data.tender_id),
   ])
-  const tenderContext = buildTenderContext(tender, doc, analysis) + terrainCtx + knowledgeCtx
+  const tenderContext = buildTenderContext(tender, aoText, analysis) + terrainCtx + knowledgeCtx
 
   // Récupérer le user message original du turn (pour passer le contexte de la question initiale)
   const originalUserMessage = allMessages.find((m) =>
