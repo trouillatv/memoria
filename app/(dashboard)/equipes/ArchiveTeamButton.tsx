@@ -24,9 +24,19 @@ import { archiveTeamAction } from './actions'
 interface Props {
   teamId: string
   teamName: string
+  /**
+   * Ce que l'équipe tient encore. Une cascade ne doit jamais être silencieuse :
+   * ce dialogue annonçait « désaffecte les missions » et taisait le principal —
+   * que TOUTES les interventions planifiées à venir passaient en « Non-affecté »,
+   * et ne pouvaient plus être démarrées.
+   */
+  dependencies?: {
+    missions: number
+    futureInterventions: number
+  }
 }
 
-export function ArchiveTeamButton({ teamId, teamName }: Props) {
+export function ArchiveTeamButton({ teamId, teamName, dependencies }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -63,11 +73,42 @@ export function ArchiveTeamButton({ teamId, teamName }: Props) {
         <DialogHeader>
           <DialogTitle>Archiver l’équipe « {teamName} » ?</DialogTitle>
           <DialogDescription>
-            Cette action désaffecte les missions planifiées de cette équipe
-            mais conserve l’historique (interventions passées, preuves).
+            L’historique est conservé — interventions passées, photos, preuves.
             L’équipe n’apparaîtra plus dans les listes.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Ce qui va réellement se passer, chiffré. Le dialogue disait « désaffecte
+            les missions » et taisait le principal : les interventions à venir. */}
+        {dependencies && (dependencies.futureInterventions > 0 || dependencies.missions > 0) && (
+          <div
+            className="space-y-1.5 rounded-lg border border-amber-300 bg-amber-50/60 p-3 text-sm dark:border-amber-800/50 dark:bg-amber-950/20"
+            data-testid="archive-team-consequences"
+          >
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              Cette équipe travaille encore.
+            </p>
+            <ul className="list-disc space-y-0.5 pl-4 text-amber-800/90 dark:text-amber-300/90">
+              {dependencies.futureInterventions > 0 && (
+                <li>
+                  <strong>
+                    {dependencies.futureInterventions} intervention
+                    {dependencies.futureInterventions > 1 ? 's' : ''} à venir
+                  </strong>{' '}
+                  passera{dependencies.futureInterventions > 1 ? 'ont' : ''} en « Non-affecté ».
+                  Elles ne pourront plus être démarrées tant qu’une autre équipe ne leur aura pas
+                  été attribuée.
+                </li>
+              )}
+              {dependencies.missions > 0 && (
+                <li>
+                  {dependencies.missions} mission{dependencies.missions > 1 ? 's' : ''} perdra
+                  {dependencies.missions > 1 ? 'ont' : ''} leur équipe par défaut.
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
         <DialogFooter>
           <Button
             variant="ghost"

@@ -148,6 +148,77 @@ export async function updateTeam(id: string, input: UpdateTeamInput): Promise<Db
  * grâce à l'historique (le filet de sécurité `ON DELETE SET NULL` côté DB ne
  * se déclenche que sur un HARD delete, qu'on évite ici).
  */
+/**
+ * Ce qu'une équipe TIENT encore. À lire AVANT de l'archiver.
+ *
+ * Archiver désaffectait en silence : les missions perdaient leur équipe par
+ * défaut, et TOUTES les interventions planifiées à venir — celles de demain, du
+ * mois prochain — passaient en « Non-affecté ». Sans décompte, sans un mot.
+ * Pire, elles ne pouvaient plus être démarrées (contrainte
+ * `chk_active_intervention_requires_team`) tant qu'un humain ne les réaffectait
+ * pas une par une.
+ *
+ * Une cascade ne doit jamais être silencieuse. On compte, et on montre.
+ */
+export interface TeamDependencies {
+  /** Missions dont c'est l'équipe par défaut. */
+  missions: number
+  /** Interventions PLANIFIÉES à venir — celles qui deviendraient orphelines. */
+  futureInterventions: number
+  /** Jours de roulement tenus par cette équipe. Bloquant : voir ci-dessous. */
+  rotationSlots: number
+  /** Chantiers dont le roulement s'appuie sur elle (pour pouvoir le DIRE). */
+  rotationSiteNames: string[]
+}
+
+export async function getTeamDependencies(id: string): Promise<TeamDependencies> {
+  const supabase = createAdminClient()
+  const todayIso = new Date().toISOString().slice(0, 10)
+
+  const [missionsRes, interventionsRes, slotsRes] = await Promise.all([
+    supabase
+      .from('missions')
+      .select('id', { count: 'exact', head: true })
+      .eq('assigned_team_id', id)
+      .is('deleted_at', null),
+    supabase
+      .from('interventions')
+      .select('id', { count: 'exact', head: true })
+      .eq('assigned_team_id', id)
+      .eq('status', 'planned')
+      .gte('scheduled_for', todayIso),
+    supabase
+      .from('planning_cycle_slots')
+      .select('id, cycle:planning_cycles!inner(id, name, deleted_at, site:sites(name))')
+      .eq('team_id', id),
+  ])
+
+  type SlotRow = {
+    cycle: {
+      deleted_at: string | null
+      site: { name: string } | { name: string }[] | null
+    } | null
+  }
+
+  const siteNames = new Set<string>()
+  let rotationSlots = 0
+  for (const row of ((slotsRes.data ?? []) as unknown as SlotRow[])) {
+    const cycle = row.cycle
+    // Un roulement archivé ne tient plus rien.
+    if (!cycle || cycle.deleted_at !== null) continue
+    rotationSlots += 1
+    const site = Array.isArray(cycle.site) ? cycle.site[0] : cycle.site
+    if (site?.name) siteNames.add(site.name)
+  }
+
+  return {
+    missions: missionsRes.count ?? 0,
+    futureInterventions: interventionsRes.count ?? 0,
+    rotationSlots,
+    rotationSiteNames: [...siteNames].sort((a, b) => a.localeCompare(b, 'fr')),
+  }
+}
+
 export async function archiveTeam(id: string): Promise<void> {
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()
@@ -169,6 +240,17 @@ export async function archiveTeam(id: string): Promise<void> {
     .eq('assigned_team_id', id)
     .eq('status', 'planned')
   if (iErr) throw iErr
+
+  // 2bis) Couper le lien avec les MODÈLES de génération. Sans ça, l'étape 2 ne
+  //       servait à rien : la génération suivante relisait
+  //       `intervention_templates.assigned_team_id` et recréait des
+  //       interventions futures affectées à une équipe archivée — invisible
+  //       dans les sélecteurs, donc incorrigible depuis l'écran.
+  const { error: tplErr } = await supabase
+    .from('intervention_templates')
+    .update({ assigned_team_id: null })
+    .eq('assigned_team_id', id)
+  if (tplErr) throw tplErr
 
   // 3) Soft-delete de la team
   const { error: tErr } = await supabase

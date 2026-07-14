@@ -20,6 +20,7 @@ import {
   createTeam,
   updateTeam,
   archiveTeam,
+  getTeamDependencies,
   addMemberToTeam,
   removeMemberFromTeam,
   getTeam,
@@ -240,6 +241,24 @@ export async function archiveTeamAction(input: {
 
   const existing = await getTeam(parsed.data.teamId)
   if (!existing) return { ok: false, error: 'Équipe introuvable' }
+
+  // Une équipe qui TIENT UN ROULEMENT ne s'archive pas : les cases du roulement
+  // continueraient de pointer sur elle, et comme une équipe archivée n'apparaît
+  // dans aucun sélecteur, la case deviendrait incorrigible depuis l'écran. On
+  // refuse, et on dit où aller.
+  const deps = await getTeamDependencies(parsed.data.teamId)
+  if (deps.rotationSlots > 0) {
+    const where =
+      deps.rotationSiteNames.length > 0
+        ? ` (${deps.rotationSiteNames.join(', ')})`
+        : ''
+    return {
+      ok: false,
+      error:
+        `« ${existing.name} » tient ${deps.rotationSlots} jour${deps.rotationSlots > 1 ? 's' : ''} ` +
+        `dans un roulement${where}. Remplacez-la dans le roulement avant de l'archiver.`,
+    }
+  }
 
   try {
     await archiveTeam(parsed.data.teamId)
