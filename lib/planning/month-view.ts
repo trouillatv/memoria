@@ -177,6 +177,77 @@ export function monthDays(monthIso: string): MonthDay[] {
   return out
 }
 
+// ── COMBIEN DE MONDE — le chiffre de la maquette ────────────────────────────
+
+/** Les personnes prévues ce jour-là sur ce chantier. Le projeté ne s'AJOUTE pas
+ *  au réel : il le remplace quand rien n'est encore généré — sinon la même
+ *  occurrence serait comptée deux fois. */
+export function peopleOn(f: DayFacts): number {
+  const real = f.expected + f.done + f.kept
+  return real > 0 ? real : f.projected
+}
+
+/** Le total d'une ligne — « ce chantier mobilise N passages ce mois-ci ». */
+export function rowTotal(days: Record<string, DayFacts>): number {
+  return Object.values(days).reduce((sum, f) => sum + peopleOn(f), 0)
+}
+
+/** La ligne « Présents » : combien de monde, tous chantiers confondus, chaque
+ *  jour. C'est elle qui montre les trous de couverture d'un coup d'œil. */
+export function presenceByDay(byDay: Record<string, DayFacts[]>): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [day, facts] of Object.entries(byDay)) {
+    out[day] = facts.reduce((sum, f) => sum + peopleOn(f), 0)
+  }
+  return out
+}
+
+// ── LE MODE ÉQUIPE — la MÊME projection, regroupée autrement ────────────────
+//
+// Le garde-fou anti-Excel (§2) tient : Équipe × Jour est SECONDAIRE, comme dans
+// la Semaine (`?view=team`), et il montre la COUVERTURE — qui tourne, quel jour.
+// La ligne est une ÉQUIPE, jamais une personne nommée : une grille de jours
+// travaillés par individu serait une feuille de présence, pas un planning.
+// Aucun horaire, aucun commentaire dans la grille.
+
+/** Ce qu'on sait d'une (équipe, jour). Mêmes faits, autre axe. */
+export interface TeamDayFacts {
+  /** Occurrences réelles de l'équipe ce jour (attendues, faites, maintenues). */
+  worked: number
+  /** Projetées par un roulement, pas encore générées. */
+  projected: number
+  /** Occurrences tombant sur un chantier FERMÉ ce jour-là : une décision attend. */
+  conflicts: number
+  /** Au moins une occurrence dévie de son roulement. */
+  hasException: boolean
+}
+
+/** conflict → work → projected → rest (repos). */
+export type TeamDayState = 'conflict' | 'work' | 'projected' | 'rest'
+
+export function teamDayState(f: TeamDayFacts): TeamDayState {
+  if (f.conflicts > 0) return 'conflict'
+  if (f.worked > 0) return 'work'
+  if (f.projected > 0) return 'projected'
+  return 'rest'
+}
+
+/** Les jours travaillés d'une équipe sur le mois — le total de la maquette. */
+export function teamWorkedDays(days: Record<string, TeamDayFacts>): number {
+  return Object.values(days).filter((f) => teamDayState(f) !== 'rest').length
+}
+
+/** La ligne « Présents » du mode Équipe : combien d'équipes tournent ce jour. */
+export function teamPresenceByDay(
+  byDay: Record<string, TeamDayFacts[]>,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [day, facts] of Object.entries(byDay)) {
+    out[day] = facts.filter((f) => teamDayState(f) !== 'rest').length
+  }
+  return out
+}
+
 /** Le paramètre de semaine (?week=YYYY-Www) du jour cliqué — pour atterrir sur
  *  la BONNE semaine, pas sur la semaine courante. */
 export function isoWeekParamOf(dateIso: string): string {

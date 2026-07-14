@@ -15,7 +15,14 @@ import {
   verdictPhrase,
   monthDays,
   isoWeekParamOf,
+  peopleOn,
+  presenceByDay,
+  rowTotal,
+  teamDayState,
+  teamPresenceByDay,
+  teamWorkedDays,
   type DayFacts,
+  type TeamDayFacts,
 } from '@/lib/planning/month-view'
 
 const f = (over: Partial<DayFacts> = {}): DayFacts => ({
@@ -138,5 +145,76 @@ describe('Les jours du mois', () => {
     expect(isoWeekParamOf('2026-09-15')).toBe('2026-W38')
     // Frontière d'année : le 1er janvier 2027 (vendredi) est en semaine 53 de 2026.
     expect(isoWeekParamOf('2027-01-01')).toBe('2026-W53')
+  })
+})
+
+// ── LE CHIFFRE ET LES DEUX AXES (PL6a) ──────────────────────────────────────
+//
+// Ce qu'on protège :
+//   • le CHIFFRE — « combien de monde ce jour-là ». Le projeté REMPLACE le réel,
+//     il ne s'y ajoute jamais : sinon la même occurrence compterait double ;
+//   • la ligne PRÉSENTS — la couverture, c'est elle qu'on cherche du regard ;
+//   • le mode ÉQUIPE — les mêmes faits, autre axe. La ligne est une ÉQUIPE,
+//     jamais une personne : une grille de jours travaillés par individu serait
+//     une feuille de présence, pas un planning.
+
+describe('Le chiffre de la cellule — combien de monde', () => {
+  it('compte le réel : attendu + fait + maintenu', () => {
+    expect(peopleOn(f({ expected: 1, done: 1, kept: 1 }))).toBe(3)
+  })
+
+  it("le projeté REMPLACE le réel, il ne s'y ajoute pas", () => {
+    expect(peopleOn(f({ expected: 2, projected: 5 }))).toBe(2)
+    expect(peopleOn(f({ projected: 2 }))).toBe(2)
+  })
+
+  it('un jour vide vaut zéro', () => {
+    expect(peopleOn(f())).toBe(0)
+  })
+
+  it("le total d'une ligne additionne ses jours", () => {
+    expect(rowTotal({ a: f({ expected: 2 }), b: f({ projected: 1 }), c: f() })).toBe(3)
+  })
+
+  it('la ligne « Présents » additionne tous les chantiers du jour, et le zéro se voit', () => {
+    const p = presenceByDay({
+      '2026-09-01': [f({ expected: 2 }), f({ projected: 1 })],
+      '2026-09-02': [f(), f()],
+    })
+    expect(p['2026-09-01']).toBe(3)
+    expect(p['2026-09-02']).toBe(0)
+  })
+})
+
+describe('Le mode Équipe — les mêmes faits, autre axe', () => {
+  const t = (over: Partial<TeamDayFacts> = {}): TeamDayFacts => ({
+    worked: 0,
+    projected: 0,
+    conflicts: 0,
+    hasException: false,
+    ...over,
+  })
+
+  it('chantier fermé sous une équipe prévue → CONFLIT (le rouge prime)', () => {
+    expect(teamDayState(t({ worked: 1, conflicts: 1 }))).toBe('conflict')
+  })
+
+  it('travail, puis projeté, puis repos', () => {
+    expect(teamDayState(t({ worked: 2 }))).toBe('work')
+    expect(teamDayState(t({ projected: 1 }))).toBe('projected')
+    expect(teamDayState(t())).toBe('rest')
+  })
+
+  it("le total d'une équipe compte ses JOURS travaillés, pas ses occurrences", () => {
+    expect(teamWorkedDays({ a: t({ worked: 2 }), b: t({ projected: 1 }), c: t() })).toBe(2)
+  })
+
+  it('« Présents » compte les ÉQUIPES qui tournent, pas les personnes', () => {
+    const p = teamPresenceByDay({
+      '2026-09-01': [t({ worked: 1 }), t({ projected: 1 }), t()],
+      '2026-09-02': [t(), t()],
+    })
+    expect(p['2026-09-01']).toBe(2)
+    expect(p['2026-09-02']).toBe(0)
   })
 })

@@ -279,6 +279,12 @@ export interface TeamMemberWithUser {
  * ⚠ Cette fonction expose des noms d'agents. À n'utiliser QUE sur la page
  * Équipes — seule page de supervision où la doctrine V2 tolère l'affichage
  * nominatif. Partout ailleurs, exposer « Équipe Alpha (4 personnes) ».
+ *
+ * EXCEPTION assumée (Vincent, 2026-07-14) : la Vue Mois en mode Équipe affiche
+ * la COMPOSITION de chaque équipe sous son nom — le conducteur doit savoir qui
+ * tourne. La limite tient : ces noms sont un LIBELLÉ DE LIGNE, jamais des lignes
+ * eux-mêmes. Aucune grille de jours travaillés par personne, aucun total
+ * individuel : ce serait une feuille de présence, pas un planning.
  */
 export async function listMembersOfTeam(teamId: string): Promise<TeamMemberWithUser[]> {
   const supabase = createAdminClient()
