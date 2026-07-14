@@ -8,7 +8,7 @@
 
 import Link from 'next/link'
 import { ExternalLink } from 'lucide-react'
-import { listMembersOfTeam, type TeamWithMemberCount } from '@/lib/db/teams'
+import { listMembersOfTeam, getTeamDependencies, type TeamWithMemberCount } from '@/lib/db/teams'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
 import { ArchiveTeamButton } from './ArchiveTeamButton'
@@ -29,7 +29,11 @@ function displayName(fullName: string | null, email: string): string {
 }
 
 export async function TeamRow({ team, availableUsers }: Props) {
-  const memberships = await listMembersOfTeam(team.id)
+  const [memberships, deps] = await Promise.all([
+    listMembersOfTeam(team.id),
+    // Ce que l'équipe tient encore — lu AVANT de proposer de l'archiver.
+    getTeamDependencies(team.id),
+  ])
   const members: MemberLite[] = memberships.map((m) => ({
     id: m.user.id,
     name: displayName(m.user.full_name, m.user.email),
@@ -122,7 +126,14 @@ export async function TeamRow({ team, availableUsers }: Props) {
           members={members}
           availableUsers={availableUsers}
         />
-        <ArchiveTeamButton teamId={team.id} teamName={team.name} />
+        <ArchiveTeamButton
+          teamId={team.id}
+          teamName={team.name}
+          dependencies={{
+            missions: deps.missions,
+            futureInterventions: deps.futureInterventions,
+          }}
+        />
       </div>
     </div>
   )
