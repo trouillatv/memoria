@@ -1,4 +1,5 @@
 import 'server-only'
+import { getTenderCorpus } from '@/lib/tenders/corpus'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding, getActiveProvider } from './embeddings'
 import { canViewDocument } from '@/lib/documents/access'
@@ -252,15 +253,8 @@ export async function matchAoToKnowledge(
   if (getActiveProvider() === null) return []
 
   const supabase = createAdminClient()
-  const { data: doc } = await supabase
-    .from('tender_documents')
-    .select('extracted_text')
-    .eq('tender_id', tenderId)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const rawText = (doc as { extracted_text?: string } | null)?.extracted_text
+  // Le DOSSIER entier, pas la derniere piece deposee (cf. lib/tenders/corpus.ts).
+  const rawText = await getTenderCorpus(tenderId)
   if (!rawText || rawText.length < 50) return []
 
   const [embedding, tenantId] = await Promise.all([

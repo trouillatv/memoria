@@ -1,4 +1,5 @@
 import 'server-only'
+import { getTenderCorpus } from '@/lib/tenders/corpus'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getEmbedding, getActiveProvider } from './embeddings'
 import { logAIUsageDirect } from '@/services/ai/tracking'
@@ -200,15 +201,9 @@ export async function embedTenderHistoryChunks(tenderId: string): Promise<void> 
   }
   if (!t.outcome || !['won', 'lost'].includes(t.outcome)) return
 
-  const { data: doc } = await supabase
-    .from('tender_documents')
-    .select('extracted_text')
-    .eq('tender_id', tenderId)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const extractedText = (doc as { extracted_text?: string | null } | null)?.extracted_text
+  // Un AO gagne/perdu s'indexe EN ENTIER : ses lecons vivent autant dans le CCTP
+  // que dans le RC. Budget large ici (on decoupe en chunks, on ne prompte pas).
+  const extractedText = await getTenderCorpus(tenderId, 500_000)
   if (!extractedText || extractedText.length < 100) return
 
   const chunks = splitIntoChunks(extractedText)
