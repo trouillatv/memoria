@@ -50,6 +50,12 @@ describe('site organisation workspace', () => {
     // Ce qui n'est pas affecté est dit, pas masqué.
     const missions = screen.getByText('Missions (1)').closest('section') as HTMLElement
     expect(within(missions).getByText('Équipe non affectée')).toBeInTheDocument()
+
+    // Un roulement listé s'ouvre : la fiche chantier est un point d'entrée, pas un cul-de-sac.
+    expect(screen.getByRole('link', { name: /Roulement semaine A\/B/ })).toHaveAttribute(
+      'href',
+      '/sites/site-1/roulements/cycle-1',
+    )
   })
 
   it('says what is missing instead of faking an organisation', () => {
@@ -67,6 +73,11 @@ describe('site organisation workspace', () => {
 
     expect(screen.getAllByText('Non renseigné').length).toBeGreaterThan(0)
     expect(screen.getByText('Aucune mission enregistrée sur ce chantier.')).toBeInTheDocument()
+    // L'absence de roulement propose l'étape suivante au lieu de constater le vide.
+    expect(screen.getByRole('link', { name: 'Créer un roulement' })).toHaveAttribute(
+      'href',
+      '/sites/site-1/roulements/nouveau',
+    )
     expect(screen.getByText(/Aucune équipe n'est encore venue sur ce chantier/)).toBeInTheDocument()
     // Le placeholder « À compléter » de la maquette ne doit plus exister.
     expect(screen.queryByText('À compléter')).not.toBeInTheDocument()
