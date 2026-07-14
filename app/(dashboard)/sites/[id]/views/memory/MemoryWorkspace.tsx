@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { BookOpen, GitBranch, Search, Sparkles } from 'lucide-react'
+import { BookOpen, GitBranch, Search } from 'lucide-react'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 import type { SubjectSummary } from '@/lib/db/subjects'
 import { SiteMemoryQuery } from '../../SiteMemoryQuery'
@@ -20,7 +20,7 @@ export function MemoryWorkspace({
     <main className="space-y-5">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Mémoire</h1>
-        <p className="text-sm text-muted-foreground">Ici je peux retrouver ce que le chantier sait.</p>
+        <p className="text-sm text-muted-foreground">Ici, je peux retrouver ce que le chantier sait.</p>
       </header>
 
       <section className="rounded-[22px] border border-violet-100 bg-card p-5 shadow-sm dark:border-violet-950/50" aria-labelledby="memory-question-title">
@@ -49,7 +49,7 @@ export function MemoryWorkspace({
             {signals.slice(0, 5).map((signal) => (
               <article key={`${signal.kind}-${signal.title}`} className="p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-medium">{signal.title}</h3>
+                  <h3 className="font-medium">{displaySignalTitle(signal)}</h3>
                   <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700 ring-1 ring-violet-100 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900">
                     {signal.items.length}
                   </span>
@@ -73,17 +73,12 @@ export function MemoryWorkspace({
       </section>
 
       <section className="rounded-[22px] border bg-card p-5 shadow-sm" aria-labelledby="living-subjects-title">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <GitBranch className="mt-0.5 h-5 w-5 text-violet-600" />
-            <div>
-              <h2 id="living-subjects-title" className="text-lg font-semibold">Dossiers vivants</h2>
-              <p className="text-sm text-muted-foreground">Problèmes ou sujets suivis qui relient événements, décisions, actions et preuves.</p>
-            </div>
+        <div className="mb-4 flex items-start gap-3">
+          <GitBranch className="mt-0.5 h-5 w-5 text-violet-600" />
+          <div>
+            <h2 id="living-subjects-title" className="text-lg font-semibold">Dossiers vivants</h2>
+            <p className="text-sm text-muted-foreground">Problèmes ou sujets suivis qui relient événements, décisions, actions et preuves.</p>
           </div>
-          <Link href={`/sites/${siteId}/subjects`} className="text-sm font-medium text-violet-700 hover:underline dark:text-violet-300">
-            Voir tous
-          </Link>
         </div>
         {subjects.length > 0 ? (
           <div className="divide-y rounded-2xl border">
@@ -113,23 +108,16 @@ export function MemoryWorkspace({
           </p>
         )}
       </section>
-
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm" aria-labelledby="memory-history-title">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <Sparkles className="mt-0.5 h-5 w-5 text-violet-600" />
-            <div>
-              <h2 id="memory-history-title" className="text-lg font-semibold">Historique des questions</h2>
-              <p className="text-sm text-muted-foreground">Accès avancé aux recherches et à l'atelier complet.</p>
-            </div>
-          </div>
-          <Link href={`/memoire/${siteId}`} className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
-            Ouvrir l'atelier complet
-          </Link>
-        </div>
-      </section>
     </main>
   )
+}
+
+function displaySignalTitle(signal: MemorySignal): string {
+  if (signal.kind === 'decision_unapplied') {
+    const count = signal.items.length
+    return `${count} décision${count > 1 ? 's' : ''} sans suite identifiée${count > 1 ? 's' : ''}`
+  }
+  return signal.title
 }
 
 function formatRelative(iso: string): string {

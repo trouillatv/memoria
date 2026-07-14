@@ -27,6 +27,12 @@ const CONFIDENCE_META: Record<SiteMemorySummary['confidence'], { label: string; 
   faible:  { label: 'Confiance faible',  cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 }
 
+const EXAMPLE_QUESTIONS = [
+  'Que faut-il savoir avant la prochaine visite ?',
+  'Quels risques sont encore ouverts ?',
+  'Quelles décisions concernent ce chantier ?',
+]
+
 const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof StickyNote; cls: string }> = {
   anomaly:      { label: 'Anomalie',     Icon: AlertTriangle, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   site_note:    { label: 'Note',         Icon: StickyNote,    cls: 'bg-slate-50 text-slate-700 border-slate-200' },
@@ -173,20 +179,26 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
         </button>
       </form>
 
-      {terms && terms.length > 0 && (
       <div className="space-y-1.5">
         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Recherches suggérées
+          {terms && terms.length > 0 ? 'Recherches suggérées' : 'Exemples de questions'}
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {terms.map(({ term, count }) => (
-            <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
-              title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-              {term}
-              {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
-            </button>
-          ))}
+          {terms && terms.length > 0
+            ? terms.map(({ term, count }) => (
+              <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
+                title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+                {term}
+                {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
+              </button>
+            ))
+            : EXAMPLE_QUESTIONS.map((question) => (
+              <button key={question} type="button" onClick={() => { setQ(question); runSearch(question) }} disabled={pending}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+                {question}
+              </button>
+            ))}
           <button type="button" onClick={loadTeams} disabled={pending}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
             <Users className="h-3 w-3" /> Qui connaît ce chantier&nbsp;?
@@ -197,7 +209,6 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           </button>
         </div>
       </div>
-      )}
 
       {/* ── Résultats ───────────────────────────────────────────────────── */}
       {pending && (

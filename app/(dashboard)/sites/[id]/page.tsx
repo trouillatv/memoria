@@ -21,6 +21,10 @@ import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
+import { listMissionsBySite } from '@/lib/db/missions'
+import { listInterventionsSupervisor } from '@/lib/db/interventions'
+import { listCyclesBySite } from '@/lib/db/planning-cycles'
+import { listTeams } from '@/lib/db/teams'
 import {
   buildSiteStatusSummary,
   getLastEndedVisitForSite,
@@ -35,9 +39,12 @@ import {
 } from '@/lib/db/site-cockpit'
 import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { listSitePhotos } from '@/lib/db/site-photos'
+import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/visit-captures'
 import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { listSubjectsBySite } from '@/lib/db/subjects'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { todayLocalIso } from '@/lib/time/local-date'
 import {
   buildOverviewAttention,
@@ -63,8 +70,11 @@ import { TogglePanel } from './TogglePanel'
 import {
   SiteChronologyComposition,
 } from './SiteViewComposition'
-import { DocumentsWorkspace, type DocumentsQrState } from './views/documents/DocumentsWorkspace'
+import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
 import { MemoryWorkspace } from './views/memory/MemoryWorkspace'
+import { WorkWorkspace } from './views/work/WorkWorkspace'
+import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
+import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -95,6 +105,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     lastVisit,
     memorySignals,
     visits,
+    missions,
+    interventionsResult,
+    cycles,
+    teams,
   ] = await Promise.all([
     getSiteIdentity(id),
     listOpenSiteActions({ siteIds: [id] }).catch(() => []),
@@ -105,6 +119,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     getLastEndedVisitForSite(id).catch(() => null),
     buildSiteMemorySignals(id).catch(() => []),
     listSiteVisitsWithCounts(id, 8).catch(() => []),
+    listMissionsBySite(id).catch(() => []),
+    listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
+    listCyclesBySite(id).catch(() => []),
+    listTeams().catch(() => []),
   ])
 
   if (!identity) notFound()
@@ -196,11 +214,32 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             recentChanges={recentChanges}
           />
         ) : tab === 'travail' ? (
-          <TravailView siteId={id} actions={actions} attention={attention} />
+          <WorkWorkspace
+            siteId={id}
+            actions={openActions}
+            blocages={openBlocages}
+            missions={missions}
+            interventions={interventionsResult.items}
+          />
         ) : tab === 'chronologie' ? (
-          <ChronologieView siteId={id} changes={recentChanges} visits={visits} />
+          <ChronologyWorkspace
+            siteId={id}
+            changes={recentChanges}
+            visits={visits}
+            actions={openActions}
+            blocages={blocages}
+            interventions={interventionsResult.items}
+          />
         ) : tab === 'planning' ? (
-          <PlanningView siteId={id} nextEvent={nextEvent} />
+          <PlanningWorkspace
+            siteId={id}
+            nextEvent={nextEvent}
+            interventions={interventionsResult.items}
+            missions={missions}
+            blocages={openBlocages}
+            cycles={cycles}
+            teams={teams}
+          />
         ) : tab === 'documents-preuves' ? (
           <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
         ) : tab === 'memoire' ? (
@@ -539,8 +578,10 @@ function PlanningView({ siteId, nextEvent }: { siteId: string; nextEvent: Overvi
 }
 
 async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; canExport: boolean }) {
-  const [documents, proofDossiers, qr] = await Promise.all([
+  const [documents, sitePhotos, visitCaptures, proofDossiers, qr] = await Promise.all([
     listDocumentsForTarget('site', siteId).catch(() => []),
+    listSitePhotos(siteId).catch(() => []),
+    listVisitCapturesBySite(siteId, 200).catch(() => []),
     listSiteProofDossiers(siteId).catch(() => []),
     buildDocumentsQrState(siteId).catch((): DocumentsQrState => ({
       siteName: 'Chantier',
@@ -551,8 +592,49 @@ async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; can
       generatedAt: null,
       lastAccessedAt: null,
       history: [],
-    })),
+      })),
   ])
+  const [photoThumbs, visitPreviews] = await Promise.all([
+    getSignedPhotoUrlsThumb(sitePhotos.map((photo) => photo.storagePath)).catch(() => new Map<string, string>()),
+    getVisitCapturePreviewUrls(visitCaptures).catch(() => ({} as Record<string, { url: string; mime: string | null }>)),
+  ])
+  const visitMediaKinds = new Set(['photo', 'video', 'vocal', 'note'])
+  const media: SiteMediaSummary[] = [
+    ...sitePhotos.map((photo) => ({
+      id: `site-photo-${photo.id}`,
+      kind: 'photo' as const,
+      title: photo.legende || 'Photo chantier',
+      detail: photo.source === 'intervention'
+        ? 'Photo issue d’une intervention'
+        : photo.source === 'action'
+          ? 'Photo issue d’une action'
+          : 'Photo issue d’une réunion',
+      occurredAt: photo.takenAt,
+      source: photo.source,
+      href: photo.interventionId
+        ? `/interventions/${photo.interventionId}`
+        : photo.actionId
+          ? `/sites/${siteId}/actions`
+          : `/sites/${siteId}`,
+      thumbUrl: photoThumbs.get(photo.storagePath) ?? null,
+    })),
+    ...visitCaptures
+      .filter((capture): capture is typeof capture & { kind: 'photo' | 'video' | 'vocal' | 'note' } => visitMediaKinds.has(capture.kind))
+      .map((capture) => {
+        const preview = visitPreviews[capture.id]
+        return {
+          id: `visit-${capture.id}`,
+          kind: capture.kind as SiteMediaSummary['kind'],
+          title: capture.body?.trim() || captureKindLabel(capture.kind),
+          detail: `Capture de visite${capture.status === 'processed' ? ' traitée' : ''}`,
+          occurredAt: capture.captured_at ?? capture.created_at,
+          source: 'visit' as const,
+          href: `/sites/${siteId}/visites/${capture.report_id}`,
+          thumbUrl: capture.kind === 'photo' ? preview?.url ?? null : null,
+          previewUrl: preview?.url ?? null,
+        }
+      }),
+  ].sort((a, b) => (b.occurredAt ?? '').localeCompare(a.occurredAt ?? ''))
 
   return (
     <DocumentsWorkspace
@@ -564,10 +646,19 @@ async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; can
         document_type: document.document_type,
         created_at: document.created_at,
       }))}
+      media={media}
       proofDossiers={proofDossiers}
       qr={qr}
     />
   )
+}
+
+function captureKindLabel(kind: string): string {
+  if (kind === 'photo') return 'Photo de visite'
+  if (kind === 'video') return 'Vidéo de visite'
+  if (kind === 'vocal') return 'Mémo vocal de visite'
+  if (kind === 'note') return 'Note de visite'
+  return 'Capture de visite'
 }
 
 async function MemoireView({ siteId, signals }: { siteId: string; signals: MemorySignal[] }) {

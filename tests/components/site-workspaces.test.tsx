@@ -1,7 +1,10 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { DocumentsWorkspace } from '@/app/(dashboard)/sites/[id]/views/documents/DocumentsWorkspace'
 import { MemoryWorkspace } from '@/app/(dashboard)/sites/[id]/views/memory/MemoryWorkspace'
+import { WorkWorkspace } from '@/app/(dashboard)/sites/[id]/views/work/WorkWorkspace'
+import { ChronologyWorkspace } from '@/app/(dashboard)/sites/[id]/views/chronology/ChronologyWorkspace'
+import { PlanningWorkspace } from '@/app/(dashboard)/sites/[id]/views/planning/PlanningWorkspace'
 
 describe('site workspaces', () => {
   it('makes memory a workspace for retrieving what the site knows', () => {
@@ -36,11 +39,12 @@ describe('site workspaces', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'Mémoire' })).toBeInTheDocument()
-    expect(screen.getByText('Ici je peux retrouver ce que le chantier sait.')).toBeInTheDocument()
+    expect(screen.getByText('Ici, je peux retrouver ce que le chantier sait.')).toBeInTheDocument()
     expect(screen.getByRole('search')).toHaveTextContent('Question réelle')
 
     const knowledge = screen.getByRole('region', { name: 'Connaissances importantes' })
-    expect(within(knowledge).getByText('1 décision jamais appliquée')).toBeInTheDocument()
+    expect(within(knowledge).getByText('1 décision sans suite identifiée')).toBeInTheDocument()
+    expect(within(knowledge).queryByText('1 décision jamais appliquée')).not.toBeInTheDocument()
     expect(within(knowledge).getByText('Changer le fournisseur')).toBeInTheDocument()
 
     const subjects = screen.getByRole('region', { name: 'Dossiers vivants' })
@@ -51,7 +55,8 @@ describe('site workspaces', () => {
     expect(within(subjects).getByText('3 actions')).toBeInTheDocument()
     expect(within(subjects).getByText('2 réserves')).toBeInTheDocument()
 
-    expect(screen.getByRole('link', { name: "Ouvrir l'atelier complet" })).toHaveAttribute('href', '/memoire/site-1')
+    // L'atelier n'apparaît qu'une fois : c'est le bloc « Poser une question » en haut.
+    expect(screen.queryByRole('link', { name: "Ouvrir l'atelier complet" })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: "Ouvrir l'atelier mémoire" })).not.toBeInTheDocument()
   })
 
@@ -60,7 +65,10 @@ describe('site workspaces', () => {
       <DocumentsWorkspace
         siteId="site-1"
         canExport={false}
-        documents={[]}
+        documents={[
+          { id: 'doc-1', filename: 'Plan toiture.pdf', document_type: 'plan', created_at: '2026-07-13T10:00:00.000Z' },
+          { id: 'doc-2', filename: 'photo-fuite-local-technique.jpg', document_type: 'photo', created_at: '2026-07-14T10:00:00.000Z' },
+        ]}
         proofDossiers={[
           {
             actionId: 'action-1',
@@ -95,16 +103,24 @@ describe('site workspaces', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'Documents & preuves' })).toBeInTheDocument()
-    expect(screen.getByText('Ici je peux retrouver ou recevoir une preuve.')).toBeInTheDocument()
-    expect(screen.getByText('Aucun document pour le moment.')).toBeInTheDocument()
-    expect(screen.getByText('Ajoutez un document, une photo, un plan ou un PV.')).toBeInTheDocument()
+    expect(screen.getByText('Ici, je peux retrouver ou recevoir une preuve.')).toBeInTheDocument()
+
+    expect(screen.getByRole('link', { name: /Plan toiture.pdf/ })).toHaveAttribute('href', '/documents/doc-1')
+    expect(screen.getByRole('link', { name: /photo-fuite-local-technique.jpg/ })).toHaveAttribute('href', '/documents/doc-2')
+    fireEvent.click(screen.getByRole('button', { name: 'Photos' }))
+    expect(screen.queryByRole('link', { name: /Plan toiture.pdf/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /photo-fuite-local-technique.jpg/ })).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Rechercher une photo, un plan, un PV...'), { target: { value: 'toiture' } })
+    expect(screen.getByText('Aucun document ne correspond à cette recherche.')).toBeInTheDocument()
 
     const qr = screen.getByRole('region', { name: 'Recevoir des preuves' })
     expect(within(qr).getByText('QR de collecte externe')).toBeInTheDocument()
+    expect(within(qr).getByText('Accès en lecture seule.')).toBeInTheDocument()
     expect(within(qr).getByAltText('QR de collecte externe - Chantier A')).toBeInTheDocument()
     expect(within(qr).getByRole('button', { name: 'Copier le lien' })).toBeInTheDocument()
     expect(within(qr).getByRole('link', { name: 'Télécharger' })).toHaveAttribute('download', 'qr-chantier-a.png')
     expect(within(qr).getByText('2 accès anonymes')).toBeInTheDocument()
+    expect(within(qr).getByText('1 accès anonyme · aucun contributeur identifié.')).toBeInTheDocument()
     expect(within(qr).queryByText('Vincent')).not.toBeInTheDocument()
     expect(within(qr).queryByRole('link', { name: 'Ouvrir le QR Code' })).not.toBeInTheDocument()
 

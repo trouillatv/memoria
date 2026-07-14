@@ -1,5 +1,8 @@
+'use client'
+
 import Link from 'next/link'
-import { Download, FileSearch, FolderCheck, Search, ShieldCheck, Upload } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Download, FileSearch, FileText, FolderCheck, ImageIcon, Mic, Search, ShieldCheck, StickyNote, Upload, Video } from 'lucide-react'
 import type { ProofDossier } from '@/lib/db/proof-dossier'
 import type { QrHistoryEvent } from '@/lib/db/site-qr'
 import { ActivateQrButton } from '../../qr/ActivateQrButton'
@@ -11,6 +14,18 @@ export interface SiteDocumentSummary {
   filename: string
   document_type: string
   created_at?: string | null
+}
+
+export interface SiteMediaSummary {
+  id: string
+  kind: 'photo' | 'video' | 'vocal' | 'note'
+  title: string
+  detail: string
+  occurredAt: string | null
+  source: 'intervention' | 'action' | 'report' | 'visit'
+  href: string
+  thumbUrl?: string | null
+  previewUrl?: string | null
 }
 
 export interface DocumentsQrState {
@@ -28,22 +43,61 @@ export function DocumentsWorkspace({
   siteId,
   canExport,
   documents,
+  media = [],
   proofDossiers,
   qr,
 }: {
   siteId: string
   canExport: boolean
   documents: SiteDocumentSummary[]
+  media?: SiteMediaSummary[]
   proofDossiers: ProofDossier[]
   qr: DocumentsQrState
 }) {
+  const [query, setQuery] = useState('')
+  const [activeType, setActiveType] = useState('Tous')
   const pendingProofs = proofDossiers.filter((dossier) => !dossier.moeValidated).length
+  const filters = ['Tous', 'Photos', 'Vidéos', 'Vocaux', 'Notes', 'Plans', 'PV', 'CR', 'Justificatifs']
+  const libraryEntries = useMemo(() => {
+    const docEntries: LibraryEntry[] = documents.map((document) => ({
+      id: `document-${document.id}`,
+      kind: 'document',
+      title: document.filename,
+      detail: document.document_type || 'Document',
+      occurredAt: document.created_at ?? null,
+      href: `/documents/${document.id}`,
+      searchable: `${document.filename} ${document.document_type}`,
+    }))
+    const mediaEntries: LibraryEntry[] = media.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      detail: `${kindLabel(item.kind)} · ${sourceLabel(item.source)}${item.detail ? ` · ${item.detail}` : ''}`,
+      occurredAt: item.occurredAt,
+      href: item.href,
+      thumbUrl: item.thumbUrl ?? null,
+      previewUrl: item.previewUrl ?? null,
+      searchable: `${item.title} ${item.detail} ${kindLabel(item.kind)} ${sourceLabel(item.source)}`,
+    }))
+    return [...docEntries, ...mediaEntries].sort((a, b) => (b.occurredAt ?? '').localeCompare(a.occurredAt ?? ''))
+  }, [documents, media])
+  const filteredEntries = useMemo(() => {
+    const normalizedQuery = normalize(query)
+    return libraryEntries.filter((entry) => {
+      const matchesQuery = normalizedQuery.length === 0
+        || normalize(entry.title).includes(normalizedQuery)
+        || normalize(entry.detail).includes(normalizedQuery)
+        || normalize(entry.searchable).includes(normalizedQuery)
+      const matchesType = activeType === 'Tous' || entryMatchesType(entry, activeType)
+      return matchesQuery && matchesType
+    })
+  }, [activeType, libraryEntries, query])
 
   return (
     <main className="space-y-5">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Documents & preuves</h1>
-        <p className="text-sm text-muted-foreground">Ici je peux retrouver ou recevoir une preuve.</p>
+        <p className="text-sm text-muted-foreground">Ici, je peux retrouver ou recevoir une preuve.</p>
       </header>
 
       <section className="rounded-[22px] border border-sky-100 bg-card p-5 shadow-sm dark:border-sky-950/50" aria-labelledby="site-library-title">
@@ -51,7 +105,7 @@ export function DocumentsWorkspace({
           <div>
             <h2 id="site-library-title" className="text-lg font-semibold">Bibliothèque</h2>
             <p className="text-sm text-muted-foreground">
-              {documents.length} document{documents.length > 1 ? 's' : ''} dans le chantier · {proofDossiers.length} dossier{proofDossiers.length > 1 ? 's' : ''} de preuves alimenté{proofDossiers.length > 1 ? 's' : ''}
+              {libraryEntries.length} trace{libraryEntries.length > 1 ? 's' : ''} dans le chantier · {proofDossiers.length} dossier{proofDossiers.length > 1 ? 's' : ''} de preuves alimenté{proofDossiers.length > 1 ? 's' : ''}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -69,14 +123,21 @@ export function DocumentsWorkspace({
         </div>
         <label className="relative block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input className="h-11 w-full rounded-xl border bg-background pl-9 pr-3 text-sm" placeholder="Rechercher une photo, un plan, un PV..." />
+          <input
+            className="h-11 w-full rounded-xl border bg-background pl-9 pr-3 text-sm"
+            placeholder="Rechercher une photo, un plan, un PV..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </label>
         <div className="mt-4 flex flex-wrap gap-2">
-          {['Tous', 'Photos', 'Vidéos', 'Vocaux', 'Plans', 'PV', 'CR', 'Justificatifs'].map((item, index) => (
+          {filters.map((item) => (
             <button
               key={item}
               type="button"
-              className={index === 0
+              aria-pressed={activeType === item}
+              onClick={() => setActiveType(item)}
+              className={activeType === item
                 ? 'rounded-full border bg-sky-700 px-3 py-1.5 text-sm text-white'
                 : 'rounded-full border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted'}
             >
@@ -84,24 +145,41 @@ export function DocumentsWorkspace({
             </button>
           ))}
         </div>
-        {documents.length > 0 ? (
-          <div className="mt-6 divide-y rounded-2xl border">
-            {documents.slice(0, 6).map((document) => (
-              <div key={document.id} className="flex flex-col gap-1 p-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="font-medium">{document.filename}</p>
-                  <p className="text-sm text-muted-foreground">{document.document_type}</p>
-                </div>
-                {document.created_at && <p className="text-sm text-muted-foreground">{formatDate(document.created_at)}</p>}
-              </div>
-            ))}
+        {filteredEntries.length > 0 ? (
+          <div className="mt-5 overflow-hidden rounded-xl border">
+            <div className="grid grid-cols-[minmax(0,1fr)_130px_130px] gap-3 border-b bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <span>Nom</span>
+              <span>Type</span>
+              <span>Date</span>
+            </div>
+            <div className="divide-y">
+              {filteredEntries.slice(0, 40).map((entry) => (
+                <Link key={entry.id} href={entry.href} className="grid min-h-14 grid-cols-[minmax(0,1fr)_130px_130px] gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <LibraryIcon entry={entry} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{entry.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{entry.detail}</span>
+                    </span>
+                  </span>
+                  <span className="flex items-center text-sm text-muted-foreground">{kindLabel(entry.kind)}</span>
+                  <span className="flex items-center text-sm text-muted-foreground">{entry.occurredAt ? formatDate(entry.occurredAt) : 'Non daté'}</span>
+                </Link>
+              ))}
+            </div>
           </div>
-        ) : (
+        ) : libraryEntries.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-dashed p-8 text-center">
             <FileSearch className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 font-medium">Aucun document pour le moment.</p>
             <p className="text-sm text-muted-foreground">Ajoutez un document, une photo, un plan ou un PV.</p>
             <p className="mt-1 text-sm text-muted-foreground">La bibliothèque se remplira au fur et à mesure des visites.</p>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-dashed p-8 text-center">
+            <FileSearch className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-3 font-medium">Aucun document ne correspond à cette recherche.</p>
+            <p className="text-sm text-muted-foreground">Modifiez le texte ou le filtre sélectionné.</p>
           </div>
         )}
       </section>
@@ -205,7 +283,7 @@ function SiteQrCollectionPanel({ siteId, qr }: { siteId: string; qr: DocumentsQr
       <div className="flex flex-col justify-between gap-4">
         <div>
           <p className="font-medium">QR de collecte externe</p>
-          <p className="mt-1 text-sm text-muted-foreground">Lien public en lecture ou contribution selon les droits réels du lien.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Accès en lecture seule.</p>
           <div className="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
             <span className="rounded-full border px-2 py-1">{qr.accessCount} accès anonyme{qr.accessCount > 1 ? 's' : ''}</span>
             {qr.lastAccessedAt && <span className="rounded-full border px-2 py-1">Dernier accès {formatDate(qr.lastAccessedAt)}</span>}
@@ -216,7 +294,7 @@ function SiteQrCollectionPanel({ siteId, qr }: { siteId: string; qr: DocumentsQr
         <details className="rounded-xl border p-3">
           <summary className="cursor-pointer text-sm font-medium">Historique et sécurité</summary>
           <p className="mt-2 text-sm text-muted-foreground">
-            {anonymousScans} accès anonyme{anonymousScans > 1 ? 's' : ''}. Aucune personne n'est affichée sans identification réelle.
+            {anonymousScans} accès anonyme{anonymousScans > 1 ? 's' : ''} · aucun contributeur identifié.
           </p>
           <QrHistory history={qr.history} />
           <div className="mt-4 border-t pt-4">
@@ -247,8 +325,83 @@ function QrHistory({ history }: { history: QrHistoryEvent[] }) {
   )
 }
 
+type LibraryEntry = {
+  id: string
+  kind: 'document' | SiteMediaSummary['kind']
+  title: string
+  detail: string
+  occurredAt: string | null
+  href: string
+  searchable: string
+  thumbUrl?: string | null
+  previewUrl?: string | null
+}
+
+function LibraryIcon({ entry }: { entry: LibraryEntry }) {
+  if (entry.kind === 'photo' && entry.thumbUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={entry.thumbUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border object-cover" />
+    )
+  }
+  const Icon = entry.kind === 'photo'
+    ? ImageIcon
+    : entry.kind === 'video'
+      ? Video
+      : entry.kind === 'vocal'
+        ? Mic
+        : entry.kind === 'note'
+          ? StickyNote
+          : FileText
+  return (
+    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/30 text-muted-foreground">
+      <Icon className="h-4 w-4" />
+    </span>
+  )
+}
+
+function kindLabel(kind: LibraryEntry['kind']): string {
+  if (kind === 'photo') return 'Photo'
+  if (kind === 'video') return 'Vidéo'
+  if (kind === 'vocal') return 'Vocal'
+  if (kind === 'note') return 'Note'
+  return 'Document'
+}
+
+function sourceLabel(source: SiteMediaSummary['source']): string {
+  if (source === 'intervention') return 'intervention'
+  if (source === 'action') return 'action'
+  if (source === 'visit') return 'visite'
+  return 'réunion'
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+}
+
+function entryMatchesType(entry: LibraryEntry, filter: string): boolean {
+  const value = normalize(`${entry.detail} ${entry.title} ${entry.searchable}`)
+  if (filter === 'Photos') return entry.kind === 'photo' || ['photo', 'image', 'jpg', 'jpeg', 'png', 'webp'].some((token) => value.includes(token))
+  if (filter === 'Vidéos') return entry.kind === 'video' || ['video', 'mp4', 'mov'].some((token) => value.includes(token))
+  if (filter === 'Vocaux') return entry.kind === 'vocal' || ['audio', 'vocal', 'mp3', 'm4a', 'wav'].some((token) => value.includes(token))
+  if (filter === 'Notes') return entry.kind === 'note'
+  const checks: Record<string, string[]> = {
+    Photos: ['photo', 'image', 'jpg', 'jpeg', 'png', 'webp'],
+    Vidéos: ['video', 'mp4', 'mov'],
+    Vocaux: ['audio', 'vocal', 'mp3', 'm4a', 'wav'],
+    Plans: ['plan'],
+    PV: ['pv', 'proces-verbal', 'proces verbal'],
+    CR: ['cr', 'compte-rendu', 'compte rendu'],
+    Justificatifs: ['justificatif', 'attestation', 'facture'],
+  }
+  return (checks[filter] ?? []).some((token) => value.includes(token))
 }
 
 function formatDateTime(iso: string): string {
