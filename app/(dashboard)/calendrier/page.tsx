@@ -42,21 +42,24 @@ export default async function CalendrierPage() {
   const scolaires = periods.filter((p) => p.kind === 'scolaire')
   const feries = periods.filter((p) => p.kind === 'ferie')
 
-  // Les chantiers concernés — qui adhère à quoi.
+  // Les chantiers concernés — et LA RÈGLE de chacun. Le calendrier dit quand ;
+  // le chantier dit quoi (fermé / travail prévu). Mig 208.
   const { data: siteRows } = await createAdminClient()
     .from('sites')
-    .select('id, name, follows_school_calendar, follows_public_holidays, organization_id')
+    .select('id, name, school_calendar_effect, public_holidays_effect, organization_id')
     .is('deleted_at', null)
-    .or('follows_school_calendar.eq.true,follows_public_holidays.eq.true')
+    .or('school_calendar_effect.neq.none,public_holidays_effect.neq.none')
     .order('name')
   const orgId = user.organization_id
   const following = ((siteRows ?? []) as Array<{
     id: string
     name: string
-    follows_school_calendar: boolean
-    follows_public_holidays: boolean
+    school_calendar_effect: 'none' | 'closed' | 'works'
+    public_holidays_effect: 'none' | 'closed' | 'works'
     organization_id: string | null
   }>).filter((s) => !orgId || s.organization_id === orgId)
+
+  const effectFr = (e: 'closed' | 'works') => (e === 'closed' ? 'fermé' : 'travail prévu')
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -83,7 +86,7 @@ export default async function CalendrierPage() {
           </h3>
           <CalendarEditor
             periods={scolaires}
-            followingCount={following.filter((s) => s.follows_school_calendar).length}
+            followingCount={following.filter((s) => s.school_calendar_effect === 'closed').length}
             kind="scolaire"
           />
         </div>
@@ -94,7 +97,7 @@ export default async function CalendrierPage() {
           </h3>
           <CalendarEditor
             periods={feries}
-            followingCount={following.filter((s) => s.follows_public_holidays).length}
+            followingCount={following.filter((s) => s.public_holidays_effect === 'closed').length}
             kind="ferie"
             placeholder="ex : Fête de la citoyenneté"
             emptyText="Aucun jour férié saisi. Entrez ceux du calendrier officiel — MemorIA n’en invente aucun."
@@ -109,8 +112,9 @@ export default async function CalendrierPage() {
           Chantiers concernés
         </h2>
         <p className="text-xs text-muted-foreground">
-          Un jour férié ne ferme pas tous les sites : chaque chantier choisit, sur sa fiche, les
-          calendriers qu&apos;il suit.
+          Le calendrier dit quand ; chaque chantier dit quoi, sur sa fiche : fermé pendant la
+          période, ou au contraire travail prévu — le grand nettoyage d&apos;une école se fait
+          pendant les vacances. Seul «&nbsp;fermé&nbsp;» produit des fermetures.
         </p>
         {following.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -127,8 +131,12 @@ export default async function CalendrierPage() {
                   <span className="truncate font-medium">{s.name}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {[
-                      s.follows_school_calendar ? 'vacances scolaires' : null,
-                      s.follows_public_holidays ? 'jours fériés' : null,
+                      s.school_calendar_effect !== 'none'
+                        ? `vacances : ${effectFr(s.school_calendar_effect)}`
+                        : null,
+                      s.public_holidays_effect !== 'none'
+                        ? `fériés : ${effectFr(s.public_holidays_effect)}`
+                        : null,
                     ]
                       .filter(Boolean)
                       .join(' · ')}
