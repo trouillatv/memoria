@@ -159,25 +159,40 @@ export function OrganisationWorkspace({
           title={`Roulements (${cycles.length})`}
           detail="Le rythme dans lequel les équipes reviennent."
         />
+        {/* Un roulement listé mais non cliquable est un cul-de-sac : le conducteur
+            qui vient chercher « le rythme de mon chantier » doit pouvoir l'ouvrir. */}
         {cycles.length > 0 ? (
           <ul className="mt-4 divide-y rounded-2xl border">
             {cycles.map((cycle) => (
-              <li key={cycle.id} className="flex flex-wrap items-center justify-between gap-2 p-4">
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{cycle.name}</span>
-                  <span className="mt-0.5 block text-sm text-muted-foreground">
-                    Cycle de {cycle.cycleLengthWeeks} semaine{cycle.cycleLengthWeeks > 1 ? 's' : ''} · à partir du{' '}
-                    {formatDate(cycle.startsOn)}
+              <li key={cycle.id}>
+                <Link
+                  href={`/sites/${siteId}/roulements/${cycle.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 p-4 hover:bg-muted/40"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{cycle.name}</span>
+                    <span className="mt-0.5 block text-sm text-muted-foreground">
+                      Cycle de {cycle.cycleLengthWeeks} semaine{cycle.cycleLengthWeeks > 1 ? 's' : ''} · à partir du{' '}
+                      {formatDate(cycle.startsOn)}
+                    </span>
                   </span>
-                </span>
-                <span className="text-sm text-muted-foreground">{cycleStatusLabel(cycle.status)}</span>
+                  <span className="text-sm text-muted-foreground">{cycleStatusLabel(cycle.status)}</span>
+                </Link>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="mt-4 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-            Aucun roulement enregistré. Le planning se fait alors intervention par intervention.
-          </p>
+          <div className="mt-4 space-y-3 rounded-2xl border border-dashed p-4">
+            <p className="text-sm text-muted-foreground">
+              Aucun roulement enregistré. Le planning se fait alors intervention par intervention.
+            </p>
+            <Link
+              href={`/sites/${siteId}/roulements/nouveau`}
+              className="inline-flex w-fit rounded-lg border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Créer un roulement
+            </Link>
+          </div>
         )}
       </section>
     </main>
