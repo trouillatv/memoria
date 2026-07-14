@@ -5,9 +5,11 @@ import {
   getTender,
   getLatestTenderAnalysis,
   getTenderDocument,
+  listTenderDocuments,
   findSimilarTenderMemory,
   getSignedVoiceNoteUrl,
 } from '@/lib/db/tenders'
+import { TenderPiecesCard, type TenderPieceView } from './TenderPiecesCard'
 import { listChatMessages, listConversations } from '@/lib/db/atelier-ia'
 import { listAgentAnalyses } from '@/lib/db/agent-analyses'
 import { listTenderDocumentSources } from '@/lib/db/tender-document-sources'
@@ -84,6 +86,18 @@ export default async function TenderDetailPage({
     : [null, null, [], [], [], []]
 
   const canRelaunch = tender.status === 'ready' || tender.status === 'failed'
+
+  // Le DOSSIER (toutes les pièces), pas le dernier fichier déposé. Chargé
+  // toujours : savoir ce qui compose l'AO ne dépend pas de l'état de l'analyse.
+  const pieces: TenderPieceView[] = (await listTenderDocuments(id).catch(() => [])).map((d) => ({
+    id: d.id,
+    filename: d.filename,
+    kind: d.kind,
+    sizeBytes: d.size_bytes,
+    read: !!d.extracted_text && d.extracted_text.trim().length > 0,
+    uploadedAt: d.uploaded_at,
+  }))
+  const canEditPieces = currentUser?.role === 'admin' || currentUser?.role === 'manager'
 
   // Compteur d'engagements extraits — affiché entre parenthèses dans la sidebar.
   // Seulement quand le lien existe (statut finalisé), pour éviter une requête inutile.
@@ -310,6 +324,14 @@ export default async function TenderDetailPage({
                     synthèse : ce qu'on sait déjà du client. Factuel, pas de
                     score, pas de prédiction. */}
                 <TenderClientCapitalCard capital={clientCapital} />
+                {/* Le dossier tel qu'il est RÉELLEMENT : ce qui a été lu, ce qui
+                    ne l'a pas été, et si l'analyse est plus vieille que les pièces. */}
+                <TenderPiecesCard
+                  tenderId={id}
+                  pieces={pieces}
+                  analysedAt={analysis?.created_at ?? null}
+                  canEdit={canEditPieces}
+                />
                 {/* AO-1 L3 (Vincent 2026-05-21) — sources [doc:id] cliquables
                     sous la synthèse, vers /documents/[id]. */}
                 <TenderDocumentSourcesSection sources={documentSources ?? []} tenderId={id} />

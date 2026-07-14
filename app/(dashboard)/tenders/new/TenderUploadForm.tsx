@@ -8,6 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { createTenderAction } from './actions'
 import { toast } from 'sonner'
 import { Upload, FileText, X } from 'lucide-react'
+import { detectPieceKind, tenderPieceLabel } from '@/lib/tenders/pieces'
+
+const MAX_PIECES = 12
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`
@@ -16,7 +19,9 @@ function formatSize(bytes: number): string {
 
 export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
   const [pending, setPending] = useState(false)
-  const [file, setFile] = useState<File | null>(null)
+  // Un appel d'offres est un DOSSIER : RC, CCAP, CCTP, DPGF, BPU, plans. On en
+  // accepte plusieurs — une seule pièce reste un dépôt valide.
+  const [files, setFiles] = useState<File[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -29,35 +34,62 @@ export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
     return () => clearInterval(t)
   }, [pending])
 
-  function pickFile(f: File | null) {
-    if (f && f.type !== 'application/pdf') {
-      toast.error('Le fichier doit être un PDF.')
-      return
+  /** L'input réel porte les fichiers dans le FormData : on le tient synchronisé. */
+  function syncInput(next: File[]) {
+    if (!inputRef.current) return
+    const dt = new DataTransfer()
+    next.forEach((f) => dt.items.add(f))
+    inputRef.current.files = dt.files
+  }
+
+  function addFiles(incoming: File[]) {
+    const accepted: File[] = []
+    for (const f of incoming) {
+      if (f.type !== 'application/pdf') {
+        toast.error(`${f.name} n'est pas un PDF.`)
+        continue
+      }
+      if (f.size > 20 * 1024 * 1024) {
+        toast.error(`${f.name} dépasse 20 Mo.`)
+        continue
+      }
+      accepted.push(f)
     }
-    if (f && f.size > 20 * 1024 * 1024) {
-      toast.error('Le PDF dépasse 20 Mo.')
-      return
-    }
-    setFile(f)
+    if (accepted.length === 0) return
+
+    setFiles((prev) => {
+      // Même nom + même taille = même pièce redéposée : on ne la double pas.
+      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`))
+      const merged = [...prev]
+      for (const f of accepted) {
+        if (seen.has(`${f.name}:${f.size}`)) continue
+        merged.push(f)
+      }
+      const capped = merged.slice(0, MAX_PIECES)
+      if (merged.length > MAX_PIECES) toast.error(`Maximum ${MAX_PIECES} pièces.`)
+      syncInput(capped)
+      return capped
+    })
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      syncInput(next)
+      return next
+    })
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault()
     setDragOver(false)
-    const f = e.dataTransfer.files?.[0] ?? null
-    pickFile(f)
-    // Reflète le fichier déposé dans l'input réel (pour l'envoi du formulaire).
-    if (f && inputRef.current) {
-      const dt = new DataTransfer()
-      dt.items.add(f)
-      inputRef.current.files = dt.files
-    }
+    addFiles([...(e.dataTransfer.files ?? [])])
   }
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (!file) {
-      toast.error('Choisissez d\'abord le PDF du cahier des charges.')
+    if (files.length === 0) {
+      toast.error('Ajoutez au moins une pièce du dossier.')
       return
     }
     setPending(true)
@@ -90,71 +122,87 @@ export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
             <Input id="deadline" name="deadline" type="date" />
           </div>
 
-          {/* Zone d'upload encadrée — l'action attendue est explicite. */}
+          {/* Zone de dépôt — l'action attendue est explicite. */}
           <div className="space-y-2">
-            <Label htmlFor="file">PDF du cahier des charges</Label>
+            <Label htmlFor="file">Pièces du dossier</Label>
 
-            {/* input réel masqué : c'est lui qui porte le fichier dans le FormData */}
+            {/* input réel masqué : c'est lui qui porte les fichiers dans le FormData */}
             <input
               ref={inputRef}
               id="file"
               name="file"
               type="file"
               accept="application/pdf"
-              required
+              multiple
               className="sr-only"
-              onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => addFiles([...(e.target.files ?? [])])}
             />
 
-            {!file ? (
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => inputRef.current?.click()}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click() } }}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={onDrop}
-                className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition-colors ${
-                  dragOver
-                    ? 'border-primary bg-primary/5'
-                    : 'border-muted-foreground/30 bg-muted/30 hover:border-primary/60 hover:bg-muted/50'
-                }`}
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <Upload className="h-6 w-6 text-primary" />
-                </div>
-                <p className="text-sm font-medium">
-                  Glissez le PDF ici, ou <span className="text-primary underline">cliquez pour le choisir</span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Cahier des charges au format PDF (max 20 Mo, non scanné)
-                </p>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => inputRef.current?.click()}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click() } }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors ${
+                dragOver
+                  ? 'border-primary bg-primary/5'
+                  : 'border-muted-foreground/30 bg-muted/30 hover:border-primary/60 hover:bg-muted/50'
+              }`}
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                <Upload className="h-6 w-6 text-primary" />
               </div>
-            ) : (
-              <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatSize(file.size)} · PDF</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setFile(null); if (inputRef.current) inputRef.current.value = '' }}
-                  className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Retirer le fichier"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+              <p className="text-sm font-medium">
+                {files.length === 0
+                  ? <>Glissez les pièces ici, ou <span className="text-primary underline">cliquez pour les choisir</span></>
+                  : <>Ajouter d&apos;autres pièces</>}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Règlement de consultation, CCAP, CCTP, DPGF, BPU, plans, annexes — PDF, 20 Mo par pièce
+              </p>
+            </div>
+
+            {files.length > 0 && (
+              <ul className="space-y-2 pt-1">
+                {files.map((file, index) => {
+                  const kind = detectPieceKind(file.name)
+                  return (
+                    <li
+                      key={`${file.name}:${file.size}`}
+                      className="flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {/* La nature est PROPOSÉE, jamais affirmée : une pièce non
+                              reconnue est lue quand même, elle est seulement mal nommée. */}
+                          {tenderPieceLabel(kind)} · {formatSize(file.size)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label={`Retirer ${file.name}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </div>
 
           <Button type="submit" disabled={pending} className="w-full">
             <Upload className="h-4 w-4 mr-2" />
-            {pending ? 'Upload + analyse en cours…' : 'Lancer l\'analyse IA'}
+            {pending ? 'Envoi du dossier en cours…' : 'Lancer l\'analyse IA'}
           </Button>
 
           {pending && (
@@ -162,13 +210,13 @@ export function TenderUploadForm({ dossierId }: { dossierId?: string }) {
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out"
-                  // Envoi du fichier (~10 s typiques) : progresse vers ~90 % puis
+                  // Envoi des pièces (~10 s typiques) : progresse vers ~90 % puis
                   // la page redirige vers le dossier où l'analyse continue.
                   style={{ width: `${Math.min(90, Math.round((1 - Math.exp(-elapsed / 6)) * 100))}%` }}
                 />
               </div>
               <p className="text-[11px] text-muted-foreground text-center">
-                Envoi du document puis redirection vers le dossier — l&apos;analyse s&apos;y poursuit.
+                Envoi des pièces puis redirection vers le dossier — l&apos;analyse s&apos;y poursuit.
               </p>
             </div>
           )}

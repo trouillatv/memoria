@@ -4,9 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, countAnalysesToday, attachTenderToDossier } from '@/lib/db/tenders'
+import { updateTenderStatus, softDeleteTender, getTender, getTenderDocument, listTenderDocuments, createTenderDocument, countAnalysesToday, attachTenderToDossier } from '@/lib/db/tenders'
+import { detectPieceKind } from '@/lib/tenders/pieces'
 import { getEvidenceForEngagement } from '@/lib/db/engagements'
 
 async function requireManagerOrAdmin() {
@@ -19,6 +21,71 @@ async function requireManagerOrAdmin() {
 }
 
 const idSchema = z.object({ id: z.string().uuid() })
+
+const MAX_PDF_BYTES = 20 * 1024 * 1024
+const MAX_PIECES = 12
+
+/**
+ * Compléter un dossier d'AO APRÈS sa création.
+ *
+ * Un appel d'offres n'arrive jamais complet : le CCTP tombe le lundi, le BPU le
+ * jeudi, une annexe la semaine suivante. Sans ce geste, un dossier créé avec le
+ * seul règlement de consultation resterait amputé pour toujours.
+ *
+ * L'analyse existante n'est PAS relancée automatiquement — elle coûte, et c'est
+ * l'utilisateur qui décide quand le dossier est assez complet pour être relu.
+ * L'écran signale simplement que l'analyse est antérieure aux nouvelles pièces.
+ */
+export async function addTenderPiecesAction(formData: FormData) {
+  const userId = await requireManagerOrAdmin()
+  const parsed = idSchema.safeParse({ id: formData.get('id') })
+  if (!parsed.success) return { error: 'Dossier invalide' }
+
+  const tender = await getTender(parsed.data.id)
+  if (!tender) return { error: 'Dossier introuvable' }
+
+  const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
+  if (files.length === 0) return { error: 'Aucune pièce jointe' }
+
+  const existing = await listTenderDocuments(parsed.data.id)
+  if (existing.length + files.length > MAX_PIECES) {
+    return { error: `Le dossier dépasserait ${MAX_PIECES} pièces.` }
+  }
+  for (const f of files) {
+    if (f.type !== 'application/pdf') return { error: `Format PDF requis : ${f.name}` }
+    if (f.size > MAX_PDF_BYTES) return { error: `Pièce trop lourde (> 20 Mo) : ${f.name}` }
+  }
+
+  const supabase = createAdminClient()
+  for (const file of files) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100)
+    const storagePath = `${parsed.data.id}/${Date.now()}-${safeName}`
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    const { error: uploadErr } = await supabase.storage
+      .from('tender-documents')
+      .upload(storagePath, buffer, { contentType: 'application/pdf', upsert: false })
+    if (uploadErr) return { error: `Dépôt échoué (${file.name}) : ${uploadErr.message}` }
+
+    await createTenderDocument({
+      tender_id: parsed.data.id,
+      storage_path: storagePath,
+      filename: file.name,
+      size_bytes: file.size,
+      page_count: 0,
+      extracted_text: null,
+      kind: detectPieceKind(file.name),
+    })
+  }
+
+  await logAuditEvent({
+    userId, entityType: 'tender', entityId: parsed.data.id,
+    action: 'updated',
+    metadata: { pieces_added: files.length },
+  })
+  revalidatePath(`/tenders/${parsed.data.id}`)
+  return { ok: true as const, added: files.length }
+}
 
 // Soudure AVANT : rattacher/détacher cet AO à une opportunité (dossier). dossierId
 // vide = détacher. Aucune copie de données — simple référence. Cf. mig 175.

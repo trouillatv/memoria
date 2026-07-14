@@ -8,6 +8,7 @@ import type {
   TenderStatus,
   TenderOutcome,
   TenderOutcomeTag,
+  TenderPieceKind,
 } from '@/types/db'
 
 export interface TenderListQuery {
@@ -341,6 +342,8 @@ export async function createTenderDocument(input: {
   page_count?: number | null
   extracted_text?: string | null
   extraction_source?: 'native' | 'ocr'
+  /** Nature de la pièce (mig 209) — `null` assumé : « non qualifiée » vaut mieux qu'inventé. */
+  kind?: TenderPieceKind | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -352,17 +355,42 @@ export async function createTenderDocument(input: {
   return data.id
 }
 
+const TENDER_DOCUMENT_COLUMNS =
+  'id, tender_id, storage_path, filename, size_bytes, page_count, extracted_text, uploaded_at, kind'
+
+/**
+ * La pièce la plus récente. Conservée telle quelle pour les usages qui ne
+ * regardent qu'UN document (aperçu PDF, atelier IA) — mais ce n'est PAS le
+ * dossier : pour lire l'AO, passer par `listTenderDocuments`.
+ */
 export async function getTenderDocument(tenderId: string): Promise<DbTenderDocument | null> {
   const supabase = await createServerClient()
   const { data, error } = await supabase
     .from('tender_documents')
-    .select('id, tender_id, storage_path, filename, size_bytes, page_count, extracted_text, uploaded_at')
+    .select(TENDER_DOCUMENT_COLUMNS)
     .eq('tender_id', tenderId)
     .order('uploaded_at', { ascending: false })
     .limit(1)
     .maybeSingle()
   if (error || !data) return null
   return data as DbTenderDocument
+}
+
+/**
+ * TOUTES les pièces du dossier, dans l'ordre de dépôt.
+ *
+ * C'est la lecture juste d'un appel d'offres : le CCTP, le CCAP et le BPU se
+ * répondent, et n'en lire qu'un donne une analyse confiante et fausse.
+ */
+export async function listTenderDocuments(tenderId: string): Promise<DbTenderDocument[]> {
+  const supabase = await createServerClient()
+  const { data, error } = await supabase
+    .from('tender_documents')
+    .select(TENDER_DOCUMENT_COLUMNS)
+    .eq('tender_id', tenderId)
+    .order('uploaded_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DbTenderDocument[]
 }
 
 export async function getLatestTenderAnalysis(tenderId: string): Promise<DbTenderAnalysis | null> {
