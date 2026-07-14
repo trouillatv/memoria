@@ -139,7 +139,7 @@ export function SiteNotesPopover({ siteName, notes, fields }: Props) {
       <div className="flex items-center gap-2 pb-2 border-b">
         <MessageSquare className="h-3 w-3 text-muted-foreground" aria-hidden />
         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-          Fiche site · {siteName}
+          Fiche chantier · {siteName}
         </span>
       </div>
       {hasFields && (

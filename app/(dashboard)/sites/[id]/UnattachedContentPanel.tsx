@@ -83,7 +83,7 @@ export function UnattachedContentPanel({
           <span className="text-[11px] font-normal text-muted-foreground">({items.length})</span>
         </h2>
         <p className="text-[12px] text-muted-foreground mt-0.5">
-          Contenu déposé au niveau du site, pas encore rangé dans un sous-périmètre.
+          Contenu déposé au niveau du chantier, pas encore rangé dans un sous-périmètre.
           MemorIA propose&nbsp;: vous validez.
         </p>
       </div>

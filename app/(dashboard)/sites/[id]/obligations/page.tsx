@@ -92,7 +92,7 @@ export default async function SiteObligationsPage({ params }: { params: Promise<
   return (
     <div className="space-y-6 w-full max-w-2xl">
       <DynamicCrumb segmentId="obligations" label="Obligations" />
-      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${id}`, label: identity.name }]} />
+      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Chantiers' }, { href: `/sites/${id}`, label: identity.name }]} />
 
       <Link href={`/sites/${id}`} className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">← {identity.name}</Link>
 

@@ -1,7 +1,7 @@
 // Sprint 2 — Mémoire des lieux : tests du bouton + form inline AddSiteNoteButton.
 //
 // Couvre :
-//   1. Bouton « Ajouter une note sur ce site » rendu initial
+//   1. Bouton « Ajouter une note sur ce chantier » rendu initial
 //   2. Click → form apparaît + textarea avec placeholder factuel
 //   3. Body < 3 chars → bouton Ajouter disabled
 //   4. Body 140 chars → maxLength respecté côté textarea
@@ -27,10 +27,10 @@ function mkOk(): ActionFn {
 }
 
 describe('AddSiteNoteButton — rendu initial', () => {
-  it('affiche le bouton « Ajouter une note sur ce site » par défaut', () => {
+  it('affiche le bouton « Ajouter une note sur ce chantier » par défaut', () => {
     render(<AddSiteNoteButton siteId={SITE_ID} action={mkOk()} />)
     const trigger = screen.getByTestId('add-site-note-trigger')
-    expect(trigger).toHaveTextContent(/ajouter une note sur ce site/i)
+    expect(trigger).toHaveTextContent(/ajouter une note sur ce chantier/i)
     // Form pas affiché au mount.
     expect(screen.queryByTestId('add-site-note-form')).not.toBeInTheDocument()
   })

@@ -102,7 +102,7 @@ export async function TerrainMatchingSection({
             </p>
           </div>
           <span className="text-xs text-muted-foreground shrink-0 ml-2">
-            {totalTraces} trace{totalTraces > 1 ? 's' : ''} — {totalSites} site{totalSites > 1 ? 's' : ''}
+            {totalTraces} trace{totalTraces > 1 ? 's' : ''} — {totalSites} chantier{totalSites > 1 ? 's' : ''}
           </span>
         </div>
 
@@ -151,7 +151,7 @@ export async function TerrainMatchingSection({
           </p>
         </div>
         <span className="text-xs text-muted-foreground shrink-0 ml-2">
-          {totalTraces} trace{totalTraces > 1 ? 's' : ''} — {matchBySite.length} site{matchBySite.length > 1 ? 's' : ''}
+          {totalTraces} trace{totalTraces > 1 ? 's' : ''} — {matchBySite.length} chantier{matchBySite.length > 1 ? 's' : ''}
         </span>
       </div>
       <div className="space-y-2">
@@ -160,7 +160,7 @@ export async function TerrainMatchingSection({
         ))}
         {matchBySite.length > 3 && (
           <p className="text-xs text-muted-foreground pl-0.5">
-            + {matchBySite.length - 3} autre{matchBySite.length - 3 > 1 ? 's' : ''} site{matchBySite.length - 3 > 1 ? 's' : ''} avec traces (affichage limité)
+            + {matchBySite.length - 3} autre{matchBySite.length - 3 > 1 ? 's' : ''} chantier{matchBySite.length - 3 > 1 ? 's' : ''} avec traces (affichage limité)
           </p>
         )}
       </div>

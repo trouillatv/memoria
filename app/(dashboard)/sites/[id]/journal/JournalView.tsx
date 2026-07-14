@@ -177,7 +177,7 @@ export function JournalView({ entries }: Props) {
   if (entries.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic py-6 text-center">
-        Aucune intervention enregistrée sur ce site pour le moment.
+        Aucune intervention enregistrée sur ce chantier pour le moment.
       </p>
     )
   }

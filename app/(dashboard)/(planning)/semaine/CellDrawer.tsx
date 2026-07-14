@@ -260,7 +260,7 @@ export function CellDrawer({
                   <CalendarOff className="h-3.5 w-3.5" aria-hidden /> Conflit de planning
                 </h4>
                 <p className="text-sm text-rose-900">
-                  Le site est déclaré fermé{selected ? ` le ${frDayMonthLocal(selected.date)}` : ''}.
+                  Le chantier est déclaré fermé{selected ? ` le ${frDayMonthLocal(selected.date)}` : ''}.
                   <br />
                   Motif&nbsp;: {CLOSURE_REASON_FR[conflict.closure.reasonKind].toLowerCase()}
                   {conflict.closure.reason ? ` — ${conflict.closure.reason}` : ''}.

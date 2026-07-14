@@ -19,7 +19,7 @@ export default async function MemoirePage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Toute la mémoire des chantiers — anomalies, notes, interventions — en une question.
-          Chaque trace est rattachée à son site.
+          Chaque trace est rattachée à son chantier.
         </p>
         {/* Les DEUX mémoires, nommées (doctrine 2026-07-13) : l'utilisateur doit
             comprendre pourquoi certaines connaissances se réutilisent partout. */}

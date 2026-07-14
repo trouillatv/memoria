@@ -60,7 +60,7 @@ export function SiteRow({ contractId, site, notes }: Props) {
       if (r && 'error' in r && r.error) {
         toast.error(r.error)
       } else {
-        toast.success('Site mis à jour')
+        toast.success('Chantier mis à jour')
         setEditing(false)
         router.refresh()
       }

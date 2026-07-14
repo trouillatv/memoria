@@ -115,7 +115,7 @@ export default async function SubjectDetailPage({ params }: { params: Promise<{ 
     <div className="space-y-6 w-full max-w-3xl">
       <DynamicCrumb segmentId={subjectId} label={subject.name} />
       <BreadcrumbPrefix crumbs={[
-        { href: '/sites', label: 'Sites' },
+        { href: '/sites', label: 'Chantiers' },
         { href: `/sites/${id}`, label: identity.name },
         { href: `/sites/${id}/subjects`, label: 'Sujets' },
       ]} />

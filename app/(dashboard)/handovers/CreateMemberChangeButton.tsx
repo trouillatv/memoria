@@ -80,7 +80,7 @@ export function CreateMemberChangeButton({
         <DialogHeader>
           <DialogTitle>Passage de témoin — {subjectLabel}</DialogTitle>
           <DialogDescription>
-            Compile automatiquement la mémoire utile à transmettre : sites
+            Compile automatiquement la mémoire utile à transmettre : chantiers
             connus, consignes « À savoir », anomalies récentes, documents.
             Le brief documente <strong>les chantiers</strong>, jamais la personne.
           </DialogDescription>
@@ -103,7 +103,7 @@ export function CreateMemberChangeButton({
               ))}
             </select>
             <p className="text-[11px] text-muted-foreground">
-              Si renseignée, le brief se focalise sur les sites de cette équipe.
+              Si renseignée, le brief se focalise sur les chantiers de cette équipe.
             </p>
           </div>
 
@@ -138,7 +138,7 @@ export function CreateMemberChangeButton({
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
             <p className="text-[11px] text-muted-foreground">
-              Date à laquelle la personne est remplacée sur ses sites — obligatoire.
+              Date à laquelle la personne est remplacée sur ses chantiers — obligatoire.
             </p>
           </div>
         </div>

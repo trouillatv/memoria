@@ -71,7 +71,7 @@ export function WeekVigilanceSection({ data }: { data: WeekVigilance }) {
         <div className="space-y-2">
           <h3 className="text-xs uppercase tracking-wider text-red-900/80 dark:text-red-200/80 inline-flex items-center gap-1.5">
             <Users className="h-3 w-3" aria-hidden />
-            Équipes sur plusieurs sites sur des horaires qui chevauchent ({data.conflicts.length})
+            Équipes sur plusieurs chantiers sur des horaires qui chevauchent ({data.conflicts.length})
           </h3>
           <ul className="space-y-1 text-sm">
             {data.conflicts.map((c, idx) => (

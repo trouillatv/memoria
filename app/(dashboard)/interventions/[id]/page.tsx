@@ -310,7 +310,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
       {site ? (
         <BreadcrumbPrefix
           crumbs={[
-            { href: '/sites', label: 'Sites' },
+            { href: '/sites', label: 'Chantiers' },
             { href: `/sites/${site.id}`, label: site.name },
           ]}
         />

@@ -231,7 +231,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
             <div className="px-4 py-4 space-y-5">
               {needsSitePick && (
                 <div className="space-y-1">
-                  <label htmlFor="brief-site" className="text-xs text-muted-foreground">Site</label>
+                  <label htmlFor="brief-site" className="text-xs text-muted-foreground">Chantier</label>
                   <select
                     id="brief-site"
                     value={selectedSite}
@@ -360,7 +360,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
 
               {needsSitePick && !selectedSite && !pending && (
                 <p className="py-6 text-center text-sm italic text-muted-foreground">
-                  Choisis un site pour préparer la réunion.
+                  Choisis un chantier pour préparer la réunion.
                 </p>
               )}
             </div>
@@ -756,7 +756,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
 
       {!hasAnyDetail && (
         <p className="text-sm text-muted-foreground italic py-4 text-center">
-          Pas encore de mémoire notable sur ce site. Les premières traces apparaîtront ici.
+          Pas encore de mémoire notable sur ce chantier. Les premières traces apparaîtront ici.
         </p>
       )}
     </div>

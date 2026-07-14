@@ -209,7 +209,7 @@ export default async function PublicHandoverPage({ params }: PageProps) {
           MemorIA — Mémoire opérationnelle augmentée
         </p>
         <p className="text-[11px] text-muted-foreground italic">
-          Ce brief documente le site et la mémoire utile. Aucune évaluation de
+          Ce brief documente le chantier et la mémoire utile. Aucune évaluation de
           personne. Lien à usage temporaire — chaque consultation est tracée.
         </p>
       </footer>

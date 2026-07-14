@@ -107,7 +107,7 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
       {payload.sites.length === 0 ? (
         <section className="rounded-lg border bg-card p-4 text-center">
           <p className="text-sm text-muted-foreground italic">
-            Aucun site concerné — le sujet du brief n’a pas de site documenté
+            Aucun chantier concerné — le sujet du brief n’a pas de chantier documenté
             sur la période couverte.
           </p>
         </section>
@@ -383,7 +383,7 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
                 s.documents.length === 0 &&
                 s.neighborTeams.length === 0 && (
                   <p className="text-xs italic text-muted-foreground">
-                    Aucune mémoire spécifique sur ce site. La fiche reste à
+                    Aucune mémoire spécifique sur ce chantier. La fiche reste à
                     nourrir au fil des prochaines interventions.
                   </p>
                 )}

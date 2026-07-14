@@ -107,7 +107,7 @@ export function OperationalHealthTab({ kpis, contracts }: { kpis: OperationalKPI
                 <tr>
                   <th className="text-left px-3 py-2">Contrat</th>
                   <th className="text-left px-3 py-2">Client</th>
-                  <th className="text-right px-3 py-2">Sites</th>
+                  <th className="text-right px-3 py-2">Chantiers</th>
                   <th className="text-right px-3 py-2">Planifiées</th>
                   <th className="text-right px-3 py-2">Réalisées</th>
                   <th className="text-left px-3 py-2 min-w-[120px]">Taux clôture</th>

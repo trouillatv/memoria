@@ -37,7 +37,7 @@ export default async function ContractSitesPage({ params }: { params: Promise<{ 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Sites ({sites.length})
+            Chantiers ({sites.length})
           </h2>
         </div>
 

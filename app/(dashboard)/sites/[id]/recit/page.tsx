@@ -26,7 +26,7 @@ export default async function SiteRecitPage({ params }: PageProps) {
     <div className="space-y-6 w-full max-w-2xl">
       <DynamicCrumb segmentId="recit" label="Récit" />
       <BreadcrumbPrefix crumbs={[
-        { href: '/sites', label: 'Sites' },
+        { href: '/sites', label: 'Chantiers' },
         { href: `/sites/${id}`, label: identity.name },
       ]} />
 

@@ -98,7 +98,7 @@ export default async function ActionsPage({
             Actions
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-            Ce qui reste à faire, tous sites confondus — actions issues des réunions ou créées à la volée.
+            Ce qui reste à faire, tous chantiers confondus — actions issues des réunions ou créées à la volée.
             Une action n&apos;est pas une intervention&nbsp;: elle n&apos;entre au planning que si elle est planifiée.
           </p>
         </div>

@@ -149,7 +149,7 @@ export function OffboardingDialog(props: Props) {
         {step === 2 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Quelle équipe reprend les sites de cette personne ? On fige sa mémoire
+              Quelle équipe reprend les chantiers de cette personne ? On fige sa mémoire
               (accès, à-savoir, anomalies) dans un brief transmis à la relève.
             </p>
             {props.currentTeams.length > 0 && (

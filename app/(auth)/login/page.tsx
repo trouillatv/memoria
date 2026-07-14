@@ -31,7 +31,7 @@ export default async function LoginPage({
         <div className="p-6 sm:p-7">
           <h2 className="text-base font-semibold text-slate-950">Se connecter</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Accédez à vos sites, briefs et preuves.
+            Accédez à vos chantiers, briefs et preuves.
           </p>
 
           {params.password_changed === '1' && (

@@ -35,7 +35,7 @@ export default async function ObligationSourcePage({
   return (
     <div className="space-y-4 w-full max-w-2xl">
       <DynamicCrumb segmentId="source" label="Source" />
-      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${id}/obligations`, label: 'Obligations' }]} />
+      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Chantiers' }, { href: `/sites/${id}/obligations`, label: 'Obligations' }]} />
 
       <Link href={`/sites/${id}/obligations`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-muted/40">
         <ArrowLeft className="h-3.5 w-3.5" /> Retour aux obligations

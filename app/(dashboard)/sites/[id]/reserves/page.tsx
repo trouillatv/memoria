@@ -61,7 +61,7 @@ export default async function SiteReservesPage({ params }: PageProps) {
     <div className="space-y-6 w-full">
       <DynamicCrumb segmentId="reserves" label="Points à lever" />
       <BreadcrumbPrefix crumbs={[
-        { href: '/sites', label: 'Sites' },
+        { href: '/sites', label: 'Chantiers' },
         { href: `/sites/${id}`, label: identity.name },
       ]} />
 

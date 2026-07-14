@@ -180,7 +180,7 @@ export function SiteReportCuration({
   }
   function createVigilance(idx: number, label: string) {
     const targetSite = siteId ?? candidateSites[0]?.id ?? null
-    if (!targetSite) { toast.error('Aucun site cible pour la vigilance'); return }
+    if (!targetSite) { toast.error('Aucun chantier cible pour la vigilance'); return }
     startTransition(async () => {
       const fd = new FormData()
       fd.set('site_id', targetSite); fd.set('label', label)
@@ -488,7 +488,7 @@ export function SiteReportCuration({
       {missingSiteCount > 0 && (
         <p className="flex items-center gap-1.5 text-xs text-amber-700">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
-          {missingSiteCount} décision{missingSiteCount > 1 ? 's' : ''} sans site — précisez le site ou décochez.
+          {missingSiteCount} décision{missingSiteCount > 1 ? 's' : ''} sans chantier — précisez le chantier ou décochez.
         </p>
       )}
       <button type="button" onClick={submit} disabled={isPending || acceptedCount === 0 || missingSiteCount > 0}

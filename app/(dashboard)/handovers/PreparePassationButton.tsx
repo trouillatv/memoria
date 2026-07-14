@@ -69,7 +69,7 @@ export function PreparePassationButton({
           <DialogTitle>Pour qui préparer le passage de témoin ?</DialogTitle>
           <DialogDescription>
             Choisis la personne qui change d&apos;équipe ou s&apos;en va. Le brief
-            compile les sites connus et la mémoire utile — jamais la personne.
+            compile les chantiers connus et la mémoire utile — jamais la personne.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

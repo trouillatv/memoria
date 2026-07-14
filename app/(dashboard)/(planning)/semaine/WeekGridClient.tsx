@@ -192,9 +192,9 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
       // rattachée à un site. Changer de site impliquerait de changer de mission,
       // ce qui casserait la chaîne de preuve. On refuse net avec un message clair.
       if (parsed.siteId !== info.siteId) {
-        toast.error('Une intervention ne peut pas changer de site', {
+        toast.error('Une intervention ne peut pas changer de chantier', {
           description:
-            'Elle est rattachée à sa mission. Pour transférer un site, créez une nouvelle intervention.',
+            'Elle est rattachée à sa mission. Pour la déplacer sur un autre chantier, créez une nouvelle intervention.',
           duration: 5000,
         })
         return

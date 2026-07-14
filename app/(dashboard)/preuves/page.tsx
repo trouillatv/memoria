@@ -80,7 +80,7 @@ export default async function PreuvesPage({ searchParams }: PageProps) {
             <EmptyState
               icon={FileSearch}
               title="Quel dossier de preuves voulez-vous consulter ?"
-              description="Tapez le nom d'un site, une date, ou un mot-clé pour retrouver instantanément les preuves d'intervention."
+              description="Tapez le nom d'un chantier, une date, ou un mot-clé pour retrouver instantanément les preuves d'intervention."
             />
           </CardContent>
         </Card>
@@ -171,7 +171,7 @@ function FiltersWrapper({
     >
       <FilterSelect
         paramName="siteId"
-        label="Site"
+        label="Chantier"
         emptyLabel="Tous les chantiers"
         options={siteOptions}
       />

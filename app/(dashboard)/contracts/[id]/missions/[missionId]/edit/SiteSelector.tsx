@@ -192,7 +192,7 @@ export function SiteSelector({ sites, otherSites = [], value, onChange, disabled
                     currentItems.length > 0 && 'border-t mt-1 pt-2',
                   )}
                 >
-                  Autres sites du tenant
+                  Autres chantiers du tenant
                 </li>
                 {otherItems.map((s) => {
                   const idx = filtered.indexOf(s)

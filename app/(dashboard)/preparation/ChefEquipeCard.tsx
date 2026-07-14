@@ -249,7 +249,7 @@ export function ChefEquipeCard({
         >
           {preparation.blocks.accesInfos.length === 0 ? (
             <p className="text-xs italic text-muted-foreground">
-              Aucune info d&apos;accès renseignée sur les sites concernés.
+              Aucune info d&apos;accès renseignée sur les chantiers concernés.
             </p>
           ) : (
             <ul className="space-y-1 text-sm">
@@ -270,7 +270,7 @@ export function ChefEquipeCard({
         >
           {preparation.blocks.aSavoir.length === 0 ? (
             <p className="text-xs italic text-muted-foreground">
-              Aucune note récente sur les sites concernés.
+              Aucune note récente sur les chantiers concernés.
             </p>
           ) : (
             <ul className="space-y-1 text-sm">

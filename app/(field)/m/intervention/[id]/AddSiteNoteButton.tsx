@@ -90,7 +90,7 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
           className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 px-2 py-1 rounded border border-dashed hover:bg-muted/30 transition-colors mt-2"
         >
           <Plus className="h-3 w-3" />
-          Ajouter une note sur ce site
+          Ajouter une note sur ce chantier
         </button>
       </div>
     )
@@ -105,7 +105,7 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
         htmlFor="add-site-note-body"
         className="text-xs text-muted-foreground"
       >
-        Note courte sur ce site (140 caractères max)
+        Note courte sur ce chantier (140 caractères max)
       </label>
       <textarea
         id="add-site-note-body"

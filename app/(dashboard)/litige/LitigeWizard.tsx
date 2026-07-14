@@ -185,7 +185,7 @@ export function LitigeWizard({ contracts, sites }: LitigeWizardProps) {
             ) : (
               <>
                 <Label htmlFor="litige-site" className="text-sm">
-                  Site
+                  Chantier
                 </Label>
                 <select
                   id="litige-site"

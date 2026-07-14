@@ -37,7 +37,7 @@ export function AccessPanel({ events, photos, signedUrls }: Props) {
     <section className="space-y-3 rounded-lg border bg-card p-4">
       <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
         <KeyRound className="h-3.5 w-3.5" />
-        Accès site ({events.length})
+        Accès au chantier ({events.length})
       </h2>
 
       {events.length === 0 ? (

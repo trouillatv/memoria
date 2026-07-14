@@ -25,7 +25,7 @@ describe('handover payload view', () => {
     render(<HandoverPayloadView payload={legacy} />)
 
     expect(screen.queryByText('Prochaines échéances')).not.toBeInTheDocument()
-    expect(screen.getByText(/Aucune mémoire spécifique sur ce site/)).toBeInTheDocument()
+    expect(screen.getByText(/Aucune mémoire spécifique sur ce chantier/)).toBeInTheDocument()
   })
 })
 

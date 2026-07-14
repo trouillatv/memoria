@@ -402,7 +402,7 @@ export function ReservesView({ siteId, reserves, siteDocuments }: Props) {
   if (reserves.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic py-6 text-center">
-        Aucun point à lever enregistré sur ce site pour le moment.
+        Aucun point à lever enregistré sur ce chantier pour le moment.
       </p>
     )
   }

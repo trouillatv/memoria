@@ -261,7 +261,7 @@ export default async function MissionsPage({
         />
         <FilterSelect
           paramName="site"
-          label="Site"
+          label="Chantier"
           emptyLabel="Tous les chantiers"
           options={sites.map((s) => ({ value: s.id, label: s.name }))}
         />

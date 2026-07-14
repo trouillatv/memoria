@@ -85,7 +85,7 @@ export function BrandLegalDialog() {
           <section className="space-y-1">
             <p className="font-medium text-foreground">Données personnelles</p>
             <p>
-              MemorIA traite des données d'exploitation (sites, interventions, équipes)
+              MemorIA traite des données d'exploitation (chantiers, interventions, équipes)
               pour assurer la continuité de la mémoire opérationnelle. Aucune donnée
               n'est revendue. Les consultations des fiches sont tracées. Droits d'accès,
               de rectification et de suppression exerçables via le contact ci-dessus.

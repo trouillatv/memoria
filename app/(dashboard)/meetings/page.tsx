@@ -130,7 +130,7 @@ export default async function MeetingsPage({
             <Building2 className="h-3 w-3" /> Contrat
           </Link>
           <Link href={qs({ type: 'site' })} className={chip(typeFilter === 'site')}>
-            <MapPin className="h-3 w-3" /> Site
+            <MapPin className="h-3 w-3" /> Chantier
           </Link>
           <span className="mx-1 h-4 w-px bg-border" />
           <Link href={quickFilter === 'actions' ? qs({ f: '' }) : qs({ f: 'actions' })} className={chip(quickFilter === 'actions')}>

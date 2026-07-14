@@ -195,7 +195,7 @@ describe('CellDrawer — le bloc « Conflit de planning »', () => {
 
     const section = screen.getByTestId('drawer-closure-conflict')
     expect(section).toBeInTheDocument()
-    expect(section.textContent).toContain('Le site est déclaré fermé')
+    expect(section.textContent).toContain('Le chantier est déclaré fermé')
     expect(section.textContent).toContain('fermeture du client')
     expect(section.textContent).toContain('Magasin fermé')
     expect(section.textContent).toContain('reste planifiée')

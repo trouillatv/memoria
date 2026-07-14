@@ -40,7 +40,7 @@ export function SiteTeamsKnowledgeSection({ teams }: Props) {
       <CardHeader>
         <CardTitle className="text-base inline-flex items-center gap-2">
           <Users className="h-4 w-4" />
-          Équipes qui connaissent ce site ({teams.length})
+          Équipes qui connaissent ce chantier ({teams.length})
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
