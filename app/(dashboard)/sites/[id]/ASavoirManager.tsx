@@ -87,7 +87,7 @@ export function ASavoirManager({ siteId, active }: Props) {
       <div className="flex items-center justify-between gap-3 mb-3">
         <h2 className="text-sm font-semibold inline-flex items-center gap-2 text-violet-900">
           <Sparkles className="h-4 w-4" />
-          À savoir sur ce lieu
+          À savoir sur ce chantier
           {active.length > 0 && <span className="font-normal text-violet-700/70">· {active.length}</span>}
         </h2>
         {!adding && (
@@ -103,7 +103,7 @@ export function ASavoirManager({ siteId, active }: Props) {
 
       {active.length === 0 && !adding && (
         <p className="text-xs text-muted-foreground italic">
-          Rien de particulier à savoir sur ce lieu pour l&apos;instant — ajoutez ce qu&apos;un ancien dirait à un nouveau qui arrive.
+          Rien de particulier à savoir sur ce chantier pour l&apos;instant — ajoutez ce qu&apos;un ancien dirait à un nouveau qui arrive.
         </p>
       )}
 
@@ -149,7 +149,7 @@ export function ASavoirManager({ siteId, active }: Props) {
             type="text"
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Décris le lieu, pas les personnes (3-140 caractères)…"
+            placeholder="Décris le chantier, pas les personnes (3-140 caractères)…"
             maxLength={140}
             disabled={pending}
             autoFocus
@@ -190,7 +190,7 @@ export function ASavoirManager({ siteId, active }: Props) {
             </div>
           </div>
           <p className="text-[10px] text-muted-foreground italic">
-            Ces informations décrivent le lieu (code temporaire, accès particulier,
+            Ces informations décrivent le chantier (code temporaire, accès particulier,
             sensibilité client…). Elles ne sont jamais lues-trackées.
           </p>
         </div>

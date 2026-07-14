@@ -13,6 +13,15 @@ export interface PrefillMission {
   contractName: string
 }
 
+export interface RotationOption {
+  id: string
+  missionId: string
+  missionName: string
+  siteId: string
+  title: string
+  label: string
+}
+
 const fr = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' })
 
 export function pickInitialMissionId(
@@ -38,4 +47,16 @@ export function mergeMissionOptions<T extends { id: string }>(
 ): T[] {
   const seen = new Set(fromServer.map((m) => m.id))
   return [...fromServer, ...createdInline.filter((m) => !seen.has(m.id))]
+}
+
+export function visibleRotationOptions(
+  rotations: RotationOption[],
+  selectedMission: Pick<PrefillMission, 'siteId'> | null,
+  initialSiteId: string | undefined,
+): RotationOption[] {
+  const siteId = selectedMission?.siteId ?? initialSiteId
+  if (!siteId) return []
+  return rotations
+    .filter((r) => r.siteId === siteId)
+    .sort((a, b) => fr(a.missionName, b.missionName) || fr(a.title, b.title) || fr(a.label, b.label))
 }

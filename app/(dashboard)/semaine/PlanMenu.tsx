@@ -29,17 +29,20 @@ import {
   type SiteOption,
   type TeamOption,
 } from './CreateInterventionDialog'
+import type { RotationOption } from './planning-prefill'
 
 export function PlanMenu({
   missions,
   sites,
   teams,
+  rotations,
   defaultDate,
   initialSiteId,
 }: {
   missions: MissionOption[]
   sites: SiteOption[]
   teams: TeamOption[]
+  rotations: RotationOption[]
   defaultDate: string
   /** Semaine déjà filtrée sur un chantier → on le préremplit. */
   initialSiteId?: string
@@ -162,6 +165,7 @@ export function PlanMenu({
         missions={missions}
         sites={sites}
         teams={teams}
+        rotations={rotations}
         defaultDate={defaultDate}
         initialSiteId={initialSiteId}
         open={interventionOpen}

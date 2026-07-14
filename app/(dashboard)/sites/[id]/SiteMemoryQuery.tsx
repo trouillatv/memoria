@@ -27,7 +27,11 @@ const CONFIDENCE_META: Record<SiteMemorySummary['confidence'], { label: string; 
   faible:  { label: 'Confiance faible',  cls: 'bg-slate-50 text-slate-600 border-slate-200' },
 }
 
-const EXAMPLES = ['réservation', 'étanchéité', 'accès', 'reprise', 'béton']
+const EXAMPLE_QUESTIONS = [
+  'Que faut-il savoir avant la prochaine visite ?',
+  'Quels risques sont encore ouverts ?',
+  'Quelles décisions concernent ce chantier ?',
+]
 
 const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof StickyNote; cls: string }> = {
   anomaly:      { label: 'Anomalie',     Icon: AlertTriangle, cls: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -148,10 +152,10 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div>
         <h2 className="text-sm font-semibold inline-flex items-center gap-2">
-          <Search className="h-4 w-4 text-muted-foreground" /> Interroger ce site
+          <Search className="h-4 w-4 text-muted-foreground" /> Interroger ce chantier
         </h2>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          MemorIA retrouve dans la mémoire du site (observations de visite, anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus, documents : CCTP, marché, procédures…).
+          MemorIA retrouve dans la mémoire du chantier (observations de visite, anomalies, notes, interventions, photos, actions, décisions, réserves, comptes-rendus, documents : CCTP, marché, procédures…).
           Il vous montre les traces&nbsp;: il ne répond pas à votre place.
         </p>
       </div>
@@ -162,7 +166,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
           value={q}
           onChange={(e) => setQ(e.target.value)}
           maxLength={200}
-          placeholder="Que cherchez-vous sur ce site ?"
+          placeholder="Que cherchez-vous sur ce chantier ?"
           className="flex-1 rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <button
@@ -176,25 +180,28 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
       </form>
 
       <div className="space-y-1.5">
-        {terms && terms.length > 0 && (
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Ce qui revient ici
-          </p>
-        )}
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {terms && terms.length > 0 ? 'Recherches suggérées' : 'Exemples de questions'}
+        </p>
         <div className="flex flex-wrap gap-1.5">
-          {/* Pistes pilotées par la donnée (mots récurrents du site) ; à défaut,
-              exemples génériques tant que le site n'a pas assez de traces. */}
-          {(terms && terms.length > 0 ? terms : EXAMPLES.map((term) => ({ term, count: 0 }))).map(({ term, count }) => (
-            <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
-              title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-              {term}
-              {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
-            </button>
-          ))}
+          {terms && terms.length > 0
+            ? terms.map(({ term, count }) => (
+              <button key={term} type="button" onClick={() => { setQ(term); runSearch(term) }} disabled={pending}
+                title={count > 0 ? `${count} trace${count > 1 ? 's' : ''}` : undefined}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+                {term}
+                {count > 0 && <span className="text-[9px] tabular-nums text-muted-foreground/50">{count}</span>}
+              </button>
+            ))
+            : EXAMPLE_QUESTIONS.map((question) => (
+              <button key={question} type="button" onClick={() => { setQ(question); runSearch(question) }} disabled={pending}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
+                {question}
+              </button>
+            ))}
           <button type="button" onClick={loadTeams} disabled={pending}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
-            <Users className="h-3 w-3" /> Qui connaît ce site&nbsp;?
+            <Users className="h-3 w-3" /> Qui connaît ce chantier&nbsp;?
           </button>
           <button type="button" onClick={loadPhotos} disabled={pending}
             className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 disabled:opacity-50">
@@ -213,7 +220,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
       {!pending && mode === 'search' && hits !== null && (
         hits.length === 0 ? (
           <p className="text-xs text-muted-foreground italic py-3 text-center">
-            Aucune trace ne correspond à «&nbsp;{searched}&nbsp;» sur ce site.
+            Aucune trace ne correspond à «&nbsp;{searched}&nbsp;» sur ce chantier.
           </p>
         ) : (
           <div>
@@ -371,10 +378,10 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
 
       {!pending && mode === 'teams' && teams !== null && (
         teams.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic py-3 text-center">Aucune équipe documentée sur ce site.</p>
+          <p className="text-xs text-muted-foreground italic py-3 text-center">Aucune équipe documentée sur ce chantier.</p>
         ) : (
           <div>
-            <p className="text-[11px] text-muted-foreground mb-2">Équipes déjà intervenues sur ce site</p>
+            <p className="text-[11px] text-muted-foreground mb-2">Équipes déjà intervenues sur ce chantier</p>
             <ul className="space-y-1.5">
               {teams.map((t) => (
                 <li key={t.teamName} className="rounded-lg border bg-background p-2.5">
@@ -392,7 +399,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
               ))}
             </ul>
             <p className="mt-2 text-[10px] text-muted-foreground/70 italic">
-              Mémoire collective du lieu — descriptif, sans classement de performance.
+              Mémoire collective du chantier — descriptif, sans classement de performance.
             </p>
           </div>
         )
@@ -400,7 +407,7 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
 
       {!pending && mode === 'photos' && photos !== null && (
         photos.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic py-3 text-center">Aucune photo sur ce site.</p>
+          <p className="text-xs text-muted-foreground italic py-3 text-center">Aucune photo sur ce chantier.</p>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {photos.map((p) => (

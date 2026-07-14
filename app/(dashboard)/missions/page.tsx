@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import {
-  ClipboardList, MapPin, AlertTriangle, CircleSlash, Clock, CheckCircle2,
+  ClipboardList, MapPin, AlertTriangle, Clock, CheckCircle2,
   Users, CalendarX, ArrowRight, ChevronRight, CalendarCheck,
 } from 'lucide-react'
 import { AnomalyTooltipBadge } from '@/components/ui/AnomalyTooltipBadge'
@@ -10,6 +10,10 @@ import { HealthRing } from '@/components/ui/health-ring'
 import { listMissionsCockpit } from '@/lib/db/missions-cockpit'
 import { listTeams } from '@/lib/db/teams'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
+import {
+  buildMissionHealth as computeMissionHealth,
+  scoreMissionSeverity,
+} from '@/lib/missions/mission-health'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { NewMissionDialog } from './NewMissionDialog'
@@ -29,10 +33,6 @@ const CADENCE_FR: Record<string, string> = {
 
 // Seuil de retard par cadence (jours sans réalisation au-delà desquels une
 // mission récurrente est « hors-rythme »). Marge incluse (week-ends, aléas).
-const OVERDUE_THRESHOLD_DAYS: Record<string, number> = {
-  daily: 3, weekly: 10, biweekly: 18, monthly: 38, on_demand: Infinity,
-}
-
 function daysBetweenIso(fromIso: string, toIso: string): number {
   const a = new Date(fromIso + 'T00:00:00Z').getTime()
   const b = new Date(toIso + 'T00:00:00Z').getTime()
@@ -52,15 +52,6 @@ function fmtDM(iso: string): string {
 // équipe). Le vert pour « en rythme ». Si tout est rouge, plus rien n'est rouge.
 type Tone = 'red' | 'orange' | 'green'
 
-interface MissionLike {
-  active: boolean
-  cadence: string
-  lastInterventionDate: string | null
-  nextInterventionDate: string | null
-  openAnomalyCount: number
-  assignedTeam: { id: string; name: string; color: string | null } | null
-}
-
 interface Health {
   level: Tone
   chips: Array<{ tone: Tone; label: string }>
@@ -69,41 +60,6 @@ interface Health {
   sansProchaine: boolean
   sansEquipe: boolean
   anomalies: boolean
-}
-
-function missionHealth(m: MissionLike, todayIso: string): Health {
-  const recurring = m.cadence !== 'on_demand'
-  const hasFutureNext = !!m.nextInterventionDate && m.nextInterventionDate >= todayIso
-  const threshold = OVERDUE_THRESHOLD_DAYS[m.cadence] ?? Infinity
-
-  const never = m.active && recurring && !m.lastInterventionDate && !hasFutureNext
-  let overdueDays = 0
-  let overdue = false
-  if (m.active && recurring && m.lastInterventionDate && !hasFutureNext) {
-    overdueDays = daysBetweenIso(m.lastInterventionDate, todayIso)
-    overdue = overdueDays > threshold
-  }
-  const anomalies = m.openAnomalyCount > 0
-  const sansProchaine = m.active && recurring && !overdue && !never && !hasFutureNext
-  const sansEquipe = m.active && !m.assignedTeam
-
-  const chips: Array<{ tone: Tone; label: string }> = []
-  if (overdue) chips.push({ tone: 'red', label: `${overdueDays} j de retard` })
-  if (anomalies) chips.push({ tone: 'red', label: `${m.openAnomalyCount} anomalie${m.openAnomalyCount > 1 ? 's' : ''}` })
-  if (never) chips.push({ tone: 'orange', label: 'jamais réalisée' })
-  if (sansProchaine) chips.push({ tone: 'orange', label: 'sans prochaine' })
-  if (sansEquipe) chips.push({ tone: 'orange', label: 'sans équipe' })
-
-  const level: Tone = chips.some((c) => c.tone === 'red') ? 'red'
-    : chips.some((c) => c.tone === 'orange') ? 'orange' : 'green'
-  if (chips.length === 0) chips.push({ tone: 'green', label: 'en rythme' })
-
-  return { level, chips, overdueDays, never, sansProchaine, sansEquipe, anomalies }
-}
-
-/** Sévérité pour trier les missions critiques (rouge). */
-function severity(h: Health, openAnomalyCount: number): number {
-  return (h.overdueDays > 0 ? 1000 + h.overdueDays : 0) + (h.anomalies ? 300 + openAnomalyCount * 10 : 0)
 }
 
 const TONE_DOT: Record<Tone, string> = {
@@ -164,12 +120,12 @@ export default async function MissionsPage({
   const todayIso = todayLocalIso()
   const active = missions.filter((m) => m.active)
   const inactive = missions.filter((m) => !m.active)
-  const healthBy = new Map(missions.map((m) => [m.id, missionHealth(m, todayIso)]))
+  const healthBy = new Map(missions.map((m) => [m.id, computeMissionHealth(m, todayIso)]))
 
   // Spotlight : missions CRITIQUES (rouge), triées par sévérité.
   const critical = active
     .filter((m) => healthBy.get(m.id)!.level === 'red')
-    .sort((a, b) => severity(healthBy.get(b.id)!, b.openAnomalyCount) - severity(healthBy.get(a.id)!, a.openAnomalyCount))
+    .sort((a, b) => scoreMissionSeverity(healthBy.get(b.id)!, b.openAnomalyCount) - scoreMissionSeverity(healthBy.get(a.id)!, a.openAnomalyCount))
   // Priorité n°1 = la mission la plus critique (« si je ne fais qu'une chose »).
   const priority = critical[0] ?? null
   const restCritical = critical.slice(1)
@@ -562,7 +518,7 @@ function MissionTable({
       <ul className="divide-y">
         {missions.map((m) => {
           const hasAnomaly = m.openAnomalyCount > 0
-          const health = healthBy.get(m.id) ?? missionHealth(m, todayLocalIso())
+          const health = healthBy.get(m.id) ?? computeMissionHealth(m, todayLocalIso())
           const href = `/missions/${m.id}`
 
           const hasHistory = !!(m.firstInterventionDate || m.lastInterventionDate || m.nextInterventionDate)

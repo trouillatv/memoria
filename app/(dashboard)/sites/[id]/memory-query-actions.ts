@@ -26,6 +26,9 @@ import { findSimilarTraces } from '@/lib/ai/embed-trace'
 import { getSiteMemoryTimeline } from '@/lib/db/site-memory'
 import { getSiteTeamsKnowledge } from '@/lib/db/site-team-knowledge'
 import { getSiteRecentPhotos } from '@/lib/db/site-cockpit'
+import { listSitePhotos } from '@/lib/db/site-photos'
+import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/visit-captures'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { searchKnowledgeForSite } from '@/lib/ai/match-ao-knowledge'
 
@@ -62,7 +65,7 @@ export interface SiteMemoryHit {
   // 'observation' (P2) = flux terrain visit_capture (notes / mémos vocaux
   // transcrits / points vérifiés), cherché en plein-texte DÉTERMINISTE (ILIKE) —
   // c'est le cœur mobile, jusqu'ici absent du corpus de recherche.
-  type: MemoryHitType | 'document' | 'observation'
+  type: MemoryHitType | 'document' | 'observation' | 'report_document'
   id: string
   title: string
   snippet: string
@@ -127,6 +130,61 @@ async function searchSiteObservations(siteId: string, q: string): Promise<SiteMe
 
 /** Signal DÉTERMINISTE sur un résultat de recherche (zéro LLM). Aide à juger la
  *  force et la nature de ce qui est retrouvé, sans réponse magique. */
+function isGeneralSiteMemoryQuestion(q: string): boolean {
+  const value = q.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  return [
+    'que faut-il savoir',
+    'quoi savoir',
+    'prochaine visite',
+    'avant la visite',
+    'reprendre le chantier',
+    'resume',
+  ].some((token) => value.includes(token))
+}
+
+async function searchSiteReports(siteId: string, q: string): Promise<SiteMemoryHit[]> {
+  const supabase = createAdminClient()
+  const general = isGeneralSiteMemoryQuestion(q)
+  let query = supabase
+    .from('site_reports')
+    .select('id, title, text_input, transcript_corrected, transcript_raw, created_at, started_at, ended_at, origin')
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(general ? 8 : 12)
+
+  if (!general) {
+    const pattern = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`
+    query = query.or(`title.ilike.${pattern},text_input.ilike.${pattern},transcript_corrected.ilike.${pattern},transcript_raw.ilike.${pattern}`)
+  }
+
+  const { data } = await query
+  return ((data ?? []) as Array<{
+    id: string
+    title: string | null
+    text_input: string | null
+    transcript_corrected: string | null
+    transcript_raw: string | null
+    created_at: string
+    started_at: string | null
+    ended_at: string | null
+    origin: string | null
+  }>).map((r) => {
+    const isVisit = Boolean(r.origin)
+    const text = (r.text_input || r.transcript_corrected || r.transcript_raw || '').trim()
+    return {
+      type: 'report_document' as const,
+      id: r.id,
+      title: r.title?.trim() || (isVisit ? 'Visite terrain' : 'Réunion de chantier'),
+      snippet: text || (isVisit ? 'Visite enregistrée sur ce chantier.' : 'Réunion enregistrée sur ce chantier.'),
+      occurredAt: r.ended_at ?? r.started_at ?? r.created_at,
+      similarity: null,
+      keyword: general,
+      href: `/meetings/${r.id}`,
+    }
+  })
+}
+
 export interface SiteMemorySummary {
   count: number
   /** Dates distinctes = « sources indépendantes » (proxy). */
@@ -185,9 +243,21 @@ export async function askSiteMemoryAction(
   if (q.length < 2) return { ok: true, hits: [], summary: null }
 
   // Sémantique + plein-texte + index d'enrichissement + DOCUMENTS (S4a-2) en parallèle.
-  const queryEmbedding = await getEmbedding(q).catch(() => null)
+  const generalQuestion = isGeneralSiteMemoryQuestion(q)
+  if (generalQuestion) {
+    const [reportHits, observationHits] = await Promise.all([
+      searchSiteReports(siteId, q).catch(() => [] as SiteMemoryHit[]),
+      searchSiteObservations(siteId, q).catch(() => [] as SiteMemoryHit[]),
+    ])
+    const hits = [...reportHits, ...observationHits]
+      .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1))
+      .slice(0, 30)
+    void logUsageEvent({ event: 'memory_search', siteId, query: q })
+    return { ok: true, hits, summary: computeSummary(hits) }
+  }
+  const queryEmbedding = generalQuestion ? null : await getEmbedding(q).catch(() => null)
   const tenantId = await getSiteTenantId(siteId)
-  const [ftsHits, semHits, timeline, docHits, observationHits] = await Promise.all([
+  const [ftsHits, semHits, timeline, docHits, observationHits, reportHits] = await Promise.all([
     searchMemory({ q, siteId, periodDays: 3650, limit: 30 }).catch(() => []),
     queryEmbedding
       ? findSimilarTraces({ siteId, queryEmbedding, limit: 20 }).catch(() => [])
@@ -198,6 +268,7 @@ export async function askSiteMemoryAction(
       : Promise.resolve([]),
     // P2 — observations terrain (visit_capture), plein-texte déterministe.
     searchSiteObservations(siteId, q).catch(() => [] as SiteMemoryHit[]),
+    searchSiteReports(siteId, q).catch(() => [] as SiteMemoryHit[]),
   ])
 
   const byId = new Map(timeline.map((e) => [e.id, e]))
@@ -216,6 +287,9 @@ export async function askSiteMemoryAction(
   // correspondances mot-clé (fts nominal faible, le tri final départage sur la date).
   for (const o of observationHits) {
     merged.set(`observation:${o.id}`, { ...o, fts: 0.01 })
+  }
+  for (const r of reportHits) {
+    merged.set(`report_document:${r.id}`, { ...r, fts: r.keyword ? 0.02 : 0.01 })
   }
   for (const s of semHits) {
     const type = SRC_TO_TYPE[s.source_type]
@@ -355,12 +429,51 @@ export async function getSiteRecentPhotosAction(
 ): Promise<{ ok: true; photos: SitePhotoHit[] } | { ok: false; error: string }> {
   if (!(await requireOperator())) return { ok: false, error: 'Accès refusé' }
   if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
-  const photos = await getSiteRecentPhotos(siteId, 12).catch(() => [])
+  const [recentPhotos, sitePhotos, visitCaptures] = await Promise.all([
+    getSiteRecentPhotos(siteId, 12).catch(() => []),
+    listSitePhotos(siteId).catch(() => []),
+    listVisitCapturesBySite(siteId, 80).catch(() => []),
+  ])
+  const sitePhotoThumbs = await getSignedPhotoUrlsThumb(sitePhotos.map((photo) => photo.storagePath)).catch(() => new Map<string, string>())
+  const visitPhotoCaptures = visitCaptures.filter((capture) => capture.kind === 'photo')
+  const visitPreviews: Record<string, { url: string; mime: string | null }> = await getVisitCapturePreviewUrls(visitPhotoCaptures).catch(() => ({}))
+  const seen = new Set<string>()
+  const photos = [
+    ...recentPhotos.map((p) => ({
+      id: `recent-${p.id}`,
+      url: p.signedUrl,
+      caption: p.caption,
+      takenAt: p.takenAt,
+      takenByName: p.takenByName,
+    })),
+    ...sitePhotos.map((p) => ({
+      id: `site-${p.id}`,
+      url: sitePhotoThumbs.get(p.storagePath) ?? '',
+      caption: p.legende || null,
+      takenAt: p.takenAt ?? new Date(0).toISOString(),
+      takenByName: null,
+    })),
+    ...visitPhotoCaptures.map((p) => ({
+      id: `visit-${p.id}`,
+      url: visitPreviews[p.id]?.url ?? '',
+      caption: p.body,
+      takenAt: p.captured_at ?? p.created_at,
+      takenByName: null,
+    })),
+  ]
+    .filter((p) => p.url)
+    .filter((p) => {
+      if (seen.has(p.id)) return false
+      seen.add(p.id)
+      return true
+    })
+    .sort((a, b) => b.takenAt.localeCompare(a.takenAt))
+    .slice(0, 12)
   return {
     ok: true,
     photos: photos.map((p) => ({
       id: p.id,
-      url: p.signedUrl,
+      url: p.url,
       caption: p.caption,
       takenAt: p.takenAt,
       takenByName: p.takenByName,

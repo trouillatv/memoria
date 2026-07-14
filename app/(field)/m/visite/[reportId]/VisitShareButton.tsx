@@ -14,14 +14,20 @@ export function VisitShareButton({ reportId, siteName }: { reportId: string; sit
 
   async function share() {
     if (busy) return
+    const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean }
+
+    if (typeof nav.share !== 'function') {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return
+    }
+
     setBusy(true)
     try {
       const res = await fetch(url)
       if (!res.ok) throw new Error('fetch')
       const blob = await res.blob()
       const file = new File([blob], 'compte-rendu-visite.pdf', { type: 'application/pdf' })
-      const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean }
-      if (nav.canShare?.({ files: [file] }) && nav.share) {
+      if (nav.canShare?.({ files: [file] })) {
         try {
           await nav.share({ files: [file], title: `Compte-rendu — ${siteName}` })
         } catch { /* partage annulé par l'utilisateur — on ne fait rien */ }

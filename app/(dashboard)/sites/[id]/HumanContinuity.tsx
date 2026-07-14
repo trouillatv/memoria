@@ -39,7 +39,7 @@ export function HumanContinuityList({ continuity }: { continuity: HumanContinuit
   if (continuity.predecessors.length === 0) {
     return (
       <p className="text-sm text-muted-foreground italic">
-        Ce site n&apos;a pas encore trouvé son chef d&apos;équipe.
+        Ce chantier n&apos;a pas encore trouvé son chef d&apos;équipe.
       </p>
     )
   }
@@ -58,12 +58,12 @@ export function HumanContinuityList({ continuity }: { continuity: HumanContinuit
           <Users className="h-3.5 w-3.5 shrink-0 mt-1 text-emerald-600" aria-hidden />
           <p className="text-sm">
             <span className="font-medium">{current.firstName}</span> a repris
-            ce lieu en {formatMonthYear(current.firstSeenAt).toLowerCase()}.
+            ce chantier en {formatMonthYear(current.firstSeenAt).toLowerCase()}.
           </p>
         </div>
       ) : (
         <p className="text-sm text-muted-foreground italic">
-          Personne n&apos;assure actuellement la continuité sur ce lieu.
+          Personne n&apos;assure actuellement la continuité sur ce chantier.
         </p>
       )}
 
@@ -90,7 +90,7 @@ export function HumanContinuityList({ continuity }: { continuity: HumanContinuit
 
       {continuity.teamsSucceeded > 1 && (
         <p className="text-xs text-muted-foreground italic pl-6">
-          Ce lieu connaît sa {continuity.teamsSucceeded === 2 ? 'deuxième' : `${continuity.teamsSucceeded}ème`} équipe.
+          Ce chantier connaît sa {continuity.teamsSucceeded === 2 ? 'deuxième' : `${continuity.teamsSucceeded}ème`} équipe.
         </p>
       )}
     </div>
