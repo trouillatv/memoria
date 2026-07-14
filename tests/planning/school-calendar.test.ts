@@ -17,7 +17,10 @@ import {
   isValidPeriod,
   periodRangeFr,
   periodDays,
+  closingPeriods,
+  CALENDAR_EFFECT_FR,
   type CalendarPeriod,
+  type KindedPeriod,
 } from '@/lib/planning/school-calendar'
 
 const p = (over: Partial<CalendarPeriod> = {}): CalendarPeriod => ({
@@ -104,5 +107,57 @@ describe('Ça se lit en français', () => {
   it('les jours se comptent bornes comprises', () => {
     expect(periodDays({ startsOn: '2026-07-14', endsOn: '2026-07-14' })).toBe(1)
     expect(periodDays({ startsOn: '2026-07-04', endsOn: '2026-08-03' })).toBe(31)
+  })
+})
+
+
+describe('LE CALENDRIER DIT QUAND ; LE CHANTIER DIT QUOI (mig 208)', () => {
+  const vacances: KindedPeriod = {
+    ...p({ id: 'v1', label: 'Vacances de septembre', startsOn: '2026-09-07', endsOn: '2026-09-18' }),
+    kind: 'scolaire',
+  }
+  const ferie: KindedPeriod = {
+    ...p({ id: 'f1', label: 'Fête de la citoyenneté', startsOn: '2026-09-24', endsOn: '2026-09-24' }),
+    kind: 'ferie',
+  }
+
+  it('1. école FERMÉE pendant les vacances → la période devient fermeture', () => {
+    const closing = closingPeriods([vacances, ferie], { scolaire: 'closed', feries: 'none' })
+    expect(closing.map((x) => x.id)).toEqual(['v1'])
+    // …et le conflit suivra la chaîne existante : fermé + prestation = rouge.
+    expect(derivedClosuresFor('s1', closing)).toHaveLength(1)
+  })
+
+  it('2. école TRAVAILLÉE pendant les vacances → AUCUNE fermeture, aucun conflit', () => {
+    // Le grand nettoyage se fait PENDANT les vacances : transformer la période
+    // en fermeture fabriquait de FAUX conflits — le pire poison pour le rouge.
+    expect(closingPeriods([vacances], { scolaire: 'works', feries: 'none' })).toEqual([])
+  })
+
+  it('3. chantier NON CONCERNÉ → aucune conséquence', () => {
+    expect(closingPeriods([vacances, ferie], { scolaire: 'none', feries: 'none' })).toEqual([])
+  })
+
+  it('les deux règles sont INDÉPENDANTES — fermé aux fériés, travaillé aux vacances', () => {
+    const closing = closingPeriods([vacances, ferie], { scolaire: 'works', feries: 'closed' })
+    expect(closing.map((x) => x.id)).toEqual(['f1'])
+  })
+
+  it('4. changer de règle → la régénération ne touche que le FUTUR', () => {
+    // La brique qui garantit « sans réécrire le passé » : seules les périodes
+    // en cours ou à venir se régénèrent — une fermeture vécue a pu porter une
+    // décision, la réécrire changerait son histoire.
+    const passee: KindedPeriod = {
+      ...p({ id: 'old', startsOn: '2025-07-01', endsOn: '2025-07-31' }),
+      kind: 'scolaire',
+    }
+    const futures = upcomingPeriods([passee, vacances], '2026-07-15') as KindedPeriod[]
+    expect(closingPeriods(futures, { scolaire: 'closed', feries: 'none' }).map((x) => x.id)).toEqual(['v1'])
+  })
+
+  it('la règle se dit en français, sur la fiche comme dans la liste', () => {
+    expect(CALENDAR_EFFECT_FR.none).toBe('Non concerné')
+    expect(CALENDAR_EFFECT_FR.closed).toBe('Fermé pendant la période')
+    expect(CALENDAR_EFFECT_FR.works).toBe('Travail prévu pendant la période')
   })
 })

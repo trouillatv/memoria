@@ -14,8 +14,7 @@ import {
   createPeriod,
   updatePeriod,
   removePeriod,
-  setSiteFollowsCalendar,
-  setSiteFollowsHolidays,
+  setSiteCalendarEffect,
   syncAllFollowingSites,
 } from '@/lib/db/school-calendar'
 import { logAuditEvent } from '@/lib/audit/log'
@@ -85,10 +84,18 @@ export async function removePeriodAction(
   return { ok: true }
 }
 
-/** « Ce chantier ferme pendant les vacances scolaires. » */
-export async function setSiteFollowsCalendarAction(
+/**
+ * LA RÈGLE de ce chantier pour un calendrier (mig 208).
+ *
+ * Le calendrier dit QUAND ; le chantier dit QUOI :
+ *   none   → non concerné ;
+ *   closed → fermé pendant la période (SEUL mode qui produit des fermetures) ;
+ *   works  → travail prévu pendant la période — aucune fermeture, aucun conflit.
+ */
+export async function setCalendarEffectAction(
   siteId: string,
-  follows: boolean,
+  kind: 'scolaire' | 'ferie',
+  effect: 'none' | 'closed' | 'works',
 ): Promise<{ ok: true } | { error: string }> {
   const auth = await requireManagerOrAdmin()
   if (!auth.ok) return { error: auth.error }
@@ -97,27 +104,7 @@ export async function setSiteFollowsCalendarAction(
   const owned = await requireOwned(auth.role, 'sites', siteId)
   if (!owned.allowed) return { error: owned.error }
 
-  await setSiteFollowsCalendar(siteId, follows)
-
-  revalidatePath(`/sites/${siteId}`)
-  revalidateAll()
-  return { ok: true }
-}
-
-/** « Ce chantier ferme les jours fériés. » Un férié ne ferme JAMAIS tous les
- *  sites d'office — l'adhésion est un choix, par chantier. */
-export async function setSiteFollowsHolidaysAction(
-  siteId: string,
-  follows: boolean,
-): Promise<{ ok: true } | { error: string }> {
-  const auth = await requireManagerOrAdmin()
-  if (!auth.ok) return { error: auth.error }
-  if (!z.string().uuid().safeParse(siteId).success) return { error: 'Identifiant invalide' }
-
-  const owned = await requireOwned(auth.role, 'sites', siteId)
-  if (!owned.allowed) return { error: owned.error }
-
-  await setSiteFollowsHolidays(siteId, follows)
+  await setSiteCalendarEffect(siteId, kind, effect)
 
   revalidatePath(`/sites/${siteId}`)
   revalidateAll()

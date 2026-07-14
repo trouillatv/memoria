@@ -20,7 +20,10 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import {
   derivedClosuresFor,
   upcomingPeriods,
+  closingPeriods,
   type CalendarPeriod,
+  type CalendarEffect,
+  type SiteCalendarEffects,
 } from '@/lib/planning/school-calendar'
 
 export type CalendarKind = 'scolaire' | 'ferie'
@@ -159,27 +162,38 @@ export async function siteFollowsCalendar(siteId: string): Promise<boolean> {
   return Boolean((data as { follows_school_calendar: boolean } | null)?.follows_school_calendar)
 }
 
-/** Les DEUX adhésions d'un chantier — scolaire ET fériés. Séparées : une école
- *  suit les deux, un magasin peut-être aucun. */
-export async function siteCalendarFlags(
-  siteId: string,
-): Promise<{ scolaire: boolean; feries: boolean }> {
+/** L'EFFET de chaque calendrier sur CE chantier (mig 208). Le calendrier dit
+ *  quand ; le chantier dit quoi. */
+export async function siteCalendarEffects(siteId: string): Promise<SiteCalendarEffects> {
   const { data } = await createAdminClient()
     .from('sites')
-    .select('follows_school_calendar, follows_public_holidays')
+    .select('school_calendar_effect, public_holidays_effect')
     .eq('id', siteId)
     .maybeSingle()
-  const r = data as { follows_school_calendar?: boolean; follows_public_holidays?: boolean } | null
-  return { scolaire: Boolean(r?.follows_school_calendar), feries: Boolean(r?.follows_public_holidays) }
+  const r = data as {
+    school_calendar_effect?: string
+    public_holidays_effect?: string
+  } | null
+  return {
+    scolaire: ((r?.school_calendar_effect as CalendarEffect) ?? 'none'),
+    feries: ((r?.public_holidays_effect as CalendarEffect) ?? 'none'),
+  }
 }
 
-/** « Ce chantier ferme les jours fériés. » Explicite, jamais déduit : un jour
- *  férié ne ferme PAS tous les sites. */
-export async function setSiteFollowsHolidays(siteId: string, follows: boolean): Promise<void> {
+/** Change la RÈGLE de ce chantier pour un calendrier, puis régénère.
+ *  Seul 'closed' produit des fermetures ; 'works' et 'none' les retirent. */
+export async function setSiteCalendarEffect(
+  siteId: string,
+  kind: 'scolaire' | 'ferie',
+  effect: CalendarEffect,
+): Promise<void> {
   const db = createAdminClient()
+  const col = kind === 'ferie' ? 'public_holidays_effect' : 'school_calendar_effect'
+  // Les booléens 203/207 restent synchronisés (dépréciés, mais jamais menteurs).
+  const legacy = kind === 'ferie' ? 'follows_public_holidays' : 'follows_school_calendar'
   const { error } = await db
     .from('sites')
-    .update({ follows_public_holidays: follows })
+    .update({ [col]: effect, [legacy]: effect !== 'none' })
     .eq('id', siteId)
   if (error) throw new Error(error.message)
 
@@ -194,7 +208,7 @@ export async function listFollowingSiteIds(): Promise<string[]> {
   let q = db
     .from('sites')
     .select('id')
-    .or('follows_school_calendar.eq.true,follows_public_holidays.eq.true')
+    .or('school_calendar_effect.neq.none,public_holidays_effect.neq.none')
     .is('deleted_at', null)
   if (orgId) q = q.eq('organization_id', orgId)
 
@@ -217,16 +231,11 @@ export async function syncSiteClosures(siteId: string): Promise<{ created: numbe
   const db = createAdminClient()
   const today = todayLocalIso()
 
-  const { data: siteRow } = await db
-    .from('sites')
-    .select('follows_school_calendar, follows_public_holidays')
-    .eq('id', siteId)
-    .maybeSingle()
-  const flags = siteRow as {
-    follows_school_calendar?: boolean
-    follows_public_holidays?: boolean
-  } | null
-  const follows = Boolean(flags?.follows_school_calendar || flags?.follows_public_holidays)
+  const effects = await siteCalendarEffects(siteId)
+  // SEUL « fermé » produit des fermetures. « Travail prévu » n'en produit
+  // JAMAIS : transformer les vacances en fermeture par défaut fabriquait de
+  // faux conflits — le pire poison pour la crédibilité du rouge.
+  const follows = effects.scolaire === 'closed' || effects.feries === 'closed'
 
   // On retire d'abord les dérivées à venir — qu'on suive encore ou non.
   const { error: delErr } = await db
@@ -240,11 +249,10 @@ export async function syncSiteClosures(siteId: string): Promise<{ created: numbe
 
   if (!follows) return { created: 0 }
 
-  // Chaque calendrier s'applique SELON L'ADHÉSION du chantier — jamais en bloc.
+  // La règle pure décide : seules les périodes dont l'effet est « fermé »
+  // sur CE chantier deviennent des fermetures.
   const all = upcomingPeriods(await listPeriods(), today) as SchoolPeriod[]
-  const applicable = all.filter((p) =>
-    p.kind === 'ferie' ? flags?.follows_public_holidays : flags?.follows_school_calendar,
-  )
+  const applicable = closingPeriods(all, effects)
   const rows = derivedClosuresFor(siteId, applicable)
   if (rows.length === 0) return { created: 0 }
 

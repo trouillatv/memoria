@@ -17,7 +17,8 @@ import { RemoveButton } from '@/components/removal/RemoveButton'
 import { todayLocalIso, frDayMonthLocal } from '@/lib/time/local-date'
 import { CLOSURE_REASON_FR, type ClosureReasonKind } from '@/lib/planning/closures'
 import { createClosureAction, updateClosureAction, removeClosureAction } from './closures-actions'
-import { setSiteFollowsCalendarAction, setSiteFollowsHolidaysAction } from '../../calendrier-scolaire/actions'
+import { setCalendarEffectAction } from '../../calendrier-scolaire/actions'
+import { CALENDAR_EFFECT_FR, type CalendarEffect } from '@/lib/planning/school-calendar'
 
 export interface ClosureRow {
   id: string
@@ -41,48 +42,36 @@ function periodLabel(startsOn: string, endsOn: string): string {
 export function SiteClosuresCard({
   siteId,
   closures,
-  followsCalendar = false,
-  followsHolidays = false,
+  scolaireEffect = 'none',
+  feriesEffect = 'none',
 }: {
   siteId: string
   closures: ClosureRow[]
-  /** « Ce chantier ferme pendant les vacances scolaires. » */
-  followsCalendar?: boolean
-  /** « Ce chantier ferme les jours fériés. » Séparé : un férié ne ferme PAS
-   *  tous les sites — le magasin ouvre peut-être le 14 juillet. */
-  followsHolidays?: boolean
+  /** L'EFFET des vacances scolaires sur CE chantier. Le calendrier dit quand ;
+   *  le chantier dit quoi : une école ferme, une autre fait justement son grand
+   *  nettoyage pendant les vacances, un magasin n'est pas concerné. */
+  scolaireEffect?: CalendarEffect
+  /** L'effet des jours fériés — même règle, séparément. */
+  feriesEffect?: CalendarEffect
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState<ClosureRow | 'new' | null>(null)
   const [pendingFollow, startFollow] = useTransition()
 
-  function toggleCalendar(next: boolean) {
+  function setEffect(kind: 'scolaire' | 'ferie', effect: CalendarEffect) {
     if (pendingFollow) return
     startFollow(async () => {
-      const r = await setSiteFollowsCalendarAction(siteId, next)
+      const r = await setCalendarEffectAction(siteId, kind, effect)
       if ('error' in r) {
         toast.error(r.error)
         return
       }
       toast.success(
-        next
-          ? 'Ce chantier ferme pendant les vacances scolaires.'
-          : 'Ce chantier ne suit plus le calendrier scolaire.',
-      )
-      router.refresh()
-    })
-  }
-
-  function toggleHolidays(next: boolean) {
-    if (pendingFollow) return
-    startFollow(async () => {
-      const r = await setSiteFollowsHolidaysAction(siteId, next)
-      if ('error' in r) {
-        toast.error(r.error)
-        return
-      }
-      toast.success(
-        next ? 'Ce chantier ferme les jours fériés.' : 'Ce chantier ouvre les jours fériés.',
+        effect === 'closed'
+          ? 'Fermé pendant la période — les fermetures sont générées.'
+          : effect === 'works'
+            ? 'Travail prévu pendant la période — aucune fermeture, aucun conflit.'
+            : 'Non concerné — les fermetures dérivées sont retirées.',
       )
       router.refresh()
     })
@@ -101,57 +90,31 @@ export function SiteClosuresCard({
         )}
       </header>
 
-      {/* Le calendrier scolaire : un fait d'ORGANISATION appliqué ici. Coché, il
-          ferme ce chantier sur toutes les périodes de vacances — sans saisie. */}
-      <label className="flex items-start gap-2.5 rounded-xl border bg-muted/20 px-3 py-2.5">
-        <input
-          type="checkbox"
-          checked={followsCalendar}
-          onChange={(e) => toggleCalendar(e.target.checked)}
-          disabled={pendingFollow}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
-        />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 text-sm font-medium">
-            <GraduationCap className="h-3.5 w-3.5 text-muted-foreground" />
-            Ce chantier ferme pendant les vacances scolaires
-            {pendingFollow && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          </span>
-          <span className="block text-xs text-muted-foreground">
-            Les périodes se saisissent une fois, dans le{' '}
-            <Link href="/calendrier" className="underline underline-offset-2">
-              Calendrier
-            </Link>
-            .
-          </span>
-        </span>
-      </label>
-
-      {/* Les FÉRIÉS, séparément : un jour férié ne ferme PAS tous les sites.
-          Le magasin ouvre peut-être le 14 juillet ; l'école, jamais. */}
-      <label className="flex items-start gap-2.5 rounded-xl border bg-muted/20 px-3 py-2.5">
-        <input
-          type="checkbox"
-          checked={followsHolidays}
-          onChange={(e) => toggleHolidays(e.target.checked)}
-          disabled={pendingFollow}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
-        />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 text-sm font-medium">
-            <CalendarOff className="h-3.5 w-3.5 text-muted-foreground" />
-            Ce chantier ferme les jours fériés
-            {pendingFollow && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          </span>
-          <span className="block text-xs text-muted-foreground">
-            Les fériés se saisissent une fois, dans{' '}
-            <Link href="/calendrier" className="underline underline-offset-2">
-              Calendrier
-            </Link>
-            .
-          </span>
-        </span>
-      </label>
+      {/* LE CALENDRIER DIT QUAND ; LE CHANTIER DIT QUOI. Trois règles, pas une
+          case : une école ferme pendant les vacances, une autre y fait justement
+          son grand nettoyage, un magasin n'est pas concerné. Seul « Fermé »
+          produit des fermetures. */}
+      <EffectPicker
+        label="Pendant les vacances scolaires"
+        icon={<GraduationCap className="h-3.5 w-3.5 text-muted-foreground" />}
+        value={scolaireEffect}
+        pending={pendingFollow}
+        onPick={(e) => setEffect('scolaire', e)}
+      />
+      <EffectPicker
+        label="Les jours fériés"
+        icon={<CalendarOff className="h-3.5 w-3.5 text-muted-foreground" />}
+        value={feriesEffect}
+        pending={pendingFollow}
+        onPick={(e) => setEffect('ferie', e)}
+      />
+      <p className="text-[11px] text-muted-foreground">
+        Les périodes se saisissent une fois, dans{' '}
+        <Link href="/calendrier" className="underline underline-offset-2">
+          Calendrier
+        </Link>
+        . Seul «&nbsp;Fermé&nbsp;» produit des fermetures.
+      </p>
 
       {editing !== null && (
         <ClosureForm
@@ -319,6 +282,55 @@ function ClosureForm({
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={pending}>
           Annuler
         </Button>
+      </div>
+    </div>
+  )
+}
+
+
+/** La règle d'un calendrier sur ce chantier — trois choix, un seul actif.
+ *  Hors du rendu : recréer un composant à chaque rendu remet l'arbre à zéro. */
+function EffectPicker({
+  label,
+  icon,
+  value,
+  pending,
+  onPick,
+}: {
+  label: string
+  icon: React.ReactNode
+  value: CalendarEffect
+  pending: boolean
+  onPick: (e: CalendarEffect) => void
+}) {
+  const CHOICES: Array<{ v: CalendarEffect; short: string }> = [
+    { v: 'none', short: 'Non concerné' },
+    { v: 'closed', short: 'Fermé' },
+    { v: 'works', short: 'Travail prévu' },
+  ]
+  return (
+    <div className="space-y-1 rounded-xl border bg-muted/20 px-3 py-2.5">
+      <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+        {icon} {label}
+        {pending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {CHOICES.map((c) => (
+          <button
+            key={c.v}
+            type="button"
+            onClick={() => onPick(c.v)}
+            disabled={pending || value === c.v}
+            title={CALENDAR_EFFECT_FR[c.v]}
+            className={
+              value === c.v
+                ? 'rounded-lg border border-brand-300 bg-brand-100 px-2.5 py-1 text-xs font-medium text-brand-900'
+                : 'rounded-lg border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+            }
+          >
+            {c.short}
+          </button>
+        ))}
       </div>
     </div>
   )

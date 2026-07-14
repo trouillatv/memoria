@@ -95,6 +95,9 @@ export interface CellDrawerProps {
   optionsBySite?: Record<string, Record<string, ResolutionOption[]>>
   /** Exceptions — clé présente = issue d'un roulement ; liste = les déviations. */
   exceptionsById?: Record<string, string[]>
+  /** VUE MOIS → ici : la cellule à ouvrir à l'arrivée (`siteId::date`). Le clic
+   *  sur un conflit du mois atterrit DANS le tiroir, pas devant la grille. */
+  initialCellKey?: string | null
   /** Contenu du conteneur (grille client-rendered). */
   children: React.ReactNode
 }
@@ -134,10 +137,11 @@ export function CellDrawer({
   decisions,
   optionsBySite,
   exceptionsById,
+  initialCellKey,
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialCellKey ?? null)
 
   // Modal de réassignation : on stocke l'intervention ciblée
   const [reassignTarget, setReassignTarget] = useState<{

@@ -23,7 +23,7 @@ import {
   Building2,
   Mic,
   ListTodo,
-  Compass, Repeat, CalendarOff } from 'lucide-react'
+  Compass, Repeat, CalendarOff, CalendarRange } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 export interface NavItem {
@@ -57,7 +57,9 @@ export const NAV: NavItem[] = [
   // vieilli faux (ouverture exceptionnelle, horaires reduits…), « Contraintes »
   // est le mot du moteur, « Disponibilites » frole le vocabulaire RH interdit.
   // Calendrier est metier ET extensible.
-  { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'], groupStart: 'Planning' },
+  // « Mois » : l'écran principal du domaine — « est-ce que mon mois est bon ? »
+  { href: '/mois',       label: 'Mois',                   icon: CalendarRange, roles: ['admin', 'manager'], groupStart: 'Planning' },
+  { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
   { href: '/roulements', label: 'Roulements',             icon: Repeat,        roles: ['admin', 'manager'] },
   { href: '/calendrier', label: 'Calendrier',             icon: CalendarOff,   roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },

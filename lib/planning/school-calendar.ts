@@ -96,3 +96,49 @@ export function periodDays(p: { startsOn: string; endsOn: string }): number {
   if (Number.isNaN(a) || Number.isNaN(b) || b < a) return 0
   return Math.round((b - a) / 86_400_000) + 1
 }
+
+
+// ── L'EFFET — le calendrier dit QUAND, le chantier dit QUOI ─────────────────
+//
+// Les vacances scolaires sont un fait de calendrier. Leur effet est une règle
+// de chantier : une école ferme, une autre fait justement son grand nettoyage
+// pendant les vacances, un magasin n'est pas concerné.
+//
+//   'none'    non concerné      → aucune conséquence ;
+//   'closed'  fermé             → SEUL ce mode produit des fermetures ;
+//   'works'   travail prévu     → aucune fermeture, aucun conflit.
+
+export type CalendarEffect = 'none' | 'closed' | 'works'
+
+export interface SiteCalendarEffects {
+  scolaire: CalendarEffect
+  feries: CalendarEffect
+}
+
+export interface KindedPeriod extends CalendarPeriod {
+  kind: 'scolaire' | 'ferie'
+}
+
+/**
+ * LES PÉRIODES QUI FERMENT ce chantier — et rien d'autre.
+ *
+ * « works » et « none » ne produisent RIEN ici : le travail pendant les
+ * vacances est normal, voire voulu. Transformer une période scolaire en
+ * fermeture par défaut fabriquait de FAUX conflits — le pire poison pour la
+ * crédibilité du rouge.
+ */
+export function closingPeriods(
+  periods: KindedPeriod[],
+  effects: SiteCalendarEffects,
+): KindedPeriod[] {
+  return periods.filter((p) =>
+    p.kind === 'ferie' ? effects.feries === 'closed' : effects.scolaire === 'closed',
+  )
+}
+
+/** Comment la règle se DIT — sur la fiche, dans la liste des chantiers concernés. */
+export const CALENDAR_EFFECT_FR: Record<CalendarEffect, string> = {
+  none: 'Non concerné',
+  closed: 'Fermé pendant la période',
+  works: 'Travail prévu pendant la période',
+}
