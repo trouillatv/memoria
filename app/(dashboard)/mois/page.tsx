@@ -34,6 +34,7 @@ import {
 } from '@/lib/planning/month-view'
 import { parseViewMode } from '../semaine/view-mode-storage'
 import { MonthViewModeToggle } from './MonthViewModeToggle'
+import { PlanningScales } from '@/components/planning/PlanningScales'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -149,14 +150,15 @@ export default async function MoisPage({
 
   return (
     <div className="w-full max-w-6xl space-y-5">
+      <PlanningScales active="mois" />
+
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
-            <CalendarRange className="h-5 w-5 text-muted-foreground" /> Mois
+            <CalendarRange className="h-5 w-5 text-muted-foreground" /> Planning du mois
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            La projection des roulements, du calendrier et des exceptions. Rien ne s&apos;édite
-            ici — chaque clic ouvre le bon écran.
+            Qui travaille où, chaque jour. Cliquez sur un jour pour ouvrir sa semaine.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

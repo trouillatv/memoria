@@ -49,19 +49,19 @@ export const NAV: NavItem[] = [
   { href: '/recherche',  label: 'Recherche',              icon: Search,        roles: ['admin', 'manager'], essential: true },
   // — Pilotage quotidien —
   { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'], essential: true },
-  { href: '/aujourdhui', label: 'Interventions du jour',  icon: ListChecks,    roles: ['admin', 'manager'] },
-  // PLANNING — un domaine, pas un catalogue (arbitrage Vincent 2026-07-15).
-  // La phrase : je definis mes roulements, je declare les jours fermes, puis
-  // j'ajuste ma semaine. Ordonne par frequence d'usage.
-  // « Calendrier » (arbitrage 2026-07-15, 2e passe) : « Fermetures » aurait
-  // vieilli faux (ouverture exceptionnelle, horaires reduits…), « Contraintes »
-  // est le mot du moteur, « Disponibilites » frole le vocabulaire RH interdit.
-  // Calendrier est metier ET extensible.
-  // « Mois » : l'écran principal du domaine — « est-ce que mon mois est bon ? »
+  // PLANNING — UN SEUL PLANNING, TROIS ÉCHELLES DE TEMPS (arbitrage Vincent
+  // 2026-07-14). Le conducteur ouvre son mois, y voit qui travaille où, puis
+  // zoome sur la semaine pour agir et sur le jour pour exécuter. Il ne change
+  // pas d'application en changeant d'échelle.
+  //
+  // Ce qui FABRIQUE le planning n'est pas une façon de le lire : le roulement
+  // et le calendrier sont des réglages — « le planning habituel », « les jours
+  // fermés ». Ils vivent sous les trois échelles, pas à leur niveau.
   { href: '/mois',       label: 'Mois',                   icon: CalendarRange, roles: ['admin', 'manager'], groupStart: 'Planning' },
   { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
-  { href: '/roulements', label: 'Roulements',             icon: Repeat,        roles: ['admin', 'manager'] },
-  { href: '/calendrier', label: 'Calendrier',             icon: CalendarOff,   roles: ['admin', 'manager'] },
+  { href: '/aujourdhui', label: 'Jour',                   icon: ListChecks,    roles: ['admin', 'manager'] },
+  { href: '/roulements', label: 'Planning habituel',      icon: Repeat,        roles: ['admin', 'manager'], groupStart: 'Régler le planning' },
+  { href: '/calendrier', label: 'Jours fermés',           icon: CalendarOff,   roles: ['admin', 'manager'] },
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
   { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },
