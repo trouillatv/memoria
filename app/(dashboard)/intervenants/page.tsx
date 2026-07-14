@@ -12,7 +12,7 @@
 
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Users, ArrowRight, MapPin, BriefcaseBusiness } from 'lucide-react'
+import { Users, ArrowRight, MapPin, BriefcaseBusiness, KeyRound } from 'lucide-react'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { listIntervenantsForList } from '@/lib/db/intervenants'
 import { Card } from '@/components/ui/card'
@@ -71,6 +71,8 @@ export default async function IntervenantsListPage() {
     email: access.access.viewer.email,
   })
 
+  const neverOpenedCount = intervenants.filter((i) => i.neverOpened).length
+
   return (
     <div className="space-y-6 w-full">
       <header className="flex items-start justify-between gap-3 flex-wrap">
@@ -88,6 +90,26 @@ export default async function IntervenantsListPage() {
         </div>
         <CreateIntervenantDialog />
       </header>
+
+      {/* Créer un compte ne suffit pas : encore faut-il qu'il arrive. Tant que la
+          personne n'est pas entrée une première fois, elle n'existe pas dans le
+          produit — et personne ne le voyait. */}
+      {neverOpenedCount > 0 && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 px-4 py-3 text-sm dark:border-amber-800/50 dark:bg-amber-950/20">
+          <KeyRound className="h-4 w-4 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
+          <div>
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              {neverOpenedCount === 1
+                ? "1 personne n'a jamais ouvert MemorIA"
+                : `${neverOpenedCount} personnes n'ont jamais ouvert MemorIA`}
+            </p>
+            <p className="text-amber-800/80 dark:text-amber-300/80">
+              Leur compte est créé, mais elles ne s&apos;y sont pas encore connectées. Transmettez-leur
+              le mot de passe temporaire — il leur sera demandé de le changer à la première ouverture.
+            </p>
+          </div>
+        </div>
+      )}
 
       {intervenants.length === 0 ? (
         <Card className="py-12 text-center text-sm text-muted-foreground italic">
@@ -112,6 +134,15 @@ export default async function IntervenantsListPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold truncate">{displayName}</div>
                     <div className="text-xs text-muted-foreground mt-0.5">{roleLabelFr(i.role)}</div>
+                    {/* Le compte existe, la personne n'est jamais entrée. Fait
+                        administratif — l'invitation n'a pas abouti — jamais un
+                        jugement sur elle. */}
+                    {i.neverOpened && (
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-dashed border-amber-300 bg-amber-50/60 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-300">
+                        <KeyRound className="h-3 w-3 shrink-0" aria-hidden />
+                        N&apos;a jamais ouvert MemorIA
+                      </div>
+                    )}
                   </div>
                   <ArrowRight className="h-4 w-4 mt-1 text-muted-foreground/40 group-hover:text-foreground transition-colors duration-200 shrink-0" />
                 </div>
