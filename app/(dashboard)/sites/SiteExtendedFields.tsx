@@ -58,7 +58,7 @@ export function SiteExtendedFields({ state, onChange, disabled, initiallyOpen }:
           </Field>
         </Row>
         <Row>
-          <Field label="Contact site (nom)">
+          <Field label="Contact chantier (nom)">
             <input
               value={state.contact_name}
               onChange={(e) => onChange({ contact_name: e.target.value })}
@@ -67,7 +67,7 @@ export function SiteExtendedFields({ state, onChange, disabled, initiallyOpen }:
               disabled={disabled}
             />
           </Field>
-          <Field label="Contact site (téléphone)">
+          <Field label="Contact chantier (téléphone)">
             <input
               value={state.contact_phone}
               onChange={(e) => onChange({ contact_phone: e.target.value })}

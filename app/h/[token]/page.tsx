@@ -157,7 +157,7 @@ export default async function PublicHandoverPage({ params }: PageProps) {
       {/* Sommaire cliquable — uniquement si plusieurs sites */}
       {showToc && (
         <nav
-          aria-label="Sommaire des sites concernés"
+          aria-label="Sommaire des chantiers concernés"
           className="rounded-lg border bg-card p-3 sm:p-4 space-y-2"
         >
           <p className="text-xs font-medium text-muted-foreground">

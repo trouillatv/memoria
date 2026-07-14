@@ -238,7 +238,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                     onChange={(e) => pickSite(e.target.value)}
                     className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
                   >
-                    <option value="">— choisir un site —</option>
+                    <option value="">— choisir un chantier —</option>
                     {(sites ?? []).map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -643,7 +643,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     ),
     missions: missionNames.length === 0 ? null : (
       <section className="space-y-2">
-        <SectionTitle icon={<Hammer className="h-3.5 w-3.5" />}>Missions sur le site</SectionTitle>
+        <SectionTitle icon={<Hammer className="h-3.5 w-3.5" />}>Missions sur le chantier</SectionTitle>
         <div className="flex flex-wrap gap-1.5">
           {missionNames.map((name) => (
             <span key={name} className="inline-flex items-center rounded-full border bg-card px-2.5 py-0.5 text-xs">{name}</span>
@@ -653,7 +653,7 @@ function BriefBody({ brief, mode, motive }: { brief: SiteBrief; mode: 'visit' | 
     ),
     teams: teams.length === 0 ? null : (
       <section className="space-y-2">
-        <SectionTitle icon={<Users className="h-3.5 w-3.5" />}>Équipes qui connaissent le site</SectionTitle>
+        <SectionTitle icon={<Users className="h-3.5 w-3.5" />}>Équipes qui connaissent le chantier</SectionTitle>
         <ul className="space-y-1">
           {teams.map((t) => (
             <li key={t.name} className="flex items-center justify-between gap-3 text-sm">

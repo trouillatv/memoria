@@ -460,7 +460,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           {siteCount === 0 && contractCount === 0 && (
             <div className="rounded-lg border bg-muted/30 p-8 text-center">
               <p className="text-sm text-muted-foreground">
-                Aucun site ni contrat associé à ce client pour le moment.
+                Aucun chantier ni contrat associé à ce client pour le moment.
               </p>
             </div>
           )}

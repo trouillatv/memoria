@@ -104,7 +104,7 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
             disabled={pending}
             className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
           >
-            <option value="">— choisir un site —</option>
+            <option value="">— choisir un chantier —</option>
             {(sites ?? []).map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}

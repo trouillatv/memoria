@@ -236,7 +236,7 @@ function Step2({
 function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
   return (
     <div className="space-y-4 rounded-lg border p-4 bg-card">
-      <h2 className="text-sm font-semibold">Sites du contrat</h2>
+      <h2 className="text-sm font-semibold">Chantiers du contrat</h2>
       <p className="text-xs text-muted-foreground">
         Les sites s&apos;ajoutent <strong>juste après</strong>, depuis la fiche du contrat
         (onglet <strong>Sites</strong>). On crée d&apos;abord le contrat, puis vous y rattachez

@@ -99,7 +99,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
         <h3 className="text-sm font-semibold">Identification</h3>
 
         <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">Site *</label>
+          <label className="text-xs text-muted-foreground">Chantier *</label>
           <SiteSelector
             sites={sites.map((s) => ({ id: s.id, name: s.name }))}
             otherSites={otherSites}
@@ -108,7 +108,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
             disabled={mode === 'edit' || pending}
           />
           {mode === 'edit' && (
-            <p className="text-[11px] text-muted-foreground italic">Le site n&apos;est pas modifiable après création.</p>
+            <p className="text-[11px] text-muted-foreground italic">Le chantier n&apos;est pas modifiable après création.</p>
           )}
           {mode === 'create' && otherSites && otherSites.length > 0 && (
             <p className="text-[11px] text-muted-foreground italic">

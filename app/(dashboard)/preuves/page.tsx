@@ -165,14 +165,14 @@ function FiltersWrapper({
 }) {
   return (
     <FiltersBar
-      searchPlaceholder="Rechercher un site, une intervention…"
+      searchPlaceholder="Rechercher un chantier, une intervention…"
       hasActiveFilters={hasActiveFilters}
       resetParams={['search', 'siteId', 'status', 'dateFrom', 'dateTo']}
     >
       <FilterSelect
         paramName="siteId"
         label="Site"
-        emptyLabel="Tous les sites"
+        emptyLabel="Tous les chantiers"
         options={siteOptions}
       />
       <FilterSelect

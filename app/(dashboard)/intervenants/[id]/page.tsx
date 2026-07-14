@@ -373,7 +373,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
           </CardHeader>
           <CardContent className="p-0">
             {sites.length === 0 ? (
-              <p className="px-6 pb-6 text-sm text-muted-foreground italic">Aucun site.</p>
+              <p className="px-6 pb-6 text-sm text-muted-foreground italic">Aucun chantier.</p>
             ) : (
               <ul className="divide-y">
                 {sites.slice(0, 8).map((s) => (

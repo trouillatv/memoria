@@ -472,7 +472,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           </h1>
           <p className="text-sm text-muted-foreground">
             {view === 'site'
-              ? 'Vue Site × Jour. Organisation de la couverture. Aucune métrique de surveillance.'
+              ? 'Vue Chantier × Jour. Organisation de la couverture. Aucune métrique de surveillance.'
               : 'Vue Équipe × Jour (secondaire). Conteneurs logistiques. Aucune métrique de surveillance.'}
           </p>
           {isDebug && (

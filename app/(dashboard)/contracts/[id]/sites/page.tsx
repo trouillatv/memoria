@@ -43,7 +43,7 @@ export default async function ContractSitesPage({ params }: { params: Promise<{ 
 
         {sites.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border p-4">
-            Aucun site pour ce contrat. Ajoutez-en un ci-dessus pour commencer.
+            Aucun chantier pour ce contrat. Ajoutez-en un ci-dessus pour commencer.
           </p>
         ) : (
           <ul className="space-y-2">

@@ -216,7 +216,7 @@ export default async function TeamProfilePage({
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t">
           <Counter
             icon={Building2}
-            label="Sites couverts"
+            label="Chantiers couverts"
             value={overview.counters.sitesCovered}
           />
           <Counter
@@ -281,7 +281,7 @@ export default async function TeamProfilePage({
           </h2>
           {favoriteSites.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              Aucun site couvert pour l&apos;instant.
+              Aucun chantier couvert pour l&apos;instant.
             </p>
           ) : (
             <ul className="divide-y -my-2">

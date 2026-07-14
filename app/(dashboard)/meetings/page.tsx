@@ -146,7 +146,7 @@ export default async function MeetingsPage({
         <EmptyState
           icon={Mic}
           title="Aucune réunion"
-          description="Lancez une réunion de chantier (contrat) ou de site : dictez, photographiez, l'IA propose les décisions, vous validez."
+          description="Lancez une réunion de contrat ou de chantier : dictez, photographiez, l'IA propose les décisions, vous validez."
         />
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground italic px-1 py-6 text-center">

@@ -31,7 +31,7 @@ export default async function NewMissionPage({
     return (
       <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-6">
         <p className="text-sm text-amber-800">
-          Aucun site sur ce contrat. Ajoutez d&apos;abord un site avant de créer une mission.
+          Aucun chantier sur ce contrat. Ajoutez d&apos;abord un chantier avant de créer une mission.
         </p>
       </div>
     )

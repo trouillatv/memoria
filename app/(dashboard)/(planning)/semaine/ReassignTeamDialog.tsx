@@ -144,7 +144,7 @@ export function ReassignTeamDialog({
                     {isKnown && !blocked && (
                       <span
                         className="text-[10px] uppercase tracking-wider text-sky-800 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 dark:text-sky-200 dark:bg-sky-950/30 dark:border-sky-900/40"
-                        title="Cette équipe a déjà fait au moins une intervention documentée sur ce site"
+                        title="Cette équipe a déjà fait au moins une intervention documentée sur ce chantier"
                       >
                         Connue
                       </span>
@@ -152,7 +152,7 @@ export function ReassignTeamDialog({
                     {blocked && t.conflict && (
                       <span
                         className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5"
-                        title="Cette équipe est déjà sur un autre site sur des horaires qui chevauchent"
+                        title="Cette équipe est déjà sur un autre chantier sur des horaires qui chevauchent"
                       >
                         déjà sur {t.conflict.siteName}
                       </span>

@@ -82,7 +82,7 @@ export function CreateMemberChangeButton({
           <DialogDescription>
             Compile automatiquement la mémoire utile à transmettre : sites
             connus, consignes « À savoir », anomalies récentes, documents.
-            Le brief documente <strong>les sites</strong>, jamais la personne.
+            Le brief documente <strong>les chantiers</strong>, jamais la personne.
           </DialogDescription>
         </DialogHeader>
 

@@ -67,13 +67,13 @@ export function CreateSiteForm({ contractId, clientName: _clientName }: { contra
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Nouveau site</h3>
+        <h3 className="text-sm font-semibold">Nouveau chantier</h3>
         <button type="button" onClick={() => { setOpen(false); reset() }} className="p-1 rounded hover:bg-muted/50" aria-label="Fermer">
           <X className="h-4 w-4" />
         </button>
       </div>
       <div className="space-y-2">
-        <label className="text-xs text-muted-foreground">Nom du site *</label>
+        <label className="text-xs text-muted-foreground">Nom du chantier *</label>
         <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded border p-2 text-sm" maxLength={200} disabled={pending} />
       </div>
       <div className="space-y-2">

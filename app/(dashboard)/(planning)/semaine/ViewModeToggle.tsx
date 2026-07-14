@@ -22,7 +22,7 @@ export interface ViewModeToggleProps {
 }
 
 const LABELS: Record<WeekViewMode, string> = {
-  site: 'Vue : Site',
+  site: 'Vue : Chantier',
   team: 'Vue : Équipe',
 }
 
@@ -75,7 +75,7 @@ export function ViewModeToggle({ mode }: ViewModeToggleProps) {
         data-testid="view-mode-select"
         className="absolute inset-0 cursor-pointer appearance-none opacity-0"
       >
-        <option value="site">Vue : Site</option>
+        <option value="site">Vue : Chantier</option>
         <option value="team">Vue : Équipe</option>
       </select>
     </label>

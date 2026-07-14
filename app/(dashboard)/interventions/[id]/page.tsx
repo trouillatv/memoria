@@ -380,7 +380,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
           </span>
           <span
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${slotBadgeClass}`}
-            title="Horaire de prestation (V6.1). Ancrage site/contrat, jamais pointage personne."
+            title="Horaire de prestation (V6.1). Ancrage chantier/contrat, jamais pointage personne."
           >
             {timeLabel}
           </span>

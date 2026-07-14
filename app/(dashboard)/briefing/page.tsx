@@ -184,7 +184,7 @@ export default async function BriefingPage({
         <BriefStat
           icon={MapPin}
           value={briefing.sitesWithoutCoverage.length}
-          label="site(s) sans couverture"
+          label="chantier(s) sans couverture"
           tone={briefing.sitesWithoutCoverage.length > 0 ? 'amber' : 'neutral'}
         />
         <BriefStat

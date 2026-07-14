@@ -390,7 +390,7 @@ export function SiteReportCuration({
                           <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                           <select value={r.siteId} onChange={(e) => patch(p.id, { siteId: e.target.value })}
                             className="flex-1 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
-                            <option value="">— Site à préciser —</option>
+                            <option value="">— Chantier à préciser —</option>
                             {candidateSites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                           </select>
                         </div>

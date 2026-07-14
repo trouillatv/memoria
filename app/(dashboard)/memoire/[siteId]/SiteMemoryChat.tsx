@@ -1,6 +1,6 @@
 'use client'
 
-// « Interroger la mémoire de ce site ». L'agent synthétise (propose, ne décide
+// « Interroger la mémoire de ce chantier ». L'agent synthétise (propose, ne décide
 // pas) + preuves + confiance. NAVIGATION (cran 5/6) : l'unité n'est pas l'objet
 // mais le SUJET. L'agent extrait les CONCEPTS centraux de sa réponse → boutons
 // d'exploration → TIMELINE du sujet (l'histoire), filtre par type secondaire.
@@ -96,7 +96,7 @@ export function SiteMemoryChat({ siteId }: { siteId: string }) {
     <section className="space-y-3 rounded-2xl border bg-card p-4">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-violet-600" />
-        <h2 className="text-sm font-semibold">Interroger la mémoire de ce site</h2>
+        <h2 className="text-sm font-semibold">Interroger la mémoire de ce chantier</h2>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
