@@ -10,7 +10,7 @@ import { Users } from 'lucide-react'
 import {
   ReassignTeamDialog,
   type ReassignTeamOption,
-} from '@/app/(dashboard)/semaine/ReassignTeamDialog'
+} from '@/app/(dashboard)/(planning)/semaine/ReassignTeamDialog'
 
 interface Props {
   interventionId: string

@@ -22,8 +22,8 @@ vi.mock('next/navigation', () => ({
 }))
 vi.mock('server-only', () => ({}))
 
-import { WeekGridCell } from '@/app/(dashboard)/semaine/WeekGridCell'
-import { CellDrawer } from '@/app/(dashboard)/semaine/CellDrawer'
+import { WeekGridCell } from '@/app/(dashboard)/(planning)/semaine/WeekGridCell'
+import { CellDrawer } from '@/app/(dashboard)/(planning)/semaine/CellDrawer'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import type { ProjectableClosure } from '@/lib/planning/closures'

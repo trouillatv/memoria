@@ -33,7 +33,6 @@ import { ReadingCard } from '@/components/ui/reading-card'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 import { extractHHMM, fmtDurationFr } from '@/lib/time/prestation-slot'
 import type { InterventionSlot } from '@/types/db'
-import { PlanningScales } from '@/components/planning/PlanningScales'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -95,8 +94,6 @@ export default async function TodayPage({
 
   return (
     <div className="space-y-6 w-full">
-      <PlanningScales active="jour" />
-
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold inline-flex items-center gap-2">

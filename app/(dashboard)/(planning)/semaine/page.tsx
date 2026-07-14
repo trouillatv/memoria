@@ -58,7 +58,6 @@ import { TeamWeekGrid } from './TeamWeekGrid'
 import { TeamWeekGridClient } from './TeamWeekGridClient'
 import { ViewModeToggle } from './ViewModeToggle'
 import { parseViewMode } from './view-mode-storage'
-import { PlanningScales } from '@/components/planning/PlanningScales'
 import { describeTemplate } from '@/lib/recurrence/describe'
 import type { DbInterventionTemplate } from '@/types/db'
 import type { RotationOption } from './planning-prefill'
@@ -462,8 +461,6 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <PlanningScales active="semaine" />
-
       <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
