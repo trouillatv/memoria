@@ -6,14 +6,13 @@
   <title>MemorIA - Maquette Mémoire et Documents</title>
   <style>
     :root {
-      --site-canvas: #f4f7f6;
-      --site-paper: #fbfcfb;
-      --site-raised: #ffffff;
-      --site-ink: #182128;
-      --site-muted: #63717b;
-      --site-faint: #89949b;
-      --site-line: rgba(31, 45, 55, 0.12);
-      --site-soft-line: rgba(31, 45, 55, 0.08);
+      --canvas: #f4f7f6;
+      --paper: #fbfcfb;
+      --raised: #ffffff;
+      --ink: #182128;
+      --muted: #63717b;
+      --line: rgba(31, 45, 55, 0.12);
+      --soft-line: rgba(31, 45, 55, 0.08);
       --memory: #7152c8;
       --memory-soft: #f1edff;
       --documents: #1f6f9f;
@@ -22,383 +21,72 @@
       --proof-soft: #eaf7f0;
       --waiting: #af6a16;
       --waiting-soft: #fff4df;
-      --danger: #b23a48;
-      --radius: 18px;
       --shadow: 0 18px 48px rgba(24, 33, 40, 0.08);
     }
-
-    * {
-      box-sizing: border-box;
-    }
-
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       background:
         linear-gradient(90deg, rgba(24, 33, 40, 0.025) 1px, transparent 1px),
         linear-gradient(rgba(24, 33, 40, 0.025) 1px, transparent 1px),
-        var(--site-canvas);
+        var(--canvas);
       background-size: 36px 36px;
-      color: var(--site-ink);
+      color: var(--ink);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       line-height: 1.45;
     }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    button,
-    input {
-      font: inherit;
-    }
-
-    .shell {
-      max-width: 1320px;
-      margin: 0 auto;
-      padding: 28px;
-    }
-
-    .topbar {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 24px;
-      align-items: end;
-      margin-bottom: 22px;
-    }
-
-    .crumb {
-      color: var(--site-muted);
-      font-size: 13px;
-    }
-
-    .site-title {
-      margin: 6px 0 0;
-      font-size: 30px;
-      letter-spacing: -0.01em;
-    }
-
-    .site-meta {
-      margin-top: 8px;
-      color: var(--site-muted);
-      font-size: 14px;
-    }
-
-    .nav {
-      display: flex;
-      gap: 6px;
-      padding: 6px;
-      border: 1px solid var(--site-line);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.72);
-    }
-
-    .nav span {
-      padding: 8px 13px;
-      border-radius: 999px;
-      color: var(--site-muted);
-      font-size: 13px;
-      white-space: nowrap;
-    }
-
-    .nav .active-memory {
-      background: var(--memory-soft);
-      color: var(--memory);
-      box-shadow: inset 0 0 0 1px rgba(113, 82, 200, 0.18);
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 22px;
-      align-items: start;
-    }
-
-    .workspace {
-      border: 1px solid var(--site-line);
-      border-radius: 26px;
-      background: rgba(251, 252, 251, 0.86);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-
-    .workspace-header {
-      padding: 24px 24px 18px;
-      border-bottom: 1px solid var(--site-soft-line);
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .eyebrow.memory {
-      color: var(--memory);
-    }
-
-    .eyebrow.documents {
-      color: var(--documents);
-    }
-
-    .dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 999px;
-      background: currentColor;
-    }
-
-    h2 {
-      margin: 0;
-      font-size: 25px;
-      letter-spacing: -0.01em;
-    }
-
-    .promise {
-      margin: 8px 0 0;
-      color: var(--site-muted);
-      font-size: 14px;
-    }
-
-    .sections {
-      display: grid;
-      gap: 16px;
-      padding: 18px;
-    }
-
-    .section {
-      border: 1px solid var(--site-line);
-      border-radius: var(--radius);
-      background: var(--site-raised);
-      overflow: hidden;
-    }
-
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 14px;
-      align-items: start;
-      padding: 17px 18px 12px;
-    }
-
-    .section-title {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 750;
-    }
-
-    .section-note {
-      margin: 4px 0 0;
-      color: var(--site-muted);
-      font-size: 13px;
-    }
-
-    .search-line {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      padding: 0 18px 18px;
-    }
-
-    .input {
-      min-height: 44px;
-      border: 1px solid var(--site-line);
-      border-radius: 13px;
-      background: #f6f8f7;
-      padding: 0 13px;
-      color: var(--site-muted);
-    }
-
-    .primary {
-      min-height: 44px;
-      border: 0;
-      border-radius: 13px;
-      background: var(--site-ink);
-      color: white;
-      padding: 0 16px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 0 18px 18px;
-    }
-
-    .chip {
-      border: 1px solid var(--site-line);
-      border-radius: 999px;
-      background: #fff;
-      padding: 6px 10px;
-      color: var(--site-muted);
-      font-size: 12px;
-    }
-
-    .chip.active-memory {
-      background: var(--memory-soft);
-      color: var(--memory);
-      border-color: rgba(113, 82, 200, 0.22);
-    }
-
-    .chip.active-documents {
-      background: var(--documents-soft);
-      color: var(--documents);
-      border-color: rgba(31, 111, 159, 0.22);
-    }
-
-    .rows {
-      border-top: 1px solid var(--site-soft-line);
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      padding: 14px 18px;
-      border-top: 1px solid var(--site-soft-line);
-    }
-
-    .row:first-child {
-      border-top: 0;
-    }
-
-    .row-title {
-      font-weight: 720;
-    }
-
-    .row-meta {
-      margin-top: 3px;
-      color: var(--site-muted);
-      font-size: 13px;
-    }
-
-    .row-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      justify-content: flex-end;
-      align-content: start;
-    }
-
-    .badge {
-      border: 1px solid var(--site-line);
-      border-radius: 999px;
-      background: #fff;
-      padding: 5px 8px;
-      color: var(--site-muted);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .badge.proof {
-      background: var(--proof-soft);
-      color: var(--proof);
-      border-color: rgba(37, 131, 90, 0.18);
-    }
-
-    .badge.waiting {
-      background: var(--waiting-soft);
-      color: var(--waiting);
-      border-color: rgba(175, 106, 22, 0.18);
-    }
-
-    .soft-link {
-      color: var(--site-muted);
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .qr-panel {
-      display: grid;
-      grid-template-columns: 230px 1fr;
-      gap: 18px;
-      padding: 0 18px 18px;
-    }
-
-    .qr-card {
-      display: grid;
-      place-items: center;
-      min-height: 230px;
-      border: 1px solid var(--site-line);
-      border-radius: 18px;
-      background: white;
-    }
-
-    .qr {
-      width: 168px;
-      height: 168px;
-      background:
-        linear-gradient(90deg, #12202a 12px, transparent 12px) 0 0 / 24px 24px,
-        linear-gradient(#12202a 12px, transparent 12px) 0 0 / 24px 24px,
-        #fff;
-      border: 14px solid #fff;
-      box-shadow: inset 0 0 0 1px rgba(18, 32, 42, 0.12);
-    }
-
-    .qr-info {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .action {
-      border: 1px solid var(--site-line);
-      border-radius: 12px;
-      background: #fff;
-      padding: 9px 12px;
-      color: var(--site-ink);
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .history {
-      border-top: 1px solid var(--site-soft-line);
-      padding: 13px 18px 16px;
-      color: var(--site-muted);
-      font-size: 13px;
-    }
-
-    .empty {
-      margin: 0 18px 18px;
-      border: 1px dashed var(--site-line);
-      border-radius: 16px;
-      background: #fafbfa;
-      padding: 22px;
-      text-align: center;
-    }
-
-    .empty strong {
-      display: block;
-      margin-bottom: 4px;
-    }
-
+    a { color: inherit; text-decoration: none; }
+    button, input { font: inherit; }
+    .shell { max-width: 1320px; margin: 0 auto; padding: 28px; }
+    .topbar { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; margin-bottom: 22px; }
+    .crumb { color: var(--muted); font-size: 13px; }
+    .site-title { margin: 6px 0 0; font-size: 30px; letter-spacing: -0.01em; }
+    .site-meta { margin-top: 8px; color: var(--muted); font-size: 14px; }
+    .nav { display: flex; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.72); }
+    .nav span { padding: 8px 13px; border-radius: 999px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .nav .active { background: var(--memory-soft); color: var(--memory); box-shadow: inset 0 0 0 1px rgba(113,82,200,.18); }
+    .layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px; align-items: start; }
+    .workspace { border: 1px solid var(--line); border-radius: 26px; background: rgba(251,252,251,.86); box-shadow: var(--shadow); overflow: hidden; }
+    .workspace-header { padding: 24px 24px 18px; border-bottom: 1px solid var(--soft-line); }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+    .eyebrow.memory { color: var(--memory); }
+    .eyebrow.documents { color: var(--documents); }
+    .dot { width: 9px; height: 9px; border-radius: 999px; background: currentColor; }
+    h2 { margin: 0; font-size: 25px; letter-spacing: -0.01em; }
+    .promise { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .sections { display: grid; gap: 16px; padding: 18px; }
+    .section { border: 1px solid var(--line); border-radius: 18px; background: var(--raised); overflow: hidden; }
+    .section-head { display: flex; justify-content: space-between; gap: 14px; align-items: start; padding: 17px 18px 12px; }
+    .section-title { margin: 0; font-size: 16px; font-weight: 750; }
+    .section-note { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .search-line { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 0 18px 18px; }
+    .input { min-height: 44px; border: 1px solid var(--line); border-radius: 13px; background: #f6f8f7; padding: 0 13px; color: var(--muted); }
+    .primary { min-height: 44px; border: 0; border-radius: 13px; background: var(--ink); color: white; padding: 0 16px; font-weight: 700; cursor: pointer; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 18px; }
+    .chip { border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 6px 10px; color: var(--muted); font-size: 12px; }
+    .chip.memory { background: var(--memory-soft); color: var(--memory); border-color: rgba(113,82,200,.22); }
+    .chip.documents { background: var(--documents-soft); color: var(--documents); border-color: rgba(31,111,159,.22); }
+    .rows { border-top: 1px solid var(--soft-line); }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--soft-line); }
+    .row:first-child { border-top: 0; }
+    .row-title { font-weight: 720; }
+    .row-meta { margin-top: 3px; color: var(--muted); font-size: 13px; }
+    .row-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-content: start; }
+    .badge { border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 5px 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .badge.proof { background: var(--proof-soft); color: var(--proof); border-color: rgba(37,131,90,.18); }
+    .badge.waiting { background: var(--waiting-soft); color: var(--waiting); border-color: rgba(175,106,22,.18); }
+    .soft-link { color: var(--muted); font-size: 13px; font-weight: 700; }
+    .action { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 9px 12px; color: var(--ink); font-size: 13px; font-weight: 700; }
+    .qr-panel { display: grid; grid-template-columns: 230px 1fr; gap: 18px; padding: 0 18px 18px; }
+    .qr-card { display: grid; place-items: center; min-height: 230px; border: 1px solid var(--line); border-radius: 18px; background: white; }
+    .qr { width: 168px; height: 168px; background: linear-gradient(90deg,#12202a 12px,transparent 12px) 0 0/24px 24px, linear-gradient(#12202a 12px,transparent 12px) 0 0/24px 24px, #fff; border: 14px solid #fff; box-shadow: inset 0 0 0 1px rgba(18,32,42,.12); }
+    .qr-info { display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .history { border-top: 1px solid var(--soft-line); padding: 13px 18px 16px; color: var(--muted); font-size: 13px; }
     @media (max-width: 1000px) {
-      .layout,
-      .topbar {
-        grid-template-columns: 1fr;
-      }
-
-      .nav {
-        overflow-x: auto;
-      }
-
-      .qr-panel {
-        grid-template-columns: 1fr;
-      }
+      .layout, .topbar { grid-template-columns: 1fr; }
+      .nav { overflow-x: auto; }
+      .qr-panel { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -411,216 +99,72 @@
         <div class="site-meta">Nouméa · Chantier en cours · Conducteur : Vincent</div>
       </div>
       <nav class="nav" aria-label="Vues chantier">
-        <span>Aperçu</span>
-        <span>Travail</span>
-        <span>Chronologie</span>
-        <span>Planning</span>
-        <span>Documents</span>
-        <span class="active-memory">Mémoire</span>
+        <span>Aperçu</span><span>Travail</span><span>Chronologie</span><span>Planning</span><span>Documents</span><span class="active">Mémoire</span>
       </nav>
     </header>
 
     <div class="layout">
       <article class="workspace">
         <header class="workspace-header">
-          <div class="eyebrow memory"><span class="dot"></span>Projection mémoire</div>
           <h2>Mémoire</h2>
-          <p class="promise">Ici je peux retrouver ce que le chantier sait.</p>
+          <p class="promise">Ici, je peux retrouver ce que le chantier sait.</p>
         </header>
-
         <div class="sections">
           <section class="section">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Poser une question</h3>
-                <p class="section-note">Recherche dans les traces réelles du chantier.</p>
-              </div>
-            </div>
-            <div class="search-line">
-              <input class="input" value="Que faut-il savoir avant la prochaine visite ?" aria-label="Question mémoire">
-              <button class="primary">Interroger</button>
-            </div>
-            <div class="chips">
-              <span class="chip active-memory">risques connus · 4</span>
-              <span class="chip">décisions nettoyage · 2</span>
-              <span class="chip">accès réserve · 3</span>
-            </div>
+            <div class="section-head"><div><h3 class="section-title">Poser une question</h3><p class="section-note">Recherche dans les traces réelles du chantier.</p></div></div>
+            <div class="search-line"><input class="input" placeholder="Que cherchez-vous sur ce chantier ?"><button class="primary">Interroger</button></div>
+            <div class="chips"><span class="chip memory">Questions suggérées</span><span class="chip">Que faut-il savoir avant la prochaine visite ?</span><span class="chip">Quels risques sont encore ouverts ?</span><span class="chip">Quelles décisions concernent le nettoyage ?</span></div>
           </section>
-
-          <section class="section" aria-label="Connaissances importantes">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Connaissances importantes</h3>
-                <p class="section-note">Ce qui restera utile dans trois mois.</p>
-              </div>
-            </div>
-            <div class="rows">
-              <div class="row">
-                <div>
-                  <div class="row-title">1 décision jamais appliquée</div>
-                  <div class="row-meta">Changer le fournisseur · Lot menuiserie</div>
-                </div>
-                <div class="row-badges"><span class="badge waiting">à suivre</span></div>
-              </div>
-              <div class="row">
-                <div>
-                  <div class="row-title">2 réserves ouvertes</div>
-                  <div class="row-meta">Fuite local technique · émise le 13 juillet</div>
-                </div>
-                <div class="row-badges"><span class="badge">réserve</span></div>
-              </div>
-              <div class="row">
-                <div>
-                  <div class="row-title">Contrainte d'accès</div>
-                  <div class="row-meta">La réserve arrière reste inaccessible après 17 h.</div>
-                </div>
-                <div class="row-badges"><span class="badge">à savoir</span></div>
-              </div>
-            </div>
-          </section>
-
-          <section class="section" aria-label="Dossiers vivants">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Dossiers vivants</h3>
-                <p class="section-note">Sujets suivis qui relient événements, décisions, actions et preuves.</p>
-              </div>
-              <a class="soft-link" href="#">Voir tous</a>
-            </div>
-            <div class="rows">
-              <a class="row" href="#">
-                <div>
-                  <div class="row-title">Fuites d'eau</div>
-                  <div class="row-meta">Dernière évolution aujourd'hui</div>
-                </div>
-                <div class="row-badges">
-                  <span class="badge">3 actions</span>
-                  <span class="badge">2 réserves</span>
-                  <span class="badge proof">5 preuves</span>
-                </div>
-              </a>
-              <a class="row" href="#">
-                <div>
-                  <div class="row-title">Nettoyage du magasin</div>
-                  <div class="row-meta">Dernière évolution il y a 2 j</div>
-                </div>
-                <div class="row-badges">
-                  <span class="badge">6 actions</span>
-                  <span class="badge">0 réserve</span>
-                  <span class="badge proof">2 preuves</span>
-                </div>
-              </a>
-            </div>
-          </section>
-
           <section class="section">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Historique des questions</h3>
-                <p class="section-note">Fonctions avancées et recherches précédentes.</p>
-              </div>
-              <a class="action" href="#">Ouvrir l'atelier complet</a>
+            <div class="section-head"><div><h3 class="section-title">Connaissances importantes</h3><p class="section-note">Ce qui restera utile dans trois mois.</p></div></div>
+            <div class="rows">
+              <div class="row"><div><div class="row-title">1 décision sans suite identifiée</div><div class="row-meta">Changer le fournisseur · Lot menuiserie</div></div><div class="row-badges"><span class="badge waiting">à suivre</span></div></div>
+              <div class="row"><div><div class="row-title">2 réserves ouvertes</div><div class="row-meta">Fuite local technique · émise le 13 juillet</div></div><div class="row-badges"><span class="badge">réserve</span></div></div>
+              <div class="row"><div><div class="row-title">Contrainte d'accès</div><div class="row-meta">La réserve arrière reste inaccessible après 17 h.</div></div><div class="row-badges"><span class="badge">à savoir</span></div></div>
             </div>
+          </section>
+          <section class="section">
+            <div class="section-head"><div><h3 class="section-title">Dossiers vivants</h3><p class="section-note">Sujets suivis qui relient événements, décisions, actions et preuves.</p></div><a class="soft-link" href="#">Voir tous</a></div>
+            <div class="rows">
+              <a class="row" href="#"><div><div class="row-title">Fuites d'eau</div><div class="row-meta">Dernière évolution aujourd'hui</div></div><div class="row-badges"><span class="badge">3 actions</span><span class="badge">2 réserves</span><span class="badge proof">5 preuves</span></div></a>
+              <a class="row" href="#"><div><div class="row-title">Nettoyage du magasin</div><div class="row-meta">Dernière évolution il y a 2 j</div></div><div class="row-badges"><span class="badge">6 actions</span><span class="badge">0 réserve</span><span class="badge proof">2 preuves</span></div></a>
+            </div>
+          </section>
+          <section class="section">
+            <div class="section-head"><div><h3 class="section-title">Historique des questions</h3><p class="section-note">Fonctions avancées et recherches précédentes.</p></div><a class="action" href="#">Ouvrir l'atelier complet</a></div>
           </section>
         </div>
       </article>
 
       <article class="workspace">
         <header class="workspace-header">
-          <div class="eyebrow documents"><span class="dot"></span>Projection preuves</div>
           <h2>Documents & preuves</h2>
-          <p class="promise">Ici je peux retrouver ou recevoir une preuve.</p>
+          <p class="promise">Ici, je peux retrouver ou recevoir une preuve.</p>
         </header>
-
         <div class="sections">
-          <section class="section" aria-label="Bibliothèque">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Bibliothèque</h3>
-                <p class="section-note">237 documents · 12 dossiers de preuves alimentés</p>
-              </div>
-              <a class="action" href="#">+ Ajouter</a>
-            </div>
-            <div class="search-line">
-              <input class="input" value="Rechercher une photo, un plan, un PV..." aria-label="Recherche documents">
-              <button class="primary">Chercher</button>
-            </div>
-            <div class="chips">
-              <span class="chip active-documents">Tous</span>
-              <span class="chip">Photos</span>
-              <span class="chip">Plans</span>
-              <span class="chip">PV</span>
-              <span class="chip">CR</span>
-              <span class="chip">Justificatifs</span>
-            </div>
+          <section class="section">
+            <div class="section-head"><div><h3 class="section-title">Bibliothèque</h3><p class="section-note">237 documents · 12 dossiers de preuves alimentés</p></div><a class="action" href="#">+ Ajouter</a></div>
+            <div class="search-line"><input class="input" value="Rechercher une photo, un plan, un PV..."><button class="primary">Chercher</button></div>
+            <div class="chips"><span class="chip documents">Tous</span><span class="chip">Photos</span><span class="chip">Plans</span><span class="chip">PV</span><span class="chip">CR</span><span class="chip">Justificatifs</span></div>
             <div class="rows">
-              <div class="row">
-                <div>
-                  <div class="row-title">Plan toiture.pdf</div>
-                  <div class="row-meta">Plan · ajouté le 13 juillet · issu de la réunion n°12</div>
-                </div>
-                <div class="row-badges"><span class="badge proof">utilisé comme preuve</span></div>
-              </div>
-              <div class="row">
-                <div>
-                  <div class="row-title">photo-fuite-local-technique.jpg</div>
-                  <div class="row-meta">Photo · reçue via QR · liée au dossier Fuites d'eau</div>
-                </div>
-                <div class="row-badges"><span class="badge waiting">à vérifier</span></div>
-              </div>
+              <div class="row"><div><div class="row-title">Plan toiture.pdf</div><div class="row-meta">Plan · ajouté le 13 juillet · issu de la réunion n°12</div></div><div class="row-badges"><span class="badge proof">Preuve</span><span class="badge proof">Validée</span></div></div>
+              <div class="row"><div><div class="row-title">photo-fuite-local-technique.jpg</div><div class="row-meta">Photo · reçue via QR · liée au dossier Fuites d'eau</div></div><div class="row-badges"><span class="badge proof">Preuve</span><span class="badge waiting">À vérifier</span></div></div>
             </div>
           </section>
-
-          <section class="section" aria-label="Recevoir des preuves">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Recevoir des preuves</h3>
-                <p class="section-note">Le QR est un canal de collecte qui alimente la bibliothèque.</p>
-              </div>
-            </div>
+          <section class="section">
+            <div class="section-head"><div><h3 class="section-title">Recevoir des preuves</h3><p class="section-note">Le QR est un canal de collecte qui alimente la bibliothèque.</p></div></div>
             <div class="qr-panel">
-              <div class="qr-card">
-                <div class="qr" aria-label="QR code maquette"></div>
-              </div>
+              <div class="qr-card"><div class="qr" aria-label="QR code maquette"></div></div>
               <div class="qr-info">
-                <div>
-                  <div class="row-title">QR de collecte externe</div>
-                  <div class="row-meta">Lien public selon les droits réels du lien.</div>
-                  <div class="row-badges" style="justify-content:flex-start;margin-top:12px">
-                    <span class="badge">2 accès anonymes</span>
-                    <span class="badge">dernier accès 14 juillet</span>
-                    <span class="badge">généré le 14 juillet 2026</span>
-                  </div>
-                </div>
-                <div class="actions">
-                  <a class="action" href="#">WhatsApp</a>
-                  <a class="action" href="#">Copier le lien</a>
-                  <a class="action" href="#">Télécharger</a>
-                </div>
+                <div><div class="row-title">QR de collecte externe</div><div class="row-meta">Accès en lecture seule</div><div class="row-badges" style="justify-content:flex-start;margin-top:12px"><span class="badge">2 accès anonymes</span><span class="badge">dernier accès 14 juillet</span><span class="badge">généré le 14 juillet 2026</span></div></div>
+                <div class="actions"><a class="action" href="#">WhatsApp</a><a class="action" href="#">Copier le lien</a><a class="action" href="#">Télécharger</a></div>
               </div>
             </div>
-            <div class="history">
-              ▾ Historique et sécurité · accès anonymes uniquement, aucune personne supposée.
-            </div>
+            <div class="history">▾ Historique et sécurité · 2 accès anonymes · aucun contributeur identifié.</div>
           </section>
-
-          <section class="section" aria-label="Dossiers de preuves">
-            <div class="section-head">
-              <div>
-                <h3 class="section-title">Dossiers de preuves</h3>
-                <p class="section-note">1 dossier actif · 1 preuve à vérifier</p>
-              </div>
-              <a class="action" href="#">Ouvrir</a>
-            </div>
-            <div class="rows">
-              <a class="row" href="#">
-                <div>
-                  <div class="row-title">Nettoyer la réserve</div>
-                  <div class="row-meta">Entreprise Martin · déclaration reçue · photo jointe</div>
-                </div>
-                <div class="row-badges"><span class="badge waiting">à vérifier</span></div>
-              </a>
-            </div>
+          <section class="section">
+            <div class="section-head"><div><h3 class="section-title">Dossiers de preuves</h3><p class="section-note">1 dossier actif · 1 preuve à vérifier</p></div><a class="action" href="#">Ouvrir</a></div>
+            <div class="rows"><a class="row" href="#"><div><div class="row-title">Nettoyer la réserve</div><div class="row-meta">Entreprise Martin · déclaration reçue · photo jointe</div></div><div class="row-badges"><span class="badge waiting">à vérifier</span></div></a></div>
           </section>
         </div>
       </article>
