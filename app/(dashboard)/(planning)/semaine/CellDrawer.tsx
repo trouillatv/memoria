@@ -53,6 +53,7 @@ import { frDayMonthLocal } from '@/lib/time/local-date'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
 import { MemorySignalLine } from '@/components/memory/MemorySignalBadge'
+import { siteLabel } from '@/lib/labels/site-label'
 
 const MONTHS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -105,6 +106,8 @@ export interface CellDrawerProps {
 interface SelectedCell {
   siteId: string
   siteName: string
+  /** Le client — sans lui, « Pointière » ne désigne rien (cf. siteLabel). */
+  clientName: string | null
   contractName: string
   date: string
   cells: WeekInterventionCell[]
@@ -117,6 +120,7 @@ function buildIndex(rows: SiteRow[]): Map<string, SelectedCell> {
       idx.set(`${row.site_id}::${date}`, {
         siteId: row.site_id,
         siteName: row.site_name,
+        clientName: row.client_name ?? null,
         contractName: row.contract_name,
         date,
         cells,
@@ -211,7 +215,7 @@ export function CellDrawer({
         <SheetContent side="right" className="p-0 sm:max-w-md w-full overflow-y-auto">
           <SheetHeader className="border-b p-4">
             <SheetTitle>
-              {selected ? selected.siteName : 'Détail'}
+              {selected ? siteLabel(selected.siteName, selected.clientName) : 'Détail'}
             </SheetTitle>
             <SheetDescription>
               {selected ? (

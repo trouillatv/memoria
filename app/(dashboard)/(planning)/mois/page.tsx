@@ -35,6 +35,7 @@ import {
 import { parseViewMode } from '../semaine/view-mode-storage'
 import { MonthViewModeToggle } from './MonthViewModeToggle'
 import { PlanningScales } from '@/components/planning/PlanningScales'
+import { siteLabel } from '@/lib/labels/site-label'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -336,11 +337,14 @@ export default async function MoisPage({
                         scope="row"
                         className="sticky left-0 z-10 min-w-[140px] max-w-[200px] border-r bg-card px-3 py-1.5 text-left"
                       >
+                        {/* Client — Chantier. « Pointière » seul ne désigne rien :
+                            il y a le magasin Discount de Pointière et la mairie. */}
                         <Link
                           href={`/sites/${row.siteId}`}
                           className="block truncate text-xs font-semibold hover:underline"
+                          title={siteLabel(row.siteName, row.clientName)}
                         >
-                          {row.siteName}
+                          {siteLabel(row.siteName, row.clientName)}
                         </Link>
                       </th>
                       {days.map((d) => {
