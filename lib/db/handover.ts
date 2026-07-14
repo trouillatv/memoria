@@ -522,20 +522,26 @@ export async function buildTeamTakesSitePayload(
 ): Promise<{ payload: HandoverPayload; title: string }> {
   const admin = createAdminClient()
 
-  // Récupérer team + site
+  // Isolation P1 : le client service-role contourne la RLS. L'équipe et le
+  // chantier doivent donc être filtrés sur l'organisation DANS LE CODE, sinon
+  // un manager peut compiler la mémoire d'un chantier d'une autre entreprise en
+  // passant un identifiant à la main.
+  const orgId = await getOrgId()
+
+  let teamQuery = admin.from('teams').select('id, name').eq('id', input.targetTeamId).is('deleted_at', null)
+  let siteQuery = admin
+    .from('sites')
+    .select('id, name, contract:contracts(id, name), client:clients(name)')
+    .eq('id', input.siteId)
+    .is('deleted_at', null)
+  if (orgId) {
+    teamQuery = teamQuery.eq('organization_id', orgId)
+    siteQuery = siteQuery.eq('organization_id', orgId)
+  }
+
   const [{ data: team }, { data: site }] = await Promise.all([
-    admin
-      .from('teams')
-      .select('id, name')
-      .eq('id', input.targetTeamId)
-      .is('deleted_at', null)
-      .maybeSingle(),
-    admin
-      .from('sites')
-      .select('id, name, contract:contracts(id, name), client:clients(name)')
-      .eq('id', input.siteId)
-      .is('deleted_at', null)
-      .maybeSingle(),
+    teamQuery.maybeSingle(),
+    siteQuery.maybeSingle(),
   ])
   if (!team || !site) {
     throw new Error('Équipe ou site introuvable')
