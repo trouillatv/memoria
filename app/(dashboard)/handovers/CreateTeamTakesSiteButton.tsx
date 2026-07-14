@@ -81,14 +81,14 @@ export function CreateTeamTakesSiteButton({
         </DialogHeader>
 
         <div className="space-y-2">
-          <Label htmlFor="site">Site concerné</Label>
+          <Label htmlFor="site">Chantier concerné</Label>
           <select
             id="site"
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           >
-            <option value="">— Choisir un site —</option>
+            <option value="">— Choisir un chantier —</option>
             {availableSites.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}

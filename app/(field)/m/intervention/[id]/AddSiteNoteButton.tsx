@@ -72,7 +72,7 @@ export function AddSiteNoteButton({ siteId, action }: Props) {
     return (
       <div className="space-y-2">
         {createdNotes.length > 0 && (
-          <ul className="space-y-1.5" aria-label="Notes ajoutées sur ce site">
+          <ul className="space-y-1.5" aria-label="Notes ajoutées sur ce chantier">
             {createdNotes.map((note, index) => (
               <li key={`${note}-${index}`} className="text-sm leading-relaxed">
                 • {note}

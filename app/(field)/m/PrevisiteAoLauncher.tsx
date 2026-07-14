@@ -67,7 +67,7 @@ export function PrevisiteAoLauncher() {
               />
             </label>
             <label className="block space-y-1 text-sm">
-              <span className="text-muted-foreground">Site / lieu</span>
+              <span className="text-muted-foreground">Chantier / lieu</span>
               <input
                 value={site} onChange={(e) => setSite(e.target.value)} maxLength={200}
                 placeholder="Ex : École Jules Ferry, Nouméa"

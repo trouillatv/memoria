@@ -201,7 +201,7 @@ export default async function HandoverDetailPage({
               className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/30 px-2 py-1 hover:bg-muted transition-colors"
             >
               <Building2 className="h-3 w-3" />
-              <span>Voir le site</span>
+              <span>Voir le chantier</span>
             </Link>
           )}
         </div>

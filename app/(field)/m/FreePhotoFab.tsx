@@ -65,7 +65,7 @@ export function FreePhotoFab({ sites }: { sites: FreePhotoFabSite[] }) {
 
       <SheetContent side="bottom" className="max-h-[80vh]">
         <SheetHeader className="text-left">
-          <SheetTitle>Sur quel site ?</SheetTitle>
+          <SheetTitle>Sur quel chantier ?</SheetTitle>
         </SheetHeader>
         <ul className="mt-4 space-y-2">
           {sites.map((s) => (

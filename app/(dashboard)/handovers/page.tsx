@@ -278,7 +278,7 @@ export default async function HandoversPage({
 function MemoryTransmittedCard({ summary }: { summary: MemoryTransmittedSummary }) {
   const stats: Array<{ icon: React.ComponentType<{ className?: string }>; value: number; label: string }> = [
     { icon: ArrowRightLeft, value: summary.briefsCount, label: 'passages de témoin' },
-    { icon: MapPin, value: summary.sitesCovered, label: 'sites couverts' },
+    { icon: MapPin, value: summary.sitesCovered, label: 'chantiers couverts' },
     { icon: Pin, value: summary.aSavoir, label: 'à savoir transmis' },
     { icon: AlertTriangle, value: summary.anomalies, label: 'anomalies relayées' },
     { icon: BookOpen, value: summary.documents, label: 'documents joints' },

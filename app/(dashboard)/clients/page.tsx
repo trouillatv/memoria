@@ -39,7 +39,7 @@ export default async function ClientsPage() {
         <EmptyState
           icon={Building2}
           title="Aucun client"
-          description="Créez votre premier client ou ajoutez un site pour en créer un automatiquement."
+          description="Créez votre premier client ou ajoutez un chantier pour en créer un automatiquement."
         />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -70,7 +70,7 @@ export default async function ClientsPage() {
                         <span>{client.siteCount} site{client.siteCount > 1 ? 's' : ''}</span>
                       )}
                       {client.contractCount === 0 && client.siteCount === 0 && (
-                        <span className="italic">Aucun site ni contrat</span>
+                        <span className="italic">Aucun chantier ni contrat</span>
                       )}
                     </div>
 

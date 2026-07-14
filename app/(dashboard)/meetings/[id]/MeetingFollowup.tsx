@@ -47,7 +47,7 @@ export function MeetingFollowup({ data }: { data: Followup }) {
       )}
 
       {!data.hasPrevious && (
-        <p className="text-xs text-muted-foreground italic">Première réunion du site — pas d&apos;historique antérieur.</p>
+        <p className="text-xs text-muted-foreground italic">Première réunion du chantier — pas d&apos;historique antérieur.</p>
       )}
     </section>
   )

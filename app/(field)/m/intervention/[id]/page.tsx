@@ -367,7 +367,7 @@ export default async function FieldInterventionPage({
           </div>
           <span
             className={`inline-flex items-center px-2.5 py-1 rounded-full border text-sm font-medium ${slotBadgeClass}`}
-            title="Horaire de prestation (V6.1). Ancrage site/contrat, jamais pointage personne."
+            title="Horaire de prestation (V6.1). Ancrage chantier/contrat, jamais pointage personne."
           >
             {timeLabel}
           </span>

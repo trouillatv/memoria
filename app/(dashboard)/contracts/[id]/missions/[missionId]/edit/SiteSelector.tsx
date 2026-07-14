@@ -149,19 +149,19 @@ export function SiteSelector({ sites, otherSites = [], value, onChange, disabled
                 setHighlight(0)
               }}
               onKeyDown={onKeyDown}
-              placeholder="Rechercher un site..."
+              placeholder="Rechercher un chantier..."
               className="w-full rounded border p-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Rechercher un site"
+              aria-label="Rechercher un chantier"
             />
           </div>
           <ul
             role="listbox"
             className="overflow-y-auto flex-1 py-1"
-            aria-label="Liste des sites"
+            aria-label="Liste des chantiers"
           >
             {filtered.length === 0 && (
               <li className="px-3 py-2 text-xs italic text-muted-foreground">
-                Aucun site ne correspond.
+                Aucun chantier ne correspond.
               </li>
             )}
             {currentItems.length > 0 && (

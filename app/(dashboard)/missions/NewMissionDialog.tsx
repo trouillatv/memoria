@@ -72,14 +72,14 @@ export function NewMissionDialog({ sites }: Props) {
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-1">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Site *</label>
+            <label className="text-xs font-medium text-muted-foreground">Chantier *</label>
             <select
               name="site_id"
               required
               defaultValue=""
               className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="" disabled>Sélectionner un site…</option>
+              <option value="" disabled>Sélectionner un chantier…</option>
               {/* PR 4 : « Client — Chantier · Contrat » — deux chantiers
                   homonymes restent distinguables. */}
               {sites.map((s) => (

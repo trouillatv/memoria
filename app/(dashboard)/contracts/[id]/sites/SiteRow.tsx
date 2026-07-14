@@ -71,7 +71,7 @@ export function SiteRow({ contractId, site, notes }: Props) {
     return (
       <li className="rounded-lg border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Éditer le site</h3>
+          <h3 className="text-sm font-semibold">Éditer le chantier</h3>
           <button
             type="button"
             onClick={cancel}
@@ -82,7 +82,7 @@ export function SiteRow({ contractId, site, notes }: Props) {
           </button>
         </div>
         <div className="space-y-2">
-          <label className="text-xs text-muted-foreground">Nom du site *</label>
+          <label className="text-xs text-muted-foreground">Nom du chantier *</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -162,7 +162,7 @@ export function SiteRow({ contractId, site, notes }: Props) {
             type="button"
             onClick={() => setEditing(true)}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            aria-label="Éditer le site"
+            aria-label="Éditer le chantier"
           >
             <Pencil className="h-3.5 w-3.5" />
             Éditer

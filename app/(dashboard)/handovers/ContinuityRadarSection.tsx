@@ -143,7 +143,7 @@ function EntryCard({ entry }: { entry: ContinuityEntry }) {
         </p>
         <p className="text-xs text-muted-foreground">
           {entry.sitesCovered.length === 0 ? (
-            <span className="italic">Aucun site documenté pour les équipes actives de cette personne.</span>
+            <span className="italic">Aucun chantier documenté pour les équipes actives de cette personne.</span>
           ) : (
             <>
               <strong>{entry.sitesCovered.length} site{entry.sitesCovered.length > 1 ? 's' : ''}</strong> via{' '}

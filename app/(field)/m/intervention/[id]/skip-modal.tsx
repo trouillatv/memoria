@@ -154,7 +154,7 @@ function SkipModal({
               disabled={pending}
               data-testid="skip-reason-input"
               className="w-full rounded-lg border border-border bg-background p-3 text-base resize-none focus:outline-none focus:ring-2 focus:ring-foreground/20"
-              placeholder="Site fermé, accès condamné, agent indisponible..."
+              placeholder="Chantier fermé, accès condamné, agent indisponible..."
             />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{trimmed.length < 3 ? 'Minimum 3 caractères' : ' '}</span>

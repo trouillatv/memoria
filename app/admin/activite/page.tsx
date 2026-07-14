@@ -167,7 +167,7 @@ function UsageBlock({
 
 function EntityKpis({ counts }: { counts: Awaited<ReturnType<typeof getEntityCounts>> }) {
   const cards = [
-    { label: 'Sites créés', value: counts.sitesCreated, sub: `${counts.sitesTotal} au total`, icon: MapPin, tone: 'text-sky-600 bg-sky-50' },
+    { label: 'Chantiers créés', value: counts.sitesCreated, sub: `${counts.sitesTotal} au total`, icon: MapPin, tone: 'text-sky-600 bg-sky-50' },
     { label: 'Contrats créés', value: counts.contractsCreated, sub: `${counts.contractsTotal} au total`, icon: FileText, tone: 'text-violet-600 bg-violet-50' },
     { label: 'Interventions', value: counts.interventionsCreated, sub: 'sur la période', icon: Hammer, tone: 'text-amber-600 bg-amber-50' },
     { label: 'Intervenants', value: counts.intervenants, sub: "chefs d'équipe", icon: Users, tone: 'text-emerald-600 bg-emerald-50' },

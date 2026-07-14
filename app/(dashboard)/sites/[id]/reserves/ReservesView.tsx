@@ -255,7 +255,7 @@ function LinkDocumentForm({ reserveId, siteId, siteDocuments, linkedIds }: {
     <select disabled={pending} defaultValue=""
       onChange={(e) => { if (e.target.value) link(e.target.value) }}
       className="rounded border bg-background px-2 py-1 text-xs max-w-[260px]">
-      <option value="" disabled>Choisir un document du site…</option>
+      <option value="" disabled>Choisir un document du chantier…</option>
       {available.map((d) => <option key={d.id} value={d.id}>{d.filename}</option>)}
     </select>
   )

@@ -187,7 +187,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
 
             {/* Nom du chantier */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Nom du site *</label>
+              <label className="text-xs font-medium text-muted-foreground">Nom du chantier *</label>
               <input
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
