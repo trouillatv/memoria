@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   ListTodo,
   FileCheck2,
+  CalendarClock,
 } from 'lucide-react'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { formatRelativeLong } from '@/lib/format'
@@ -273,6 +274,27 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
                 </div>
               )}
 
+              {/* Prochaines échéances — ce qui attend celui qui reprend. */}
+              {(s.nextEvents?.length ?? 0) > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium flex items-center gap-1.5">
+                    <CalendarClock className="h-3 w-3 text-sky-600" />
+                    Prochaines échéances
+                  </p>
+                  <ul className="space-y-1">
+                    {s.nextEvents?.map((e) => (
+                      <li key={e.id} className="text-xs rounded-md border bg-muted/20 px-3 py-1.5">
+                        <span className="font-medium">{e.label}</span>
+                        <span className="text-muted-foreground">
+                          {' '}· {e.on}
+                          {e.teamName ? ` · ${e.teamName}` : ' · équipe non affectée'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Décisions récentes validées */}
               {s.recentDecisions.length > 0 && (
                 <div className="space-y-1.5">
@@ -357,6 +379,7 @@ export function HandoverPayloadView({ payload, publicView = false }: Props) {
                 s.openReserves.length === 0 &&
                 s.openActions.length === 0 &&
                 s.recentDecisions.length === 0 &&
+                (s.nextEvents?.length ?? 0) === 0 &&
                 s.documents.length === 0 &&
                 s.neighborTeams.length === 0 && (
                   <p className="text-xs italic text-muted-foreground">

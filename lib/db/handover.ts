@@ -43,6 +43,7 @@ const SITE_CAP = 12
 const ANOMALY_PER_SITE = 5
 const DOC_PER_SITE = 6
 const NEIGHBOR_TEAMS_PER_SITE = 4
+const NEXT_EVENTS_PER_SITE = 4
 
 // ----------------------------------------------------------------------------
 // Fonctions de compilation — calculent un payload prêt à insérer
@@ -352,6 +353,41 @@ async function buildSiteContextEntry(
     id: string; short_label: string; corps_etat: string | null; created_at: string
   }>).map((d) => ({ id: d.id, label: d.short_label, corpsEtat: d.corps_etat ?? null, at: d.created_at }))
 
+  // Prochaines échéances : ce qui est déjà engagé APRÈS la reprise. Une passation
+  // ne transmet pas seulement le passé — celui qui reprend doit savoir ce qui
+  // l'attend. Interventions encore à venir uniquement. Cap 4.
+  const { data: upcomingRows } = await admin
+    .from('interventions')
+    .select(`
+      id, scheduled_for, status,
+      team:teams(name),
+      mission:missions!inner(name, site_id)
+    `)
+    .eq('mission.site_id', base.site_id)
+    .in('status', ['planned', 'in_progress'])
+    .gte('scheduled_for', today)
+    .order('scheduled_for', { ascending: true })
+    .limit(NEXT_EVENTS_PER_SITE)
+
+  type UpcomingRow = {
+    id: string
+    scheduled_for: string | null
+    team: { name: string } | { name: string }[] | null
+    mission: { name: string; site_id: string } | { name: string; site_id: string }[] | null
+  }
+  const nextEvents: NonNullable<HandoverPayload['sites'][number]['nextEvents']> = []
+  for (const r of (upcomingRows ?? []) as UpcomingRow[]) {
+    const mission = pickOne(r.mission)
+    if (!mission || mission.site_id !== base.site_id || !r.scheduled_for) continue
+    if (isSystemMissionName(mission.name)) continue
+    nextEvents.push({
+      id: r.id,
+      label: mission.name,
+      on: r.scheduled_for,
+      teamName: pickOne(r.team)?.name ?? null,
+    })
+  }
+
   return {
     site_id: base.site_id,
     site_name: base.site_name,
@@ -363,6 +399,7 @@ async function buildSiteContextEntry(
     openActions,
     openActionsMore,
     recentDecisions,
+    nextEvents,
     aSavoir: ((aSavoir ?? []) as Array<{
       id: string
       body: string
