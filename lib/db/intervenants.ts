@@ -177,6 +177,18 @@ export interface IntervenantListRow {
   topSites: string[]
   interventionsParticipated: number
   lastParticipationDate: string | null
+  /**
+   * Le compte a été créé mais la personne ne s'est jamais connectée.
+   *
+   * C'est l'« invitation en attente » que Guillaume réclamait : elle n'avait pas
+   * besoin d'une table, le fait était déjà en base. `must_change_password` est
+   * posé à la création et ne retombe qu'au premier login réussi — tant qu'il est
+   * vrai, la personne n'a jamais ouvert MemorIA.
+   *
+   * Fait administratif (le compte n'est pas arrivé), jamais un jugement sur la
+   * personne : on ne mesure pas son activité, on constate qu'elle n'est pas entrée.
+   */
+  neverOpened: boolean
 }
 
 // ----------------------------------------------------------------------------
@@ -780,7 +792,7 @@ export async function listIntervenantsForList(viewer?: {
   //    sujet (Vincent 2026-05-22).
   let usersQuery = admin
     .from('users')
-    .select('id, email, full_name, role')
+    .select('id, email, full_name, role, must_change_password')
     .is('deleted_at', null)
     .neq('role', 'admin')
     .order('full_name', { ascending: true, nullsFirst: false })
@@ -888,6 +900,7 @@ export async function listIntervenantsForList(viewer?: {
       topSites,
       interventionsParticipated: stats.count,
       lastParticipationDate: stats.lastAt,
+      neverOpened: (u as { must_change_password?: boolean }).must_change_password === true,
     }
   })
 }
