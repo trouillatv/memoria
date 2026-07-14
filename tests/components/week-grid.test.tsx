@@ -26,9 +26,9 @@ vi.mock('next/navigation', () => ({
 // La chaîne d'imports tire transitivement @/lib/scheduling/team-conflict
 // qui a un guard `server-only`. Neutralisé en env test.
 vi.mock('server-only', () => ({}))
-import { WeekGridCell, compactSlots, dominantTeam } from '@/app/(dashboard)/semaine/WeekGridCell'
-import { WeekGrid } from '@/app/(dashboard)/semaine/WeekGrid'
-import { CellDrawer } from '@/app/(dashboard)/semaine/CellDrawer'
+import { WeekGridCell, compactSlots, dominantTeam } from '@/app/(dashboard)/(planning)/semaine/WeekGridCell'
+import { WeekGrid } from '@/app/(dashboard)/(planning)/semaine/WeekGrid'
+import { CellDrawer } from '@/app/(dashboard)/(planning)/semaine/CellDrawer'
 import type {
   SiteRow,
   WeekInterventionCell,

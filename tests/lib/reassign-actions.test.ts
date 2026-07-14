@@ -48,7 +48,7 @@ vi.mock('@/lib/db/users', async (importOriginal) => {
 })
 
 async function importActions() {
-  return await import('@/app/(dashboard)/semaine/actions')
+  return await import('@/app/(dashboard)/(planning)/semaine/actions')
 }
 
 declare global {

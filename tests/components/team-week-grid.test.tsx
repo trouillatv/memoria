@@ -23,13 +23,13 @@ import {
   slotLetter,
   compactSlotsForSite,
   teamCellKey,
-} from '@/app/(dashboard)/semaine/TeamWeekGridCell'
-import { TeamWeekGrid, formatMemberCount } from '@/app/(dashboard)/semaine/TeamWeekGrid'
+} from '@/app/(dashboard)/(planning)/semaine/TeamWeekGridCell'
+import { TeamWeekGrid, formatMemberCount } from '@/app/(dashboard)/(planning)/semaine/TeamWeekGrid'
 import {
   parseViewMode,
   formatViewMode,
   DEFAULT_VIEW_MODE,
-} from '@/app/(dashboard)/semaine/view-mode-storage'
+} from '@/app/(dashboard)/(planning)/semaine/view-mode-storage'
 import type { TeamRow, WeekInterventionCell, WeekRange } from '@/lib/db/week-planning'
 
 // ----------------------------------------------------------------------------

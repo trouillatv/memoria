@@ -17,7 +17,7 @@ import {
 import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
-import { createMissionAction } from '../missions/actions'
+import { createMissionAction } from '@/app/(dashboard)/missions/actions'
 import {
   pickInitialMissionId,
   mergeMissionOptions,

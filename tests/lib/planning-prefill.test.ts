@@ -10,7 +10,7 @@ import {
   visibleRotationOptions,
   type PrefillMission,
   type RotationOption,
-} from '@/app/(dashboard)/semaine/planning-prefill'
+} from '@/app/(dashboard)/(planning)/semaine/planning-prefill'
 
 const m = (id: string, name: string, siteId: string, contractName = 'Contrat'): PrefillMission => ({
   id, name, siteId, contractName,

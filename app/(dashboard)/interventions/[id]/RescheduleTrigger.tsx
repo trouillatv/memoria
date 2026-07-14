@@ -5,7 +5,7 @@
 // fin obligatoires, contrôle de conflit). Fin du picker de créneau matin/AM/soir.
 
 import { CalendarClock } from 'lucide-react'
-import { EditInterventionTimeDialog } from '@/app/(dashboard)/semaine/EditInterventionTimeDialog'
+import { EditInterventionTimeDialog } from '@/app/(dashboard)/(planning)/semaine/EditInterventionTimeDialog'
 
 export function RescheduleTrigger({
   interventionId,

@@ -51,7 +51,9 @@ const SUSPICIOUS_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 // Toute nouvelle route qui produit un fichier téléchargeable ou exposé publiquement
 // doit être ajoutée ici.
 const EXPORT_ROUTES = [
-  'app/(dashboard)/semaine/export/route.ts',
+  // Le planning vit désormais dans un groupe de routes : le DOSSIER a changé,
+  // l'URL non. Le chemin est corrigé ici ; la route reste auditée comme avant.
+  'app/(dashboard)/(planning)/semaine/export/route.ts',
   'app/p/[token]/page.tsx',
   'app/p/[token]/layout.tsx',
   // S2 — export ZIP « propriété des données » d'un chantier (donnees.xlsx +
