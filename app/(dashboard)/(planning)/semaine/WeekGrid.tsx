@@ -19,30 +19,25 @@ import type { ProjectableClosure } from '@/lib/planning/closures'
 import { WeekGridCell } from './WeekGridCell'
 import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
 import { StandingSignalsBadges } from './StandingSignalsBadges'
-
-const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-
-function enumerateDays(weekStart: string): string[] {
-  const out: string[] = []
-  const start = new Date(weekStart + 'T00:00:00Z')
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(start)
-    d.setUTCDate(start.getUTCDate() + i)
-    out.push(d.toISOString().slice(0, 10))
-  }
-  return out
-}
-
-function dayNumber(iso: string): number {
-  const m = /^\d{4}-\d{2}-(\d{2})$/.exec(iso)
-  return m ? Number(m[1]) : 0
-}
+import {
+  enumerateRangeDays,
+  weekdayShortFr,
+  dayNumber,
+  columnWidthClass,
+  type PlanningScale,
+} from '@/lib/planning/scale'
 
 function isToday(iso: string, todayIso: string): boolean {
   return iso === todayIso
 }
 
-export interface WeekGridProps {
+export interface PlanningGridProps {
+  /**
+   * L'échelle de lecture. Elle ne change QUE la densité : le nombre de colonnes
+   * et la largeur des cases. Les données, les conflits, les fermetures, le
+   * tiroir et les gestes sont les mêmes — sans quoi ce serait un second produit.
+   */
+  scale?: PlanningScale
   range: WeekRange
   rows: SiteRow[]
   /** yyyy-mm-dd UTC — passé par le parent pour highlight de la colonne. */
@@ -61,8 +56,19 @@ export interface WeekGridProps {
   closuresBySite?: Record<string, Record<string, ProjectableClosure>>
 }
 
-export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite }: WeekGridProps) {
-  const days = enumerateDays(range.weekStart)
+/**
+ * LA GRILLE DU PLANNING — une seule, à toutes les échelles.
+ *
+ * C'est l'écran vivant : le glisser-déposer, les conflits, les fermetures, la
+ * mémoire du lieu, le tiroir. Le mois ne sera PAS une seconde grille écrite à
+ * côté : ce sera celle-ci, avec plus de colonnes et des cases plus serrées.
+ *
+ * Deux tableaux parallèles finissent toujours par diverger.
+ */
+export function PlanningGrid({ scale = 'week', range, rows, todayIso, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite }: PlanningGridProps) {
+  // La PLAGE décide du nombre de colonnes — sept ou trente-et-une, même code.
+  const days = enumerateRangeDays({ start: range.weekStart, end: range.weekEnd })
+  const colWidth = columnWidthClass(scale)
 
   return (
     <div
@@ -80,23 +86,24 @@ export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite,
               scope="col"
               className="text-left text-xs uppercase tracking-wider text-muted-foreground font-medium px-3 py-2 min-w-[10rem] sticky left-0 bg-muted/40 z-10 border-b"
             >
-              Site
+              Chantier
             </th>
-            {days.map((d, i) => (
+            {days.map((d) => (
               <th
                 key={d}
                 scope="col"
                 data-date={d}
                 data-today={isToday(d, todayIso) ? 'true' : 'false'}
                 className={
-                  'text-left text-xs uppercase tracking-wider font-medium px-2 py-2 border-l border-b min-w-[7rem] ' +
+                  'text-left text-xs uppercase tracking-wider font-medium px-2 py-2 border-l border-b ' +
+                  colWidth + ' ' +
                   (isToday(d, todayIso)
                     ? 'text-foreground bg-accent/40'
                     : 'text-muted-foreground')
                 }
               >
                 <div className="flex flex-col leading-tight">
-                  <span>{DAY_LABELS_SHORT[i]}</span>
+                  <span>{weekdayShortFr(d)}</span>
                   <span className="text-foreground text-base font-semibold normal-case tracking-normal">
                     {dayNumber(d)}
                   </span>
@@ -123,6 +130,18 @@ export function WeekGrid({ range, rows, todayIso, signalsBySite, standingBySite,
       </table>
     </div>
   )
+}
+
+/**
+ * La semaine — un simple point d'entrée sur la grille commune.
+ *
+ * Elle ne fait plus rien de particulier : c'est PlanningGrid à l'échelle
+ * « semaine ». Le mois entrera par la même porte, et non par un second tableau.
+ */
+export type WeekGridProps = Omit<PlanningGridProps, 'scale'>
+
+export function WeekGrid(props: WeekGridProps) {
+  return <PlanningGrid scale="week" {...props} />
 }
 
 function SiteGridRow({

@@ -21,6 +21,7 @@
 //   - Toute fonction qui agrège un KPI par personne ou par équipe.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { enumerateRangeDays } from '@/lib/planning/scale'
 import type { ProjectableTemplate } from '@/lib/planning/projection'
 import { getOrgId } from '@/lib/db/users'
 import { isSystemMissionName } from '@/lib/db/system-missions'
@@ -183,15 +184,16 @@ export async function listInterventionsForWeek(
 // Helper interne : énumération des 7 dates yyyy-mm-dd (Lun → Dim)
 // ----------------------------------------------------------------------------
 
-function enumerateWeekDays(weekStart: string): string[] {
-  const out: string[] = []
-  const start = new Date(weekStart + 'T00:00:00Z')
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(start)
-    d.setUTCDate(start.getUTCDate() + i)
-    out.push(d.toISOString().slice(0, 10))
-  }
-  return out
+/**
+ * Les jours de la plage — bornes incluses.
+ *
+ * Cette fonction ignorait `weekEnd` et comptait sept jours à partir du lundi :
+ * c'était LE verrou qui clouait le chargeur à la semaine. La plage décide
+ * désormais. Pour une semaine, le résultat est rigoureusement identique — sept
+ * jours, du lundi au dimanche.
+ */
+function enumerateWeekDays(range: WeekRange): string[] {
+  return enumerateRangeDays({ start: range.weekStart, end: range.weekEnd })
 }
 
 // ----------------------------------------------------------------------------
@@ -206,7 +208,7 @@ function enumerateWeekDays(weekStart: string): string[] {
  */
 export async function getWeekBySite(range: WeekRange): Promise<SiteRow[]> {
   const cells = await listInterventionsForWeek(range)
-  const days = enumerateWeekDays(range.weekStart)
+  const days = enumerateWeekDays(range)
 
   // group by site_id
   const bySite = new Map<string, SiteRow>()
@@ -255,7 +257,7 @@ export async function getWeekByTeam(range: WeekRange): Promise<TeamRow[]> {
   // les équipes de tous les tenants.
   if (!orgId) return []
   const cells = await listInterventionsForWeek(range)
-  const days = enumerateWeekDays(range.weekStart)
+  const days = enumerateWeekDays(range)
 
   // 1) Fetch équipes actives DE L'ORGANISATION + comptage membres en parallèle
   const [teamsRes, membersRes] = await Promise.all([
