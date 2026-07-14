@@ -34,6 +34,7 @@ import {
 } from '@/lib/planning/month-view'
 import { parseViewMode } from '../semaine/view-mode-storage'
 import { MonthViewModeToggle } from './MonthViewModeToggle'
+import { PlanningScales } from '@/components/planning/PlanningScales'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -149,6 +150,8 @@ export default async function MoisPage({
 
   return (
     <div className="w-full max-w-6xl space-y-5">
+      <PlanningScales active="mois" />
+
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">

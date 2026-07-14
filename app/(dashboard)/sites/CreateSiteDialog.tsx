@@ -151,7 +151,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
         className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium hover:bg-primary/80 transition-colors"
       >
         <Plus className="h-4 w-4" />
-        Nouveau site
+        Nouveau chantier
       </button>
     )
   }
@@ -167,7 +167,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
         {/* En-tête */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b">
           <h2 className="text-base font-semibold">
-            {step === 'dup_warning' ? 'Sites similaires détectés' : 'Nouveau site'}
+            {step === 'dup_warning' ? 'Chantiers similaires détectés' : 'Nouveau chantier'}
           </h2>
           <button
             type="button"
@@ -185,7 +185,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
         {step === 'form' && (
           <div className="px-5 py-5 space-y-4">
 
-            {/* Nom du site */}
+            {/* Nom du chantier */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Nom du site *</label>
               <input
@@ -388,7 +388,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-900">
-                  Des sites au nom similaire à <strong>{name}</strong> existent déjà.
+                  Des chantiers au nom similaire à <strong>{name}</strong> existent déjà.
                   Vérifiez qu&apos;il s&apos;agit bien d&apos;un nouveau site distinct.
                 </p>
               </div>
@@ -410,7 +410,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 shrink-0 border border-amber-200 rounded px-2 py-0.5 hover:bg-amber-100 transition-colors"
                     >
-                      Voir le site <ExternalLink className="h-3 w-3" />
+                      Voir le chantier <ExternalLink className="h-3 w-3" />
                     </a>
                   </li>
                 ))}
