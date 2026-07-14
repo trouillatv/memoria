@@ -490,6 +490,31 @@ Une évolution touchant l’authentification, les autorisations, la base de donn
 
 Ne transforme jamais les règles de qualité en bureaucratie inutile.
 
+## Isolation des agents : un agent = un clone
+
+**Règle (2026-07-14, après incident réel).** Deux sessions Claude ont travaillé
+simultanément dans le même dossier de travail. Résultat : un commit intitulé
+« supprimer un composant mort » a **aspiré 9 fichiers d'une fonctionnalité en
+cours** appartenant à l'autre session. Rien n'a été perdu, mais uniquement parce
+que l'incident a été détecté à temps.
+
+Un dossier de travail Git a **un seul index et un seul `HEAD`**. Deux agents qui
+l'écrivent en même temps produisent des commits pollués, des PR qui mélangent des
+sujets, et des régressions inexplicables. Une branche différente ne protège de
+rien : la branche ne fait que déplacer `HEAD`, elle ne duplique pas l'arbre.
+
+**Donc : un agent = un clone physique = une branche.** Pas deux sessions dans
+`C:\Users\vtrouillat\Documents\MemorIA`. Une seconde session travaille dans un
+clone séparé (ou un `git worktree` dédié, qui possède son propre index et son
+propre `HEAD`).
+
+Avant de commiter, si tu constates dans l'arbre des modifications que **tu n'as
+pas faites** :
+
+1. ne commite jamais `-a`, `.` ou `-A` — uniquement des chemins explicites ;
+2. signale-le immédiatement à Vincent ;
+3. ne « répare » pas la branche d'une autre session par un `push --force`.
+
 ## Enchaînement des demandes
 
 Un rapport marque la fin d’un **run**, pas la fin de chaque message.

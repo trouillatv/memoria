@@ -261,6 +261,20 @@ export default async function TenderDetailPage({
         {/* States — affichées indépendamment de la vue sélectionnée */}
         {isInProgress && <TenderAnalysisLoader id={id} />}
 
+        {/* Le dossier, TOUJOURS visible — surtout quand l'analyse a échoué ou n'a
+            pas encore tourné : c'est là qu'on a le plus besoin de savoir quelles
+            pièces sont là, lesquelles n'ont pas pu être lues, et pourquoi.
+            La cacher derrière une analyse réussie, c'était la cacher au moment
+            précis où elle sert. */}
+        {view !== 'atelier' && (
+          <TenderPiecesCard
+            tenderId={id}
+            pieces={pieces}
+            analysedAt={analysis?.created_at ?? null}
+            canEdit={canEditPieces}
+          />
+        )}
+
         {isFailed && view !== 'atelier' && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-6 flex flex-col gap-3">
             <div className="flex items-center gap-2 text-rose-700 font-medium">
@@ -324,14 +338,6 @@ export default async function TenderDetailPage({
                     synthèse : ce qu'on sait déjà du client. Factuel, pas de
                     score, pas de prédiction. */}
                 <TenderClientCapitalCard capital={clientCapital} />
-                {/* Le dossier tel qu'il est RÉELLEMENT : ce qui a été lu, ce qui
-                    ne l'a pas été, et si l'analyse est plus vieille que les pièces. */}
-                <TenderPiecesCard
-                  tenderId={id}
-                  pieces={pieces}
-                  analysedAt={analysis?.created_at ?? null}
-                  canEdit={canEditPieces}
-                />
                 {/* AO-1 L3 (Vincent 2026-05-21) — sources [doc:id] cliquables
                     sous la synthèse, vers /documents/[id]. */}
                 <TenderDocumentSourcesSection sources={documentSources ?? []} tenderId={id} />
