@@ -545,7 +545,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           ← Faites glisser pour voir toute la semaine →
         </p>
         {view === 'site' ? (
-          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} decisions={decisions} optionsBySite={optionsBySite} exceptionsById={exceptionsById} initialCellKey={params.cell ?? null}>
+          <WeekGridClient rows={siteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} decisions={decisions} optionsBySite={optionsBySite} exceptionsById={exceptionsById} initialCellKey={params.cell ?? null}>
             <WeekGrid range={range} rows={siteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
           </WeekGridClient>
         ) : (
