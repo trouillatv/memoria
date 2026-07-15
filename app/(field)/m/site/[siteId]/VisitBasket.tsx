@@ -23,6 +23,7 @@ import {
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { GhostCamera } from './GhostCamera'
+import { VideoRecorder } from './VideoRecorder'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
 import { beginLiveUpload, endLiveUpload } from '@/lib/field/live-uploads'
 import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
@@ -111,6 +112,8 @@ export function VisitBasket({
   const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question' | 'watch' | 'lastlook'>('none')
   // Caméra fantôme (mig 195) : point de repère en cours de reprise, ou null.
   const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
+  // Caméra vidéo intégrée (MOB-VID2a) — filmer dans l'app, clips de 20 s.
+  const [videoRecorderOpen, setVideoRecorderOpen] = useState(false)
   // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
   // à ce point de repère (sans fantôme, mais la série reste continue).
   const nextPhotoViewpointRef = useRef<string | null>(null)
@@ -736,7 +739,7 @@ export function VisitBasket({
       <div className="grid grid-cols-5 gap-2">
         {/* Médias : JAMAIS désactivés — la capture ne s'arrête pas pour un envoi. */}
         <GestureButton icon={<Camera className="h-5 w-5" />} label="Photo" onClick={() => fileRef.current?.click()} />
-        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" onClick={() => videoRef.current?.click()} />
+        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" onClick={() => setVideoRecorderOpen(true)} />
         <GestureButton
           icon={recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           label={recording ? 'Stop' : 'Vocal'}
@@ -1134,6 +1137,20 @@ export function VisitBasket({
             nextPhotoViewpointRef.current = ghost.anchorId
             setGhost(null)
             fileRef.current?.click()
+          }}
+        />
+      )}
+
+      {/* Caméra vidéo intégrée : chaque séquence (20 s max) part en direct vers
+          Supabase via uploadVideoFile. Repli sur l'appareil natif si la caméra
+          in-app est indisponible. */}
+      {videoRecorderOpen && (
+        <VideoRecorder
+          onClip={(file) => uploadVideoFile(file)}
+          onClose={() => setVideoRecorderOpen(false)}
+          onFallbackNative={() => {
+            setVideoRecorderOpen(false)
+            videoRef.current?.click()
           }}
         />
       )}
