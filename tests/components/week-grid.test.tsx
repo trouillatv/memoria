@@ -27,13 +27,15 @@ vi.mock('next/navigation', () => ({
 // qui a un guard `server-only`. Neutralisé en env test.
 vi.mock('server-only', () => ({}))
 import { WeekGridCell, compactSlots, dominantTeam } from '@/app/(dashboard)/(planning)/semaine/WeekGridCell'
-import { WeekGrid } from '@/app/(dashboard)/(planning)/semaine/WeekGrid'
+import { WeekGrid, PlanningGrid } from '@/app/(dashboard)/(planning)/semaine/WeekGrid'
 import { CellDrawer } from '@/app/(dashboard)/(planning)/semaine/CellDrawer'
 import type {
   SiteRow,
   WeekInterventionCell,
   WeekRange,
 } from '@/lib/db/week-planning'
+import type { MonthRow } from '@/lib/db/month-view'
+import type { DayFacts } from '@/lib/planning/month-view'
 
 // ----------------------------------------------------------------------------
 // Factories
@@ -381,12 +383,12 @@ describe('WeekGridCell', () => {
 // ----------------------------------------------------------------------------
 
 describe('WeekGrid', () => {
-  it('rend une table avec thead (Site + 7 colonnes Lun→Dim) et tbody', () => {
+  it('rend une table avec thead (Chantier + 7 colonnes Lun→Dim) et tbody', () => {
     render(<WeekGrid range={WEEK_RANGE} rows={[]} todayIso="2026-05-11" />)
     const grid = screen.getByTestId('week-grid')
     expect(grid).toBeInTheDocument()
-    // 8 entêtes : Site + Lun..Dim
-    expect(within(grid).getByText(/^site$/i)).toBeInTheDocument()
+    // 8 entêtes : Chantier + Lun..Dim (« Site » = le mot de la base, pas de Guillaume).
+    expect(within(grid).getByText(/^chantier$/i)).toBeInTheDocument()
     for (const label of ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']) {
       expect(within(grid).getByText(label)).toBeInTheDocument()
     }
@@ -481,5 +483,82 @@ describe('CellDrawer', () => {
     // détail de l'intervention est bien ouvert.
     expect(screen.getAllByText(/non-affecté/i).length).toBeGreaterThan(0)
     expect(screen.getByTestId('drawer-intervention-i-2')).toBeInTheDocument()
+  })
+})
+
+// ----------------------------------------------------------------------------
+// PlanningGrid — ÉCHELLE MOIS (PL6-R2)
+// ----------------------------------------------------------------------------
+//
+// Le mois entre dans la MÊME grille. Contrat R2 :
+//   - un jour RÉEL ouvre le tiroir sur place → il porte [data-cell-trigger] avec
+//     la clé `siteId::date` (la même mécanique de délégation que la semaine) ;
+//   - un jour SEULEMENT projeté n'ouvre pas de faux tiroir et ne redirige pas en
+//     silence → il porte [data-projected-trigger] (l'état « Planning prévu ») ;
+//   - la couverture du jour s'appelle « Couverture prévue », jamais « Présents ».
+
+function makeDayFacts(overrides: Partial<DayFacts> = {}): DayFacts {
+  return {
+    expected: 0,
+    done: 0,
+    kept: 0,
+    projected: 0,
+    closed: false,
+    hasException: false,
+    cycleCovers: false,
+    ...overrides,
+  }
+}
+
+const MONTH_RANGE: WeekRange = {
+  weekStart: '2026-05-01',
+  weekEnd: '2026-05-03',
+  weekNumber: 0,
+  year: 2026,
+}
+
+describe('PlanningGrid — échelle mois', () => {
+  const monthRows: MonthRow[] = [
+    {
+      siteId: 'site-x',
+      siteName: 'Discount',
+      clientName: 'Pointière',
+      days: {
+        '2026-05-01': makeDayFacts({ expected: 2 }), // RÉEL
+        '2026-05-02': makeDayFacts({ projected: 1 }), // PROJETÉ seul
+        '2026-05-03': makeDayFacts(), // vide
+      },
+    },
+  ]
+
+  it('un jour réel porte le déclencheur du MÊME tiroir (siteId::date)', () => {
+    render(
+      <PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={monthRows} todayIso="2026-05-01" />,
+    )
+    const grid = screen.getByTestId('week-grid')
+    const trigger = grid.querySelector('[data-cell-trigger="true"][data-cell-key="site-x::2026-05-01"]')
+    expect(trigger).not.toBeNull()
+  })
+
+  it("un jour seulement projeté n'ouvre pas de faux tiroir : il ouvre « Planning prévu »", () => {
+    render(
+      <PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={monthRows} todayIso="2026-05-01" />,
+    )
+    const grid = screen.getByTestId('week-grid')
+    // Pas de déclencheur de tiroir d'intervention sur le jour projeté…
+    expect(grid.querySelector('[data-cell-trigger="true"][data-cell-key="site-x::2026-05-02"]')).toBeNull()
+    // …mais un déclencheur d'état « Planning prévu ».
+    const projected = grid.querySelector('[data-projected-trigger="true"][data-date="2026-05-02"]')
+    expect(projected).not.toBeNull()
+    expect(projected?.getAttribute('data-site-id')).toBe('site-x')
+  })
+
+  it('nomme la couverture « Couverture prévue », jamais « Présents »', () => {
+    render(
+      <PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={monthRows} todayIso="2026-05-01" />,
+    )
+    const grid = screen.getByTestId('week-grid')
+    expect(within(grid).getByText(/couverture prévue/i)).toBeInTheDocument()
+    expect(within(grid).queryByText(/^présents$/i)).toBeNull()
   })
 })
