@@ -50,6 +50,7 @@ import { ExceptionBadge } from './ExceptionBadge'
 import { DECISION_FR, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import type { ClosureDecision } from '@/lib/db/closure-decisions'
 import { CLOSURE_REASON_FR, type ClosureReasonKind } from '@/lib/planning/closures'
+import { isoWeekParamOf } from '@/lib/planning/month-view'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
@@ -369,9 +370,29 @@ export function CellDrawer({
             ) : null}
 
             {selected && selected.cells.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">
-                Aucune intervention planifiée ce jour.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm italic text-muted-foreground">
+                  Aucune intervention planifiée ce jour.
+                </p>
+                {/* PLANIFIER ICI (A2 ⑥) — un trou ne mène plus à un cul-de-sac :
+                    on ouvre le planificateur PRÉREMPLI (chantier + date). L'humain
+                    choisit l'équipe et l'horaire et confirme — rien ne se crée
+                    tout seul. Seulement pour aujourd'hui ou plus tard : on ne
+                    planifie pas le passé. */}
+                {selected.date >= todayIso && (
+                  // Navigation COMPLÈTE (a, pas Link) : le planificateur ne lit
+                  // le chantier pré-rempli qu'à son montage — il faut recharger
+                  // la page pour qu'il s'ouvre prêt. L'humain confirme ensuite ;
+                  // rien ne se crée tout seul.
+                  <a
+                    href={`/semaine?week=${isoWeekParamOf(selected.date)}&site=${selected.siteId}&date=${selected.date}`}
+                    className={cn(buttonVariants({ variant: 'default' }), 'w-full justify-between')}
+                  >
+                    Planifier ici
+                    <ArrowRight className="h-4 w-4" aria-hidden />
+                  </a>
+                )}
+              </div>
             ) : null}
 
             {selected?.cells.map((c) => {
