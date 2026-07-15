@@ -8,7 +8,7 @@
 //     voir réapparaître dans la barre voudrait dire qu'on a re-transformé un
 //     réglage en destination — l'erreur que ce lot corrige.
 
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PlanningSpaceHeader } from '@/components/planning/PlanningSpaceHeader'
 import { NAV } from '@/components/layout/nav-items'
@@ -50,31 +50,64 @@ describe("L'espace Planning — trois échelles, un seul écran", () => {
     expect(screen.getByRole('heading', { name: 'Planning' })).toBeInTheDocument()
   })
 
-  it('range les réglages derrière l’engrenage, là où l’on va rarement', () => {
+  it('range les réglages derrière l’engrenage — un PANNEAU, fermé par défaut (R4)', () => {
     pathname.current = '/mois'
     render(<PlanningSpaceHeader />)
 
-    expect(screen.getByRole('button', { name: 'Configurer' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Planning habituel/ })).toHaveAttribute('href', '/roulements')
-    expect(screen.getByRole('link', { name: /Jours fermés/ })).toHaveAttribute('href', '/calendrier')
+    // Fermé par défaut : on y va rarement, on n'y vit pas.
+    expect(screen.queryByText('Configuration du planning')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configurer le planning' }))
+
+    // Les réglages qui FABRIQUENT le planning.
+    expect(screen.getByRole('link', { name: /Roulements/ })).toHaveAttribute('href', '/roulements')
+    expect(screen.getByRole('link', { name: /Calendrier scolaire/ })).toHaveAttribute(
+      'href',
+      '/calendrier#vacances-scolaires',
+    )
+    expect(screen.getByRole('link', { name: /Jours fériés/ })).toHaveAttribute(
+      'href',
+      '/calendrier#jours-feries',
+    )
+    // Le mot de développeur a disparu de l'écran.
+    expect(screen.queryByText(/Planning habituel/)).not.toBeInTheDocument()
+  })
+
+  it('les fermetures ne sont PAS une entrée : elles appartiennent au chantier', () => {
+    pathname.current = '/mois'
+    render(<PlanningSpaceHeader />)
+    fireEvent.click(screen.getByRole('button', { name: 'Configurer le planning' }))
+
+    // Pas de lien « Fermetures » — pas de second calendrier de fermetures.
+    expect(screen.queryByRole('link', { name: /Fermetures/ })).not.toBeInTheDocument()
+    // Mais le panneau DIT où elles se règlent : la fiche du chantier.
+    expect(screen.getByText('Fermetures du chantier')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /fiche du chantier/ })).toHaveAttribute('href', '/sites')
   })
 })
 
-describe('Le menu — le planning est un espace, le roulement un réglage', () => {
-  it('ouvre le domaine sur le mois', () => {
-    expect(NAV.find((i) => i.groupStart === 'Planning')?.href).toBe('/mois')
+// R4 — LE MENU NE MONTRE PLUS QU'UNE ENTRÉE « Planning ».
+// Guillaume ne voit plus un tiroir à cinq poignées : il voit un Planning, il y
+// entre par le mois, et il zoome À L'INTÉRIEUR. Ce qui règle le planning vit
+// derrière « Configurer » — pas dans la navigation.
+describe('Le menu — UNE entrée Planning, rien d’autre (R4)', () => {
+  it('offre une seule entrée « Planning », qui ouvre sur le mois', () => {
+    const planning = NAV.filter((i) => i.label === 'Planning')
+    expect(planning).toHaveLength(1)
+    expect(planning[0].href).toBe('/mois')
   })
 
-  it('range les trois échelles ensemble, dans l’ordre de lecture', () => {
-    const scales = NAV.filter((i) => ['/mois', '/semaine', '/aujourdhui'].includes(i.href))
-    expect(scales.map((i) => i.label)).toEqual(['Mois', 'Semaine', 'Jour'])
+  it('ne montre plus les échelles ni les réglages comme destinations', () => {
+    // Les routes restent vivantes (compatibilité) ; seul le MENU se replie.
+    for (const href of ['/semaine', '/aujourdhui', '/roulements', '/calendrier']) {
+      expect(NAV.find((i) => i.href === href)).toBeUndefined()
+    }
+    expect(NAV.find((i) => i.label === 'Planning habituel')).toBeUndefined()
+    expect(NAV.find((i) => i.label === 'Jours fermés')).toBeUndefined()
   })
 
-  it('ne présente plus le roulement comme une destination du planning', () => {
-    const roulements = NAV.find((i) => i.href === '/roulements')
-    // Le moteur reste ; le mot de développeur disparaît de l'écran.
-    expect(roulements?.label).toBe('Planning habituel')
-    expect(roulements?.groupStart).toBe('Régler le planning')
+  it('garde le Briefing du soir séparé — un rituel, pas une échelle', () => {
+    expect(NAV.find((i) => i.href === '/briefing')?.label).toBe('Briefing du soir')
   })
 })
 

@@ -12,9 +12,17 @@
 // période — plus le mode de lecture (`view` = par chantier / par équipe). On zoome
 // sur la même réalité, on ne réinitialise pas le contexte.
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { CalendarRange, Settings } from 'lucide-react'
+import { CalendarRange, Settings, Repeat, CalendarOff, GraduationCap, Flag, ChevronRight } from 'lucide-react'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 
 // ── Petites conversions de dates, PURES (UTC) — pas d'appel réseau, pas de
@@ -72,16 +80,41 @@ function buildHref(base: string, params: Record<string, string | undefined>): st
   return s ? `${base}?${s}` : base
 }
 
-/** Ce qui fabrique le planning — on y va rarement, on n'y vit pas. */
+/** Ce qui FABRIQUE le planning — jamais une façon de le lire. Trois entrées,
+ *  UN moteur : calendrier scolaire et fériés produisent des fermetures
+ *  consommées par le même moteur que celles des chantiers. On règle un
+ *  roulement pendant plusieurs minutes : c'est un PANNEAU (R4), pas un menu
+ *  de trois secondes.
+ *
+ *  Les FERMETURES n'ont pas d'entrée : une fermeture appartient au CHANTIER,
+ *  pas au calendrier (Vincent, R4). Le panneau le dit, et renvoie aux fiches. */
 const SETTINGS = [
-  { label: 'Planning habituel', href: '/roulements', detail: 'Le rythme normal des équipes.' },
-  { label: 'Jours fermés', href: '/calendrier', detail: 'Fermetures, fériés, vacances scolaires.' },
+  {
+    label: 'Roulements',
+    href: '/roulements',
+    icon: Repeat,
+    detail: 'Le rythme normal des équipes : semaines A/B, Travail/Repos et horaires.',
+  },
+  {
+    label: 'Calendrier scolaire',
+    href: '/calendrier#vacances-scolaires',
+    icon: GraduationCap,
+    detail: 'Périodes communes appliquées aux chantiers scolaires concernés.',
+  },
+  {
+    label: 'Jours fériés',
+    href: '/calendrier#jours-feries',
+    icon: Flag,
+    detail: 'Calendrier public utilisé par les chantiers concernés.',
+  },
 ] as const
 
 export function PlanningSpaceHeader() {
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const get = (k: string) => searchParams?.get(k) ?? null
+  // Le panneau « Configuration du planning » — fermé par défaut.
+  const [configOpen, setConfigOpen] = useState(false)
 
   const focus = focusDateFromUrl(pathname, get)
   // Le mode de lecture suit le zoom (le Jour n'a pas d'axe équipe : c'est un flux).
@@ -123,28 +156,66 @@ export function PlanningSpaceHeader() {
         </nav>
       </div>
 
-      <div className="group relative">
-        <button
-          type="button"
-          aria-haspopup="menu"
-          className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <Settings className="h-4 w-4" /> Configurer
-        </button>
-        {/* Ouvert au survol ET au focus : le clavier et le doigt doivent y accéder. */}
-        <div className="invisible absolute right-0 z-20 mt-1 w-64 rounded-xl border bg-popover p-1.5 opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
-          {SETTINGS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="block rounded-lg px-2.5 py-2 text-sm hover:bg-muted"
-            >
-              <span className="block font-medium">{item.label}</span>
-              <span className="block text-xs text-muted-foreground">{item.detail}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
+      {/* R4 — le PANNEAU remplace le menu au survol : on y reste parfois
+          plusieurs minutes (régler un roulement n'est pas un geste de 3 s).
+          Même enveloppe (Sheet) que le tiroir du planning : un seul langage. */}
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        onClick={() => setConfigOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <Settings className="h-4 w-4" /> Configurer le planning
+      </button>
+      <Sheet open={configOpen} onOpenChange={setConfigOpen}>
+        <SheetContent side="right" className="p-0 sm:max-w-sm w-full overflow-y-auto">
+          <SheetHeader className="border-b p-4">
+            <SheetTitle className="inline-flex items-center gap-2">
+              <Settings className="h-4 w-4 text-muted-foreground" aria-hidden />
+              Configuration du planning
+            </SheetTitle>
+            <SheetDescription>
+              Ce qui fabrique le planning — jamais une façon de le lire.
+            </SheetDescription>
+          </SheetHeader>
+          <nav aria-label="Configuration du planning" className="p-2">
+            {SETTINGS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setConfigOpen(false)}
+                className="flex items-start gap-3 rounded-xl px-3 py-3 hover:bg-muted"
+              >
+                <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{item.label}</span>
+                  <span className="block text-xs leading-snug text-muted-foreground">{item.detail}</span>
+                </span>
+                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+              </Link>
+            ))}
+          </nav>
+          {/* Une fermeture appartient au CHANTIER, pas au calendrier : elle se
+              règle sur sa fiche. Le panneau le dit, il ne crée pas de doublon. */}
+          <div className="mx-2 mb-3 rounded-xl border border-dashed px-3 py-3">
+            <p className="inline-flex items-start gap-3 text-xs leading-snug text-muted-foreground">
+              <CalendarOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>
+                <span className="block text-sm font-medium text-foreground">Fermetures du chantier</span>
+                Inventaire, fermeture annuelle, jour exceptionnel : elles se règlent sur la{' '}
+                <Link
+                  href="/sites"
+                  onClick={() => setConfigOpen(false)}
+                  className="font-medium text-foreground underline underline-offset-2"
+                >
+                  fiche du chantier
+                </Link>
+                {' '}— jamais dans un second calendrier.
+              </span>
+            </p>
+          </div>
+        </SheetContent>
+      </Sheet>
     </header>
   )
 }
