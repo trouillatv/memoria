@@ -1,7 +1,5 @@
 import {
   Sparkles,
-  ListChecks,
-  Calendar,
   CalendarCheck,
   CalendarDays,
   ClipboardList,
@@ -23,7 +21,7 @@ import {
   Building2,
   Mic,
   ListTodo,
-  Compass, Repeat, CalendarOff, CalendarRange } from 'lucide-react'
+  Compass, CalendarRange } from 'lucide-react'
 import type { UserRole } from '@/types/db'
 
 export interface NavItem {
@@ -49,19 +47,15 @@ export const NAV: NavItem[] = [
   { href: '/recherche',  label: 'Recherche',              icon: Search,        roles: ['admin', 'manager'], essential: true },
   // — Pilotage quotidien —
   { href: '/dashboard',  label: 'Tableau de bord',       icon: Sparkles,      roles: ['admin', 'manager'], essential: true },
-  // PLANNING — UN SEUL PLANNING, TROIS ÉCHELLES DE TEMPS (arbitrage Vincent
-  // 2026-07-14). Le conducteur ouvre son mois, y voit qui travaille où, puis
-  // zoome sur la semaine pour agir et sur le jour pour exécuter. Il ne change
-  // pas d'application en changeant d'échelle.
-  //
-  // Ce qui FABRIQUE le planning n'est pas une façon de le lire : le roulement
-  // et le calendrier sont des réglages — « le planning habituel », « les jours
-  // fermés ». Ils vivent sous les trois échelles, pas à leur niveau.
-  { href: '/mois',       label: 'Mois',                   icon: CalendarRange, roles: ['admin', 'manager'], groupStart: 'Planning' },
-  { href: '/semaine',    label: 'Semaine',                icon: Calendar,      roles: ['admin', 'manager'] },
-  { href: '/aujourdhui', label: 'Jour',                   icon: ListChecks,    roles: ['admin', 'manager'] },
-  { href: '/roulements', label: 'Planning habituel',      icon: Repeat,        roles: ['admin', 'manager'], groupStart: 'Régler le planning' },
-  { href: '/calendrier', label: 'Jours fermés',           icon: CalendarOff,   roles: ['admin', 'manager'] },
+  // PLANNING — UNE SEULE ENTRÉE (PL6-R4, Vincent 2026-07-15). Guillaume ne voit
+  // plus un tiroir à cinq poignées (Mois · Semaine · Jour · Planning habituel ·
+  // Jours fermés) : il voit UN Planning. Il y entre par le mois (« est-ce que
+  // mon mois est bon ? »), zoome à l'intérieur (l'en-tête d'espace porte les
+  // échelles), et ce qui RÈGLE le planning — roulements, jours fermés — vit
+  // derrière « Configurer », dans l'écran. Les routes /semaine, /aujourdhui,
+  // /roulements, /calendrier restent vivantes : seul le menu se replie.
+  { href: '/mois',       label: 'Planning',               icon: CalendarRange, roles: ['admin', 'manager'] },
+  // Le Briefing est un RITUEL, pas une échelle du planning — il reste séparé.
   { href: '/briefing',   label: 'Briefing du soir',       icon: CalendarCheck, roles: ['admin', 'manager'] },
   // — Cœur opérationnel —
   { href: '/clients',    label: 'Clients',                icon: Building2,     roles: ['admin', 'manager'] },

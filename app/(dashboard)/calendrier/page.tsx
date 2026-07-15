@@ -80,7 +80,8 @@ export default async function CalendrierPage() {
           Calendriers communs
         </h2>
 
-        <div className="space-y-1.5">
+        {/* Ancres : le panneau « Configuration du planning » (R4) atterrit ici. */}
+        <div id="vacances-scolaires" className="scroll-mt-20 space-y-1.5">
           <h3 className="inline-flex items-center gap-1.5 text-sm font-medium">
             <GraduationCap className="h-4 w-4 text-muted-foreground" /> Vacances scolaires
           </h3>
@@ -91,7 +92,7 @@ export default async function CalendrierPage() {
           />
         </div>
 
-        <div className="space-y-1.5">
+        <div id="jours-feries" className="scroll-mt-20 space-y-1.5">
           <h3 className="inline-flex items-center gap-1.5 text-sm font-medium">
             <Flag className="h-4 w-4 text-muted-foreground" /> Jours fériés
           </h3>
@@ -149,7 +150,7 @@ export default async function CalendrierPage() {
       </section>
 
       {/* ── 3. Ce qui ferme VRAIMENT, et quand ────────────────────────────── */}
-      <section className="space-y-2 rounded-2xl border bg-card p-4">
+      <section id="fermetures" className="scroll-mt-20 space-y-2 rounded-2xl border bg-card p-4">
         <h2 className="text-sm font-semibold">Fermetures à venir</h2>
         {upcoming.length === 0 ? (
           <p className="text-sm text-muted-foreground">
