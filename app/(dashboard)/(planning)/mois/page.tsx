@@ -7,7 +7,7 @@
 // PL6-R2 (Vincent 2026-07-15) — LE MOIS ENTRE DANS LA GRILLE UNIQUE. Il n'a plus
 // sa table parallèle : il est rendu par `PlanningGrid scale="month"`, exactement
 // le noyau de la Semaine. Un jour RÉEL ouvre le MÊME tiroir, sur place ; un jour
-// seulement PROJETÉ ouvre l'état « Planning prévu » (pas de faux tiroir, pas de
+// seulement PROJETÉ ouvre l'état « Roulement prévu » (pas de faux tiroir, pas de
 // redirection muette). La Semaine, elle, n'a pas bougé d'une ligne.
 //
 // Les trois garde-fous (Vincent, 2026-07-15) tiennent : projection uniquement ·
@@ -47,10 +47,8 @@ import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
 import { listTeams } from '@/lib/db/teams'
 import { parseViewMode } from '../semaine/view-mode-storage'
 import { MonthViewModeToggle } from './MonthViewModeToggle'
-import { MonthProjectionSheet } from './MonthProjectionSheet'
 import { PlanningGrid } from '../semaine/WeekGrid'
 import { WeekGridClient } from '../semaine/WeekGridClient'
-import { PlanningScales } from '@/components/planning/PlanningScales'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -246,8 +244,6 @@ export default async function MoisPage({
 
   return (
     <div className="w-full max-w-6xl space-y-5">
-      <PlanningScales active="mois" />
-
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
@@ -455,7 +451,7 @@ export default async function MoisPage({
       ) : (
         // CHANTIER — la grille unique + le tiroir de la Semaine. Le mois n'a plus
         // de table à lui : c'est PlanningGrid, resserré. Le clic sur un jour réel
-        // ouvre le tiroir sur place ; un jour projeté ouvre « Planning prévu ».
+        // ouvre le tiroir sur place ; un jour projeté ouvre « Roulement prévu ».
         <WeekGridClient
           rows={siteRows}
           todayIso={todayIso}
@@ -467,17 +463,17 @@ export default async function MoisPage({
           exceptionsById={exceptionsById}
           initialCellKey={sp.cell ?? null}
         >
-          <MonthProjectionSheet>
-            <PlanningGrid
-              scale="month"
-              range={range}
-              rows={siteRows}
-              monthRows={rows}
-              todayIso={todayIso}
-              conflictsBySite={conflictsBySite}
-              closuresBySite={closuresBySite}
-            />
-          </MonthProjectionSheet>
+          {/* Un seul tiroir (CellDrawer) : jour réel → intervention, jour projeté
+              → « Roulement prévu ». Plus de panneau propre au mois. */}
+          <PlanningGrid
+            scale="month"
+            range={range}
+            rows={siteRows}
+            monthRows={rows}
+            todayIso={todayIso}
+            conflictsBySite={conflictsBySite}
+            closuresBySite={closuresBySite}
+          />
         </WeekGridClient>
       )}
 

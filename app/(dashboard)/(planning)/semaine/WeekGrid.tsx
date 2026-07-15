@@ -98,6 +98,12 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
         Object.fromEntries(days.map((d) => [d, monthRows!.map((r) => r.days[d])])),
       )
     : {}
+  // Un « 0 » n'est un TROU que si un roulement ATTENDAIT de la couverture ce
+  // jour-là (dayState 'hole'). Un jour sans planning attendu — week-end, rien de
+  // prévu — reste NEUTRE : un calendrier vide n'est pas un problème (Vincent, R3).
+  const holeDays = isMonth
+    ? new Set(days.filter((d) => monthRows!.some((r) => dayState(r.days[d]) === 'hole')))
+    : new Set<string>()
 
   return (
     <div
@@ -196,7 +202,8 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
                     className={cn(
                       'border-l border-border/40 py-1.5 text-center text-[11px] font-semibold tabular-nums',
                       isWeekend(d) && 'bg-muted/30',
-                      n === 0 && 'bg-rose-50 text-rose-700 dark:bg-rose-950/20',
+                      // Rouge SEULEMENT si ce 0 est un vrai trou (roulement attendu).
+                      n === 0 && holeDays.has(d) && 'bg-rose-50 text-rose-700 dark:bg-rose-950/20',
                     )}
                   >
                     {n}
@@ -288,7 +295,7 @@ function SiteGridRow({
 // La case du mois ne porte PAS de carte d'intervention : elle porte un nombre
 // (combien de monde) et un état (fermé, conflit, trou, projeté). Le clic ouvre
 // le MÊME tiroir que la semaine quand il y a du réel à montrer ; un jour
-// seulement projeté explique d'abord ce qu'on regarde (état « Planning prévu »)
+// seulement projeté explique d'abord ce qu'on regarde (état « Roulement prévu »)
 // avant tout renvoi — jamais de redirection silencieuse.
 
 /** Le glyphe et le style d'une case, par état. Le CHIFFRE est l'information. */
@@ -401,7 +408,7 @@ function MonthGridCell({
         </button>
       ) : isProjectedOnly ? (
         // Jour PROJETÉ — pas de faux tiroir d'intervention, pas de redirection
-        // muette : on explique d'abord (état « Planning prévu »), le renvoi vers
+        // muette : on explique d'abord (état « Roulement prévu »), le renvoi vers
         // le roulement se fait ensuite, au bouton. (MonthProjectionSheet.)
         <button
           type="button"
@@ -409,7 +416,7 @@ function MonthGridCell({
           data-site-id={siteId}
           data-date={date}
           data-site-label={siteLabelText}
-          title="Planning prévu — issu d'un roulement, pas encore matérialisé"
+          title="Roulement prévu — aucune intervention créée ce jour"
           className={cn(innerCls, 'w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring')}
         >
           {inner}

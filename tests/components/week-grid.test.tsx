@@ -494,7 +494,7 @@ describe('CellDrawer', () => {
 //   - un jour RÉEL ouvre le tiroir sur place → il porte [data-cell-trigger] avec
 //     la clé `siteId::date` (la même mécanique de délégation que la semaine) ;
 //   - un jour SEULEMENT projeté n'ouvre pas de faux tiroir et ne redirige pas en
-//     silence → il porte [data-projected-trigger] (l'état « Planning prévu ») ;
+//     silence → il porte [data-projected-trigger] (l'état « Roulement prévu ») ;
 //   - la couverture du jour s'appelle « Couverture prévue », jamais « Présents ».
 
 function makeDayFacts(overrides: Partial<DayFacts> = {}): DayFacts {
@@ -540,14 +540,14 @@ describe('PlanningGrid — échelle mois', () => {
     expect(trigger).not.toBeNull()
   })
 
-  it("un jour seulement projeté n'ouvre pas de faux tiroir : il ouvre « Planning prévu »", () => {
+  it("un jour seulement projeté n'ouvre pas de faux tiroir : il ouvre « Roulement prévu »", () => {
     render(
       <PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={monthRows} todayIso="2026-05-01" />,
     )
     const grid = screen.getByTestId('week-grid')
     // Pas de déclencheur de tiroir d'intervention sur le jour projeté…
     expect(grid.querySelector('[data-cell-trigger="true"][data-cell-key="site-x::2026-05-02"]')).toBeNull()
-    // …mais un déclencheur d'état « Planning prévu ».
+    // …mais un déclencheur d'état « Roulement prévu ».
     const projected = grid.querySelector('[data-projected-trigger="true"][data-date="2026-05-02"]')
     expect(projected).not.toBeNull()
     expect(projected?.getAttribute('data-site-id')).toBe('site-x')
@@ -560,5 +560,31 @@ describe('PlanningGrid — échelle mois', () => {
     const grid = screen.getByTestId('week-grid')
     expect(within(grid).getByText(/couverture prévue/i)).toBeInTheDocument()
     expect(within(grid).queryByText(/^présents$/i)).toBeNull()
+  })
+
+  // R3 — un « 0 » rouge ne signale QU'UN VRAI trou (roulement attendu, personne).
+  // Un jour vide sans planning attendu reste NEUTRE : un calendrier vide n'est pas
+  // un problème. C'est une correction de SENS, pas seulement de couleur.
+  it('ne met en rouge que les vrais trous de couverture, pas chaque jour vide', () => {
+    const rowsHoleVsEmpty: MonthRow[] = [
+      {
+        siteId: 'site-h',
+        siteName: 'Discount',
+        clientName: 'Pointière',
+        days: {
+          '2026-05-01': makeDayFacts({ cycleCovers: true }), // TROU : roulement attendait, 0 personne
+          '2026-05-02': makeDayFacts(), // vide neutre : rien n'était attendu
+          '2026-05-03': makeDayFacts({ expected: 1 }), // couvert
+        },
+      },
+    ]
+    render(
+      <PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={rowsHoleVsEmpty} todayIso="2026-05-01" />,
+    )
+    const foot = screen.getByTestId('week-grid').querySelector('tfoot')!
+    const tds = foot.querySelectorAll('td')
+    // td[0] = 1er mai (trou) → rouge ; td[1] = 2 mai (vide neutre) → PAS rouge.
+    expect(tds[0].className).toMatch(/rose/)
+    expect(tds[1].className).not.toMatch(/rose/)
   })
 })

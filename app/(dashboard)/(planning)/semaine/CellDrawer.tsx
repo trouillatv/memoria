@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { CalendarDays, MapPin, Users, ArrowRight, CalendarOff } from 'lucide-react'
+import { CalendarDays, MapPin, Users, ArrowRight, CalendarOff, CalendarClock } from 'lucide-react'
 import {
   formatInterventionTimeLabel,
   extractHHMM,
@@ -38,7 +38,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { TeamBadge } from '@/components/ui/team-badge'
 import type { SiteRow, WeekInterventionCell } from '@/lib/db/week-planning'
@@ -130,6 +131,12 @@ function buildIndex(rows: SiteRow[]): Map<string, SelectedCell> {
   return idx
 }
 
+/** UNE enveloppe de tiroir, deux contenus (Vincent, R3) : le jour réel montre son
+ *  intervention ; le jour seulement projeté montre son roulement. Même Sheet. */
+type DrawerSelection =
+  | { type: 'intervention'; key: string }
+  | { type: 'projection'; siteId: string; date: string; siteLabel: string }
+
 export function CellDrawer({
   rows,
   teams,
@@ -145,7 +152,11 @@ export function CellDrawer({
   children,
 }: CellDrawerProps) {
   const cellsIndex = useMemo(() => buildIndex(rows), [rows])
-  const [selectedKey, setSelectedKey] = useState<string | null>(initialCellKey ?? null)
+  const [selection, setSelection] = useState<DrawerSelection | null>(
+    initialCellKey ? { type: 'intervention', key: initialCellKey } : null,
+  )
+  const selectedKey = selection?.type === 'intervention' ? selection.key : null
+  const projection = selection?.type === 'projection' ? selection : null
 
   // Modal de réassignation : on stocke l'intervention ciblée
   const [reassignTarget, setReassignTarget] = useState<{
@@ -158,12 +169,27 @@ export function CellDrawer({
     (event: React.MouseEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement | null
       if (!target) return
-      const trigger = target.closest<HTMLElement>('[data-cell-trigger="true"]')
-      if (!trigger) return
-      const key = trigger.getAttribute('data-cell-key')
-      if (!key) return
-      if (!cellsIndex.has(key)) return
-      setSelectedKey(key)
+      // Jour RÉEL → contenu intervention (la clé doit exister dans l'index réel).
+      const cellTrigger = target.closest<HTMLElement>('[data-cell-trigger="true"]')
+      if (cellTrigger) {
+        const key = cellTrigger.getAttribute('data-cell-key')
+        if (key && cellsIndex.has(key)) setSelection({ type: 'intervention', key })
+        return
+      }
+      // Jour seulement PROJETÉ → contenu projection (rien de matérialisé à indexer).
+      const projTrigger = target.closest<HTMLElement>('[data-projected-trigger="true"]')
+      if (projTrigger) {
+        const siteId = projTrigger.getAttribute('data-site-id')
+        const date = projTrigger.getAttribute('data-date')
+        if (siteId && date) {
+          setSelection({
+            type: 'projection',
+            siteId,
+            date,
+            siteLabel: projTrigger.getAttribute('data-site-label') ?? 'Ce chantier',
+          })
+        }
+      }
     },
     [cellsIndex],
   )
@@ -186,7 +212,7 @@ export function CellDrawer({
   // Cleanup : si rows change (revalidatePath après drop/reassign), reset si la
   // cell n'existe plus.
   useEffect(() => {
-    if (selectedKey && !cellsIndex.has(selectedKey)) setSelectedKey(null)
+    if (selectedKey && !cellsIndex.has(selectedKey)) setSelection(null)
   }, [cellsIndex, selectedKey])
 
   // V6.1 (Vincent 2026-05-20) : fermer le drawer quand un drag démarre
@@ -194,7 +220,7 @@ export function CellDrawer({
   // forcément depuis une card existante (donc le user n'a plus besoin
   // du drawer pour voir le détail pendant le déplacement).
   useEffect(() => {
-    if (activeDragId && selectedKey) setSelectedKey(null)
+    if (activeDragId && selectedKey) setSelection(null)
   }, [activeDragId, selectedKey])
 
   // Idem : si l'intervention ciblée par la modal a disparu, on referme.
@@ -211,8 +237,12 @@ export function CellDrawer({
       <div onClick={handleContainerClick} data-slot="cell-drawer-host">
         {children}
       </div>
-      <Sheet open={!!selected} onOpenChange={(o) => !o && setSelectedKey(null)}>
+      <Sheet open={!!selection} onOpenChange={(o) => !o && setSelection(null)}>
         <SheetContent side="right" className="p-0 sm:max-w-md w-full overflow-y-auto">
+          {projection ? (
+            <ProjectionBody projection={projection} />
+          ) : (
+          <>
           <SheetHeader className="border-b p-4">
             <SheetTitle>
               {selected ? siteLabel(selected.siteName, selected.clientName) : 'Détail'}
@@ -435,6 +465,8 @@ export function CellDrawer({
               replanifier.
             </p>
           ) : null}
+          </>
+          )}
         </SheetContent>
       </Sheet>
 
@@ -450,6 +482,47 @@ export function CellDrawer({
           teams={teams}
         />
       )}
+    </>
+  )
+}
+
+/**
+ * LE CONTENU « PLANNING PRÉVU » — même enveloppe (Sheet) que l'intervention.
+ *
+ * Un jour seulement projeté n'a rien de matérialisé : on n'ouvre PAS un faux
+ * tiroir d'intervention, on n'en redirige pas non plus en silence. On explique
+ * qu'il vient d'un roulement, puis on offre d'aller le régler. Aucune écriture.
+ */
+function ProjectionBody({
+  projection,
+}: {
+  projection: { siteId: string; date: string; siteLabel: string }
+}) {
+  return (
+    <>
+      <SheetHeader className="border-b p-4">
+        <SheetTitle className="inline-flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-muted-foreground" aria-hidden />
+          Roulement prévu
+        </SheetTitle>
+        <SheetDescription>
+          {`${projection.siteLabel} · ${formatLongDate(projection.date)}`}
+        </SheetDescription>
+      </SheetHeader>
+      <div className="space-y-4 px-4 py-4">
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">Issu du roulement</p>
+          <p className="text-sm font-medium">{projection.siteLabel}</p>
+        </div>
+        <p className="text-sm text-muted-foreground">Aucune intervention créée.</p>
+        <Link
+          href={`/sites/${projection.siteId}/roulements`}
+          className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-between')}
+        >
+          Configurer le roulement
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </Link>
+      </div>
     </>
   )
 }
