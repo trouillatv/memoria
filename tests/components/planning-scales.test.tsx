@@ -57,14 +57,10 @@ describe("L'espace Planning — trois échelles, un seul écran", () => {
     // Fermé par défaut : on y va rarement, on n'y vit pas.
     expect(screen.queryByText('Configuration du planning')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Configurer' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Configurer le planning' }))
 
-    // Les QUATRE réglages — quatre entrées, UN moteur de fermetures.
+    // Les réglages qui FABRIQUENT le planning.
     expect(screen.getByRole('link', { name: /Roulements/ })).toHaveAttribute('href', '/roulements')
-    expect(screen.getByRole('link', { name: /Fermetures du chantier/ })).toHaveAttribute(
-      'href',
-      '/calendrier#fermetures',
-    )
     expect(screen.getByRole('link', { name: /Calendrier scolaire/ })).toHaveAttribute(
       'href',
       '/calendrier#vacances-scolaires',
@@ -75,6 +71,18 @@ describe("L'espace Planning — trois échelles, un seul écran", () => {
     )
     // Le mot de développeur a disparu de l'écran.
     expect(screen.queryByText(/Planning habituel/)).not.toBeInTheDocument()
+  })
+
+  it('les fermetures ne sont PAS une entrée : elles appartiennent au chantier', () => {
+    pathname.current = '/mois'
+    render(<PlanningSpaceHeader />)
+    fireEvent.click(screen.getByRole('button', { name: 'Configurer le planning' }))
+
+    // Pas de lien « Fermetures » — pas de second calendrier de fermetures.
+    expect(screen.queryByRole('link', { name: /Fermetures/ })).not.toBeInTheDocument()
+    // Mais le panneau DIT où elles se règlent : la fiche du chantier.
+    expect(screen.getByText('Fermetures du chantier')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /fiche du chantier/ })).toHaveAttribute('href', '/sites')
   })
 })
 

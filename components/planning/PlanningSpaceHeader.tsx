@@ -80,22 +80,20 @@ function buildHref(base: string, params: Record<string, string | undefined>): st
   return s ? `${base}?${s}` : base
 }
 
-/** Ce qui FABRIQUE le planning — jamais une façon de le lire. Quatre entrées,
- *  UN moteur : fermetures client, calendrier scolaire et fériés produisent tous
- *  des fermetures consommées par le même moteur. On règle un roulement pendant
- *  plusieurs minutes : c'est un PANNEAU (R4), pas un menu de trois secondes. */
+/** Ce qui FABRIQUE le planning — jamais une façon de le lire. Trois entrées,
+ *  UN moteur : calendrier scolaire et fériés produisent des fermetures
+ *  consommées par le même moteur que celles des chantiers. On règle un
+ *  roulement pendant plusieurs minutes : c'est un PANNEAU (R4), pas un menu
+ *  de trois secondes.
+ *
+ *  Les FERMETURES n'ont pas d'entrée : une fermeture appartient au CHANTIER,
+ *  pas au calendrier (Vincent, R4). Le panneau le dit, et renvoie aux fiches. */
 const SETTINGS = [
   {
     label: 'Roulements',
     href: '/roulements',
     icon: Repeat,
     detail: 'Le rythme normal des équipes : semaines A/B, Travail/Repos et horaires.',
-  },
-  {
-    label: 'Fermetures du chantier',
-    href: '/calendrier#fermetures',
-    icon: CalendarOff,
-    detail: 'Dates propres au client ou à l’établissement : inventaire, fermeture annuelle, jour exceptionnel.',
   },
   {
     label: 'Calendrier scolaire',
@@ -167,7 +165,7 @@ export function PlanningSpaceHeader() {
         onClick={() => setConfigOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        <Settings className="h-4 w-4" /> Configurer
+        <Settings className="h-4 w-4" /> Configurer le planning
       </button>
       <Sheet open={configOpen} onOpenChange={setConfigOpen}>
         <SheetContent side="right" className="p-0 sm:max-w-sm w-full overflow-y-auto">
@@ -197,6 +195,25 @@ export function PlanningSpaceHeader() {
               </Link>
             ))}
           </nav>
+          {/* Une fermeture appartient au CHANTIER, pas au calendrier : elle se
+              règle sur sa fiche. Le panneau le dit, il ne crée pas de doublon. */}
+          <div className="mx-2 mb-3 rounded-xl border border-dashed px-3 py-3">
+            <p className="inline-flex items-start gap-3 text-xs leading-snug text-muted-foreground">
+              <CalendarOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>
+                <span className="block text-sm font-medium text-foreground">Fermetures du chantier</span>
+                Inventaire, fermeture annuelle, jour exceptionnel : elles se règlent sur la{' '}
+                <Link
+                  href="/sites"
+                  onClick={() => setConfigOpen(false)}
+                  className="font-medium text-foreground underline underline-offset-2"
+                >
+                  fiche du chantier
+                </Link>
+                {' '}— jamais dans un second calendrier.
+              </span>
+            </p>
+          </div>
         </SheetContent>
       </Sheet>
     </header>

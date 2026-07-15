@@ -588,3 +588,97 @@ describe('PlanningGrid — échelle mois', () => {
     expect(tds[1].className).not.toMatch(/rose/)
   })
 })
+
+// ----------------------------------------------------------------------------
+// TESTS FONCTIONNELS (Vincent, R4) — le comportement métier, pas le vocabulaire.
+// « Ce sont eux qui éviteront que le planning régresse. »
+// ----------------------------------------------------------------------------
+
+describe('PlanningGrid mois — les états se VOIENT', () => {
+  const facts: MonthRow[] = [
+    {
+      siteId: 'site-f',
+      siteName: 'Lycée',
+      clientName: 'Païta',
+      days: {
+        '2026-05-01': makeDayFacts({ closed: true }), // fermé, rien de prévu
+        '2026-05-02': makeDayFacts({ closed: true, expected: 2 }), // CONFLIT
+        '2026-05-03': makeDayFacts({ expected: 1 }),
+      },
+    },
+  ]
+
+  it('un jour fermé est bleu — information, pas alarme', () => {
+    render(<PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={facts} todayIso="2026-05-03" />)
+    const td = screen.getByTestId('week-grid').querySelector('td[data-date="2026-05-01"]')!
+    expect(td.className).toMatch(/bg-sky/)
+    expect(td.className).not.toMatch(/bg-rose/)
+  })
+
+  it('fermé ET du monde prévu = conflit : rouge, et le chiffre crie (2!)', () => {
+    render(<PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={facts} todayIso="2026-05-03" />)
+    const td = screen.getByTestId('week-grid').querySelector('td[data-date="2026-05-02"]')!
+    expect(td.className).toMatch(/bg-rose/)
+    expect(td.textContent).toContain('2!')
+  })
+})
+
+describe('PlanningGrid mois — le clic ouvre le BON tiroir', () => {
+  const realDay = '2026-05-01'
+  const projDay = '2026-05-02'
+  const siteRows: SiteRow[] = [
+    {
+      site_id: 'site-x',
+      site_name: 'Discount',
+      client_name: 'Pointière',
+      contract_id: 'c-1',
+      contract_name: 'Contrat Nettoyage',
+      days: { [realDay]: [makeCell({ site_id: 'site-x', scheduled_for: realDay, mission_name: 'Entretien magasin' })] },
+    } as SiteRow,
+  ]
+  const monthRows: MonthRow[] = [
+    {
+      siteId: 'site-x',
+      siteName: 'Discount',
+      clientName: 'Pointière',
+      days: {
+        [realDay]: makeDayFacts({ expected: 1 }),
+        [projDay]: makeDayFacts({ projected: 1 }),
+        '2026-05-03': makeDayFacts(),
+      },
+    },
+  ]
+
+  function renderMonthWithDrawer() {
+    return render(
+      <CellDrawer rows={siteRows} teams={[]} todayIso={realDay}>
+        <PlanningGrid scale="month" range={MONTH_RANGE} rows={siteRows} monthRows={monthRows} todayIso={realDay} />
+      </CellDrawer>,
+    )
+  }
+
+  it("un jour RÉEL ouvre le tiroir d'intervention, sur place", () => {
+    renderMonthWithDrawer()
+    fireEvent.click(
+      document.querySelector(`[data-cell-trigger="true"][data-cell-key="site-x::${realDay}"]`)!,
+    )
+    // Le MÊME tiroir que la semaine : l'intervention est là, avec ses gestes.
+    expect(screen.getByText('Entretien magasin')).toBeInTheDocument()
+    expect(screen.queryByText('Roulement prévu')).not.toBeInTheDocument()
+  })
+
+  it('un jour PROJETÉ ouvre « Roulement prévu » — jamais un faux tiroir d’intervention', () => {
+    renderMonthWithDrawer()
+    fireEvent.click(
+      document.querySelector(`[data-projected-trigger="true"][data-date="${projDay}"]`)!,
+    )
+    expect(screen.getByText('Roulement prévu')).toBeInTheDocument()
+    expect(screen.getByText('Aucune intervention créée.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Configurer le roulement/ })).toHaveAttribute(
+      'href',
+      '/sites/site-x/roulements',
+    )
+    // Rien de matérialisé : pas de carte d'intervention.
+    expect(screen.queryByText('Entretien magasin')).not.toBeInTheDocument()
+  })
+})
