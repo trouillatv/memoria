@@ -240,7 +240,7 @@ export function VisitDebriefPanel({
           <div className="space-y-3 border-t p-3">
             {proposal.important_points.length > 0 && (
               <Block icon={<Lightbulb className="h-4 w-4 text-amber-600" />} title="Points releves">
-                <ul className="space-y-1 text-sm">{proposal.important_points.map((item, index) => <li key={index}>{item}</li>)}</ul>
+                <ul className="space-y-1 text-sm">{proposal.important_points.map((item, index) => <li key={index}>{item.label}</li>)}</ul>
               </Block>
             )}
             {proposal.suggested_actions.length > 0 && (

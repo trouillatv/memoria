@@ -23,6 +23,21 @@ import type { AIProviderName } from './index'
 const OUTCOMES = ['ras', 'conforme', 'conforme_reserves', 'non_conforme', 'a_revoir', 'info'] as const
 const RESOLUTIONS = ['resolue', 'a_suivre', 'recontrole'] as const
 const CONFIDENCE = ['elevee', 'moyenne', 'faible'] as const
+const PRIORITY = ['haute', 'moyenne', 'basse'] as const
+
+// Le LLM structure de façon variable (parfois une chaîne au lieu d'un objet, une
+// priorité en anglais…). On TOLÈRE : on normalise avant de valider, plutôt que de
+// rejeter toute l'extraction pour une virgule de forme.
+function toPriority(v: unknown): 'haute' | 'moyenne' | 'basse' | null {
+  const s = String(v ?? '').toLowerCase()
+  if (/haut|urgent|high|élev|elev/.test(s)) return 'haute'
+  if (/moy|medium|normal/.test(s)) return 'moyenne'
+  if (/bas|prépar|prepar|low|faible/.test(s)) return 'basse'
+  return null
+}
+
+// Le LLM écrit souvent `null` pour un champ vide → on le tolère (null|undefined → '').
+const optStr = z.preprocess((v) => (v == null ? '' : v), z.string())
 
 export const visitDebriefSchema = z.object({
   // Niveau 1 — « ce qui mérite ton attention » : 3 à 5 max. C'est un FILTRE.
@@ -36,11 +51,35 @@ export const visitDebriefSchema = z.object({
   subject_confidence: z.enum(CONFIDENCE).nullable().default(null),
   outcome: z.enum(OUTCOMES).nullable().default(null),
   resolution: z.enum(RESOLUTIONS).nullable().default(null),
-  important_points: z.array(z.string()).default([]),
-  suggested_actions: z.array(z.object({
-    title: z.string(),
-    rationale: z.string().default(''),
-  })).default([]),
+  // ⚠️ Points de vigilance — de vrais RISQUES, exploitables : impact + responsable
+  // + échéance quand le débrief les donne (sinon vides). TOLÉRANT : chaîne → objet.
+  important_points: z.array(z.preprocess(
+    (v) => (typeof v === 'string' ? { label: v } : v),
+    z.object({
+      label: z.string(),
+      impact: optStr,
+      owner: optStr,
+      due: optStr,
+    }),
+  )).default([]),
+  // ✅ Actions — des CARTES : quoi + pourquoi + priorité + responsable + échéance.
+  // TOLÉRANT : chaîne → objet ; priorité en anglais/variante → normalisée ; null → ''.
+  suggested_actions: z.array(z.preprocess(
+    (v) => (typeof v === 'string' ? { title: v } : v),
+    z.object({
+      title: z.string(),
+      rationale: optStr,
+      priority: z.preprocess((p) => toPriority(p), z.enum(PRIORITY).nullable()).default(null),
+      owner: optStr,
+      due: optStr,
+    }),
+  )).default([]),
+  // ✓ Décisions PRISES — les engagements actés pendant la visite (ni action à
+  // faire, ni risque : ce qui a été tranché). « Les accès seront fournis plus tard. »
+  decisions: z.array(z.string()).default([]),
+  // ℹ️ À savoir — le CONTEXTE important mais NON actionnable (ni action, ni risque,
+  // ni décision). « Première visite. », « Le nettoyage précède l'intervention. »
+  a_savoir: z.array(z.string()).default([]),
   forgotten_obligations: z.array(z.string()).default([]),
   open_questions: z.array(z.string()).default([]),
 })
@@ -100,8 +139,10 @@ Champs :
 - subject_rationale : pourquoi ce sujet. subject_confidence : elevee|moyenne|faible|null.
 - outcome : ras|conforme|conforme_reserves|non_conforme|a_revoir|info, ou null. JAMAIS un jugement sur une personne.
 - resolution : resolue|a_suivre|recontrole, ou null.
-- important_points : faits saillants du débrief.
-- suggested_actions : [{ title (impératif court), rationale (pourquoi) }] mentionnées comme à faire.
+- important_points : les RISQUES / points de vigilance, EXPLOITABLES. [{ label (le risque, court), impact (conséquence si non traité), owner (qui doit agir, si le débrief le dit), due (échéance, si dite) }]. Laisse impact/owner/due VIDES si le débrief ne les donne pas — n'invente pas.
+- suggested_actions : les actions à FAIRE. [{ title (impératif court), rationale (pourquoi), priority ("haute"|"moyenne"|"basse" selon l'urgence exprimée, sinon null), owner (qui, si dit), due (échéance, si dite) }].
+- decisions : les DÉCISIONS PRISES / engagements actés pendant la visite — ce qui a été TRANCHÉ, ni action à faire ni risque. Ex. « Les accès seront fournis ultérieurement. », « Une nouvelle visite sera organisée. »
+- a_savoir : le CONTEXTE important mais NON actionnable (ni action, ni risque, ni décision). Ex. « Première visite du chantier. », « Le nettoyage précède l'intervention. », « Les travaux n'ont pas commencé. »
 - forgotten_obligations : obligations/contrôles que le débrief signale comme oubliés ou manquants.
 - open_questions : questions ouvertes soulevées par le débrief (aide à la réflexion, ni action ni résumé).`
 
@@ -190,10 +231,12 @@ function mockExtraction(input: VisitDebriefInput): VisitDebriefParsed {
     subject_confidence: input.openSubjects[0] ? 'moyenne' : 'faible',
     outcome: hasReserve ? 'conforme_reserves' : null,
     resolution: hasReserve ? 'recontrole' : null,
-    important_points: input.capturedNotes.slice(0, 3),
+    important_points: input.capturedNotes.slice(0, 3).map((n) => ({ label: n, impact: '', owner: '', due: '' })),
     suggested_actions: hasReserve
-      ? [{ title: `Suivre la réserve « ${input.capturedReserves[0].label} »`, rationale: 'Une réserve a été créée pendant la visite.' }]
+      ? [{ title: `Suivre la réserve « ${input.capturedReserves[0].label} »`, rationale: 'Une réserve a été créée pendant la visite.', priority: 'moyenne' as const, owner: '', due: '' }]
       : [],
+    decisions: [],
+    a_savoir: input.objectiveHint ? [`Objectif de la visite : ${input.objectiveHint}.`] : [],
     forgotten_obligations: input.signalLines.slice(0, 2),
     open_questions: hasReserve ? [`La réserve « ${input.capturedReserves[0].label} » est-elle toujours valide ?`] : [],
   }
@@ -242,7 +285,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
       userMessage,
       responseSchema: visitDebriefSchema,
       modelTier: 'light',
-      maxOutputTokens: 1500,
+      maxOutputTokens: 2500,
     })
     let result: VisitDebriefParsed | undefined
     if (out.parsed !== undefined && out.parsed !== null) {

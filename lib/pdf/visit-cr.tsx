@@ -245,6 +245,9 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
   const summaryText = debrief?.summary?.trim() || doc.summary?.trim() || ''
   const proposedActions = debrief?.actions ?? []
   const watchpoints = debrief?.watchpoints ?? []
+  const decisions = debrief?.decisions ?? []
+  const aSavoir = debrief?.a_savoir ?? []
+  const PRIORITY_FR: Record<string, string> = { haute: 'Priorité haute', moyenne: 'Priorité moyenne', basse: 'Préparation' }
 
   // « En bref » — richesse de la visite (comptes réels par type).
   const stats: Array<{ n: number; label: string }> = [
@@ -327,25 +330,63 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
               <View key={i} style={styles.actionRow} wrap={false}>
                 <View style={styles.checkbox} />
                 <View style={styles.actionText}>
-                  <Text>{a.title}</Text>
+                  <Text>
+                    {a.priority ? <Text style={styles.metaStrong}>{`[${PRIORITY_FR[a.priority] ?? a.priority}] `}</Text> : null}
+                    {a.title}
+                  </Text>
                   {a.rationale ? <Text style={styles.actionWhy}>{a.rationale}</Text> : null}
+                  {(a.owner || a.due) ? (
+                    <Text style={styles.actionWhy}>
+                      {a.owner ? `Responsable : ${a.owner}` : ''}{a.owner && a.due ? ' · ' : ''}{a.due ? `Échéance : ${a.due}` : ''}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             ))}
           </View>
         )}
 
-        {/* Points de vigilance — des ALERTES (pastille), pas des paragraphes :
-            on comprend la situation en trois secondes. */}
+        {/* Points de vigilance — des FICHES exploitables (risque + impact +
+            responsable + échéance), pas des paragraphes. */}
         {watchpoints.length > 0 && (
           <View style={styles.section}>
             <SectionTitle text="Points de vigilance" color="#d97706" />
             {watchpoints.map((p, i) => (
               <View key={i} style={styles.alertRow} wrap={false}>
                 <View style={styles.alertDot} />
-                <Text style={styles.bulletText}>{p}</Text>
+                <View style={styles.actionText}>
+                  <Text><Text style={styles.metaStrong}>{p.label}</Text></Text>
+                  {(p.impact || p.owner || p.due) ? (
+                    <Text style={styles.actionWhy}>
+                      {p.impact}
+                      {p.owner ? `${p.impact ? ' · ' : ''}Responsable : ${p.owner}` : ''}
+                      {p.due ? `${p.impact || p.owner ? ' · ' : ''}Échéance : ${p.due}` : ''}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ))}
+          </View>
+        )}
+
+        {/* Décisions prises — les ENGAGEMENTS actés (ni action, ni risque). */}
+        {decisions.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Décisions prises" color="#4f46e5" />
+            {decisions.map((d, i) => (
+              <View key={i} style={styles.checkRow} wrap={false}>
+                <View style={styles.checkMark} />
+                <Text style={styles.bulletText}>{d}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* À savoir — le contexte important mais non actionnable. */}
+        {aSavoir.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="À savoir" color={COLORS.muted} />
+            <Bullets items={aSavoir} />
           </View>
         )}
 
