@@ -1,11 +1,11 @@
-// Page Â« Interventions du jour Â» â€” pendant Briefing du soir prÃ©pare DEMAIN,
-// cette page suit AUJOURD'HUI en temps rÃ©el.
+// Page « Interventions du jour » — pendant Briefing du soir prépare DEMAIN,
+// cette page suit AUJOURD'HUI en temps réel.
 //
-// Doctrine V5 + V6.1 (Vincent 2026-05-21 â€” purge crÃ©neau cohÃ©rence avec /semaine) :
-//   - Flux chronologique par planned_start (plus de groupes par crÃ©neau).
-//   - Plage horaire affichÃ©e PAR intervention (formatInterventionTimeLabel).
-//   - Tout est visible (terminÃ©es incluses, opacitÃ© rÃ©duite â€” pas masquÃ©es).
-//   - Stats : PrÃ©vues / En cours / TerminÃ©es / Ã€ traiter.
+// Doctrine V5 + V6.1 (Vincent 2026-05-21 — purge créneau cohérence avec /semaine) :
+//   - Flux chronologique par planned_start (plus de groupes par créneau).
+//   - Plage horaire affichée PAR intervention (formatInterventionTimeLabel).
+//   - Tout est visible (terminées incluses, opacité réduite — pas masquées).
+//   - Stats : Prévues / En cours / Terminées / À traiter.
 //   - Wording calme, jamais alarmiste.
 
 import { redirect } from 'next/navigation'
@@ -32,21 +32,20 @@ import { getTenantDayReading } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
 import { extractHHMM, fmtDurationFr } from '@/lib/time/prestation-slot'
-import type { InterventionSlot } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 const MONTHS_FR_FULL = [
-  'janvier', 'fÃ©vrier', 'mars', 'avril', 'mai', 'juin',
-  'juillet', 'aoÃ»t', 'septembre', 'octobre', 'novembre', 'dÃ©cembre',
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
 const WEEKDAYS_FR = [
   'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
 ]
-// V6.1 (Vincent 2026-05-21) â€” purge crÃ©neau : on n'affiche plus de label
-// Â« Matin / AprÃ¨s-midi / Soir Â». La plage horaire de chaque intervention
-// suffit. Les anciennes maps SLOT_FR / SLOT_TONE sont retirÃ©es.
+// V6.1 (Vincent 2026-05-21) — purge créneau : on n'affiche plus de label
+// « Matin / Après-midi / Soir ». La plage horaire de chaque intervention
+// suffit. Les anciennes maps SLOT_FR / SLOT_TONE sont retirées.
 
 function formatDateLong(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
@@ -73,7 +72,7 @@ export default async function TodayPage({
 
   const view = await buildTodayView(target)
 
-  // Construire le contexte site â†’ missions planifiÃ©es pour croiser avec absences IA
+  // Construire le contexte site → missions planifiées pour croiser avec absences IA
   const siteContextMap = new Map<string, string[]>()
   for (const group of view.bySlot) {
     for (const i of group.interventions) {
@@ -107,13 +106,13 @@ export default async function TodayPage({
         </div>
       </header>
 
-      {/* 4 stats â€” rÃ©duction cognitive : pas de redondance avec la dette dÃ©taillÃ©e
-          en dessous. "Ã€ traiter" = somme silencieuse (sans Ã©quipe + en retard). */}
+      {/* 4 stats — réduction cognitive : pas de redondance avec la dette détaillée
+          en dessous. "À traiter" = somme silencieuse (sans équipe + en retard). */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         <DayStat
           icon={CalendarDays}
           value={view.stats.planned}
-          label={view.stats.planned > 1 ? 'prÃ©vues' : 'prÃ©vue'}
+          label={view.stats.planned > 1 ? 'prévues' : 'prévue'}
         />
         <DayStat
           icon={PlayCircle}
@@ -124,19 +123,19 @@ export default async function TodayPage({
         <DayStat
           icon={CheckCircle2}
           value={view.stats.completed}
-          label={view.stats.completed > 1 ? 'terminÃ©es' : 'terminÃ©e'}
+          label={view.stats.completed > 1 ? 'terminées' : 'terminée'}
           tone={view.stats.completed > 0 ? 'emerald' : 'neutral'}
         />
         <DayStat
           icon={Clock}
           value={view.unassignedRecent.length + view.overdue.length}
-          label="Ã  traiter"
+          label="à traiter"
           tone={view.unassignedRecent.length + view.overdue.length > 0 ? 'amber' : 'neutral'}
         />
       </div>
 
-      {/* Ce que les lieux disent â€” 1 signal IA, entre les stats et le planning.
-          Silence si aucun seuil franchi (doctrine : raretÃ© = force). */}
+      {/* Ce que les lieux disent — 1 signal IA, entre les stats et le planning.
+          Silence si aucun seuil franchi (doctrine : rareté = force). */}
       {todayReading && (
         <div className="space-y-2">
           <div className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-reading-label/65">
@@ -146,23 +145,23 @@ export default async function TodayPage({
         </div>
       )}
 
-      {/* V6.2 (Vincent 2026-05-20) â€” Dette opÃ©rationnelle EN HAUT, plus en bas.
-          Rouge bordeaux sobre qui saute aux yeux. Silence positif respectÃ© :
-          si zÃ©ro signal (sans Ã©quipe + en retard = 0), le bloc ne rend rien.
-          GroupÃ© pour Ã©viter l'effet Â« N alarmes Â» â€” l'Å“il voit UN problÃ¨me. */}
+      {/* V6.2 (Vincent 2026-05-20) — Dette opérationnelle EN HAUT, plus en bas.
+          Rouge bordeaux sobre qui saute aux yeux. Silence positif respecté :
+          si zéro signal (sans équipe + en retard = 0), le bloc ne rend rien.
+          Groupé pour éviter l'effet « N alarmes » — l'Å“il voit UN problème. */}
       {(view.unassignedRecent.length > 0 || view.overdue.length > 0) && (
         <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900/40">
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2 text-red-900 dark:text-red-100">
               <AlertTriangle className="h-4 w-4 text-red-700 dark:text-red-300" strokeWidth={2} />
-              Dette opÃ©rationnelle ({view.unassignedRecent.length + view.overdue.length})
+              Dette opérationnelle ({view.unassignedRecent.length + view.overdue.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {view.unassignedRecent.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-red-900/80 dark:text-red-200/80 mb-2">
-                  Sans Ã©quipe aujourd&apos;hui ({view.unassignedRecent.length})
+                  Sans équipe aujourd&apos;hui ({view.unassignedRecent.length})
                 </h3>
                 <ul className="space-y-1.5">
                   {view.unassignedRecent.map((i) => (
@@ -174,7 +173,7 @@ export default async function TodayPage({
             {view.overdue.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-red-900/80 dark:text-red-200/80 mb-2">
-                  Passages en retard Ã  rÃ©gulariser ({view.overdue.length})
+                  Passages en retard à régulariser ({view.overdue.length})
                 </h3>
                 <ul className="space-y-1.5">
                   {view.overdue.map((i) => (
@@ -231,8 +230,8 @@ export default async function TodayPage({
         </Card>
       )}
 
-      {/* Flux chronologique du jour â€” dÃ©roulÃ© naturel par heure de prestation
-          (V6.1, Vincent 2026-05-21). La dette opÃ©rationnelle est en haut, le
+      {/* Flux chronologique du jour — déroulé naturel par heure de prestation
+          (V6.1, Vincent 2026-05-21). La dette opérationnelle est en haut, le
           planning du jour ici. */}
       {(() => {
         const allInterventions = view.bySlot.flatMap((g) => g.interventions)
@@ -247,7 +246,7 @@ export default async function TodayPage({
             <Card>
               <CardContent className="py-8 text-center">
                 <p className="text-sm text-muted-foreground italic">
-                  Aucune intervention prÃ©vue ce jour.
+                  Aucune intervention prévue ce jour.
                 </p>
               </CardContent>
             </Card>
@@ -312,9 +311,9 @@ function UnassignedLine({ item }: { item: UnassignedRecent }) {
         <div className="flex items-center gap-2 shrink-0">
           <span
             className="inline-flex items-center rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-900 dark:border-red-800 dark:bg-red-900/40 dark:text-red-100"
-            title="Aucune Ã©quipe affectÃ©e"
+            title="Aucune équipe affectée"
           >
-            â—¯ Non-affectÃ©
+            ◯ Non-affecté
           </span>
           <span className="text-[10px] font-medium text-red-900/80 dark:text-red-200/80 tabular-nums">
             {ageLabel}

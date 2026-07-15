@@ -24,7 +24,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { enumerateRangeDays } from '@/lib/planning/scale'
 import type { ProjectableTemplate } from '@/lib/planning/projection'
 import { getOrgId } from '@/lib/db/users'
-import { isSystemMissionName } from '@/lib/db/system-missions'
+import { isSystemMissionName, PONCTUEL_MISSION_NAME } from '@/lib/db/system-missions'
 
 // Types + helpers PURS (client-safe) extraits dans lib/week-planning-helpers.ts
 // pour casser la chaîne d'import qui faisait remonter `admin` (server-only)
@@ -55,6 +55,8 @@ type RawIntervention = {
   status: string
   skipped_at: string | null
   assigned_team_id: string | null
+  /** Objet court d'une intervention ponctuelle (mig 189) — l'affichage. */
+  label: string | null
   mission: unknown
   team: unknown
 }
@@ -97,6 +99,7 @@ export async function listInterventionsForWeek(
       assigned_team_id,
       planned_start,
       planned_end,
+      label,
       mission:missions!inner(
         id,
         name,
@@ -130,11 +133,13 @@ export async function listInterventionsForWeek(
     if (!r.scheduled_for) continue
     const mission = pickOne(r.mission as { name: string; site: unknown } | Array<{ name: string; site: unknown }>)
     if (!mission) continue
-    // V5.1 — Exclure les missions système (Traces libres du site) du planning.
-    // Ces missions servent uniquement de container pour les traces déposées
-    // spontanément côté mobile, elles n'ont jamais à apparaître dans la vue
-    // semaine ni dans aucun planning. Cf. lib/db/system-missions.ts.
-    if (isSystemMissionName(mission.name)) continue
+    // V5.1 — Exclure les « Traces libres du site » du planning : de simples
+    // dépôts spontanés, jamais des prestations. MAIS PAS les « Interventions
+    // ponctuelles » (mig 189) : leur MISSION est un conteneur technique
+    // invisible comme concept, leurs interventions sont de VRAIS événements
+    // terrain — le Mois les comptait, la Semaine les taisait (bug signalé par
+    // Vincent, 2026-07-15 : « on ne voit pas le Discount le 13 »).
+    if (isSystemMissionName(mission.name) && mission.name !== PONCTUEL_MISSION_NAME) continue
     const site = pickOne(
       mission.site as
         | { id: string; name: string; client: unknown; contract: unknown }
@@ -159,7 +164,9 @@ export async function listInterventionsForWeek(
     out.push({
       id: r.id,
       mission_id: r.mission_id,
-      mission_name: mission.name,
+      // Une ponctuelle s'affiche par son OBJET (« Remise en état hall B »),
+      // jamais par le nom de son conteneur technique (doctrine mig 189).
+      mission_name: r.label?.trim() || mission.name,
       site_id: site.id,
       site_name: site.name,
       client_name: client?.name ?? null,

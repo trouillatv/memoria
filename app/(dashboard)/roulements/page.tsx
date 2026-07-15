@@ -16,7 +16,7 @@
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Repeat, MapPin, AlertTriangle, Plus } from 'lucide-react'
+import { Repeat, MapPin, AlertTriangle, Plus, ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listCyclesForOrg, type CycleOverview } from '@/lib/db/planning-cycles'
 import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
@@ -64,17 +64,58 @@ export default async function RoulementsPage() {
     return b.startsOn.localeCompare(a.startsOn)
   })
 
+  // La synthèse — ce que la liste dit d'un coup d'œil (Vincent, 2026-07-15 :
+  // « étoffe un peu la page »). Rien de neuf n'est requêté : on compte ce
+  // qu'on affiche déjà.
+  const byPhase = new Map<Phase, CycleOverview[]>()
+  for (const c of sorted) {
+    const p = phaseOf(c, today)
+    byPhase.set(p, [...(byPhase.get(p) ?? []), c])
+  }
+  const activeCycles = byPhase.get('active') ?? []
+  const siteCount = new Set(activeCycles.map((c) => c.siteId)).size
+  const teamTotal = activeCycles.reduce((n, c) => n + c.teamCount, 0)
+  const uncoveredTotal = activeCycles.reduce((n, c) => n + c.uncoveredDays, 0)
+
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
-      <header className="space-y-1">
-        <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
-          <Repeat className="h-5 w-5 text-muted-foreground" />
-          Roulements
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Qui travaille, quels jours, en rotation — sur tous les chantiers.
-        </p>
-      </header>
+      <div>
+        {/* Depuis R4, on arrive ici par « Configurer le planning » : le chemin
+            du retour doit être aussi court que celui de l'aller. */}
+        <Link
+          href="/mois"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Retour au planning
+        </Link>
+        <header className="mt-2 space-y-1">
+          <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
+            <Repeat className="h-5 w-5 text-muted-foreground" />
+            Roulements
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Qui travaille, quels jours, en rotation — sur tous les chantiers.
+          </p>
+        </header>
+        {activeCycles.length > 0 && (
+          <p className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+            <span className="font-medium">
+              {activeCycles.length} roulement{activeCycles.length > 1 ? 's' : ''} en cours
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {siteCount} chantier{siteCount > 1 ? 's' : ''}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {teamTotal} équipe{teamTotal > 1 ? 's' : ''} en rotation
+            </span>
+            {uncoveredTotal > 0 && (
+              <span className="text-xs font-medium text-rose-700">
+                ⚠ {uncoveredTotal} jour{uncoveredTotal > 1 ? 's' : ''} sans personne
+              </span>
+            )}
+          </p>
+        )}
+      </div>
 
       {sorted.length === 0 ? (
         <p className="rounded-2xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
@@ -82,8 +123,14 @@ export default async function RoulementsPage() {
           «&nbsp;Planifier&nbsp;» dans la semaine.
         </p>
       ) : (
+        PHASE_ORDER.filter((p) => (byPhase.get(p) ?? []).length > 0).map((sectionPhase) => (
+        <section key={sectionPhase} className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {PHASE_FR[sectionPhase].label}
+            <span className="ml-1.5 font-normal opacity-70">{byPhase.get(sectionPhase)!.length}</span>
+          </h2>
         <ul className="space-y-2">
-          {sorted.map((c) => {
+          {byPhase.get(sectionPhase)!.map((c) => {
             const phase = phaseOf(c, today)
             const meta = PHASE_FR[phase]
             return (
@@ -143,6 +190,8 @@ export default async function RoulementsPage() {
             )
           })}
         </ul>
+        </section>
+        ))
       )}
 
       <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

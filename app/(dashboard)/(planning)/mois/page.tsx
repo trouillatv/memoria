@@ -21,7 +21,6 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildMonthRows, buildTeamMonthRows } from '@/lib/db/month-view'
 import {
   monthVerdict,
-  verdictPhrase,
   monthDays,
   isoWeekParamOf,
   teamDayState,
@@ -275,55 +274,38 @@ export default async function MoisPage({
         </div>
       </header>
 
-      {/* ── LE VERDICT — la réponse avant la grille ─────────────────────── */}
-      <section className="space-y-2 rounded-2xl border bg-card p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-base font-semibold">{verdictPhrase(v)}</p>
-          <p className="text-sm tabular-nums text-muted-foreground">
-            {v.readyDays} jour{v.readyDays > 1 ? 's' : ''} sur {v.totalDays} sans rien à traiter
-          </p>
-        </div>
-        <div
-          role="progressbar"
-          aria-valuenow={v.readyPct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          className="h-2 overflow-hidden rounded-full bg-muted"
-        >
-          <div
-            className={cn(
-              'h-full rounded-full transition-all',
-              v.readyPct >= 90 ? 'bg-emerald-500' : v.readyPct >= 60 ? 'bg-amber-500' : 'bg-rose-500',
-            )}
-            style={{ width: `${v.readyPct}%` }}
-          />
-        </div>
-        <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      {/* ── LA SYNTHÈSE — silence positif (Vincent, 2026-07-15). Quand tout va
+          bien, RIEN : « 31 jours sur 31 sans rien à traiter » n'apprenait rien
+          et prenait la place de la grille. Quand des décisions attendent, une
+          seule ligne discrète — jamais une barre de score. ─────────────────── */}
+      {v.conflicts + v.holes > 0 && (
+        <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+          <span className="font-medium">
+            Le mois demande encore {v.conflicts + v.holes} décision
+            {v.conflicts + v.holes > 1 ? 's' : ''}.
+          </span>
           {v.conflicts > 0 && (
-            <span className="font-medium text-rose-700">
+            <span className="text-xs font-medium text-rose-700">
               ⚠ {v.conflicts} conflit{v.conflicts > 1 ? 's' : ''} à traiter
             </span>
           )}
           {v.holes > 0 && (
-            <span className="font-medium text-rose-700">
+            <span className="text-xs font-medium text-rose-700">
               ⚠ {v.holes} jour{v.holes > 1 ? 's' : ''} sans personne
             </span>
           )}
           {v.closedDays > 0 && (
-            <span className="text-sky-800 dark:text-sky-300">
-              {v.closedDays} fermeture{v.closedDays > 1 ? 's' : ''} prévue{v.closedDays > 1 ? 's' : ''}
+            <span className="text-xs text-sky-800 dark:text-sky-300">
+              {v.closedDays} fermeture{v.closedDays > 1 ? 's' : ''}
             </span>
           )}
           {v.exceptions > 0 && (
-            <span className="text-violet-700 dark:text-violet-300">
+            <span className="text-xs text-violet-700 dark:text-violet-300">
               {v.exceptions} exception{v.exceptions > 1 ? 's' : ''}
             </span>
           )}
-          {v.conflicts === 0 && v.holes === 0 && (
-            <span className="text-muted-foreground">Le reste du mois suit ses roulements.</span>
-          )}
         </p>
-      </section>
+      )}
 
       {/* ── LA GRILLE ────────────────────────────────────────────────────
           Chantier : la grille UNIQUE (PlanningGrid), le MÊME tiroir. Équipe :

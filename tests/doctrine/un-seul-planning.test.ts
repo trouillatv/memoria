@@ -56,6 +56,16 @@ describe('Le chargeur de données', () => {
     // Le jour où un `listInterventionsForMonth` apparaît, la divergence commence.
     expect(LOADER).not.toContain('listInterventionsForMonth')
   })
+
+  it('montre les ponctuelles — de VRAIS événements, pas des traces système', () => {
+    // Bug vécu (Vincent, 2026-07-15) : « on ne voit pas le Discount le 13 ».
+    // La mission « Interventions ponctuelles » est un conteneur technique
+    // invisible comme CONCEPT — mais ses interventions apparaissent partout
+    // (doctrine mig 189). Le filtre système doit donc l'épargner, et
+    // l'affichage passe par le label de l'intervention.
+    expect(LOADER).toContain('PONCTUEL_MISSION_NAME')
+    expect(LOADER).toMatch(/label\?\.trim\(\)\s*\|\|\s*mission\.name/)
+  })
 })
 
 describe("L'écran de la semaine", () => {
