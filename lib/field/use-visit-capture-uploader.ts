@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { drainVisitCaptureAction, drainLightCaptureAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
+import {
+  drainVisitCaptureAction,
+  drainLightCaptureAction,
+  createVisitVideoUploadAction,
+  registerVisitVideoAction,
+} from '@/app/(field)/m/site/[siteId]/capture-actions'
+import { createClient } from '@/lib/supabase/client'
 import {
   isReadyForRetry,
   listQueuedVisitCaptures,
@@ -14,6 +20,47 @@ import {
   type QueuedVisitKind,
 } from '@/lib/field/visit-capture-queue'
 import { reportUploadStart, reportUploadEnd, reportUploadSuccess } from '@/lib/field/sync-status'
+
+type DrainResult =
+  | { ok: true; captureId: string; kind: 'video' }
+  | { ok: false; error: string; drop?: boolean }
+
+/**
+ * Drain d'une VIDÉO : upload DIRECT navigateur → Supabase (URL signée), qui
+ * contourne la limite du corps des fonctions Vercel (une vidéo POSTée à un
+ * Server Action est rejetée en 413 dès ~4,5 Mo). Le blob est déjà en sécurité
+ * dans IndexedDB : ici on ne fait que le monter, avec reprise au prochain passage
+ * du drain si le réseau lâche. Idempotent par client_uuid (mig 177) : un re-drain
+ * après succès partiel ne duplique jamais la capture.
+ */
+async function drainVideoDirect(item: QueuedVisitCapture): Promise<DrainResult> {
+  const prep = await createVisitVideoUploadAction({
+    report_id: item.reportId,
+    client_uuid: item.clientUuid,
+  })
+  if (!prep.ok) return { ok: false, error: prep.error }
+  // Capture déjà créée (re-drain après une réponse perdue) : rien à renvoyer.
+  if (prep.alreadyDone) return { ok: true, captureId: prep.captureId ?? '', kind: 'video' }
+
+  const mime = item.mimeType || 'video/mp4'
+  const file = new File([item.blob as Blob], item.filename ?? `video-${item.clientUuid}.mp4`, { type: mime })
+  const { error: upErr } = await createClient()
+    .storage.from('site-reports')
+    .uploadToSignedUrl(prep.storagePath, prep.token, file, { contentType: mime })
+  if (upErr) return { ok: false, error: upErr.message }
+
+  const reg = await registerVisitVideoAction({
+    report_id: item.reportId,
+    site_id: item.siteId,
+    client_uuid: item.clientUuid,
+    storage_path: prep.storagePath,
+    mime,
+    size_bytes: item.blob?.size,
+    lat: item.lat ?? undefined,
+    lng: item.lng ?? undefined,
+  })
+  return reg.ok ? { ok: true, captureId: reg.captureId, kind: 'video' } : { ok: false, error: reg.error }
+}
 
 // Libellés lisibles pour la file de sync vivante (« Vocal — Cuisine Petratiti »).
 const KIND_LABELS: Record<QueuedVisitKind, string> = {
@@ -66,9 +113,6 @@ export function useVisitCaptureUploader(opts?: {
       let success = 0
       // Envoi séquentiel (1 à la fois) — on ne sature pas un réseau terrain faible.
       for (const item of all) {
-        // La vidéo ne passe PLUS par la file (upload direct, trop lourde pour
-        // IndexedDB + Server Action). On purge les entrées vidéo legacy coincées.
-        if (item.kind === 'video') { await removeQueuedVisitCapture(item.tempId); continue }
         if (!isReadyForRetry(item)) continue
         setUploadingUuid(item.clientUuid)
         reportUploadStart(item.tempId)
@@ -87,8 +131,14 @@ export function useVisitCaptureUploader(opts?: {
               lat: item.lat ?? undefined,
               lng: item.lng ?? undefined,
             })
+          } else if (item.kind === 'video') {
+            // Vidéo : entry sans blob = corrompue (ne se réparera jamais) → on la lâche.
+            if (!item.blob || !item.filename) { await removeQueuedVisitCapture(item.tempId); continue }
+            // Upload DIRECT (URL signée) — hors Vercel. Le blob durable reste dans
+            // IndexedDB tant que le serveur n'a pas confirmé : réseau coupé = retry.
+            r = await drainVideoDirect(item)
           } else {
-            // Média : entry sans blob = corrompue (ne se réparera jamais) → on la lâche.
+            // Photo : entry sans blob = corrompue (ne se réparera jamais) → on la lâche.
             if (!item.blob || !item.filename) { await removeQueuedVisitCapture(item.tempId); continue }
             const fd = new FormData()
             fd.set('report_id', item.reportId)
