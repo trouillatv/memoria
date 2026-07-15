@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import { createSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned, type SiteActionOrigin } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -373,7 +373,6 @@ export async function cancelActionAction(
 }
 
 const TitleSchema = z.string().trim().min(1, 'Titre requis').max(200)
-const VALID_SOURCES = ['mobile_site', 'desktop_site', 'actions_list'] as const
 
 /**
  * Création STANDALONE d'une action (capture terrain), SANS compte-rendu ni
@@ -410,9 +409,11 @@ export async function createQuickActionAction(
   }
 
   const rawFrom = formData.get('created_from')
-  const createdFrom = typeof rawFrom === 'string' && (VALID_SOURCES as readonly string[]).includes(rawFrom)
-    ? rawFrom
-    : null
+  const createdFrom: SiteActionOrigin =
+    rawFrom === 'mobile_site' ? 'mobile_site_report'
+      : rawFrom === 'desktop_site' ? 'desktop_site'
+      : rawFrom === 'actions_list' ? 'actions_list'
+      : 'actions_list'
 
   // Garde-fou : le site doit exister et appartenir à l'organisation de l'utilisateur.
   const supabase = createAdminClient()

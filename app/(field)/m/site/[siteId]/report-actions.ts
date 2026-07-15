@@ -54,12 +54,12 @@ import type {
   AnomalyCategory,
   DbSiteReportProposal,
   MissionCadence,
-  SiteReportProposalType,
 } from '@/types/db'
 
 const BUCKET = 'site-reports'
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024 // 25 MB — couvre l'import d'un audio de réunion (~25 min)
 const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB (PDF, image, plan…)
+const MAX_MANUAL_TEXT_CHARS = 50000 // couvre un transcript manuel long (~45 min) avec marge
 
 /** Tronque proprement à 140 (limite stricte de createSiteNote). */
 function clip140(s: string): string {
@@ -102,7 +102,7 @@ const draftSchema = z.object({
   site_id: z.string().uuid().optional(),
   contract_id: z.string().uuid().optional(),
   title: z.string().max(200).optional(),
-  text_input: z.string().max(5000).optional(),
+  text_input: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
   audio_mime: z.string().max(80).optional(),
   audio_duration_seconds: z.coerce.number().int().min(0).max(600).optional(),
 })
@@ -242,7 +242,7 @@ export async function startMeetingAction(
 // texte, désormais) — même garantie qu'avant : le texte part en premier.
 const textPatchSchema = z.object({
   report_id: z.string().uuid(),
-  text_input: z.string().max(5000).optional(),
+  text_input: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
 })
 
 export async function setReportTextInputAction(
@@ -550,8 +550,8 @@ export async function transcribeReportAction(
 
 const analyzeSchema = z.object({
   report_id: z.string().uuid(),
-  transcript_corrected: z.string().max(12000).optional(),
-  text_input: z.string().max(5000).optional(),
+  transcript_corrected: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
+  text_input: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
 })
 
 export async function listSiteMissionsForReportAction(
@@ -897,6 +897,7 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
                 corps_etat: p.corps_etat,
                 assigned_to: p.assigned_to,
                 created_by: auth.userId,
+                created_from: 'mobile_site_report',
               })
               await markProposalCreated(p.id, 'site_action', actionId)
             } else {
@@ -938,6 +939,7 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
             assigned_to: p.assigned_to,
             due_date: scheduledFor,
             created_by: auth.userId,
+            created_from: 'mobile_site_report',
           })
           if (outcome === 'intervention') {
             const missionId = await resolveMission(p, siteId, auth.userId)

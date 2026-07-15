@@ -31,7 +31,7 @@ export async function createSiteAction(input: {
   subject_id?: string | null
   created_by: string | null
   /** Provenance (migration 112) : mobile_site / desktop_site / actions_list / report. */
-  created_from?: string | null
+  created_from: SiteActionOrigin
   /** Type (migration 149) : one_shot (défaut) | deadline | recurring_until_done. */
   kind?: 'one_shot' | 'deadline' | 'recurring_until_done'
   /** Capture d'origine (mig 183) — traçabilité « d'où vient cette action ? ». */
@@ -52,7 +52,7 @@ export async function createSiteAction(input: {
       reserve_id: input.reserve_id ?? null,
       subject_id: input.subject_id ?? null,
       created_by: input.created_by,
-      created_from: input.created_from ?? null,
+      created_from: input.created_from,
       kind: input.kind ?? 'one_shot',
       source_capture_id: input.source_capture_id ?? null,
       status: 'open' as SiteActionStatus,
@@ -394,3 +394,13 @@ export async function markSiteActionPlanned(
     .eq('id', id)
   if (error) throw error
 }
+
+export type SiteActionOrigin =
+  | 'report'
+  | 'desktop_report'
+  | 'desktop_site'
+  | 'visit_debrief'
+  | 'visit_watchlist'
+  | 'reserve'
+  | 'actions_list'
+  | 'mobile_site_report'

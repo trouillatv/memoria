@@ -15,6 +15,8 @@
 // Doctrine : rien n'est perdu — le texte saisi part en premier ; si la
 // transcription ou l'IA échoue, l'artefact reste.
 
+const MAX_MANUAL_TEXT_CHARS = 50000
+
 import { useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -730,8 +732,12 @@ export function SiteReportPanel({
             onChange={(e) => setText(e.target.value)}
             rows={3}
             placeholder="…ou saisir / corriger au clavier"
+            maxLength={MAX_MANUAL_TEXT_CHARS}
             className="w-full rounded-lg border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
           />
+          <p className="text-[11px] text-muted-foreground">
+            Jusqu’à 50 000 caractères pour la saisie manuelle. Au-delà, il faut couper le transcript en plusieurs messages ou le joindre en audio.
+          </p>
 
           {/* Photos + fichiers */}
           <div className="flex items-center gap-2">
