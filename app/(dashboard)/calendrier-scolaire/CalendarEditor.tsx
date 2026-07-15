@@ -36,6 +36,8 @@ export function CalendarEditor({
   const [startsOn, setStartsOn] = useState('')
   const [endsOn, setEndsOn] = useState('')
   const [open, setOpen] = useState(false)
+  // Retirer une période EFFACE les fermetures dérivées : on confirme avant.
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   function reset() {
     setEditing(null)
@@ -103,6 +105,7 @@ export function CalendarEditor({
 
   function remove(p: CalendarPeriod) {
     if (pending) return
+    setConfirmDelete(null)
     start(async () => {
       const r = await removePeriodAction(p.id)
       if ('error' in r) {
@@ -130,26 +133,60 @@ export function CalendarEditor({
                     {periodRangeFr(p)} · {n} jour{n > 1 ? 's' : ''}
                   </span>
                 </span>
-                <span className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => edit(p)}
-                    disabled={pending}
-                    aria-label={`Modifier ${p.label}`}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(p)}
-                    disabled={pending}
-                    aria-label={`Retirer ${p.label}`}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-rose-700"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
+                {confirmDelete === p.id ? (
+                  // Confirmation LÉGÈRE avant une action à conséquences : retirer
+                  // une période efface les fermetures qui en découlent.
+                  <span className="flex shrink-0 items-center gap-2 text-xs">
+                    <span className="text-rose-700">
+                      Retirer&#8239;?
+                      {followingCount > 0 && (
+                        <span className="text-muted-foreground">
+                          {' '}{followingCount} chantier{followingCount > 1 ? 's' : ''} suivront
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => remove(p)}
+                      disabled={pending}
+                      className="rounded-md bg-rose-600 px-2 py-1 font-medium text-white hover:bg-rose-700"
+                    >
+                      Retirer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(null)}
+                      disabled={pending}
+                      className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted"
+                    >
+                      Annuler
+                    </button>
+                  </span>
+                ) : (
+                  // Actions TOUJOURS visibles au doigt (< md) ; révélées au survol
+                  // sur desktop seulement. Avant, opacity-0 group-hover les rendait
+                  // inexistantes sur téléphone — l'appareil du terrain.
+                  <span className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => edit(p)}
+                      disabled={pending}
+                      aria-label={`Modifier ${p.label}`}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(p.id)}
+                      disabled={pending}
+                      aria-label={`Retirer ${p.label}`}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-rose-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                )}
               </li>
             )
           })}

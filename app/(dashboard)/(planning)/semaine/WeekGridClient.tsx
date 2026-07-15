@@ -230,6 +230,28 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
             ? `Rattrapée → ${dateText}`
             : `Replanifiée → ${dateText}`
 
+          // ANNULER — un drop raté au doigt se pardonne : on renvoie
+          // l'intervention à sa date d'origine (connue avant le déplacement).
+          const originalDate = info.scheduledFor
+          const undo = {
+            label: 'Annuler',
+            onClick: () => {
+              startTransition(async () => {
+                const back = await moveInterventionToDayAction({
+                  interventionId,
+                  newScheduledFor: originalDate,
+                  ...(info.slot ? { newSlot: info.slot } : {}),
+                })
+                if (back.ok) {
+                  toast.success('Déplacement annulé')
+                  router.refresh()
+                } else {
+                  toast.error(back.error ?? "Impossible d'annuler le déplacement")
+                }
+              })
+            },
+          }
+
           // On peut déposer sur un jour FERMÉ — et c'est volontaire : le chantier
           // décide, pas l'outil. Mais jusqu'ici on ne le disait pas : le geste
           // réussissait en silence et le conflit n'apparaissait qu'au rendu
@@ -242,6 +264,7 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
             toast.warning(`${title} — un jour fermé`, {
               description: `Ce chantier est fermé ce jour-là${because}. L'intervention est bien déplacée : à vous de décider de la maintenir ou de la replanifier.`,
               duration: 8000,
+              action: undo,
             })
           } else {
             toast.success(title, {
@@ -249,6 +272,7 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
                 ? 'Intervention ratée remise en planifié. Cette intervention uniquement.'
                 : 'Cette intervention uniquement.',
               duration: result.rescheduled ? 5000 : 3000,
+              action: undo,
             })
           }
           router.refresh()
