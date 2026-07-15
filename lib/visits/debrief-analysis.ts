@@ -95,10 +95,17 @@ function buildDebriefInput(
   }
 }
 
+// Version de FORME de l'analyse stockée. À incrémenter dès que la structure de
+// StoredDebriefAnalysis change : le hash change alors pour TOUTES les visites, donc
+// les anciens caches (forme périmée) sont régénérés au lieu d'être relus tels quels
+// — sinon une projection attendant la nouvelle forme planterait (ex. a_savoir absent).
+const ANALYSIS_SCHEMA_VERSION = 'v2-cards'
+
 /** Empreinte de la MATIÈRE PROPRE À LA VISITE, en ordre stable (voir en-tête sur
- *  l'exclusion du contexte site volatile). */
+ *  l'exclusion du contexte site volatile). Inclut la version de forme. */
 export function computeCorpusHash(input: VisitDebriefInput): string {
   const corpus = JSON.stringify({
+    v: ANALYSIS_SCHEMA_VERSION,
     objectiveHint: input.objectiveHint ?? '',
     transcript: input.transcript ?? '',
     capturedText: input.capturedText ?? '',
