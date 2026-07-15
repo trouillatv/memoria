@@ -493,21 +493,6 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
           <Text style={styles.paragraph}><Text style={styles.metaStrong}>Suivi : </Text>{doc.resolutionLabel ?? 'non précisé'}</Text>
         </View>
 
-        {/* Annexe — la TRANSCRIPTION INTÉGRALE (matière première). Reléguée en
-            fin, sur sa propre page : ce n'est plus le corps du compte-rendu,
-            seulement la source qui l'a nourri. */}
-        {doc.transcriptions.length > 0 && (
-          <View style={styles.section} break>
-            <SectionTitle text="Annexe — Transcription intégrale" color={COLORS.faint} />
-            {doc.transcriptions.map((line, i) => (
-              <View key={i} style={styles.rawRow} wrap={false}>
-                <Text style={styles.bulletDot}>•</Text>
-                <Text style={styles.rawText}>{line}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
         <View style={styles.footer} fixed>
           <Text>Compte-rendu généré par MemorIA · {exportDate}</Text>
           <Text render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} />

@@ -186,8 +186,6 @@ export function MemoriaRetained({
         </Block>
       )}
 
-      <TranscriptFold transcriptions={transcriptions} />
-
       {/* Discret : quand l'analyse a été faite, et la régénérer (jamais auto). */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-emerald-200/60 pt-2 text-[11px] text-muted-foreground dark:border-emerald-900/40">
         <span>{generatedLabel ? `Analyse générée le ${generatedLabel}` : 'Analyse générée'}</span>

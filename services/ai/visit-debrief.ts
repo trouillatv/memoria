@@ -42,12 +42,12 @@ const optStr = z.preprocess((v) => (v == null ? '' : v), z.string())
 export const visitDebriefSchema = z.object({
   // Niveau 1 — « ce qui mérite ton attention » : 3 à 5 max. C'est un FILTRE.
   attention: z.array(z.string()).max(8).default([]),
-  objective: z.string().default(''),
-  objective_rationale: z.string().default(''), // POURQUOI : reformule ce que dit le débrief
+  objective: optStr,
+  objective_rationale: optStr, // POURQUOI : reformule ce que dit le débrief
   objective_confidence: z.enum(CONFIDENCE).nullable().default(null),
-  subject_match_index: z.number().int().default(-1), // index dans openSubjects, -1 = nouveau/aucun
-  subject_name: z.string().default(''),
-  subject_rationale: z.string().default(''),
+  subject_match_index: z.preprocess((v) => (v == null ? -1 : v), z.number().int()).default(-1), // -1 = nouveau/aucun
+  subject_name: optStr,
+  subject_rationale: optStr,
   subject_confidence: z.enum(CONFIDENCE).nullable().default(null),
   outcome: z.enum(OUTCOMES).nullable().default(null),
   resolution: z.enum(RESOLUTIONS).nullable().default(null),
@@ -87,36 +87,41 @@ export type VisitDebriefParsed = z.infer<typeof visitDebriefSchema>
 
 // ── Agent 1 — Compréhension (narratif, joue le conducteur) ────────────────────
 
-const UNDERSTANDING_SYSTEM = `Tu es le CONDUCTEUR DE TRAVAUX qui rentre du chantier. Tu disposes de ce que tu
-as capturé pendant ta visite (vocal, notes, photos, réserves, actions) et du
-contexte mémoire du site (sujets connus, signaux : réserves ouvertes, retards,
-obligations).
+const UNDERSTANDING_SYSTEM = `Tu rédiges le RÉSUMÉ OPÉRATIONNEL d'une visite de chantier, à partir UNIQUEMENT
+des éléments fournis (vocal, notes, photos, réserves, actions capturées) et du
+contexte mémoire du site.
 
-Tu disposes AUSSI d'une SYNTHÈSE du chantier (réunions/visites récentes, actions et
-réserves ouvertes en chiffres, décisions, obligations) et de la liste des SUJETS
-ouverts avec leur ancienneté et leur activité. IDENTIFIE toi-même le sujet que
-cette visite concerne PAR LE SENS, même si son nom exact n'est pas prononcé (ex.
-« la porte coupe-feu du bloc C n'est pas posée » → sujet « Sécurité incendie ») ;
-ou conclus « aucun » / « nouveau sujet ». Ton débrief ne doit donc PAS seulement
-dire « ce que j'ai compris de la visite », mais « ce que cette visite CHANGE dans
-l'histoire du chantier ». Demande-toi explicitement :
-- Cette visite CONFIRME-t-elle quelque chose de déjà connu (une tendance, une crainte) ?
-- Est-ce un NOUVEAU sujet, ou un sujet qui TRAÎNE (repoussé plusieurs fois) ?
-- Qu'est-ce qui a CHANGÉ depuis la dernière fois ?
+Ce résumé est lu par quelqu'un qui n'était PAS présent (chef de projet, bureau).
+Il doit se lire en MOINS DE 20 SECONDES et donner ce qui est RESSORTI de la visite.
 
-Fais le DÉBRIEF que tu présenterais à ton directeur en 2 minutes, à voix haute,
-en français : pourquoi tu es allé là-bas, ce que tu as constaté, ce que ça change
-dans l'histoire du chantier, ce qui reste ouvert, ce qui t'inquiète, et ce qu'il
-faut faire ensuite. Commence par ce qui MÉRITE l'attention en priorité.
-
-Règles :
-- Appuie-toi UNIQUEMENT sur les éléments fournis — n'invente aucun fait précis
-  (chiffre, date, nom) absent. Tu peux relier la visite à l'historique fourni.
-- Quand un indice est mince, dis-le franchement (« je ne suis pas sûr, une seule
-  mention »). La franchise vaut mieux que l'assurance.
-- Sois concret et sobre, pas de remplissage.
+RÈGLES ABSOLUES :
+- 5 à 8 phrases maximum, en français, en prose (pas de liste, pas de titre).
+- Écris ce qui EST RESSORTI de la visite, JAMAIS comment elle s'est déroulée.
+- N'écris JAMAIS « je reviens de ma visite », « l'objectif était… », « j'ai pris
+  des photos / des mémos », « c'est une première visite », « il faudra analyser
+  les photos… » : celui qui lit vient de faire la visite ou connaît le contexte, il
+  le sait déjà. Ne mentionne les photos/mémos/le fait que c'est une première visite
+  QUE si cela porte une vraie information métier.
+- Le CŒUR du résumé, ce sont les FAITS CONCRETS dits dans le vocal et les notes :
+  qui doit contacter qui, quels contrôles, quelles échéances, quels documents, quel
+  intervenant, quel délai. CITE-LES précisément (noms, délais, tâches). NE te
+  réfugie PAS dans des généralités du type « la visite a permis de constater l'état
+  du site », « les photos documentent les conditions initiales », « ces éléments
+  serviront de référence » : c'est du vide, l'utilisateur n'en fait rien.
+- N'invente AUCUN fait précis (chiffre, date, nom) absent des éléments fournis, mais
+  REPRENDS tous ceux qui y sont.
 - JAMAIS de jugement sur une personne : tu parles de l'ouvrage, des sujets, des
-  obligations, jamais de la valeur des gens.`
+  obligations, jamais de la valeur des gens.
+
+Tu peux relier la visite à l'historique du site fourni, mais SANS méta-récit : donne
+le fait, jamais la façon dont tu l'as trouvé.
+
+Exemple de BON résumé (STYLE et niveau de concret attendus — les faits ci-dessous
+sont fictifs, n'utilise QUE ceux de TA visite) : « La chape du hall n'est pas sèche,
+le carreleur ne peut pas intervenir avant lundi. Le lot plomberie a pris trois jours
+de retard ; le maître d'œuvre doit être prévenu. Les luminaires livrés ne sont pas
+conformes au CCTP, un avoir est à demander au fournisseur. » — des faits, des noms,
+des délais, des suites. AUCUN méta (« la visite a permis de… », « les photos… »).`
 
 // ── Agent 2 — Extraction (structure stable à partir du débrief) ───────────────
 
@@ -249,7 +254,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
   const narrative = await withAITracking('visit_debrief_understand', input.userId, async () => {
     const userMessage = provider.name === 'mock'
       ? `__MOCK_FIXTURE__:${JSON.stringify(mockNarrative(input))}`
-      : `${buildContextBlock(input)}\n\nFais ton débrief (2 minutes max, à voix haute).`
+      : `${buildContextBlock(input)}\n\nRédige le résumé opérationnel (5 à 8 phrases, lisible en moins de 20 s).`
     const out = await provider.complete({
       systemPrompt: UNDERSTANDING_SYSTEM,
       userMessage,

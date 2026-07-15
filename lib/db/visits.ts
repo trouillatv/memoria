@@ -1728,17 +1728,35 @@ export async function gatherVisitDebriefContext(reportId: string): Promise<Visit
   const from = visit.started_at ?? visit.created_at
   const to = visit.ended_at ?? new Date().toISOString()
 
-  const [attachmentsRes, notesRes, actionsRes, reservesRes, subjectsRes, signals] = await Promise.all([
+  const [attachmentsRes, notesRes, actionsRes, reservesRes, subjectsRes, capturesRes, signals] = await Promise.all([
     supabase.from('site_report_attachments').select('filename, kind').eq('report_id', reportId),
     supabase.from('site_notes').select('body, created_at').eq('site_id', siteId).is('deleted_at', null).gte('created_at', from).lte('created_at', to).order('created_at', { ascending: true }),
     supabase.from('site_actions').select('title, corps_etat, created_at').eq('site_id', siteId).gte('created_at', from).lte('created_at', to).order('created_at', { ascending: true }),
     supabase.from('site_reserve').select('label, location, created_at').eq('site_id', siteId).gte('created_at', from).lte('created_at', to).order('created_at', { ascending: true }),
     supabase.from('subjects').select('id, name').eq('site_id', siteId).neq('status', 'closed').limit(40),
+    // Les CAPTURES de la visite (vocaux transcrits, notes, commentaires photo/vidéo).
+    // ⚠️ Sans ça, le débrief IA n'avait AUCUNE matière : les transcriptions des
+    // mémos vivent dans visit_capture.body, pas dans visit.transcript_raw — l'agent
+    // ne voyait que l'objectif + des compteurs, d'où des résumés génériques.
+    supabase.from('visit_capture').select('kind, body, created_at').eq('report_id', reportId).neq('status', 'discarded').order('created_at', { ascending: true }),
     buildSiteMemorySignals(siteId),
   ])
 
-  const transcript = visit.transcript_corrected ?? visit.transcript_raw
-  const capturedNotes = ((notesRes.data ?? []) as Array<{ body: string }>).map((n) => n.body)
+  const caps = ((capturesRes.data ?? []) as Array<{ kind: string; body: string | null }>)
+  const vocalBodies = caps.filter((c) => c.kind === 'vocal' && c.body?.trim()).map((c) => c.body!.trim())
+  const captureNotes = caps
+    .filter((c) => (c.kind === 'note' || c.kind === 'photo' || c.kind === 'video') && c.body?.trim())
+    .map((c) => c.body!.trim())
+
+  // Le transcript de l'agent = le transcript de rapport (le cas échéant) + TOUS les
+  // mémos vocaux transcrits de la visite.
+  const transcript = [visit.transcript_corrected ?? visit.transcript_raw, ...vocalBodies]
+    .filter((t): t is string => !!t && t.trim().length > 0)
+    .join('\n\n') || null
+  const capturedNotes = [
+    ...((notesRes.data ?? []) as Array<{ body: string }>).map((n) => n.body),
+    ...captureNotes,
+  ]
   const openSubjects = ((subjectsRes.data ?? []) as Array<{ id: string; name: string }>).map((s) => ({ id: s.id, name: s.name }))
 
   // V2.1 — contexte métier condensé du chantier courant.
