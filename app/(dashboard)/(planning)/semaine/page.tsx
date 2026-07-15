@@ -120,7 +120,7 @@ function todayUtcIso(): string {
 }
 
 interface PageProps {
-  searchParams: Promise<{ week?: string; view?: string; debug?: string; site?: string; cell?: string }>
+  searchParams: Promise<{ week?: string; view?: string; debug?: string; site?: string; cell?: string; date?: string }>
 }
 
 function totalSite(rows: SiteRow[]): number {
@@ -489,7 +489,15 @@ export default async function SemainePage({ searchParams }: PageProps) {
             sites={siteOptions}
             teams={teamOptions}
             rotations={rotationOptions}
-            defaultDate={range.weekStart > todayIso ? range.weekStart : todayIso}
+            defaultDate={
+              // « Planifier ici » (A2 ⑥) prérempli la date exacte du trou via
+              // ?date= ; jamais dans le passé. Sinon, le lundi de la semaine vue.
+              params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) && params.date >= todayIso
+                ? params.date
+                : range.weekStart > todayIso
+                  ? range.weekStart
+                  : todayIso
+            }
             initialSiteId={initialSiteId}
           />
           <Link
