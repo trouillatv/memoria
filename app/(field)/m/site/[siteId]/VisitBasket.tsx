@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, ChevronDown, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin, Eye, ListChecks, Plus,
+  Camera, Video, Mic, Pencil, Target, MapPin, Square, Radio, X, Trash2, Loader2, Check, ChevronLeft, ChevronRight, ChevronDown, Star, HelpCircle, CloudUpload, AlertCircle, Play, ImagePlus, Pin, Eye, ListChecks, Plus, Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { endVisitAction } from './visit-actions'
@@ -33,6 +33,23 @@ import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 // signée) par le drain, bornée par la limite du bucket (mig 181). Au-delà :
 // message clair plutôt qu'un échec silencieux.
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+
+// « Enregistrer sur le téléphone » — une copie PERSONNELLE, en plus de la preuve
+// déjà en sécurité dans la visite. Pas de double-écriture automatique (une PWA
+// n'a pas accès à la galerie Android) : un téléchargement EXPLICITE. On ajoute
+// `&download=` à l'URL signée → Supabase répond en `Content-Disposition:
+// attachment`, donc le navigateur enregistre au lieu de naviguer, sans quitter
+// l'app. Va dans les Téléchargements du téléphone.
+function downloadCaptureToPhone(url: string, filename: string) {
+  const sep = url.includes('?') ? '&' : '?'
+  const a = document.createElement('a')
+  a.href = `${url}${sep}download=${encodeURIComponent(filename)}`
+  a.download = filename
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
 // Préférence géoloc mémorisée sur l'appareil : 'always' = ne plus demander.
 const GEO_PREF_KEY = 'memoria.geoloc.captures'
 import type { VisitCaptureRow, VisitCaptureKind } from '@/lib/db/visit-captures'
@@ -1133,7 +1150,16 @@ export function VisitBasket({
               >
                 <Pencil className="h-4 w-4" /> Annoter
               </button>
-            ) : <span />}
+            ) : (
+              // Copie personnelle facultative : la preuve, elle, est déjà dans la visite.
+              <button
+                type="button"
+                onClick={() => downloadCaptureToPhone(previews[lightbox.id]!.url, `MemorIA-video-${lightbox.id.slice(0, 8)}.mp4`)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white"
+              >
+                <Download className="h-4 w-4" /> Enregistrer sur le téléphone
+              </button>
+            )}
             <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="rounded-full bg-white/10 p-2 text-white">
               <X className="h-5 w-5" />
             </button>
