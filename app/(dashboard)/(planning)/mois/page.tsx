@@ -47,10 +47,8 @@ import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
 import { listTeams } from '@/lib/db/teams'
 import { parseViewMode } from '../semaine/view-mode-storage'
 import { MonthViewModeToggle } from './MonthViewModeToggle'
-import { MonthProjectionSheet } from './MonthProjectionSheet'
 import { PlanningGrid } from '../semaine/WeekGrid'
 import { WeekGridClient } from '../semaine/WeekGridClient'
-import { PlanningScales } from '@/components/planning/PlanningScales'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -246,8 +244,6 @@ export default async function MoisPage({
 
   return (
     <div className="w-full max-w-6xl space-y-5">
-      <PlanningScales active="mois" />
-
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
@@ -467,17 +463,17 @@ export default async function MoisPage({
           exceptionsById={exceptionsById}
           initialCellKey={sp.cell ?? null}
         >
-          <MonthProjectionSheet>
-            <PlanningGrid
-              scale="month"
-              range={range}
-              rows={siteRows}
-              monthRows={rows}
-              todayIso={todayIso}
-              conflictsBySite={conflictsBySite}
-              closuresBySite={closuresBySite}
-            />
-          </MonthProjectionSheet>
+          {/* Un seul tiroir (CellDrawer) : jour réel → intervention, jour projeté
+              → « Planning prévu ». Plus de panneau propre au mois. */}
+          <PlanningGrid
+            scale="month"
+            range={range}
+            rows={siteRows}
+            monthRows={rows}
+            todayIso={todayIso}
+            conflictsBySite={conflictsBySite}
+            closuresBySite={closuresBySite}
+          />
         </WeekGridClient>
       )}
 

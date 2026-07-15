@@ -98,6 +98,12 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
         Object.fromEntries(days.map((d) => [d, monthRows!.map((r) => r.days[d])])),
       )
     : {}
+  // Un « 0 » n'est un TROU que si un roulement ATTENDAIT de la couverture ce
+  // jour-là (dayState 'hole'). Un jour sans planning attendu — week-end, rien de
+  // prévu — reste NEUTRE : un calendrier vide n'est pas un problème (Vincent, R3).
+  const holeDays = isMonth
+    ? new Set(days.filter((d) => monthRows!.some((r) => dayState(r.days[d]) === 'hole')))
+    : new Set<string>()
 
   return (
     <div
@@ -196,7 +202,8 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
                     className={cn(
                       'border-l border-border/40 py-1.5 text-center text-[11px] font-semibold tabular-nums',
                       isWeekend(d) && 'bg-muted/30',
-                      n === 0 && 'bg-rose-50 text-rose-700 dark:bg-rose-950/20',
+                      // Rouge SEULEMENT si ce 0 est un vrai trou (roulement attendu).
+                      n === 0 && holeDays.has(d) && 'bg-rose-50 text-rose-700 dark:bg-rose-950/20',
                     )}
                   >
                     {n}

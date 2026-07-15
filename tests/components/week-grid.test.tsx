@@ -561,4 +561,30 @@ describe('PlanningGrid — échelle mois', () => {
     expect(within(grid).getByText(/couverture prévue/i)).toBeInTheDocument()
     expect(within(grid).queryByText(/^présents$/i)).toBeNull()
   })
+
+  // R3 — un « 0 » rouge ne signale QU'UN VRAI trou (roulement attendu, personne).
+  // Un jour vide sans planning attendu reste NEUTRE : un calendrier vide n'est pas
+  // un problème. C'est une correction de SENS, pas seulement de couleur.
+  it('ne met en rouge que les vrais trous de couverture, pas chaque jour vide', () => {
+    const rowsHoleVsEmpty: MonthRow[] = [
+      {
+        siteId: 'site-h',
+        siteName: 'Discount',
+        clientName: 'Pointière',
+        days: {
+          '2026-05-01': makeDayFacts({ cycleCovers: true }), // TROU : roulement attendait, 0 personne
+          '2026-05-02': makeDayFacts(), // vide neutre : rien n'était attendu
+          '2026-05-03': makeDayFacts({ expected: 1 }), // couvert
+        },
+      },
+    ]
+    render(
+      <PlanningGrid scale="month" range={MONTH_RANGE} rows={[]} monthRows={rowsHoleVsEmpty} todayIso="2026-05-01" />,
+    )
+    const foot = screen.getByTestId('week-grid').querySelector('tfoot')!
+    const tds = foot.querySelectorAll('td')
+    // td[0] = 1er mai (trou) → rouge ; td[1] = 2 mai (vide neutre) → PAS rouge.
+    expect(tds[0].className).toMatch(/rose/)
+    expect(tds[1].className).not.toMatch(/rose/)
+  })
 })
