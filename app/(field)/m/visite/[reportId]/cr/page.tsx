@@ -1,15 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, ListChecks, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
+  ArrowLeft, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
   ChevronRight, Star, Monitor, Check, MapPin, Download, CheckCircle2, ArrowRight, Home, Pencil,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVisit, buildVisitCrDoc, type VisitCrDoc } from '@/lib/db/visits'
+import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { listDecisionsByReport } from '@/lib/db/site-decisions'
 import { CaptureMap } from '@/components/CaptureMap'
 import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
+import { MemoriaRetained } from './MemoriaRetained'
 import { VisitShareButton } from '../VisitShareButton'
 
 export const dynamic = 'force-dynamic'
@@ -21,17 +22,6 @@ export const dynamic = 'force-dynamic'
  * demain matin, qu'est-ce qu'il va lire ? ». Le PDF complet reste à un clic.
  * Règle : jamais une section vide — la page se recompose autour du réel.
  */
-
-// Résumé toujours présent : repli déterministe si l'IA n'a rien produit.
-function fallbackSummary(doc: VisitCrDoc): string {
-  if (doc.objective) return doc.objective
-  const parts: string[] = []
-  if (doc.constats.length) parts.push(`${doc.constats.length} observation${doc.constats.length > 1 ? 's' : ''}`)
-  if (doc.reserves.length) parts.push(`${doc.reserves.length} réserve${doc.reserves.length > 1 ? 's' : ''}`)
-  if (doc.actions.length) parts.push(`${doc.actions.length} action${doc.actions.length > 1 ? 's' : ''}`)
-  if (doc.photoCount) parts.push(`${doc.photoCount} photo${doc.photoCount > 1 ? 's' : ''}`)
-  return parts.length ? `Visite documentée : ${parts.join(', ')}.` : 'Visite enregistrée. Aucun élément particulier relevé.'
-}
 
 export default async function VisitCrPreviewPage({
   params,
@@ -64,7 +54,6 @@ export default async function VisitCrPreviewPage({
   const pdfDownloadHref = `${pdfHref}?download=1`
   const isAo = doc.motive === 'previsite_ao'
   const isPremiere = visit.visit_motive === 'premiere'
-  const summary = doc.summary?.trim() || fallbackSummary(doc)
 
   // Prochaine étape après clôture : pour une VRAIE prévisite AO (dossier en phase
   // prospect/en_ao) la suite se joue sur ordinateur → « Retour au dossier AO ».
@@ -139,10 +128,12 @@ export default async function VisitCrPreviewPage({
         </p>
       </div>
 
-      {/* Résumé — 3 à 6 lignes, puis le CR complet à un clic. */}
-      <Section Icon={ListChecks} cls="text-emerald-600" ring="bg-emerald-100 dark:bg-emerald-950/40" title="Résumé">
-        <p className="line-clamp-6 whitespace-pre-line text-[13px] leading-relaxed text-foreground/90">{summary}</p>
-      </Section>
+      {/* « Ce que MemorIA a retenu » — le RÉSULTAT en premier (résumé, actions
+          proposées, points de vigilance), analysé automatiquement à l'ouverture
+          (lazy-once + cache). La transcription brute est repliée dedans. */}
+      <MemoriaRetained reportId={reportId} transcriptions={doc.transcriptions} />
+
+      {/* Observations principales — les constats factuels retenus. */}
 
       {/* Observations principales — seulement les constats importants. */}
       {observations.length > 0 && (

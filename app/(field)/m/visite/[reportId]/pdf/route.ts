@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
+import { loadOrRunVisitDebrief } from '@/lib/visits/debrief-analysis'
 import { VisitCrPdf } from '@/lib/pdf/visit-cr'
 import { loadCrMapSnapshotDataUri } from '@/lib/pdf/cr-map-snapshot'
 
@@ -37,6 +38,15 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const doc = await buildVisitCrDoc(reportId, user.id)
   if (!doc) return NextResponse.json({ error: 'Visite introuvable' }, { status: 404 })
 
+  // Le PDF projette LE MÊME modèle que le mobile : « Ce que MemorIA a retenu »
+  // (résumé, actions proposées, points de vigilance), pas le verbatim. On charge
+  // l'analyse persistée (lazy-once + cache ; l'org est déjà vérifiée ci-dessus).
+  // Best-effort : si l'analyse échoue ou n'est pas prête (colonne absente avant
+  // migration), le PDF retombe proprement sur le résumé déterministe du doc.
+  const debrief = await loadOrRunVisitDebrief(reportId, user.id)
+    .then((r) => (r.ok && r.status === 'ready' ? r.loaded.analysis : null))
+    .catch(() => null)
+
   const exportDate = new Date().toLocaleDateString('fr-FR', {
     day: '2-digit',
     month: 'long',
@@ -52,7 +62,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   let pdfBuffer: Buffer
   try {
-    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, exportDate, mapImage }))
+    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, debrief, exportDate, mapImage }))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'render error'
     console.error('[visit-cr-pdf] PDF render failed:', e)
