@@ -22,7 +22,7 @@ import { useDraggable, useDroppable, useDndContext } from '@dnd-kit/core'
 import { Lock, CalendarOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TeamBadge } from '@/components/ui/team-badge'
-import { fmtHourFr } from '@/lib/time/prestation-slot'
+import { fmtHourFr, fmtDurationFr } from '@/lib/time/prestation-slot'
 import { CLOSURE_REASON_FR, type ProjectableClosure } from '@/lib/planning/closures'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
@@ -208,13 +208,20 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
   const allUnassigned = cells.length > 0 && cells.every((c) => !c.assigned_team_id)
   const dot = cells.length >= 2 ? '●●' : cells.length === 1 ? '●' : ''
 
-  // V6.1 (Vincent 2026-05-20) : afficher l'horaire de la première intervention
-  // de la journée (ex. « 6h30 ») plutôt que la lettre de créneau « m ». Tri
-  // déjà fait par listInterventionsForWeek (planned_start asc, nulls last).
-  // La pluralité (« il y en a plusieurs ») est portée par le dot ● / ●●,
-  // donc on n'ajoute pas de « +N » redondant à côté de l'heure.
+  // V6.1 (Vincent 2026-05-20) : l'horaire de prestation honnête, jamais la
+  // lettre de créneau. Étendu (Vincent 2026-07-15) : la PLAGE et la DURÉE —
+  // « 6h30–9h45 · 3h15 » dit le temps réellement prévu, pas juste le départ.
+  // Tri déjà fait par listInterventionsForWeek (planned_start asc, nulls last).
   const firstCell = isEmpty ? null : cells[0]
-  const firstHourLabel = firstCell ? fmtHourFr(firstCell.planned_start) : ''
+  const firstHourLabel = (() => {
+    if (!firstCell) return ''
+    const start = fmtHourFr(firstCell.planned_start)
+    if (!start) return ''
+    const end = firstCell.planned_end ? fmtHourFr(firstCell.planned_end) : ''
+    if (!end) return start
+    const dur = fmtDurationFr(firstCell.planned_start!, firstCell.planned_end!)
+    return dur ? `${start}–${end} · ${dur}` : `${start}–${end}`
+  })()
 
   const ariaParts: string[] = [siteName, date]
   if (isEmpty) {

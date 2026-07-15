@@ -54,10 +54,11 @@ describe("L'espace Planning — trois échelles, un seul écran", () => {
     pathname.current = '/mois'
     render(<PlanningSpaceHeader />)
 
-    // Fermé par défaut : on y va rarement, on n'y vit pas.
-    expect(screen.queryByText('Configuration du planning')).not.toBeInTheDocument()
+    // Fermé par défaut : on y va rarement, on n'y vit pas. (Le BOUTON porte le
+    // même nom que le panneau — on teste donc l'absence du panneau lui-même.)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Configurer le planning' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sources du planning' }))
 
     // Les réglages qui FABRIQUENT le planning.
     expect(screen.getByRole('link', { name: /Roulements/ })).toHaveAttribute('href', '/roulements')
@@ -76,7 +77,7 @@ describe("L'espace Planning — trois échelles, un seul écran", () => {
   it('les fermetures ne sont PAS une entrée : elles appartiennent au chantier', () => {
     pathname.current = '/mois'
     render(<PlanningSpaceHeader />)
-    fireEvent.click(screen.getByRole('button', { name: 'Configurer le planning' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sources du planning' }))
 
     // Pas de lien « Fermetures » — pas de second calendrier de fermetures.
     expect(screen.queryByRole('link', { name: /Fermetures/ })).not.toBeInTheDocument()

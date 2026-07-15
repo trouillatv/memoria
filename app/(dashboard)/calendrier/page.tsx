@@ -19,7 +19,7 @@
 
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarOff, GraduationCap, Flag, Building2, Lock } from 'lucide-react'
+import { CalendarOff, GraduationCap, Flag, Building2, Lock, ArrowLeft } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listPeriods } from '@/lib/db/school-calendar'
 import { listUpcomingClosuresForOrg } from '@/lib/db/site-closures'
@@ -63,6 +63,16 @@ export default async function CalendrierPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div>
+        {/* Depuis R4, on arrive ici par « Sources du planning » : le chemin
+            du retour doit être aussi court que celui de l'aller. */}
+        <Link
+          href="/mois"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Retour au planning
+        </Link>
+      </div>
       <header className="space-y-1">
         <h1 className="inline-flex items-center gap-2 text-2xl font-semibold leading-tight">
           <CalendarOff className="h-5 w-5 text-muted-foreground" />
@@ -80,7 +90,7 @@ export default async function CalendrierPage() {
           Calendriers communs
         </h2>
 
-        {/* Ancres : le panneau « Configuration du planning » (R4) atterrit ici. */}
+        {/* Ancres : le panneau « Sources du planning » (R4) atterrit ici. */}
         <div id="vacances-scolaires" className="scroll-mt-20 space-y-1.5">
           <h3 className="inline-flex items-center gap-1.5 text-sm font-medium">
             <GraduationCap className="h-4 w-4 text-muted-foreground" /> Vacances scolaires
