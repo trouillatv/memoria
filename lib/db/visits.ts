@@ -1897,15 +1897,26 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
   const { visit } = ctx
   const supabase = createAdminClient()
 
+  // ⚠️ RÉGRESSION CORRIGÉE : `sites.commune` N'EXISTE PAS. La sélectionner (et
+  // l'embed `clients(name)`) faisait ÉCHOUER toute la requête → `name`, ville et
+  // client tombaient en fallback → « Chantier » sur TOUS les comptes-rendus. On
+  // ne lit plus que des colonnes GARANTIES (name, address, client_id) ; le client
+  // est lu à part (aucun embed ne peut donc blanchir le nom du chantier). La
+  // commune se déduit de l'adresse (« …98800 Nouméa » → « Nouméa »).
   const { data: site } = await supabase
     .from('sites')
-    .select('name, commune, clients(name)')
+    .select('name, address, client_id')
     .eq('id', visit.site_id!)
     .maybeSingle()
-  const siteName = (site as { name: string } | null)?.name ?? 'Chantier'
-  const city = (site as { commune: string | null } | null)?.commune?.trim() || null
-  const clientRel = (site as { clients?: { name: string } | { name: string }[] | null } | null)?.clients
-  const clientName = Array.isArray(clientRel) ? clientRel[0]?.name ?? null : clientRel?.name ?? null
+  const s = site as { name: string | null; address: string | null; client_id: string | null } | null
+  const siteName = s?.name?.trim() || 'Chantier'
+  const address = s?.address?.trim() || null
+  const city = address ? (/\b\d{4,6}\s+(.+)$/.exec(address)?.[1]?.trim() || null) : null
+  let clientName: string | null = null
+  if (s?.client_id) {
+    const { data: cl } = await supabase.from('clients').select('name').eq('id', s.client_id).maybeSingle()
+    clientName = (cl as { name: string | null } | null)?.name?.trim() || null
+  }
   const subjectName = visit.target_subject_id
     ? ctx.openSubjects.find((s) => s.id === visit.target_subject_id)?.name ?? null
     : null
