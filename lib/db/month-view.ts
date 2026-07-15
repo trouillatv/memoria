@@ -183,9 +183,18 @@ export async function buildMonthRows(params: {
       const expectedAll = todays.filter((i) => isStillExpected(i.status))
       const expected = expectedAll.filter((i) => !keptIds.has(i.id)).length
       const kept = expectedAll.length - expected
-      // Fait/en cours : le passé du mois se lit aussi.
+      // Fait/en cours : le passé du mois se lit aussi. `done` reste large
+      // (in_progress + completed + validated) — c'est ce qui rend un jour « ok ».
       const done = todays.filter(
         (i) => i.status !== 'skipped' && !isStillExpected(i.status),
+      ).length
+      // RÉALISÉ, au sens STRICT : seules les occurrences déclarées terminées
+      // (completed) ou validées prouvent une réalisation. `in_progress` ne
+      // prouve rien encore, `skipped` prouve le contraire. C'est cette donnée —
+      // et elle seule — qui autorise un ✓ à l'écran (Vincent, 2026-07-15 : « pas
+      // de ✓ générique »). Le mélange de `done` mentirait.
+      const realized = todays.filter(
+        (i) => i.status === 'completed' || i.status === 'validated',
       ).length
 
       // Projeté SANS doublon : un (rythme, jour) déjà matérialisé ne compte pas
@@ -218,6 +227,7 @@ export async function buildMonthRows(params: {
       dayFacts[day] = {
         expected,
         done,
+        realized,
         kept,
         projected: projectedCount,
         closed: findClosureForDate(closures, day) !== null,

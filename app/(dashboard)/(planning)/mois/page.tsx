@@ -482,6 +482,10 @@ export default async function MoisPage({
         ) : (
           <>
             <span>chiffre = personnes prévues</span>
+            <span>
+              <span className="mr-1 inline-block h-3 w-3 rounded bg-emerald-50 align-[-2px] dark:bg-emerald-950/20" />
+              <span className="font-medium text-emerald-700 dark:text-emerald-400">✓</span> réalisé
+            </span>
             <span><span className="italic opacity-70">italique</span> = projeté par le roulement</span>
             <span><span className="mr-1 inline-block h-3 w-3 rounded bg-sky-100 align-[-2px] dark:bg-sky-950/40" />fermé</span>
             <span><span className="mr-1 inline-block h-3 w-3 rounded bg-rose-100 align-[-2px] dark:bg-rose-950/40" /><span className="font-bold text-rose-700">!</span> conflit</span>

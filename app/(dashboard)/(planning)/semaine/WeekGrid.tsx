@@ -20,6 +20,7 @@ import type { ProjectableClosure } from '@/lib/planning/closures'
 import type { MonthRow } from '@/lib/db/month-view'
 import {
   dayState,
+  dayIsRealized,
   peopleOn,
   rowTotal,
   isoWeekParamOf,
@@ -372,16 +373,34 @@ function MonthGridCell({
   const isProjectedOnly = !hasReal && facts.projected > 0
   const cellKey = `${siteId}::${date}`
 
+  // FAIT ≠ PRÉVU (Lot A1) : un jour réellement RÉALISÉ (completed/validated,
+  // rien en attente) porte un ✓ vert sobre et un fond léger — il se lit d'un
+  // coup comme du passé accompli, pas comme un brouillon du futur. UN seul
+  // signal dans la case ; le détail (interventions, heures) vit dans le tiroir.
+  const realized = state === 'ok' && date <= todayIso && dayIsRealized(facts)
   const inner = (
     <>
+      {realized && (
+        <span
+          aria-hidden
+          className="absolute left-0.5 top-0.5 text-[9px] font-bold leading-none text-emerald-600 dark:text-emerald-400"
+        >
+          ✓
+        </span>
+      )}
       {meta.glyph(peopleOn(facts))}
       {facts.hasException && (
         <span aria-hidden className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-violet-600" />
       )}
     </>
   )
-  const innerCls = cn('block h-9 leading-9 text-[11px]', meta.cls)
-  const title = [meta.title, facts.hasException ? 'Exception au roulement' : ''].filter(Boolean).join(' · ')
+  const innerCls = cn(
+    'block h-9 leading-9 text-[11px]',
+    realized ? 'font-medium tabular-nums text-emerald-700 dark:text-emerald-400' : meta.cls,
+  )
+  const title = [realized ? 'Réalisée' : meta.title, facts.hasException ? 'Exception au roulement' : '']
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <td
@@ -391,6 +410,7 @@ function MonthGridCell({
         'relative border-l border-border/40 p-0 text-center',
         isWeekend(date) && 'bg-muted/30',
         MONTH_CELL_BG[state],
+        realized && 'bg-emerald-50/60 dark:bg-emerald-950/20',
         date === todayIso && 'outline outline-1 -outline-offset-1 outline-foreground/40',
       )}
     >
