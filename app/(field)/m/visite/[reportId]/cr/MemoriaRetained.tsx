@@ -13,7 +13,7 @@
 // on ne bloque jamais l'accès à ce qui a été dit.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks } from 'lucide-react'
+import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info } from 'lucide-react'
 import { getVisitDebriefFieldAction } from '../debrief-actions'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
@@ -115,6 +115,7 @@ export function MemoriaRetained({
   const hasActions = a.actions.length > 0
   const hasWatch = a.watchpoints.length > 0
   const hasDecisions = a.decisions.length > 0
+  const hasSavoir = a.a_savoir.length > 0
   const generatedLabel = safeDate(a.generated_at)
 
   return (
@@ -138,11 +139,19 @@ export function MemoriaRetained({
 
       {hasActions && (
         <Block Icon={ListTodo} cls="text-violet-600" title="Actions proposées">
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {a.actions.map((act, i) => (
               <li key={i} className="text-[13px] leading-snug">
-                <span className="font-medium text-foreground/90">{act.title}</span>
-                {act.rationale && <span className="block text-[12px] text-muted-foreground">{act.rationale}</span>}
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {act.priority && <PriorityChip p={act.priority} />}
+                  <span className="font-medium text-foreground/90">{act.title}</span>
+                </span>
+                {act.rationale && <span className="mt-0.5 block text-[12px] text-muted-foreground">{act.rationale}</span>}
+                {(act.owner || act.due) && (
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -151,7 +160,29 @@ export function MemoriaRetained({
 
       {hasWatch && (
         <Block Icon={Eye} cls="text-amber-600" title="Points de vigilance">
-          <BulletList items={a.watchpoints} dot="bg-amber-500" />
+          <ul className="space-y-2">
+            {a.watchpoints.map((w, i) => (
+              <li key={i} className="flex gap-2 text-[13px] leading-snug">
+                <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                <span className="min-w-0">
+                  <span className="font-medium text-foreground/90">{w.label}</span>
+                  {(w.impact || w.owner || w.due) && (
+                    <span className="mt-0.5 block text-[12px] text-muted-foreground">
+                      {w.impact}
+                      {w.owner ? `${w.impact ? ' · ' : ''}Responsable : ${w.owner}` : ''}
+                      {w.due ? `${w.impact || w.owner ? ' · ' : ''}Échéance : ${w.due}` : ''}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+
+      {hasSavoir && (
+        <Block Icon={Info} cls="text-sky-600" title="À savoir">
+          <BulletList items={a.a_savoir} dot="bg-sky-500" />
         </Block>
       )}
 
@@ -191,6 +222,15 @@ function Block({ Icon, cls, title, children }: { Icon: typeof Eye; cls: string; 
       {children}
     </div>
   )
+}
+
+function PriorityChip({ p }: { p: 'haute' | 'moyenne' | 'basse' }) {
+  const meta = {
+    haute: { label: 'Haute', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' },
+    moyenne: { label: 'Moyenne', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300' },
+    basse: { label: 'Préparation', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  }[p]
+  return <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${meta.cls}`}>{meta.label}</span>
 }
 
 function BulletList({ items, dot }: { items: string[]; dot: string }) {

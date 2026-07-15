@@ -39,8 +39,18 @@ const LEASE_MS = 120_000
 export interface StoredDebriefAnalysis {
   summary: string
   decisions: string[]
-  actions: Array<{ title: string; rationale: string }>
-  watchpoints: string[]
+  // ✅ Actions = cartes : quoi + pourquoi + priorité + responsable + échéance.
+  actions: Array<{
+    title: string
+    rationale: string
+    priority: 'haute' | 'moyenne' | 'basse' | null
+    owner: string
+    due: string
+  }>
+  // ⚠️ Points de vigilance = fiches : le risque + impact + responsable + échéance.
+  watchpoints: Array<{ label: string; impact: string; owner: string; due: string }>
+  // ℹ️ Contexte important mais non actionnable.
+  a_savoir: string[]
   attention: string[]
   open_questions: string[]
   forgotten_obligations: string[]
@@ -109,9 +119,10 @@ function fromAgent(
 ): StoredDebriefAnalysis {
   return {
     summary: narrative,
-    decisions: [], // pas encore produit par le moteur — section masquée si vide
+    decisions: parsed.decisions,
     actions: parsed.suggested_actions,
     watchpoints: parsed.important_points,
+    a_savoir: parsed.a_savoir,
     attention: parsed.attention,
     open_questions: parsed.open_questions,
     forgotten_obligations: parsed.forgotten_obligations,
