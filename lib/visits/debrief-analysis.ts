@@ -8,26 +8,34 @@ import 'server-only'
 //     débrief), jamais depuis un worker qui ignore ce que fait l'utilisateur ;
 //   - cache : le résultat est rangé dans site_reports.debrief_analysis (mig 211)
 //     et REJOUÉ tel quel — le LLM n'est jamais rappelé à chaque affichage ;
-//   - transcript_hash : si la transcription change, le hash diffère → le cache
-//     est périmé et l'analyse est régénérée proprement.
+//   - corpus_hash : hash de la MATIÈRE de la visite (transcript, notes, captures
+//     triées, actions/réserves, pièces) en ordre stable. Si Guillaume corrige la
+//     transcription ou ajoute un élément, le hash diffère → l'analyse est
+//     régénérée. On EXCLUT le contexte site volatile (signaux/historique/sujets)
+//     du hash : sinon la moindre activité ailleurs invaliderait le cache et
+//     relancerait le LLM sans que la visite ait changé ;
+//   - verrou (debrief_generating_at) : deux ouvertures simultanées ne lancent pas
+//     deux fois le LLM — la seconde voit « en cours » et attend.
 //
-// Auth-agnostique : mobile (field) et desktop (manager) l'appellent tous deux via
-// une action mince qui porte l'autorisation.
+// ⚠️ SÉCURITÉ : cette couche utilise le service-role (bypasse la RLS). Elle est
+// auth-agnostique par conception : CHAQUE appelant (action mobile/desktop) DOIT
+// avoir vérifié, fail-closed, l'organisation + l'accès au chantier AVANT de lui
+// passer un reportId. Cf. isolation-tenants-fail-closed.
+//
+// ⚠️ Les `actions` stockées ici sont des PROPOSITIONS IA — jamais des site_actions.
+// Seule la validation humaine crée de vraies actions ; régénérer remplace les
+// propositions mais ne touche JAMAIS les actions déjà validées.
 
 import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherVisitDebriefContext } from '@/lib/db/visits'
-import { runVisitDebriefAgent, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
+import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 
-/**
- * Ce qui est rangé sur la visite. Le sommet (summary/decisions/actions/
- * watchpoints) EST « Ce que MemorIA a retenu » ; les champs de contexte servent
- * à la validation desktop (objectif/sujet/résultat). `decisions` est vide tant
- * que le prompt d'extraction ne les produit pas — la section n'apparaît alors
- * pas ; le jour où le moteur les extrait, elles s'afficheront sans rien changer.
- */
+/** Un bail de génération plus vieux que ça est considéré comme abandonné. */
+const LEASE_MS = 120_000
+
 export interface StoredDebriefAnalysis {
   summary: string
   decisions: string[]
@@ -48,12 +56,48 @@ export interface StoredDebriefAnalysis {
   provider: string
   model: string | null
   generated_at: string
-  transcript_hash: string
+  corpus_hash: string
 }
 
-/** Le cache est périmé si CE hash change. Guillaume corrige un mot → régénéré. */
-export function computeTranscriptHash(transcript: string | null): string {
-  return createHash('sha256').update(transcript ?? '').digest('hex')
+/** L'entrée EXACTE passée à l'agent — construite une seule fois, hashée, puis
+ *  envoyée telle quelle : le hash décrit précisément ce qui a été analysé. */
+function buildDebriefInput(
+  ctx: NonNullable<Awaited<ReturnType<typeof gatherVisitDebriefContext>>>,
+  userId: string | null,
+): VisitDebriefInput {
+  const signalLines = ctx.signals.flatMap((s) => [
+    s.title,
+    ...s.items.slice(0, 4).map((i) => `  • ${i.label}${i.context && i.context.length > 0 ? ` (${i.context[0]})` : ''}`),
+  ])
+  return {
+    objectiveHint: ctx.visit.objective,
+    capturedText: ctx.capturedText,
+    transcript: ctx.transcript,
+    attachmentNames: ctx.attachmentNames,
+    capturedNotes: ctx.capturedNotes,
+    capturedActions: ctx.capturedActions,
+    capturedReserves: ctx.capturedReserves,
+    signalLines,
+    openSubjects: ctx.openSubjects,
+    siteHistory: ctx.history,
+    subjectDigests: ctx.subjectDigests,
+    userId,
+  }
+}
+
+/** Empreinte de la MATIÈRE PROPRE À LA VISITE, en ordre stable (voir en-tête sur
+ *  l'exclusion du contexte site volatile). */
+export function computeCorpusHash(input: VisitDebriefInput): string {
+  const corpus = JSON.stringify({
+    objectiveHint: input.objectiveHint ?? '',
+    transcript: input.transcript ?? '',
+    capturedText: input.capturedText ?? '',
+    capturedNotes: input.capturedNotes,
+    attachmentNames: input.attachmentNames,
+    capturedActions: input.capturedActions,
+    capturedReserves: input.capturedReserves,
+  })
+  return createHash('sha256').update(corpus).digest('hex')
 }
 
 function fromAgent(
@@ -83,22 +127,38 @@ function fromAgent(
     provider,
     model,
     generated_at: new Date().toISOString(),
-    transcript_hash: hash,
+    corpus_hash: hash,
   }
 }
 
-async function readStored(reportId: string): Promise<StoredDebriefAnalysis | null> {
+async function readState(
+  reportId: string,
+): Promise<{ analysis: StoredDebriefAnalysis | null; generatingAt: string | null }> {
   const { data } = await createAdminClient()
     .from('site_reports')
-    .select('debrief_analysis')
+    .select('debrief_analysis, debrief_generating_at')
     .eq('id', reportId)
     .maybeSingle()
-  const raw = (data as { debrief_analysis: StoredDebriefAnalysis | null } | null)?.debrief_analysis
-  return raw ?? null
+  const row = data as { debrief_analysis: StoredDebriefAnalysis | null; debrief_generating_at: string | null } | null
+  return { analysis: row?.debrief_analysis ?? null, generatingAt: row?.debrief_generating_at ?? null }
 }
 
-async function writeStored(reportId: string, analysis: StoredDebriefAnalysis): Promise<void> {
-  await createAdminClient().from('site_reports').update({ debrief_analysis: analysis }).eq('id', reportId)
+async function setLease(reportId: string): Promise<void> {
+  await createAdminClient()
+    .from('site_reports')
+    .update({ debrief_generating_at: new Date().toISOString() })
+    .eq('id', reportId)
+}
+
+async function writeAnalysis(reportId: string, analysis: StoredDebriefAnalysis): Promise<void> {
+  await createAdminClient()
+    .from('site_reports')
+    .update({ debrief_analysis: analysis, debrief_generating_at: null })
+    .eq('id', reportId)
+}
+
+async function clearLease(reportId: string): Promise<void> {
+  await createAdminClient().from('site_reports').update({ debrief_generating_at: null }).eq('id', reportId)
 }
 
 export interface LoadedDebrief {
@@ -108,52 +168,54 @@ export interface LoadedDebrief {
   fromCache: boolean
 }
 
+export type DebriefLoadResult =
+  | { ok: true; status: 'ready'; loaded: LoadedDebrief }
+  | { ok: true; status: 'generating' } // un autre appel analyse déjà — réessayer bientôt
+  | { ok: false; error: string }
+
+const leaseFresh = (iso: string | null): boolean => !!iso && Date.now() - Date.parse(iso) < LEASE_MS
+
 /**
- * Lazy-once + cache. Renvoie l'analyse persistée si son transcript_hash colle au
- * transcript actuel ; sinon lance le moteur, persiste, renvoie. `force` régénère
- * toujours (bouton « Régénérer », caché — jamais automatique).
+ * Lazy-once + cache + verrou. Renvoie l'analyse persistée si son corpus_hash colle
+ * à la matière actuelle ; sinon lance le moteur (une seule fois, verrouillé),
+ * persiste, renvoie. `force` régénère toujours (« Régénérer », jamais automatique).
+ *
+ * L'appelant DOIT avoir vérifié l'organisation + l'accès chantier au préalable.
  */
 export async function loadOrRunVisitDebrief(
   reportId: string,
   userId: string | null,
   opts?: { force?: boolean },
-): Promise<{ ok: true; loaded: LoadedDebrief } | { ok: false; error: string }> {
+): Promise<DebriefLoadResult> {
   const ctx = await gatherVisitDebriefContext(reportId)
   if (!ctx) return { ok: false, error: 'Visite introuvable' }
-  const hash = computeTranscriptHash(ctx.transcript)
+  const input = buildDebriefInput(ctx, userId)
+  const hash = computeCorpusHash(input)
 
+  const state = await readState(reportId)
+  if (!opts?.force && state.analysis && state.analysis.corpus_hash === hash) {
+    return { ok: true, status: 'ready', loaded: { analysis: state.analysis, openSubjects: ctx.openSubjects, fromCache: true } }
+  }
+  // Quelqu'un d'autre analyse déjà (bail frais) : on ne double pas l'appel.
+  if (leaseFresh(state.generatingAt)) return { ok: true, status: 'generating' }
+
+  await setLease(reportId)
+  // Double-vérification juste avant l'appel coûteux : un autre appel a pu finir.
   if (!opts?.force) {
-    const stored = await readStored(reportId)
-    if (stored && stored.transcript_hash === hash) {
-      return { ok: true, loaded: { analysis: stored, openSubjects: ctx.openSubjects, fromCache: true } }
+    const again = await readState(reportId)
+    if (again.analysis && again.analysis.corpus_hash === hash) {
+      await clearLease(reportId)
+      return { ok: true, status: 'ready', loaded: { analysis: again.analysis, openSubjects: ctx.openSubjects, fromCache: true } }
     }
   }
 
-  const signalLines = ctx.signals.flatMap((s) => [
-    s.title,
-    ...s.items.slice(0, 4).map((i) => `  • ${i.label}${i.context && i.context.length > 0 ? ` (${i.context[0]})` : ''}`),
-  ])
-
   try {
-    const res = await runVisitDebriefAgent({
-      objectiveHint: ctx.visit.objective,
-      capturedText: ctx.capturedText,
-      transcript: ctx.transcript,
-      attachmentNames: ctx.attachmentNames,
-      capturedNotes: ctx.capturedNotes,
-      capturedActions: ctx.capturedActions,
-      capturedReserves: ctx.capturedReserves,
-      signalLines,
-      openSubjects: ctx.openSubjects,
-      siteHistory: ctx.history,
-      subjectDigests: ctx.subjectDigests,
-      userId,
-    })
+    const res = await runVisitDebriefAgent(input)
     const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash)
-    // Best-effort : même si l'écriture échoue, l'utilisateur voit son résumé.
-    await writeStored(reportId, analysis).catch(() => {})
-    return { ok: true, loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
+    await writeAnalysis(reportId, analysis).catch(() => {})
+    return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {
+    await clearLease(reportId).catch(() => {})
     return { ok: false, error: "L'analyse IA a échoué" }
   }
 }

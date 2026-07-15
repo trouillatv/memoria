@@ -14,7 +14,14 @@
 -- analysé. AUCUN modèle IA n'est touché — on ne fait que ranger le résultat.
 
 alter table public.site_reports
-  add column if not exists debrief_analysis jsonb;
+  add column if not exists debrief_analysis jsonb,
+  -- Verrou léger anti double-génération : deux ouvertures simultanées (mobile +
+  -- desktop) ne doivent pas lancer deux fois le LLM. Posé avant l'appel, effacé
+  -- après ; un bail expiré (voir la couche) est ignoré, jamais de blocage définitif.
+  add column if not exists debrief_generating_at timestamptz;
 
 comment on column public.site_reports.debrief_analysis is
-  'Résultat persisté du débrief IA « Ce que MemorIA a retenu » (résumé/décisions/actions/points + provider/model/generated_at/transcript_hash). Écrit à la première ouverture du débrief (lazy-once + cache) ; NULL = pas encore analysé.';
+  'Résultat persisté du débrief IA « Ce que MemorIA a retenu » (résumé/décisions/actions/points + provider/model/generated_at/corpus_hash). Écrit à la première ouverture du débrief (lazy-once + cache) ; NULL = pas encore analysé. Les actions y sont des PROPOSITIONS IA — jamais des site_actions validées.';
+
+comment on column public.site_reports.debrief_generating_at is
+  'Bail de génération du débrief IA (anti double-appel concurrent). NULL = libre.';
