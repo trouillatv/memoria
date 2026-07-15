@@ -34,12 +34,13 @@ import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 // message clair plutôt qu'un échec silencieux.
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
-// « Enregistrer sur le téléphone » — une copie PERSONNELLE, en plus de la preuve
-// déjà en sécurité dans la visite. Pas de double-écriture automatique (une PWA
-// n'a pas accès à la galerie Android) : un téléchargement EXPLICITE. On ajoute
-// `&download=` à l'URL signée → Supabase répond en `Content-Disposition:
-// attachment`, donc le navigateur enregistre au lieu de naviguer, sans quitter
-// l'app. Va dans les Téléchargements du téléphone.
+// « Télécharger l'original » — une copie PERSONNELLE d'un média (photo / vidéo /
+// audio), en plus de la preuve déjà en sécurité dans la visite. Même action,
+// même mot, partout. Pas de double-écriture automatique (une PWA n'a pas accès à
+// la galerie Android) : un téléchargement EXPLICITE. On ajoute `&download=` à
+// l'URL signée → Supabase répond en `Content-Disposition: attachment`, donc le
+// navigateur enregistre au lieu de naviguer, sans quitter l'app. Va dans les
+// Téléchargements du téléphone.
 function downloadCaptureToPhone(url: string, filename: string) {
   const sep = url.includes('?') ? '&' : '?'
   const a = document.createElement('a')
@@ -1142,24 +1143,30 @@ export function VisitBasket({
       {lightbox && previews[lightbox.id]?.url && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/90" onClick={() => setLightbox(null)}>
           <div className="flex items-center justify-between p-3" onClick={(e) => e.stopPropagation()}>
-            {lightbox.kind === 'photo' ? (
+            {/* Actions du média — « Télécharger l'original » PARTOUT (même mot,
+                même geste) ; l'annotation en plus pour une photo. */}
+            <div className="flex items-center gap-2">
+              {lightbox.kind === 'photo' && (
+                <button
+                  type="button"
+                  onClick={() => setAnnotate({ id: lightbox.id, url: previews[lightbox.id]!.url })}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white"
+                >
+                  <Pencil className="h-4 w-4" /> Annoter
+                </button>
+              )}
+              {/* Copie personnelle facultative : la preuve, elle, est déjà dans la visite. */}
               <button
                 type="button"
-                onClick={() => setAnnotate({ id: lightbox.id, url: previews[lightbox.id]!.url })}
+                onClick={() => downloadCaptureToPhone(
+                  previews[lightbox.id]!.url,
+                  `MemorIA-${lightbox.kind}-${lightbox.id.slice(0, 8)}.${lightbox.kind === 'video' ? 'mp4' : 'jpg'}`,
+                )}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white"
               >
-                <Pencil className="h-4 w-4" /> Annoter
+                <Download className="h-4 w-4" /> Télécharger l&apos;original
               </button>
-            ) : (
-              // Copie personnelle facultative : la preuve, elle, est déjà dans la visite.
-              <button
-                type="button"
-                onClick={() => downloadCaptureToPhone(previews[lightbox.id]!.url, `MemorIA-video-${lightbox.id.slice(0, 8)}.mp4`)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white"
-              >
-                <Download className="h-4 w-4" /> Enregistrer sur le téléphone
-              </button>
-            )}
+            </div>
             <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="rounded-full bg-white/10 p-2 text-white">
               <X className="h-5 w-5" />
             </button>
