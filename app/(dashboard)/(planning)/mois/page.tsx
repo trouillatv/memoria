@@ -272,6 +272,16 @@ export default async function MoisPage({
             >
               <ChevronRight className="h-4 w-4" />
             </Link>
+            {/* Retour au présent — le Mois n'avait pas d'« Aujourd'hui » (la
+                Semaine, si). N'apparaît que si on s'est éloigné du mois courant. */}
+            {month !== todayIso.slice(0, 7) && (
+              <Link
+                href={`/mois${view === 'team' ? '?view=team' : ''}`}
+                className="ml-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Aujourd&apos;hui
+              </Link>
+            )}
           </nav>
         </div>
       </header>

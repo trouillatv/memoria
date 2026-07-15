@@ -146,11 +146,17 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
                       : 'text-muted-foreground')
                 }
               >
-                <div className="flex flex-col leading-tight">
+                <div className="flex flex-col items-start leading-tight">
                   <span>{weekdayShortFr(d)}</span>
-                  <span className="text-foreground text-base font-semibold normal-case tracking-normal">
-                    {dayNumber(d)}
-                  </span>
+                  {isToday(d, todayIso) ? (
+                    <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-primary px-1.5 text-base font-semibold normal-case tracking-normal text-primary-foreground">
+                      {dayNumber(d)}
+                    </span>
+                  ) : (
+                    <span className="text-foreground text-base font-semibold normal-case tracking-normal">
+                      {dayNumber(d)}
+                    </span>
+                  )}
                 </div>
               </th>
             ))}
@@ -203,6 +209,7 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
                     className={cn(
                       'border-l border-border/40 py-1.5 text-center text-[11px] font-semibold tabular-nums',
                       isWeekend(d) && 'bg-muted/30',
+                      d === todayIso && 'bg-primary/5',
                       // Rouge SEULEMENT si ce 0 est un vrai trou (roulement attendu).
                       n === 0 && holeDays.has(d) && 'bg-rose-50 text-rose-700 dark:bg-rose-950/20',
                     )}
@@ -411,7 +418,10 @@ function MonthGridCell({
         isWeekend(date) && 'bg-muted/30',
         MONTH_CELL_BG[state],
         realized && 'bg-emerald-50/60 dark:bg-emerald-950/20',
-        date === todayIso && 'outline outline-1 -outline-offset-1 outline-foreground/40',
+        // AUJOURD'HUI — la colonne entière se teinte (repère fort, pas un filet
+        // gris d'1 px noyé dans 31 colonnes). Le passé est à gauche, le futur à
+        // droite : la grille acquiert un sens de lecture.
+        date === todayIso && 'bg-primary/5 outline outline-1 -outline-offset-1 outline-primary/40',
       )}
     >
       {hasReal ? (
