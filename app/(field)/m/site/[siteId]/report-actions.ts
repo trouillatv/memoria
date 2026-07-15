@@ -59,12 +59,23 @@ import type {
 const BUCKET = 'site-reports'
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024 // 25 MB — couvre l'import d'un audio de réunion (~25 min)
 const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB (PDF, image, plan…)
-const MAX_MANUAL_TEXT_CHARS = 50000 // couvre un transcript manuel long (~45 min) avec marge
+const MAX_MANUAL_TEXT_CHARS = 200000 // couvre un transcript manuel très long avec marge
 
 /** Tronque proprement à 140 (limite stricte de createSiteNote). */
 function clip140(s: string): string {
   const t = s.trim()
   return t.length <= 140 ? t : t.slice(0, 137).trimEnd() + '…'
+}
+
+function zodErrorMessage(error: z.ZodError): string {
+  const issue = error.issues[0]
+  if (!issue) return 'Paramètres invalides'
+  const field = issue.path.join('.') || 'champ'
+  if (issue.code === 'too_big' && typeof issue.maximum === 'number') {
+    return `${field} trop long (max ${issue.maximum} caractères)`
+  }
+  if (issue.message) return `${field} : ${issue.message}`
+  return `Paramètres invalides (${field})`
 }
 
 /** Résout le tenant : depuis le site (réunion site) ou le 1er site du contrat
@@ -122,7 +133,7 @@ export async function createReportDraftAction(formData: FormData): Promise<
     audio_mime: formData.get('audio_mime') ?? undefined,
     audio_duration_seconds: formData.get('audio_duration_seconds') ?? undefined,
   })
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.success) return { ok: false, error: zodErrorMessage(parsed.error) }
 
   const type = parsed.data.report_type
   if (type === 'site' && !parsed.data.site_id) return { ok: false, error: 'Site manquant' }
@@ -251,7 +262,7 @@ export async function setReportTextInputAction(
   const auth = await requireFieldAgent()
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = textPatchSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.success) return { ok: false, error: zodErrorMessage(parsed.error) }
   try {
     await setReportText(parsed.data.report_id, { text_input: parsed.data.text_input ?? null })
     return { ok: true }
@@ -647,7 +658,7 @@ export async function analyzeReportAction(formData: FormData): Promise<
     transcript_corrected: formData.get('transcript_corrected') ?? undefined,
     text_input: formData.get('text_input') ?? undefined,
   })
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.success) return { ok: false, error: zodErrorMessage(parsed.error) }
 
   const report = await getSiteReport(parsed.data.report_id)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
