@@ -181,7 +181,9 @@ const TEAM_CELL: Record<TeamDayState, { glyph: (n: number) => string; cls: strin
 }
 
 const TEAM_CELL_BG: Record<TeamDayState, string> = {
-  work: '',
+  // Un fond léger sous le T : le jour TRAVAILLÉ se voit de loin, comme sur le
+  // planning papier surligné (Vincent, 2026-07-15 — « le T est un peu perdu »).
+  work: 'bg-blue-50/60 dark:bg-blue-950/20',
   projected: '',
   conflict: 'bg-rose-100 dark:bg-rose-950/40',
   rest: 'bg-amber-50/70 dark:bg-amber-950/20',
@@ -462,7 +464,10 @@ export default async function MoisPage({
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         {view === 'team' ? (
           <>
-            <span><span className="font-medium text-foreground">T</span> travail</span>
+            <span>
+              <span className="mr-1 inline-block h-3 w-3 rounded bg-blue-50 align-[-2px] dark:bg-blue-950/20" />
+              <span className="font-medium text-foreground">T</span> travail
+            </span>
             <span><span className="italic opacity-70">T</span> projeté par le roulement</span>
             <span>
               <span className="mr-1 inline-block h-3 w-3 rounded bg-amber-50 align-[-2px] dark:bg-amber-950/20" />

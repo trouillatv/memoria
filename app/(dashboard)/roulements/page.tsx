@@ -80,7 +80,7 @@ export default async function RoulementsPage() {
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
       <div>
-        {/* Depuis R4, on arrive ici par « Configurer le planning » : le chemin
+        {/* Depuis R4, on arrive ici par « Sources du planning » : le chemin
             du retour doit être aussi court que celui de l'aller. */}
         <Link
           href="/mois"

@@ -554,7 +554,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
             cellule est celle de la 1ʳᵉ intervention. Le nombre de points
             (● / ●●) indique combien il y en a en tout. */}
         <p className="text-xs text-muted-foreground pt-1">
-          <span className="font-mono">6h30</span> = heure de la 1ʳᵉ intervention du jour
+          <span className="font-mono">6h30–9h45 · 3h15</span> = plage et durée de la 1ʳᵉ intervention du jour
           {' · '}
           <span>● = 1 intervention</span>
           {' · '}

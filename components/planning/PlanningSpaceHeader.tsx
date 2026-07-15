@@ -113,7 +113,7 @@ export function PlanningSpaceHeader() {
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const get = (k: string) => searchParams?.get(k) ?? null
-  // Le panneau « Configuration du planning » — fermé par défaut.
+  // Le panneau « Sources du planning » — fermé par défaut.
   const [configOpen, setConfigOpen] = useState(false)
 
   const focus = focusDateFromUrl(pathname, get)
@@ -165,20 +165,20 @@ export function PlanningSpaceHeader() {
         onClick={() => setConfigOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        <Settings className="h-4 w-4" /> Configurer le planning
+        <Settings className="h-4 w-4" /> Sources du planning
       </button>
       <Sheet open={configOpen} onOpenChange={setConfigOpen}>
         <SheetContent side="right" className="p-0 sm:max-w-sm w-full overflow-y-auto">
           <SheetHeader className="border-b p-4">
             <SheetTitle className="inline-flex items-center gap-2">
               <Settings className="h-4 w-4 text-muted-foreground" aria-hidden />
-              Configuration du planning
+              Sources du planning
             </SheetTitle>
             <SheetDescription>
               Ce qui fabrique le planning — jamais une façon de le lire.
             </SheetDescription>
           </SheetHeader>
-          <nav aria-label="Configuration du planning" className="p-2">
+          <nav aria-label="Sources du planning" className="p-2">
             {SETTINGS.map((item) => (
               <Link
                 key={item.href}
