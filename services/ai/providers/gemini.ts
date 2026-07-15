@@ -32,12 +32,16 @@ export class GeminiProvider implements AIProvider {
           temperature: 0.3,
           maxOutputTokens: input.maxOutputTokens ?? 1500,
           abortSignal: controller.signal,
-          // Sortie JSON structurée : on DÉSACTIVE le thinking (gemini-2.5-flash).
-          // Sinon le raisonnement interne consomme maxOutputTokens avant d'émettre
-          // le JSON → texte tronqué/vide → parse échoue (cf. extraction engagements).
-          ...(input.responseSchema
-            ? { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } }
-            : {}),
+          // On DÉSACTIVE le thinking de Gemini 2.5 (flash/pro) PARTOUT. Par défaut
+          // le modèle « réfléchit » AVANT de répondre, et ces tokens de réflexion
+          // se déduisent de maxOutputTokens : le budget est mangé avant l'émission
+          // → texte tronqué en plein milieu (résumé de visite coupé, narratif du
+          // débrief incomplet) ou JSON vide (parse échoue). Nos tâches ORGANISENT
+          // un texte fourni, elles ne raisonnent pas en profondeur : tout le budget
+          // doit aller à la SORTIE. (Auparavant le thinking n'était coupé que pour
+          // le JSON — d'où la troncature silencieuse des sorties en texte libre.)
+          thinkingConfig: { thinkingBudget: 0 },
+          ...(input.responseSchema ? { responseMimeType: 'application/json' } : {}),
         },
         contents: input.userMessage,
       })
