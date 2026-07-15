@@ -19,9 +19,11 @@ import { siteLabel } from '@/lib/labels/site-label'
  */
 
 const SURFACES = [
-  // fichier, ce qu'on doit y trouver
-  ['app/(dashboard)/(planning)/mois/page.tsx', 'la ligne de la vue Mois'],
-  ['app/(dashboard)/(planning)/semaine/WeekGrid.tsx', 'la ligne de la vue Semaine'],
+  // fichier, ce qu'on doit y trouver.
+  // PL6-R2 : la ligne de la vue Mois vit désormais DANS la grille unique
+  // (MonthGridRow, WeekGrid.tsx) — mois/page.tsx n'a plus de table à elle.
+  // Le garde-fou suit la ligne, pas le fichier : voir le bloc « La vue Mois ».
+  ['app/(dashboard)/(planning)/semaine/WeekGrid.tsx', 'la ligne du planning (Semaine et Mois)'],
   ['app/(dashboard)/(planning)/semaine/CellDrawer.tsx', 'le tiroir du planning'],
   ['app/(dashboard)/(planning)/semaine/CreateInterventionDialog.tsx', 'le planificateur'],
 ] as const
@@ -59,5 +61,21 @@ describe('La vue Mois', () => {
     const db = readFileSync(join(process.cwd(), 'lib', 'db', 'month-view.ts'), 'utf8')
     expect(db).toMatch(/clientName:\s*string \| null/)
     expect(db).toContain('client:clients(name)')
+  })
+
+  it('nomme le client sur SA ligne — MonthGridRow, dans la grille unique', () => {
+    // PL6-R2 a déplacé la ligne du mois dans PlanningGrid (WeekGrid.tsx). Le
+    // garde-fou vise le composant de LIGNE, pas la page : c'est lui qui écrit
+    // le nom à l'écran, et c'est lui qui repartirait du nom seul.
+    const grid = readFileSync(
+      join(process.cwd(), 'app', '(dashboard)', '(planning)', 'semaine', 'WeekGrid.tsx'),
+      'utf8',
+    )
+    const monthRow = grid.slice(grid.indexOf('function MonthGridRow'))
+    expect(
+      monthRow.includes('siteLabel('),
+      'la ligne de la vue Mois (MonthGridRow) affiche un nom de chantier sans son client. ' +
+        'Deux « Pointière » y sont indistinguables — utilise siteLabel(siteName, clientName).',
+    ).toBe(true)
   })
 })

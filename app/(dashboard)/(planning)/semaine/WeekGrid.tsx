@@ -10,12 +10,24 @@
 //
 // Wrappé par WeekGridClient (DndContext + drawer + état drag).
 
+import Link from 'next/link'
 import type { SiteRow, WeekRange, WeekInterventionCell } from '@/lib/db/week-planning'
 import type { MemorySignal } from '@/lib/memory/signals/types'
 import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 import { siteLabel } from '@/lib/labels/site-label'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
 import type { ProjectableClosure } from '@/lib/planning/closures'
+import type { MonthRow } from '@/lib/db/month-view'
+import {
+  dayState,
+  peopleOn,
+  rowTotal,
+  isoWeekParamOf,
+  presenceByDay,
+  type DayFacts,
+  type DayState,
+} from '@/lib/planning/month-view'
+import { cn } from '@/lib/utils'
 import { WeekGridCell } from './WeekGridCell'
 import { MemorySignalBadge } from '@/components/memory/MemorySignalBadge'
 import { StandingSignalsBadges } from './StandingSignalsBadges'
@@ -23,6 +35,7 @@ import {
   enumerateRangeDays,
   weekdayShortFr,
   dayNumber,
+  isWeekend,
   columnWidthClass,
   type PlanningScale,
 } from '@/lib/planning/scale'
@@ -42,6 +55,13 @@ export interface PlanningGridProps {
   rows: SiteRow[]
   /** yyyy-mm-dd UTC — passé par le parent pour highlight de la colonne. */
   todayIso: string
+  /**
+   * ÉCHELLE MOIS — les FAITS projetés (couverture, fermeture, exception,
+   * projection) par chantier. La grille est la même ; seule la densité change :
+   * la case porte un nombre et un état, plus une carte d'intervention. Absent en
+   * semaine — la Semaine reste strictement inchangée.
+   */
+  monthRows?: MonthRow[]
   /** Signaux mémoire par site (Planning-1) — le 1er = badge prioritaire. */
   signalsBySite?: Record<string, MemorySignal[]>
   /** Signaux opérationnels EN COURS par site (Niveau 1) — blocages, réserves ouvertes. */
@@ -65,10 +85,19 @@ export interface PlanningGridProps {
  *
  * Deux tableaux parallèles finissent toujours par diverger.
  */
-export function PlanningGrid({ scale = 'week', range, rows, todayIso, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite }: PlanningGridProps) {
+export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite }: PlanningGridProps) {
   // La PLAGE décide du nombre de colonnes — sept ou trente-et-une, même code.
   const days = enumerateRangeDays({ start: range.weekStart, end: range.weekEnd })
   const colWidth = columnWidthClass(scale)
+  const isMonth = scale === 'month' && monthRows != null
+
+  // Couverture du jour (le « 0 » qui saute aux yeux) — calculée à partir des
+  // MÊMES faits que les cellules, jamais d'un second comptage.
+  const presence = isMonth
+    ? presenceByDay(
+        Object.fromEntries(days.map((d) => [d, monthRows!.map((r) => r.days[d])])),
+      )
+    : {}
 
   return (
     <div
@@ -78,7 +107,11 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, signalsByS
     >
       <table
         className="w-full text-sm border-collapse"
-        aria-label={`Planning semaine ${range.year}-W${String(range.weekNumber).padStart(2, '0')}`}
+        aria-label={
+          isMonth
+            ? `Planning mois ${range.weekStart.slice(0, 7)}`
+            : `Planning semaine ${range.year}-W${String(range.weekNumber).padStart(2, '0')}`
+        }
       >
         <thead className="bg-muted/40">
           <tr>
@@ -99,7 +132,11 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, signalsByS
                   colWidth + ' ' +
                   (isToday(d, todayIso)
                     ? 'text-foreground bg-accent/40'
-                    : 'text-muted-foreground')
+                    : // Ombrage week-end : au MOIS seulement (repère les semaines
+                      // dans 31 colonnes). La Semaine reste strictement inchangée.
+                      isMonth && isWeekend(d)
+                      ? 'text-muted-foreground bg-muted/40'
+                      : 'text-muted-foreground')
                 }
               >
                 <div className="flex flex-col leading-tight">
@@ -110,23 +147,66 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, signalsByS
                 </div>
               </th>
             ))}
+            {isMonth && (
+              <th
+                scope="col"
+                className="text-center text-xs uppercase tracking-wider text-muted-foreground font-medium px-2 py-2 border-l border-b"
+              >
+                Total
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <SiteGridRow
-              key={row.site_id}
-              row={row}
-              days={days}
-              todayIso={todayIso}
-              topSignal={signalsBySite?.[row.site_id]?.[0]}
-              standing={standingBySite?.[row.site_id]}
-              dayEventsByDate={daysBySite?.[row.site_id]}
-              conflictByDate={conflictsBySite?.[row.site_id]}
-              closureByDate={closuresBySite?.[row.site_id]}
-            />
-          ))}
+          {isMonth
+            ? monthRows!.map((row) => (
+                <MonthGridRow key={row.siteId} row={row} days={days} todayIso={todayIso} />
+              ))
+            : rows.map((row) => (
+                <SiteGridRow
+                  key={row.site_id}
+                  row={row}
+                  days={days}
+                  todayIso={todayIso}
+                  topSignal={signalsBySite?.[row.site_id]?.[0]}
+                  standing={standingBySite?.[row.site_id]}
+                  dayEventsByDate={daysBySite?.[row.site_id]}
+                  conflictByDate={conflictsBySite?.[row.site_id]}
+                  closureByDate={closuresBySite?.[row.site_id]}
+                />
+              ))}
         </tbody>
+        {/* LA COUVERTURE DU JOUR — un « 0 » se voit de loin. « Couverture prévue »
+            (Vincent §6) : le mot « Présents » laissait entendre une présence
+            constatée, un pointage. Ici on projette, on ne pointe pas. */}
+        {isMonth && (
+          <tfoot>
+            <tr className="border-t-2">
+              <th
+                scope="row"
+                className="sticky left-0 z-10 border-r bg-card px-3 py-2 text-left text-xs font-semibold"
+              >
+                Couverture prévue
+              </th>
+              {days.map((d) => {
+                const n = presence[d] ?? 0
+                return (
+                  <td
+                    key={d}
+                    className={cn(
+                      'border-l border-border/40 py-1.5 text-center text-[11px] font-semibold tabular-nums',
+                      isWeekend(d) && 'bg-muted/30',
+                      n === 0 && 'bg-rose-50 text-rose-700 dark:bg-rose-950/20',
+                    )}
+                  >
+                    {n}
+                  </td>
+                )
+              })}
+              <td className="border-l bg-card" />
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )
@@ -200,5 +280,153 @@ function SiteGridRow({
         )
       })}
     </tr>
+  )
+}
+
+// ── ÉCHELLE MOIS — la même grille, resserrée ────────────────────────────────
+//
+// La case du mois ne porte PAS de carte d'intervention : elle porte un nombre
+// (combien de monde) et un état (fermé, conflit, trou, projeté). Le clic ouvre
+// le MÊME tiroir que la semaine quand il y a du réel à montrer ; un jour
+// seulement projeté explique d'abord ce qu'on regarde (état « Planning prévu »)
+// avant tout renvoi — jamais de redirection silencieuse.
+
+/** Le glyphe et le style d'une case, par état. Le CHIFFRE est l'information. */
+const MONTH_CELL: Record<DayState, { glyph: (n: number) => string; cls: string; title: string }> = {
+  ok: { glyph: (n) => String(n), cls: 'tabular-nums text-foreground', title: 'Prévu' },
+  projected: {
+    glyph: (n) => String(n),
+    cls: 'tabular-nums italic text-muted-foreground/70',
+    title: 'Projeté par le roulement (pas encore généré)',
+  },
+  conflict: { glyph: (n) => `${n}!`, cls: 'font-bold tabular-nums text-rose-700', title: 'Fermé ET du monde prévu' },
+  closed: { glyph: () => '', cls: '', title: 'Chantier fermé' },
+  hole: { glyph: () => '0', cls: 'font-bold tabular-nums text-rose-700/80', title: 'Jour ouvert, personne' },
+  empty: { glyph: () => '', cls: '', title: '' },
+}
+
+const MONTH_CELL_BG: Record<DayState, string> = {
+  ok: '',
+  projected: '',
+  conflict: 'bg-rose-100 dark:bg-rose-950/40',
+  closed: 'bg-sky-100 dark:bg-sky-950/40',
+  hole: 'bg-rose-50 dark:bg-rose-950/20',
+  empty: '',
+}
+
+function MonthGridRow({ row, days, todayIso }: { row: MonthRow; days: string[]; todayIso: string }) {
+  return (
+    <tr className="border-t" data-site-id={row.siteId}>
+      <th
+        scope="row"
+        className="sticky left-0 z-10 min-w-[10rem] max-w-[13rem] border-r bg-card px-3 py-2 text-left"
+      >
+        <Link
+          href={`/sites/${row.siteId}`}
+          className="block truncate text-xs font-semibold hover:underline"
+          title={siteLabel(row.siteName, row.clientName)}
+        >
+          {siteLabel(row.siteName, row.clientName)}
+        </Link>
+      </th>
+      {days.map((d) => (
+        <MonthGridCell
+          key={d}
+          date={d}
+          siteId={row.siteId}
+          siteLabelText={siteLabel(row.siteName, row.clientName)}
+          facts={row.days[d]}
+          todayIso={todayIso}
+        />
+      ))}
+      <td className="border-l bg-card px-2 text-center text-[11px] font-semibold tabular-nums">
+        {rowTotal(row.days)}
+      </td>
+    </tr>
+  )
+}
+
+function MonthGridCell({
+  date,
+  siteId,
+  siteLabelText,
+  facts,
+  todayIso,
+}: {
+  date: string
+  siteId: string
+  siteLabelText: string
+  facts: DayFacts
+  todayIso: string
+}) {
+  const state = dayState(facts)
+  const meta = MONTH_CELL[state]
+  const hasReal = facts.expected > 0 || facts.done > 0 || facts.kept > 0
+  const isProjectedOnly = !hasReal && facts.projected > 0
+  const cellKey = `${siteId}::${date}`
+
+  const inner = (
+    <>
+      {meta.glyph(peopleOn(facts))}
+      {facts.hasException && (
+        <span aria-hidden className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-violet-600" />
+      )}
+    </>
+  )
+  const innerCls = cn('block h-9 leading-9 text-[11px]', meta.cls)
+  const title = [meta.title, facts.hasException ? 'Exception au roulement' : ''].filter(Boolean).join(' · ')
+
+  return (
+    <td
+      data-date={date}
+      data-site-id={siteId}
+      className={cn(
+        'relative border-l border-border/40 p-0 text-center',
+        isWeekend(date) && 'bg-muted/30',
+        MONTH_CELL_BG[state],
+        date === todayIso && 'outline outline-1 -outline-offset-1 outline-foreground/40',
+      )}
+    >
+      {hasReal ? (
+        // Jour RÉEL — le même tiroir que la semaine, ouvert sur place par
+        // délégation ([data-cell-trigger] → CellDrawer). Zéro code neuf.
+        <button
+          type="button"
+          data-cell-trigger="true"
+          data-cell-key={cellKey}
+          title={title}
+          className={cn(innerCls, 'w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring')}
+        >
+          {inner}
+        </button>
+      ) : isProjectedOnly ? (
+        // Jour PROJETÉ — pas de faux tiroir d'intervention, pas de redirection
+        // muette : on explique d'abord (état « Planning prévu »), le renvoi vers
+        // le roulement se fait ensuite, au bouton. (MonthProjectionSheet.)
+        <button
+          type="button"
+          data-projected-trigger="true"
+          data-site-id={siteId}
+          data-date={date}
+          data-site-label={siteLabelText}
+          title="Planning prévu — issu d'un roulement, pas encore matérialisé"
+          className={cn(innerCls, 'w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring')}
+        >
+          {inner}
+        </button>
+      ) : state === 'closed' ? (
+        <Link href="/calendrier" title={title} className={innerCls}>
+          {inner}
+        </Link>
+      ) : state === 'hole' ? (
+        <Link href={`/semaine?week=${isoWeekParamOf(date)}&cell=${cellKey}`} title={title} className={innerCls}>
+          {inner}
+        </Link>
+      ) : (
+        <span className={innerCls} title={title}>
+          {inner}
+        </span>
+      )}
+    </td>
   )
 }
