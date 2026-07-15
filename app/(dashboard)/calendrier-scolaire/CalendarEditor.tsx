@@ -136,12 +136,13 @@ export function CalendarEditor({
                 {confirmDelete === p.id ? (
                   // Confirmation LÉGÈRE avant une action à conséquences : retirer
                   // une période efface les fermetures qui en découlent.
-                  <span className="flex shrink-0 items-center gap-2 text-xs">
+                  <span className="flex shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1 text-xs">
                     <span className="text-rose-700">
                       Retirer&#8239;?
                       {followingCount > 0 && (
                         <span className="text-muted-foreground">
-                          {' '}{followingCount} chantier{followingCount > 1 ? 's' : ''} suivront
+                          {' '}{followingCount} chantier{followingCount > 1 ? 's' : ''} concerné
+                          {followingCount > 1 ? 's' : ''}
                         </span>
                       )}
                     </span>
@@ -166,24 +167,24 @@ export function CalendarEditor({
                   // Actions TOUJOURS visibles au doigt (< md) ; révélées au survol
                   // sur desktop seulement. Avant, opacity-0 group-hover les rendait
                   // inexistantes sur téléphone — l'appareil du terrain.
-                  <span className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                  <span className="flex shrink-0 items-center gap-2 opacity-100 transition-opacity md:gap-1 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={() => edit(p)}
                       disabled={pending}
                       aria-label={`Modifier ${p.label}`}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="rounded-md p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground md:p-1.5"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4 md:h-3.5 md:w-3.5" />
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmDelete(p.id)}
                       disabled={pending}
                       aria-label={`Retirer ${p.label}`}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-rose-700"
+                      className="rounded-md p-2.5 text-muted-foreground hover:bg-muted hover:text-rose-700 md:p-1.5"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4 md:h-3.5 md:w-3.5" />
                     </button>
                   </span>
                 )}

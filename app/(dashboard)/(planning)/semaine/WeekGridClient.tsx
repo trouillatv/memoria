@@ -232,7 +232,11 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
 
           // ANNULER — un drop raté au doigt se pardonne : on renvoie
           // l'intervention à sa date d'origine (connue avant le déplacement).
+          // MAIS on ne propose l'annulation QUE si le retour est possible : une
+          // « Rattrapée » (skipped du passé) a son origine dans le passé, et le
+          // serveur refuse toute replanif vers le passé — l'undo échouerait.
           const originalDate = info.scheduledFor
+          const canUndo = originalDate >= todayIso
           const undo = {
             label: 'Annuler',
             onClick: () => {
@@ -264,15 +268,17 @@ export function WeekGridClient({ rows, todayIso, teams, signalsBySite, conflicts
             toast.warning(`${title} — un jour fermé`, {
               description: `Ce chantier est fermé ce jour-là${because}. L'intervention est bien déplacée : à vous de décider de la maintenir ou de la replanifier.`,
               duration: 8000,
-              action: undo,
+              ...(canUndo ? { action: undo } : {}),
             })
           } else {
             toast.success(title, {
               description: result.rescheduled
                 ? 'Intervention ratée remise en planifié. Cette intervention uniquement.'
                 : 'Cette intervention uniquement.',
-              duration: result.rescheduled ? 5000 : 3000,
-              action: undo,
+              // 5 s dès qu'« Annuler » est offert : sans hover mobile, il doit
+              // rester le temps d'être vu et touché.
+              duration: canUndo ? 5000 : 3000,
+              ...(canUndo ? { action: undo } : {}),
             })
           }
           router.refresh()
