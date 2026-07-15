@@ -503,7 +503,7 @@ function ProjectionBody({
       <SheetHeader className="border-b p-4">
         <SheetTitle className="inline-flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-muted-foreground" aria-hidden />
-          Planning prévu
+          Roulement prévu
         </SheetTitle>
         <SheetDescription>
           {`${projection.siteLabel} · ${formatLongDate(projection.date)}`}
