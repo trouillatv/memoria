@@ -16,24 +16,22 @@ import {
   listVisitCapturesAction,
   listVisitCapturePreviewsAction,
   revalidateSiteMobile,
-  createVisitVideoUploadAction,
-  registerVisitVideoAction,
   addPhotoCaptureAction,
 } from './capture-actions'
 import { uploadReportAttachmentAction } from './report-actions'
 import { PhotoAnnotator } from './PhotoAnnotator'
 import { GhostCamera } from './GhostCamera'
+import { VideoRecorder } from './VideoRecorder'
 import { queueVisitCapture, listQueuedVisitCapturesByReport } from '@/lib/field/visit-capture-queue'
-import { beginLiveUpload, endLiveUpload } from '@/lib/field/live-uploads'
 import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
 import type { WatchContext } from '@/lib/visits/watchlist-context'
 import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
-import { createClient } from '@/lib/supabase/client'
 
-// La vidéo s'upload en direct vers Supabase (URL signée), bornée par la limite du
-// bucket (mig 181). Au-delà : message clair plutôt qu'un échec silencieux.
+// La vidéo est conservée localement puis montée en direct vers Supabase (URL
+// signée) par le drain, bornée par la limite du bucket (mig 181). Au-delà :
+// message clair plutôt qu'un échec silencieux.
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 // Préférence géoloc mémorisée sur l'appareil : 'always' = ne plus demander.
 const GEO_PREF_KEY = 'memoria.geoloc.captures'
@@ -111,6 +109,8 @@ export function VisitBasket({
   const [overlay, setOverlay] = useState<'none' | 'note' | 'verify' | 'question' | 'watch' | 'lastlook'>('none')
   // Caméra fantôme (mig 195) : point de repère en cours de reprise, ou null.
   const [ghost, setGhost] = useState<{ anchorId: string; url: string; label: string | null } | null>(null)
+  // Caméra vidéo intégrée (MOB-VID2a) — filmer dans l'app, clips de 20 s.
+  const [videoRecorderOpen, setVideoRecorderOpen] = useState(false)
   // Repli natif de la caméra fantôme : la prochaine photo native sera chaînée
   // à ce point de repère (sans fantôme, mais la série reste continue).
   const nextPhotoViewpointRef = useRef<string | null>(null)
@@ -331,53 +331,18 @@ export function VisitBasket({
   }
 
   // ── Vidéo ──────────────────────────────────────────────────────────────────
-  // PAS la file IndexedDB (trop lourde) ni le Server Action (limite 20 Mo) : la
-  // vidéo s'envoie EN DIRECT au stockage via URL signée. Le geste reste non
-  // bloquant (optimiste tout de suite, envoi en arrière-plan).
+  // Comme la photo : la vidéo est d'abord CONSERVÉE dans la file IndexedDB (blob
+  // durable sur l'appareil). On ne perd JAMAIS une preuve faute de réseau — une
+  // capture n'est « prise » qu'une fois écrite localement ; l'upload n'est jamais
+  // l'unique copie. Le drain la monte ensuite EN DIRECT vers Supabase (URL
+  // signée, hors Vercel, pas de Server Action à 20 Mo), avec reprise automatique
+  // au retour du réseau et au prochain lancement de l'app.
   function uploadVideoFile(file: File) {
     if (file.size > MAX_VIDEO_BYTES) {
       toast.error('Vidéo trop lourde (max 50 Mo) — filme une séquence plus courte.')
       return
     }
-    const clientUuid = crypto.randomUUID()
-    const previewUrl = URL.createObjectURL(file)
-    const takenAt = Date.now()
-    setPending((prev) => [...prev, { clientUuid, kind: 'video', previewUrl, takenAt }])
-    // La vidéo n'entre dans AUCUNE file (upload direct) : on la signale au registre
-    // des uploads directs (#81) pour que la pastille du header et la file de sync
-    // la voient — sinon « Tout est arrivé » mentirait pendant qu'elle monte.
-    beginLiveUpload({ id: clientUuid, kind: 'video', previewUrl, takenAt })
-    const dropPending = () => {
-      endLiveUpload(clientUuid)
-      setPending((prev) => {
-        const f = prev.find((p) => p.clientUuid === clientUuid)
-        if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl)
-        return prev.filter((p) => p.clientUuid !== clientUuid)
-      })
-    }
-    ;(async () => {
-      const pos = await getOneShotPosition()
-      const prep = await createVisitVideoUploadAction({ report_id: reportId, client_uuid: clientUuid })
-      if (!prep.ok) throw new Error(prep.error)
-      if (!prep.alreadyDone) {
-        const supa = createClient()
-        const { error: upErr } = await supa.storage
-          .from('site-reports')
-          .uploadToSignedUrl(prep.storagePath, prep.token, file, { contentType: file.type || 'video/mp4' })
-        if (upErr) throw new Error(upErr.message)
-        const reg = await registerVisitVideoAction({
-          report_id: reportId, site_id: siteId, client_uuid: clientUuid,
-          storage_path: prep.storagePath, mime: file.type || 'video/mp4', size_bytes: file.size,
-          lat: pos?.lat, lng: pos?.lng,
-        })
-        if (!reg.ok) throw new Error(reg.error)
-      }
-      dropPending()
-      void refresh()
-    })().catch(() => {
-      dropPending()
-      toast.error('Échec de l’envoi de la vidéo — réessaie.')
-    })
+    enqueueMedia(file, 'video')
   }
 
   function onVideoFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -736,7 +701,7 @@ export function VisitBasket({
       <div className="grid grid-cols-5 gap-2">
         {/* Médias : JAMAIS désactivés — la capture ne s'arrête pas pour un envoi. */}
         <GestureButton icon={<Camera className="h-5 w-5" />} label="Photo" onClick={() => fileRef.current?.click()} />
-        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" onClick={() => videoRef.current?.click()} />
+        <GestureButton icon={<Video className="h-5 w-5" />} label="Vidéo" onClick={() => setVideoRecorderOpen(true)} />
         <GestureButton
           icon={recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           label={recording ? 'Stop' : 'Vocal'}
@@ -1134,6 +1099,20 @@ export function VisitBasket({
             nextPhotoViewpointRef.current = ghost.anchorId
             setGhost(null)
             fileRef.current?.click()
+          }}
+        />
+      )}
+
+      {/* Caméra vidéo intégrée : chaque séquence (20 s max) part en direct vers
+          Supabase via uploadVideoFile. Repli sur l'appareil natif si la caméra
+          in-app est indisponible. */}
+      {videoRecorderOpen && (
+        <VideoRecorder
+          onClip={(file) => uploadVideoFile(file)}
+          onClose={() => setVideoRecorderOpen(false)}
+          onFallbackNative={() => {
+            setVideoRecorderOpen(false)
+            videoRef.current?.click()
           }}
         />
       )}
