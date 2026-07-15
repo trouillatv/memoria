@@ -14,6 +14,7 @@ import { createSiteReserve } from '@/lib/db/site-reserve'
 import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
 import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
+import { loadOrRunVisitDebrief, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -269,6 +270,31 @@ export async function setVisitObjectiveAction(
   } catch {
     return { ok: false, error: "Échec de l'enregistrement de l'objet" }
   }
+}
+
+/**
+ * « Ce que MemorIA a retenu » — charge le résumé IA de la visite (lazy-once +
+ * cache). Renvoie l'analyse persistée si elle est à jour, sinon la génère UNE
+ * fois et la persiste (moteur inchangé). `force` = « Régénérer » (jamais auto).
+ *
+ * GARDE FAIL-CLOSED : la couche `loadOrRunVisitDebrief` utilise le service-role
+ * (bypasse la RLS) — on vérifie donc ICI l'organisation + l'existence de la
+ * visite AVANT de la lui passer (même barrière que finalize/delete ci-dessous).
+ */
+export async function getVisitDebriefFieldAction(input: unknown): Promise<DebriefLoadResult> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid(), force: z.boolean().optional() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+
+  return loadOrRunVisitDebrief(parsed.data.report_id, auth.userId, { force: parsed.data.force })
 }
 
 /**
