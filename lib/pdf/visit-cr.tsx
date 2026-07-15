@@ -13,6 +13,7 @@
 import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
+import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
 const COLORS = {
   text: '#0f172a',
@@ -74,6 +75,15 @@ const styles = StyleSheet.create({
   cardLead: { fontFamily: 'Helvetica-Bold', color: COLORS.text, marginBottom: 4 },
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2 },
   checkMark: { width: 6, height: 6, borderRadius: 1.5, backgroundColor: COLORS.accent, marginTop: 3, marginRight: 6 },
+
+  // Action proposée : une case à COCHER (à faire), pas une puce.
+  actionRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 3 },
+  checkbox: { width: 9, height: 9, borderWidth: 1, borderColor: '#7c3aed', borderRadius: 2, marginTop: 2, marginRight: 7 },
+  actionText: { flex: 1 },
+  actionWhy: { fontSize: 8.5, color: COLORS.muted },
+  // Point de vigilance : une ALERTE (pastille orange), lisible en 3 secondes.
+  alertRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 3 },
+  alertDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#f59e0b', marginTop: 2.5, marginRight: 7 },
 
   // En bref (stats).
   statStrip: { flexDirection: 'row', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 5 },
@@ -209,7 +219,7 @@ function ObservationMapSnapshot({ src, positions }: { src: string; positions: Vi
   )
 }
 
-export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exportDate: string; mapImage?: string | null }) {
+export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitCrDoc; debrief?: StoredDebriefAnalysis | null; exportDate: string; mapImage?: string | null }) {
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
@@ -228,6 +238,13 @@ export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exp
     ...doc.actions.map((a) => `${a.corps_etat ? `(${a.corps_etat}) ` : ''}${a.title}`),
     ...doc.points.action,
   ]
+
+  // « Ce que MemorIA a retenu » — LE MÊME modèle que le mobile : le résultat de
+  // l'analyse (narratif propre, actions proposées, points de vigilance), jamais
+  // le verbatim. Repli déterministe si l'analyse n'est pas disponible.
+  const summaryText = debrief?.summary?.trim() || doc.summary?.trim() || ''
+  const proposedActions = debrief?.actions ?? []
+  const watchpoints = debrief?.watchpoints ?? []
 
   // « En bref » — richesse de la visite (comptes réels par type).
   const stats: Array<{ n: number; label: string }> = [
@@ -268,12 +285,12 @@ export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exp
           </View>
         </View>
 
-        {/* Résumé — encart, ce que le lecteur doit voir en premier. */}
+        {/* Ce que MemorIA a retenu — le RÉSULTAT de l'analyse, en premier. */}
         <View style={styles.section} wrap={false}>
-          <SectionTitle text="Résumé de la visite" color={COLORS.accent} important />
+          <SectionTitle text="Ce que MemorIA a retenu" color={COLORS.accent} important />
           <View style={styles.card}>
-            <Text style={doc.summary ? undefined : styles.empty}>
-              {doc.summary?.trim() || 'Éléments insuffisants pour un résumé — voir les constats et photos ci-dessous.'}
+            <Text style={summaryText ? undefined : styles.empty}>
+              {summaryText || 'Éléments insuffisants pour un résumé — voir les photos et l’annexe ci-dessous.'}
             </Text>
           </View>
         </View>
@@ -300,42 +317,42 @@ export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exp
           </View>
         )}
 
-        {/* Constats — écrits en clair, transcriptions vocales brutes reléguées dessous. */}
-        <View style={styles.section}>
-          <SectionTitle text="Constats de la visite" color={COLORS.accent} important />
-          {doc.observations.length === 0 && doc.transcriptions.length === 0 ? (
-            <Text style={styles.empty}>Aucune note saisie pendant la visite.</Text>
-          ) : (
-            <>
-              <Bullets items={doc.observations} />
-              {doc.transcriptions.length > 0 && (
-                <>
-                  <Text style={styles.subTitle}>Transcriptions brutes (extraits)</Text>
-                  <View>
-                    {doc.transcriptions.map((line, i) => (
-                      <View key={i} style={styles.rawRow} wrap={false}>
-                        <Text style={styles.bulletDot}>•</Text>
-                        <Text style={styles.rawText}>{line}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              )}
-            </>
-          )}
-        </View>
+        {/* Actions proposées — un bloc DÉDIÉ, en cases à cocher (à faire), plus
+            noyées dans le texte. Issues de l'analyse (propositions), jamais des
+            actions déjà validées. */}
+        {proposedActions.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Actions proposées" color="#7c3aed" />
+            {proposedActions.map((a, i) => (
+              <View key={i} style={styles.actionRow} wrap={false}>
+                <View style={styles.checkbox} />
+                <View style={styles.actionText}>
+                  <Text>{a.title}</Text>
+                  {a.rationale ? <Text style={styles.actionWhy}>{a.rationale}</Text> : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Points de vigilance — des ALERTES (pastille), pas des paragraphes :
+            on comprend la situation en trois secondes. */}
+        {watchpoints.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Points de vigilance" color="#d97706" />
+            {watchpoints.map((p, i) => (
+              <View key={i} style={styles.alertRow} wrap={false}>
+                <View style={styles.alertDot} />
+                <Text style={styles.bulletText}>{p}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {reserveLines.length > 0 && (
           <View style={styles.section}>
             <SectionTitle text={reservesTitle} color="#e11d48" />
             <Bullets items={reserveLines} />
-          </View>
-        )}
-
-        {doc.points.surveiller.length > 0 && (
-          <View style={styles.section}>
-            <SectionTitle text="Points à surveiller" color="#d97706" />
-            <Bullets items={doc.points.surveiller} />
           </View>
         )}
 
@@ -434,6 +451,21 @@ export function VisitCrPdf({ doc, exportDate, mapImage }: { doc: VisitCrDoc; exp
           <Text style={styles.paragraph}><Text style={styles.metaStrong}>Résultat : </Text>{doc.outcomeLabel ?? 'non précisé'}</Text>
           <Text style={styles.paragraph}><Text style={styles.metaStrong}>Suivi : </Text>{doc.resolutionLabel ?? 'non précisé'}</Text>
         </View>
+
+        {/* Annexe — la TRANSCRIPTION INTÉGRALE (matière première). Reléguée en
+            fin, sur sa propre page : ce n'est plus le corps du compte-rendu,
+            seulement la source qui l'a nourri. */}
+        {doc.transcriptions.length > 0 && (
+          <View style={styles.section} break>
+            <SectionTitle text="Annexe — Transcription intégrale" color={COLORS.faint} />
+            {doc.transcriptions.map((line, i) => (
+              <View key={i} style={styles.rawRow} wrap={false}>
+                <Text style={styles.bulletDot}>•</Text>
+                <Text style={styles.rawText}>{line}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.footer} fixed>
           <Text>Compte-rendu généré par MemorIA · {exportDate}</Text>
