@@ -22,6 +22,8 @@
 // Pur : aucune base, aucun réseau. La page assemble les faits ; ce module dit
 // ce qu'ils SIGNIFIENT.
 
+import type { ClosureReasonKind } from '@/lib/planning/closures'
+
 /** Ce qu'on sait d'un (chantier, jour) — des FAITS, assemblés par la page. */
 export interface DayFacts {
   /** Encore attendues ce jour — HORS décisions « maintenir » déjà tranchées :
@@ -42,6 +44,9 @@ export interface DayFacts {
   projected: number
   /** Le chantier est déclaré fermé ce jour-là. */
   closed: boolean
+  /** Le MOTIF de la fermeture (férié, client, inventaire…) — pour que la case
+   *  fermée ouvre son tiroir sans re-requêter. `null` si le jour n'est pas fermé. */
+  closureReasonKind: ClosureReasonKind | null
   /** Au moins une occurrence dévie de son roulement ce jour-là. */
   hasException: boolean
   /** Le chantier a un roulement publié qui COUVRE ce jour — c'est lui qui rend

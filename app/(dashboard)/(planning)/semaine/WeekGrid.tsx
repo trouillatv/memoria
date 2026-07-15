@@ -452,9 +452,21 @@ function MonthGridCell({
           {inner}
         </button>
       ) : state === 'closed' ? (
-        <Link href="/calendrier" title={title} className={innerCls}>
+        // Jour FERMÉ — on ne quitte plus le planning vers le Calendrier (A1 ④) :
+        // on ouvre le MÊME tiroir, contenu « Chantier fermé » (motif + lien vers
+        // la fiche du chantier, là où la fermeture se règle).
+        <button
+          type="button"
+          data-closed-trigger="true"
+          data-site-id={siteId}
+          data-date={date}
+          data-site-label={siteLabelText}
+          data-reason-kind={facts.closureReasonKind ?? ''}
+          title={title}
+          className={cn(innerCls, 'w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring')}
+        >
           {inner}
-        </Link>
+        </button>
       ) : state === 'hole' ? (
         <Link href={`/semaine?week=${isoWeekParamOf(date)}&cell=${cellKey}`} title={title} className={innerCls}>
           {inner}

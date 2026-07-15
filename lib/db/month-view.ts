@@ -224,13 +224,17 @@ export async function buildMonthRows(params: {
         )
       })
 
+      // Le MOTIF de la fermeture voyage avec le fait : la case fermée ouvrira
+      // son tiroir « Chantier fermé » sans re-requêter (A1 ④).
+      const closureForDay = findClosureForDate(closures, day)
       dayFacts[day] = {
         expected,
         done,
         realized,
         kept,
         projected: projectedCount,
-        closed: findClosureForDate(closures, day) !== null,
+        closed: closureForDay !== null,
+        closureReasonKind: closureForDay?.reasonKind ?? null,
         hasException,
         cycleCovers: projTpl.size > 0,
       }

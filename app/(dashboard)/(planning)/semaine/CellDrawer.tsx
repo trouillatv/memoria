@@ -49,7 +49,7 @@ import { ConflictResolver } from './ConflictResolver'
 import { ExceptionBadge } from './ExceptionBadge'
 import { DECISION_FR, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import type { ClosureDecision } from '@/lib/db/closure-decisions'
-import { CLOSURE_REASON_FR } from '@/lib/planning/closures'
+import { CLOSURE_REASON_FR, type ClosureReasonKind } from '@/lib/planning/closures'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import { DraggableMission } from './DraggableMission'
 import { ReassignTeamDialog, type ReassignTeamOption } from './ReassignTeamDialog'
@@ -136,6 +136,7 @@ function buildIndex(rows: SiteRow[]): Map<string, SelectedCell> {
 type DrawerSelection =
   | { type: 'intervention'; key: string }
   | { type: 'projection'; siteId: string; date: string; siteLabel: string }
+  | { type: 'closure'; siteId: string; date: string; siteLabel: string; reasonKind: string }
 
 export function CellDrawer({
   rows,
@@ -157,6 +158,7 @@ export function CellDrawer({
   )
   const selectedKey = selection?.type === 'intervention' ? selection.key : null
   const projection = selection?.type === 'projection' ? selection : null
+  const closureSel = selection?.type === 'closure' ? selection : null
 
   // Modal de réassignation : on stocke l'intervention ciblée
   const [reassignTarget, setReassignTarget] = useState<{
@@ -187,6 +189,22 @@ export function CellDrawer({
             siteId,
             date,
             siteLabel: projTrigger.getAttribute('data-site-label') ?? 'Ce chantier',
+          })
+        }
+        return
+      }
+      // Jour FERMÉ (sans prestation) → contenu « Chantier fermé » (A1 ④).
+      const closedTrigger = target.closest<HTMLElement>('[data-closed-trigger="true"]')
+      if (closedTrigger) {
+        const siteId = closedTrigger.getAttribute('data-site-id')
+        const date = closedTrigger.getAttribute('data-date')
+        if (siteId && date) {
+          setSelection({
+            type: 'closure',
+            siteId,
+            date,
+            siteLabel: closedTrigger.getAttribute('data-site-label') ?? 'Ce chantier',
+            reasonKind: closedTrigger.getAttribute('data-reason-kind') ?? '',
           })
         }
       }
@@ -241,6 +259,8 @@ export function CellDrawer({
         <SheetContent side="right" className="p-0 sm:max-w-md w-full overflow-y-auto">
           {projection ? (
             <ProjectionBody projection={projection} />
+          ) : closureSel ? (
+            <ClosureBody closure={closureSel} />
           ) : (
           <>
           <SheetHeader className="border-b p-4">
@@ -520,6 +540,57 @@ function ProjectionBody({
           className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-between')}
         >
           Configurer le roulement
+          <ArrowRight className="h-4 w-4" aria-hidden />
+        </Link>
+      </div>
+    </>
+  )
+}
+
+/**
+ * LE CONTENU « CHANTIER FERMÉ » — même enveloppe (A1 ④, Vincent 2026-07-15).
+ *
+ * On ne quitte plus le planning vers le Calendrier : la case fermée s'explique
+ * sur place (motif) et renvoie à la FICHE DU CHANTIER, là où la fermeture se
+ * règle vraiment — « une fermeture appartient au chantier ». Lecture seule.
+ */
+function ClosureBody({
+  closure,
+}: {
+  closure: { siteId: string; date: string; siteLabel: string; reasonKind: string }
+}) {
+  const motif = CLOSURE_REASON_FR[closure.reasonKind as ClosureReasonKind] ?? null
+  return (
+    <>
+      <SheetHeader className="border-b p-4">
+        <SheetTitle className="inline-flex items-center gap-2">
+          <CalendarOff className="h-4 w-4 text-sky-700 dark:text-sky-300" aria-hidden />
+          Chantier fermé
+        </SheetTitle>
+        <SheetDescription>
+          {`${closure.siteLabel} · ${formatLongDate(closure.date)}`}
+        </SheetDescription>
+      </SheetHeader>
+      <div className="space-y-4 px-4 py-4">
+        <div className="rounded-md border border-sky-200 bg-sky-50/60 p-3 dark:border-sky-900/40 dark:bg-sky-950/20">
+          <p className="text-sm">
+            Ce chantier est fermé ce jour-là
+            {motif ? (
+              <>
+                {' '}— <span className="font-medium">{motif.toLowerCase()}</span>
+              </>
+            ) : null}
+            . Rien n&apos;est prévu.
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Une fermeture appartient au chantier : elle se règle sur sa fiche.
+        </p>
+        <Link
+          href={`/sites/${closure.siteId}`}
+          className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-between')}
+        >
+          Voir la fiche du chantier
           <ArrowRight className="h-4 w-4" aria-hidden />
         </Link>
       </div>

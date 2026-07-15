@@ -505,6 +505,7 @@ function makeDayFacts(overrides: Partial<DayFacts> = {}): DayFacts {
     kept: 0,
     projected: 0,
     closed: false,
+closureReasonKind: null,
     hasException: false,
     cycleCovers: false,
     ...overrides,

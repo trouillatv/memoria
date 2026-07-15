@@ -19,7 +19,7 @@ function formatDateShortFr(iso: string): string {
   })
 }
 
-export function WeekVigilanceSection({ data }: { data: WeekVigilance }) {
+export function WeekVigilanceSection({ data, weekParam }: { data: WeekVigilance; weekParam: string }) {
   const total = data.unassigned.length + data.conflicts.length
   if (total === 0) return null
 
@@ -45,8 +45,15 @@ export function WeekVigilanceSection({ data }: { data: WeekVigilance }) {
           <ul className="space-y-1 text-sm">
             {data.unassigned.map((i) => (
               <li key={i.id} className="flex items-start justify-between gap-3">
+                {/* A1 — on répare la grille SANS la quitter : le lien ouvre le
+                    tiroir de la cellule concernée (?cell=), là où « réassigner »
+                    vit déjà. Fallback fiche intervention si le site manque. */}
                 <Link
-                  href={`/interventions/${i.id}`}
+                  href={
+                    i.site_id
+                      ? `/semaine?week=${weekParam}&cell=${i.site_id}::${i.scheduled_for}`
+                      : `/interventions/${i.id}`
+                  }
                   className="hover:underline min-w-0 flex-1 truncate text-red-950 dark:text-red-50"
                 >
                   <span className="text-red-900/70 dark:text-red-200/70 tabular-nums">
