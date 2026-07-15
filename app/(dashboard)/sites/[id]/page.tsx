@@ -8,7 +8,10 @@ import {
   ArrowLeft,
   Calendar,
   CalendarPlus,
+  Camera,
+  CheckCircle2,
   Clock,
+  FileText,
   ListTodo,
   Search,
   ShieldAlert,
@@ -27,6 +30,7 @@ import {
   buildSiteStatusSummary,
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
+  type LastVisitCard,
 } from '@/lib/db/visits'
 import {
   getSiteCurrentState,
@@ -205,6 +209,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         {tab === 'apercu' ? (
           <ChantierOverview
             siteId={id}
+            lastVisit={lastVisit}
             openActionsCount={openActions.length}
             openReservesCount={openReserves}
             openBlocagesCount={openBlocages.length}
@@ -269,6 +274,7 @@ function ChantierShell({
 
 function ChantierOverview({
   siteId,
+  lastVisit,
   openActionsCount,
   openReservesCount,
   openBlocagesCount,
@@ -278,6 +284,7 @@ function ChantierOverview({
   recentChanges,
 }: {
   siteId: string
+  lastVisit: LastVisitCard | null
   openActionsCount: number
   openReservesCount: number
   openBlocagesCount: number
@@ -288,6 +295,12 @@ function ChantierOverview({
 }) {
   return (
     <main className="space-y-4">
+      {/* LE HÉROS — ce que je viens d'accomplir, AVANT ce qui manque (Vincent,
+          2026-07-15). Après 45 min sur le terrain, le conducteur doit lire
+          « voilà ce que j'ai produit », pas « 0 action, 0 réserve ». Silence
+          positif : rien tant qu'aucune visite n'existe. */}
+      {lastVisit && <LastVisitHero siteId={siteId} visit={lastVisit} />}
+
       <section aria-labelledby="etat-du-chantier" className="space-y-3">
         <h2 id="etat-du-chantier" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           État du chantier
@@ -639,6 +652,100 @@ async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> 
     lastAccessedAt: token.last_accessed_at,
     history,
   }
+}
+
+/**
+ * VOTRE DERNIÈRE VISITE — la récompense du terrain.
+ *
+ * Le conducteur revient d'un chantier : la première chose qu'il doit lire, ce
+ * n'est pas « 0 action / 0 réserve », c'est ce qu'il vient de PRODUIRE. Le zéro
+ * cesse d'être un vide et devient une bonne nouvelle : « rien à corriger,
+ * tout est documenté ». Ne s'affiche que si une visite a réellement eu lieu ;
+ * ne montre que des faits réels (durée, photos, observations).
+ */
+function LastVisitHero({ siteId, visit }: { siteId: string; visit: LastVisitCard }) {
+  const when = visit.endedAt ?? visit.startedAt
+  const duration = formatVisitDuration(visit.startedAt, visit.endedAt)
+  // Une visite qui n'a rien laissé à traiter est une visite RÉUSSIE, pas vide.
+  const clean = visit.reserves === 0 && visit.actions === 0
+  return (
+    <section className="rounded-[22px] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-4">
+          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-800">
+            <CheckCircle2 className="h-6 w-6" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/80">
+              Votre dernière visite
+            </h2>
+            <p className="mt-0.5 text-lg font-semibold">
+              {when ? formatVisitWhen(when) : 'Visite réalisée'}
+              {duration && <span className="font-normal text-muted-foreground"> · {duration}</span>}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+                <CheckCircle2 className="h-4 w-4" /> Visite réalisée
+              </span>
+              {visit.photos > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <Camera className="h-4 w-4" /> {visit.photos} photo{visit.photos > 1 ? 's' : ''}
+                </span>
+              )}
+              {visit.notes > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <FileText className="h-4 w-4" /> {visit.notes} observation{visit.notes > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {clean ? (
+                <span className="text-emerald-800/90 dark:text-emerald-300/90">
+                  ✓ Rien à corriger — aucune réserve, aucune action. Tout est documenté.
+                </span>
+              ) : (
+                [
+                  visit.reserves > 0 ? `${visit.reserves} réserve${visit.reserves > 1 ? 's' : ''}` : null,
+                  visit.actions > 0 ? `${visit.actions} action${visit.actions > 1 ? 's' : ''}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') + ' notées pendant la visite.'
+              )}
+            </p>
+          </div>
+        </div>
+        <Link
+          href={`/sites/${siteId}/visites/${visit.reportId}`}
+          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+        >
+          Ouvrir la visite
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+/** « Aujourd'hui », « Hier », sinon la date courte. Pas d'heure : le terrain
+ *  pense en jours, et le compteur exact vit dans la visite. */
+function formatVisitWhen(iso: string): string {
+  const day = iso.slice(0, 10)
+  const today = todayLocalIso()
+  if (day === today) return "Aujourd'hui"
+  const y = new Date(`${today}T00:00:00Z`)
+  y.setUTCDate(y.getUTCDate() - 1)
+  if (day === y.toISOString().slice(0, 10)) return 'Hier'
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+}
+
+/** Durée d'une visite : « 45 min », « 1 h 20 ». `null` si bornes incomplètes. */
+function formatVisitDuration(startedAt: string | null, endedAt: string | null): string | null {
+  if (!startedAt || !endedAt) return null
+  const mins = Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60000)
+  if (!Number.isFinite(mins) || mins <= 0) return null
+  if (mins < 60) return `${mins} min`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`
 }
 
 function StateCard({
