@@ -28,7 +28,7 @@ import 'server-only'
 
 import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { gatherVisitDebriefContext } from '@/lib/db/visits'
+import { gatherVisitDebriefContext, type VisitSourceSnapshot } from '@/lib/db/visits'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
@@ -70,6 +70,12 @@ export interface StoredDebriefAnalysis {
   model: string | null
   generated_at: string
   corpus_hash: string
+  /** Version de FORME (régénération silencieuse si périmée). */
+  schema_version: string
+  /** N° de synthèse : +1 à chaque « Mettre à jour ». L'humain voit qu'elle évolue. */
+  analysis_version: number
+  /** Ce qui a été pris en compte — pour dire « synthèse à jour » vs « enrichie depuis ». */
+  source_snapshot: VisitSourceSnapshot
 }
 
 /** L'entrée EXACTE passée à l'agent — construite une seule fois, hashée, puis
@@ -98,17 +104,17 @@ function buildDebriefInput(
   }
 }
 
-// Version de FORME de l'analyse stockée. À incrémenter dès que la structure de
-// StoredDebriefAnalysis change : le hash change alors pour TOUTES les visites, donc
-// les anciens caches (forme périmée) sont régénérés au lieu d'être relus tels quels
-// — sinon une projection attendant la nouvelle forme planterait (ex. a_savoir absent).
-const ANALYSIS_SCHEMA_VERSION = 'v3-echeances-intervenants'
+// Version de FORME de l'analyse stockée. À incrémenter dès que la STRUCTURE de
+// StoredDebriefAnalysis change : un cache d'une forme périmée est régénéré en
+// SILENCE (pas « enrichi »). Distinct du corpus_hash, qui ne décrit QUE la matière.
+const ANALYSIS_SCHEMA_VERSION = 'v4-versioned'
 
-/** Empreinte de la MATIÈRE PROPRE À LA VISITE, en ordre stable (voir en-tête sur
- *  l'exclusion du contexte site volatile). Inclut la version de forme. */
+/** Empreinte de la MATIÈRE PROPRE À LA VISITE (le CORPUS envoyé à l'agent), en
+ *  ordre stable. NE dépend PAS de la version de forme : un corpus inchangé donne le
+ *  même hash → « synthèse à jour » ; un ajout (note, mémo, commentaire) le change →
+ *  « visite enrichie depuis ». On exclut le contexte site volatile (voir en-tête). */
 export function computeCorpusHash(input: VisitDebriefInput): string {
   const corpus = JSON.stringify({
-    v: ANALYSIS_SCHEMA_VERSION,
     objectiveHint: input.objectiveHint ?? '',
     transcript: input.transcript ?? '',
     capturedText: input.capturedText ?? '',
@@ -126,8 +132,13 @@ function fromAgent(
   provider: string,
   model: string | null,
   hash: string,
+  version: number,
+  snapshot: VisitSourceSnapshot,
 ): StoredDebriefAnalysis {
   return {
+    schema_version: ANALYSIS_SCHEMA_VERSION,
+    analysis_version: version,
+    source_snapshot: snapshot,
     summary: narrative,
     decisions: parsed.decisions,
     actions: parsed.suggested_actions,
@@ -191,17 +202,36 @@ export interface LoadedDebrief {
   fromCache: boolean
 }
 
+/** Ce qui a été AJOUTÉ à la visite depuis la dernière synthèse (jamais négatif). */
+export interface SnapshotDelta { photos: number; videos: number; vocals: number; notes: number }
+
 export type DebriefLoadResult =
-  | { ok: true; status: 'ready'; loaded: LoadedDebrief }
+  | { ok: true; status: 'ready'; loaded: LoadedDebrief } // synthèse à jour (ou fraîchement générée)
+  | { ok: true; status: 'stale'; loaded: LoadedDebrief; delta: SnapshotDelta } // visite enrichie depuis
   | { ok: true; status: 'generating' } // un autre appel analyse déjà — réessayer bientôt
   | { ok: false; error: string }
 
 const leaseFresh = (iso: string | null): boolean => !!iso && Date.now() - Date.parse(iso) < LEASE_MS
 
+function computeDelta(old: VisitSourceSnapshot | null | undefined, cur: VisitSourceSnapshot): SnapshotDelta {
+  const o = old ?? { photos: 0, videos: 0, vocals: 0, notes: 0, last_capture_at: null }
+  return {
+    photos: Math.max(0, cur.photos - o.photos),
+    videos: Math.max(0, cur.videos - o.videos),
+    vocals: Math.max(0, cur.vocals - o.vocals),
+    notes: Math.max(0, cur.notes - o.notes),
+  }
+}
+
 /**
- * Lazy-once + cache + verrou. Renvoie l'analyse persistée si son corpus_hash colle
- * à la matière actuelle ; sinon lance le moteur (une seule fois, verrouillé),
- * persiste, renvoie. `force` régénère toujours (« Régénérer », jamais automatique).
+ * Synthèse VERSIONNÉE. La visite est la vérité ; la synthèse en est une lecture
+ * horodatée. On ne régénère JAMAIS en silence pour une source qui a changé :
+ *   - schéma périmé  → régénère silencieusement (forme incompatible) ;
+ *   - corpus inchangé → `ready` (« synthèse à jour ») ;
+ *   - source changée sans `force` → `stale` : on GARDE l'ancienne synthèse et on
+ *     renvoie le delta (« visite enrichie depuis, +1 note… ») pour proposer la mise
+ *     à jour. Rien de coché par l'humain n'est perdu ;
+ *   - `force` (« Mettre à jour la synthèse ») → régénère, analysis_version + 1.
  *
  * L'appelant DOIT avoir vérifié l'organisation + l'accès chantier au préalable.
  */
@@ -214,19 +244,27 @@ export async function loadOrRunVisitDebrief(
   if (!ctx) return { ok: false, error: 'Visite introuvable' }
   const input = buildDebriefInput(ctx, userId)
   const hash = computeCorpusHash(input)
+  const snapshot = ctx.sourceSnapshot
 
   const state = await readState(reportId)
-  if (!opts?.force && state.analysis && state.analysis.corpus_hash === hash) {
-    return { ok: true, status: 'ready', loaded: { analysis: state.analysis, openSubjects: ctx.openSubjects, fromCache: true } }
-  }
-  // Quelqu'un d'autre analyse déjà (bail frais) : on ne double pas l'appel.
-  if (leaseFresh(state.generatingAt)) return { ok: true, status: 'generating' }
+  const cache = state.analysis
+  const usable = cache && cache.schema_version === ANALYSIS_SCHEMA_VERSION
 
+  if (usable && !opts?.force) {
+    const loaded = { analysis: cache, openSubjects: ctx.openSubjects, fromCache: true }
+    // Corpus inchangé → à jour.
+    if (cache.corpus_hash === hash) return { ok: true, status: 'ready', loaded }
+    // La visite a été enrichie depuis : on GARDE la synthèse, on signale le delta.
+    return { ok: true, status: 'stale', loaded, delta: computeDelta(cache.source_snapshot, snapshot) }
+  }
+
+  // (Re)génération : pas de cache utilisable, schéma périmé, ou mise à jour demandée.
+  if (leaseFresh(state.generatingAt)) return { ok: true, status: 'generating' }
   await setLease(reportId)
-  // Double-vérification juste avant l'appel coûteux : un autre appel a pu finir.
+  // Double-vérification (concurrence sur une PREMIÈRE génération) : un autre appel a pu finir.
   if (!opts?.force) {
     const again = await readState(reportId)
-    if (again.analysis && again.analysis.corpus_hash === hash) {
+    if (again.analysis && again.analysis.schema_version === ANALYSIS_SCHEMA_VERSION && again.analysis.corpus_hash === hash) {
       await clearLease(reportId)
       return { ok: true, status: 'ready', loaded: { analysis: again.analysis, openSubjects: ctx.openSubjects, fromCache: true } }
     }
@@ -234,7 +272,8 @@ export async function loadOrRunVisitDebrief(
 
   try {
     const res = await runVisitDebriefAgent(input)
-    const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash)
+    const version = (cache?.analysis_version ?? 0) + 1
+    const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot)
     await writeAnalysis(reportId, analysis).catch(() => {})
     return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {

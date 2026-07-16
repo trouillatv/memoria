@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users } from 'lucide-react'
 import { getVisitDebriefFieldAction } from '../debrief-actions'
-import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -29,6 +29,7 @@ export function MemoriaRetained({
 }) {
   const [phase, setPhase] = useState<Phase>('loading')
   const [analysis, setAnalysis] = useState<StoredDebriefAnalysis | null>(null)
+  const [staleDelta, setStaleDelta] = useState<SnapshotDelta | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aliveRef = useRef(true)
@@ -49,6 +50,7 @@ export function MemoriaRetained({
       return
     }
     setAnalysis(res.loaded.analysis)
+    setStaleDelta(res.status === 'stale' ? res.delta : null)
     setPhase('ready')
   }, [reportId])
 
@@ -127,6 +129,20 @@ export function MemoriaRetained({
         <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Ce que MemorIA a retenu</h2>
       </div>
 
+      {staleDelta && deltaTotal(staleDelta) > 0 && (
+        <div className="rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+          <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">Cette visite a été enrichie depuis la dernière synthèse.</p>
+          <p className="mt-0.5 text-[12px] text-amber-800/80 dark:text-amber-300/80">Nouveau : {deltaLabel(staleDelta)}. La synthèse ci-dessous ne les prend pas encore en compte.</p>
+          <button
+            type="button"
+            onClick={() => void load(true)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white active:brightness-95"
+          >
+            <RefreshCw className="h-4 w-4" /> Prendre en compte les nouveaux éléments
+          </button>
+        </div>
+      )}
+
       {a.summary.trim() && (
         <Block Icon={ListChecks} cls="text-emerald-600" title="Résumé">
           <p className="whitespace-pre-line text-[13px] leading-relaxed text-foreground/90">{a.summary.trim()}</p>
@@ -202,16 +218,16 @@ export function MemoriaRetained({
 
       {/* Discret : quand l'analyse a été faite, et la régénérer (jamais auto). */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-emerald-200/60 pt-2 text-[11px] text-muted-foreground dark:border-emerald-900/40">
-        <span>{generatedLabel ? `Analyse générée le ${generatedLabel}` : 'Analyse générée'}</span>
+        <span>{generatedLabel ? `Synthèse mise à jour le ${generatedLabel}` : 'Synthèse'}</span>
         {confirmRegen ? (
           <span className="inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-            <span className="text-[11px]">Régénérer remplace les propositions, sans toucher aux actions validées.</span>
-            <button type="button" onClick={regenerate} className="rounded-md bg-emerald-600 px-2 py-1 font-medium text-white">Régénérer</button>
+            <span className="text-[11px]">La mise à jour remplace les propositions, sans toucher aux actions déjà validées.</span>
+            <button type="button" onClick={regenerate} className="rounded-md bg-emerald-600 px-2 py-1 font-medium text-white">Mettre à jour</button>
             <button type="button" onClick={() => setConfirmRegen(false)} className="rounded-md px-2 py-1 hover:bg-muted">Annuler</button>
           </span>
         ) : (
           <button type="button" onClick={() => setConfirmRegen(true)} className="inline-flex items-center gap-1 hover:text-foreground">
-            <RefreshCw className="h-3.5 w-3.5" /> Régénérer
+            <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour la synthèse
           </button>
         )}
       </div>
@@ -223,6 +239,16 @@ function safeDate(iso: string): string | null {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return null
   return new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+}
+
+function deltaTotal(d: SnapshotDelta): number { return d.photos + d.videos + d.vocals + d.notes }
+function deltaLabel(d: SnapshotDelta): string {
+  const p: string[] = []
+  if (d.photos) p.push(`${d.photos} photo${d.photos > 1 ? 's' : ''}`)
+  if (d.videos) p.push(`${d.videos} vidéo${d.videos > 1 ? 's' : ''}`)
+  if (d.vocals) p.push(`${d.vocals} mémo${d.vocals > 1 ? 's' : ''}`)
+  if (d.notes) p.push(`${d.notes} note${d.notes > 1 ? 's' : ''}`)
+  return p.length ? p.join(' · ') : 'de nouveaux éléments'
 }
 
 function Block({ Icon, cls, title, children }: { Icon: typeof Eye; cls: string; title: string; children: React.ReactNode }) {

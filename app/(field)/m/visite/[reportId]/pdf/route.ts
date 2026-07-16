@@ -44,7 +44,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
   // Best-effort : si l'analyse échoue ou n'est pas prête (colonne absente avant
   // migration), le PDF retombe proprement sur le résumé déterministe du doc.
   const debrief = await loadOrRunVisitDebrief(reportId, user.id)
-    .then((r) => (r.ok && r.status === 'ready' ? r.loaded.analysis : null))
+    .then((r) => (r.ok && (r.status === 'ready' || r.status === 'stale') ? r.loaded.analysis : null))
     .catch(() => null)
 
   const exportDate = new Date().toLocaleDateString('fr-FR', {
