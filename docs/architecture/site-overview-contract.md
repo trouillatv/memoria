@@ -136,3 +136,25 @@ consomment la même donnée ; ③ une action proposée apparaît sur les deux ; 
 promotion fait proposées 3→2 / ouvertes 2→3 sans incohérence ; ⑤ une clôture met à
 jour les compteurs ; ⑥ une nouvelle visite met à jour « dernière visite » + état de
 synthèse ; ⑦ chargement borné (aucun corpus / média / historique massif).
+
+## TRANCHE A — TERMINÉE (Vincent, A7)
+
+Desktop et mobile lisent `SiteOverview`. Les actions proposées sont identiques sur les
+deux surfaces, et le test de doctrine (`tests/lib/site-overview-tab.doctrine.test.ts`)
+empêche le retour en arrière. L'objet Action est stabilisé.
+
+### Dette consignée — NE PAS ouvrir de lot
+
+`SiteStatusCard`, `IdentityCard` et `SiteActivityCard` (fiche mobile) lisent encore
+`buildSiteStatusSummary` / `getSiteIdentity` / `getSiteRecentActivity` en direct, alors
+que `getSiteOverview` refait ces lectures à l'intérieur. C'est une duplication réelle,
+et **ce n'est pas un problème** : les deux surfaces affichent la même chose. La seule
+différence est un nombre de requêtes.
+
+Critère de réouverture — un seul : **le conducteur voit une incohérence** (desktop dit
+3 actions proposées, mobile dit 2). Tant que les chiffres concordent, on n'y touche pas :
+migrer ces trois cartes ne produirait aucun écran différent, aucun compteur
+supplémentaire, aucune capacité visible.
+
+> Une tranche est terminée lorsqu'elle se démontre dans l'application — pas quand
+> l'architecture est belle.
