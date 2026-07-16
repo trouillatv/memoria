@@ -247,17 +247,57 @@ export async function countProposalsBySite(
 // distincte du MÉTIER (site_actions, créées seulement à la promotion). Toutes les
 // surfaces (Dashboard, Site, Travail, Mobile) lisent CETTE source unique.
 
-/** Nombre d'actions ENCORE PROPOSÉES (à confirmer) pour un chantier. */
-export async function countProposedActionsBySite(siteId: string): Promise<number> {
+/**
+ * PROJECTION UNIQUE de l'objet Action pour un chantier — la SEULE source que toutes
+ * les vues (Synthèse, Site, Dashboard, Travail, Historique) consomment ; aucune ne
+ * recompte de son côté. Mêle les deux niveaux :
+ *   • proposed  = propositions encore à confirmer (connaissance) ;
+ *   • confirmed = actions actives (métier : site_actions open/planned) ;
+ *   • completed = actions terminées (done) ;
+ *   • overdue   = actives dont l'échéance est passée ;
+ *   • proposedTop = les premières propositions (titres), pour l'aperçu direct.
+ */
+export interface ActionProjection {
+  proposed: number
+  confirmed: number
+  completed: number
+  overdue: number
+  proposedTop: Array<{ id: string; title: string }>
+}
+
+export async function getActionProjection(siteId: string, opts?: { topLimit?: number }): Promise<ActionProjection> {
   const supabase = createAdminClient()
-  const { count, error } = await supabase
-    .from('site_knowledge_proposals')
-    .select('id', { count: 'exact', head: true })
-    .eq('site_id', siteId)
-    .eq('kind', 'action')
-    .eq('status', 'proposed')
-  if (error) return 0
-  return count ?? 0
+  const topLimit = opts?.topLimit ?? 3
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const [propCountRes, propTopRes, actionsRes] = await Promise.all([
+    supabase
+      .from('site_knowledge_proposals')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId).eq('kind', 'action').eq('status', 'proposed'),
+    supabase
+      .from('site_knowledge_proposals')
+      .select('id, title')
+      .eq('site_id', siteId).eq('kind', 'action').eq('status', 'proposed')
+      .order('created_at', { ascending: true }).limit(topLimit),
+    supabase.from('site_actions').select('status, due_date').eq('site_id', siteId),
+  ])
+  let confirmed = 0
+  let completed = 0
+  let overdue = 0
+  for (const a of (actionsRes.data ?? []) as Array<{ status: string; due_date: string | null }>) {
+    if (a.status === 'done') { completed++; continue }
+    if (a.status === 'open' || a.status === 'planned') {
+      confirmed++
+      if (a.due_date && a.due_date.slice(0, 10) < todayIso) overdue++
+    }
+  }
+  return {
+    proposed: propCountRes.count ?? 0,
+    confirmed,
+    completed,
+    overdue,
+    proposedTop: ((propTopRes.data ?? []) as Array<{ id: string; title: string }>).map((r) => ({ id: r.id, title: r.title })),
+  }
 }
 
 /** Idem pour plusieurs chantiers (accueil / dashboard multi-sites) → compte par site. */

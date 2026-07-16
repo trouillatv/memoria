@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Calendar,
   CalendarPlus,
+  ChevronRight,
   Clock,
   ListTodo,
   Search,
@@ -16,7 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
-import { countProposedActionsBySite } from '@/lib/db/knowledge-proposals'
+import { getActionProjection, type ActionProjection } from '@/lib/db/knowledge-proposals'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
@@ -106,7 +107,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     interventionsResult,
     cycles,
     teams,
-    proposedActionsCount,
+    actionProjection,
   ] = await Promise.all([
     getSiteIdentity(id),
     listOpenSiteActions({ siteIds: [id] }).catch(() => []),
@@ -121,7 +122,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
     listCyclesBySite(id).catch(() => []),
     listTeams().catch(() => []),
-    countProposedActionsBySite(id).catch(() => 0),
+    getActionProjection(id).catch(() => ({ proposed: 0, confirmed: 0, completed: 0, overdue: 0, proposedTop: [] as ActionProjection['proposedTop'] })),
   ])
 
   if (!identity) notFound()
@@ -209,7 +210,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <ChantierOverview
             siteId={id}
             openActionsCount={openActions.length}
-            proposedActionsCount={proposedActionsCount}
+            actionProjection={actionProjection}
             proposedActionsHref={lastVisit?.reportId ? `/m/visite/${lastVisit.reportId}/cr` : undefined}
             openReservesCount={openReserves}
             openBlocagesCount={openBlocages.length}
@@ -275,7 +276,7 @@ function ChantierShell({
 function ChantierOverview({
   siteId,
   openActionsCount,
-  proposedActionsCount,
+  actionProjection,
   proposedActionsHref,
   openReservesCount,
   openBlocagesCount,
@@ -286,7 +287,7 @@ function ChantierOverview({
 }: {
   siteId: string
   openActionsCount: number
-  proposedActionsCount: number
+  actionProjection: ActionProjection
   proposedActionsHref?: string
   openReservesCount: number
   openBlocagesCount: number
@@ -310,19 +311,6 @@ function ChantierOverview({
             title="Actions ouvertes"
             detail={openActionsCount > 0 ? 'À traiter ou suivre' : 'Aucune action ouverte'}
           />
-          {/* Connaissance de la visite : propositions d'action pas encore promues.
-              Distinctes des actions ouvertes (métier) ; « à confirmer » depuis la
-              synthèse. Silencieuses tant qu'il n'y en a pas. */}
-          {proposedActionsCount > 0 && (
-            <StateCard
-              href={proposedActionsHref}
-              icon={ListTodo}
-              tone="blue"
-              value={proposedActionsCount}
-              title="Actions proposées"
-              detail="À confirmer — issues de la dernière visite"
-            />
-          )}
           <StateCard
             href={`/sites/${siteId}/reserves`}
             icon={AlertTriangle}
@@ -348,6 +336,35 @@ function ChantierOverview({
           />
         </div>
       </section>
+
+      {/* Connaissance de la dernière visite : les propositions d'action pas encore
+          promues, avec leurs PREMIERS titres (pas seulement un compte). Distinctes du
+          métier (actions ouvertes) ; « Confirmer » se fait sur la synthèse. Silence
+          total tant qu'il n'y en a pas. Même projection que toutes les autres vues. */}
+      {actionProjection.proposed > 0 && (
+        <section className="rounded-[18px] border border-sky-200 bg-sky-50/50 p-4 shadow-sm dark:border-sky-900/40 dark:bg-sky-950/20">
+          <div className="flex items-center gap-2">
+            <ListTodo className="h-4 w-4 text-sky-600" />
+            <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
+              {actionProjection.proposed} action{actionProjection.proposed > 1 ? 's' : ''} proposée{actionProjection.proposed > 1 ? 's' : ''}
+            </h2>
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">à confirmer</span>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {actionProjection.proposedTop.map((p) => (
+              <li key={p.id} className="flex items-start gap-2 text-sm text-foreground/90">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
+                <span className="min-w-0">{p.title}</span>
+              </li>
+            ))}
+          </ul>
+          {proposedActionsHref && (
+            <Link href={proposedActionsHref} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-sky-700 hover:underline dark:text-sky-300">
+              Voir la synthèse et confirmer <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </section>
+      )}
 
       <div className="grid items-start gap-4 xl:grid-cols-[0.9fr_1.2fr_0.9fr]">
         <OverviewPanel title="Ce qui réclame mon attention">
