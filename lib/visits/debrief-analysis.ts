@@ -467,3 +467,21 @@ export async function ensureActionProposalsProjected(
     .filter((a) => a.state !== 'dismissed')
     .map((a) => ({ key: a.key, title: a.title, owner: a.owner, due: a.due }))
 }
+
+/** Les échéances de la synthèse, projetées puis rendues telles que l'écran doit les
+ *  lire. Même garantie que pour les actions : une analyse en cache d'avant la couche
+ *  d'extraction a quand même ses propositions à confirmer. */
+export async function ensureDeadlineProposalsProjected(
+  reportId: string,
+  siteId: string,
+  organizationId: string | null,
+): Promise<DebriefEcheance[]> {
+  const { analysis } = await readState(reportId)
+  if (!analysis) return []
+  if (organizationId) {
+    await projectAndTrace({ reportId, siteId, organizationId, analysis })
+  }
+  return (analysis.echeances ?? [])
+    .map((e) => toDebriefEcheance(e))
+    .filter((e): e is DebriefEcheance => e !== null)
+}

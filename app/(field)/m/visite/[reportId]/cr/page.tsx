@@ -126,7 +126,7 @@ export default async function VisitCrPreviewPage({
       {/* « Ce que MemorIA a retenu » — le RÉSULTAT en premier (résumé, actions
           proposées, points de vigilance), analysé automatiquement à l'ouverture
           (lazy-once + cache). La transcription brute est repliée dedans. */}
-      <MemoriaRetained reportId={reportId} transcriptions={doc.transcriptions} />
+      <MemoriaRetained reportId={reportId} siteId={visit.site_id} transcriptions={doc.transcriptions} />
 
       {/* Les observations brutes (constats, incl. transcriptions vocales) NE sont plus
           affichées ici : « Ce que MemorIA a retenu » ci-dessus EST la lecture. Le

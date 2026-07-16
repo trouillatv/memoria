@@ -345,6 +345,39 @@ export async function dismissProposal(
  * indexé par la clé du ledger (`key`). Permet à la synthèse de savoir, pour chaque
  * action affichée, si elle est encore proposée / confirmée (promue) / écartée.
  */
+/**
+ * État des propositions d'ÉCHÉANCE de la synthèse, indexé par le label de l'échéance.
+ * Mêmes parts de clé que `buildDesiredProposals` : label + date + contrainte — sinon
+ * l'écran chercherait une proposition qui n'existe pas sous cette forme.
+ */
+export async function getDeadlineProposalStates(
+  siteId: string,
+  echeances: Array<{ label: string; date: string; constraint: string }>,
+): Promise<Record<string, { proposalId: string; status: ProposalStatus; promotedObjectType: string | null; promotedObjectId: string | null }>> {
+  const out: Record<string, { proposalId: string; status: ProposalStatus; promotedObjectType: string | null; promotedObjectId: string | null }> = {}
+  if (echeances.length === 0) return out
+  const labelByDedupe = new Map<string, string>()
+  for (const e of echeances) {
+    labelByDedupe.set(dedupeKey('deadline', siteId, [e.label, e.date, e.constraint]), e.label)
+  }
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, dedupe_key, status, promoted_object_type, promoted_object_id')
+    .eq('site_id', siteId)
+    .eq('kind', 'deadline')
+    .in('dedupe_key', Array.from(labelByDedupe.keys()))
+  if (error) return out
+  for (const r of data ?? []) {
+    const row = r as { id: string; dedupe_key: string; status: ProposalStatus; promoted_object_type: string | null; promoted_object_id: string | null }
+    const label = labelByDedupe.get(row.dedupe_key)
+    if (label) {
+      out[label] = { proposalId: row.id, status: row.status, promotedObjectType: row.promoted_object_type, promotedObjectId: row.promoted_object_id }
+    }
+  }
+  return out
+}
+
 export async function getActionProposalStates(
   siteId: string,
   actions: Array<{ key: string; title: string; owner?: string | null; due?: string | null }>,

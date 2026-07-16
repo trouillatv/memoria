@@ -14,8 +14,8 @@ import { createSiteReserve } from '@/lib/db/site-reserve'
 import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
 import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
-import { loadOrRunVisitDebrief, setActionState, ensureActionProposalsProjected, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
-import { promoteProposal, dismissProposal, getActionProposalStates } from '@/lib/db/knowledge-proposals'
+import { loadOrRunVisitDebrief, setActionState, ensureActionProposalsProjected, ensureDeadlineProposalsProjected, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
+import { promoteProposal, dismissProposal, getActionProposalStates, getDeadlineProposalStates } from '@/lib/db/knowledge-proposals'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -354,6 +354,27 @@ export async function getActionProposalStatesAction(input: unknown): Promise<Rec
   try {
     const ledger = await ensureActionProposalsProjected(parsed.data.report_id, visit.site_id, visit.organization_id ?? null)
     return await getActionProposalStates(visit.site_id, ledger)
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * État des propositions d'ÉCHÉANCE, indexé par le label de l'échéance. Même garde
+ * org fail-closed, même projection idempotente au passage que pour les actions.
+ */
+export async function getDeadlineProposalStatesAction(input: unknown): Promise<Record<string, ActionProposalState>> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return {}
+  const parsed = z.object({ report_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return {}
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit || !visit.site_id) return {}
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) return {}
+  try {
+    const echeances = await ensureDeadlineProposalsProjected(parsed.data.report_id, visit.site_id, visit.organization_id ?? null)
+    return await getDeadlineProposalStates(visit.site_id, echeances)
   } catch {
     return {}
   }

@@ -10,6 +10,7 @@ import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
+import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listTeams } from '@/lib/db/teams'
 import { listHandoverBriefsBySite } from '@/lib/db/handover'
 import type { DbTeam } from '@/types/db'
@@ -91,6 +92,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     interventionsResult,
     cycles,
     teams,
+    deadlines,
   ] = await Promise.all([
     getSiteIdentity(id),
     listOpenSiteActions({ siteIds: [id] }).catch(() => []),
@@ -104,6 +106,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
     listCyclesBySite(id).catch(() => []),
     listTeams().catch(() => []),
+    // Les échéances confirmées : le Planning les montre datées, ou « à planifier ».
+    listSiteDeadlines(id).catch(() => []),
   ])
 
   if (!identity) notFound()
@@ -223,6 +227,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             missions={missions}
             blocages={openBlocages}
             cycles={cycles}
+            deadlines={deadlines}
             teams={teams}
           />
         ) : tab === 'documents-preuves' ? (
