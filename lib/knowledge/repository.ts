@@ -158,13 +158,23 @@ export async function readVisitSourceSnapshot(reportId: string): Promise<VisitSo
   }
 }
 
-// ── CE QUI A BOUGÉ AUJOURD'HUI ───────────────────────────────────────────────
-// Le repository DÉCOUVRE quels chantiers ont bougé et QUAND — rien d'autre. Il ne
-// compte aucune connaissance : les nombres de l'accueil viennent de SiteOverview,
-// jamais d'ici, sinon l'accueil dirait « 2 » quand la fiche dit « 3 ».
+// ── LES ÉVÉNEMENTS DU CHANTIER ───────────────────────────────────────────────
+// L'objet central n'est ni l'action, ni l'échéance, ni l'histoire : c'est
+// l'ÉVÉNEMENT. Une visite en produit — visite réalisée, synthèse générée, action
+// proposée, échéance détectée, connaissance validée. Chaque écran n'est ensuite
+// qu'un point de vue sur ce même flux :
+//
+//   Historique → que s'est-il passé ?      (le flux, tourné vers le passé)
+//   Planning   → qu'est-ce qui arrive ?    (le flux, tourné vers le futur)
+//   Accueil    → qu'est-ce qui a changé ?  (le flux, depuis la dernière visite)
+//   PDF        → que retenir de la visite ? (le flux d'une seule visite)
+//
+// Le repository DÉCOUVRE ces faits et QUAND — rien d'autre. Il ne compte aucune
+// connaissance : les nombres viennent de SiteOverview, jamais d'ici, sinon
+// l'accueil dirait « 2 » quand la fiche dit « 3 ».
 
-/** Un fait daté du jour : une visite finie, une synthèse écrite, une proposition. */
-export interface DayEventRow {
+/** Un fait daté du chantier : une visite finie, une synthèse écrite, une proposition. */
+export interface SiteEventRow {
   site_id: string
   at: string
   kind: 'visit_ended' | 'synthesis_created' | 'proposal_created' | 'proposal_confirmed'
@@ -172,25 +182,33 @@ export interface DayEventRow {
   proposal_kind?: string
 }
 
-/** Faits datés du jour, pour l'organisation courante. `dayIso` = date civile locale.
- *  Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model. */
-export async function readDayEvents(dayIso: string, orgId: string | null): Promise<DayEventRow[]> {
+/**
+ * Les événements d'une PÉRIODE, pour l'organisation courante. `from`/`to` sont des
+ * instants ISO — pas un jour.
+ *
+ * La fenêtre était figée sur « aujourd'hui », et ça se voyait : la visite du 15
+ * juillet ne produisait plus rien le 17, donc l'accueil de Guillaume devenait muet
+ * sur sa dernière visite dès le lendemain. Ce n'était pas un manque de données,
+ * c'était une fenêtre. Une plage ouvre les mêmes faits à l'Historique (le passé),
+ * au Planning (le futur) et à l'accueil (depuis la dernière visite).
+ *
+ * Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model.
+ */
+export async function readEvents(from: string, to: string, orgId: string | null): Promise<SiteEventRow[]> {
   const db = createAdminClient()
-  // Bornes de la journée civile en zone Nouméa (UTC+11). Postgres les PARSE ; nous,
-  // en JS, il faut les parser aussi. Comparer deux ISO à la main est un piège : la
-  // synthèse de 05:39 à Nouméa s'écrit « 2026-07-16T18:39Z », donc « plus petite »
-  // que « 2026-07-17T00:00+11:00 » en comparaison de TEXTE. Le fait existait, la
-  // chaîne le cachait. On compare des instants, jamais des lettres.
-  const from = `${dayIso}T00:00:00.000+11:00`
-  const to = `${dayIso}T23:59:59.999+11:00`
+  // Postgres PARSE les bornes ; nous, en JS, il faut les parser aussi. Comparer deux
+  // ISO à la main est un piège : la synthèse de 05:39 à Nouméa s'écrit
+  // « 2026-07-16T18:39Z », donc « plus petite » que « 2026-07-17T00:00+11:00 » en
+  // comparaison de TEXTE. Le fait existait, la chaîne le cachait. On compare des
+  // instants, jamais des lettres.
   const fromMs = Date.parse(from)
   const toMs = Date.parse(to)
-  const withinDay = (iso: string | undefined): boolean => {
+  const withinRange = (iso: string | undefined): boolean => {
     if (!iso) return false
     const ms = Date.parse(iso)
     return Number.isFinite(ms) && ms >= fromMs && ms <= toMs
   }
-  const out: DayEventRow[] = []
+  const out: SiteEventRow[] = []
 
   let rq = db
     .from('site_reports')
@@ -205,8 +223,8 @@ export async function readDayEvents(dayIso: string, orgId: string | null): Promi
   for (const r of (reports ?? []) as Array<{ site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
     out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended' })
     const generatedAt = r.debrief_analysis?.generated_at
-    // La synthèse n'est un fait que si elle a réellement été écrite AUJOURD'HUI.
-    if (generatedAt && withinDay(generatedAt)) {
+    // La synthèse n'est un fait que si elle a réellement été écrite DANS la période.
+    if (generatedAt && withinRange(generatedAt)) {
       out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created' })
     }
   }

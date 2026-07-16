@@ -32,8 +32,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { getTodayChanges, emptyTodayChanges } from '@/lib/knowledge/today-changes'
-import { TodayChangesCard } from './TodayChangesCard'
+import { getVisitImpact, emptyVisitImpact } from '@/lib/knowledge/site-events'
+import { VisitImpactCard } from './VisitImpactCard'
 import { getMyOrgMorningDigest, type OrgMorningDigest } from '@/lib/db/morning-digest'
 import { MorningHero } from './MorningHero'
 import { getInboxFeed } from '@/lib/db/inbox-feed'
@@ -220,7 +220,7 @@ export default async function DashboardPage() {
   // « Qu'est-ce qui a changé ? » — la première question de la journée. Les nombres
   // viennent de SiteOverview (le read model de la fiche), donc l'accueil et le
   // chantier ne peuvent pas se contredire.
-  const todayChanges = await getTodayChanges().catch(() => emptyTodayChanges())
+  const todayChanges = await getVisitImpact().catch(() => emptyVisitImpact())
 
   return (
     <div className="space-y-6 w-full">
@@ -232,7 +232,7 @@ export default async function DashboardPage() {
 
       {/* Ce que la journée a produit. Avant tout le reste : on lit d'abord ce qui
           vient de se passer, on fouille ensuite. Silencieux si rien n'a bougé. */}
-      <TodayChangesCard changes={todayChanges} />
+      <VisitImpactCard changes={todayChanges} />
 
       {/* Temps 2 — « Ce qui mérite votre attention » : le système décide des
           priorités du jour (5 max), l'utilisateur ne fouille pas. Déterministe. */}

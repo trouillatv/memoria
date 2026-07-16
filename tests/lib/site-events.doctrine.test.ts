@@ -12,14 +12,14 @@ import { describe, expect, it } from 'vitest'
 //
 // Ce test échoue AVANT que le raccourci n'existe.
 
-const TODAY = join(process.cwd(), 'lib/knowledge/today-changes.ts')
-const CARD = join(process.cwd(), 'app/(dashboard)/dashboard/TodayChangesCard.tsx')
+const TODAY = join(process.cwd(), 'lib/knowledge/site-events.ts')
+const CARD = join(process.cwd(), 'app/(dashboard)/dashboard/VisitImpactCard.tsx')
 
 function imports(source: string): string[] {
   return [...source.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)].map((m) => m[1])
 }
 
-describe('getTodayChanges — doctrine du nombre unique', () => {
+describe('getVisitImpact — doctrine du nombre unique', () => {
   const source = readFileSync(TODAY, 'utf8')
 
   it('ne touche jamais Supabase directement', () => {
@@ -38,7 +38,7 @@ describe('getTodayChanges — doctrine du nombre unique', () => {
   })
 })
 
-describe('TodayChangesCard — ne lit rien elle-même', () => {
+describe("La carte d'impact — ne lit rien elle-même", () => {
   const source = readFileSync(CARD, 'utf8')
 
   it('ne connaît que le read model du jour', () => {
