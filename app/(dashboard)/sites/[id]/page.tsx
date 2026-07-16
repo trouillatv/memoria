@@ -51,6 +51,7 @@ import { TogglePanel } from './TogglePanel'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
 import { MemoryWorkspace, type SiteRelay } from './views/memory/MemoryWorkspace'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
+import { SandboxResetButton } from './SandboxResetButton'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
@@ -168,6 +169,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                   <SiteMemoryQuery siteId={id} />
                 </TogglePanel>
               </div>
+              {/* Le bac à sable dit ce qu'il est, et donne le geste qui le vide.
+                  Nulle part ailleurs : un chantier client n'a pas de bouton qui efface. */}
+              {identity.isSandbox && (
+                <div className="flex justify-start lg:justify-end">
+                  <SandboxResetButton siteId={id} />
+                </div>
+              )}
               <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                 <SiteBriefButton siteId={id} mode="visit" variant="desktop" />
                 <SiteReportLauncher siteId={id} siteName={identity.name} variant="desktop" label="Faire une réunion" />

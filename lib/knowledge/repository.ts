@@ -176,9 +176,20 @@ export interface DayEventRow {
  *  Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model. */
 export async function readDayEvents(dayIso: string, orgId: string | null): Promise<DayEventRow[]> {
   const db = createAdminClient()
-  // Bornes de la journée civile en zone Nouméa (UTC+11), exprimées en UTC.
+  // Bornes de la journée civile en zone Nouméa (UTC+11). Postgres les PARSE ; nous,
+  // en JS, il faut les parser aussi. Comparer deux ISO à la main est un piège : la
+  // synthèse de 05:39 à Nouméa s'écrit « 2026-07-16T18:39Z », donc « plus petite »
+  // que « 2026-07-17T00:00+11:00 » en comparaison de TEXTE. Le fait existait, la
+  // chaîne le cachait. On compare des instants, jamais des lettres.
   const from = `${dayIso}T00:00:00.000+11:00`
   const to = `${dayIso}T23:59:59.999+11:00`
+  const fromMs = Date.parse(from)
+  const toMs = Date.parse(to)
+  const withinDay = (iso: string | undefined): boolean => {
+    if (!iso) return false
+    const ms = Date.parse(iso)
+    return Number.isFinite(ms) && ms >= fromMs && ms <= toMs
+  }
   const out: DayEventRow[] = []
 
   let rq = db
@@ -195,7 +206,7 @@ export async function readDayEvents(dayIso: string, orgId: string | null): Promi
     out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended' })
     const generatedAt = r.debrief_analysis?.generated_at
     // La synthèse n'est un fait que si elle a réellement été écrite AUJOURD'HUI.
-    if (generatedAt && generatedAt >= from && generatedAt <= to) {
+    if (generatedAt && withinDay(generatedAt)) {
       out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created' })
     }
   }

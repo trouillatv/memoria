@@ -46,7 +46,14 @@ export function MemoriaRetained({
 
   const load = useCallback(async (force: boolean) => {
     setPhase('loading')
+    // La PREMIÈRE analyse tourne DANS cet appel : le serveur ne répond qu'une fois
+    // le LLM terminé, et l'écran resterait sur « Ouverture… » pendant 30 secondes —
+    // silencieux au moment précis où MemorIA travaille le plus. Une lecture en
+    // cache revient en quelques centaines de millisecondes : si l'attente dure,
+    // c'est qu'on analyse. On le dit alors, et seulement alors.
+    const slowTimer = setTimeout(() => { if (aliveRef.current) setPhase('generating') }, 1200)
     const res = await getVisitDebriefFieldAction({ report_id: reportId, ...(force ? { force: true } : {}) })
+    clearTimeout(slowTimer)
     if (!aliveRef.current) return
     if (!res.ok) {
       setPhase('error')
