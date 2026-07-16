@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 // Ce test est le garde-fou : il échoue AVANT que le contournement n'existe.
 
 const TAB = join(process.cwd(), 'app/(dashboard)/sites/[id]/views/apercu/SiteOverviewTab.tsx')
+const MOBILE = join(process.cwd(), 'app/(field)/m/site/[siteId]/page.tsx')
 
 function importedModules(source: string): string[] {
   return [...source.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)].map((m) => m[1])
@@ -38,5 +39,23 @@ describe('SiteOverviewTab — doctrine du read model', () => {
 
   it('ne construit aucune requête Supabase', () => {
     expect(source).not.toMatch(/createAdminClient|createClient|\.from\(/)
+  })
+})
+
+// ── DOCTRINE : la fiche mobile dit la MÊME chose que le desktop ───────────────
+// La fiche mobile porte encore du « ici et maintenant » terrain lu en direct (visite
+// en cours, captures, présence) : elle ne passe pas la doctrine complète de l'onglet.
+// En revanche la CONNAISSANCE du chantier — ce que MemorIA a compris, les propositions
+// à confirmer — doit venir du même read model que le desktop. Sinon les deux surfaces
+// recomposent chacune leur vérité et divergent : une action proposée visible au bureau,
+// absente sur le terrain.
+describe('Fiche mobile — la connaissance vient du read model', () => {
+  const source = readFileSync(MOBILE, 'utf8')
+  const imports = importedModules(source)
+
+  it('ne lit la couche connaissance que par SiteOverview', () => {
+    const knowledge = imports.filter((mod) => mod.startsWith('@/lib/knowledge/'))
+    expect(knowledge, 'La fiche mobile doit passer par getSiteOverview, jamais par la projection ou le repository')
+      .toEqual(['@/lib/knowledge/site-overview'])
   })
 })
