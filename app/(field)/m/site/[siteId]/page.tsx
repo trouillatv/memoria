@@ -41,6 +41,7 @@ import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { countProposedActionsBySite } from '@/lib/db/knowledge-proposals'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
@@ -200,6 +201,9 @@ export default async function FieldSitePage({
     hasEvolution = groupViewpointChains(vpRows).length > 0
     nextSteps = steps
   }
+  // Connaissance de la visite : actions proposées pas encore promues (à confirmer),
+  // même source que le tableau de bord. Hors visite en cours seulement.
+  const proposedActionsCount = activeVisit ? 0 : await countProposedActionsBySite(siteId).catch(() => 0)
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -348,6 +352,27 @@ export default async function FieldSitePage({
         <div className="space-y-6">
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard cells={siteStatus} />
+
+          {/* Connaissance de la dernière visite : actions proposées, pas encore
+              promues (à confirmer). Distinctes des actions ouvertes ; silencieuses
+              tant qu'il n'y en a pas. Même source que le tableau de bord. */}
+          {proposedActionsCount > 0 && (
+            <Link
+              href={`/m/site/${siteId}/visites`}
+              className="flex items-center gap-3 rounded-2xl border border-sky-200 bg-sky-50/60 p-4 active:brightness-95 dark:border-sky-900/40 dark:bg-sky-950/20"
+            >
+              <ListTodo className="h-5 w-5 shrink-0 text-sky-600" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-sky-900 dark:text-sky-200">
+                  {proposedActionsCount} action{proposedActionsCount > 1 ? 's' : ''} proposée{proposedActionsCount > 1 ? 's' : ''}
+                </span>
+                <span className="block text-[12px] text-sky-800/80 dark:text-sky-300/80">
+                  À confirmer — issues de la dernière visite
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-sky-600/60" />
+            </Link>
+          )}
 
           {/* 1bis — AGENDA DU CHANTIER : « comment va vivre ce chantier ces
               prochains jours ? » Réunions / interventions / échéances — la plus

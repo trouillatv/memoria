@@ -382,10 +382,17 @@ export async function promoteActionProposalAction(input: unknown): Promise<{ ok:
       organizationId: orgId ?? visit.organization_id ?? null,
     })
     if (!res) return { ok: false, error: 'Promotion impossible' }
+    // Mobile terrain ET tableau de bord lisent le MÊME objet (site_actions) : on
+    // revalide les deux familles pour que l'action promue apparaisse partout.
     revalidatePath('/m')
     revalidatePath('/m/actions')
     revalidatePath('/m/planning')
-    if (visit.site_id) revalidatePath(`/m/site/${visit.site_id}`)
+    revalidatePath('/dashboard')
+    if (visit.site_id) {
+      revalidatePath(`/m/site/${visit.site_id}`)
+      revalidatePath(`/sites/${visit.site_id}`)
+      revalidatePath(`/sites/${visit.site_id}/actions`)
+    }
     return { ok: true, objectId: res.objectId }
   } catch {
     return { ok: false, error: "Échec de la création de l'action" }

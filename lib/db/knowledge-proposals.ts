@@ -241,6 +241,43 @@ export async function countProposalsBySite(
   return counts
 }
 
+// ── Surfaçage « connaissance » (Sprint Action) ──────────────────
+// Les propositions d'action sont visibles DÈS la visite, sans promotion : la
+// visite enrichit la CONNAISSANCE du chantier (compteurs « à confirmer »),
+// distincte du MÉTIER (site_actions, créées seulement à la promotion). Toutes les
+// surfaces (Dashboard, Site, Travail, Mobile) lisent CETTE source unique.
+
+/** Nombre d'actions ENCORE PROPOSÉES (à confirmer) pour un chantier. */
+export async function countProposedActionsBySite(siteId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { count, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id', { count: 'exact', head: true })
+    .eq('site_id', siteId)
+    .eq('kind', 'action')
+    .eq('status', 'proposed')
+  if (error) return 0
+  return count ?? 0
+}
+
+/** Idem pour plusieurs chantiers (accueil / dashboard multi-sites) → compte par site. */
+export async function countProposedActionsForSites(siteIds: string[]): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
+  if (siteIds.length === 0) return out
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('site_id')
+    .in('site_id', siteIds)
+    .eq('kind', 'action')
+    .eq('status', 'proposed')
+  if (error) return out
+  for (const r of (data ?? []) as Array<{ site_id: string }>) {
+    out[r.site_id] = (out[r.site_id] ?? 0) + 1
+  }
+  return out
+}
+
 // ── Décisions humaines : promouvoir / écarter ───────────────────
 // « L'humain décide ce qui devient vrai. » Confirmer = PROMOUVOIR la proposition
 // vers son objet métier réel (et la marquer 'confirmed', sans la détruire). Écarter

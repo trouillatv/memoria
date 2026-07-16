@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
+import { countProposedActionsBySite } from '@/lib/db/knowledge-proposals'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
@@ -105,6 +106,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     interventionsResult,
     cycles,
     teams,
+    proposedActionsCount,
   ] = await Promise.all([
     getSiteIdentity(id),
     listOpenSiteActions({ siteIds: [id] }).catch(() => []),
@@ -119,6 +121,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
     listCyclesBySite(id).catch(() => []),
     listTeams().catch(() => []),
+    countProposedActionsBySite(id).catch(() => 0),
   ])
 
   if (!identity) notFound()
@@ -206,6 +209,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <ChantierOverview
             siteId={id}
             openActionsCount={openActions.length}
+            proposedActionsCount={proposedActionsCount}
+            proposedActionsHref={lastVisit?.reportId ? `/m/visite/${lastVisit.reportId}/cr` : undefined}
             openReservesCount={openReserves}
             openBlocagesCount={openBlocages.length}
             nextEvent={nextEvent}
@@ -270,6 +275,8 @@ function ChantierShell({
 function ChantierOverview({
   siteId,
   openActionsCount,
+  proposedActionsCount,
+  proposedActionsHref,
   openReservesCount,
   openBlocagesCount,
   nextEvent,
@@ -279,6 +286,8 @@ function ChantierOverview({
 }: {
   siteId: string
   openActionsCount: number
+  proposedActionsCount: number
+  proposedActionsHref?: string
   openReservesCount: number
   openBlocagesCount: number
   nextEvent: OverviewEventInput | null
@@ -301,6 +310,19 @@ function ChantierOverview({
             title="Actions ouvertes"
             detail={openActionsCount > 0 ? 'À traiter ou suivre' : 'Aucune action ouverte'}
           />
+          {/* Connaissance de la visite : propositions d'action pas encore promues.
+              Distinctes des actions ouvertes (métier) ; « à confirmer » depuis la
+              synthèse. Silencieuses tant qu'il n'y en a pas. */}
+          {proposedActionsCount > 0 && (
+            <StateCard
+              href={proposedActionsHref}
+              icon={ListTodo}
+              tone="blue"
+              value={proposedActionsCount}
+              title="Actions proposées"
+              detail="À confirmer — issues de la dernière visite"
+            />
+          )}
           <StateCard
             href={`/sites/${siteId}/reserves`}
             icon={AlertTriangle}
