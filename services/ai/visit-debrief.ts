@@ -59,16 +59,19 @@ const strList = z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(strItem
 
 export const visitDebriefSchema = z.object({
   // Niveau 1 — « ce qui mérite ton attention » : 3 à 5 max. C'est un FILTRE.
-  attention: z.array(z.string()).max(8).default([]),
+  // BLINDÉ partout : le LLM sort parfois une valeur hors enum, un objet, un null →
+  // .catch défausse la valeur fautive sur son défaut au lieu de casser TOUTE
+  // l'extraction. Mieux vaut un champ vide qu'un « analyse impossible ».
+  attention: strList,
   objective: optStr,
   objective_rationale: optStr, // POURQUOI : reformule ce que dit le débrief
-  objective_confidence: z.enum(CONFIDENCE).nullable().default(null),
-  subject_match_index: z.preprocess((v) => (v == null ? -1 : v), z.number().int()).default(-1), // -1 = nouveau/aucun
+  objective_confidence: z.enum(CONFIDENCE).nullable().catch(null).default(null),
+  subject_match_index: z.preprocess((v) => (v == null ? -1 : v), z.number().int()).catch(-1).default(-1),
   subject_name: optStr,
   subject_rationale: optStr,
-  subject_confidence: z.enum(CONFIDENCE).nullable().default(null),
-  outcome: z.enum(OUTCOMES).nullable().default(null),
-  resolution: z.enum(RESOLUTIONS).nullable().default(null),
+  subject_confidence: z.enum(CONFIDENCE).nullable().catch(null).default(null),
+  outcome: z.enum(OUTCOMES).nullable().catch(null).default(null),
+  resolution: z.enum(RESOLUTIONS).nullable().catch(null).default(null),
   // ⚠️ Points de vigilance — de vrais RISQUES, exploitables : impact + responsable
   // + échéance quand le débrief les donne (sinon vides). TOLÉRANT : chaîne → objet.
   important_points: z.preprocess(
@@ -345,7 +348,14 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         if (r.success) result = r.data
       } catch { /* ignore */ }
     }
-    if (result === undefined) throw new Error('[visit-debrief] Agent 2 (extraction) — parsing impossible')
+    // Dernier filet : si l'extraction échoue malgré tout (JSON tronqué…), on NE
+    // jette PAS — on garde le RÉSUMÉ (Agent 1) avec une structure vide. Un résumé
+    // sans blocs vaut mieux qu'un « analyse impossible » qui prive l'utilisateur
+    // de tout. (Tous les champs ont un défaut → parse({}) donne la structure vide.)
+    if (result === undefined) {
+      console.error('[visit-debrief] Agent 2 extraction non parsable — résumé conservé, structure vide')
+      result = visitDebriefSchema.parse({})
+    }
     return { result, tokens: out.tokens, model: out.model, provider: provider.name, durationMs: out.durationMs }
   })
 
