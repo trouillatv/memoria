@@ -43,6 +43,8 @@ export interface SiteIdentity {
   clientName: string | null
   contractStartedAt: string | null
   teamsSucceeded: number
+  /** Chantier de recette : tout y est jetable, et lui seul peut être réinitialisé. */
+  isSandbox: boolean
 }
 
 export interface SiteCurrentState {
@@ -323,7 +325,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
 
   const { data: site } = await supabase
     .from('sites')
-    .select('id, name, address, contract_id, client_id, created_at')
+    .select('id, name, address, contract_id, client_id, created_at, is_sandbox')
     .eq('id', siteId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -390,6 +392,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
     clientName,
     contractStartedAt,
     teamsSucceeded,
+    isSandbox: (site.is_sandbox as boolean | null) === true,
   }
 }
 

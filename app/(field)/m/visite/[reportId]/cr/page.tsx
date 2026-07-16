@@ -72,11 +72,6 @@ export default async function VisitCrPreviewPage({
     ? 'Première visite enregistrée'
     : 'Visite enregistrée'
 
-  // Observations = les constats retenus, plafonnés (le reste est dans le CR complet).
-  const OBS_MAX = 5
-  const observations = doc.constats.slice(0, OBS_MAX)
-  const obsMore = doc.constats.length - observations.length
-
   const hasReserves = doc.reserves.length > 0
   const hasActions = doc.actions.length > 0
   const twoCol = hasReserves && hasActions
@@ -133,24 +128,9 @@ export default async function VisitCrPreviewPage({
           (lazy-once + cache). La transcription brute est repliée dedans. */}
       <MemoriaRetained reportId={reportId} transcriptions={doc.transcriptions} />
 
-      {/* Observations principales — les constats factuels retenus. */}
-
-      {/* Observations principales — seulement les constats importants. */}
-      {observations.length > 0 && (
-        <Section Icon={Eye} cls="text-sky-600" ring="bg-sky-100 dark:bg-sky-950/40" title="Observations principales">
-          <ul className="space-y-1.5">
-            {observations.map((o, i) => (
-              <li key={i} className="flex gap-2 text-[13px] leading-snug text-foreground/90">
-                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
-                <span className="min-w-0">{o}</span>
-              </li>
-            ))}
-          </ul>
-          {obsMore > 0 && (
-            <p className="mt-1.5 text-[12px] text-muted-foreground">+{obsMore} autre{obsMore > 1 ? 's' : ''} dans le compte-rendu complet</p>
-          )}
-        </Section>
-      )}
+      {/* Les observations brutes (constats, incl. transcriptions vocales) NE sont plus
+          affichées ici : « Ce que MemorIA a retenu » ci-dessus EST la lecture. Le
+          verbatim reste accessible replié dans la synthèse et dans le CR complet. */}
 
       {/* Réserves + Actions — côte à côte quand les deux existent. */}
       {(hasReserves || hasActions) && (

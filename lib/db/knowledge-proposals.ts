@@ -1,0 +1,455 @@
+// lib/db/knowledge-proposals.ts
+// Couche d'extraction métier (migration 212).
+//
+// La synthèse de visite (site_reports.debrief_analysis) ne reste plus enfermée
+// dans son JSON : elle PROJETTE ce qu'elle a compris dans une table générique de
+// PROPOSITIONS, visibles partout, distinctes des objets validés. L'humain promeut
+// ensuite chaque proposition vers l'objet métier réel par un geste explicite.
+//
+// Règle produit : « L'IA fait apparaître ce qui mérite l'attention ; l'humain
+// décide ce qui devient vrai dans le système. »
+//
+// Ce module fait DEUX choses (le reste — promotion, surfaces — vit ailleurs) :
+//   1. projeter une synthèse en propositions, de façon IDEMPOTENTE ;
+//   2. lister / compter les propositions d'un chantier.
+
+import { createHash } from 'crypto'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createSiteAction } from '@/lib/db/site-actions'
+import { createSiteDeadline } from '@/lib/db/site-deadlines'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { toDebriefEcheance, type StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+
+export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
+export type ProposalStatus = 'proposed' | 'confirmed' | 'dismissed' | 'superseded'
+export type ProposalPayload = Record<string, unknown>
+
+export interface DbKnowledgeProposal {
+  id: string
+  organization_id: string
+  site_id: string
+  report_id: string | null
+  analysis_version: number
+  kind: ProposalKind
+  status: ProposalStatus
+  title: string
+  body: string | null
+  payload: ProposalPayload
+  confidence: string | null
+  source_capture_ids: string[]
+  dedupe_key: string
+  promoted_object_type: string | null
+  promoted_object_id: string | null
+  superseded_by: string | null
+  dismiss_reason: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Une proposition telle que dérivée de la synthèse (avant persistance). */
+interface DesiredProposal {
+  kind: ProposalKind
+  title: string
+  body: string | null
+  payload: ProposalPayload
+  dedupe_key: string
+}
+
+// ── Normalisation & déduplication ───────────────────────────────
+// La clé NE dépend PAS que du titre : chaque type a ses éléments discriminants,
+// pour qu'une re-synthèse ne duplique pas et ne ressuscite pas une proposition
+// déjà écartée/confirmée.
+
+function normalize(s: string): string {
+  return (s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function dedupeKey(kind: ProposalKind, siteId: string, parts: string[]): string {
+  const basis = [kind, siteId, ...parts.map(normalize)].join('|')
+  return createHash('sha1').update(basis).digest('hex').slice(0, 20)
+}
+
+// ── Dérivation : synthèse → propositions souhaitées ─────────────
+
+function buildDesiredProposals(analysis: StoredDebriefAnalysis, siteId: string): DesiredProposal[] {
+  const out: DesiredProposal[] = []
+  const push = (kind: ProposalKind, title: string, body: string | null, payload: ProposalPayload, keyParts: string[]) => {
+    const t = (title ?? '').trim()
+    if (!t) return
+    out.push({ kind, title: t, body: body?.trim() || null, payload, dedupe_key: dedupeKey(kind, siteId, keyParts) })
+  }
+
+  // Actions — grand livre (non écartées) ; repli sur analysis.actions pour les
+  // anciennes synthèses sans grand livre. Discriminants : titre + owner + due.
+  const ledger = (analysis.action_ledger ?? []).filter((a) => a.state !== 'dismissed')
+  if (ledger.length > 0) {
+    for (const a of ledger) {
+      push('action', a.title, a.rationale, { priority: a.priority, owner: a.owner, due: a.due }, [a.title, a.owner, a.due])
+    }
+  } else {
+    for (const a of analysis.actions ?? []) {
+      push('action', a.title, a.rationale, { priority: a.priority, owner: a.owner, due: a.due }, [a.title, a.owner, a.due])
+    }
+  }
+
+  // Vigilances — fiches. Discriminant : le libellé du risque.
+  for (const w of analysis.watchpoints ?? []) {
+    push('vigilance', w.label, w.impact, { impact: w.impact, owner: w.owner, due: w.due }, [w.label])
+  }
+
+  // Décisions — chaînes. Discriminant : le fait décidé.
+  for (const d of analysis.decisions ?? []) {
+    push('decision', d, null, {}, [d])
+  }
+
+  // Connaissances durables (« à savoir »). Discriminant : le fait normalisé.
+  for (const k of analysis.a_savoir ?? []) {
+    push('knowledge', k, null, {}, [k])
+  }
+
+  // Intervenants détectés. Discriminant : le nom/entité normalisé.
+  for (const p of analysis.intervenants ?? []) {
+    push('stakeholder', p, null, {}, [p])
+  }
+
+  // Échéances détectées. Le TITRE est ce qui doit arriver (« Poser le coffret ») ;
+  // la notion de temps vit dans le payload — une date DITE, ou la contrainte telle
+  // qu'elle a été formulée. Discriminants : le label + le moment, pour qu'une même
+  // échéance replanifiée ne se dédouble pas.
+  for (const raw of analysis.echeances ?? []) {
+    const e = toDebriefEcheance(raw)
+    if (!e) continue
+    push('deadline', e.label, e.constraint || null, { date: e.date, constraint: e.constraint }, [e.label, e.date, e.constraint])
+  }
+
+  return out
+}
+
+// ── Projection idempotente ──────────────────────────────────────
+
+export interface ProjectResult {
+  inserted: number
+  refreshed: number
+  skipped: number
+  /** Propositions d'une lecture antérieure que la synthèse ne dit plus. */
+  obsolete: number
+}
+
+/**
+ * Projette une synthèse en propositions, de façon IDEMPOTENTE :
+ *   • proposition nouvelle           → insérée en 'proposed' ;
+ *   • déjà présente et 'proposed'     → texte/priorité rafraîchis (la synthèse a
+ *                                       pu reformuler) ;
+ *   • déjà confirmée / écartée / remplacée → laissée INTACTE (une décision
+ *                                       humaine ne se ressuscite jamais).
+ * Rien n'est effacé : l'IA ajoute et met à jour, l'humain reste maître.
+ */
+export async function projectDebriefToProposals(params: {
+  reportId: string
+  siteId: string
+  organizationId: string
+  analysis: StoredDebriefAnalysis
+}): Promise<ProjectResult> {
+  const { reportId, siteId, organizationId, analysis } = params
+  const desired = buildDesiredProposals(analysis, siteId)
+  if (desired.length === 0) return { inserted: 0, refreshed: 0, skipped: 0, obsolete: 0 }
+
+  const supabase = createAdminClient()
+  const version = analysis.analysis_version ?? 1
+  const now = new Date().toISOString()
+
+  const keys = desired.map((d) => d.dedupe_key)
+  const { data: existingRows, error: readErr } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, dedupe_key, status')
+    .eq('site_id', siteId)
+    .in('dedupe_key', keys)
+  if (readErr) throw readErr
+  const byKey = new Map(
+    (existingRows ?? []).map((r) => [r.dedupe_key as string, r as { id: string; dedupe_key: string; status: ProposalStatus }]),
+  )
+
+  const toInsert: Array<Record<string, unknown>> = []
+  let refreshed = 0
+  let skipped = 0
+
+  for (const d of desired) {
+    const ex = byKey.get(d.dedupe_key)
+    if (!ex) {
+      toInsert.push({
+        organization_id: organizationId,
+        site_id: siteId,
+        report_id: reportId,
+        analysis_version: version,
+        kind: d.kind,
+        status: 'proposed',
+        title: d.title,
+        body: d.body,
+        payload: d.payload,
+        dedupe_key: d.dedupe_key,
+      })
+      continue
+    }
+    if (ex.status === 'proposed') {
+      const { error: updErr } = await supabase
+        .from('site_knowledge_proposals')
+        .update({ title: d.title, body: d.body, payload: d.payload, analysis_version: version, updated_at: now })
+        .eq('id', ex.id)
+      if (updErr) throw updErr
+      refreshed++
+    } else {
+      skipped++
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insErr } = await supabase.from('site_knowledge_proposals').insert(toInsert)
+    if (insErr) throw insErr
+  }
+
+  const obsolete = await markObsoleteProposals(reportId, version, new Set(keys), now)
+
+  // De nouvelles propositions (ou des textes rafraîchis) → la connaissance « à
+  // confirmer » du chantier change : la mutation invalide la projection.
+  if (toInsert.length > 0 || refreshed > 0 || obsolete > 0) invalidateSiteProjection(siteId)
+
+  return { inserted: toInsert.length, refreshed, skipped, obsolete }
+}
+
+// ── Obsolescence ────────────────────────────────────────────────
+// LA RÈGLE (Vincent, 2026-07-17), valable pour TOUS les objets — actions,
+// échéances, vigilances, intervenants, connaissances :
+//
+//   La visite est la vérité. La synthèse est une LECTURE de cette vérité. Une
+//   nouvelle lecture rend l'ancienne obsolète — et ses propositions avec elle.
+//
+// « Poser le coffret » puis « Poser le coffret — sous dix jours » : ce n'est pas un
+// doublon, c'est la même chose dite mieux. L'ancienne devient OBSOLÈTE.
+//
+// Pourquoi pas « écartée » : « écartée » veut dire « Guillaume n'est pas d'accord ».
+// Ici il n'a rien décidé — c'est MemorIA qui s'est améliorée. Confondre les deux,
+// c'est mettre dans la bouche du conducteur un refus qu'il n'a jamais prononcé.
+//
+// On ne touche QUE les 'proposed' : une décision humaine (confirmée / écartée) ne
+// se réécrit jamais. Et seulement celles d'une lecture ANTÉRIEURE : une proposition
+// que la synthèse courante redit vient d'être rafraîchie, elle est vivante.
+//
+// `superseded_by` reste NULL : on sait que la nouvelle lecture ne dit plus ce fait ;
+// on ne sait pas LEQUEL des nouveaux le remplace. Le deviner par ressemblance de
+// titre serait inventer un lien — la même faute que déduire une date d'un délai.
+async function markObsoleteProposals(
+  reportId: string,
+  version: number,
+  desiredKeys: Set<string>,
+  now: string,
+): Promise<number> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, dedupe_key')
+    .eq('report_id', reportId)
+    .eq('status', 'proposed')
+    .lt('analysis_version', version)
+  if (error || !data) return 0
+
+  const stale = (data as Array<{ id: string; dedupe_key: string }>)
+    .filter((r) => !desiredKeys.has(r.dedupe_key))
+    .map((r) => r.id)
+  if (stale.length === 0) return 0
+
+  const { error: updErr } = await supabase
+    .from('site_knowledge_proposals')
+    .update({ status: 'superseded', updated_at: now })
+    .in('id', stale)
+  if (updErr) return 0
+  return stale.length
+}
+
+// ── Lecture / comptage (pour les surfaces) ──────────────────────
+
+export async function listProposalsBySite(
+  siteId: string,
+  opts?: { kind?: ProposalKind; status?: ProposalStatus | ProposalStatus[] },
+): Promise<DbKnowledgeProposal[]> {
+  const supabase = createAdminClient()
+  let q = supabase.from('site_knowledge_proposals').select('*').eq('site_id', siteId)
+  if (opts?.kind) q = q.eq('kind', opts.kind)
+  if (opts?.status) {
+    q = Array.isArray(opts.status) ? q.in('status', opts.status) : q.eq('status', opts.status)
+  }
+  const { data, error } = await q.order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DbKnowledgeProposal[]
+}
+
+/** Compte les propositions d'un statut donné, par type — pour les compteurs
+ *  « 3 actions proposées · 3 vigilances à confirmer » des surfaces. */
+export async function countProposalsBySite(
+  siteId: string,
+  status: ProposalStatus = 'proposed',
+): Promise<Record<ProposalKind, number>> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('kind')
+    .eq('site_id', siteId)
+    .eq('status', status)
+  if (error) throw error
+  const counts: Record<ProposalKind, number> = {
+    action: 0, vigilance: 0, decision: 0, knowledge: 0, stakeholder: 0, deadline: 0,
+  }
+  for (const r of data ?? []) counts[(r as { kind: ProposalKind }).kind]++
+  return counts
+}
+
+// ── Décisions humaines : promouvoir / écarter ───────────────────
+// « L'humain décide ce qui devient vrai. » Confirmer = PROMOUVOIR la proposition
+// vers son objet métier réel (et la marquer 'confirmed', sans la détruire). Écarter
+// = 'dismissed' (elle ne réapparaîtra jamais à une re-synthèse — la dédup la reconnaît).
+
+/** Écarte une proposition : décision humaine, jamais ressuscitée. `organizationId`
+ *  = garde fail-closed (le service-role bypasse la RLS) : on n'écarte que dans son org. */
+export async function dismissProposal(
+  id: string,
+  reviewedBy: string | null,
+  reason?: string,
+  organizationId?: string | null,
+): Promise<boolean> {
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+  let q = supabase
+    .from('site_knowledge_proposals')
+    .update({ status: 'dismissed', reviewed_at: now, reviewed_by: reviewedBy, dismiss_reason: reason ?? null, updated_at: now })
+    .eq('id', id)
+    .eq('status', 'proposed') // on n'écarte que ce qui est encore proposé
+  if (organizationId) q = q.eq('organization_id', organizationId)
+  const { data, error } = await q.select('site_id')
+  if (error) throw error
+  // Une proposition écartée disparaît des « à confirmer » : la mutation invalide.
+  const siteId = (data as Array<{ site_id: string }> | null)?.[0]?.site_id
+  if (siteId) invalidateSiteProjection(siteId)
+  return true
+}
+
+/**
+ * Correspondance ledger → proposition (côté serveur) : pour une liste d'actions du
+ * grand livre (titre + responsable + échéance), recalcule le `dedupe_key` — IDENTIQUE
+ * à celui de la projection — et renvoie l'état de la proposition d'action associée,
+ * indexé par la clé du ledger (`key`). Permet à la synthèse de savoir, pour chaque
+ * action affichée, si elle est encore proposée / confirmée (promue) / écartée.
+ */
+export async function getActionProposalStates(
+  siteId: string,
+  actions: Array<{ key: string; title: string; owner?: string | null; due?: string | null }>,
+): Promise<Record<string, { proposalId: string; status: ProposalStatus; promotedObjectType: string | null; promotedObjectId: string | null }>> {
+  const out: Record<string, { proposalId: string; status: ProposalStatus; promotedObjectType: string | null; promotedObjectId: string | null }> = {}
+  if (actions.length === 0) return out
+  // dedupe_key → clé ledger (mêmes parts que buildDesiredProposals : titre, owner, due).
+  const ledgerByDedupe = new Map<string, string>()
+  for (const a of actions) {
+    ledgerByDedupe.set(dedupeKey('action', siteId, [a.title, a.owner ?? '', a.due ?? '']), a.key)
+  }
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, dedupe_key, status, promoted_object_type, promoted_object_id')
+    .eq('site_id', siteId)
+    .eq('kind', 'action')
+    .in('dedupe_key', Array.from(ledgerByDedupe.keys()))
+  if (error) throw error
+  for (const r of data ?? []) {
+    const row = r as { id: string; dedupe_key: string; status: ProposalStatus; promoted_object_type: string | null; promoted_object_id: string | null }
+    const ledgerKey = ledgerByDedupe.get(row.dedupe_key)
+    if (ledgerKey) {
+      out[ledgerKey] = { proposalId: row.id, status: row.status, promotedObjectType: row.promoted_object_type, promotedObjectId: row.promoted_object_id }
+    }
+  }
+  return out
+}
+
+export interface PromotionResult { objectType: string; objectId: string }
+
+/**
+ * Confirme une proposition en la PROMOUVANT vers son objet métier réel, puis la
+ * marque 'confirmed' avec le lien vers l'objet créé. Idempotent : si déjà promue,
+ * renvoie l'objet existant sans recréer. Un geste EXPLICITE par type — une vigilance
+ * ne devient jamais une réserve automatiquement (portée contractuelle).
+ *
+ * Aujourd'hui : kind 'action' → site_action. Les autres types (vigilance→site_notes,
+ * échéance→obligation, intervenant→site_intervenant, savoir→mémoire) arrivent ensuite.
+ */
+export async function promoteProposal(params: { id: string; userId: string | null; organizationId?: string | null }): Promise<PromotionResult | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.from('site_knowledge_proposals').select('*').eq('id', params.id).single()
+  if (error || !data) return null
+  const p = data as DbKnowledgeProposal
+
+  // Garde fail-closed (le service-role bypasse la RLS) : jamais promouvoir hors de son org.
+  if (params.organizationId && p.organization_id && p.organization_id !== params.organizationId) return null
+
+  // Déjà promue : on renvoie l'objet existant (idempotent), on ne recrée rien.
+  if (p.status !== 'proposed') {
+    return p.promoted_object_type && p.promoted_object_id
+      ? { objectType: p.promoted_object_type, objectId: p.promoted_object_id }
+      : null
+  }
+
+  let result: PromotionResult
+  if (p.kind === 'action') {
+    const payload = (p.payload ?? {}) as { owner?: string | null }
+    const id = await createSiteAction({
+      site_id: p.site_id,
+      report_id: p.report_id ?? null,
+      title: p.title,
+      body: p.body,
+      assigned_to: payload.owner || null,
+      created_by: params.userId,
+      created_from: 'visit_debrief_ai',
+    })
+    result = { objectType: 'site_action', objectId: id }
+  } else if (p.kind === 'deadline') {
+    // On ne demande PAS la date pour confirmer. Le conducteur confirme qu'il s'agit
+    // bien d'une échéance ; si le débrief n'a donné qu'une contrainte, elle naît
+    // « à planifier » et attend sa date dans le Planning. Exiger une date ici
+    // ferait renoncer — et l'échéance retournerait au néant dont on l'a tirée.
+    const payload = (p.payload ?? {}) as { date?: string | null; constraint?: string | null }
+    const due = typeof payload.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.date) ? payload.date : null
+    const id = await createSiteDeadline({
+      site_id: p.site_id,
+      report_id: p.report_id ?? null,
+      organization_id: p.organization_id,
+      title: p.title,
+      // La contrainte survit à la confirmation : c'est elle qui dira plus tard
+      // POURQUOI cette échéance attend, et avec les mots de celui qui l'a dite.
+      constraint_text: payload.constraint ?? p.body,
+      due_date: due,
+      created_by: params.userId,
+      created_from: 'visit_debrief_ai',
+    })
+    result = { objectType: 'site_deadline', objectId: id }
+  } else {
+    throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
+  }
+
+  const now = new Date().toISOString()
+  const { error: updErr } = await supabase
+    .from('site_knowledge_proposals')
+    .update({
+      status: 'confirmed',
+      promoted_object_type: result.objectType,
+      promoted_object_id: result.objectId,
+      reviewed_at: now,
+      reviewed_by: params.userId,
+      updated_at: now,
+    })
+    .eq('id', params.id)
+  if (updErr) throw updErr
+  return result
+}

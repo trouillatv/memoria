@@ -18,13 +18,19 @@ describe('site operational workspaces', () => {
         interventions={[interventionFixture()]}
         actions={[actionFixture()]}
         blocages={[blocageFixture()]}
+        proposed={[]}
+        proposedTotal={0}
+        completedRecent={[]}
       />,
     )
 
     expect(screen.getByRole('heading', { name: 'Travail' })).toBeInTheDocument()
     expect(screen.getByText('Missions (1)')).toBeInTheDocument()
     expect(screen.getByText('Interventions (1)')).toBeInTheDocument()
-    expect(screen.getByText('Actions (1)')).toBeInTheDocument()
+    // Le compte vit sur chaque temps (« Ouvertes (1) »), pas sur l'en-tête : celui-ci
+    // ne comptait que les ouvertes et contredisait les propositions affichées dessous.
+    expect(screen.getByRole('heading', { name: 'Actions' })).toBeInTheDocument()
+    expect(screen.getByText('Ouvertes (1)')).toBeInTheDocument()
     // Origine : l'intervention porte la mission dont elle vient, et l'ouvre.
     expect(screen.getByRole('link', { name: 'Nettoyage général' })).toHaveAttribute(
       'href',
@@ -34,6 +40,56 @@ describe('site operational workspaces', () => {
     expect(screen.getByText('Preuve attendue : réalisation confirmée')).toBeInTheDocument()
     // La priorité est suggérée, jamais imposée sans lien vers l'objet concerné.
     expect(screen.getByText('Priorité suggérée :')).toBeInTheDocument()
+  })
+
+  // ── LE CYCLE DE VIE D'UNE ACTION ───────────────────────────────────────────
+  // Travail doit montrer les TROIS temps : ce que MemorIA propose, ce qui est
+  // engagé, ce qui vient d'être fait. Les propositions ne vivaient que sur la
+  // synthèse — invisibles à l'endroit exact où l'on vient chercher le travail.
+  it("montre le cycle de vie d'une action : à confirmer, ouvertes, terminées", () => {
+    render(
+      <WorkWorkspace
+        siteId="site-1"
+        missions={[missionFixture()]}
+        interventions={[interventionFixture()]}
+        actions={[actionFixture()]}
+        blocages={[blocageFixture()]}
+        proposed={[{ id: 'p-1', title: 'Contacter M. Vincent Milon (PAVE)' }]}
+        proposedTotal={3}
+        completedRecent={[{ id: 'a-9', title: 'Nettoyer la machine après prestation' }]}
+        synthesisHref="/m/visite/report-1/cr"
+      />,
+    )
+
+    // Ce qui attend une décision — avec son compte RÉEL (3), pas le nombre affiché.
+    expect(screen.getByText('À confirmer (3)')).toBeInTheDocument()
+    expect(screen.getByText('Contacter M. Vincent Milon (PAVE)')).toBeInTheDocument()
+    // On confirme sur la synthèse : Travail montre, il ne décide pas à la place.
+    expect(screen.getByRole('link', { name: 'Voir la synthèse et confirmer' })).toHaveAttribute(
+      'href',
+      '/m/visite/report-1/cr',
+    )
+    // Ce qui est engagé, et ce qui vient d'être fait : on doit sentir qu'on avance.
+    expect(screen.getByText('Ouvertes (1)')).toBeInTheDocument()
+    expect(screen.getByText('Terminées récemment')).toBeInTheDocument()
+    expect(screen.getByText('Nettoyer la machine après prestation')).toBeInTheDocument()
+  })
+
+  it('se tait quand MemorIA ne propose rien', () => {
+    render(
+      <WorkWorkspace
+        siteId="site-1"
+        missions={[missionFixture()]}
+        interventions={[interventionFixture()]}
+        actions={[actionFixture()]}
+        blocages={[blocageFixture()]}
+        proposed={[]}
+        proposedTotal={0}
+        completedRecent={[]}
+      />,
+    )
+    expect(screen.queryByText(/À confirmer/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Terminées récemment')).not.toBeInTheDocument()
   })
 
   it('makes chronology causal with produced objects under events', () => {

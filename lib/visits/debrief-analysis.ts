@@ -29,12 +29,45 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherVisitDebriefContext, type VisitSourceSnapshot } from '@/lib/db/visits'
+import { computeSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
+import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 
 /** Un bail de génération plus vieux que ça est considéré comme abandonné. */
 const LEASE_MS = 120_000
+
+/** Une échéance telle que le débrief la donne : ce qui doit arriver, et la notion
+ *  de temps qui l'accompagne — une date si elle est dite, sinon la contrainte. */
+export interface DebriefEcheance {
+  label: string
+  /** AAAA-MM-JJ, ou '' : une date DITE, jamais déduite d'un délai. */
+  date: string
+  /** « Avant le démarrage », « Sous une dizaine de jours ». '' si une date est nette. */
+  constraint: string
+}
+
+/** Les analyses écrites AVANT la forme structurée stockaient des chaînes nues.
+ *  On les relit sans jamais les jeter : une vieille échéance devient un label sans
+ *  date ni contrainte — exactement ce qu'elle disait, ni plus, ni moins. */
+export function toDebriefEcheance(raw: unknown): DebriefEcheance | null {
+  if (typeof raw === 'string') {
+    const label = raw.trim()
+    return label ? { label, date: '', constraint: '' } : null
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as { label?: unknown; date?: unknown; constraint?: unknown }
+    const label = typeof o.label === 'string' ? o.label.trim() : ''
+    if (!label) return null
+    return {
+      label,
+      date: typeof o.date === 'string' ? o.date.trim() : '',
+      constraint: typeof o.constraint === 'string' ? o.constraint.trim() : '',
+    }
+  }
+  return null
+}
 
 export interface StoredDebriefAnalysis {
   summary: string
@@ -51,8 +84,13 @@ export interface StoredDebriefAnalysis {
   watchpoints: Array<{ label: string; impact: string; owner: string; due: string }>
   // ℹ️ Contexte important mais non actionnable.
   a_savoir: string[]
-  // 📅 Échéances (délais/dates isolés) · 👥 Intervenants (personnes/entreprises citées).
-  echeances: string[]
+  // 📅 Échéances — CE QUI doit arriver, et QUAND si on le sait.
+  //   · `date` = une vraie date (AAAA-MM-JJ), ou '' si le débrief n'en donne pas.
+  //   · `constraint` = la contrainte dite (« Avant le démarrage », « Sous dix jours »).
+  // Une échéance n'existe que s'il y a une notion de temps ; sans elle, c'est une
+  // action. Et un délai n'est JAMAIS converti en date : MemorIA ne devine pas une
+  // information qu'elle ne possède pas — l'humain tranche.
+  echeances: DebriefEcheance[]
   intervenants: string[]
   attention: string[]
   open_questions: string[]
@@ -109,7 +147,9 @@ function buildDebriefInput(
 // Version de FORME de l'analyse stockée. À incrémenter dès que la STRUCTURE de
 // StoredDebriefAnalysis change : un cache d'une forme périmée est régénéré en
 // SILENCE (pas « enrichi »). Distinct du corpus_hash, qui ne décrit QUE la matière.
-const ANALYSIS_SCHEMA_VERSION = 'v5-living-actions'
+// v6 : les échéances deviennent { label, date, constraint }. Le bump fait régénérer
+// les analyses de forme v5 à leur prochaine ouverture — c'est le mécanisme prévu.
+const ANALYSIS_SCHEMA_VERSION = 'v6-echeances-datees'
 
 /** Empreinte de la MATIÈRE PROPRE À LA VISITE (le CORPUS envoyé à l'agent), en
  *  ordre stable. NE dépend PAS de la version de forme : un corpus inchangé donne le
@@ -252,6 +292,44 @@ async function clearLease(reportId: string): Promise<void> {
   await createAdminClient().from('site_reports').update({ debrief_generating_at: null }).eq('id', reportId)
 }
 
+/**
+ * Projette la synthèse en propositions métier, et LAISSE UNE TRACE (mig 213).
+ *
+ * La projection n'est PAS un « best effort » : c'est un élément métier. Si elle
+ * échoue, la connaissance de la visite (actions, échéances, intervenants, savoirs)
+ * n'apparaît nulle part et le chantier paraît VIDE — l'utilisateur conclut que
+ * MemorIA n'a rien compris, alors qu'il avait compris. Un échec silencieux est
+ * donc le pire scénario possible.
+ *
+ * Cette fonction ne relance pas d'exception : un échec de projection ne doit pas
+ * détruire une synthèse coûteuse déjà produite. Mais il est LOGGUÉ et PERSISTÉ —
+ * les écrans peuvent le dire, et le diagnostic ne dépend plus d'une intuition.
+ */
+async function projectAndTrace(params: {
+  reportId: string
+  siteId: string
+  organizationId: string
+  analysis: StoredDebriefAnalysis
+}): Promise<void> {
+  const { reportId } = params
+  try {
+    await projectDebriefToProposals(params)
+    await createAdminClient()
+      .from('site_reports')
+      .update({ debrief_projected_at: new Date().toISOString(), debrief_projection_error: null })
+      .eq('id', reportId)
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e)
+    console.error(`[debrief] projection en échec pour la visite ${reportId} : ${reason}`)
+    await createAdminClient()
+      .from('site_reports')
+      .update({ debrief_projection_error: reason })
+      .eq('id', reportId)
+      // Si même la trace ne peut pas s'écrire, le log ci-dessus reste la preuve.
+      .then(undefined, () => {})
+  }
+}
+
 export interface LoadedDebrief {
   analysis: StoredDebriefAnalysis
   openSubjects: Array<{ id: string; name: string }>
@@ -259,8 +337,9 @@ export interface LoadedDebrief {
   fromCache: boolean
 }
 
-/** Ce qui a été AJOUTÉ à la visite depuis la dernière synthèse (jamais négatif). */
-export interface SnapshotDelta { photos: number; videos: number; vocals: number; notes: number }
+/** Ce qui a été AJOUTÉ à la visite depuis la dernière synthèse (jamais négatif).
+ *  Défini dans lib/visits/source-snapshot — ré-exporté ici pour les appelants du débrief. */
+export type { SnapshotDelta } from '@/lib/visits/source-snapshot'
 
 export type DebriefLoadResult =
   | { ok: true; status: 'ready'; loaded: LoadedDebrief } // synthèse à jour (ou fraîchement générée)
@@ -270,15 +349,9 @@ export type DebriefLoadResult =
 
 const leaseFresh = (iso: string | null): boolean => !!iso && Date.now() - Date.parse(iso) < LEASE_MS
 
-function computeDelta(old: VisitSourceSnapshot | null | undefined, cur: VisitSourceSnapshot): SnapshotDelta {
-  const o = old ?? { photos: 0, videos: 0, vocals: 0, notes: 0, last_capture_at: null }
-  return {
-    photos: Math.max(0, cur.photos - o.photos),
-    videos: Math.max(0, cur.videos - o.videos),
-    vocals: Math.max(0, cur.vocals - o.vocals),
-    notes: Math.max(0, cur.notes - o.notes),
-  }
-}
+// La règle « qu'est-ce qui a été ajouté depuis ? » vit dans lib/visits/source-snapshot :
+// le read model de la fiche chantier la partage, pour que les deux écrans ne puissent
+// jamais dire deux choses différentes de la même synthèse.
 
 /**
  * Synthèse VERSIONNÉE. La visite est la vérité ; la synthèse en est une lecture
@@ -312,7 +385,7 @@ export async function loadOrRunVisitDebrief(
     // Corpus inchangé → à jour.
     if (cache.corpus_hash === hash) return { ok: true, status: 'ready', loaded }
     // La visite a été enrichie depuis : on GARDE la synthèse, on signale le delta.
-    return { ok: true, status: 'stale', loaded, delta: computeDelta(cache.source_snapshot, snapshot) }
+    return { ok: true, status: 'stale', loaded, delta: computeSnapshotDelta(cache.source_snapshot, snapshot) }
   }
 
   // (Re)génération : pas de cache utilisable, schéma périmé, ou mise à jour demandée.
@@ -335,6 +408,19 @@ export async function loadOrRunVisitDebrief(
     const oldLedger = cache?.schema_version === ANALYSIS_SCHEMA_VERSION ? cache.action_ledger : undefined
     const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger)
     await writeAnalysis(reportId, analysis).catch(() => {})
+    // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
+    // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
+    // partout et distinctes des objets validés. Idempotent → pas de doublon aux
+    // mises à jour. Un échec est TRACÉ (mig 213), jamais avalé : sans projection,
+    // la connaissance de la visite n'apparaît nulle part.
+    if (ctx.visit.site_id && ctx.visit.organization_id) {
+      await projectAndTrace({
+        reportId,
+        siteId: ctx.visit.site_id,
+        organizationId: ctx.visit.organization_id,
+        analysis,
+      })
+    }
     return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {
     await clearLease(reportId).catch(() => {})
@@ -356,4 +442,28 @@ export async function setActionState(reportId: string, key: string, state: Actio
   entry.state = state
   await writeAnalysis(reportId, analysis)
   return true
+}
+
+/**
+ * Lecture SEULE de l'analyse stockée (aucun LLM, aucune régénération), suivie d'une
+ * projection IDEMPOTENTE en propositions métier : GARANTIT que les propositions
+ * d'action existent pour la synthèse actuellement affichée (une analyse en cache
+ * d'avant la couche d'extraction n'avait encore rien projeté — sinon « Créer
+ * l'action » n'aurait aucune proposition à promouvoir). Renvoie le grand livre des
+ * actions non écartées (clé + titre + responsable + échéance). L'appelant DOIT
+ * avoir vérifié l'organisation avant d'appeler (service-role → RLS bypassée).
+ */
+export async function ensureActionProposalsProjected(
+  reportId: string,
+  siteId: string,
+  organizationId: string | null,
+): Promise<Array<{ key: string; title: string; owner: string; due: string }>> {
+  const { analysis } = await readState(reportId)
+  if (!analysis) return []
+  if (organizationId) {
+    await projectAndTrace({ reportId, siteId, organizationId, analysis })
+  }
+  return (analysis.action_ledger ?? [])
+    .filter((a) => a.state !== 'dismissed')
+    .map((a) => ({ key: a.key, title: a.title, owner: a.owner, due: a.due }))
 }

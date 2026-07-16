@@ -10,6 +10,10 @@
 
 const NOUMEA_TIMEZONE = 'Pacific/Noumea'
 
+/** Le fuseau de l'organisation — à passer à tout `Intl.DateTimeFormat` d'un
+ *  rendu serveur. Exporté pour que personne ne réécrive la chaîne à la main. */
+export const NOUMEA_TZ = NOUMEA_TIMEZONE
+
 const dateFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: NOUMEA_TIMEZONE,
   year: 'numeric',
@@ -65,5 +69,44 @@ export function frDayMonthLocal(iso: string | Date): string {
     return dayMonthFormatter.format(d)
   } catch {
     return typeof iso === 'string' ? iso.slice(0, 10) : ''
+  }
+}
+
+// « 13 juillet à 11:57 » EN ZONE NOUMÉA. Même piège que ci-dessus, en pire :
+// une HEURE fausse ne se remarque pas — « 00:57 » est une heure plausible, elle
+// raconte simplement une visite en pleine nuit qui n'a jamais eu lieu. Un rendu
+// serveur (Vercel tourne en UTC) sans `timeZone` affiche l'heure UTC au
+// conducteur, décalée de 11 heures.
+const dayMonthTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: NOUMEA_TIMEZONE,
+  day: '2-digit',
+  month: 'long',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+const dayMonthPaddedFormatter = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: NOUMEA_TIMEZONE,
+  day: '2-digit',
+  month: 'long',
+})
+
+/** Date civile « 13 juillet » en zone Nouméa (jour sur 2 chiffres). */
+export function frDayMonthPaddedLocal(iso: string | Date): string {
+  try {
+    const d = typeof iso === 'string' ? new Date(iso) : iso
+    return dayMonthPaddedFormatter.format(d)
+  } catch {
+    return typeof iso === 'string' ? iso.slice(0, 10) : ''
+  }
+}
+
+/** Date + heure « 13 juillet à 11:57 » en zone Nouméa (le « à » vient d'ICU). */
+export function frDayMonthTimeLocal(iso: string | Date): string {
+  try {
+    const d = typeof iso === 'string' ? new Date(iso) : iso
+    return dayMonthTimeFormatter.format(d)
+  } catch {
+    return typeof iso === 'string' ? iso.slice(0, 16).replace('T', ' à ') : ''
   }
 }

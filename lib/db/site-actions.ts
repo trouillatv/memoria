@@ -9,6 +9,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { actionHealth, actionAttentionOf, noumeaDayOf, type ActionHealth } from '@/lib/actions/health'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 
 // Re-export pour compat : la fonction pure vit dans lib/actions/health (sans
@@ -60,6 +61,9 @@ export async function createSiteAction(input: {
     .select('id')
     .single()
   if (error) throw error
+  // La MUTATION invalide la projection (jamais l'écran) : toute création d'action,
+  // quel que soit l'appelant, rafraîchit automatiquement toutes les vues du chantier.
+  invalidateSiteProjection(input.site_id)
   return (data as { id: string }).id
 }
 
@@ -90,8 +94,12 @@ export async function updateSiteAction(
   if (patch.status !== undefined) update.status = patch.status
   if (patch.kind !== undefined) update.kind = patch.kind
   if (Object.keys(update).length === 0) return
-  const { error } = await supabase.from('site_actions').update(update).eq('id', id)
+  const { data, error } = await supabase.from('site_actions').update(update).eq('id', id).select('site_id').maybeSingle()
   if (error) throw error
+  // Clôture / édition d'une action → la projection du chantier change (ex. « Terminer »
+  // décrémente les actives, incrémente les terminées). La mutation invalide.
+  const siteId = (data as { site_id: string } | null)?.site_id
+  if (siteId) invalidateSiteProjection(siteId)
 }
 
 export async function listSiteActionsBySite(

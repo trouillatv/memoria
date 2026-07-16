@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteResumeContext } from '@/lib/db/interventions'
-import { listSiteASavoirActive } from '@/lib/db/sites'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getSiteReadings,
@@ -37,10 +36,12 @@ import { groupViewpointChains } from '@/lib/visits/viewpoints'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { getSiteNextSteps } from '@/lib/db/site-next-steps'
 import { NextStepCard } from './NextStepCard'
+import { VisitKnowledgeCard } from './VisitKnowledgeCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
+import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
@@ -200,6 +201,10 @@ export default async function FieldSitePage({
     hasEvolution = groupViewpointChains(vpRows).length > 0
     nextSteps = steps
   }
+  // Connaissance du chantier : le MÊME read model que la fiche desktop (`SiteOverview`).
+  // Une action proposée doit apparaître à l'identique sur les deux surfaces — c'est le
+  // contrat, pas une coïncidence. Hors visite en cours seulement.
+  const overview = activeVisit ? null : await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -267,10 +272,10 @@ export default async function FieldSitePage({
         .eq('scheduled_for', todayIso)
         .neq('status', 'skipped')
         .order('planned_start', { ascending: true })).data) ?? []) as TodayIntv[]
-  const [siteAnomalies, recentPhotos, aSavoir, presenceReminders] = await Promise.all([
+  // Le « À savoir » n'est plus lu ici : il vient de SiteOverview, comme au bureau.
+  const [siteAnomalies, recentPhotos, presenceReminders] = await Promise.all([
     getSiteAnomalies(siteId).catch(() => []),
     getSiteRecentPhotos(siteId, 6).catch(() => []),
-    listSiteASavoirActive(siteId).catch(() => []),
     // « Puisque vous êtes ici » — l'assistant de présence (niveau 3) : 1 à 3
     // opportunités à saisir sur place, déterministes, zéro donnée nouvelle.
     buildSitePresenceReminders(siteId, { limit: 3 }).catch(() => []),
@@ -349,25 +354,59 @@ export default async function FieldSitePage({
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard cells={siteStatus} />
 
+          {/* « Ma visite a servi » — le moment du terrain. Date, matière rapportée,
+              état de la synthèse, et ce que MemorIA en a retenu. Mêmes données et
+              mêmes mots que l'onglet Aperçu du bureau. */}
+          {overview && (
+            <VisitKnowledgeCard
+              overview={overview}
+              synthesisHref={overview.activity.lastVisit ? `/m/visite/${overview.activity.lastVisit.reportId}/cr` : undefined}
+            />
+          )}
+
+          {/* Connaissance de la dernière visite : actions proposées avec leurs
+              PREMIERS titres (pas seulement un compte). Distinctes des actions
+              ouvertes ; « confirmer » se fait sur la synthèse. Silence tant qu'il
+              n'y en a pas. Même read model que la fiche desktop. */}
+          {overview && overview.actions.summary.proposed > 0 && (
+            <section className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
+              <div className="flex items-center gap-2">
+                <ListTodo className="h-4 w-4 shrink-0 text-sky-600" />
+                <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
+                  {overview.actions.summary.proposed} action{overview.actions.summary.proposed > 1 ? 's' : ''} proposée{overview.actions.summary.proposed > 1 ? 's' : ''}
+                </h2>
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">à confirmer</span>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {overview.actions.proposed.map((p) => (
+                  <li key={p.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                    <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
+                    <span className="min-w-0">{p.title}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link href={`/m/site/${siteId}/visites`} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-sky-700 active:opacity-70 dark:text-sky-300">
+                Voir la synthèse et confirmer <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </section>
+          )}
+
           {/* 1bis — AGENDA DU CHANTIER : « comment va vivre ce chantier ces
               prochains jours ? » Réunions / interventions / échéances — la plus
               proche en grand, puis les jours nommés (Aujourd'hui / Demain / …).
               Silence positif si rien à venir. */}
           <NextStepCard steps={nextSteps} />
 
-          {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}
-          {(aSavoir.length > 0 || openAnomalies.length > 0) && (
+          {/* Attention — les anomalies OUVERTES : des faits déclarés sur le lieu.
+              Le « À savoir » a quitté ce bloc : c'est de la connaissance du chantier,
+              pas une alerte. Il vit dans « Ce que MemorIA a retenu », au même endroit
+              qu'au bureau — un même objet ne peut pas dire deux choses selon l'écran. */}
+          {openAnomalies.length > 0 && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5">
                 <AlertTriangle className="h-4 w-4" /> Attention
               </h2>
               <ul className="space-y-1.5">
-                {aSavoir.slice(0, 4).map((n) => (
-                  <li key={n.id} className="text-sm text-amber-900 flex gap-1.5">
-                    <span aria-hidden>⚠</span>
-                    <span className="min-w-0">{n.body}</span>
-                  </li>
-                ))}
                 {openAnomalies.slice(0, 3).map((a) => (
                   <li key={a.id} className="text-sm text-amber-900 flex gap-1.5">
                     <span aria-hidden>⚠</span>

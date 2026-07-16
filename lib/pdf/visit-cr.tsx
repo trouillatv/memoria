@@ -14,6 +14,7 @@ import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import { echeanceLine } from '@/lib/visits/echeance-labels'
 
 const COLORS = {
   text: '#0f172a',
@@ -230,7 +231,10 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
   const reservesTitle = isPremiere ? 'Premières réserves' : isAo ? 'Points de vigilance observés' : 'Réserves'
   const actionsTitle = isPremiere ? 'Premières actions' : 'Actions à réaliser'
   const photosBase = isPremiere ? 'Photos de référence' : 'Photos clés'
-  const title = `${kicker} — ${doc.siteName}`
+  // Titre du DOCUMENT PDF : Chrome (Android surtout) l'affiche comme titre d'onglet
+  // à l'ouverture « inline » — sans la DATE, toutes les visites d'un même chantier
+  // portent le même titre et donnent l'impression d'ouvrir le même fichier.
+  const title = `${kicker} — ${doc.siteName} · ${doc.dateLabel}`
 
   const reserveLines = [
     ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
@@ -402,7 +406,9 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
         {echeances.length > 0 && (
           <View style={styles.section}>
             <SectionTitle text="Échéances" color="#e11d48" />
-            <Bullets items={echeances} />
+            {/* Le document de preuve dit ce qui a été DIT : une date si elle a été
+                donnée, la contrainte sinon. Jamais une date déduite d'un délai. */}
+            <Bullets items={echeances.map((e) => echeanceLine(e))} />
           </View>
         )}
 
