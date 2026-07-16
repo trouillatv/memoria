@@ -41,7 +41,7 @@ import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
-import { getActionProjection } from '@/lib/db/knowledge-proposals'
+import { getSiteProjection, emptySiteProjection } from '@/lib/db/knowledge-proposals'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
 import { SiteMemoryQuery } from '@/app/(dashboard)/sites/[id]/SiteMemoryQuery'
@@ -201,9 +201,9 @@ export default async function FieldSitePage({
     hasEvolution = groupViewpointChains(vpRows).length > 0
     nextSteps = steps
   }
-  // Connaissance de la visite : projection Action (proposées + premiers titres),
-  // MÊME source que le tableau de bord. Hors visite en cours seulement.
-  const actionProjection = activeVisit ? null : await getActionProjection(siteId).catch(() => null)
+  // Connaissance de la visite : projection AGRÉGÉE du chantier (mêmes données que le
+  // tableau de bord, une seule lecture). Hors visite en cours seulement.
+  const siteProjection = activeVisit ? null : await getSiteProjection(siteId).catch(() => emptySiteProjection())
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
@@ -357,17 +357,17 @@ export default async function FieldSitePage({
               PREMIERS titres (pas seulement un compte). Distinctes des actions
               ouvertes ; « confirmer » se fait sur la synthèse. Silence tant qu'il
               n'y en a pas. Même projection que le tableau de bord. */}
-          {actionProjection && actionProjection.proposed > 0 && (
+          {siteProjection && siteProjection.actions.proposed > 0 && (
             <section className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
               <div className="flex items-center gap-2">
                 <ListTodo className="h-4 w-4 shrink-0 text-sky-600" />
                 <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
-                  {actionProjection.proposed} action{actionProjection.proposed > 1 ? 's' : ''} proposée{actionProjection.proposed > 1 ? 's' : ''}
+                  {siteProjection.actions.proposed} action{siteProjection.actions.proposed > 1 ? 's' : ''} proposée{siteProjection.actions.proposed > 1 ? 's' : ''}
                 </h2>
                 <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">à confirmer</span>
               </div>
               <ul className="mt-2 space-y-1">
-                {actionProjection.proposedTop.map((p) => (
+                {siteProjection.actions.proposedTop.map((p) => (
                   <li key={p.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
                     <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
                     <span className="min-w-0">{p.title}</span>

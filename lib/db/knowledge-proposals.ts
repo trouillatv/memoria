@@ -263,19 +263,19 @@ export interface ProposalProjection {
   proposedTop: Array<{ id: string; title: string }>
 }
 
-export async function getProposalProjection(
-  siteId: string,
-  kind: ProposalKind,
-  opts?: { topLimit?: number },
-): Promise<ProposalProjection> {
-  const supabase = createAdminClient()
-  const topLimit = opts?.topLimit ?? 3
-  const { data, error } = await supabase
-    .from('site_knowledge_proposals')
-    .select('id, title, payload, confidence, created_at')
-    .eq('site_id', siteId).eq('kind', kind).eq('status', 'proposed')
-  if (error) return { proposed: 0, proposedTop: [] }
-  const scored = ((data ?? []) as Array<{ id: string; title: string; payload: ProposalPayload; confidence: string | null; created_at: string }>)
+interface ScorableProposalRow {
+  id: string
+  title: string
+  payload: ProposalPayload
+  confidence: string | null
+  created_at: string
+}
+
+/** Cœur PUR : ordonne un lot de propositions par pertinence et en fait une
+ *  ProposalProjection. Partagé par le helper par-type ET la projection agrégée du
+ *  chantier — une seule logique de comptage/tri, jamais dupliquée. */
+function projectProposalRows(rows: ScorableProposalRow[], topLimit: number): ProposalProjection {
+  const scored = rows
     .map((r) => ({
       id: r.id,
       title: r.title,
@@ -290,17 +290,40 @@ export async function getProposalProjection(
   }
 }
 
-/**
- * PROJECTION UNIQUE de l'objet Action — la SEULE source que toutes les vues
- * consomment. Compose le cœur générique (proposed/proposedTop, ordonné) avec le
- * côté MÉTIER (site_actions) :
- *   • confirmed = actions actives (open/planned) ; • completed = terminées (done) ;
- *   • overdue   = actives dont l'échéance est passée.
- */
+export async function getProposalProjection(
+  siteId: string,
+  kind: ProposalKind,
+  opts?: { topLimit?: number },
+): Promise<ProposalProjection> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, title, payload, confidence, created_at')
+    .eq('site_id', siteId).eq('kind', kind).eq('status', 'proposed')
+  if (error) return { proposed: 0, proposedTop: [] }
+  return projectProposalRows((data ?? []) as ScorableProposalRow[], opts?.topLimit ?? 3)
+}
+
+/** Volet MÉTIER de l'objet Action (site_actions), ajouté à son volet proposition. */
 export interface ActionProjection extends ProposalProjection {
   confirmed: number
   completed: number
   overdue: number
+}
+
+/** Compteurs métier des site_actions d'un chantier (open/planned/done + retard). */
+function tallyActionRows(rows: Array<{ status: string; due_date: string | null }>, todayIso: string): { confirmed: number; completed: number; overdue: number } {
+  let confirmed = 0
+  let completed = 0
+  let overdue = 0
+  for (const a of rows) {
+    if (a.status === 'done') { completed++; continue }
+    if (a.status === 'open' || a.status === 'planned') {
+      confirmed++
+      if (a.due_date && a.due_date.slice(0, 10) < todayIso) overdue++
+    }
+  }
+  return { confirmed, completed, overdue }
 }
 
 export async function getActionProjection(siteId: string, opts?: { topLimit?: number }): Promise<ActionProjection> {
@@ -310,17 +333,65 @@ export async function getActionProjection(siteId: string, opts?: { topLimit?: nu
     getProposalProjection(siteId, 'action', opts),
     supabase.from('site_actions').select('status, due_date').eq('site_id', siteId),
   ])
-  let confirmed = 0
-  let completed = 0
-  let overdue = 0
-  for (const a of (actionsRes.data ?? []) as Array<{ status: string; due_date: string | null }>) {
-    if (a.status === 'done') { completed++; continue }
-    if (a.status === 'open' || a.status === 'planned') {
-      confirmed++
-      if (a.due_date && a.due_date.slice(0, 10) < todayIso) overdue++
-    }
+  return { ...proposal, ...tallyActionRows((actionsRes.data ?? []) as Array<{ status: string; due_date: string | null }>, todayIso) }
+}
+
+/**
+ * PROJECTION AGRÉGÉE DU CHANTIER — le point d'entrée unique des ÉCRANS (Dashboard,
+ * fiche chantier) qui affichent plusieurs objets à la fois. UNE seule lecture des
+ * propositions (tous types) + UNE des site_actions, au lieu d'un helper par bloc.
+ * Les objets restent le modèle ; cet agrégat évite les lectures redondantes et
+ * garde toutes les surfaces cohérentes. Aujourd'hui seul `actions` a son volet
+ * métier ; deadlines/watchpoints/knowledge/… exposent déjà leur volet proposition.
+ */
+export interface SiteProjection {
+  actions: ActionProjection
+  deadlines: ProposalProjection
+  watchpoints: ProposalProjection
+  knowledge: ProposalProjection
+  stakeholders: ProposalProjection
+  decisions: ProposalProjection
+}
+
+/** Agrégat vide — fallback sûr pour les écrans (aucune proposition, aucune action). */
+export function emptySiteProjection(): SiteProjection {
+  const emptyProposal: ProposalProjection = { proposed: 0, proposedTop: [] }
+  return {
+    actions: { ...emptyProposal, confirmed: 0, completed: 0, overdue: 0 },
+    deadlines: { ...emptyProposal },
+    watchpoints: { ...emptyProposal },
+    knowledge: { ...emptyProposal },
+    stakeholders: { ...emptyProposal },
+    decisions: { ...emptyProposal },
   }
-  return { ...proposal, confirmed, completed, overdue }
+}
+
+export async function getSiteProjection(siteId: string, opts?: { topLimit?: number }): Promise<SiteProjection> {
+  const supabase = createAdminClient()
+  const topLimit = opts?.topLimit ?? 3
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const [propRes, actionsRes] = await Promise.all([
+    supabase
+      .from('site_knowledge_proposals')
+      .select('id, kind, title, payload, confidence, created_at')
+      .eq('site_id', siteId).eq('status', 'proposed'),
+    supabase.from('site_actions').select('status, due_date').eq('site_id', siteId),
+  ])
+  const byKind: Record<ProposalKind, ScorableProposalRow[]> = {
+    action: [], vigilance: [], decision: [], knowledge: [], stakeholder: [], deadline: [],
+  }
+  for (const r of (propRes.data ?? []) as Array<ScorableProposalRow & { kind: ProposalKind }>) {
+    byKind[r.kind]?.push(r)
+  }
+  const action = projectProposalRows(byKind.action, topLimit)
+  return {
+    actions: { ...action, ...tallyActionRows((actionsRes.data ?? []) as Array<{ status: string; due_date: string | null }>, todayIso) },
+    deadlines: projectProposalRows(byKind.deadline, topLimit),
+    watchpoints: projectProposalRows(byKind.vigilance, topLimit),
+    knowledge: projectProposalRows(byKind.knowledge, topLimit),
+    stakeholders: projectProposalRows(byKind.stakeholder, topLimit),
+    decisions: projectProposalRows(byKind.decision, topLimit),
+  }
 }
 
 /** Idem pour plusieurs chantiers (accueil / dashboard multi-sites) → compte par site. */
