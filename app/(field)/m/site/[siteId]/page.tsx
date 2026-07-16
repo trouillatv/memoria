@@ -40,6 +40,7 @@ import { VisitKnowledgeCard } from './VisitKnowledgeCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
+import { AddDocumentPanel } from './AddDocumentPanel'
 import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listDocumentsForTarget } from '@/lib/db/documents'
@@ -551,6 +552,10 @@ export default async function FieldSitePage({
               <SpontaneousCapturePanel siteId={siteId} siteName={site.name} />
               <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" resumeReportId={resumeReportId} />
               <DeliverFieldPanel siteId={siteId} />
+              {/* Le plan reçu par mail, le devis signé, l'attestation remise sur
+                  place : ils arrivent SUR le chantier. Il fallait rentrer au bureau
+                  pour les déposer — la capacité existait, la porte manquait ici. */}
+              <AddDocumentPanel siteId={siteId} />
             </div>
           </section>
 
