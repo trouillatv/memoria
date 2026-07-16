@@ -13,6 +13,13 @@ import type { ProposalKind, ProposalPayload } from '@/lib/db/knowledge-proposals
 import type { VisitSourceSnapshot } from '@/lib/db/visits'
 import { EMPTY_SNAPSHOT } from '@/lib/visits/source-snapshot'
 
+/** Le geste terrain d'une visite : ce que quelqu'un a réellement capturé. */
+export interface VisitCaptureCount {
+  report_id: string
+  photos: number
+  vocals: number
+}
+
 /** Ligne brute d'un élément de connaissance PROPOSÉ (avant tri/agrégation). */
 export interface ProposalRow {
   id: string
@@ -187,6 +194,11 @@ export interface SiteEventRow {
   /** Le titre du fait — pour NOMMER une décision humaine (« Échéance ajoutée :
    *  Fournir l'attestation »). Un compte ne dit pas ce qu'on a validé. */
   title?: string | null
+  /** QUI a validé. Renseigné pour `proposal_confirmed` seulement : une validation
+   *  est un acte humain, et un acte a un auteur. */
+  reviewed_by?: string | null
+  /** Début de la visite — sert à dire sa durée réelle. */
+  started_at?: string | null
 }
 
 /**
@@ -225,7 +237,7 @@ export async function readEvents(
 
   let rq = db
     .from('site_reports')
-    .select('id, site_id, ended_at, debrief_analysis')
+    .select('id, site_id, started_at, ended_at, debrief_analysis')
     .not('site_id', 'is', null)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
@@ -234,8 +246,8 @@ export async function readEvents(
   if (orgId) rq = rq.eq('organization_id', orgId)
   if (siteId) rq = rq.eq('site_id', siteId)
   const { data: reports } = await rq
-  for (const r of (reports ?? []) as Array<{ id: string; site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
-    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended', report_id: r.id })
+  for (const r of (reports ?? []) as Array<{ id: string; site_id: string; started_at: string | null; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
+    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended', report_id: r.id, started_at: r.started_at })
     const generatedAt = r.debrief_analysis?.generated_at
     // La synthèse n'est un fait que si elle a réellement été écrite DANS la période.
     if (generatedAt && withinRange(generatedAt)) {
@@ -261,7 +273,7 @@ export async function readEvents(
   // est posé par la promotion — on ne devine pas, on lit la décision.
   let cq = db
     .from('site_knowledge_proposals')
-    .select('site_id, kind, reviewed_at, report_id, title')
+    .select('site_id, kind, reviewed_at, report_id, title, reviewed_by')
     .eq('status', 'confirmed')
     .not('reviewed_at', 'is', null)
     .gte('reviewed_at', from)
@@ -269,10 +281,63 @@ export async function readEvents(
   if (orgId) cq = cq.eq('organization_id', orgId)
   if (siteId) cq = cq.eq('site_id', siteId)
   const { data: confirmed } = await cq
-  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string; report_id: string | null; title: string | null }>) {
-    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind, report_id: c.report_id, title: c.title })
+  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string; report_id: string | null; title: string | null; reviewed_by: string | null }>) {
+    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind, report_id: c.report_id, title: c.title, reviewed_by: c.reviewed_by })
   }
   return out
+}
+
+/**
+ * Photos et mémos par visite — la preuve que quelqu'un y est allé, ce qu'aucun
+ * compte de propositions ne dit. On ignore les captures ÉCARTÉES au tri : une
+ * photo jetée n'a rien apporté au chantier.
+ */
+export async function readVisitCaptureCounts(reportIds: string[]): Promise<VisitCaptureCount[]> {
+  if (reportIds.length === 0) return []
+  const db = createAdminClient()
+  const { data } = await db
+    .from('visit_capture')
+    .select('report_id, kind')
+    .in('report_id', reportIds)
+    .in('kind', ['photo', 'vocal'])
+    .neq('status', 'discarded')
+  const acc = new Map<string, VisitCaptureCount>()
+  for (const c of (data ?? []) as Array<{ report_id: string; kind: string }>) {
+    const e = acc.get(c.report_id) ?? { report_id: c.report_id, photos: 0, vocals: 0 }
+    if (c.kind === 'photo') e.photos++
+    else e.vocals++
+    acc.set(c.report_id, e)
+  }
+  return [...acc.values()]
+}
+
+/**
+ * La PREMIÈRE visite d'un chantier, sur TOUTE son histoire — jamais sur la
+ * fenêtre affichée. Dire « première visite » de la plus ancienne visite des 90
+ * derniers jours, alors que dix la précèdent, serait raconter un faux début.
+ */
+export async function readFirstVisitId(siteId: string): Promise<string | null> {
+  const db = createAdminClient()
+  const { data } = await db
+    .from('site_reports')
+    .select('id')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
+    .is('deleted_at', null)
+    .order('ended_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return (data as { id: string } | null)?.id ?? null
+}
+
+/** Les noms des auteurs d'une validation — pour dire « Guillaume confirme ». */
+export async function readUserNames(userIds: string[]): Promise<Array<{ id: string; full_name: string | null }>> {
+  const unique = [...new Set(userIds)]
+  if (unique.length === 0) return []
+  const db = createAdminClient()
+  const { data } = await db.from('users').select('id, full_name').in('id', unique)
+  return (data ?? []) as Array<{ id: string; full_name: string | null }>
 }
 
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */

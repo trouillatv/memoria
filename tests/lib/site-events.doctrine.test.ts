@@ -38,6 +38,26 @@ describe('getVisitImpact — doctrine du nombre unique', () => {
   })
 })
 
+// ── LE PIÈGE DU KIND ────────────────────────────────────────────────────────
+// La base ne connaît QUE ces six kinds (migration 212) : 'vigilance' — jamais
+// 'watchpoint'. Le TypeScript, lui, appelle le champ `watchpoints` (projection.ts
+// fait la traduction). Le jour où on lit la base avec le mot du TypeScript, le
+// filtre ne matche rien : les points de vigilance d'une visite disparaissent
+// SANS erreur — la frise dit « rien retenu » d'une visite qui en a relevé trois.
+// C'est arrivé. Ce test tient la frontière.
+describe('Le kind vient de la base, pas du TypeScript', () => {
+  const source = readFileSync(TODAY, 'utf8')
+
+  it("ne compare jamais un proposal_kind à 'watchpoint'", () => {
+    expect(source).not.toMatch(/proposal_kind === 'watchpoint'|countKind\([^)]*'watchpoint'\)/)
+    expect(source).not.toMatch(/case 'watchpoint':/)
+  })
+
+  it("connaît le vrai kind 'vigilance'", () => {
+    expect(source).toContain("'vigilance'")
+  })
+})
+
 describe("La carte d'impact — ne lit rien elle-même", () => {
   const source = readFileSync(CARD, 'utf8')
 

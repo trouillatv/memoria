@@ -17,7 +17,10 @@ import 'server-only'
 // « Aujourd'hui » = la journée civile à Nouméa. Pas celle du serveur.
 
 import { getSiteOverview, type KnowledgeItem, type SynthesisStatus } from '@/lib/knowledge/site-overview'
-import { readEvents, type SiteEventRow } from '@/lib/knowledge/repository'
+import {
+  readEvents, readVisitCaptureCounts, readFirstVisitId, readUserNames,
+  type SiteEventRow,
+} from '@/lib/knowledge/repository'
 import { getOrgId } from '@/lib/db/users'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
@@ -37,6 +40,15 @@ export interface HistoryVisit {
   id: string
   at: string
   reportId: string
+  /** « Première visite » — dit UNE fois, sur la plus ancienne visite du chantier.
+   *  Calculé sur toute l'histoire du site, jamais sur la fenêtre affichée : la
+   *  première visite des 90 derniers jours n'est pas la première visite. */
+  isFirst: boolean
+  /** Le geste terrain : durée réelle et captures. « 38 min · 4 photos · 2 mémos »
+   *  dit que quelqu'un y est allé — ce qu'aucun compte de propositions ne dit. */
+  durationMin: number | null
+  photos: number
+  vocals: number
   produced: {
     actions: number
     deadlines: number
@@ -52,10 +64,16 @@ export interface HistoryDecision {
   kind: 'decision'
   id: string
   at: string
-  /** « Échéance ajoutée au planning ». */
+  /** « Échéance retenue ». */
   label: string
   /** Ce qui a été ajouté, nommé. Sans lui, on ne saurait pas QUOI a été validé. */
   title: string | null
+  /** Le PRÉNOM de qui a validé — « Guillaume confirme ». Une validation est un
+   *  acte, et un acte a un auteur : sans lui la frise dit qu'une main anonyme a
+   *  décidé. On ne nomme QUE le geste de validation, jamais une présence ni un
+   *  temps passé — la frontière anti-RH tient à cette distinction.
+   *  (Cf. [[refus-erp-rh-pointage-gps]].) */
+  by: string | null
 }
 
 export type HistoryEntry = HistoryVisit | HistoryDecision
@@ -116,7 +134,7 @@ function confirmedLabel(kind: string, count: number): string | null {
   switch (kind) {
     case 'action': return `${count} action${s ? 's' : ''} confirmée${s ? 's' : ''}`
     case 'deadline': return `${count} échéance${s ? 's' : ''} confirmée${s ? 's' : ''}`
-    case 'watchpoint': return `${count} point${s ? 's' : ''} de vigilance confirmé${s ? 's' : ''}`
+    case 'vigilance': return `${count} point${s ? 's' : ''} de vigilance confirmé${s ? 's' : ''}`
     case 'stakeholder': return `${count} intervenant${s ? 's' : ''} confirmé${s ? 's' : ''}`
     case 'knowledge': return `${count} information${s ? 's' : ''} confirmée${s ? 's' : ''}`
     case 'decision': return `${count} décision${s ? 's' : ''} confirmée${s ? 's' : ''}`
@@ -130,7 +148,7 @@ function proposalLabel(kind: string, count: number): string | null {
   switch (kind) {
     case 'action': return `${count} action${s ? 's' : ''} proposée${s ? 's' : ''}`
     case 'deadline': return `${count} échéance${s ? 's' : ''} détectée${s ? 's' : ''}`
-    case 'watchpoint': return `${count} point${s ? 's' : ''} de vigilance`
+    case 'vigilance': return `${count} point${s ? 's' : ''} de vigilance`
     case 'stakeholder': return `${count} intervenant${s ? 's' : ''} identifié${s ? 's' : ''}`
     case 'knowledge': return `${count} information${s ? 's' : ''} à savoir`
     case 'decision': return `${count} décision${s ? 's' : ''} relevée${s ? 's' : ''}`
@@ -219,22 +237,35 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
     list.push(r)
     byReport.set(r.report_id, list)
   }
+  // Les lectures passent par le REPOSITORY : ce fichier ne connaît pas Supabase.
+  // Deux chemins vers la base = deux vérités possibles, et plus personne ne croit
+  // ni l'une ni l'autre.
+  const [captureRows, firstReportId] = await Promise.all([
+    readVisitCaptureCounts([...byReport.keys()]),
+    readFirstVisitId(siteId),
+  ])
+  const captures = new Map(captureRows.map((c) => [c.report_id, c]))
   for (const [reportId, list] of byReport) {
     const visit = list.find((r) => r.kind === 'visit_ended')
     if (!visit) continue
     const produced = list.filter((r) => r.kind === 'proposal_created')
+    const cap = captures.get(reportId)
     entries.push({
       kind: 'visit',
       id: `visit-${reportId}`,
       at: visit.at,
       reportId,
+      isFirst: reportId === firstReportId,
+      durationMin: durationMin(visit.started_at ?? null, visit.at),
+      photos: cap?.photos ?? 0,
+      vocals: cap?.vocals ?? 0,
       produced: {
         actions: produced.filter((r) => r.proposal_kind === 'action').length,
         deadlines: produced.filter((r) => r.proposal_kind === 'deadline').length,
         stakeholders: produced.filter((r) => r.proposal_kind === 'stakeholder').length,
         knowledge: produced.filter((r) => r.proposal_kind === 'knowledge').length,
         decisions: produced.filter((r) => r.proposal_kind === 'decision').length,
-        watchpoints: produced.filter((r) => r.proposal_kind === 'watchpoint').length,
+        watchpoints: produced.filter((r) => r.proposal_kind === 'vigilance').length,
       },
     })
   }
@@ -244,9 +275,10 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
   // compris, la décision dit ce que le conducteur en a fait. Et elle se NOMME —
   // « Échéance ajoutée : Fournir l'attestation » — parce qu'un compte ne dit pas
   // ce qu'on a validé.
-  for (const r of rows) {
-    if (r.kind !== 'proposal_confirmed' || !r.proposal_kind) continue
-    const label = decisionLabel(r.proposal_kind)
+  const confirmations = rows.filter((r) => r.kind === 'proposal_confirmed' && r.proposal_kind)
+  const names = firstNames(await readUserNames(confirmations.flatMap((r) => (r.reviewed_by ? [r.reviewed_by] : []))))
+  for (const r of confirmations) {
+    const label = decisionLabel(r.proposal_kind!)
     if (!label) continue
     entries.push({
       kind: 'decision',
@@ -254,6 +286,7 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
       at: r.at,
       label,
       title: r.title ?? null,
+      by: (r.reviewed_by && names.get(r.reviewed_by)) || null,
     })
   }
 
@@ -261,17 +294,37 @@ export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promi
   return entries.sort((a, b) => b.at.localeCompare(a.at))
 }
 
-/** Ce qu'une validation humaine AJOUTE au chantier, dit en clair. */
+/** Ce qu'une validation humaine RETIENT, dit avec les mots du chantier. */
 function decisionLabel(kind: string): string | null {
   switch (kind) {
-    case 'action': return 'Action ajoutée au travail'
-    case 'deadline': return 'Échéance ajoutée au planning'
-    case 'stakeholder': return 'Intervenant ajouté au chantier'
-    case 'knowledge': return 'Information ajoutée à la mémoire'
-    case 'watchpoint': return 'Point de vigilance retenu'
-    case 'decision': return 'Décision actée'
+    case 'action': return 'Action retenue'
+    case 'deadline': return 'Échéance retenue'
+    case 'stakeholder': return 'Intervenant retenu'
+    case 'knowledge': return 'Information retenue'
+    case 'vigilance': return 'Point de vigilance retenu'
+    case 'decision': return 'Décision retenue'
     default: return null
   }
+}
+
+/** La durée réelle du passage sur le chantier. Null si le début n'est pas su :
+ *  une durée inventée serait un temps passé inventé — précisément ce qu'on refuse. */
+function durationMin(startedAt: string | null, endedAt: string): number | null {
+  if (!startedAt) return null
+  const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime()
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.max(1, Math.round(ms / 60_000))
+}
+
+/** Le PRÉNOM de qui a validé — « Guillaume confirme », pas « Guillaume Martin ».
+ *  On dit le geste, pas l'identité complète. */
+function firstNames(rows: Array<{ id: string; full_name: string | null }>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const u of rows) {
+    const first = (u.full_name ?? '').trim().split(/\s+/)[0]
+    if (first) out.set(u.id, first)
+  }
+  return out
 }
 
 /**
@@ -338,7 +391,7 @@ export async function getVisitImpact(): Promise<VisitImpact> {
         deadlines,
         added: {
           actions: countKind(siteRows, 'action'),
-          watchpoints: countKind(siteRows, 'watchpoint'),
+          watchpoints: countKind(siteRows, 'vigilance'),
           deadlines: countKind(siteRows, 'deadline'),
           stakeholders: countKind(siteRows, 'stakeholder'),
           knowledge: countKind(siteRows, 'knowledge'),
