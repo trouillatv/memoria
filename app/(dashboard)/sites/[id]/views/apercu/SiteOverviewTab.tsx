@@ -12,6 +12,7 @@ import {
   ListTodo,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
   Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,10 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit ? `/m/visite/${activity.lastVisit.reportId}/cr` : undefined
+  const retainedTotal = stakeholders.summary.proposed + stakeholders.summary.confirmed
+    + deadlines.summary.proposed + deadlines.summary.confirmed
+    + knowledge.summary.proposed + knowledge.summary.confirmed
+    + watchpoints.summary.proposed + watchpoints.summary.confirmed
 
   return (
     <main className="space-y-4">
@@ -120,17 +125,69 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             {activity.lastVisit.sourceCount === 0 && <span>Aucune capture</span>}
           </div>
 
-          {/* Un échec de projection ne doit JAMAIS être muet : sans lui, la visite
-              paraît n'avoir rien produit alors que MemorIA avait compris. */}
+          {/* Un échec ne doit JAMAIS être muet : sans ça, la visite paraît n'avoir
+              rien produit alors que MemorIA avait compris. On parle CHANTIER, jamais
+              « projection » — le conducteur n'a pas à connaître notre plomberie. */}
           {synthesis.projectionFailed && (
             <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-[13px] text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <span>
-                Certaines informations de cette visite n&apos;ont pas pu être reportées sur le chantier.
+                Certaines informations de cette visite n&apos;ont pas encore pu être intégrées au chantier.
                 La synthèse, elle, est intacte.
               </span>
             </p>
           )}
+        </section>
+      )}
+
+      {/* ── CE QUE MEMORIA A RETENU ──────────────────────────────────────────
+          La visite raconte UNE histoire, pas quatre widgets : elle suit le bloc
+          « Dernière visite » et précède les actions. Ces objets vivaient déjà dans
+          le contrat sans jamais atteindre l'écran — la connaissance existait, elle
+          était invisible. Un objet métier n'est terminé que lorsqu'il est visible
+          là où il doit apparaître. */}
+      {retainedTotal > 0 && (
+        <section className="rounded-[18px] border bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Ce que MemorIA a retenu
+            </h2>
+          </div>
+          <div className="mt-3 grid items-start gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
+            <KnowledgeGroup
+              title="Intervenants"
+              icon={Users}
+              proposed={stakeholders.proposed}
+              confirmed={stakeholders.confirmed}
+              summary={stakeholders.summary}
+              href={`/sites/${siteId}?tab=memoire`}
+            />
+            <KnowledgeGroup
+              title="Échéances"
+              icon={CalendarClock}
+              proposed={deadlines.proposed}
+              confirmed={deadlines.confirmed}
+              summary={deadlines.summary}
+              href={`/sites/${siteId}?tab=planning`}
+            />
+            <KnowledgeGroup
+              title="À savoir"
+              icon={Info}
+              proposed={knowledge.proposed}
+              confirmed={knowledge.confirmed}
+              summary={knowledge.summary}
+              href={`/sites/${siteId}?tab=memoire`}
+            />
+            <KnowledgeGroup
+              title="Points de vigilance"
+              icon={ShieldAlert}
+              proposed={watchpoints.proposed}
+              confirmed={watchpoints.confirmed}
+              summary={watchpoints.summary}
+              href={synthesisHref}
+            />
+          </div>
         </section>
       )}
 
@@ -227,49 +284,6 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
         </OverviewPanel>
       </div>
 
-      {/* ── CE QUE LA VISITE A APPRIS AU CHANTIER ────────────────────────────
-          Ces objets vivaient déjà dans le contrat sans jamais atteindre l'écran :
-          la connaissance existait, elle était simplement invisible. Un objet métier
-          n'est terminé que lorsqu'il est visible là où il doit apparaître. */}
-      {(knowledge.summary.proposed + knowledge.summary.confirmed
-        + stakeholders.summary.proposed + stakeholders.summary.confirmed
-        + deadlines.summary.proposed + watchpoints.summary.proposed) > 0 && (
-        <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KnowledgePanel
-            title="À savoir"
-            icon={Info}
-            proposed={knowledge.proposed}
-            confirmed={knowledge.confirmed}
-            summary={knowledge.summary}
-            href={`/sites/${siteId}?tab=memoire`}
-          />
-          <KnowledgePanel
-            title="Intervenants"
-            icon={Users}
-            proposed={stakeholders.proposed}
-            confirmed={stakeholders.confirmed}
-            summary={stakeholders.summary}
-            href={`/sites/${siteId}?tab=memoire`}
-          />
-          <KnowledgePanel
-            title="Échéances"
-            icon={CalendarClock}
-            proposed={deadlines.proposed}
-            confirmed={deadlines.confirmed}
-            summary={deadlines.summary}
-            href={`/sites/${siteId}?tab=planning`}
-          />
-          <KnowledgePanel
-            title="Points de vigilance"
-            icon={ShieldAlert}
-            proposed={watchpoints.proposed}
-            confirmed={watchpoints.confirmed}
-            summary={watchpoints.summary}
-            href={synthesisHref}
-          />
-        </div>
-      )}
-
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
@@ -308,9 +322,9 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   )
 }
 
-/** Panneau d'un objet de connaissance : le VALIDÉ d'abord, le PROPOSÉ ensuite —
- *  jamais mélangés. Silence total quand l'objet n'a rien à dire. */
-function KnowledgePanel({
+/** Un groupe de « ce que MemorIA a retenu » : le VALIDÉ d'abord, le PROPOSÉ ensuite —
+ *  jamais mélangés. Silence total quand l'objet n'a rien à dire (pas de carte vide). */
+function KnowledgeGroup({
   title,
   icon: Icon,
   proposed,
@@ -330,11 +344,16 @@ function KnowledgePanel({
   const body = (
     <>
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">{title}</h3>
-        <span className="ml-auto text-sm font-semibold tabular-nums">{total}</span>
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+        <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
+        <span className="text-[13px] font-semibold tabular-nums">{total}</span>
+        {summary.proposed > 0 && (
+          <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+            {summary.proposed} à confirmer
+          </span>
+        )}
       </div>
-      <ul className="mt-2 space-y-1">
+      <ul className="mt-1.5 space-y-1">
         {confirmed.map((item) => (
           <li key={item.id} className="line-clamp-2 text-[13px] text-foreground/90">
             {item.title}
@@ -346,20 +365,14 @@ function KnowledgePanel({
           </li>
         ))}
       </ul>
-      {summary.proposed > 0 && (
-        <span className="mt-2 inline-block rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
-          {summary.proposed} à confirmer
-        </span>
-      )}
     </>
   )
-  const className = 'block rounded-[18px] border bg-card p-4 shadow-sm'
   return href ? (
-    <Link href={href} className={cn(className, 'transition hover:brightness-[0.98]')}>
+    <Link href={href} className="block rounded-xl p-1.5 transition hover:bg-muted/50">
       {body}
     </Link>
   ) : (
-    <section className={className}>{body}</section>
+    <div className="rounded-xl p-1.5">{body}</div>
   )
 }
 
