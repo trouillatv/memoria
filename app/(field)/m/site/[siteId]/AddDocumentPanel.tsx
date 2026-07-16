@@ -28,15 +28,26 @@ export function AddDocumentPanel({ siteId }: { siteId: string }) {
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const name = fileName
     startTransition(async () => {
       const r = await uploadSiteDocumentAction(siteId, fd)
       if (!r.ok) {
         toast.error(r.error ?? 'Import impossible')
         return
       }
-      // Le doublon n'est pas une erreur : le document est déjà connu, on le
-      // rattache. Le dire évite que le conducteur réessaie en boucle.
-      toast.success(r.duplicate ? 'Document déjà connu — rattaché au chantier' : 'Document ajouté au chantier')
+      // On NOMME le fichier déposé : « Plan de prévention.pdf ajouté au chantier ».
+      // « Document ajouté » ne prouve rien — sur un téléphone, gants aux mains, on
+      // veut lire le nom de CE qu'on vient de déposer. Et un lien vers l'endroit où
+      // le retrouver : sans lui, on a déposé dans le vide.
+      //
+      // Le doublon n'est pas une erreur : le document est déjà connu, on le rattache.
+      // Le dire évite que le conducteur réessaie en boucle.
+      toast.success(
+        r.duplicate
+          ? `${name ?? 'Document'} déjà connu — rattaché au chantier`
+          : `${name ?? 'Document'} ajouté au chantier`,
+        { action: { label: 'Voir les documents', onClick: () => router.push(`/m/site/${siteId}/documents`) } },
+      )
       formRef.current?.reset()
       setFileName(null)
       setOpen(false)
@@ -51,7 +62,11 @@ export function AddDocumentPanel({ siteId }: { siteId: string }) {
         onClick={() => setOpen(true)}
         className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-muted/30 px-4 py-3.5 text-sm font-medium text-foreground shadow-sm transition active:brightness-95"
       >
-        <FileText className="h-4 w-4 text-rose-600" /> Document
+        {/* « Document » est un mot de développeur. Sur le terrain on dépose un plan,
+            un devis, une attestation — et ce qu'on a dans la main, c'est un PDF.
+            « Document PDF » : les mêmes mots que le menu du bureau, pour que la même
+            chose porte le même nom des deux côtés. */}
+        <FileText className="h-4 w-4 text-rose-600" /> Document PDF
       </button>
     )
   }
@@ -60,7 +75,7 @@ export function AddDocumentPanel({ siteId }: { siteId: string }) {
     <form ref={formRef} onSubmit={onSubmit} className="col-span-2 space-y-2 rounded-xl border bg-card p-3">
       <div className="flex items-center justify-between">
         <p className="inline-flex items-center gap-1.5 text-sm font-semibold">
-          <FileText className="h-4 w-4 text-rose-600" /> Ajouter un document
+          <FileText className="h-4 w-4 text-rose-600" /> Ajouter un document PDF
         </p>
         <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-muted-foreground hover:bg-muted">
           <X className="h-4 w-4" />
