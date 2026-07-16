@@ -56,18 +56,19 @@ export async function readSiteActionRows(siteId: string): Promise<ActionRow[]> {
   return (data ?? []) as ActionRow[]
 }
 
-/** Résumés des actions métier (id + titre + statut + échéance) — pour la liste des
- *  actions actives et le tally. */
+/** Résumés des actions métier (id + titre + statut + échéance + création) — pour la
+ *  liste des actions actives, le tally et le tri des actions sans échéance. */
 export interface ActionSummaryRow {
   id: string
   title: string
   status: string
   due_date: string | null
+  created_at: string
 }
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date')
+    .select('id, title, status, due_date, created_at')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]

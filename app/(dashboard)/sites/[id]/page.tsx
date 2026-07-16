@@ -1,23 +1,11 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { headers } from 'next/headers'
-import type { ComponentType, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import QRCode from 'qrcode'
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Calendar,
-  CalendarPlus,
-  ChevronRight,
-  Clock,
-  ListTodo,
-  Search,
-  ShieldAlert,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ArrowLeft, CalendarPlus, Search } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
-import { getSiteOverview, emptySiteOverview, type SiteOverview } from '@/lib/knowledge/site-overview'
+import { listOpenSiteActions } from '@/lib/db/site-actions'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
@@ -26,7 +14,6 @@ import { listTeams } from '@/lib/db/teams'
 import { listHandoverBriefsBySite } from '@/lib/db/handover'
 import type { DbTeam } from '@/types/db'
 import {
-  buildSiteStatusSummary,
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
 } from '@/lib/db/visits'
@@ -44,18 +31,11 @@ import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
-import { todayLocalIso } from '@/lib/time/local-date'
 import {
-  buildOverviewAttention,
-  getActionDueLabel,
-  getActionDueTone,
   selectNextEvent,
-  selectPriorityActions,
   selectRecentChanges,
-  type OverviewActionInput,
   type OverviewChangeInput,
   type OverviewEventInput,
-  type OverviewSignalInput,
 } from '@/lib/chantier/overview-projections'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { QuickActionButton } from '@/components/actions/QuickActionButton'
@@ -73,6 +53,7 @@ import { MemoryWorkspace, type SiteRelay } from './views/memory/MemoryWorkspace'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
+import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -93,11 +74,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     ? (rawTab as ChantierViewKey)
     : 'apercu'
 
+  // L'onglet Aperçu ne figure PAS ici : il lit son propre read model (SiteOverview).
+  // Ces chargeurs servent les autres onglets, qui recevront le leur à leur tour.
   const [
     identity,
     openActions,
     blocages,
-    statusSummary,
     currentState,
     recentActivity,
     lastVisit,
@@ -107,12 +89,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     interventionsResult,
     cycles,
     teams,
-    overview,
   ] = await Promise.all([
     getSiteIdentity(id),
     listOpenSiteActions({ siteIds: [id] }).catch(() => []),
     listBlocagesBySite(id).catch(() => []),
-    buildSiteStatusSummary(id).catch(() => []),
     getSiteCurrentState(id).catch(() => null),
     getSiteRecentActivity(id, 12).catch(() => []),
     getLastEndedVisitForSite(id).catch(() => null),
@@ -122,21 +102,11 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
     listCyclesBySite(id).catch(() => []),
     listTeams().catch(() => []),
-    getSiteOverview(id).catch(() => emptySiteOverview(id)),
   ])
 
   if (!identity) notFound()
 
-  const todayIso = todayLocalIso()
   const openBlocages = blocages.filter((b) => b.dateEnd === null)
-  const openReserves = numberStatus(statusSummary.find((s) => s.key === 'reserves')?.value)
-  const actions = toOverviewActions(openActions, id)
-  const attention = buildOverviewAttention([
-    ...toBlocageSignals(openBlocages, id),
-    ...toMemorySignals(memorySignals, id),
-    ...toActionSignals(openActions, todayIso, id),
-  ])
-  const priorityActions = selectPriorityActions(actions, { todayIso, limit: 5 })
   const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
   const recentChanges = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
   const nextEvent = selectNextEvent(toOverviewEvents(currentState, id), new Date().toISOString())
@@ -207,18 +177,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
         </div>
 
         {tab === 'apercu' ? (
-          <ChantierOverview
-            siteId={id}
-            openActionsCount={openActions.length}
-            overview={overview}
-            proposedActionsHref={lastVisit?.reportId ? `/m/visite/${lastVisit.reportId}/cr` : undefined}
-            openReservesCount={openReserves}
-            openBlocagesCount={openBlocages.length}
-            nextEvent={nextEvent}
-            attention={attention}
-            priorityActions={priorityActions}
-            recentChanges={recentChanges}
-          />
+          <SiteOverviewTab siteId={id} />
         ) : tab === 'travail' ? (
           <WorkWorkspace
             siteId={id}
@@ -271,200 +230,6 @@ function ChantierShell({
   children: ReactNode
 }) {
   return <div className="space-y-5">{children}</div>
-}
-
-function ChantierOverview({
-  siteId,
-  openActionsCount,
-  overview,
-  proposedActionsHref,
-  openReservesCount,
-  openBlocagesCount,
-  nextEvent,
-  attention,
-  priorityActions,
-  recentChanges,
-}: {
-  siteId: string
-  openActionsCount: number
-  overview: SiteOverview
-  proposedActionsHref?: string
-  openReservesCount: number
-  openBlocagesCount: number
-  nextEvent: OverviewEventInput | null
-  attention: OverviewSignalInput[]
-  priorityActions: OverviewActionInput[]
-  recentChanges: OverviewChangeInput[]
-}) {
-  return (
-    <main className="space-y-4">
-      <section aria-labelledby="etat-du-chantier" className="space-y-3">
-        <h2 id="etat-du-chantier" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          État du chantier
-        </h2>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <StateCard
-            href={`/sites/${siteId}/actions`}
-            icon={ListTodo}
-            tone="orange"
-            value={openActionsCount}
-            title="Actions ouvertes"
-            detail={openActionsCount > 0 ? 'À traiter ou suivre' : 'Aucune action ouverte'}
-          />
-          <StateCard
-            href={`/sites/${siteId}/reserves`}
-            icon={AlertTriangle}
-            tone={openReservesCount > 0 ? 'orange' : 'green'}
-            value={openReservesCount}
-            title="Réserves ouvertes"
-            detail={openReservesCount > 0 ? 'À lever' : 'Aucune réserve ouverte'}
-          />
-          <StateCard
-            icon={ShieldAlert}
-            tone={openBlocagesCount > 0 ? 'red' : 'green'}
-            value={openBlocagesCount}
-            title="Blocages en cours"
-            detail={openBlocagesCount > 0 ? 'Peut ralentir le chantier' : 'Aucun blocage déclaré'}
-          />
-          <StateCard
-            href={`/semaine?site=${siteId}`}
-            icon={Calendar}
-            tone="blue"
-            value={nextEvent ? formatShortEventDate(nextEvent.startsAt) : 'Aucune'}
-            title="Prochaine étape"
-            detail={nextEvent?.title ?? 'Rien de planifié'}
-          />
-        </div>
-      </section>
-
-      {/* Connaissance de la dernière visite : les propositions d'action pas encore
-          promues, avec leurs PREMIERS titres (pas seulement un compte). Distinctes du
-          métier (actions ouvertes) ; « Confirmer » se fait sur la synthèse. Silence
-          total tant qu'il n'y en a pas. Même projection que toutes les autres vues. */}
-      {overview.actions.summary.proposed > 0 && (
-        <section className="rounded-[18px] border border-sky-200 bg-sky-50/50 p-4 shadow-sm dark:border-sky-900/40 dark:bg-sky-950/20">
-          <div className="flex items-center gap-2">
-            <ListTodo className="h-4 w-4 text-sky-600" />
-            <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
-              {overview.actions.summary.proposed} action{overview.actions.summary.proposed > 1 ? 's' : ''} proposée{overview.actions.summary.proposed > 1 ? 's' : ''}
-            </h2>
-            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">à confirmer</span>
-          </div>
-          <ul className="mt-2 space-y-1">
-            {overview.actions.proposed.map((p) => (
-              <li key={p.id} className="flex items-start gap-2 text-sm text-foreground/90">
-                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
-                <span className="min-w-0">{p.title}</span>
-              </li>
-            ))}
-          </ul>
-          {proposedActionsHref && (
-            <Link href={proposedActionsHref} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-sky-700 hover:underline dark:text-sky-300">
-              Voir la synthèse et confirmer <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
-          )}
-        </section>
-      )}
-
-      <div className="grid items-start gap-4 xl:grid-cols-[0.9fr_1.2fr_0.9fr]">
-        <OverviewPanel title="Ce qui réclame mon attention">
-          {attention.length > 0 ? (
-            <ul className="space-y-3">
-              {attention.map((signal) => (
-                <li key={signal.id}>
-                  <OverviewRow
-                    href={signal.href}
-                    icon={attentionIcon(signal.kind)}
-                    tone={attentionTone(signal.kind)}
-                    title={signal.title}
-                    detail={signal.detail}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyLine>Rien ne réclame votre attention pour l'instant.</EmptyLine>
-          )}
-        </OverviewPanel>
-
-        <OverviewPanel title="Que reste-t-il à faire ?">
-          {priorityActions.length > 0 ? (
-            <ul className="space-y-2.5">
-              {priorityActions.slice(0, 3).map((action) => (
-                <li key={action.id}>
-                  <OverviewRow
-                    href={action.href}
-                    icon={ListTodo}
-                    tone={getActionDueTone(action, todayLocalIso())}
-                    title={action.title}
-                    detail={getActionDueLabel(action, todayLocalIso())}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyLine>Aucune action prioritaire ouverte.</EmptyLine>
-          )}
-          <div className="pt-2">
-            <Link href={`/sites/${siteId}/actions`} className="text-sm font-medium text-primary hover:underline">
-              Voir toutes les actions ouvertes
-            </Link>
-          </div>
-        </OverviewPanel>
-
-        <OverviewPanel title="Depuis ma dernière venue">
-          {recentChanges.length > 0 ? (
-            <ol className="relative space-y-3 border-l border-border pl-4">
-              {recentChanges.map((change) => (
-                <li key={change.id} className="relative">
-                  <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
-                  <p className="text-sm font-medium">{change.title}</p>
-                  <p className="text-xs text-muted-foreground">{formatRelativeDate(change.occurredAt)}</p>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <EmptyLine>Aucun changement significatif à afficher.</EmptyLine>
-          )}
-        </OverviewPanel>
-      </div>
-
-      <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-4">
-            <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-900">
-              <Calendar className="h-6 w-6" />
-            </span>
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Prochaine étape</h2>
-              {nextEvent ? (
-                <>
-                  <p className="mt-1 text-lg font-semibold">{nextEvent.title}</p>
-                  <p className="text-sm text-muted-foreground">{formatLongEventDate(nextEvent.startsAt)}</p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-1 text-lg font-semibold">Aucune prochaine étape planifiée.</p>
-                  <p className="text-sm text-muted-foreground">Planifiez la suite lorsque le chantier en a besoin.</p>
-                </>
-              )}
-            </div>
-          </div>
-          {nextEvent?.kind === 'visit' ? (
-            <SiteBriefButton siteId={siteId} mode="visit" variant="desktop" />
-          ) : nextEvent?.kind === 'meeting' ? (
-            <Link href={nextEvent.href ?? `/sites/${siteId}`} className="inline-flex items-center justify-center rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90">
-              Préparer ma réunion
-            </Link>
-          ) : (
-            <Link href={`/semaine?site=${siteId}`} className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-              {nextEvent ? 'Voir le planning' : 'Planifier'}
-            </Link>
-          )}
-        </div>
-      </section>
-    </main>
-  )
 }
 
 async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; canExport: boolean }) {
@@ -680,180 +445,6 @@ async function buildDocumentsQrState(siteId: string): Promise<DocumentsQrState> 
   }
 }
 
-function StateCard({
-  href,
-  icon: Icon,
-  tone,
-  value,
-  title,
-  detail,
-}: {
-  href?: string
-  icon: ComponentType<{ className?: string }>
-  tone: 'green' | 'orange' | 'red' | 'blue'
-  value: number | string
-  title: string
-  detail: string
-}) {
-  const content = (
-    <>
-      <Icon className={cn('h-5 w-5', toneClass[tone].icon)} />
-      <div className="mt-5 text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
-      <div className="mt-2 text-sm font-medium">{title}</div>
-      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
-    </>
-  )
-  const className = cn('min-h-[128px] rounded-[18px] border p-4 shadow-sm transition', toneClass[tone].bg)
-  return href ? (
-    <Link href={href} className={cn(className, 'block hover:brightness-[0.98]')}>
-      {content}
-    </Link>
-  ) : (
-    <div className={className}>{content}</div>
-  )
-}
-
-function OverviewPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="min-h-[232px] rounded-[18px] border bg-card p-5 shadow-sm">
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
-      {children}
-    </section>
-  )
-}
-
-function OverviewRow({
-  href,
-  icon: Icon,
-  tone,
-  title,
-  detail,
-}: {
-  href?: string | null
-  icon: ComponentType<{ className?: string }>
-  tone: 'green' | 'orange' | 'red' | 'blue'
-  title: string
-  detail?: string | null
-}) {
-  const inner = (
-    <span className="flex items-start gap-3">
-      <span className={cn('mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full', toneClass[tone].soft)}>
-        <Icon className={cn('h-4 w-4', toneClass[tone].icon)} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{title}</span>
-        {detail && <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>}
-      </span>
-    </span>
-  )
-  return href ? (
-    <Link href={href} className="block rounded-xl p-1.5 hover:bg-muted/60">
-      {inner}
-    </Link>
-  ) : (
-    <div className="rounded-xl p-1.5">{inner}</div>
-  )
-}
-
-function EmptyLine({ children }: { children: ReactNode }) {
-  return <p className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">{children}</p>
-}
-
-const toneClass = {
-  green: {
-    bg: 'bg-emerald-50/55 dark:bg-emerald-950/20',
-    soft: 'bg-emerald-50 dark:bg-emerald-950/30',
-    icon: 'text-emerald-600 dark:text-emerald-300',
-  },
-  orange: {
-    bg: 'bg-orange-50/55 dark:bg-orange-950/20',
-    soft: 'bg-orange-50 dark:bg-orange-950/30',
-    icon: 'text-orange-600 dark:text-orange-300',
-  },
-  red: {
-    bg: 'bg-red-50/55 dark:bg-red-950/20',
-    soft: 'bg-red-50 dark:bg-red-950/30',
-    icon: 'text-red-600 dark:text-red-300',
-  },
-  blue: {
-    bg: 'bg-sky-50/55 dark:bg-sky-950/20',
-    soft: 'bg-sky-50 dark:bg-sky-950/30',
-    icon: 'text-sky-600 dark:text-sky-300',
-  },
-} as const
-
-function numberStatus(value: string | undefined): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : 0
-}
-
-function toOverviewActions(actions: SiteActionRow[], siteId: string): OverviewActionInput[] {
-  return actions.map((a) => ({
-    id: a.id,
-    title: a.title,
-    status: a.status,
-    dueDate: a.due_date,
-    createdAt: a.created_at,
-    href: `/sites/${siteId}/actions`,
-  }))
-}
-
-function toBlocageSignals(blocages: Awaited<ReturnType<typeof listBlocagesBySite>>, siteId: string): OverviewSignalInput[] {
-  return blocages.map((b) => ({
-    id: `blocage-${b.id}`,
-    kind: 'blocage_active',
-    title: b.title,
-    detail: b.impact ?? b.description ?? 'Blocage en cours',
-    href: `/sites/${siteId}/reserves`,
-  }))
-}
-
-function toMemorySignals(signals: MemorySignal[], siteId: string): OverviewSignalInput[] {
-  return signals.flatMap((signal) => {
-    if (signal.kind === 'action_overdue') {
-      return signal.items.slice(0, 2).map<OverviewSignalInput>((item) => ({
-        id: `action-${item.id}`,
-        kind: 'action_overdue' as const,
-        title: item.label,
-        detail: item.meta ?? signal.title,
-        href: `/sites/${siteId}/actions`,
-      }))
-    }
-    if (signal.kind === 'reserve_open') {
-      return signal.items.slice(0, 2).map<OverviewSignalInput>((item) => ({
-        id: `reserve-${item.id}`,
-        kind: 'reserve_old' as const,
-        title: item.label,
-        detail: item.meta ?? signal.title,
-        href: `/sites/${siteId}/reserves`,
-      }))
-    }
-    if (signal.kind === 'proof_window_closing' || signal.kind === 'obligation_neglected') {
-      return [{
-        id: `${signal.kind}-${signal.items[0]?.id ?? signal.title}`,
-        kind: 'deadline_imminent' as const,
-        title: signal.title,
-        detail: signal.items[0]?.label ?? null,
-        href: null,
-      }] satisfies OverviewSignalInput[]
-    }
-    return []
-  })
-}
-
-function toActionSignals(actions: SiteActionRow[], todayIso: string, siteId: string): OverviewSignalInput[] {
-  return actions
-    .filter((a) => a.due_date && a.due_date < todayIso)
-    .slice(0, 2)
-    .map((a) => ({
-      id: `late-${a.id}`,
-      kind: 'action_overdue' as const,
-      title: a.title,
-      detail: getActionDueLabel({ dueDate: a.due_date, status: a.status }, todayIso),
-      href: `/sites/${siteId}/actions`,
-    }))
-}
-
 function toOverviewEvents(currentState: Awaited<ReturnType<typeof getSiteCurrentState>> | null, siteId: string): OverviewEventInput[] {
   if (!currentState?.nextScheduledAt) return []
   return [{
@@ -888,33 +479,3 @@ function toOverviewChanges(items: RecentActivityItem[]): OverviewChangeInput[] {
   })
 }
 
-function attentionIcon(kind: OverviewSignalInput['kind']) {
-  if (kind === 'blocage_active') return ShieldAlert
-  if (kind === 'action_overdue') return Clock
-  if (kind === 'event_upcoming') return Calendar
-  return AlertTriangle
-}
-
-function attentionTone(kind: OverviewSignalInput['kind']): 'green' | 'orange' | 'red' | 'blue' {
-  if (kind === 'blocage_active') return 'red'
-  if (kind === 'event_upcoming') return 'blue'
-  return 'orange'
-}
-
-function formatShortEventDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-}
-
-function formatLongEventDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatRelativeDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
-}
