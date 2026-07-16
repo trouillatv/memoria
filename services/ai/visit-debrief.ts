@@ -106,10 +106,27 @@ export const visitDebriefSchema = z.object({
   // ℹ️ À savoir — le CONTEXTE important mais NON actionnable (ni action, ni risque,
   // ni décision). « Première visite. », « Le nettoyage précède l'intervention. »
   a_savoir: strList,
-  // 📅 Échéances — un délai/une date qui n'est ni une action ni un risque en soi.
-  // « Pose du coffret estimée à ~1,5 semaine. », « Documents à fournir avant le
-  // démarrage. »
-  echeances: strList,
+  // 📅 Échéances — une échéance existe UNIQUEMENT s'il y a une notion de TEMPS :
+  // une date absolue (« le 28 juillet »), une date relative (« sous dix jours »),
+  // ou une dépendance (« avant le démarrage », « après la visite PAVE »). Sans
+  // notion temporelle, ce n'est pas une échéance : c'est une action. On ne dédouble
+  // pas le travail en une fausse date.
+  //
+  // `date` n'est remplie QUE si le débrief donne une vraie date. « Sous une dizaine
+  // de jours » n'est PAS une date : c'est une contrainte, et elle va dans
+  // `constraint`. Convertir l'un en l'autre serait inventer une information que
+  // MemorIA ne possède pas — l'humain tranchera.
+  //
+  // BLINDÉ : une chaîne nue (ancien format) devient un label sans date ni contrainte.
+  echeances: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z.array(
+      z.preprocess(
+        (v) => (typeof v === 'string' ? { label: v } : v),
+        z.object({ label: optStr, date: optStr, constraint: optStr }),
+      ).catch({ label: '', date: '', constraint: '' }),
+    ),
+  ).transform((arr) => arr.filter((e) => e.label.trim().length > 0)).default([]),
   // 👥 Intervenants — les personnes/entreprises citées, réutilisables aux visites
   // suivantes. « Vincent Milon (PAVE) », « Ginger », « Électriciens ».
   intervenants: strList,
@@ -185,7 +202,11 @@ Champs :
 - suggested_actions : les actions à FAIRE. [{ title, rationale, priority, owner, due }]. Le title doit être PILOTABLE et AUTOPORTANT — compréhensible plusieurs semaines plus tard sans le contexte : « Contacter M. Vincent Milon (PAVE) pour transmettre le plan de prévention avant le démarrage », JAMAIS « Contacter Vincent ». priority "haute"|"moyenne"|"basse" selon l'urgence exprimée, sinon null ; owner/due si dits.
 - decisions : les DÉCISIONS PRISES / engagements actés pendant la visite — ce qui a été TRANCHÉ, ni action à faire ni risque. Ex. « Les accès seront fournis ultérieurement. », « Une nouvelle visite sera organisée. »
 - a_savoir : extrais TOUTES les informations importantes qui ne sont NI une action, NI un risque, NI une décision, NI une échéance, mais qui devront être CONNUES lors des prochaines visites (contexte, contraintes, faits durables). Ex. « Première visite du chantier. », « Le nettoyage précède l'intervention. »
-- echeances : les DÉLAIS / dates cités, isolés. Ex. « Pose du coffret estimée à ~1,5 semaine. », « Documents à fournir avant le démarrage. »
+- echeances : ce qui doit arriver À UN MOMENT. Une échéance n'existe QUE s'il y a une notion de TEMPS — une date (« le 28 juillet »), un délai (« sous une dizaine de jours »), ou une dépendance (« avant le démarrage », « après la visite PAVE »). Si le débrief dit seulement qu'il faudra faire quelque chose, SANS aucune notion de temps, ce n'est PAS une échéance : c'est une action, ne la mets pas ici.
+  Format : [{ label, date, constraint }].
+  · label : CE QUI doit arriver, court et autoportant. Ex. « Poser le coffret électrique », « Programmer la visite PAVE ». Pas de délai dans le label.
+  · date : UNIQUEMENT une vraie date, au format AAAA-MM-JJ. Si le débrief dit « le 28 juillet », donne-la. Si tu n'as PAS de date certaine, laisse VIDE. « Sous dix jours », « fin de la semaine », « avant le démarrage » ne sont PAS des dates : n'invente jamais une date à partir d'un délai.
+  · constraint : la contrainte de temps, dite avec les mots du débrief. Ex. « Avant le démarrage », « Sous une dizaine de jours », « Après la visite PAVE ». Vide si le débrief donne une date nette.
 - intervenants : les PERSONNES et ENTREPRISES citées, avec leur rôle si connu. Ex. « Vincent Milon (PAVE) », « Ginger », « Électriciens ». Réutilisables aux prochaines visites.
 - forgotten_obligations : obligations/contrôles que le débrief signale comme oubliés ou manquants.
 - open_questions : questions ouvertes soulevées par le débrief (aide à la réflexion, ni action ni résumé).`

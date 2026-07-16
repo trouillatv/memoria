@@ -14,6 +14,7 @@ import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import { echeanceLine } from '@/lib/visits/echeance-labels'
 
 const COLORS = {
   text: '#0f172a',
@@ -405,7 +406,9 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
         {echeances.length > 0 && (
           <View style={styles.section}>
             <SectionTitle text="Échéances" color="#e11d48" />
-            <Bullets items={echeances} />
+            {/* Le document de preuve dit ce qui a été DIT : une date si elle a été
+                donnée, la contrainte sinon. Jamais une date déduite d'un délai. */}
+            <Bullets items={echeances.map((e) => echeanceLine(e))} />
           </View>
         )}
 

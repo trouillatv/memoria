@@ -16,8 +16,9 @@
 import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
+import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
-import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import { toDebriefEcheance, type StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 export type ProposalStatus = 'proposed' | 'confirmed' | 'dismissed' | 'superseded'
@@ -118,9 +119,14 @@ function buildDesiredProposals(analysis: StoredDebriefAnalysis, siteId: string):
     push('stakeholder', p, null, {}, [p])
   }
 
-  // Échéances détectées. Discriminant : l'échéance normalisée.
-  for (const e of analysis.echeances ?? []) {
-    push('deadline', e, null, { due_text: e }, [e])
+  // Échéances détectées. Le TITRE est ce qui doit arriver (« Poser le coffret ») ;
+  // la notion de temps vit dans le payload — une date DITE, ou la contrainte telle
+  // qu'elle a été formulée. Discriminants : le label + le moment, pour qu'une même
+  // échéance replanifiée ne se dédouble pas.
+  for (const raw of analysis.echeances ?? []) {
+    const e = toDebriefEcheance(raw)
+    if (!e) continue
+    push('deadline', e.label, e.constraint || null, { date: e.date, constraint: e.constraint }, [e.label, e.date, e.constraint])
   }
 
   return out
@@ -351,6 +357,26 @@ export async function promoteProposal(params: { id: string; userId: string | nul
       created_from: 'visit_debrief_ai',
     })
     result = { objectType: 'site_action', objectId: id }
+  } else if (p.kind === 'deadline') {
+    // On ne demande PAS la date pour confirmer. Le conducteur confirme qu'il s'agit
+    // bien d'une échéance ; si le débrief n'a donné qu'une contrainte, elle naît
+    // « à planifier » et attend sa date dans le Planning. Exiger une date ici
+    // ferait renoncer — et l'échéance retournerait au néant dont on l'a tirée.
+    const payload = (p.payload ?? {}) as { date?: string | null; constraint?: string | null }
+    const due = typeof payload.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(payload.date) ? payload.date : null
+    const id = await createSiteDeadline({
+      site_id: p.site_id,
+      report_id: p.report_id ?? null,
+      organization_id: p.organization_id,
+      title: p.title,
+      // La contrainte survit à la confirmation : c'est elle qui dira plus tard
+      // POURQUOI cette échéance attend, et avec les mots de celui qui l'a dite.
+      constraint_text: payload.constraint ?? p.body,
+      due_date: due,
+      created_by: params.userId,
+      created_from: 'visit_debrief_ai',
+    })
+    result = { objectType: 'site_deadline', objectId: id }
   } else {
     throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
   }

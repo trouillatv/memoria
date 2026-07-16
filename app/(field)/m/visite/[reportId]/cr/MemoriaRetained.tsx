@@ -22,6 +22,7 @@ import {
   type ActionProposalState,
 } from '../debrief-actions'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
+import { echeanceLine } from '@/lib/visits/echeance-labels'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -333,7 +334,10 @@ export function MemoriaRetained({
 
       {hasEcheances && (
         <Block Icon={Calendar} cls="text-rose-600" title="Échéances">
-          <BulletList items={a.echeances} dot="bg-rose-500" />
+          {/* « Poser le coffret — 28 juillet » quand la date est dite ; sinon la
+              CONTRAINTE telle qu'elle a été formulée (« Avant le démarrage »). On
+              ne convertit jamais un délai en date : ce serait inventer. */}
+          <BulletList items={(a.echeances ?? []).map((e) => echeanceLine(e))} dot="bg-rose-500" />
         </Block>
       )}
 

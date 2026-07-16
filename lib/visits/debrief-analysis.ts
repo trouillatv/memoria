@@ -38,6 +38,37 @@ type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 /** Un bail de génération plus vieux que ça est considéré comme abandonné. */
 const LEASE_MS = 120_000
 
+/** Une échéance telle que le débrief la donne : ce qui doit arriver, et la notion
+ *  de temps qui l'accompagne — une date si elle est dite, sinon la contrainte. */
+export interface DebriefEcheance {
+  label: string
+  /** AAAA-MM-JJ, ou '' : une date DITE, jamais déduite d'un délai. */
+  date: string
+  /** « Avant le démarrage », « Sous une dizaine de jours ». '' si une date est nette. */
+  constraint: string
+}
+
+/** Les analyses écrites AVANT la forme structurée stockaient des chaînes nues.
+ *  On les relit sans jamais les jeter : une vieille échéance devient un label sans
+ *  date ni contrainte — exactement ce qu'elle disait, ni plus, ni moins. */
+export function toDebriefEcheance(raw: unknown): DebriefEcheance | null {
+  if (typeof raw === 'string') {
+    const label = raw.trim()
+    return label ? { label, date: '', constraint: '' } : null
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as { label?: unknown; date?: unknown; constraint?: unknown }
+    const label = typeof o.label === 'string' ? o.label.trim() : ''
+    if (!label) return null
+    return {
+      label,
+      date: typeof o.date === 'string' ? o.date.trim() : '',
+      constraint: typeof o.constraint === 'string' ? o.constraint.trim() : '',
+    }
+  }
+  return null
+}
+
 export interface StoredDebriefAnalysis {
   summary: string
   decisions: string[]
@@ -53,8 +84,13 @@ export interface StoredDebriefAnalysis {
   watchpoints: Array<{ label: string; impact: string; owner: string; due: string }>
   // ℹ️ Contexte important mais non actionnable.
   a_savoir: string[]
-  // 📅 Échéances (délais/dates isolés) · 👥 Intervenants (personnes/entreprises citées).
-  echeances: string[]
+  // 📅 Échéances — CE QUI doit arriver, et QUAND si on le sait.
+  //   · `date` = une vraie date (AAAA-MM-JJ), ou '' si le débrief n'en donne pas.
+  //   · `constraint` = la contrainte dite (« Avant le démarrage », « Sous dix jours »).
+  // Une échéance n'existe que s'il y a une notion de temps ; sans elle, c'est une
+  // action. Et un délai n'est JAMAIS converti en date : MemorIA ne devine pas une
+  // information qu'elle ne possède pas — l'humain tranche.
+  echeances: DebriefEcheance[]
   intervenants: string[]
   attention: string[]
   open_questions: string[]
@@ -111,7 +147,9 @@ function buildDebriefInput(
 // Version de FORME de l'analyse stockée. À incrémenter dès que la STRUCTURE de
 // StoredDebriefAnalysis change : un cache d'une forme périmée est régénéré en
 // SILENCE (pas « enrichi »). Distinct du corpus_hash, qui ne décrit QUE la matière.
-const ANALYSIS_SCHEMA_VERSION = 'v5-living-actions'
+// v6 : les échéances deviennent { label, date, constraint }. Le bump fait régénérer
+// les analyses de forme v5 à leur prochaine ouverture — c'est le mécanisme prévu.
+const ANALYSIS_SCHEMA_VERSION = 'v6-echeances-datees'
 
 /** Empreinte de la MATIÈRE PROPRE À LA VISITE (le CORPUS envoyé à l'agent), en
  *  ordre stable. NE dépend PAS de la version de forme : un corpus inchangé donne le
