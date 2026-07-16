@@ -10,6 +10,8 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProposalKind, ProposalPayload } from '@/lib/db/knowledge-proposals'
+import type { VisitSourceSnapshot } from '@/lib/db/visits'
+import { EMPTY_SNAPSHOT } from '@/lib/visits/source-snapshot'
 
 /** Ligne brute d'un élément de connaissance PROPOSÉ (avant tri/agrégation). */
 export interface ProposalRow {
@@ -84,6 +86,9 @@ export interface LatestVisitSynthesis {
   /** N° de synthèse (analysis_version) et date de génération, extraits du JSON. */
   version: number | null
   updatedAt: string | null
+  /** Empreinte du corpus analysé + ce que la synthèse avait pris en compte. */
+  corpusHash: string | null
+  sourceSnapshot: VisitSourceSnapshot | null
 }
 export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVisitSynthesis | null> {
   const { data } = await createAdminClient()
@@ -100,7 +105,12 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
   const r = data as {
     id: string
     ended_at: string | null
-    debrief_analysis: { analysis_version?: number; generated_at?: string } | null
+    debrief_analysis: {
+      analysis_version?: number
+      generated_at?: string
+      corpus_hash?: string
+      source_snapshot?: VisitSourceSnapshot
+    } | null
     debrief_generating_at: string | null
   }
   const a = r.debrief_analysis
@@ -111,6 +121,29 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
     generatingAt: r.debrief_generating_at,
     version: a?.analysis_version ?? null,
     updatedAt: a?.generated_at ?? null,
+    corpusHash: a?.corpus_hash ?? null,
+    sourceSnapshot: a?.source_snapshot ?? null,
+  }
+}
+
+/** Snapshot COURANT de la matière d'une visite — les mêmes compteurs que ceux
+ *  figés dans la synthèse (visit_capture, hors éléments écartés). Lecture seule :
+ *  on ne régénère jamais une synthèse pour afficher une fiche. */
+export async function readVisitSourceSnapshot(reportId: string): Promise<VisitSourceSnapshot> {
+  const { data, error } = await createAdminClient()
+    .from('visit_capture')
+    .select('kind, created_at')
+    .eq('report_id', reportId)
+    .neq('status', 'discarded')
+  if (error) return { ...EMPTY_SNAPSHOT }
+  const caps = (data ?? []) as Array<{ kind: string; created_at: string }>
+  const countKind = (k: string) => caps.filter((c) => c.kind === k).length
+  return {
+    photos: countKind('photo'),
+    videos: countKind('video'),
+    vocals: countKind('vocal'),
+    notes: countKind('note'),
+    last_capture_at: caps.reduce<string | null>((max, c) => (!max || c.created_at > max ? c.created_at : max), null),
   }
 }
 

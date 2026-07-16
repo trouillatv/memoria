@@ -18,8 +18,10 @@ import { getSiteProjection, emptySiteProjection, type ProposalProjection } from 
 import {
   readSiteActionSummaries,
   readLatestVisitSynthesis,
+  readVisitSourceSnapshot,
   type ActionSummaryRow,
 } from '@/lib/knowledge/repository'
+import { computeSnapshotDelta, countSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
 import { getSiteIdentity, listSiteASavoirActive } from '@/lib/db/sites'
 import { listSiteIntervenants } from '@/lib/db/site-intervenants'
 import { getSiteRecentActivity, buildSiteStatusSummary } from '@/lib/db/visits'
@@ -138,8 +140,12 @@ export interface SiteOverview {
     status: SynthesisStatus
     version: number | null
     updatedAt: string | null
-    basedOn: string | null        // instantané source — branché plus tard
-    pendingChanges: number        // éléments ajoutés depuis la synthèse — branché plus tard
+    /** Empreinte du corpus sur lequel la synthèse a été faite. */
+    basedOn: string | null
+    /** Éléments ajoutés à la visite DEPUIS la synthèse (0 = à jour). */
+    pendingChanges: number
+    /** Le détail de ce qui a été ajouté — « +1 note », « +2 photos ». */
+    pending: SnapshotDelta
   }
   actions: ActionsSection
   attention: { level: AttentionLevel; reasons: AttentionReason[] }
@@ -285,7 +291,14 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
   return {
     identity: { id: siteId, name: '', client: null, status: null },
     activity: { lastVisit: null, picture: null },
-    synthesis: { status: 'missing', version: null, updatedAt: null, basedOn: null, pendingChanges: 0 },
+    synthesis: {
+      status: 'missing',
+      version: null,
+      updatedAt: null,
+      basedOn: null,
+      pendingChanges: 0,
+      pending: { photos: 0, videos: 0, vocals: 0, notes: 0 },
+    },
     actions: { proposed: [], confirmed: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, completed: 0 } },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
@@ -380,14 +393,29 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     title: [it.contactName, it.companyName].filter(Boolean).join(' · ') || it.role,
   }))
 
-  // ── État de synthèse de la dernière visite (sans regénérer) ──
+  // ── État de synthèse de la dernière visite (SANS jamais regénérer) ──
+  // La visite est la vérité ; la synthèse en est une lecture horodatée. On compare
+  // ce que la synthèse avait pris en compte à ce que la visite contient MAINTENANT.
   let status: SynthesisStatus = 'missing'
+  let pending: SnapshotDelta = { photos: 0, videos: 0, vocals: 0, notes: 0 }
+  let pendingChanges = 0
   if (synth) {
     const generating = synth.generatingAt != null && Date.parse(synth.generatingAt) > 0
       && (Date.now() - Date.parse(synth.generatingAt) < GENERATING_LEASE_MS)
-    // 'outdated' (visite enrichie depuis la synthèse) = comparaison de corpus, à
-    // brancher quand l'objet Synthèse sera structuré ; on reste sur up_to_date ici.
-    status = generating ? 'generating' : synth.hasAnalysis ? 'up_to_date' : 'missing'
+    if (synth.hasAnalysis) {
+      const current = await readVisitSourceSnapshot(synth.reportId).catch(() => null)
+      if (current) {
+        pending = computeSnapshotDelta(synth.sourceSnapshot, current)
+        pendingChanges = countSnapshotDelta(pending)
+      }
+    }
+    status = generating
+      ? 'generating'
+      : !synth.hasAnalysis
+        ? 'missing'
+        : pendingChanges > 0
+          ? 'outdated'
+          : 'up_to_date'
   }
 
   return {
@@ -405,8 +433,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       status,
       version: synth?.version ?? null,
       updatedAt: synth?.updatedAt ?? null,
-      basedOn: null,
-      pendingChanges: 0,
+      basedOn: synth?.corpusHash ?? null,
+      pendingChanges,
+      pending,
     },
     actions,
     attention: { level: attentionLevelOf(reasons), reasons },

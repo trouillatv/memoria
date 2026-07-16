@@ -29,6 +29,7 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherVisitDebriefContext, type VisitSourceSnapshot } from '@/lib/db/visits'
+import { computeSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 
@@ -260,8 +261,9 @@ export interface LoadedDebrief {
   fromCache: boolean
 }
 
-/** Ce qui a été AJOUTÉ à la visite depuis la dernière synthèse (jamais négatif). */
-export interface SnapshotDelta { photos: number; videos: number; vocals: number; notes: number }
+/** Ce qui a été AJOUTÉ à la visite depuis la dernière synthèse (jamais négatif).
+ *  Défini dans lib/visits/source-snapshot — ré-exporté ici pour les appelants du débrief. */
+export type { SnapshotDelta } from '@/lib/visits/source-snapshot'
 
 export type DebriefLoadResult =
   | { ok: true; status: 'ready'; loaded: LoadedDebrief } // synthèse à jour (ou fraîchement générée)
@@ -271,15 +273,9 @@ export type DebriefLoadResult =
 
 const leaseFresh = (iso: string | null): boolean => !!iso && Date.now() - Date.parse(iso) < LEASE_MS
 
-function computeDelta(old: VisitSourceSnapshot | null | undefined, cur: VisitSourceSnapshot): SnapshotDelta {
-  const o = old ?? { photos: 0, videos: 0, vocals: 0, notes: 0, last_capture_at: null }
-  return {
-    photos: Math.max(0, cur.photos - o.photos),
-    videos: Math.max(0, cur.videos - o.videos),
-    vocals: Math.max(0, cur.vocals - o.vocals),
-    notes: Math.max(0, cur.notes - o.notes),
-  }
-}
+// La règle « qu'est-ce qui a été ajouté depuis ? » vit dans lib/visits/source-snapshot :
+// le read model de la fiche chantier la partage, pour que les deux écrans ne puissent
+// jamais dire deux choses différentes de la même synthèse.
 
 /**
  * Synthèse VERSIONNÉE. La visite est la vérité ; la synthèse en est une lecture
@@ -313,7 +309,7 @@ export async function loadOrRunVisitDebrief(
     // Corpus inchangé → à jour.
     if (cache.corpus_hash === hash) return { ok: true, status: 'ready', loaded }
     // La visite a été enrichie depuis : on GARDE la synthèse, on signale le delta.
-    return { ok: true, status: 'stale', loaded, delta: computeDelta(cache.source_snapshot, snapshot) }
+    return { ok: true, status: 'stale', loaded, delta: computeSnapshotDelta(cache.source_snapshot, snapshot) }
   }
 
   // (Re)génération : pas de cache utilisable, schéma périmé, ou mise à jour demandée.

@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import type { ComponentType, ReactNode } from 'react'
-import { AlertTriangle, Calendar, ChevronRight, Clock, ListTodo, ShieldAlert } from 'lucide-react'
+import { AlertTriangle, Calendar, ChevronRight, Clock, ListTodo, RefreshCw, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   getSiteOverview,
   emptySiteOverview,
   type AttentionKind,
   type ActionUrgency,
+  type SiteOverview,
 } from '@/lib/knowledge/site-overview'
 import { SiteBriefButton } from '../../SiteBriefButton'
 
@@ -21,7 +22,7 @@ import { SiteBriefButton } from '../../SiteBriefButton'
 
 export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
-  const { actions, attention, nextEvent, recentChanges, reserves, blockages, activity } = overview
+  const { actions, attention, nextEvent, recentChanges, reserves, blockages, activity, synthesis } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit ? `/m/visite/${activity.lastVisit.reportId}/cr` : undefined
 
@@ -65,6 +66,20 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
           />
         </div>
       </section>
+
+      {/* La visite a été enrichie depuis la synthèse : on le DIT, on ne régénère pas
+          en silence. Silence total quand la synthèse est à jour. */}
+      {synthesis.status === 'outdated' && synthesisHref && (
+        <Link
+          href={synthesisHref}
+          className="flex items-center gap-2 rounded-[18px] border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm shadow-sm transition hover:brightness-[0.98] dark:border-amber-900/40 dark:bg-amber-950/20"
+        >
+          <RefreshCw className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="font-medium text-amber-900 dark:text-amber-200">Synthèse à mettre à jour</span>
+          <span className="text-amber-800/80 dark:text-amber-300/80">{pendingLabel(synthesis.pending)}</span>
+          <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-amber-600" />
+        </Link>
+      )}
 
       {/* Connaissance de la dernière visite : les propositions d'action pas encore
           promues, avec leurs PREMIERS titres (pas seulement un compte). Distinctes du
@@ -195,6 +210,16 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
       </section>
     </main>
   )
+}
+
+/** « +1 note · +2 photos » — ce que la synthèse n'a pas encore pris en compte. */
+function pendingLabel(pending: SiteOverview['synthesis']['pending']): string {
+  const parts: string[] = []
+  if (pending.photos > 0) parts.push(`+${pending.photos} photo${pending.photos > 1 ? 's' : ''}`)
+  if (pending.videos > 0) parts.push(`+${pending.videos} vidéo${pending.videos > 1 ? 's' : ''}`)
+  if (pending.vocals > 0) parts.push(`+${pending.vocals} mémo${pending.vocals > 1 ? 's' : ''}`)
+  if (pending.notes > 0) parts.push(`+${pending.notes} note${pending.notes > 1 ? 's' : ''}`)
+  return parts.join(' · ')
 }
 
 /** « Actions actives : 5 / dont 2 planifiées » — la charge réelle du chantier. */
