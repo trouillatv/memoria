@@ -106,46 +106,20 @@ export default async function SitePatrimoinePage({
             Ce que MemorIA sait
           </h2>
 
-          {(knowledge.confirmed.length + knowledge.proposed.length) > 0 && (
-            <div>
-              <h3 className="text-[13px] font-medium text-muted-foreground">Connaissances</h3>
-              <ul className="mt-1 space-y-1">
-                {knowledge.confirmed.map((k) => (
-                  <li key={k.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
-                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                    <span className="min-w-0">{k.title}</span>
-                  </li>
-                ))}
-                {knowledge.proposed.map((k) => (
-                  <li key={k.id} className="flex items-start gap-2 text-[13px] text-muted-foreground">
-                    <span className="mt-[5px] h-2.5 w-2.5 shrink-0 rounded-full border border-muted-foreground/50" />
-                    <span className="min-w-0">{k.title}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Ce qu'un HUMAIN a validé et ce que MemorIA PROPOSE ne se mélangent
+              jamais dans la même liste : sinon le conducteur ne sait plus ce qui
+              fait foi — et c'est toute la frontière que le produit défend. */}
+          <KnownBlock title="Ce que le chantier sait" section={knowledge} />
+          <KnownBlock title="Intervenants connus" section={stakeholders} />
 
-          {(stakeholders.confirmed.length + stakeholders.proposed.length) > 0 && (
-            <div>
-              <h3 className="text-[13px] font-medium text-muted-foreground">Intervenants connus</h3>
-              <ul className="mt-1 space-y-1">
-                {[...stakeholders.confirmed, ...stakeholders.proposed].map((p) => (
-                  <li key={p.id} className="text-[13px] text-foreground/90">{p.title}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* « Habitudes observées » : vide au début, et c'est honnête. Une habitude
-              se constate sur plusieurs visites — l'annoncer avant serait inventer une
-              régularité qui n'existe pas encore. Ce vide dit ce que MemorIA deviendra. */}
-          <div>
-            <h3 className="text-[13px] font-medium text-muted-foreground">Habitudes observées</h3>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              Aucune encore — une habitude se reconnaît sur plusieurs visites.
-            </p>
-          </div>
+          {/* « Habitudes observées » : une ligne, pas une carte. Une habitude se
+              constate sur plusieurs visites — l'annoncer avant serait inventer une
+              régularité qui n'existe pas. Mais une grande carte vide redonnerait
+              l'impression d'un écran incomplet : la phrase suffit à dire ce que
+              MemorIA deviendra. Elle deviendra une carte quand elle aura à dire. */}
+          <p className="border-t pt-2 text-[12px] text-muted-foreground">
+            Aucune habitude détectée pour l’instant. Elles apparaîtront après plusieurs visites.
+          </p>
         </section>
       )}
 
@@ -299,6 +273,50 @@ function Stat({ n, label }: { n: number; label: string }) {
     <div>
       <p className="text-lg font-semibold tabular-nums">{n}</p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+/**
+ * Un bloc de mémoire : le VALIDÉ d'abord, l'« à confirmer » ensuite — jamais dans
+ * la même liste. Un fait validé par un humain et une déduction de MemorIA n'ont
+ * pas le même poids ; les aligner ferait croire au conducteur qu'il a approuvé
+ * des choses qu'il n'a jamais lues.
+ */
+function KnownBlock({
+  title,
+  section,
+}: {
+  title: string
+  section: { confirmed: Array<{ id: string; title: string }>; proposed: Array<{ id: string; title: string }> }
+}) {
+  if (section.confirmed.length + section.proposed.length === 0) return null
+  return (
+    <div>
+      <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
+      {section.confirmed.length > 0 && (
+        <ul className="mt-1 space-y-1">
+          {section.confirmed.map((k) => (
+            <li key={k.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              <span className="min-w-0">{k.title}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {section.proposed.length > 0 && (
+        <>
+          <p className="mt-2 text-[12px] font-medium text-sky-700 dark:text-sky-300">À confirmer</p>
+          <ul className="mt-1 space-y-1">
+            {section.proposed.map((k) => (
+              <li key={k.id} className="flex items-start gap-2 text-[13px] text-muted-foreground">
+                <span className="mt-[5px] h-2.5 w-2.5 shrink-0 rounded-full border border-sky-400" />
+                <span className="min-w-0">{k.title}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   )
 }

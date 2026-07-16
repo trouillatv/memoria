@@ -83,20 +83,49 @@ export default async function SiteFriseMobilePage({
           confirmée ». Les mêmes faits que l'accueil — un seul flux, deux
           points de vue. Silence total s'il n'y a rien à raconter. */}
       {knowledge.length > 0 && (
-        <section className="rounded-xl border bg-card p-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Ce que MemorIA a appris
-          </h2>
-          <ol className="mt-2 space-y-1.5">
-            {knowledge.map((k) => (
-              <li key={k.id} className="flex items-baseline gap-3 text-[13px]">
-                <span className="shrink-0 tabular-nums text-muted-foreground">{friseHeure.format(new Date(k.at))}</span>
-                <span className="min-w-0 text-foreground/90">{k.label}</span>
-                <span className="ml-auto shrink-0 text-[12px] text-muted-foreground">{frDayMonthLocal(k.at)}</span>
+        <ol className="space-y-3">
+          {knowledge.map((entry) =>
+            entry.kind === 'visit' ? (
+              <li key={entry.id} className="rounded-xl border bg-card p-3">
+                <p className="text-[12px] text-muted-foreground">
+                  {frDayMonthLocal(entry.at)} · {friseHeure.format(new Date(entry.at))}
+                </p>
+                <p className="mt-0.5 font-medium">Visite terrain</p>
+                {producedLines(entry.produced).length > 0 ? (
+                  <>
+                    <p className="mt-2 text-[13px] text-muted-foreground">Cette visite a apporté :</p>
+                    <ul className="mt-1 space-y-0.5">
+                      {producedLines(entry.produced).map((l) => (
+                        <li key={l} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                          <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60" />
+                          <span className="min-w-0">{l}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="mt-1 text-[13px] text-muted-foreground">Aucune connaissance retenue.</p>
+                )}
+                <Link
+                  href={`/m/visite/${entry.reportId}/cr`}
+                  className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-primary active:opacity-70"
+                >
+                  Voir la synthèse <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
               </li>
-            ))}
-          </ol>
-        </section>
+            ) : (
+              // La décision humaine reste un événement À PART : la visite dit ce que
+              // MemorIA a compris, la décision dit ce que le conducteur en a fait.
+              <li key={entry.id} className="rounded-xl border bg-muted/30 p-3">
+                <p className="text-[12px] text-muted-foreground">
+                  {frDayMonthLocal(entry.at)} · {friseHeure.format(new Date(entry.at))}
+                </p>
+                <p className="mt-0.5 text-[13px] font-medium">{entry.label}</p>
+                {entry.title && <p className="text-[13px] text-muted-foreground">{entry.title}</p>}
+              </li>
+            ),
+          )}
+        </ol>
       )}
 
       {events.length === 0 && knowledge.length === 0 ? (
@@ -145,4 +174,27 @@ export default async function SiteFriseMobilePage({
       )}
     </div>
   )
+}
+
+/**
+ * « 3 actions à examiner · 3 échéances · 2 informations à savoir » — ce que la
+ * visite a APPORTÉ, en une phrase par type. Un zéro se tait : on ne liste pas ce
+ * qui n'existe pas pour faire du volume.
+ */
+function producedLines(p: {
+  actions: number
+  deadlines: number
+  stakeholders: number
+  knowledge: number
+  decisions: number
+  watchpoints: number
+}): string[] {
+  const out: string[] = []
+  if (p.actions > 0) out.push(`${p.actions} action${p.actions > 1 ? 's' : ''} à examiner`)
+  if (p.deadlines > 0) out.push(`${p.deadlines} échéance${p.deadlines > 1 ? 's' : ''}`)
+  if (p.watchpoints > 0) out.push(`${p.watchpoints} point${p.watchpoints > 1 ? 's' : ''} de vigilance`)
+  if (p.stakeholders > 0) out.push(`${p.stakeholders} intervenant${p.stakeholders > 1 ? 's' : ''}`)
+  if (p.knowledge > 0) out.push(`${p.knowledge} information${p.knowledge > 1 ? 's' : ''} à savoir`)
+  if (p.decisions > 0) out.push(`${p.decisions} décision${p.decisions > 1 ? 's' : ''}`)
+  return out
 }

@@ -31,6 +31,35 @@ export interface ChangeEvent {
   label: string
 }
 
+/** Une VISITE et ce qu'elle a apporté — l'unité de récit du chantier. */
+export interface HistoryVisit {
+  kind: 'visit'
+  id: string
+  at: string
+  reportId: string
+  produced: {
+    actions: number
+    deadlines: number
+    stakeholders: number
+    knowledge: number
+    decisions: number
+    watchpoints: number
+  }
+}
+
+/** Une décision HUMAINE — ce que le conducteur a fait de ce que MemorIA a compris. */
+export interface HistoryDecision {
+  kind: 'decision'
+  id: string
+  at: string
+  /** « Échéance ajoutée au planning ». */
+  label: string
+  /** Ce qui a été ajouté, nommé. Sans lui, on ne saurait pas QUOI a été validé. */
+  title: string | null
+}
+
+export type HistoryEntry = HistoryVisit | HistoryDecision
+
 /** Une échéance qui attend — la prochaine datée, ou celles à planifier. */
 export interface DeadlineAhead {
   id: string
@@ -168,14 +197,81 @@ function countKind(rows: SiteEventRow[], kind: string): number {
  * terrain » et s'arrêtait là, alors que la visite avait produit dix objets. Elle
  * n'était pas vide — elle était branchée ailleurs.
  */
-export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promise<ChangeEvent[]> {
+export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promise<HistoryEntry[]> {
   const orgId = await getOrgId()
   const now = new Date()
   const from = new Date(now.getTime() - days * 86_400_000).toISOString()
   const rows = await readEvents(from, now.toISOString(), orgId, siteId).catch(() => [] as SiteEventRow[])
   if (rows.length === 0) return []
+
+  const entries: HistoryEntry[] = []
+
+  // ── LA VISITE, ET CE QU'ELLE A APPORTÉ ────────────────────────────────────
+  // Une frise qui égrène « 3 actions proposées », « 1 décision relevée », « 2
+  // échéances détectées » est exacte et illisible : c'est un journal de base de
+  // données. Le chantier, lui, a une HISTOIRE — une visite a eu lieu, et elle a
+  // apporté des choses. On regroupe donc les faits sous la visite dont ils sont
+  // issus (`report_id`), et on ne montre le détail qu'ensuite.
+  const byReport = new Map<string, SiteEventRow[]>()
+  for (const r of rows) {
+    if (!r.report_id) continue
+    const list = byReport.get(r.report_id) ?? []
+    list.push(r)
+    byReport.set(r.report_id, list)
+  }
+  for (const [reportId, list] of byReport) {
+    const visit = list.find((r) => r.kind === 'visit_ended')
+    if (!visit) continue
+    const produced = list.filter((r) => r.kind === 'proposal_created')
+    entries.push({
+      kind: 'visit',
+      id: `visit-${reportId}`,
+      at: visit.at,
+      reportId,
+      produced: {
+        actions: produced.filter((r) => r.proposal_kind === 'action').length,
+        deadlines: produced.filter((r) => r.proposal_kind === 'deadline').length,
+        stakeholders: produced.filter((r) => r.proposal_kind === 'stakeholder').length,
+        knowledge: produced.filter((r) => r.proposal_kind === 'knowledge').length,
+        decisions: produced.filter((r) => r.proposal_kind === 'decision').length,
+        watchpoints: produced.filter((r) => r.proposal_kind === 'watchpoint').length,
+      },
+    })
+  }
+
+  // ── LES DÉCISIONS HUMAINES, À PART ────────────────────────────────────────
+  // Elles ne se confondent pas avec la visite : la visite dit ce que MemorIA a
+  // compris, la décision dit ce que le conducteur en a fait. Et elle se NOMME —
+  // « Échéance ajoutée : Fournir l'attestation » — parce qu'un compte ne dit pas
+  // ce qu'on a validé.
+  for (const r of rows) {
+    if (r.kind !== 'proposal_confirmed' || !r.proposal_kind) continue
+    const label = decisionLabel(r.proposal_kind)
+    if (!label) continue
+    entries.push({
+      kind: 'decision',
+      id: `conf-${r.proposal_kind}-${r.at}-${r.title ?? ''}`,
+      at: r.at,
+      label,
+      title: r.title ?? null,
+    })
+  }
+
   // Le plus RÉCENT d'abord : une frise se lit en remontant le temps.
-  return buildEvents(rows).reverse()
+  return entries.sort((a, b) => b.at.localeCompare(a.at))
+}
+
+/** Ce qu'une validation humaine AJOUTE au chantier, dit en clair. */
+function decisionLabel(kind: string): string | null {
+  switch (kind) {
+    case 'action': return 'Action ajoutée au travail'
+    case 'deadline': return 'Échéance ajoutée au planning'
+    case 'stakeholder': return 'Intervenant ajouté au chantier'
+    case 'knowledge': return 'Information ajoutée à la mémoire'
+    case 'watchpoint': return 'Point de vigilance retenu'
+    case 'decision': return 'Décision actée'
+    default: return null
+  }
 }
 
 /**

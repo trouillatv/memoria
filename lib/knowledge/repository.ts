@@ -180,6 +180,13 @@ export interface SiteEventRow {
   kind: 'visit_ended' | 'synthesis_created' | 'proposal_created' | 'proposal_confirmed'
   /** Type de proposition (`action`, `deadline`…) — absent pour les autres faits. */
   proposal_kind?: string
+  /** La VISITE dont ce fait est issu. C'est elle qui permet de raconter « cette
+   *  visite a apporté 3 actions » au lieu d'égrener « 3 actions proposées » dans
+   *  un journal — un chantier a une histoire, pas un log. */
+  report_id?: string | null
+  /** Le titre du fait — pour NOMMER une décision humaine (« Échéance ajoutée :
+   *  Fournir l'attestation »). Un compte ne dit pas ce qu'on a validé. */
+  title?: string | null
 }
 
 /**
@@ -218,7 +225,7 @@ export async function readEvents(
 
   let rq = db
     .from('site_reports')
-    .select('site_id, ended_at, debrief_analysis')
+    .select('id, site_id, ended_at, debrief_analysis')
     .not('site_id', 'is', null)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
@@ -227,26 +234,26 @@ export async function readEvents(
   if (orgId) rq = rq.eq('organization_id', orgId)
   if (siteId) rq = rq.eq('site_id', siteId)
   const { data: reports } = await rq
-  for (const r of (reports ?? []) as Array<{ site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
-    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended' })
+  for (const r of (reports ?? []) as Array<{ id: string; site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
+    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended', report_id: r.id })
     const generatedAt = r.debrief_analysis?.generated_at
     // La synthèse n'est un fait que si elle a réellement été écrite DANS la période.
     if (generatedAt && withinRange(generatedAt)) {
-      out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created' })
+      out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created', report_id: r.id })
     }
   }
 
   let pq = db
     .from('site_knowledge_proposals')
-    .select('site_id, kind, created_at')
+    .select('site_id, kind, created_at, report_id, title')
     .eq('status', 'proposed')
     .gte('created_at', from)
     .lte('created_at', to)
   if (orgId) pq = pq.eq('organization_id', orgId)
   if (siteId) pq = pq.eq('site_id', siteId)
   const { data: props } = await pq
-  for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string }>) {
-    out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind })
+  for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string; report_id: string | null; title: string | null }>) {
+    out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind, report_id: p.report_id, title: p.title })
   }
 
   // Une confirmation est un fait de la journée AU MÊME TITRE qu'une visite : c'est
@@ -254,7 +261,7 @@ export async function readEvents(
   // est posé par la promotion — on ne devine pas, on lit la décision.
   let cq = db
     .from('site_knowledge_proposals')
-    .select('site_id, kind, reviewed_at')
+    .select('site_id, kind, reviewed_at, report_id, title')
     .eq('status', 'confirmed')
     .not('reviewed_at', 'is', null)
     .gte('reviewed_at', from)
@@ -262,8 +269,8 @@ export async function readEvents(
   if (orgId) cq = cq.eq('organization_id', orgId)
   if (siteId) cq = cq.eq('site_id', siteId)
   const { data: confirmed } = await cq
-  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string }>) {
-    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind })
+  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string; report_id: string | null; title: string | null }>) {
+    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind, report_id: c.report_id, title: c.title })
   }
   return out
 }
