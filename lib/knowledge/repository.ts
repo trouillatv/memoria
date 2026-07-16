@@ -154,6 +154,62 @@ export async function readVisitSourceSnapshot(reportId: string): Promise<VisitSo
   }
 }
 
+// ── CE QUI A BOUGÉ AUJOURD'HUI ───────────────────────────────────────────────
+// Le repository DÉCOUVRE quels chantiers ont bougé et QUAND — rien d'autre. Il ne
+// compte aucune connaissance : les nombres de l'accueil viennent de SiteOverview,
+// jamais d'ici, sinon l'accueil dirait « 2 » quand la fiche dit « 3 ».
+
+/** Un fait daté du jour : une visite finie, une synthèse écrite, une proposition. */
+export interface DayEventRow {
+  site_id: string
+  at: string
+  kind: 'visit_ended' | 'synthesis_created' | 'proposal_created'
+  /** Type de proposition (`action`, `deadline`…) — absent pour les autres faits. */
+  proposal_kind?: string
+}
+
+/** Faits datés du jour, pour l'organisation courante. `dayIso` = date civile locale.
+ *  Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model. */
+export async function readDayEvents(dayIso: string, orgId: string | null): Promise<DayEventRow[]> {
+  const db = createAdminClient()
+  // Bornes de la journée civile en zone Nouméa (UTC+11), exprimées en UTC.
+  const from = `${dayIso}T00:00:00.000+11:00`
+  const to = `${dayIso}T23:59:59.999+11:00`
+  const out: DayEventRow[] = []
+
+  let rq = db
+    .from('site_reports')
+    .select('site_id, ended_at, debrief_analysis')
+    .not('site_id', 'is', null)
+    .is('deleted_at', null)
+    .not('ended_at', 'is', null)
+    .gte('ended_at', from)
+    .lte('ended_at', to)
+  if (orgId) rq = rq.eq('organization_id', orgId)
+  const { data: reports } = await rq
+  for (const r of (reports ?? []) as Array<{ site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
+    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended' })
+    const generatedAt = r.debrief_analysis?.generated_at
+    // La synthèse n'est un fait que si elle a réellement été écrite AUJOURD'HUI.
+    if (generatedAt && generatedAt >= from && generatedAt <= to) {
+      out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created' })
+    }
+  }
+
+  let pq = db
+    .from('site_knowledge_proposals')
+    .select('site_id, kind, created_at')
+    .eq('status', 'proposed')
+    .gte('created_at', from)
+    .lte('created_at', to)
+  if (orgId) pq = pq.eq('organization_id', orgId)
+  const { data: props } = await pq
+  for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string }>) {
+    out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind })
+  }
+  return out
+}
+
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
 export async function countProposedActionsForSites(siteIds: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
