@@ -56,6 +56,47 @@ export async function readSiteActionRows(siteId: string): Promise<ActionRow[]> {
   return (data ?? []) as ActionRow[]
 }
 
+/** Résumés des actions métier (id + titre + statut + échéance) — pour la liste des
+ *  actions actives et le tally. */
+export interface ActionSummaryRow {
+  id: string
+  title: string
+  status: string
+  due_date: string | null
+}
+export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
+  const { data, error } = await createAdminClient()
+    .from('site_actions')
+    .select('id, title, status, due_date')
+    .eq('site_id', siteId)
+  if (error) return []
+  return (data ?? []) as ActionSummaryRow[]
+}
+
+/** État de synthèse de la DERNIÈRE visite terminée — en une lecture (id + fin +
+ *  présence d'analyse + verrou de génération). Sans regénérer quoi que ce soit. */
+export interface LatestVisitSynthesis {
+  reportId: string
+  endedAt: string | null
+  hasAnalysis: boolean
+  generatingAt: string | null
+}
+export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVisitSynthesis | null> {
+  const { data } = await createAdminClient()
+    .from('site_reports')
+    .select('id, ended_at, debrief_analysis, debrief_generating_at')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .is('deleted_at', null)
+    .not('ended_at', 'is', null)
+    .order('ended_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) return null
+  const r = data as { id: string; ended_at: string | null; debrief_analysis: unknown; debrief_generating_at: string | null }
+  return { reportId: r.id, endedAt: r.ended_at, hasAnalysis: r.debrief_analysis != null, generatingAt: r.debrief_generating_at }
+}
+
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
 export async function countProposedActionsForSites(siteIds: string[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {}

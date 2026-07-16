@@ -110,16 +110,18 @@ Deux options :
   côté mobile. Chaque read model a un besoin clair, aucun god-object.
 - (b) tout mettre dans `SiteOverview` → risque de re-fabriquer un agrégat lourd.
 
-## Décisions ouvertes (ta validation)
-1. **`latestVisit.synthesisStatus`** — up_to_date / enriched / missing exige de
-   comparer le corpus de la visite à la synthèse stockée (logique déjà dans le
-   débrief). On l'expose dès A1, ou on démarre en `missing | present` et on affine ?
-2. **`confirmedWatchpoints`** — il n'existe **pas** d'objet « vigilance validée »
-   aujourd'hui (une vigilance se promeut en réserve ou en note). On compte quoi ?
-   Proposition : le retirer de A1 (n'exposer que `proposedWatchpoints`) tant que
-   l'objet Vigilance n'est pas construit.
-3. **`stakeholders`** — on montre les **validés** (`site_intervenants`, souvent
-   vides aujourd'hui) + les **proposés** séparément, ou seulement les proposés au début ?
+## Décisions — FIGÉES (Vincent, A1 démarré)
+Le contrat réel vit désormais dans le code (`lib/knowledge/site-overview.ts`).
+Forme **object-centric** et **jamais `undefined`** : chaque section
+`{ proposed: [], confirmed: [], counts }`. Les écrans ne connaissent QUE `SiteOverview`.
+1. **`synthesis.status`** = 4 états métier : `missing | up_to_date | outdated |
+   generating`. (`outdated` = visite enrichie depuis la synthèse = comparaison de
+   corpus : branché plus tard ; A1 calcule missing/generating/up_to_date.)
+2. **watchpoints** = `proposed` **uniquement** (pas d'objet « vigilance validée »
+   aujourd'hui). `confirmed` reviendra avec l'objet Vigilance.
+3. **stakeholders** = `proposed` **et** `confirmed` séparés (jamais mélangés).
+4. **mobile** = même `getSiteOverview` ; le « ici/maintenant » terrain vit dans
+   `getSiteFieldToday` (read model distinct), pour que `SiteOverview` ne grossisse pas.
 
 ## Ordre (A1→A4) et critères de sortie
 - **A1** — `getSiteOverview(siteId)` (compose projections + repositories, zéro mutation).
