@@ -247,6 +247,8 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
   const watchpoints = debrief?.watchpoints ?? []
   const decisions = debrief?.decisions ?? []
   const aSavoir = debrief?.a_savoir ?? []
+  const echeances = debrief?.echeances ?? []
+  const intervenants = debrief?.intervenants ?? []
   const PRIORITY_FR: Record<string, string> = { haute: 'Priorité haute', moyenne: 'Priorité moyenne', basse: 'Préparation' }
 
   // « En bref » — richesse de la visite (comptes réels par type).
@@ -387,6 +389,22 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
           <View style={styles.section}>
             <SectionTitle text="À savoir" color={COLORS.muted} />
             <Bullets items={aSavoir} />
+          </View>
+        )}
+
+        {/* Échéances — les délais isolés. */}
+        {echeances.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Échéances" color="#e11d48" />
+            <Bullets items={echeances} />
+          </View>
+        )}
+
+        {/* Intervenants — personnes/entreprises citées, réutilisables. */}
+        {intervenants.length > 0 && (
+          <View style={styles.section}>
+            <SectionTitle text="Intervenants" color={COLORS.slate} />
+            <Bullets items={intervenants} />
           </View>
         )}
 

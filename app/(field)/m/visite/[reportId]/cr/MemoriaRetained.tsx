@@ -13,7 +13,7 @@
 // on ne bloque jamais l'accès à ce qui a été dit.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info } from 'lucide-react'
+import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users } from 'lucide-react'
 import { getVisitDebriefFieldAction } from '../debrief-actions'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
@@ -116,6 +116,8 @@ export function MemoriaRetained({
   const hasWatch = a.watchpoints.length > 0
   const hasDecisions = a.decisions.length > 0
   const hasSavoir = a.a_savoir.length > 0
+  const hasEcheances = a.echeances.length > 0
+  const hasIntervenants = a.intervenants.length > 0
   const generatedLabel = safeDate(a.generated_at)
 
   return (
@@ -183,6 +185,18 @@ export function MemoriaRetained({
       {hasSavoir && (
         <Block Icon={Info} cls="text-sky-600" title="À savoir">
           <BulletList items={a.a_savoir} dot="bg-sky-500" />
+        </Block>
+      )}
+
+      {hasEcheances && (
+        <Block Icon={Calendar} cls="text-rose-600" title="Échéances">
+          <BulletList items={a.echeances} dot="bg-rose-500" />
+        </Block>
+      )}
+
+      {hasIntervenants && (
+        <Block Icon={Users} cls="text-slate-600" title="Intervenants">
+          <BulletList items={a.intervenants} dot="bg-slate-500" />
         </Block>
       )}
 
