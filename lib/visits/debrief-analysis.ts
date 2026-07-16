@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherVisitDebriefContext, type VisitSourceSnapshot } from '@/lib/db/visits'
 import { computeSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
+import { toDebriefEcheance, type DebriefEcheance } from '@/lib/visits/echeance-labels'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
 import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 
@@ -38,36 +39,10 @@ type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 /** Un bail de génération plus vieux que ça est considéré comme abandonné. */
 const LEASE_MS = 120_000
 
-/** Une échéance telle que le débrief la donne : ce qui doit arriver, et la notion
- *  de temps qui l'accompagne — une date si elle est dite, sinon la contrainte. */
-export interface DebriefEcheance {
-  label: string
-  /** AAAA-MM-JJ, ou '' : une date DITE, jamais déduite d'un délai. */
-  date: string
-  /** « Avant le démarrage », « Sous une dizaine de jours ». '' si une date est nette. */
-  constraint: string
-}
-
-/** Les analyses écrites AVANT la forme structurée stockaient des chaînes nues.
- *  On les relit sans jamais les jeter : une vieille échéance devient un label sans
- *  date ni contrainte — exactement ce qu'elle disait, ni plus, ni moins. */
-export function toDebriefEcheance(raw: unknown): DebriefEcheance | null {
-  if (typeof raw === 'string') {
-    const label = raw.trim()
-    return label ? { label, date: '', constraint: '' } : null
-  }
-  if (raw && typeof raw === 'object') {
-    const o = raw as { label?: unknown; date?: unknown; constraint?: unknown }
-    const label = typeof o.label === 'string' ? o.label.trim() : ''
-    if (!label) return null
-    return {
-      label,
-      date: typeof o.date === 'string' ? o.date.trim() : '',
-      constraint: typeof o.constraint === 'string' ? o.constraint.trim() : '',
-    }
-  }
-  return null
-}
+// Le type de l'échéance et son lecteur tolérant vivent dans `echeance-labels`
+// (module PUR). Ce fichier-ci touche la base : tout ce qu'il exporte entraîne
+// `next/headers` derrière lui, et un composant client en casserait le build.
+export type { DebriefEcheance } from '@/lib/visits/echeance-labels'
 
 export interface StoredDebriefAnalysis {
   summary: string

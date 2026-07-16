@@ -22,8 +22,8 @@ import {
   getDeadlineProposalStatesAction,
   type ActionProposalState,
 } from '../debrief-actions'
-import { toDebriefEcheance, type StoredDebriefAnalysis, type SnapshotDelta } from '@/lib/visits/debrief-analysis'
-import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
+import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
+import { echeanceDateLabel, toDebriefEcheance, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
