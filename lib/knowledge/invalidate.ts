@@ -24,7 +24,8 @@ export function siteProjectionTag(siteId: string): string {
  */
 export function invalidateSiteProjection(siteId: string): void {
   if (!siteId) return
-  try { revalidateTag(siteProjectionTag(siteId)) } catch { /* hors requête */ }
+  // Next 16 exige un profil de cache : 'max' fait tomber l'entrée quelle que soit sa durée.
+  try { revalidateTag(siteProjectionTag(siteId), 'max') } catch { /* hors requête */ }
   for (const path of ['/m', '/m/actions', '/m/planning', `/m/site/${siteId}`, '/dashboard', `/sites/${siteId}`, `/sites/${siteId}/actions`]) {
     try { revalidatePath(path) } catch { /* hors requête */ }
   }

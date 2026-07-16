@@ -32,27 +32,39 @@ const GENERATING_LEASE_MS = 120_000
 export interface KnowledgeItem { id: string; title: string }
 export interface HistoryItem { id: string; label: string; at: string; kind: string; href: string; detail: string | null }
 
-/** Section uniforme d'un objet de connaissance : proposé (à confirmer) vs validé. */
+/** Section uniforme d'un objet de connaissance : proposé (à confirmer) vs validé.
+ *  `summary` (explicite) plutôt que `counts` (opaque). */
 export interface KnowledgeSection {
   proposed: KnowledgeItem[]
   confirmed: KnowledgeItem[]
-  counts: { proposed: number; confirmed: number }
+  summary: { proposed: number; confirmed: number }
 }
 
-/** L'objet Action a des compteurs métier supplémentaires (retard / terminées). */
+/** L'objet Action a un résumé métier plus riche (actives / retard / terminées). */
 export interface ActionsSection {
   proposed: KnowledgeItem[]
   confirmed: KnowledgeItem[] // actions actives (open/planned)
-  counts: { proposed: number; confirmed: number; overdue: number; completed: number }
+  summary: { proposed: number; open: number; overdue: number; completed: number }
 }
 
 export type SynthesisStatus = 'missing' | 'up_to_date' | 'outdated' | 'generating'
 
 export interface SiteOverview {
-  identity: { id: string; name: string; clientName: string | null }
+  identity: {
+    id: string
+    name: string
+    client: string | null
+    status: string | null
+    lastVisit: { reportId: string; endedAt: string | null } | null
+    picture: string | null
+  }
+  // La synthèse est la « mémoire IA » du chantier — un objet métier à part entière.
   synthesis: {
     status: SynthesisStatus
-    latestVisit: { reportId: string; endedAt: string | null } | null
+    version: number | null
+    updatedAt: string | null
+    basedOn: string | null        // instantané source — branché plus tard
+    pendingChanges: number        // éléments ajoutés depuis la synthèse — branché plus tard
   }
   actions: ActionsSection
   watchpoints: KnowledgeSection
@@ -64,7 +76,7 @@ export interface SiteOverview {
 
 /** Section « proposé seul » (objet validé pas encore modélisé, ex. vigilances). */
 function proposedOnly(p: ProposalProjection): KnowledgeSection {
-  return { proposed: p.proposedTop.slice(0, TOP), confirmed: [], counts: { proposed: p.proposed, confirmed: 0 } }
+  return { proposed: p.proposedTop.slice(0, TOP), confirmed: [], summary: { proposed: p.proposed, confirmed: 0 } }
 }
 
 /** Section « proposé + validé ». */
@@ -72,7 +84,22 @@ function proposedAndConfirmed(p: ProposalProjection, confirmed: KnowledgeItem[],
   return {
     proposed: p.proposedTop.slice(0, TOP),
     confirmed: confirmed.slice(0, TOP),
-    counts: { proposed: p.proposed, confirmed: confirmedTotal },
+    summary: { proposed: p.proposed, confirmed: confirmedTotal },
+  }
+}
+
+/** Aperçu vide — fallback sûr (forme complète, aucun `undefined`). */
+export function emptySiteOverview(siteId = ''): SiteOverview {
+  const emptySection: KnowledgeSection = { proposed: [], confirmed: [], summary: { proposed: 0, confirmed: 0 } }
+  return {
+    identity: { id: siteId, name: '', client: null, status: null, lastVisit: null, picture: null },
+    synthesis: { status: 'missing', version: null, updatedAt: null, basedOn: null, pendingChanges: 0 },
+    actions: { proposed: [], confirmed: [], summary: { proposed: 0, open: 0, overdue: 0, completed: 0 } },
+    watchpoints: { ...emptySection },
+    deadlines: { ...emptySection },
+    stakeholders: { ...emptySection },
+    knowledge: { ...emptySection },
+    history: [],
   }
 }
 
@@ -99,7 +126,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const actions: ActionsSection = {
     proposed: proj.actions.proposedTop.slice(0, TOP),
     confirmed: active.slice(0, TOP).map((a) => ({ id: a.id, title: a.title })),
-    counts: { proposed: proj.actions.proposed, confirmed: active.length, overdue, completed },
+    summary: { proposed: proj.actions.proposed, open: active.length, overdue, completed },
   }
 
   // ── Connaissances « à savoir » validées (site_notes a_savoir) ──
@@ -113,10 +140,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
 
   // ── État de synthèse de la dernière visite (sans regénérer) ──
   let status: SynthesisStatus = 'missing'
-  let latestVisit: SiteOverview['synthesis']['latestVisit'] = null
   if (synth) {
-    latestVisit = { reportId: synth.reportId, endedAt: synth.endedAt }
-    const generating = synth.generatingAt != null && (Date.parse(synth.generatingAt) > 0)
+    const generating = synth.generatingAt != null && Date.parse(synth.generatingAt) > 0
       && (Date.now() - Date.parse(synth.generatingAt) < GENERATING_LEASE_MS)
     // 'outdated' (visite enrichie depuis la synthèse) = comparaison de corpus, à
     // brancher quand l'objet Synthèse sera structuré ; on reste sur up_to_date ici.
@@ -124,8 +149,21 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   }
 
   return {
-    identity: { id: siteId, name: identity?.name ?? '', clientName: identity?.clientName ?? null },
-    synthesis: { status, latestVisit },
+    identity: {
+      id: siteId,
+      name: identity?.name ?? '',
+      client: identity?.clientName ?? null,
+      status: identity?.phaseLabel ?? null,
+      lastVisit: synth ? { reportId: synth.reportId, endedAt: synth.endedAt } : null,
+      picture: null,
+    },
+    synthesis: {
+      status,
+      version: synth?.version ?? null,
+      updatedAt: synth?.updatedAt ?? null,
+      basedOn: null,
+      pendingChanges: 0,
+    },
     actions,
     watchpoints: proposedOnly(proj.watchpoints),
     deadlines: proposedOnly(proj.deadlines),

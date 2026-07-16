@@ -17,7 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
-import { getSiteProjection, emptySiteProjection, type SiteProjection } from '@/lib/knowledge/projection'
+import { getSiteOverview, emptySiteOverview, type SiteOverview } from '@/lib/knowledge/site-overview'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
@@ -107,7 +107,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     interventionsResult,
     cycles,
     teams,
-    siteProjection,
+    overview,
   ] = await Promise.all([
     getSiteIdentity(id),
     listOpenSiteActions({ siteIds: [id] }).catch(() => []),
@@ -122,7 +122,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
     listInterventionsSupervisor({ siteId: id, dateRange: 'all', limit: 80 }).catch(() => ({ items: [], total: 0 })),
     listCyclesBySite(id).catch(() => []),
     listTeams().catch(() => []),
-    getSiteProjection(id).catch(() => emptySiteProjection()),
+    getSiteOverview(id).catch(() => emptySiteOverview(id)),
   ])
 
   if (!identity) notFound()
@@ -210,7 +210,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <ChantierOverview
             siteId={id}
             openActionsCount={openActions.length}
-            siteProjection={siteProjection}
+            overview={overview}
             proposedActionsHref={lastVisit?.reportId ? `/m/visite/${lastVisit.reportId}/cr` : undefined}
             openReservesCount={openReserves}
             openBlocagesCount={openBlocages.length}
@@ -276,7 +276,7 @@ function ChantierShell({
 function ChantierOverview({
   siteId,
   openActionsCount,
-  siteProjection,
+  overview,
   proposedActionsHref,
   openReservesCount,
   openBlocagesCount,
@@ -287,7 +287,7 @@ function ChantierOverview({
 }: {
   siteId: string
   openActionsCount: number
-  siteProjection: SiteProjection
+  overview: SiteOverview
   proposedActionsHref?: string
   openReservesCount: number
   openBlocagesCount: number
@@ -341,17 +341,17 @@ function ChantierOverview({
           promues, avec leurs PREMIERS titres (pas seulement un compte). Distinctes du
           métier (actions ouvertes) ; « Confirmer » se fait sur la synthèse. Silence
           total tant qu'il n'y en a pas. Même projection que toutes les autres vues. */}
-      {siteProjection.actions.proposed > 0 && (
+      {overview.actions.summary.proposed > 0 && (
         <section className="rounded-[18px] border border-sky-200 bg-sky-50/50 p-4 shadow-sm dark:border-sky-900/40 dark:bg-sky-950/20">
           <div className="flex items-center gap-2">
             <ListTodo className="h-4 w-4 text-sky-600" />
             <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
-              {siteProjection.actions.proposed} action{siteProjection.actions.proposed > 1 ? 's' : ''} proposée{siteProjection.actions.proposed > 1 ? 's' : ''}
+              {overview.actions.summary.proposed} action{overview.actions.summary.proposed > 1 ? 's' : ''} proposée{overview.actions.summary.proposed > 1 ? 's' : ''}
             </h2>
             <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">à confirmer</span>
           </div>
           <ul className="mt-2 space-y-1">
-            {siteProjection.actions.proposedTop.map((p) => (
+            {overview.actions.proposed.map((p) => (
               <li key={p.id} className="flex items-start gap-2 text-sm text-foreground/90">
                 <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
                 <span className="min-w-0">{p.title}</span>

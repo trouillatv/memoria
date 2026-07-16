@@ -80,6 +80,9 @@ export interface LatestVisitSynthesis {
   endedAt: string | null
   hasAnalysis: boolean
   generatingAt: string | null
+  /** N° de synthèse (analysis_version) et date de génération, extraits du JSON. */
+  version: number | null
+  updatedAt: string | null
 }
 export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVisitSynthesis | null> {
   const { data } = await createAdminClient()
@@ -93,8 +96,21 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
     .limit(1)
     .maybeSingle()
   if (!data) return null
-  const r = data as { id: string; ended_at: string | null; debrief_analysis: unknown; debrief_generating_at: string | null }
-  return { reportId: r.id, endedAt: r.ended_at, hasAnalysis: r.debrief_analysis != null, generatingAt: r.debrief_generating_at }
+  const r = data as {
+    id: string
+    ended_at: string | null
+    debrief_analysis: { analysis_version?: number; generated_at?: string } | null
+    debrief_generating_at: string | null
+  }
+  const a = r.debrief_analysis
+  return {
+    reportId: r.id,
+    endedAt: r.ended_at,
+    hasAnalysis: a != null,
+    generatingAt: r.debrief_generating_at,
+    version: a?.analysis_version ?? null,
+    updatedAt: a?.generated_at ?? null,
+  }
 }
 
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
