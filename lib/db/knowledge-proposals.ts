@@ -18,6 +18,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createSiteDecision } from '@/lib/db/site-decisions'
+import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
@@ -420,18 +421,26 @@ export interface PromotionResult { objectType: string; objectId: string }
  * Les surfaces DÉRIVENT leurs boutons d'ici (`canPromote`), elles ne les
  * devinent pas. Sinon un écran afficherait un jour « Confirmer » sur une
  * information et le conducteur récolterait une exception à la place d'un geste.
- * Manquent : 'vigilance' (cible à trancher) et 'knowledge' (destination non
- * décidée : information actuelle vs connaissance durable).
+ *
+ * Les SIX y sont désormais : le cycle « proposé → confirmé → projeté » est
+ * complet. Deux d'entre eux exigent encore une réponse humaine que la
+ * proposition ne porte pas (le rôle d'un intervenant, la nature d'une
+ * information) : cf. promotionNeedsRole / promotionNeedsNature.
  */
-export const PROMOTABLE_KINDS = ['action', 'deadline', 'decision', 'stakeholder'] as const
+export const PROMOTABLE_KINDS = ['action', 'deadline', 'decision', 'stakeholder', 'vigilance', 'knowledge'] as const
 
 export function canPromote(kind: string): boolean {
   return (PROMOTABLE_KINDS as readonly string[]).includes(kind)
 }
 
-/** Ce que l'humain doit encore RENSEIGNER pour que la promotion aboutisse. */
+/** Ce que l'humain doit RENSEIGNER : le rôle ne se lit pas dans « Ginger ». */
 export function promotionNeedsRole(kind: string): boolean {
   return kind === 'stakeholder'
+}
+
+/** La NATURE d'une information : périssable ou durable. L'humain tranche. */
+export function promotionNeedsNature(kind: string): boolean {
+  return kind === 'knowledge'
 }
 
 /** Le geste MÉTIER, jamais un « Confirmer » générique. */
@@ -441,17 +450,22 @@ export function promotionLabel(kind: string): string | null {
     case 'deadline': return 'Ajouter au planning'
     case 'decision': return 'Confirmer la décision'
     case 'stakeholder': return 'Ajouter au chantier'
+    case 'vigilance': return 'Retenir le point de vigilance'
+    // Le geste dépend de la nature choisie : « Conserver comme information
+    // actuelle » ou « Ajouter à la mémoire du chantier » (knowledgeKindAction).
+    case 'knowledge': return 'Ajouter à la mémoire'
     default: return null
   }
 }
 
-/** Pourquoi un type n'a pas (encore) de geste — dit honnêtement, jamais masqué. */
+/**
+ * Pourquoi un type n'a pas de geste. Plus aucun aujourd'hui : les six sont
+ * promouvables. La fonction reste — elle est la moitié de la règle de sortie, et
+ * le 7ᵉ type qui apparaîtra devra passer par ici ou par une branche réelle.
+ */
 export function whyNotPromotable(kind: string): string | null {
-  switch (kind) {
-    case 'vigilance': return "MemorIA ne sait pas encore où ranger un point de vigilance."
-    case 'knowledge': return "MemorIA ne sait pas encore si c'est une information du moment ou un savoir durable."
-    default: return null
-  }
+  void kind
+  return null
 }
 
 /**
@@ -478,6 +492,10 @@ export interface PromotionInput {
   companyName?: string
   /** Rattacher à un contact existant plutôt qu'au seul nom d'entreprise. */
   contactId?: string | null
+  /** La NATURE d'une information. REQUIS pour 'knowledge' : « vraie maintenant »
+   *  et « vraie durablement » ne se rangent pas au même endroit, et l'IA n'a pas
+   *  à trancher. */
+  knowledgeKind?: 'current_information' | 'durable_knowledge'
 }
 
 export async function promoteProposal(params: {
@@ -568,11 +586,42 @@ export async function promoteProposal(params: {
       sourceReportId: p.report_id ?? null,
     })
     result = { objectType: 'site_intervenant', objectId: companyId }
+  } else if (p.kind === 'vigilance') {
+    const orgId = params.organizationId ?? p.organization_id
+    if (!orgId) return null
+    const payload = (p.payload ?? {}) as { impact?: string | null }
+    const id = await createWatchpoint({
+      organizationId: orgId,
+      siteId: p.site_id,
+      title: p.title,
+      // L'impact dit POURQUOI ça mérite l'attention — il survit à la confirmation.
+      body: payload.impact ?? p.body,
+      reportId: p.report_id ?? null,
+      sourceCaptureIds: p.source_capture_ids ?? [],
+      confirmedBy: params.userId,
+    })
+    result = { objectType: 'site_watchpoint', objectId: id }
+  } else if (p.kind === 'knowledge') {
+    // La NATURE ne se devine pas : « l'avancement n'est pas encore défini » est
+    // périssable, « Vincent Milon est l'interlocuteur PAVE » est durable. Demander
+    // au modèle de trancher lui ferait porter un jugement qu'il raterait en
+    // silence. L'humain choisit ; sans choix, on refuse.
+    const kind = params.input?.knowledgeKind
+    if (!kind || !isChoosableKnowledgeKind(kind)) throw new Error('NATURE_REQUISE')
+    const orgId = params.organizationId ?? p.organization_id
+    if (!orgId) return null
+    const id = await createKnowledgeEntry({
+      organizationId: orgId,
+      siteId: p.site_id,
+      kind,
+      title: p.title,
+      body: p.body,
+      sourceReportId: p.report_id ?? null,
+      sourceCaptureIds: p.source_capture_ids ?? [],
+      confirmedBy: params.userId,
+    })
+    result = { objectType: 'site_knowledge_entry', objectId: id }
   } else {
-    // Reste 'vigilance' (cible à trancher : site_notes typée ou site_watchpoints)
-    // et 'knowledge' (destination non décidée : information actuelle vs durable).
-    // Tant que la cible n'est pas tranchée, AUCUN bouton ne doit appeler ceci :
-    // les surfaces n'exposent qu'« Écarter » pour ces types.
     throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
   }
 

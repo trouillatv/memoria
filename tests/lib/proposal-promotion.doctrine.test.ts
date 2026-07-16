@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  PROMOTABLE_KINDS, canPromote, promotionLabel, promotionNeedsRole, whyNotPromotable,
+  PROMOTABLE_KINDS, canPromote, promotionLabel, promotionNeedsRole,
+  promotionNeedsNature, whyNotPromotable,
 } from '@/lib/db/knowledge-proposals'
+import { CHOOSABLE_KNOWLEDGE_KINDS, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
 
 const SOURCE = join(process.cwd(), 'lib/db/knowledge-proposals.ts')
 const MIGRATION = join(process.cwd(), 'supabase/migrations/212_site_knowledge_proposals.sql')
@@ -57,11 +59,21 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
     expect(promotionLabel('deadline')).toBe('Ajouter au planning')
   })
 
-  it("un type non promouvable n'a AUCUN geste", () => {
-    expect(promotionLabel('knowledge')).toBeNull()
-    expect(promotionLabel('vigilance')).toBeNull()
-    expect(canPromote('knowledge')).toBe(false)
-    expect(canPromote('vigilance')).toBe(false)
+  it("le cycle est complet : plus aucun type n'est orphelin", () => {
+    // Les 6 types de la mig 212 ont désormais leur cible :
+    // action→site_actions, deadline→site_deadlines, decision→site_decisions,
+    // stakeholder→site_intervenants, vigilance→site_watchpoints (mig 217),
+    // knowledge→site_knowledge_entries (mig 218).
+    expect(PROMOTABLE_KINDS.length).toBe(6)
+    for (const k of ['action', 'deadline', 'decision', 'stakeholder', 'vigilance', 'knowledge']) {
+      expect(canPromote(k), `« ${k} » doit avoir un geste`).toBe(true)
+      expect(whyNotPromotable(k), `« ${k} » n'a plus besoin d'excuse`).toBeNull()
+    }
+  })
+
+  it("un type inconnu n'a jamais de geste", () => {
+    expect(canPromote('habitude')).toBe(false)
+    expect(promotionLabel('habitude')).toBeNull()
   })
 
   it('la liste des promouvables correspond à ce que le code sait vraiment faire', () => {
@@ -92,6 +104,33 @@ describe("L'intervenant — le rôle se demande, il ne se déduit pas", () => {
   it('la promotion refuse plutôt que de fabriquer un rôle', () => {
     const src = readFileSync(SOURCE, 'utf8')
     expect(src).toContain('ROLE_REQUIS')
+  })
+})
+
+// ── LA NATURE D'UNE INFORMATION ──────────────────────────────────────────────
+// « L'avancement n'est pas encore défini » est vraie aujourd'hui et fausse
+// demain ; « Vincent Milon est l'interlocuteur PAVE » reste vraie jusqu'à
+// correction. Les confondre ferait accumuler des états périmés présentés comme
+// du savoir. L'humain tranche — demander au modèle « durable ou périssable ? »
+// lui ferait porter un jugement qu'il raterait en silence.
+describe("L'information — sa nature se demande, elle ne se déduit pas", () => {
+  it('seule une information réclame sa nature', () => {
+    expect(promotionNeedsNature('knowledge')).toBe(true)
+    expect(promotionNeedsNature('decision')).toBe(false)
+    expect(promotionNeedsNature('vigilance')).toBe(false)
+  })
+
+  it('la promotion refuse plutôt que de choisir à la place de l’humain', () => {
+    expect(readFileSync(SOURCE, 'utf8')).toContain('NATURE_REQUISE')
+  })
+
+  it("une HABITUDE ne peut pas naître d'une seule visite", () => {
+    // Une habitude exige plusieurs observations indépendantes. L'offrir au
+    // premier passage transformerait une circonstance ponctuelle en règle
+    // générale. Le kind existe en base pour le sprint multi-visites ; aucun
+    // chemin de confirmation ne doit le produire aujourd'hui.
+    expect(CHOOSABLE_KNOWLEDGE_KINDS).toEqual(['current_information', 'durable_knowledge'])
+    expect(isChoosableKnowledgeKind('observed_pattern')).toBe(false)
   })
 })
 

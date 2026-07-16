@@ -46,21 +46,22 @@ const promoteSchema = baseSchema.extend({
   role: z.string().trim().min(1).max(60).optional(),
   company_name: z.string().trim().max(200).optional(),
   contact_id: z.string().uuid().nullish(),
+  /** REQUIS pour une information : périssable ou durable ? L'humain tranche. */
+  knowledge_kind: z.enum(['current_information', 'durable_knowledge']).optional(),
 })
 
 /**
  * Confirmer une proposition depuis la Mémoire — le geste métier, pas un
  * « Confirmer » générique : « Confirmer la décision », « Ajouter au chantier ».
  *
- * Types promouvables aujourd'hui : action, deadline, decision, stakeholder.
- * `vigilance` et `knowledge` n'ont pas de cible tranchée : les surfaces ne
- * doivent PAS afficher de bouton pour eux (règle de sortie : aucun bouton visible
- * ne peut lever « promotion non supportée »). Si l'un passe quand même, on rend
- * une erreur honnête plutôt qu'une exception.
+ * Les SIX types sont promouvables. Deux exigent une réponse que la proposition
+ * ne porte pas — le rôle d'un intervenant, la nature d'une information : on la
+ * demande (needsRole / needsNature) au lieu de la deviner, et l'écran pose la
+ * question au lieu de récolter une exception.
  */
 export async function promoteFromMemoryAction(
   input: z.input<typeof promoteSchema>,
-): Promise<{ ok: true; objectId: string } | { ok: false; error: string; needsRole?: true }> {
+): Promise<{ ok: true; objectId: string } | { ok: false; error: string; needsRole?: true; needsNature?: true }> {
   const g = await guard(input)
   if (!g.ok) return { ok: false, error: g.error }
   const parsed = promoteSchema.safeParse(input)
@@ -75,6 +76,7 @@ export async function promoteFromMemoryAction(
         role: parsed.data.role,
         companyName: parsed.data.company_name,
         contactId: parsed.data.contact_id ?? null,
+        knowledgeKind: parsed.data.knowledge_kind,
       },
     })
     if (!res) return { ok: false, error: 'Confirmation impossible' }
@@ -84,9 +86,12 @@ export async function promoteFromMemoryAction(
     revalidatePath(`/m/site/${g.siteId}`)
     return { ok: true, objectId: res.objectId }
   } catch (e) {
-    // Le rôle manquant n'est pas une panne : c'est une question à poser.
+    // Ni le rôle ni la nature ne sont des pannes : ce sont des questions à poser.
     if (e instanceof Error && e.message === 'ROLE_REQUIS') {
       return { ok: false, error: 'Indiquez son rôle sur le chantier', needsRole: true }
+    }
+    if (e instanceof Error && e.message === 'NATURE_REQUISE') {
+      return { ok: false, error: 'Information du moment, ou savoir durable ?', needsNature: true }
     }
     return { ok: false, error: 'Confirmation impossible' }
   }
