@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { Check, ChevronRight, HardHat, RefreshCw, Sparkles } from 'lucide-react'
+import { CalendarClock, Check, ChevronRight, HardHat, RefreshCw, Sparkles } from 'lucide-react'
 import type { SiteChangedToday, TodayChanges } from '@/lib/knowledge/today-changes'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
+import { cn } from '@/lib/utils'
 
 // ── « IL S'EST PASSÉ QUELQUE CHOSE AUJOURD'HUI » ─────────────────────────────
 // L'accueil ne dit plus « 15 actions ouvertes » (une statistique, vraie hier comme
@@ -69,6 +70,27 @@ function SiteBlock({ site }: { site: SiteChangedToday }) {
           <li key={label} className="text-[13px] text-foreground/90">{label}</li>
         ))}
       </ul>
+
+      {/* ── CE QUE LE CHANTIER ATTEND ──────────────────────────────────────
+          L'accueil doit être ACTIONNABLE, pas un journal de ce qui s'est passé.
+          Une échéance datée dit QUAND ; une échéance sans date dit qu'elle attend
+          une décision — et sa contrainte dit pourquoi, avec les mots du débrief. */}
+      {site.deadlines.length > 0 && (
+        <div className="mt-2.5">
+          <h3 className="text-[13px] font-medium text-muted-foreground">Échéances</h3>
+          <ul className="mt-1 space-y-1">
+            {site.deadlines.map((d) => (
+              <li key={d.id} className="flex items-start gap-2 text-[13px]">
+                <CalendarClock className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', d.toPlan ? 'text-amber-600' : 'text-sky-600')} />
+                <span className="min-w-0 text-foreground/90">{d.title}</span>
+                <span className={cn('ml-auto shrink-0 text-xs', d.toPlan ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+                  {d.when}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {site.todo.length > 0 && (
         <div className="mt-2.5">

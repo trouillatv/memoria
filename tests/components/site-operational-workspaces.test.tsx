@@ -112,6 +112,7 @@ describe('site operational workspaces', () => {
           actions: 3,
         }]}
         changes={[]}
+        deadlines={[]}
         interventions={[]}
         actions={[actionFixture()]}
         blocages={[]}
@@ -127,6 +128,32 @@ describe('site operational workspaces', () => {
     // un MODE de la chronologie — atteignable depuis elle, sans onglet « Frise » factice.
     expect(screen.getByRole('link', { name: 'Lire le récit' })).toHaveAttribute('href', '/sites/site-1/recit')
     expect(screen.queryByRole('link', { name: 'Frise' })).not.toBeInTheDocument()
+  })
+
+  // ── L'HISTOIRE DU CHANTIER, PAS CELLE DE L'APPLICATION ─────────────────────
+  // « Échéance ajoutée », pas « échéance confirmée » : ce qui compte n'est pas
+  // qu'on ait cliqué, c'est que le chantier attende désormais quelque chose. Et le
+  // QUAND est dit avec les mots du débrief — jamais une date déduite d'un délai.
+  it("raconte l'ajout d'une échéance comme un fait du chantier", () => {
+    render(
+      <ChronologyWorkspace
+        siteId="site-1"
+        visits={[]}
+        changes={[]}
+        deadlines={[deadlineFixture({
+          title: 'Prévoir la pose du coffret électrique',
+          constraint_text: 'dans environ 10 jours',
+        })]}
+        interventions={[]}
+        actions={[]}
+        blocages={[]}
+      />,
+    )
+    expect(screen.getByText(/Échéance ajoutée/)).toBeInTheDocument()
+    expect(screen.getByText('Prévoir la pose du coffret électrique')).toBeInTheDocument()
+    expect(screen.getByText('dans environ 10 jours')).toBeInTheDocument()
+    // Le mot « confirmée » appartient à l'application, pas au chantier.
+    expect(screen.queryByText(/confirmée/i)).not.toBeInTheDocument()
   })
 
   it('shows planning as a coordination view with seven days and real cycles', () => {

@@ -214,6 +214,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           <ChronologyWorkspace
             siteId={id}
             changes={recentChanges}
+            deadlines={deadlines}
             visits={visits}
             actions={openActions}
             blocages={blocages}

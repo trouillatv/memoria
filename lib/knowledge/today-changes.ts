@@ -15,6 +15,8 @@ import 'server-only'
 import { getSiteOverview, type KnowledgeItem, type SynthesisStatus } from '@/lib/knowledge/site-overview'
 import { readDayEvents, type DayEventRow } from '@/lib/knowledge/repository'
 import { getOrgId } from '@/lib/db/users'
+import { listSiteDeadlines } from '@/lib/db/site-deadlines'
+import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 import { todayLocalIso } from '@/lib/time/local-date'
 
 /** Un fait daté, dit avec les mots du conducteur. « 11:57 · Visite terminée ». */
@@ -24,11 +26,24 @@ export interface ChangeEvent {
   label: string
 }
 
+/** Une échéance qui attend — la prochaine datée, ou celles à planifier. */
+export interface DeadlineAhead {
+  id: string
+  title: string
+  /** « 28 juillet » si datée, sinon la contrainte dite (« Avant le démarrage »). */
+  when: string
+  /** Vrai tant qu'aucune date n'a été décidée : elle attend une planification. */
+  toPlan: boolean
+}
+
 /** Ce qu'un chantier a produit aujourd'hui. Les compteurs sont ceux de sa fiche. */
 export interface SiteChangedToday {
   siteId: string
   siteName: string
   synthesisStatus: SynthesisStatus
+  /** Ce que le chantier attend — l'accueil doit être ACTIONNABLE, pas un journal.
+   *  La prochaine datée d'abord ; sinon ce qui reste à planifier. */
+  deadlines: DeadlineAhead[]
   /** Ce que la visite a fait APPARAÎTRE aujourd'hui (des ajouts, pas des stocks). */
   added: { actions: number; watchpoints: number; deadlines: number; stakeholders: number; knowledge: number }
   /** Les premiers titres — « à traiter » se lit, ne se compte pas. */
@@ -45,6 +60,8 @@ export interface TodayChanges {
 }
 
 const TODO_LIMIT = 3
+/** Ce que le chantier attend — borné : l'accueil montre, il n'inventorie pas. */
+const DEADLINES_LIMIT = 3
 const EVENTS_LIMIT = 8
 
 export function emptyTodayChanges(): TodayChanges {
@@ -150,10 +167,23 @@ export async function getTodayChanges(): Promise<TodayChanges> {
       if (!overview) return null
       const events = buildEvents(siteRows)
       const lastEventAt = events.length > 0 ? events[events.length - 1].at : siteRows[0].at
+      // Ce que le chantier ATTEND — pas ce qu'on a cliqué. Les datées d'abord (les
+      // plus proches en premier), puis celles qui attendent une décision. Le
+      // conducteur doit pouvoir agir depuis l'accueil, pas seulement constater.
+      const deadlines: DeadlineAhead[] = (await listSiteDeadlines(siteId).catch(() => []))
+        .map((d) => ({
+          id: d.id,
+          title: d.title,
+          when: d.due_date ? echeanceDateLabel(d.due_date) : (d.constraint_text || A_PLANIFIER_LABEL),
+          toPlan: !d.due_date,
+        }))
+        .slice(0, DEADLINES_LIMIT)
+
       const site: SiteChangedToday = {
         siteId,
         siteName: overview.identity.name,
         synthesisStatus: overview.synthesis.status,
+        deadlines,
         added: {
           actions: countKind(siteRows, 'action'),
           watchpoints: countKind(siteRows, 'watchpoint'),

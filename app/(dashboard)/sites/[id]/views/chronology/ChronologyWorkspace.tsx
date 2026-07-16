@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { frDayMonthPaddedLocal, frDayMonthTimeLocal } from '@/lib/time/local-date'
+import type { SiteDeadline } from '@/lib/db/site-deadlines'
+import { echeanceDateLabel, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 import { ChevronDown, History, MessageSquare, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SiteActionRow } from '@/lib/db/site-actions'
@@ -14,6 +16,8 @@ interface ChronologyWorkspaceProps {
   siteId: string
   visits: VisitWithCounts[]
   changes: OverviewChangeInput[]
+  /** Les échéances confirmées : chacune est un fait daté de la vie du chantier. */
+  deadlines: SiteDeadline[]
   actions: SiteActionRow[]
   blocages: SiteBlocage[]
   interventions: SupervisorInterventionRow[]
@@ -23,12 +27,13 @@ export function ChronologyWorkspace({
   siteId,
   visits,
   changes,
+  deadlines,
   actions,
   blocages,
   interventions,
 }: ChronologyWorkspaceProps) {
   const interventionEvents = interventions.slice(0, 6)
-  const hasEvents = visits.length > 0 || interventionEvents.length > 0 || changes.length > 0
+  const hasEvents = visits.length > 0 || interventionEvents.length > 0 || changes.length > 0 || deadlines.length > 0
   const lastVisit = visits[0]
 
   return (
@@ -143,6 +148,26 @@ export function ChronologyWorkspace({
               </li>
             )
           })}
+
+          {/* ── UNE ÉCHÉANCE AJOUTÉE EST UN FAIT DU CHANTIER ──────────────────
+              Pas « échéance confirmée » : la chronologie raconte la vie du
+              CHANTIER, pas celle de l'application. Ce qui compte n'est pas qu'on
+              ait cliqué, c'est que le chantier attende désormais quelque chose —
+              et QUAND, avec les mots de celui qui l'a dit. */}
+          {deadlines.slice(0, 6).map((d) => (
+            <li key={`deadline-${d.id}`} className="relative">
+              <TimelineDot tone="orange" />
+              <article className="rounded-[18px] border bg-card p-4 shadow-sm">
+                <p className="text-sm text-muted-foreground">
+                  Échéance ajoutée · {formatDate(d.created_at)}
+                </p>
+                <p className="mt-0.5 font-medium">{d.title}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {d.due_date ? echeanceDateLabel(d.due_date) : (d.constraint_text ?? A_PLANIFIER_LABEL)}
+                </p>
+              </article>
+            </li>
+          ))}
 
           {changes.slice(0, 6).map((change) => (
             <li key={change.id} className="relative">

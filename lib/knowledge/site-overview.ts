@@ -23,6 +23,8 @@ import {
 } from '@/lib/knowledge/repository'
 import { computeSnapshotDelta, countSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
 import { getSiteIdentity, listSiteASavoirActive } from '@/lib/db/sites'
+import { listSiteDeadlines } from '@/lib/db/site-deadlines'
+import { echeanceLine } from '@/lib/visits/echeance-labels'
 import { listSiteIntervenants } from '@/lib/db/site-intervenants'
 import { getSiteRecentActivity, buildSiteStatusSummary } from '@/lib/db/visits'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
@@ -349,7 +351,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
  * a son repli, et la forme est toujours complète (aucun `undefined`).
  */
 export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
-  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity] = await Promise.all([
+  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows] = await Promise.all([
     getSiteProjection(siteId).catch(() => emptySiteProjection()),
     readSiteActionSummaries(siteId).catch(() => [] as ActionSummaryRow[]),
     listSiteASavoirActive(siteId).catch(() => []),
@@ -362,6 +364,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     buildSiteMemorySignals(siteId).catch(() => []),
     getSiteCurrentState(siteId).catch(() => null),
     getSiteCockpitActivity(siteId, ACTIVITY_LIMIT).catch(() => []),
+    // Les échéances VALIDÉES : la fiche doit les montrer, pas seulement le Planning.
+    listSiteDeadlines(siteId).catch(() => []),
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
@@ -433,6 +437,16 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     title: [it.contactName, it.companyName].filter(Boolean).join(' · ') || it.role,
   }))
 
+  // ── Échéances validées (mig 215) ──
+  // On dit CE QUI doit arriver et QUAND on le sait : une date si elle a été
+  // donnée, sinon la contrainte telle qu'elle a été formulée. Jamais l'une pour
+  // l'autre — « sous dix jours » n'est pas une date, et le lui faire dire ici
+  // serait inventer ce que personne n'a dit.
+  const deadlineConfirmed: KnowledgeItem[] = deadlineRows.map((d) => ({
+    id: d.id,
+    title: echeanceLine({ label: d.title, date: d.due_date ?? '', constraint: d.constraint_text ?? '' }),
+  }))
+
   // ── État de synthèse de la dernière visite (SANS jamais regénérer) ──
   // La visite est la vérité ; la synthèse en est une lecture horodatée. On compare
   // ce que la synthèse avait pris en compte à ce que la visite contient MAINTENANT.
@@ -500,7 +514,12 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     reserves: { open: numberOf(statusSummary.find((s) => s.key === 'reserves')?.value) },
     blockages: { open: openBlocages(blocages).length },
     watchpoints: proposedOnly(proj.watchpoints),
-    deadlines: proposedOnly(proj.deadlines),
+    // Une échéance CONFIRMÉE doit rester visible sur la fiche. Avant, `deadlines`
+    // ne montrait que le proposé : on confirmait, l'échéance quittait « à confirmer »
+    // et n'apparaissait plus nulle part ici — le conducteur voyait son information
+    // s'évaporer parce qu'il l'avait validée. C'était vrai tant qu'aucun objet
+    // Échéance n'existait ; la table existe désormais (mig 215).
+    deadlines: proposedAndConfirmed(proj.deadlines, deadlineConfirmed, deadlineConfirmed.length),
     stakeholders: proposedAndConfirmed(proj.stakeholders, stakeholderConfirmed, stakeholderConfirmed.length),
     knowledge: proposedAndConfirmed(proj.knowledge, knowledgeConfirmed, knowledgeConfirmed.length),
     history: recent.map((a) => ({
