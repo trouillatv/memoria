@@ -326,7 +326,7 @@ export async function setVisitActionStateAction(input: unknown): Promise<{ ok: t
 
 // ── Convergence : propositions d'action de la synthèse (mig 212) ──────────────
 // La synthèse est la PORTE D'ENTRÉE. Chaque action proposée peut être PROMUE en
-// vraie site_action (« Créer l'action ») ou écartée — la MÊME server action de
+// vraie site_action (« Confirmer l'action ») ou écartée — la MÊME server action de
 // promotion que partout ailleurs. Une action n'existe (Travail/Site/Accueil) et ne
 // peut être « faite » qu'APRÈS promotion. Cf. convergence-metier-visite-priorite.
 
@@ -360,7 +360,7 @@ export async function getActionProposalStatesAction(input: unknown): Promise<Rec
 }
 
 /**
- * Promeut une proposition d'action → site_action (« Créer l'action »). Les surfaces
+ * Promeut une proposition d'action → site_action (« Confirmer l'action »). Les surfaces
  * qui lisent site_actions (Travail, Site, Accueil, Planning) sont revalidées : la
  * décision se répercute immédiatement partout. Idempotent (déjà promue → même objet).
  */

@@ -468,7 +468,15 @@ export interface VisitWithCounts {
 /**
  * Visites d'un site avec compteurs de captures, rattachées par FENÊTRE
  * TEMPORELLE (la visite est une lentille : ce qui a été capturé sur le site
- * entre started_at et ended_at lui appartient). Pas de jointure report_id.
+ * entre started_at et ended_at lui appartient).
+ *
+ * EXCEPTION, les ACTIONS : une action née du débrief d'une visite est confirmée
+ * PLUS TARD — parfois le lendemain. La fenêtre temporelle l'excluait, et la
+ * chronologie se contredisait sur le même écran : « 1 action créée » en haut,
+ * « Aucune action ni réserve créée » sur la carte de la visite juste en dessous.
+ * Une action porte le `report_id` de la visite dont elle vient : c'est ce lien-là
+ * qui dit la vérité, pas l'horloge. On compte donc les deux — celles rattachées à
+ * la visite, et celles saisies pendant, qui n'ont pas de rattachement.
  */
 export async function listSiteVisitsWithCounts(siteId: string, limit = 50): Promise<VisitWithCounts[]> {
   const supabase = createAdminClient()
@@ -487,10 +495,22 @@ export async function listSiteVisitsWithCounts(siteId: string, limit = 50): Prom
           .lte('created_at', to)
         return count ?? 0
       }
+      // Une action APPARTIENT à la visite si elle en porte le report_id (promue
+      // depuis son débrief, quelle que soit l'heure), OU si elle a été saisie
+      // pendant la visite sans rattachement.
+      const countActions = async (): Promise<number> => {
+        const { count } = await supabase
+          .from('site_actions')
+          .select('id', { count: 'exact', head: true })
+          .eq('site_id', siteId)
+          .or(`report_id.eq.${visit.id},and(created_at.gte.${from},created_at.lte.${to})`)
+        return count ?? 0
+      }
+
       const [notes, reserves, actions, photos] = await Promise.all([
         countIn('site_notes'),
         countIn('site_reserve'),
-        countIn('site_actions'),
+        countActions(),
         // Pièces jointes du report de la visite (photos/fichiers captés via le CR).
         supabase
           .from('site_report_attachments')

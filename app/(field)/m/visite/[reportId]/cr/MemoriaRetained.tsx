@@ -13,7 +13,7 @@
 // on ne bloque jamais l'accès à ce qui a été dit.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Plus, Check, ArrowUpRight } from 'lucide-react'
+import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Check, ArrowUpRight } from 'lucide-react'
 import {
   getVisitDebriefFieldAction,
   getActionProposalStatesAction,
@@ -61,7 +61,7 @@ export function MemoriaRetained({
     setAnalysis(res.loaded.analysis)
     setStaleDelta(res.status === 'stale' ? res.delta : null)
     setPhase('ready')
-    // Propositions d'action promouvables (« Créer l'action ») — après la synthèse.
+    // Propositions d'action promouvables (« Confirmer l'action ») — après la synthèse.
     // Projette de façon idempotente côté serveur, puis renvoie leur état actuel.
     setPropStates(null)
     const states = await getActionProposalStatesAction({ report_id: reportId })
@@ -84,7 +84,7 @@ export function MemoriaRetained({
     void load(true)
   }
 
-  // « Créer l'action » : PROMEUT la proposition en vraie site_action. Une action
+  // « Confirmer l'action » : PROMEUT la proposition en vraie site_action. Une action
   // n'existe (Travail/Site/Accueil) et ne peut être « faite » qu'après ce geste.
   // Optimiste, puis persisté ; les autres surfaces sont revalidées côté serveur.
   async function createAction(key: string) {
@@ -110,8 +110,14 @@ export function MemoriaRetained({
     if (res.ok) setPropStates((prev) => ({ ...(prev ?? {}), [key]: { ...st, status: 'dismissed' } }))
   }
 
-  // ── En cours (analyse ou attente d'une analyse concurrente) ──
-  if (phase === 'loading' || phase === 'generating') {
+  // ── En cours ────────────────────────────────────────────────────────────────
+  // « MemorIA analyse… » ne s'affiche QUE si une analyse tourne vraiment. Avant, ce
+  // message couvrait aussi la simple LECTURE d'une analyse déjà en cache : on
+  // rouvrait un compte-rendu vieux de deux jours et l'écran annonçait un travail
+  // d'IA qui n'avait pas lieu. Dire « je réfléchis » quand on ne fait que relire,
+  // c'est apprendre au conducteur à ne pas croire ce que l'écran raconte — et le
+  // laisser penser qu'on rebrûle de l'IA à chaque ouverture.
+  if (phase === 'generating') {
     return (
       <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
         <div className="flex items-center gap-2.5">
@@ -122,6 +128,17 @@ export function MemoriaRetained({
               MemorIA lit ce que vous avez capturé et prépare l’essentiel.
             </p>
           </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (phase === 'loading') {
+    return (
+      <section className="rounded-2xl border bg-card p-4">
+        <div className="flex items-center gap-2.5">
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Ouverture du compte-rendu…</p>
         </div>
       </section>
     )
@@ -214,7 +231,7 @@ export function MemoriaRetained({
                   <div className="flex flex-wrap items-center gap-1.5">
                     {created ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                        <Check className="h-3 w-3" /> Action créée
+                        <Check className="h-3 w-3" /> Action confirmée
                       </span>
                     ) : (
                       <>
@@ -242,7 +259,12 @@ export function MemoriaRetained({
                         disabled={!st || !!busyKey}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
                       >
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Créer l’action
+                        {/* « Confirmer », pas « Créer » : partout ailleurs on annonce
+                            « 3 actions à confirmer », « Voir la synthèse et confirmer ».
+                            Le conducteur cherchait un mot qui n'existait sur aucun bouton.
+                            Et le geste n'est pas une création : MemorIA a déjà compris —
+                            l'humain valide. */}
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmer l’action
                       </button>
                       <button
                         type="button"
