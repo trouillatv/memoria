@@ -39,84 +39,126 @@ function toPriority(v: unknown): 'haute' | 'moyenne' | 'basse' | null {
 // Le LLM écrit souvent `null` pour un champ vide → on le tolère (null|undefined → '').
 const optStr = z.preprocess((v) => (v == null ? '' : v), z.string())
 
+// Listes de FAITS (à savoir, échéances, intervenants…) : le LLM renvoie parfois des
+// objets ({name, role}, {label, due}) au lieu de chaînes. On aplatit en « nom (détail) »
+// plutôt que de rejeter toute l'extraction pour une virgule de forme.
+const strItem = z.preprocess((v) => {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    const name = String(o.name ?? o.label ?? o.title ?? o.text ?? '').trim()
+    const detail = String(o.role ?? o.due ?? o.detail ?? o.impact ?? '').trim()
+    return detail && detail !== name ? `${name} (${detail})` : name
+  }
+  return String(v)
+}, z.string())
+const strList = z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(strItem))
+  .transform((arr) => arr.map((s) => s.trim()).filter((s) => s.length > 0))
+  .default([])
+
 export const visitDebriefSchema = z.object({
   // Niveau 1 — « ce qui mérite ton attention » : 3 à 5 max. C'est un FILTRE.
-  attention: z.array(z.string()).max(8).default([]),
-  objective: z.string().default(''),
-  objective_rationale: z.string().default(''), // POURQUOI : reformule ce que dit le débrief
-  objective_confidence: z.enum(CONFIDENCE).nullable().default(null),
-  subject_match_index: z.number().int().default(-1), // index dans openSubjects, -1 = nouveau/aucun
-  subject_name: z.string().default(''),
-  subject_rationale: z.string().default(''),
-  subject_confidence: z.enum(CONFIDENCE).nullable().default(null),
-  outcome: z.enum(OUTCOMES).nullable().default(null),
-  resolution: z.enum(RESOLUTIONS).nullable().default(null),
+  // BLINDÉ partout : le LLM sort parfois une valeur hors enum, un objet, un null →
+  // .catch défausse la valeur fautive sur son défaut au lieu de casser TOUTE
+  // l'extraction. Mieux vaut un champ vide qu'un « analyse impossible ».
+  attention: strList,
+  objective: optStr,
+  objective_rationale: optStr, // POURQUOI : reformule ce que dit le débrief
+  objective_confidence: z.enum(CONFIDENCE).nullable().catch(null).default(null),
+  subject_match_index: z.preprocess((v) => (v == null ? -1 : v), z.number().int()).catch(-1).default(-1),
+  subject_name: optStr,
+  subject_rationale: optStr,
+  subject_confidence: z.enum(CONFIDENCE).nullable().catch(null).default(null),
+  outcome: z.enum(OUTCOMES).nullable().catch(null).default(null),
+  resolution: z.enum(RESOLUTIONS).nullable().catch(null).default(null),
   // ⚠️ Points de vigilance — de vrais RISQUES, exploitables : impact + responsable
   // + échéance quand le débrief les donne (sinon vides). TOLÉRANT : chaîne → objet.
-  important_points: z.array(z.preprocess(
-    (v) => (typeof v === 'string' ? { label: v } : v),
-    z.object({
-      label: z.string(),
-      impact: optStr,
-      owner: optStr,
-      due: optStr,
-    }),
-  )).default([]),
+  important_points: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z.array(
+      z.preprocess(
+        (v) => (typeof v === 'string' ? { label: v } : v),
+        z.object({ label: optStr, impact: optStr, owner: optStr, due: optStr }),
+      ).catch({ label: '', impact: '', owner: '', due: '' }),
+    ),
+  ).transform((arr) => arr.filter((x) => x.label.trim().length > 0)).default([]),
   // ✅ Actions — des CARTES : quoi + pourquoi + priorité + responsable + échéance.
-  // TOLÉRANT : chaîne → objet ; priorité en anglais/variante → normalisée ; null → ''.
-  suggested_actions: z.array(z.preprocess(
-    (v) => (typeof v === 'string' ? { title: v } : v),
-    z.object({
-      title: z.string(),
-      rationale: optStr,
-      priority: z.preprocess((p) => toPriority(p), z.enum(PRIORITY).nullable()).default(null),
-      owner: optStr,
-      due: optStr,
-    }),
-  )).default([]),
+  // BLINDÉ : chaîne → objet ; priorité normalisée ; null → '' ; item malformé ignoré.
+  suggested_actions: z.preprocess(
+    (v) => (Array.isArray(v) ? v : []),
+    z.array(
+      z.preprocess(
+        (v) => (typeof v === 'string' ? { title: v } : v),
+        z.object({
+          title: optStr,
+          rationale: optStr,
+          priority: z.preprocess((p) => toPriority(p), z.enum(PRIORITY).nullable()).default(null),
+          owner: optStr,
+          due: optStr,
+        }),
+      ).catch({ title: '', rationale: '', priority: null, owner: '', due: '' }),
+    ),
+  ).transform((arr) => arr.filter((a) => a.title.trim().length > 0)).default([]),
   // ✓ Décisions PRISES — les engagements actés pendant la visite (ni action à
   // faire, ni risque : ce qui a été tranché). « Les accès seront fournis plus tard. »
-  decisions: z.array(z.string()).default([]),
+  decisions: strList,
   // ℹ️ À savoir — le CONTEXTE important mais NON actionnable (ni action, ni risque,
   // ni décision). « Première visite. », « Le nettoyage précède l'intervention. »
-  a_savoir: z.array(z.string()).default([]),
-  forgotten_obligations: z.array(z.string()).default([]),
-  open_questions: z.array(z.string()).default([]),
+  a_savoir: strList,
+  // 📅 Échéances — un délai/une date qui n'est ni une action ni un risque en soi.
+  // « Pose du coffret estimée à ~1,5 semaine. », « Documents à fournir avant le
+  // démarrage. »
+  echeances: strList,
+  // 👥 Intervenants — les personnes/entreprises citées, réutilisables aux visites
+  // suivantes. « Vincent Milon (PAVE) », « Ginger », « Électriciens ».
+  intervenants: strList,
+  forgotten_obligations: strList,
+  open_questions: strList,
 })
 export type VisitDebriefParsed = z.infer<typeof visitDebriefSchema>
 
 // ── Agent 1 — Compréhension (narratif, joue le conducteur) ────────────────────
 
-const UNDERSTANDING_SYSTEM = `Tu es le CONDUCTEUR DE TRAVAUX qui rentre du chantier. Tu disposes de ce que tu
-as capturé pendant ta visite (vocal, notes, photos, réserves, actions) et du
-contexte mémoire du site (sujets connus, signaux : réserves ouvertes, retards,
-obligations).
+const UNDERSTANDING_SYSTEM = `Tu rédiges le RÉSUMÉ OPÉRATIONNEL d'une visite de chantier, à partir UNIQUEMENT
+des éléments fournis (vocal, notes, photos, réserves, actions capturées) et du
+contexte mémoire du site.
 
-Tu disposes AUSSI d'une SYNTHÈSE du chantier (réunions/visites récentes, actions et
-réserves ouvertes en chiffres, décisions, obligations) et de la liste des SUJETS
-ouverts avec leur ancienneté et leur activité. IDENTIFIE toi-même le sujet que
-cette visite concerne PAR LE SENS, même si son nom exact n'est pas prononcé (ex.
-« la porte coupe-feu du bloc C n'est pas posée » → sujet « Sécurité incendie ») ;
-ou conclus « aucun » / « nouveau sujet ». Ton débrief ne doit donc PAS seulement
-dire « ce que j'ai compris de la visite », mais « ce que cette visite CHANGE dans
-l'histoire du chantier ». Demande-toi explicitement :
-- Cette visite CONFIRME-t-elle quelque chose de déjà connu (une tendance, une crainte) ?
-- Est-ce un NOUVEAU sujet, ou un sujet qui TRAÎNE (repoussé plusieurs fois) ?
-- Qu'est-ce qui a CHANGÉ depuis la dernière fois ?
+Ce résumé est lu par quelqu'un qui n'était PAS présent (chef de projet, bureau).
+Il doit se lire en MOINS DE 20 SECONDES et donner ce qui est RESSORTI de la visite.
 
-Fais le DÉBRIEF que tu présenterais à ton directeur en 2 minutes, à voix haute,
-en français : pourquoi tu es allé là-bas, ce que tu as constaté, ce que ça change
-dans l'histoire du chantier, ce qui reste ouvert, ce qui t'inquiète, et ce qu'il
-faut faire ensuite. Commence par ce qui MÉRITE l'attention en priorité.
-
-Règles :
-- Appuie-toi UNIQUEMENT sur les éléments fournis — n'invente aucun fait précis
-  (chiffre, date, nom) absent. Tu peux relier la visite à l'historique fourni.
-- Quand un indice est mince, dis-le franchement (« je ne suis pas sûr, une seule
-  mention »). La franchise vaut mieux que l'assurance.
-- Sois concret et sobre, pas de remplissage.
+RÈGLES ABSOLUES :
+- CHAQUE PHRASE doit apporter une information OPÉRATIONNELLE NOUVELLE. Si une phrase
+  n'apporte aucune information utile à quelqu'un qui n'a PAS participé à la visite,
+  ne l'écris pas. Zéro paraphrase, zéro remplissage (« cette visite permet de
+  documenter… », « ces éléments serviront de référence… » = INTERDIT).
+- 5 à 8 phrases maximum, en français, en prose (pas de liste, pas de titre).
+- Écris ce qui EST RESSORTI de la visite, JAMAIS comment elle s'est déroulée.
+- N'écris JAMAIS « je reviens de ma visite », « l'objectif était… », « j'ai pris
+  des photos / des mémos », « c'est une première visite », « il faudra analyser
+  les photos… » : celui qui lit vient de faire la visite ou connaît le contexte, il
+  le sait déjà. Ne mentionne les photos/mémos/le fait que c'est une première visite
+  QUE si cela porte une vraie information métier.
+- Le CŒUR du résumé, ce sont les FAITS CONCRETS dits dans le vocal et les notes :
+  qui doit contacter qui, quels contrôles, quelles échéances, quels documents, quel
+  intervenant, quel délai. CITE-LES précisément (noms, délais, tâches). NE te
+  réfugie PAS dans des généralités du type « la visite a permis de constater l'état
+  du site », « les photos documentent les conditions initiales », « ces éléments
+  serviront de référence » : c'est du vide, l'utilisateur n'en fait rien.
+- N'invente AUCUN fait précis (chiffre, date, nom) absent des éléments fournis, mais
+  REPRENDS tous ceux qui y sont.
 - JAMAIS de jugement sur une personne : tu parles de l'ouvrage, des sujets, des
-  obligations, jamais de la valeur des gens.`
+  obligations, jamais de la valeur des gens.
+
+Tu peux relier la visite à l'historique du site fourni, mais SANS méta-récit : donne
+le fait, jamais la façon dont tu l'as trouvé.
+
+Exemple de BON résumé (STYLE et niveau de concret attendus — les faits ci-dessous
+sont fictifs, n'utilise QUE ceux de TA visite) : « La chape du hall n'est pas sèche,
+le carreleur ne peut pas intervenir avant lundi. Le lot plomberie a pris trois jours
+de retard ; le maître d'œuvre doit être prévenu. Les luminaires livrés ne sont pas
+conformes au CCTP, un avoir est à demander au fournisseur. » — des faits, des noms,
+des délais, des suites. AUCUN méta (« la visite a permis de… », « les photos… »).`
 
 // ── Agent 2 — Extraction (structure stable à partir du débrief) ───────────────
 
@@ -140,9 +182,11 @@ Champs :
 - outcome : ras|conforme|conforme_reserves|non_conforme|a_revoir|info, ou null. JAMAIS un jugement sur une personne.
 - resolution : resolue|a_suivre|recontrole, ou null.
 - important_points : les RISQUES / points de vigilance, EXPLOITABLES. [{ label (le risque, court), impact (conséquence si non traité), owner (qui doit agir, si le débrief le dit), due (échéance, si dite) }]. Laisse impact/owner/due VIDES si le débrief ne les donne pas — n'invente pas.
-- suggested_actions : les actions à FAIRE. [{ title (impératif court), rationale (pourquoi), priority ("haute"|"moyenne"|"basse" selon l'urgence exprimée, sinon null), owner (qui, si dit), due (échéance, si dite) }].
+- suggested_actions : les actions à FAIRE. [{ title, rationale, priority, owner, due }]. Le title doit être PILOTABLE et AUTOPORTANT — compréhensible plusieurs semaines plus tard sans le contexte : « Contacter M. Vincent Milon (PAVE) pour transmettre le plan de prévention avant le démarrage », JAMAIS « Contacter Vincent ». priority "haute"|"moyenne"|"basse" selon l'urgence exprimée, sinon null ; owner/due si dits.
 - decisions : les DÉCISIONS PRISES / engagements actés pendant la visite — ce qui a été TRANCHÉ, ni action à faire ni risque. Ex. « Les accès seront fournis ultérieurement. », « Une nouvelle visite sera organisée. »
-- a_savoir : le CONTEXTE important mais NON actionnable (ni action, ni risque, ni décision). Ex. « Première visite du chantier. », « Le nettoyage précède l'intervention. », « Les travaux n'ont pas commencé. »
+- a_savoir : extrais TOUTES les informations importantes qui ne sont NI une action, NI un risque, NI une décision, NI une échéance, mais qui devront être CONNUES lors des prochaines visites (contexte, contraintes, faits durables). Ex. « Première visite du chantier. », « Le nettoyage précède l'intervention. »
+- echeances : les DÉLAIS / dates cités, isolés. Ex. « Pose du coffret estimée à ~1,5 semaine. », « Documents à fournir avant le démarrage. »
+- intervenants : les PERSONNES et ENTREPRISES citées, avec leur rôle si connu. Ex. « Vincent Milon (PAVE) », « Ginger », « Électriciens ». Réutilisables aux prochaines visites.
 - forgotten_obligations : obligations/contrôles que le débrief signale comme oubliés ou manquants.
 - open_questions : questions ouvertes soulevées par le débrief (aide à la réflexion, ni action ni résumé).`
 
@@ -237,6 +281,8 @@ function mockExtraction(input: VisitDebriefInput): VisitDebriefParsed {
       : [],
     decisions: [],
     a_savoir: input.objectiveHint ? [`Objectif de la visite : ${input.objectiveHint}.`] : [],
+    echeances: [],
+    intervenants: [],
     forgotten_obligations: input.signalLines.slice(0, 2),
     open_questions: hasReserve ? [`La réserve « ${input.capturedReserves[0].label} » est-elle toujours valide ?`] : [],
   }
@@ -249,7 +295,7 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
   const narrative = await withAITracking('visit_debrief_understand', input.userId, async () => {
     const userMessage = provider.name === 'mock'
       ? `__MOCK_FIXTURE__:${JSON.stringify(mockNarrative(input))}`
-      : `${buildContextBlock(input)}\n\nFais ton débrief (2 minutes max, à voix haute).`
+      : `${buildContextBlock(input)}\n\nRédige le résumé opérationnel (5 à 8 phrases, lisible en moins de 20 s).`
     const out = await provider.complete({
       systemPrompt: UNDERSTANDING_SYSTEM,
       userMessage,
@@ -271,13 +317,17 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         ? input.openSubjects.map((s, i) => `[${i}] ${s.name}`).join('\n')
         : '(aucun sujet connu)'
       userMessage = [
-        '=== Débrief du conducteur (source unique de l’extraction) ===',
+        '=== Débrief opérationnel du conducteur (la lecture d’ensemble) ===',
         narrative,
+        '',
+        '=== Éléments BRUTS de la visite (pour ne RIEN omettre : noms, délais, faits à retenir) ===',
+        input.transcript?.slice(0, 8000) || '(aucun mémo vocal)',
+        input.capturedNotes.length > 0 ? `\nNotes :\n${input.capturedNotes.join('\n')}` : '',
         '',
         '=== Sujets connus du site (par index, pour subject_match_index) ===',
         subjectsList,
         '',
-        'Extrais la structure JSON, fidèle au débrief ci-dessus.',
+        'Extrais la structure JSON. Le débrief donne la lecture d’ensemble ; les éléments bruts garantissent que tu n’oublies AUCUN fait (intervenant, échéance, information à retenir). N’invente rien qui n’y figure pas.',
       ].join('\n')
     }
     const out = await provider.complete({
@@ -298,7 +348,14 @@ export async function runVisitDebriefAgent(input: VisitDebriefInput): Promise<Vi
         if (r.success) result = r.data
       } catch { /* ignore */ }
     }
-    if (result === undefined) throw new Error('[visit-debrief] Agent 2 (extraction) — parsing impossible')
+    // Dernier filet : si l'extraction échoue malgré tout (JSON tronqué…), on NE
+    // jette PAS — on garde le RÉSUMÉ (Agent 1) avec une structure vide. Un résumé
+    // sans blocs vaut mieux qu'un « analyse impossible » qui prive l'utilisateur
+    // de tout. (Tous les champs ont un défaut → parse({}) donne la structure vide.)
+    if (result === undefined) {
+      console.error('[visit-debrief] Agent 2 extraction non parsable — résumé conservé, structure vide')
+      result = visitDebriefSchema.parse({})
+    }
     return { result, tokens: out.tokens, model: out.model, provider: provider.name, durationMs: out.durationMs }
   })
 

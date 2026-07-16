@@ -51,6 +51,9 @@ export interface StoredDebriefAnalysis {
   watchpoints: Array<{ label: string; impact: string; owner: string; due: string }>
   // ℹ️ Contexte important mais non actionnable.
   a_savoir: string[]
+  // 📅 Échéances (délais/dates isolés) · 👥 Intervenants (personnes/entreprises citées).
+  echeances: string[]
+  intervenants: string[]
   attention: string[]
   open_questions: string[]
   forgotten_obligations: string[]
@@ -99,7 +102,7 @@ function buildDebriefInput(
 // StoredDebriefAnalysis change : le hash change alors pour TOUTES les visites, donc
 // les anciens caches (forme périmée) sont régénérés au lieu d'être relus tels quels
 // — sinon une projection attendant la nouvelle forme planterait (ex. a_savoir absent).
-const ANALYSIS_SCHEMA_VERSION = 'v2-cards'
+const ANALYSIS_SCHEMA_VERSION = 'v3-echeances-intervenants'
 
 /** Empreinte de la MATIÈRE PROPRE À LA VISITE, en ordre stable (voir en-tête sur
  *  l'exclusion du contexte site volatile). Inclut la version de forme. */
@@ -130,6 +133,8 @@ function fromAgent(
     actions: parsed.suggested_actions,
     watchpoints: parsed.important_points,
     a_savoir: parsed.a_savoir,
+    echeances: parsed.echeances,
+    intervenants: parsed.intervenants,
     attention: parsed.attention,
     open_questions: parsed.open_questions,
     forgotten_obligations: parsed.forgotten_obligations,
