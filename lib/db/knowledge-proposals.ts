@@ -134,7 +134,13 @@ function buildDesiredProposals(analysis: StoredDebriefAnalysis, siteId: string):
 
 // ── Projection idempotente ──────────────────────────────────────
 
-export interface ProjectResult { inserted: number; refreshed: number; skipped: number }
+export interface ProjectResult {
+  inserted: number
+  refreshed: number
+  skipped: number
+  /** Propositions d'une lecture antérieure que la synthèse ne dit plus. */
+  obsolete: number
+}
 
 /**
  * Projette une synthèse en propositions, de façon IDEMPOTENTE :
@@ -153,7 +159,7 @@ export async function projectDebriefToProposals(params: {
 }): Promise<ProjectResult> {
   const { reportId, siteId, organizationId, analysis } = params
   const desired = buildDesiredProposals(analysis, siteId)
-  if (desired.length === 0) return { inserted: 0, refreshed: 0, skipped: 0 }
+  if (desired.length === 0) return { inserted: 0, refreshed: 0, skipped: 0, obsolete: 0 }
 
   const supabase = createAdminClient()
   const version = analysis.analysis_version ?? 1
@@ -208,11 +214,62 @@ export async function projectDebriefToProposals(params: {
     if (insErr) throw insErr
   }
 
+  const obsolete = await markObsoleteProposals(reportId, version, new Set(keys), now)
+
   // De nouvelles propositions (ou des textes rafraîchis) → la connaissance « à
   // confirmer » du chantier change : la mutation invalide la projection.
-  if (toInsert.length > 0 || refreshed > 0) invalidateSiteProjection(siteId)
+  if (toInsert.length > 0 || refreshed > 0 || obsolete > 0) invalidateSiteProjection(siteId)
 
-  return { inserted: toInsert.length, refreshed, skipped }
+  return { inserted: toInsert.length, refreshed, skipped, obsolete }
+}
+
+// ── Obsolescence ────────────────────────────────────────────────
+// LA RÈGLE (Vincent, 2026-07-17), valable pour TOUS les objets — actions,
+// échéances, vigilances, intervenants, connaissances :
+//
+//   La visite est la vérité. La synthèse est une LECTURE de cette vérité. Une
+//   nouvelle lecture rend l'ancienne obsolète — et ses propositions avec elle.
+//
+// « Poser le coffret » puis « Poser le coffret — sous dix jours » : ce n'est pas un
+// doublon, c'est la même chose dite mieux. L'ancienne devient OBSOLÈTE.
+//
+// Pourquoi pas « écartée » : « écartée » veut dire « Guillaume n'est pas d'accord ».
+// Ici il n'a rien décidé — c'est MemorIA qui s'est améliorée. Confondre les deux,
+// c'est mettre dans la bouche du conducteur un refus qu'il n'a jamais prononcé.
+//
+// On ne touche QUE les 'proposed' : une décision humaine (confirmée / écartée) ne
+// se réécrit jamais. Et seulement celles d'une lecture ANTÉRIEURE : une proposition
+// que la synthèse courante redit vient d'être rafraîchie, elle est vivante.
+//
+// `superseded_by` reste NULL : on sait que la nouvelle lecture ne dit plus ce fait ;
+// on ne sait pas LEQUEL des nouveaux le remplace. Le deviner par ressemblance de
+// titre serait inventer un lien — la même faute que déduire une date d'un délai.
+async function markObsoleteProposals(
+  reportId: string,
+  version: number,
+  desiredKeys: Set<string>,
+  now: string,
+): Promise<number> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, dedupe_key')
+    .eq('report_id', reportId)
+    .eq('status', 'proposed')
+    .lt('analysis_version', version)
+  if (error || !data) return 0
+
+  const stale = (data as Array<{ id: string; dedupe_key: string }>)
+    .filter((r) => !desiredKeys.has(r.dedupe_key))
+    .map((r) => r.id)
+  if (stale.length === 0) return 0
+
+  const { error: updErr } = await supabase
+    .from('site_knowledge_proposals')
+    .update({ status: 'superseded', updated_at: now })
+    .in('id', stale)
+  if (updErr) return 0
+  return stale.length
 }
 
 // ── Lecture / comptage (pour les surfaces) ──────────────────────

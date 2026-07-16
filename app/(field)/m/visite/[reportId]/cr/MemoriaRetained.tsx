@@ -183,7 +183,16 @@ export function MemoriaRetained({
   // ledger), segmentées par le STATUT de leur PROPOSITION : active (à créer / créée)
   // vs écartée dans le nouveau cycle. Le ledger n'est plus le pilote — la proposition l'est.
   const ledgerActions = (a.action_ledger ?? []).filter((x) => x.state !== 'dismissed')
-  const activeActions = ledgerActions.filter((x) => propStates?.[x.key]?.status !== 'dismissed')
+  // 'superseded' = la synthèse courante ne dit plus ce fait ; elle le dit AUTREMENT,
+  // et cette nouvelle formulation est déjà affichée juste à côté. Le grand livre,
+  // lui, n'oublie rien : sans ce filtre, on proposerait de confirmer une phrase que
+  // MemorIA a elle-même remplacée. Ce n'est pas « écarté » (Guillaume n'a rien
+  // refusé) : c'est une lecture périmée, elle n'a plus à être sur cet écran.
+  const isLive = (key: string) => {
+    const s = propStates?.[key]?.status
+    return s !== 'dismissed' && s !== 'superseded'
+  }
+  const activeActions = ledgerActions.filter((x) => isLive(x.key))
   const dismissedActions = ledgerActions.filter((x) => propStates?.[x.key]?.status === 'dismissed')
   const hasActions = activeActions.length > 0
   const hasWatch = a.watchpoints.length > 0
