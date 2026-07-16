@@ -23,6 +23,7 @@ import {
   type ActionUrgency,
   type SiteOverview,
 } from '@/lib/knowledge/site-overview'
+import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
 import { SiteBriefButton } from '../../SiteBriefButton'
 
 // ── ONGLET APERÇU ────────────────────────────────────────────────────────────
@@ -410,47 +411,6 @@ function SynthesisBadge({
       Pas encore de synthèse
     </span>
   )
-}
-
-/** « 4 photos · 2 mémos » — la matière rapportée par la visite. */
-function sourceLabels(sources: { photos: number; videos: number; vocals: number; notes: number }): string[] {
-  const out: string[] = []
-  if (sources.photos > 0) out.push(`${sources.photos} photo${sources.photos > 1 ? 's' : ''}`)
-  if (sources.videos > 0) out.push(`${sources.videos} vidéo${sources.videos > 1 ? 's' : ''}`)
-  if (sources.vocals > 0) out.push(`${sources.vocals} mémo${sources.vocals > 1 ? 's' : ''}`)
-  if (sources.notes > 0) out.push(`${sources.notes} note${sources.notes > 1 ? 's' : ''}`)
-  return out
-}
-
-function durationLabel(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m === 0 ? `${h} h` : `${h} h ${m}`
-}
-
-/** « Aujourd'hui », « Hier », sinon la date — on parle comme un conducteur. */
-function visitDateLabel(iso: string | null): string {
-  if (!iso) return 'Date inconnue'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return 'Date inconnue'
-  const today = new Date()
-  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
-  if (sameDay(d, today)) return "Aujourd'hui"
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (sameDay(d, yesterday)) return 'Hier'
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
-}
-
-/** « +1 note · +2 photos » — ce que la synthèse n'a pas encore pris en compte. */
-function pendingLabel(pending: SiteOverview['synthesis']['pending']): string {
-  const parts: string[] = []
-  if (pending.photos > 0) parts.push(`+${pending.photos} photo${pending.photos > 1 ? 's' : ''}`)
-  if (pending.videos > 0) parts.push(`+${pending.videos} vidéo${pending.videos > 1 ? 's' : ''}`)
-  if (pending.vocals > 0) parts.push(`+${pending.vocals} mémo${pending.vocals > 1 ? 's' : ''}`)
-  if (pending.notes > 0) parts.push(`+${pending.notes} note${pending.notes > 1 ? 's' : ''}`)
-  return parts.join(' · ')
 }
 
 /** « Actions actives : 5 / dont 2 planifiées » — la charge réelle du chantier. */

@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteResumeContext } from '@/lib/db/interventions'
-import { listSiteASavoirActive } from '@/lib/db/sites'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getSiteReadings,
@@ -37,6 +36,7 @@ import { groupViewpointChains } from '@/lib/visits/viewpoints'
 import { listWatchlist } from '@/lib/db/visit-watchlist'
 import { getSiteNextSteps } from '@/lib/db/site-next-steps'
 import { NextStepCard } from './NextStepCard'
+import { VisitKnowledgeCard } from './VisitKnowledgeCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteReportLauncher } from './SiteReportLauncher'
 import { DeliverFieldPanel } from './DeliverFieldPanel'
@@ -272,10 +272,10 @@ export default async function FieldSitePage({
         .eq('scheduled_for', todayIso)
         .neq('status', 'skipped')
         .order('planned_start', { ascending: true })).data) ?? []) as TodayIntv[]
-  const [siteAnomalies, recentPhotos, aSavoir, presenceReminders] = await Promise.all([
+  // Le « À savoir » n'est plus lu ici : il vient de SiteOverview, comme au bureau.
+  const [siteAnomalies, recentPhotos, presenceReminders] = await Promise.all([
     getSiteAnomalies(siteId).catch(() => []),
     getSiteRecentPhotos(siteId, 6).catch(() => []),
-    listSiteASavoirActive(siteId).catch(() => []),
     // « Puisque vous êtes ici » — l'assistant de présence (niveau 3) : 1 à 3
     // opportunités à saisir sur place, déterministes, zéro donnée nouvelle.
     buildSitePresenceReminders(siteId, { limit: 3 }).catch(() => []),
@@ -354,6 +354,16 @@ export default async function FieldSitePage({
           {/* 1 — État du chantier : la santé en un coup d'œil (chiffres cliquables). */}
           <SiteStatusCard cells={siteStatus} />
 
+          {/* « Ma visite a servi » — le moment du terrain. Date, matière rapportée,
+              état de la synthèse, et ce que MemorIA en a retenu. Mêmes données et
+              mêmes mots que l'onglet Aperçu du bureau. */}
+          {overview && (
+            <VisitKnowledgeCard
+              overview={overview}
+              synthesisHref={overview.activity.lastVisit ? `/m/visite/${overview.activity.lastVisit.reportId}/cr` : undefined}
+            />
+          )}
+
           {/* Connaissance de la dernière visite : actions proposées avec leurs
               PREMIERS titres (pas seulement un compte). Distinctes des actions
               ouvertes ; « confirmer » se fait sur la synthèse. Silence tant qu'il
@@ -387,19 +397,16 @@ export default async function FieldSitePage({
               Silence positif si rien à venir. */}
           <NextStepCard steps={nextSteps} />
 
-          {/* Attention — vigilances persistantes + anomalies (alerte à l'arrivée). */}
-          {(aSavoir.length > 0 || openAnomalies.length > 0) && (
+          {/* Attention — les anomalies OUVERTES : des faits déclarés sur le lieu.
+              Le « À savoir » a quitté ce bloc : c'est de la connaissance du chantier,
+              pas une alerte. Il vit dans « Ce que MemorIA a retenu », au même endroit
+              qu'au bureau — un même objet ne peut pas dire deux choses selon l'écran. */}
+          {openAnomalies.length > 0 && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800 inline-flex items-center gap-1.5">
                 <AlertTriangle className="h-4 w-4" /> Attention
               </h2>
               <ul className="space-y-1.5">
-                {aSavoir.slice(0, 4).map((n) => (
-                  <li key={n.id} className="text-sm text-amber-900 flex gap-1.5">
-                    <span aria-hidden>⚠</span>
-                    <span className="min-w-0">{n.body}</span>
-                  </li>
-                ))}
                 {openAnomalies.slice(0, 3).map((a) => (
                   <li key={a.id} className="text-sm text-amber-900 flex gap-1.5">
                     <span aria-hidden>⚠</span>
