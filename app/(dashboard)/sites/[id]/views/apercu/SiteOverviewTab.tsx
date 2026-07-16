@@ -1,6 +1,19 @@
 import Link from 'next/link'
 import type { ComponentType, ReactNode } from 'react'
-import { AlertTriangle, Calendar, ChevronRight, Clock, ListTodo, RefreshCw, ShieldAlert } from 'lucide-react'
+import {
+  AlertTriangle,
+  Calendar,
+  CalendarClock,
+  Check,
+  ChevronRight,
+  Clock,
+  Footprints,
+  Info,
+  ListTodo,
+  RefreshCw,
+  ShieldAlert,
+  Users,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   getSiteOverview,
@@ -22,7 +35,10 @@ import { SiteBriefButton } from '../../SiteBriefButton'
 
 export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
-  const { actions, attention, nextEvent, recentChanges, reserves, blockages, activity, synthesis } = overview
+  const {
+    actions, attention, nextEvent, recentChanges, reserves, blockages, activity, synthesis,
+    knowledge, stakeholders, deadlines, watchpoints,
+  } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit ? `/m/visite/${activity.lastVisit.reportId}/cr` : undefined
 
@@ -67,18 +83,55 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
         </div>
       </section>
 
-      {/* La visite a été enrichie depuis la synthèse : on le DIT, on ne régénère pas
-          en silence. Silence total quand la synthèse est à jour. */}
-      {synthesis.status === 'outdated' && synthesisHref && (
-        <Link
-          href={synthesisHref}
-          className="flex items-center gap-2 rounded-[18px] border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm shadow-sm transition hover:brightness-[0.98] dark:border-amber-900/40 dark:bg-amber-950/20"
-        >
-          <RefreshCw className="h-4 w-4 shrink-0 text-amber-600" />
-          <span className="font-medium text-amber-900 dark:text-amber-200">Synthèse à mettre à jour</span>
-          <span className="text-amber-800/80 dark:text-amber-300/80">{pendingLabel(synthesis.pending)}</span>
-          <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-amber-600" />
-        </Link>
+      {/* ── LA VIE DU CHANTIER ────────────────────────────────────────────────
+          Le chantier doit RESPIRER : on doit sentir qu'une visite vient d'avoir
+          lieu, avec ce qu'elle a rapporté et l'état de ce que MemorIA en a compris.
+          Sans ça, un chantier visité hier ressemble à un chantier jamais visité. */}
+      {activity.lastVisit && (
+        <section className="rounded-[18px] border bg-card p-4 shadow-sm">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-50 dark:bg-sky-950/30">
+              <Footprints className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Dernière visite</h2>
+              <p className="text-base font-semibold">{visitDateLabel(activity.lastVisit.endedAt)}</p>
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <SynthesisBadge status={synthesis.status} pending={synthesis.pending} />
+              {synthesisHref && (
+                <Link
+                  href={synthesisHref}
+                  className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[13px] font-medium hover:bg-muted"
+                >
+                  Voir la synthèse <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Les SOURCES : ce que la visite a rapporté. C'est la matière sur laquelle
+              MemorIA a travaillé — l'afficher, c'est montrer nos fondements. */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            {sourceLabels(activity.lastVisit.sources).map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+            {activity.lastVisit.durationMin != null && <span>Durée {durationLabel(activity.lastVisit.durationMin)}</span>}
+            {activity.lastVisit.sourceCount === 0 && <span>Aucune capture</span>}
+          </div>
+
+          {/* Un échec de projection ne doit JAMAIS être muet : sans lui, la visite
+              paraît n'avoir rien produit alors que MemorIA avait compris. */}
+          {synthesis.projectionFailed && (
+            <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-[13px] text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <span>
+                Certaines informations de cette visite n&apos;ont pas pu être reportées sur le chantier.
+                La synthèse, elle, est intacte.
+              </span>
+            </p>
+          )}
+        </section>
       )}
 
       {/* Connaissance de la dernière visite : les propositions d'action pas encore
@@ -174,6 +227,49 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
         </OverviewPanel>
       </div>
 
+      {/* ── CE QUE LA VISITE A APPRIS AU CHANTIER ────────────────────────────
+          Ces objets vivaient déjà dans le contrat sans jamais atteindre l'écran :
+          la connaissance existait, elle était simplement invisible. Un objet métier
+          n'est terminé que lorsqu'il est visible là où il doit apparaître. */}
+      {(knowledge.summary.proposed + knowledge.summary.confirmed
+        + stakeholders.summary.proposed + stakeholders.summary.confirmed
+        + deadlines.summary.proposed + watchpoints.summary.proposed) > 0 && (
+        <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <KnowledgePanel
+            title="À savoir"
+            icon={Info}
+            proposed={knowledge.proposed}
+            confirmed={knowledge.confirmed}
+            summary={knowledge.summary}
+            href={`/sites/${siteId}?tab=memoire`}
+          />
+          <KnowledgePanel
+            title="Intervenants"
+            icon={Users}
+            proposed={stakeholders.proposed}
+            confirmed={stakeholders.confirmed}
+            summary={stakeholders.summary}
+            href={`/sites/${siteId}?tab=memoire`}
+          />
+          <KnowledgePanel
+            title="Échéances"
+            icon={CalendarClock}
+            proposed={deadlines.proposed}
+            confirmed={deadlines.confirmed}
+            summary={deadlines.summary}
+            href={`/sites/${siteId}?tab=planning`}
+          />
+          <KnowledgePanel
+            title="Points de vigilance"
+            icon={ShieldAlert}
+            proposed={watchpoints.proposed}
+            confirmed={watchpoints.confirmed}
+            summary={watchpoints.summary}
+            href={synthesisHref}
+          />
+        </div>
+      )}
+
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
@@ -210,6 +306,128 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
       </section>
     </main>
   )
+}
+
+/** Panneau d'un objet de connaissance : le VALIDÉ d'abord, le PROPOSÉ ensuite —
+ *  jamais mélangés. Silence total quand l'objet n'a rien à dire. */
+function KnowledgePanel({
+  title,
+  icon: Icon,
+  proposed,
+  confirmed,
+  summary,
+  href,
+}: {
+  title: string
+  icon: ComponentType<{ className?: string }>
+  proposed: Array<{ id: string; title: string }>
+  confirmed: Array<{ id: string; title: string }>
+  summary: { proposed: number; confirmed: number }
+  href?: string
+}) {
+  const total = summary.proposed + summary.confirmed
+  if (total === 0) return null
+  const body = (
+    <>
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-medium">{title}</h3>
+        <span className="ml-auto text-sm font-semibold tabular-nums">{total}</span>
+      </div>
+      <ul className="mt-2 space-y-1">
+        {confirmed.map((item) => (
+          <li key={item.id} className="line-clamp-2 text-[13px] text-foreground/90">
+            {item.title}
+          </li>
+        ))}
+        {proposed.map((item) => (
+          <li key={item.id} className="line-clamp-2 text-[13px] text-muted-foreground">
+            {item.title}
+          </li>
+        ))}
+      </ul>
+      {summary.proposed > 0 && (
+        <span className="mt-2 inline-block rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+          {summary.proposed} à confirmer
+        </span>
+      )}
+    </>
+  )
+  const className = 'block rounded-[18px] border bg-card p-4 shadow-sm'
+  return href ? (
+    <Link href={href} className={cn(className, 'transition hover:brightness-[0.98]')}>
+      {body}
+    </Link>
+  ) : (
+    <section className={className}>{body}</section>
+  )
+}
+
+/** L'état de la synthèse, dit en clair — jamais un jargon de développeur. */
+function SynthesisBadge({
+  status,
+  pending,
+}: {
+  status: SiteOverview['synthesis']['status']
+  pending: SiteOverview['synthesis']['pending']
+}) {
+  if (status === 'up_to_date') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+        <Check className="h-3.5 w-3.5" /> Synthèse à jour
+      </span>
+    )
+  }
+  if (status === 'outdated') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+        <RefreshCw className="h-3.5 w-3.5" /> Synthèse à mettre à jour · {pendingLabel(pending)}
+      </span>
+    )
+  }
+  if (status === 'generating') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-[12px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+        <RefreshCw className="h-3.5 w-3.5" /> Synthèse en cours
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] font-medium text-muted-foreground">
+      Pas encore de synthèse
+    </span>
+  )
+}
+
+/** « 4 photos · 2 mémos » — la matière rapportée par la visite. */
+function sourceLabels(sources: { photos: number; videos: number; vocals: number; notes: number }): string[] {
+  const out: string[] = []
+  if (sources.photos > 0) out.push(`${sources.photos} photo${sources.photos > 1 ? 's' : ''}`)
+  if (sources.videos > 0) out.push(`${sources.videos} vidéo${sources.videos > 1 ? 's' : ''}`)
+  if (sources.vocals > 0) out.push(`${sources.vocals} mémo${sources.vocals > 1 ? 's' : ''}`)
+  if (sources.notes > 0) out.push(`${sources.notes} note${sources.notes > 1 ? 's' : ''}`)
+  return out
+}
+
+function durationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h} h` : `${h} h ${m}`
+}
+
+/** « Aujourd'hui », « Hier », sinon la date — on parle comme un conducteur. */
+function visitDateLabel(iso: string | null): string {
+  if (!iso) return 'Date inconnue'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return 'Date inconnue'
+  const today = new Date()
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+  if (sameDay(d, today)) return "Aujourd'hui"
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (sameDay(d, yesterday)) return 'Hier'
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
 }
 
 /** « +1 note · +2 photos » — ce que la synthèse n'a pas encore pris en compte. */

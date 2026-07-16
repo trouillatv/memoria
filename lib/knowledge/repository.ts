@@ -80,6 +80,7 @@ export async function readSiteActionSummaries(siteId: string): Promise<ActionSum
  *  présence d'analyse + verrou de génération). Sans regénérer quoi que ce soit. */
 export interface LatestVisitSynthesis {
   reportId: string
+  startedAt: string | null
   endedAt: string | null
   hasAnalysis: boolean
   generatingAt: string | null
@@ -89,11 +90,13 @@ export interface LatestVisitSynthesis {
   /** Empreinte du corpus analysé + ce que la synthèse avait pris en compte. */
   corpusHash: string | null
   sourceSnapshot: VisitSourceSnapshot | null
+  /** Trace de la projection en propositions (mig 213) — jamais un échec muet. */
+  projectionError: string | null
 }
 export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVisitSynthesis | null> {
   const { data } = await createAdminClient()
     .from('site_reports')
-    .select('id, ended_at, debrief_analysis, debrief_generating_at')
+    .select('id, started_at, ended_at, debrief_analysis, debrief_generating_at, debrief_projection_error')
     .eq('site_id', siteId)
     .not('origin', 'is', null)
     .is('deleted_at', null)
@@ -104,6 +107,7 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
   if (!data) return null
   const r = data as {
     id: string
+    started_at: string | null
     ended_at: string | null
     debrief_analysis: {
       analysis_version?: number
@@ -112,10 +116,12 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
       source_snapshot?: VisitSourceSnapshot
     } | null
     debrief_generating_at: string | null
+    debrief_projection_error: string | null
   }
   const a = r.debrief_analysis
   return {
     reportId: r.id,
+    startedAt: r.started_at,
     endedAt: r.ended_at,
     hasAnalysis: a != null,
     generatingAt: r.debrief_generating_at,
@@ -123,6 +129,7 @@ export async function readLatestVisitSynthesis(siteId: string): Promise<LatestVi
     updatedAt: a?.generated_at ?? null,
     corpusHash: a?.corpus_hash ?? null,
     sourceSnapshot: a?.source_snapshot ?? null,
+    projectionError: r.debrief_projection_error ?? null,
   }
 }
 

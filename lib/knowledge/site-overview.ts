@@ -130,9 +130,21 @@ export interface SiteOverview {
     client: string | null
     status: string | null
   }
-  /** CE QUI LUI ARRIVE — vie du chantier. Séparé de l'identité, qui n'est pas un fourre-tout. */
+  /** CE QUI LUI ARRIVE — vie du chantier. Séparé de l'identité, qui n'est pas un fourre-tout.
+   *  Le chantier doit RESPIRER : on doit sentir qu'une visite vient d'avoir lieu, avec
+   *  ce qu'elle a rapporté (ses sources), pas seulement une ligne de base de données. */
   activity: {
-    lastVisit: { reportId: string; endedAt: string | null } | null
+    lastVisit: {
+      reportId: string
+      startedAt: string | null
+      endedAt: string | null
+      /** Durée de la visite en minutes (null si non calculable). */
+      durationMin: number | null
+      /** Ce que la visite a rapporté — la matière réelle. */
+      sources: SnapshotDelta
+      /** Total des sources — « la visite a-t-elle rapporté quelque chose ? ». */
+      sourceCount: number
+    } | null
     picture: string | null
   }
   // La synthèse est la « mémoire IA » du chantier — un objet métier à part entière.
@@ -146,6 +158,12 @@ export interface SiteOverview {
     pendingChanges: number
     /** Le détail de ce qui a été ajouté — « +1 note », « +2 photos ». */
     pending: SnapshotDelta
+    /**
+     * La connaissance de cette synthèse n'a PAS pu être projetée en propositions.
+     * Ce n'est jamais silencieux : sans projection, la visite paraît n'avoir rien
+     * produit alors que l'IA avait compris (mig 213).
+     */
+    projectionFailed: boolean
   }
   actions: ActionsSection
   attention: { level: AttentionLevel; reasons: AttentionReason[] }
@@ -280,6 +298,14 @@ function numberOf(value: string | undefined): number {
   return Number.isFinite(n) ? n : 0
 }
 
+/** Durée d'une visite, en minutes. Null si l'une des bornes manque. */
+function durationMinutes(startedAt: string | null, endedAt: string | null): number | null {
+  if (!startedAt || !endedAt) return null
+  const ms = Date.parse(endedAt) - Date.parse(startedAt)
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  return Math.max(1, Math.round(ms / 60_000))
+}
+
 /** Un blocage sans date de fin est encore en cours. */
 function openBlocages<T extends { dateEnd: string | null }>(blocages: T[]): T[] {
   return blocages.filter((b) => b.dateEnd === null)
@@ -298,6 +324,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
       basedOn: null,
       pendingChanges: 0,
       pending: { photos: 0, videos: 0, vocals: 0, notes: 0 },
+      projectionFailed: false,
     },
     actions: { proposed: [], confirmed: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, completed: 0 } },
     attention: { level: 'calm', reasons: [] },
@@ -399,12 +426,16 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   let status: SynthesisStatus = 'missing'
   let pending: SnapshotDelta = { photos: 0, videos: 0, vocals: 0, notes: 0 }
   let pendingChanges = 0
+  let sources: SnapshotDelta = { photos: 0, videos: 0, vocals: 0, notes: 0 }
   if (synth) {
     const generating = synth.generatingAt != null && Date.parse(synth.generatingAt) > 0
       && (Date.now() - Date.parse(synth.generatingAt) < GENERATING_LEASE_MS)
-    if (synth.hasAnalysis) {
-      const current = await readVisitSourceSnapshot(synth.reportId).catch(() => null)
-      if (current) {
+    // Les sources sont lues même sans analyse : une visite qui a rapporté 4 photos
+    // « respire » à l'écran, qu'elle ait été analysée ou non.
+    const current = await readVisitSourceSnapshot(synth.reportId).catch(() => null)
+    if (current) {
+      sources = { photos: current.photos, videos: current.videos, vocals: current.vocals, notes: current.notes }
+      if (synth.hasAnalysis) {
         pending = computeSnapshotDelta(synth.sourceSnapshot, current)
         pendingChanges = countSnapshotDelta(pending)
       }
@@ -426,7 +457,16 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       status: identity?.phaseLabel ?? null,
     },
     activity: {
-      lastVisit: synth ? { reportId: synth.reportId, endedAt: synth.endedAt } : null,
+      lastVisit: synth
+        ? {
+            reportId: synth.reportId,
+            startedAt: synth.startedAt,
+            endedAt: synth.endedAt,
+            durationMin: durationMinutes(synth.startedAt, synth.endedAt),
+            sources,
+            sourceCount: countSnapshotDelta(sources),
+          }
+        : null,
       picture: null,
     },
     synthesis: {
@@ -436,6 +476,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       basedOn: synth?.corpusHash ?? null,
       pendingChanges,
       pending,
+      projectionFailed: synth?.projectionError != null,
     },
     actions,
     attention: { level: attentionLevelOf(reasons), reasons },

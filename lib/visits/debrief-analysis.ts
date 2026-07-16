@@ -254,6 +254,44 @@ async function clearLease(reportId: string): Promise<void> {
   await createAdminClient().from('site_reports').update({ debrief_generating_at: null }).eq('id', reportId)
 }
 
+/**
+ * Projette la synthèse en propositions métier, et LAISSE UNE TRACE (mig 213).
+ *
+ * La projection n'est PAS un « best effort » : c'est un élément métier. Si elle
+ * échoue, la connaissance de la visite (actions, échéances, intervenants, savoirs)
+ * n'apparaît nulle part et le chantier paraît VIDE — l'utilisateur conclut que
+ * MemorIA n'a rien compris, alors qu'il avait compris. Un échec silencieux est
+ * donc le pire scénario possible.
+ *
+ * Cette fonction ne relance pas d'exception : un échec de projection ne doit pas
+ * détruire une synthèse coûteuse déjà produite. Mais il est LOGGUÉ et PERSISTÉ —
+ * les écrans peuvent le dire, et le diagnostic ne dépend plus d'une intuition.
+ */
+async function projectAndTrace(params: {
+  reportId: string
+  siteId: string
+  organizationId: string
+  analysis: StoredDebriefAnalysis
+}): Promise<void> {
+  const { reportId } = params
+  try {
+    await projectDebriefToProposals(params)
+    await createAdminClient()
+      .from('site_reports')
+      .update({ debrief_projected_at: new Date().toISOString(), debrief_projection_error: null })
+      .eq('id', reportId)
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e)
+    console.error(`[debrief] projection en échec pour la visite ${reportId} : ${reason}`)
+    await createAdminClient()
+      .from('site_reports')
+      .update({ debrief_projection_error: reason })
+      .eq('id', reportId)
+      // Si même la trace ne peut pas s'écrire, le log ci-dessus reste la preuve.
+      .then(undefined, () => {})
+  }
+}
+
 export interface LoadedDebrief {
   analysis: StoredDebriefAnalysis
   openSubjects: Array<{ id: string; name: string }>
@@ -334,15 +372,16 @@ export async function loadOrRunVisitDebrief(
     await writeAnalysis(reportId, analysis).catch(() => {})
     // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
     // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
-    // partout et distinctes des objets validés. Best-effort : ne casse jamais la
-    // synthèse si la projection échoue. Idempotent → pas de doublon aux mises à jour.
+    // partout et distinctes des objets validés. Idempotent → pas de doublon aux
+    // mises à jour. Un échec est TRACÉ (mig 213), jamais avalé : sans projection,
+    // la connaissance de la visite n'apparaît nulle part.
     if (ctx.visit.site_id && ctx.visit.organization_id) {
-      await projectDebriefToProposals({
+      await projectAndTrace({
         reportId,
         siteId: ctx.visit.site_id,
         organizationId: ctx.visit.organization_id,
         analysis,
-      }).catch(() => {})
+      })
     }
     return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {
@@ -384,7 +423,7 @@ export async function ensureActionProposalsProjected(
   const { analysis } = await readState(reportId)
   if (!analysis) return []
   if (organizationId) {
-    await projectDebriefToProposals({ reportId, siteId, organizationId, analysis }).catch(() => {})
+    await projectAndTrace({ reportId, siteId, organizationId, analysis })
   }
   return (analysis.action_ledger ?? [])
     .filter((a) => a.state !== 'dismissed')
