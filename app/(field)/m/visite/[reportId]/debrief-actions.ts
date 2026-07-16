@@ -14,7 +14,7 @@ import { createSiteReserve } from '@/lib/db/site-reserve'
 import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
 import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
-import { loadOrRunVisitDebrief, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
+import { loadOrRunVisitDebrief, setActionState, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -295,6 +295,32 @@ export async function getVisitDebriefFieldAction(input: unknown): Promise<Debrie
   }
 
   return loadOrRunVisitDebrief(parsed.data.report_id, auth.userId, { force: parsed.data.force })
+}
+
+/**
+ * Change l'état d'une action proposée par la synthèse : faite / écartée / rouverte.
+ * Décision HUMAINE, préservée aux prochaines synthèses (l'IA n'efface jamais). Ne
+ * régénère pas la synthèse. Garde fail-closed (org) avant la couche service-role.
+ */
+export async function setVisitActionStateAction(input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({
+    report_id: z.string().uuid(),
+    key: z.string().min(1).max(64),
+    state: z.enum(['open', 'done', 'dismissed']),
+  }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+
+  const ok = await setActionState(parsed.data.report_id, parsed.data.key, parsed.data.state)
+  return ok ? { ok: true } : { ok: false, error: 'Action introuvable' }
 }
 
 /**

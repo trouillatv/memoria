@@ -79,6 +79,8 @@ const styles = StyleSheet.create({
   // Action proposée : une case à COCHER (à faire), pas une puce.
   actionRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 3 },
   checkbox: { width: 9, height: 9, borderWidth: 1, borderColor: '#7c3aed', borderRadius: 2, marginTop: 2, marginRight: 7 },
+  checkboxDone: { width: 9, height: 9, borderWidth: 1, borderColor: '#7c3aed', borderRadius: 2, marginTop: 2, marginRight: 7, backgroundColor: '#7c3aed' },
+  actionDone: { textDecoration: 'line-through', color: COLORS.muted },
   actionText: { flex: 1 },
   actionWhy: { fontSize: 8.5, color: COLORS.muted },
   // Point de vigilance : une ALERTE (pastille orange), lisible en 3 secondes.
@@ -243,7 +245,11 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
   // l'analyse (narratif propre, actions proposées, points de vigilance), jamais
   // le verbatim. Repli déterministe si l'analyse n'est pas disponible.
   const summaryText = debrief?.summary?.trim() || doc.summary?.trim() || ''
-  const proposedActions = debrief?.actions ?? []
+  // Actions VIVANTES : le grand livre (hors écartées) est la source ; on montre
+  // l'état « fait » (case cochée). Repli sur `actions` pour d'anciennes analyses.
+  const proposedActions = debrief?.action_ledger
+    ? debrief.action_ledger.filter((x) => x.state !== 'dismissed')
+    : (debrief?.actions ?? []).map((a) => ({ ...a, state: 'open' as const }))
   const watchpoints = debrief?.watchpoints ?? []
   const decisions = debrief?.decisions ?? []
   const aSavoir = debrief?.a_savoir ?? []
@@ -330,9 +336,9 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
             <SectionTitle text="Actions proposées" color="#7c3aed" />
             {proposedActions.map((a, i) => (
               <View key={i} style={styles.actionRow} wrap={false}>
-                <View style={styles.checkbox} />
+                <View style={a.state === 'done' ? styles.checkboxDone : styles.checkbox} />
                 <View style={styles.actionText}>
-                  <Text>
+                  <Text style={a.state === 'done' ? styles.actionDone : undefined}>
                     {a.priority ? <Text style={styles.metaStrong}>{`[${PRIORITY_FR[a.priority] ?? a.priority}] `}</Text> : null}
                     {a.title}
                   </Text>

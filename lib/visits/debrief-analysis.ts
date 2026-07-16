@@ -76,6 +76,8 @@ export interface StoredDebriefAnalysis {
   analysis_version: number
   /** Ce qui a été pris en compte — pour dire « synthèse à jour » vs « enrichie depuis ». */
   source_snapshot: VisitSourceSnapshot
+  /** Grand livre des actions : accumule à travers les mises à jour, jamais effacé. */
+  action_ledger: LedgerAction[]
 }
 
 /** L'entrée EXACTE passée à l'agent — construite une seule fois, hashée, puis
@@ -107,7 +109,7 @@ function buildDebriefInput(
 // Version de FORME de l'analyse stockée. À incrémenter dès que la STRUCTURE de
 // StoredDebriefAnalysis change : un cache d'une forme périmée est régénéré en
 // SILENCE (pas « enrichi »). Distinct du corpus_hash, qui ne décrit QUE la matière.
-const ANALYSIS_SCHEMA_VERSION = 'v4-versioned'
+const ANALYSIS_SCHEMA_VERSION = 'v5-living-actions'
 
 /** Empreinte de la MATIÈRE PROPRE À LA VISITE (le CORPUS envoyé à l'agent), en
  *  ordre stable. NE dépend PAS de la version de forme : un corpus inchangé donne le
@@ -126,6 +128,59 @@ export function computeCorpusHash(input: VisitDebriefInput): string {
   return createHash('sha256').update(corpus).digest('hex')
 }
 
+// ── Actions VIVANTES (grand livre) ───────────────────────────────────────────
+// Les actions ne sont pas jetées à chaque synthèse. L'IA PROPOSE, l'humain
+// décide (fait / écarté), et une mise à jour AJOUTE les nouvelles propositions
+// sans jamais effacer les anciennes ni ressusciter une proposition écartée.
+export type ActionState = 'open' | 'done' | 'dismissed'
+export interface LedgerAction {
+  key: string
+  title: string
+  rationale: string
+  priority: 'haute' | 'moyenne' | 'basse' | null
+  owner: string
+  due: string
+  state: ActionState
+  /** N° de synthèse où l'action est APPARUE — pour signaler « Nouveau ». */
+  version_added: number
+}
+
+function normalizeTitle(t: string): string {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+/** Clé STABLE d'une action (titre normalisé) : reconnaît une proposition déjà vue,
+ *  même reformulée légèrement, pour ne pas la re-proposer. */
+export function actionKey(title: string): string {
+  return createHash('sha1').update(normalizeTitle(title)).digest('hex').slice(0, 16)
+}
+
+/** Fusion PRÉSERVANTE : garde tout l'existant (états humains intacts), met à jour
+ *  le texte d'une proposition revue, ajoute les nouvelles en 'open'. N'efface jamais. */
+function mergeActionLedger(
+  old: LedgerAction[] | undefined,
+  proposals: VisitDebriefParsed['suggested_actions'],
+  version: number,
+): LedgerAction[] {
+  const result: LedgerAction[] = (old ?? []).map((a) => ({ ...a }))
+  const byKey = new Map(result.map((a) => [a.key, a]))
+  for (const p of proposals) {
+    const key = actionKey(p.title)
+    const existing = byKey.get(key)
+    if (existing) {
+      // Proposition déjà connue : on rafraîchit le texte, on PRÉSERVE l'état humain.
+      existing.title = p.title; existing.rationale = p.rationale
+      existing.priority = p.priority; existing.owner = p.owner; existing.due = p.due
+    } else {
+      const entry: LedgerAction = {
+        key, title: p.title, rationale: p.rationale, priority: p.priority,
+        owner: p.owner, due: p.due, state: 'open', version_added: version,
+      }
+      result.push(entry); byKey.set(key, entry)
+    }
+  }
+  return result
+}
+
 function fromAgent(
   narrative: string,
   parsed: VisitDebriefParsed,
@@ -134,11 +189,13 @@ function fromAgent(
   hash: string,
   version: number,
   snapshot: VisitSourceSnapshot,
+  oldLedger: LedgerAction[] | undefined,
 ): StoredDebriefAnalysis {
   return {
     schema_version: ANALYSIS_SCHEMA_VERSION,
     analysis_version: version,
     source_snapshot: snapshot,
+    action_ledger: mergeActionLedger(oldLedger, parsed.suggested_actions, version),
     summary: narrative,
     decisions: parsed.decisions,
     actions: parsed.suggested_actions,
@@ -273,11 +330,30 @@ export async function loadOrRunVisitDebrief(
   try {
     const res = await runVisitDebriefAgent(input)
     const version = (cache?.analysis_version ?? 0) + 1
-    const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot)
+    // Le grand livre d'actions du cache (même schéma périmé) est REPRIS : une mise
+    // à jour n'efface jamais un état humain (fait/écarté).
+    const oldLedger = cache?.schema_version === ANALYSIS_SCHEMA_VERSION ? cache.action_ledger : undefined
+    const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger)
     await writeAnalysis(reportId, analysis).catch(() => {})
     return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {
     await clearLease(reportId).catch(() => {})
     return { ok: false, error: "L'analyse IA a échoué" }
   }
+}
+
+/**
+ * Change l'état d'UNE action du grand livre (fait / écarté / rouverte). N'appelle
+ * jamais le LLM : lecture-modification-écriture du JSONB. Ne régénère rien — c'est
+ * une décision HUMAINE sur une proposition, préservée aux prochaines synthèses.
+ * L'appelant DOIT avoir vérifié l'organisation.
+ */
+export async function setActionState(reportId: string, key: string, state: ActionState): Promise<boolean> {
+  const { analysis } = await readState(reportId)
+  if (!analysis || !Array.isArray(analysis.action_ledger)) return false
+  const entry = analysis.action_ledger.find((a) => a.key === key)
+  if (!entry) return false
+  entry.state = state
+  await writeAnalysis(reportId, analysis)
+  return true
 }

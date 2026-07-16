@@ -13,9 +13,9 @@
 // on ne bloque jamais l'accès à ce qui a été dit.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users } from 'lucide-react'
-import { getVisitDebriefFieldAction } from '../debrief-actions'
-import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
+import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Square, CheckSquare, X } from 'lucide-react'
+import { getVisitDebriefFieldAction, setVisitActionStateAction } from '../debrief-actions'
+import type { StoredDebriefAnalysis, SnapshotDelta, LedgerAction, ActionState } from '@/lib/visits/debrief-analysis'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -70,6 +70,15 @@ export function MemoriaRetained({
     void load(true)
   }
 
+  // Décision humaine sur une action : optimiste tout de suite, persistée en fond.
+  // L'IA n'efface jamais — un « fait »/« écarté » survit aux mises à jour de synthèse.
+  function setActState(key: string, next: ActionState) {
+    setAnalysis((prev) => prev
+      ? { ...prev, action_ledger: (prev.action_ledger ?? []).map((x) => (x.key === key ? { ...x, state: next } : x)) }
+      : prev)
+    void setVisitActionStateAction({ report_id: reportId, key, state: next })
+  }
+
   // ── En cours (analyse ou attente d'une analyse concurrente) ──
   if (phase === 'loading' || phase === 'generating') {
     return (
@@ -114,7 +123,8 @@ export function MemoriaRetained({
 
   // ── Résultat : « Ce que MemorIA a retenu » ──
   const a = analysis!
-  const hasActions = a.actions.length > 0
+  const openActions = (a.action_ledger ?? []).filter((x) => x.state !== 'dismissed')
+  const hasActions = openActions.length > 0
   const hasWatch = a.watchpoints.length > 0
   const hasDecisions = a.decisions.length > 0
   const hasSavoir = a.a_savoir.length > 0
@@ -158,20 +168,43 @@ export function MemoriaRetained({
       {hasActions && (
         <Block Icon={ListTodo} cls="text-violet-600" title="Actions proposées">
           <ul className="space-y-2">
-            {a.actions.map((act, i) => (
-              <li key={i} className="text-[13px] leading-snug">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  {act.priority && <PriorityChip p={act.priority} />}
-                  <span className="font-medium text-foreground/90">{act.title}</span>
-                </span>
-                {act.rationale && <span className="mt-0.5 block text-[12px] text-muted-foreground">{act.rationale}</span>}
-                {(act.owner || act.due) && (
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+            {openActions.map((act) => {
+              const done = act.state === 'done'
+              const isNew = a.analysis_version > 1 && act.version_added === a.analysis_version
+              return (
+                <li key={act.key} className="flex gap-2.5 text-[13px] leading-snug">
+                  <button
+                    type="button"
+                    onClick={() => setActState(act.key, done ? 'open' : 'done')}
+                    aria-label={done ? 'Rouvrir cette action' : 'Marquer comme faite'}
+                    className="mt-px shrink-0 text-violet-600"
+                  >
+                    {done ? <CheckSquare className="h-[18px] w-[18px]" /> : <Square className="h-[18px] w-[18px]" />}
+                  </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {isNew && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Nouveau</span>}
+                      {act.priority && <PriorityChip p={act.priority} />}
+                      <span className={`font-medium ${done ? 'text-muted-foreground line-through' : 'text-foreground/90'}`}>{act.title}</span>
+                    </span>
+                    {act.rationale && <span className="mt-0.5 block text-[12px] text-muted-foreground">{act.rationale}</span>}
+                    {(act.owner || act.due) && (
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+                      </span>
+                    )}
                   </span>
-                )}
-              </li>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => setActState(act.key, 'dismissed')}
+                    aria-label="Écarter cette proposition"
+                    className="mt-px shrink-0 text-muted-foreground/50 hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </Block>
       )}
