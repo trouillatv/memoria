@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
+  ArrowLeft, Check, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteStatusSummary, buildSitePatrimoine, getSiteRecentActivity, buildSiteImportantEvidence } from '@/lib/db/visits'
+import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listSiteMapCaptures } from '@/lib/db/visit-captures'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteTabs } from '../SiteTabs'
@@ -49,14 +50,18 @@ export default async function SitePatrimoinePage({
   const { data: site } = await supabase.from('sites').select('id, name').eq('id', siteId).is('deleted_at', null).maybeSingle()
   if (!site) notFound()
 
-  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence] = await Promise.all([
+  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence, overview] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     buildSitePatrimoine(siteId).catch(() => null),
     listSubjectsBySite(siteId).catch(() => []),
     getSiteRecentActivity(siteId).catch(() => []),
     listSiteMapCaptures(siteId).catch(() => []),
     buildSiteImportantEvidence(siteId).catch(() => ({ photos: [], decisions: [] })),
+    // La mémoire du chantier vient du MÊME read model que la fiche : un fait su
+    // ne peut pas être vrai ici et faux là.
+    getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
   ])
+  const { knowledge, stakeholders } = overview
   const hasEvidence = evidence.photos.length > 0 || evidence.decisions.length > 0
 
   // Sujets, du plus fréquent au moins fréquent (déterministe).
@@ -86,6 +91,63 @@ export default async function SitePatrimoinePage({
 
       {/* LA recherche — la porte d'entrée de toute la connaissance du chantier. */}
       <SitePatrimoineSearch siteId={siteId} suggestions={suggestions} />
+
+      {/* ── CE QUE MEMORIA SAIT ────────────────────────────────────────────
+          Cet écran demandait « qu'est-ce que ce chantier sait aujourd'hui ? » et
+          ne savait pas y répondre : il lisait tout SAUF la connaissance. La
+          mémoire ne commence pas à la troisième visite, elle commence à la
+          PREMIÈRE — dès qu'un fait durable est su, il est su.
+          Les échéances ne sont PAS ici : elles répondent à « quand agir ? », donc
+          au Planning. Le même objet à deux endroits sous deux noms, c'est le
+          conducteur qui ne sait plus lequel fait foi. */}
+      {(knowledge.confirmed.length + knowledge.proposed.length + stakeholders.confirmed.length + stakeholders.proposed.length) > 0 && (
+        <section className="space-y-3 rounded-2xl border bg-card p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Ce que MemorIA sait
+          </h2>
+
+          {(knowledge.confirmed.length + knowledge.proposed.length) > 0 && (
+            <div>
+              <h3 className="text-[13px] font-medium text-muted-foreground">Connaissances</h3>
+              <ul className="mt-1 space-y-1">
+                {knowledge.confirmed.map((k) => (
+                  <li key={k.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span className="min-w-0">{k.title}</span>
+                  </li>
+                ))}
+                {knowledge.proposed.map((k) => (
+                  <li key={k.id} className="flex items-start gap-2 text-[13px] text-muted-foreground">
+                    <span className="mt-[5px] h-2.5 w-2.5 shrink-0 rounded-full border border-muted-foreground/50" />
+                    <span className="min-w-0">{k.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(stakeholders.confirmed.length + stakeholders.proposed.length) > 0 && (
+            <div>
+              <h3 className="text-[13px] font-medium text-muted-foreground">Intervenants connus</h3>
+              <ul className="mt-1 space-y-1">
+                {[...stakeholders.confirmed, ...stakeholders.proposed].map((p) => (
+                  <li key={p.id} className="text-[13px] text-foreground/90">{p.title}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* « Habitudes observées » : vide au début, et c'est honnête. Une habitude
+              se constate sur plusieurs visites — l'annoncer avant serait inventer une
+              régularité qui n'existe pas encore. Ce vide dit ce que MemorIA deviendra. */}
+          <div>
+            <h3 className="text-[13px] font-medium text-muted-foreground">Habitudes observées</h3>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Aucune encore — une habitude se reconnaît sur plusieurs visites.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* ── Bloc : Le chantier aujourd'hui (état + prochaine échéance) ── */}
       {statusCells.length > 0 && (
