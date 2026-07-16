@@ -15,6 +15,7 @@
 
 import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createSiteAction } from '@/lib/db/site-actions'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
@@ -238,4 +239,79 @@ export async function countProposalsBySite(
   }
   for (const r of data ?? []) counts[(r as { kind: ProposalKind }).kind]++
   return counts
+}
+
+// ── Décisions humaines : promouvoir / écarter ───────────────────
+// « L'humain décide ce qui devient vrai. » Confirmer = PROMOUVOIR la proposition
+// vers son objet métier réel (et la marquer 'confirmed', sans la détruire). Écarter
+// = 'dismissed' (elle ne réapparaîtra jamais à une re-synthèse — la dédup la reconnaît).
+
+/** Écarte une proposition : décision humaine, jamais ressuscitée. */
+export async function dismissProposal(id: string, reviewedBy: string | null, reason?: string): Promise<boolean> {
+  const supabase = createAdminClient()
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('site_knowledge_proposals')
+    .update({ status: 'dismissed', reviewed_at: now, reviewed_by: reviewedBy, dismiss_reason: reason ?? null, updated_at: now })
+    .eq('id', id)
+    .eq('status', 'proposed') // on n'écarte que ce qui est encore proposé
+  if (error) throw error
+  return true
+}
+
+export interface PromotionResult { objectType: string; objectId: string }
+
+/**
+ * Confirme une proposition en la PROMOUVANT vers son objet métier réel, puis la
+ * marque 'confirmed' avec le lien vers l'objet créé. Idempotent : si déjà promue,
+ * renvoie l'objet existant sans recréer. Un geste EXPLICITE par type — une vigilance
+ * ne devient jamais une réserve automatiquement (portée contractuelle).
+ *
+ * Aujourd'hui : kind 'action' → site_action. Les autres types (vigilance→site_notes,
+ * échéance→obligation, intervenant→site_intervenant, savoir→mémoire) arrivent ensuite.
+ */
+export async function promoteProposal(params: { id: string; userId: string | null }): Promise<PromotionResult | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.from('site_knowledge_proposals').select('*').eq('id', params.id).single()
+  if (error || !data) return null
+  const p = data as DbKnowledgeProposal
+
+  // Déjà promue : on renvoie l'objet existant (idempotent), on ne recrée rien.
+  if (p.status !== 'proposed') {
+    return p.promoted_object_type && p.promoted_object_id
+      ? { objectType: p.promoted_object_type, objectId: p.promoted_object_id }
+      : null
+  }
+
+  let result: PromotionResult
+  if (p.kind === 'action') {
+    const payload = (p.payload ?? {}) as { owner?: string | null }
+    const id = await createSiteAction({
+      site_id: p.site_id,
+      report_id: p.report_id ?? null,
+      title: p.title,
+      body: p.body,
+      assigned_to: payload.owner || null,
+      created_by: params.userId,
+      created_from: 'visit_debrief_ai',
+    })
+    result = { objectType: 'site_action', objectId: id }
+  } else {
+    throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
+  }
+
+  const now = new Date().toISOString()
+  const { error: updErr } = await supabase
+    .from('site_knowledge_proposals')
+    .update({
+      status: 'confirmed',
+      promoted_object_type: result.objectType,
+      promoted_object_id: result.objectId,
+      reviewed_at: now,
+      reviewed_by: params.userId,
+      updated_at: now,
+    })
+    .eq('id', params.id)
+  if (updErr) throw updErr
+  return result
 }
