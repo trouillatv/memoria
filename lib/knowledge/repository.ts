@@ -66,11 +66,15 @@ export interface ActionSummaryRow {
   status: string
   due_date: string | null
   created_at: string
+  /** Quand l'action a été TERMINÉE — `null` tant qu'elle ne l'est pas. Sans cette
+   *  date, « terminées récemment » ne peut pas exister : `created_at` dit quand on
+   *  l'a écrite, jamais quand on l'a faite. */
+  done_at: string | null
 }
 export async function readSiteActionSummaries(siteId: string): Promise<ActionSummaryRow[]> {
   const { data, error } = await createAdminClient()
     .from('site_actions')
-    .select('id, title, status, due_date, created_at')
+    .select('id, title, status, due_date, created_at, done_at')
     .eq('site_id', siteId)
   if (error) return []
   return (data ?? []) as ActionSummaryRow[]

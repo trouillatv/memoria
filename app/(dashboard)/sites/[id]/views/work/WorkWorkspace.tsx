@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { CalendarClock, CheckCircle2, ChevronDown, ClipboardList, ShieldAlert, Target } from 'lucide-react'
+import { CalendarClock, CheckCircle2, ChevronDown, ClipboardList, ListTodo, ShieldAlert, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { interventionStatusLabel } from '@/lib/chantier/labels'
+import { getActionDueLabel } from '@/lib/chantier/overview-projections'
+import type { KnowledgeItem } from '@/lib/knowledge/site-overview'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
@@ -15,9 +17,20 @@ interface WorkWorkspaceProps {
   blocages: SiteBlocage[]
   missions: DbMission[]
   interventions: SupervisorInterventionRow[]
+  /** Le cycle de vie d'une action, vu depuis le read model de la fiche : ce qui
+   *  attend d'être confirmé et ce qui vient d'être fait. Même source que l'Aperçu
+   *  et que l'accueil — une action est LA MÊME partout, ou elle n'est rien. */
+  proposed: KnowledgeItem[]
+  proposedTotal: number
+  completedRecent: KnowledgeItem[]
+  /** Là où l'on confirme une proposition : la synthèse de la dernière visite. */
+  synthesisHref?: string
 }
 
-export function WorkWorkspace({ siteId, actions, blocages, missions, interventions }: WorkWorkspaceProps) {
+export function WorkWorkspace({
+  siteId, actions, blocages, missions, interventions,
+  proposed, proposedTotal, completedRecent, synthesisHref,
+}: WorkWorkspaceProps) {
   const todayIso = todayLocalIso()
   const plannedInterventions = interventions.filter((intervention) => !isDone(intervention))
   const overdueActions = actions.filter((action) => action.due_date && action.due_date < todayIso)
@@ -201,8 +214,43 @@ export function WorkWorkspace({ siteId, actions, blocages, missions, interventio
           </section>
 
           <section className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <SectionTitle icon={CheckCircle2} tone="action" title={`Actions (${sortedActions.length})`} detail="Ce qui manque à une action devient une chose à faire." />
-            <div className="mt-4 space-y-2">
+            {/* Pas de compte sur l'en-tête : il ne comptait que les ouvertes, et
+                affichait « Actions (0) » au-dessus de 3 propositions en attente.
+                Chaque temps porte désormais son propre compte, là où on le lit. */}
+            <SectionTitle icon={CheckCircle2} tone="action" title="Actions" detail="Ce qui manque à une action devient une chose à faire." />
+
+            {/* ── À CONFIRMER ────────────────────────────────────────────────
+                Le travail que MemorIA a compris mais que personne n'a encore
+                décidé. Il ne vivait QUE sur la synthèse : invisible ici, c'est-à-dire
+                à l'endroit exact où l'on vient chercher le travail. Mêmes titres que
+                l'Aperçu et l'accueil — une action est la même partout, ou elle n'est rien. */}
+            {proposedTotal > 0 && (
+              <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/50 p-4 dark:border-sky-900/40 dark:bg-sky-950/20">
+                <div className="flex items-center gap-2">
+                  <ListTodo className="h-4 w-4 shrink-0 text-sky-600" />
+                  <h3 className="text-sm font-semibold text-sky-900 dark:text-sky-200">À confirmer ({proposedTotal})</h3>
+                  <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                    proposé par MemorIA
+                  </span>
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {proposed.map((p) => (
+                    <li key={p.id} className="flex items-start gap-2 text-sm text-foreground/90">
+                      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-sky-500" />
+                      <span className="min-w-0">{p.title}</span>
+                    </li>
+                  ))}
+                </ul>
+                {synthesisHref && (
+                  <Link href={synthesisHref} className="mt-2 inline-flex text-[13px] font-medium text-sky-700 hover:underline dark:text-sky-300">
+                    Voir la synthèse et confirmer
+                  </Link>
+                )}
+              </div>
+            )}
+
+            <h3 className="mt-4 text-sm font-semibold text-muted-foreground">Ouvertes ({sortedActions.length})</h3>
+            <div className="mt-2 space-y-2">
               {sortedActions.length > 0 ? sortedActions.slice(0, 10).map((action) => {
                 const late = Boolean(action.due_date && action.due_date < todayIso)
                 return (
@@ -241,6 +289,24 @@ export function WorkWorkspace({ siteId, actions, blocages, missions, interventio
                 <EmptyMessage>Aucune action ouverte.</EmptyMessage>
               )}
             </div>
+
+            {/* ── TERMINÉES RÉCEMMENT ────────────────────────────────────────
+                Un écran qui ne montre que le reste à faire donne l'impression qu'on
+                n'avance jamais. Le travail fini doit se voir — trié par date de
+                réalisation, pas de création. Silence s'il n'y en a pas. */}
+            {completedRecent.length > 0 && (
+              <>
+                <h3 className="mt-5 text-sm font-semibold text-muted-foreground">Terminées récemment</h3>
+                <ul className="mt-2 space-y-1">
+                  {completedRecent.map((a) => (
+                    <li key={a.id} className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      <span className="min-w-0">{a.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </section>
         </div>
 

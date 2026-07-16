@@ -116,6 +116,10 @@ export interface KnowledgeSection {
 export interface ActionsSection {
   proposed: KnowledgeItem[]
   confirmed: KnowledgeItem[] // actions actives (open/planned)
+  /** Terminées RÉCEMMENT (par date de réalisation, pas de création). Le travail fini
+   *  doit se voir : un écran qui ne montre que le reste à faire donne l'impression
+   *  qu'on n'avance jamais. */
+  completedRecent: KnowledgeItem[]
   priority: PriorityAction[]
   summary: { proposed: number; active: number; planned: number; overdue: number; completed: number }
 }
@@ -326,7 +330,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
       pending: { photos: 0, videos: 0, vocals: 0, notes: 0 },
       projectionFailed: false,
     },
-    actions: { proposed: [], confirmed: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, completed: 0 } },
+    actions: { proposed: [], confirmed: [], completedRecent: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, completed: 0 } },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],
@@ -383,9 +387,18 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     dueLabel: getActionDueLabel({ dueDate: a.dueDate, status: a.status }, todayIso),
     urgency: urgencyOf(a.dueDate, todayIso),
   }))
+  // Terminées récemment : triées par date de RÉALISATION. Une action faite hier
+  // passe devant une action créée hier et faite il y a un mois.
+  const completedRecent = actionRows
+    .filter((a) => a.status === 'done' && a.done_at)
+    .sort((a, b) => (b.done_at ?? '').localeCompare(a.done_at ?? ''))
+    .slice(0, TOP)
+    .map((a) => ({ id: a.id, title: a.title }))
+
   const actions: ActionsSection = {
     proposed: proj.actions.proposedTop.slice(0, TOP),
     confirmed: active.slice(0, TOP).map((a) => ({ id: a.id, title: a.title })),
+    completedRecent,
     priority,
     summary: { proposed: proj.actions.proposed, active: active.length, planned, overdue, completed },
   }

@@ -51,6 +51,7 @@ import { TogglePanel } from './TogglePanel'
 import { DocumentsWorkspace, type DocumentsQrState, type SiteMediaSummary } from './views/documents/DocumentsWorkspace'
 import { MemoryWorkspace, type SiteRelay } from './views/memory/MemoryWorkspace'
 import { WorkWorkspace } from './views/work/WorkWorkspace'
+import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
 import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
@@ -105,6 +106,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   ])
 
   if (!identity) notFound()
+
+  // L'onglet Travail montre le cycle de vie d'une action (proposée → ouverte →
+  // terminée). Ces titres viennent du MÊME read model que l'Aperçu : une action
+  // proposée est la même sur les deux onglets, ou le chantier se contredit.
+  const workOverview = tab === 'travail'
+    ? await getSiteOverview(id).catch(() => emptySiteOverview(id))
+    : emptySiteOverview(id)
 
   const openBlocages = blocages.filter((b) => b.dateEnd === null)
   const sinceIso = lastVisit?.endedAt ?? lastVisit?.startedAt ?? null
@@ -185,6 +193,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             blocages={openBlocages}
             missions={missions}
             interventions={interventionsResult.items}
+            proposed={workOverview.actions.proposed}
+            proposedTotal={workOverview.actions.summary.proposed}
+            completedRecent={workOverview.actions.completedRecent}
+            synthesisHref={workOverview.activity.lastVisit ? `/m/visite/${workOverview.activity.lastVisit.reportId}/cr` : undefined}
           />
         ) : tab === 'chronologie' ? (
           <ChronologyWorkspace
