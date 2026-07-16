@@ -51,6 +51,21 @@ export function emptyTodayChanges(): TodayChanges {
   return { sites: [], events: [] }
 }
 
+/** Le mot du conducteur quand IL a tranché. « 1 action confirmée » : la preuve que
+ *  la boucle proposition → travail réel s'est fermée, et à quelle heure. */
+function confirmedLabel(kind: string, count: number): string | null {
+  const s = count > 1
+  switch (kind) {
+    case 'action': return `${count} action${s ? 's' : ''} confirmée${s ? 's' : ''}`
+    case 'deadline': return `${count} échéance${s ? 's' : ''} confirmée${s ? 's' : ''}`
+    case 'watchpoint': return `${count} point${s ? 's' : ''} de vigilance confirmé${s ? 's' : ''}`
+    case 'stakeholder': return `${count} intervenant${s ? 's' : ''} confirmé${s ? 's' : ''}`
+    case 'knowledge': return `${count} information${s ? 's' : ''} confirmée${s ? 's' : ''}`
+    case 'decision': return `${count} décision${s ? 's' : ''} confirmée${s ? 's' : ''}`
+    default: return null
+  }
+}
+
 /** Le mot du conducteur pour un type de proposition. Jamais « proposal », jamais un kind. */
 function proposalLabel(kind: string, count: number): string | null {
   const s = count > 1
@@ -87,6 +102,22 @@ function buildEvents(rows: DayEventRow[]): ChangeEvent[] {
     if (!label) continue
     const at = list.reduce((max, r) => (r.at > max ? r.at : max), list[0].at)
     out.push({ id: `prop-${kind}-${at}`, at, label })
+  }
+
+  // Les confirmations : même regroupement, mais elles racontent l'inverse — non plus
+  // ce que MemorIA a compris, mais ce que le conducteur a décidé d'en faire.
+  const confirmedByKind = new Map<string, DayEventRow[]>()
+  for (const r of rows) {
+    if (r.kind !== 'proposal_confirmed' || !r.proposal_kind) continue
+    const list = confirmedByKind.get(r.proposal_kind) ?? []
+    list.push(r)
+    confirmedByKind.set(r.proposal_kind, list)
+  }
+  for (const [kind, list] of confirmedByKind) {
+    const label = confirmedLabel(kind, list.length)
+    if (!label) continue
+    const at = list.reduce((max, r) => (r.at > max ? r.at : max), list[0].at)
+    out.push({ id: `conf-${kind}-${at}`, at, label })
   }
   return out.sort((a, b) => a.at.localeCompare(b.at))
 }

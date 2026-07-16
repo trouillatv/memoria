@@ -167,7 +167,7 @@ export async function readVisitSourceSnapshot(reportId: string): Promise<VisitSo
 export interface DayEventRow {
   site_id: string
   at: string
-  kind: 'visit_ended' | 'synthesis_created' | 'proposal_created'
+  kind: 'visit_ended' | 'synthesis_created' | 'proposal_created' | 'proposal_confirmed'
   /** Type de proposition (`action`, `deadline`…) — absent pour les autres faits. */
   proposal_kind?: string
 }
@@ -210,6 +210,22 @@ export async function readDayEvents(dayIso: string, orgId: string | null): Promi
   const { data: props } = await pq
   for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string }>) {
     out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind })
+  }
+
+  // Une confirmation est un fait de la journée AU MÊME TITRE qu'une visite : c'est
+  // le moment où une proposition de MemorIA devient du travail réel. `reviewed_at`
+  // est posé par la promotion — on ne devine pas, on lit la décision.
+  let cq = db
+    .from('site_knowledge_proposals')
+    .select('site_id, kind, reviewed_at')
+    .eq('status', 'confirmed')
+    .not('reviewed_at', 'is', null)
+    .gte('reviewed_at', from)
+    .lte('reviewed_at', to)
+  if (orgId) cq = cq.eq('organization_id', orgId)
+  const { data: confirmed } = await cq
+  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string }>) {
+    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind })
   }
   return out
 }
