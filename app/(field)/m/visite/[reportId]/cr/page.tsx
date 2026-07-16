@@ -49,9 +49,28 @@ export default async function VisitCrPreviewPage({
   ])
   if (!doc) notFound()
 
-  const pdfHref = `/m/visite/${reportId}/pdf`
+  // ── LE PDF CHANGE QUAND LA SYNTHÈSE CHANGE — ET SON NOM AUSSI ──────────────
+  // Le nom du fichier était unique par VISITE (chantier + date + heure), jamais
+  // par VERSION du contenu. Or la synthèse évolue : on met à jour, on confirme, le
+  // gabarit change — et le PDF n'est plus le même. Même nom, contenu différent.
+  //
+  // Résultat, constaté par Vincent : « Télécharger » demande de remplacer le
+  // fichier (donc on obtient bien le neuf), mais « Voir le PDF » rouvre l'ANCIEN —
+  // celui déjà présent dans Téléchargements. Le conducteur croit que MemorIA lui
+  // ment, alors qu'elle a bien travaillé : c'est le téléphone qui rouvre un
+  // fichier qu'il croit être le même, parce qu'il porte le même nom.
+  //
+  // La signature de version suit ce qui fait VRAIMENT changer le PDF : la synthèse
+  // (son numéro + le moment où elle a été écrite). Elle voyage dans l'URL — le
+  // navigateur voit une adresse neuve, pas une relecture — et dans le nom du
+  // fichier, pour que le téléphone ne confonde plus deux versions.
+  const analysis = (visit.debrief_analysis ?? null) as { analysis_version?: number; generated_at?: string } | null
+  const pdfVersion = analysis?.generated_at
+    ? `v${analysis.analysis_version ?? 1}-${Date.parse(analysis.generated_at) || 0}`
+    : `v0-${Date.parse(visit.updated_at ?? '') || 0}`
+  const pdfHref = `/m/visite/${reportId}/pdf?v=${encodeURIComponent(pdfVersion)}`
   // ?download=1 → attachment (le téléphone enregistre le fichier).
-  const pdfDownloadHref = `${pdfHref}?download=1`
+  const pdfDownloadHref = `${pdfHref}&download=1`
   const isAo = doc.motive === 'previsite_ao'
   const isPremiere = visit.visit_motive === 'premiere'
 

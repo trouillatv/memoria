@@ -77,10 +77,16 @@ export async function GET(req: Request, ctx: RouteCtx) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
 
-  // Nom de fichier UNIQUE par visite : chantier + date + heure de la visite
-  // (fuseau Nouméa). Sans l'horodatage, Android voit « cr-visite-<chantier>.pdf »
-  // déjà présent dans Téléchargements et rouvre l'ancien PDF au lieu du nouveau —
-  // le conducteur croit alors que MemorIA s'est trompé. Ex. « cr-cuisine-petratiti-2026-07-22-14h32.pdf ».
+  // Nom de fichier UNIQUE par visite ET PAR VERSION : chantier + date/heure de la
+  // visite (fuseau Nouméa) + numéro de synthèse.
+  //
+  // L'horodatage de la VISITE ne suffisait pas. Il empêche bien de confondre deux
+  // visites, mais pas deux VERSIONS de la même : on met à jour la synthèse, on
+  // confirme des actions, le gabarit évolue — même nom, contenu différent. Android
+  // rouvre alors le fichier déjà présent dans Téléchargements et affiche l'ancien
+  // PDF ; le conducteur croit que MemorIA s'est trompée, alors qu'elle a raison et
+  // que c'est le téléphone qui montre un fichier périmé.
+  // Ex. « cr-cuisine-petratiti-2026-07-22-14h32-v2.pdf ».
   const visitInstant = new Date(visit.started_at ?? visit.created_at ?? Date.now())
   const ymd = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Pacific/Noumea',
@@ -96,7 +102,10 @@ export async function GET(req: Request, ctx: RouteCtx) {
   })
     .format(visitInstant)
     .replace(':', 'h') // « 14h32 »
-  const stamp = `${ymd}-${hm}`
+  // Le numéro de synthèse : il change à chaque « Mettre à jour ». C'est LUI qui
+  // distingue deux PDF du même passage.
+  const version = debrief?.analysis_version ?? 0
+  const stamp = `${ymd}-${hm}-v${version}`
 
   // ?download=1 → attachment : le mobile TÉLÉCHARGE le fichier (bouton « Télécharger »).
   // Sinon inline : le mobile OUVRE le PDF (aperçu), l'agent peut ensuite partager.

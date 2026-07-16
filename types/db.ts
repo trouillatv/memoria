@@ -455,6 +455,10 @@ export interface DbSiteReport {
   dossier_id: string | null // dossier d'opération rattaché (mig 172) — null si lieu legacy
   title: string | null
   next_meeting_at: string | null // date de prochaine réunion (mig 131)
+  /** Synthèse IA de la visite (mig 211). Sa forme complète vit dans
+   *  `StoredDebriefAnalysis` ; ici on n'expose que ce qui sert à SAVOIR QUELLE
+   *  VERSION on tient — le PDF et son nom de fichier en dépendent. */
+  debrief_analysis?: { analysis_version?: number; generated_at?: string } | null
   tenant_id: string
   organization_id: string | null
   status: SiteReportStatus
