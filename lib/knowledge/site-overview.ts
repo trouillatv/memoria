@@ -44,17 +44,21 @@ export interface KnowledgeSection {
 export interface ActionsSection {
   proposed: KnowledgeItem[]
   confirmed: KnowledgeItem[] // actions actives (open/planned)
-  summary: { proposed: number; open: number; overdue: number; completed: number }
+  summary: { proposed: number; active: number; overdue: number; completed: number }
 }
 
 export type SynthesisStatus = 'missing' | 'up_to_date' | 'outdated' | 'generating'
 
 export interface SiteOverview {
+  /** CE QU'EST le chantier — stable, ne bouge pas parce qu'on l'a visité. */
   identity: {
     id: string
     name: string
     client: string | null
     status: string | null
+  }
+  /** CE QUI LUI ARRIVE — vie du chantier. Séparé de l'identité, qui n'est pas un fourre-tout. */
+  activity: {
     lastVisit: { reportId: string; endedAt: string | null } | null
     picture: string | null
   }
@@ -92,9 +96,10 @@ function proposedAndConfirmed(p: ProposalProjection, confirmed: KnowledgeItem[],
 export function emptySiteOverview(siteId = ''): SiteOverview {
   const emptySection: KnowledgeSection = { proposed: [], confirmed: [], summary: { proposed: 0, confirmed: 0 } }
   return {
-    identity: { id: siteId, name: '', client: null, status: null, lastVisit: null, picture: null },
+    identity: { id: siteId, name: '', client: null, status: null },
+    activity: { lastVisit: null, picture: null },
     synthesis: { status: 'missing', version: null, updatedAt: null, basedOn: null, pendingChanges: 0 },
-    actions: { proposed: [], confirmed: [], summary: { proposed: 0, open: 0, overdue: 0, completed: 0 } },
+    actions: { proposed: [], confirmed: [], summary: { proposed: 0, active: 0, overdue: 0, completed: 0 } },
     watchpoints: { ...emptySection },
     deadlines: { ...emptySection },
     stakeholders: { ...emptySection },
@@ -126,7 +131,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const actions: ActionsSection = {
     proposed: proj.actions.proposedTop.slice(0, TOP),
     confirmed: active.slice(0, TOP).map((a) => ({ id: a.id, title: a.title })),
-    summary: { proposed: proj.actions.proposed, open: active.length, overdue, completed },
+    summary: { proposed: proj.actions.proposed, active: active.length, overdue, completed },
   }
 
   // ── Connaissances « à savoir » validées (site_notes a_savoir) ──
@@ -154,6 +159,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       name: identity?.name ?? '',
       client: identity?.clientName ?? null,
       status: identity?.phaseLabel ?? null,
+    },
+    activity: {
       lastVisit: synth ? { reportId: synth.reportId, endedAt: synth.endedAt } : null,
       picture: null,
     },
