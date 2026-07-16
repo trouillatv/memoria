@@ -247,38 +247,67 @@ export async function countProposalsBySite(
 // distincte du MÉTIER (site_actions, créées seulement à la promotion). Toutes les
 // surfaces (Dashboard, Site, Travail, Mobile) lisent CETTE source unique.
 
-/**
- * PROJECTION UNIQUE de l'objet Action pour un chantier — la SEULE source que toutes
- * les vues (Synthèse, Site, Dashboard, Travail, Historique) consomment ; aucune ne
- * recompte de son côté. Mêle les deux niveaux :
- *   • proposed  = propositions encore à confirmer (connaissance) ;
- *   • confirmed = actions actives (métier : site_actions open/planned) ;
- *   • completed = actions terminées (done) ;
- *   • overdue   = actives dont l'échéance est passée ;
- *   • proposedTop = les premières propositions (titres), pour l'aperçu direct.
- */
-export interface ActionProjection {
+// Tri par PERTINENCE (Vincent) : les premières propositions montrées ne doivent pas
+// être « les 3 premières de la base » mais les plus importantes → priorité, puis
+// confiance IA, puis ancienneté. (L'échéance des actions est un texte libre non
+// triable ici ; elle deviendra un critère quand l'objet Échéance sera structuré.)
+const PRIORITY_RANK: Record<string, number> = { haute: 0, moyenne: 1, basse: 2 }
+const CONFIDENCE_RANK: Record<string, number> = { elevee: 0, moyenne: 1, faible: 2 }
+
+/** Aperçu GÉNÉRIQUE de propositions (le point d'entrée réutilisable pour TOUT type :
+ *  action, vigilance, échéance, savoir, intervenant). Compte + top N ORDONNÉ par
+ *  pertinence. Les projections spécifiques composent ce cœur avec leur côté métier —
+ *  aucune logique de comptage/tri n'est dupliquée par type. */
+export interface ProposalProjection {
   proposed: number
+  proposedTop: Array<{ id: string; title: string }>
+}
+
+export async function getProposalProjection(
+  siteId: string,
+  kind: ProposalKind,
+  opts?: { topLimit?: number },
+): Promise<ProposalProjection> {
+  const supabase = createAdminClient()
+  const topLimit = opts?.topLimit ?? 3
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, title, payload, confidence, created_at')
+    .eq('site_id', siteId).eq('kind', kind).eq('status', 'proposed')
+  if (error) return { proposed: 0, proposedTop: [] }
+  const scored = ((data ?? []) as Array<{ id: string; title: string; payload: ProposalPayload; confidence: string | null; created_at: string }>)
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      pr: PRIORITY_RANK[String((r.payload as { priority?: string }).priority ?? '')] ?? 3,
+      conf: CONFIDENCE_RANK[r.confidence ?? ''] ?? 3,
+      created: r.created_at,
+    }))
+    .sort((a, b) => a.pr - b.pr || a.conf - b.conf || a.created.localeCompare(b.created))
+  return {
+    proposed: scored.length,
+    proposedTop: scored.slice(0, topLimit).map((s) => ({ id: s.id, title: s.title })),
+  }
+}
+
+/**
+ * PROJECTION UNIQUE de l'objet Action — la SEULE source que toutes les vues
+ * consomment. Compose le cœur générique (proposed/proposedTop, ordonné) avec le
+ * côté MÉTIER (site_actions) :
+ *   • confirmed = actions actives (open/planned) ; • completed = terminées (done) ;
+ *   • overdue   = actives dont l'échéance est passée.
+ */
+export interface ActionProjection extends ProposalProjection {
   confirmed: number
   completed: number
   overdue: number
-  proposedTop: Array<{ id: string; title: string }>
 }
 
 export async function getActionProjection(siteId: string, opts?: { topLimit?: number }): Promise<ActionProjection> {
   const supabase = createAdminClient()
-  const topLimit = opts?.topLimit ?? 3
   const todayIso = new Date().toISOString().slice(0, 10)
-  const [propCountRes, propTopRes, actionsRes] = await Promise.all([
-    supabase
-      .from('site_knowledge_proposals')
-      .select('id', { count: 'exact', head: true })
-      .eq('site_id', siteId).eq('kind', 'action').eq('status', 'proposed'),
-    supabase
-      .from('site_knowledge_proposals')
-      .select('id, title')
-      .eq('site_id', siteId).eq('kind', 'action').eq('status', 'proposed')
-      .order('created_at', { ascending: true }).limit(topLimit),
+  const [proposal, actionsRes] = await Promise.all([
+    getProposalProjection(siteId, 'action', opts),
     supabase.from('site_actions').select('status, due_date').eq('site_id', siteId),
   ])
   let confirmed = 0
@@ -291,13 +320,7 @@ export async function getActionProjection(siteId: string, opts?: { topLimit?: nu
       if (a.due_date && a.due_date.slice(0, 10) < todayIso) overdue++
     }
   }
-  return {
-    proposed: propCountRes.count ?? 0,
-    confirmed,
-    completed,
-    overdue,
-    proposedTop: ((propTopRes.data ?? []) as Array<{ id: string; title: string }>).map((r) => ({ id: r.id, title: r.title })),
-  }
+  return { ...proposal, confirmed, completed, overdue }
 }
 
 /** Idem pour plusieurs chantiers (accueil / dashboard multi-sites) → compte par site. */
