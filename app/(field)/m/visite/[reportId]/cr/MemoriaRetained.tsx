@@ -13,9 +13,9 @@
 // on ne bloque jamais l'accès à ce qui a été dit.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users } from 'lucide-react'
-import { getVisitDebriefFieldAction } from '../debrief-actions'
-import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Square, CheckSquare, X } from 'lucide-react'
+import { getVisitDebriefFieldAction, setVisitActionStateAction } from '../debrief-actions'
+import type { StoredDebriefAnalysis, SnapshotDelta, LedgerAction, ActionState } from '@/lib/visits/debrief-analysis'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -29,6 +29,7 @@ export function MemoriaRetained({
 }) {
   const [phase, setPhase] = useState<Phase>('loading')
   const [analysis, setAnalysis] = useState<StoredDebriefAnalysis | null>(null)
+  const [staleDelta, setStaleDelta] = useState<SnapshotDelta | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aliveRef = useRef(true)
@@ -49,6 +50,7 @@ export function MemoriaRetained({
       return
     }
     setAnalysis(res.loaded.analysis)
+    setStaleDelta(res.status === 'stale' ? res.delta : null)
     setPhase('ready')
   }, [reportId])
 
@@ -66,6 +68,15 @@ export function MemoriaRetained({
   function regenerate() {
     setConfirmRegen(false)
     void load(true)
+  }
+
+  // Décision humaine sur une action : optimiste tout de suite, persistée en fond.
+  // L'IA n'efface jamais — un « fait »/« écarté » survit aux mises à jour de synthèse.
+  function setActState(key: string, next: ActionState) {
+    setAnalysis((prev) => prev
+      ? { ...prev, action_ledger: (prev.action_ledger ?? []).map((x) => (x.key === key ? { ...x, state: next } : x)) }
+      : prev)
+    void setVisitActionStateAction({ report_id: reportId, key, state: next })
   }
 
   // ── En cours (analyse ou attente d'une analyse concurrente) ──
@@ -112,7 +123,8 @@ export function MemoriaRetained({
 
   // ── Résultat : « Ce que MemorIA a retenu » ──
   const a = analysis!
-  const hasActions = a.actions.length > 0
+  const openActions = (a.action_ledger ?? []).filter((x) => x.state !== 'dismissed')
+  const hasActions = openActions.length > 0
   const hasWatch = a.watchpoints.length > 0
   const hasDecisions = a.decisions.length > 0
   const hasSavoir = a.a_savoir.length > 0
@@ -126,6 +138,20 @@ export function MemoriaRetained({
         <Sparkles className="h-[18px] w-[18px] shrink-0 text-emerald-600" />
         <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Ce que MemorIA a retenu</h2>
       </div>
+
+      {staleDelta && deltaTotal(staleDelta) > 0 && (
+        <div className="rounded-xl border border-amber-300/70 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+          <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">Cette visite a été enrichie depuis la dernière synthèse.</p>
+          <p className="mt-0.5 text-[12px] text-amber-800/80 dark:text-amber-300/80">Nouveau : {deltaLabel(staleDelta)}. La synthèse ci-dessous ne les prend pas encore en compte.</p>
+          <button
+            type="button"
+            onClick={() => void load(true)}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white active:brightness-95"
+          >
+            <RefreshCw className="h-4 w-4" /> Prendre en compte les nouveaux éléments
+          </button>
+        </div>
+      )}
 
       {a.summary.trim() && (
         <Block Icon={ListChecks} cls="text-emerald-600" title="Résumé">
@@ -142,20 +168,43 @@ export function MemoriaRetained({
       {hasActions && (
         <Block Icon={ListTodo} cls="text-violet-600" title="Actions proposées">
           <ul className="space-y-2">
-            {a.actions.map((act, i) => (
-              <li key={i} className="text-[13px] leading-snug">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  {act.priority && <PriorityChip p={act.priority} />}
-                  <span className="font-medium text-foreground/90">{act.title}</span>
-                </span>
-                {act.rationale && <span className="mt-0.5 block text-[12px] text-muted-foreground">{act.rationale}</span>}
-                {(act.owner || act.due) && (
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+            {openActions.map((act) => {
+              const done = act.state === 'done'
+              const isNew = a.analysis_version > 1 && act.version_added === a.analysis_version
+              return (
+                <li key={act.key} className="flex gap-2.5 text-[13px] leading-snug">
+                  <button
+                    type="button"
+                    onClick={() => setActState(act.key, done ? 'open' : 'done')}
+                    aria-label={done ? 'Rouvrir cette action' : 'Marquer comme faite'}
+                    className="mt-px shrink-0 text-violet-600"
+                  >
+                    {done ? <CheckSquare className="h-[18px] w-[18px]" /> : <Square className="h-[18px] w-[18px]" />}
+                  </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {isNew && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Nouveau</span>}
+                      {act.priority && <PriorityChip p={act.priority} />}
+                      <span className={`font-medium ${done ? 'text-muted-foreground line-through' : 'text-foreground/90'}`}>{act.title}</span>
+                    </span>
+                    {act.rationale && <span className="mt-0.5 block text-[12px] text-muted-foreground">{act.rationale}</span>}
+                    {(act.owner || act.due) && (
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+                      </span>
+                    )}
                   </span>
-                )}
-              </li>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => setActState(act.key, 'dismissed')}
+                    aria-label="Écarter cette proposition"
+                    className="mt-px shrink-0 text-muted-foreground/50 hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </Block>
       )}
@@ -202,16 +251,16 @@ export function MemoriaRetained({
 
       {/* Discret : quand l'analyse a été faite, et la régénérer (jamais auto). */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-emerald-200/60 pt-2 text-[11px] text-muted-foreground dark:border-emerald-900/40">
-        <span>{generatedLabel ? `Analyse générée le ${generatedLabel}` : 'Analyse générée'}</span>
+        <span>{generatedLabel ? `Synthèse mise à jour le ${generatedLabel}` : 'Synthèse'}</span>
         {confirmRegen ? (
           <span className="inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-            <span className="text-[11px]">Régénérer remplace les propositions, sans toucher aux actions validées.</span>
-            <button type="button" onClick={regenerate} className="rounded-md bg-emerald-600 px-2 py-1 font-medium text-white">Régénérer</button>
+            <span className="text-[11px]">La mise à jour remplace les propositions, sans toucher aux actions déjà validées.</span>
+            <button type="button" onClick={regenerate} className="rounded-md bg-emerald-600 px-2 py-1 font-medium text-white">Mettre à jour</button>
             <button type="button" onClick={() => setConfirmRegen(false)} className="rounded-md px-2 py-1 hover:bg-muted">Annuler</button>
           </span>
         ) : (
           <button type="button" onClick={() => setConfirmRegen(true)} className="inline-flex items-center gap-1 hover:text-foreground">
-            <RefreshCw className="h-3.5 w-3.5" /> Régénérer
+            <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour la synthèse
           </button>
         )}
       </div>
@@ -223,6 +272,16 @@ function safeDate(iso: string): string | null {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return null
   return new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+}
+
+function deltaTotal(d: SnapshotDelta): number { return d.photos + d.videos + d.vocals + d.notes }
+function deltaLabel(d: SnapshotDelta): string {
+  const p: string[] = []
+  if (d.photos) p.push(`${d.photos} photo${d.photos > 1 ? 's' : ''}`)
+  if (d.videos) p.push(`${d.videos} vidéo${d.videos > 1 ? 's' : ''}`)
+  if (d.vocals) p.push(`${d.vocals} mémo${d.vocals > 1 ? 's' : ''}`)
+  if (d.notes) p.push(`${d.notes} note${d.notes > 1 ? 's' : ''}`)
+  return p.length ? p.join(' · ') : 'de nouveaux éléments'
 }
 
 function Block({ Icon, cls, title, children }: { Icon: typeof Eye; cls: string; title: string; children: React.ReactNode }) {

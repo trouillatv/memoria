@@ -1697,6 +1697,17 @@ export async function gatherSiteHistory(siteId: string, excludeReportId: string)
 
 // ── Contexte du Débrief (rassemblement par fenêtre temporelle) ───────────────
 
+/** Instantané de la MATIÈRE de la visite au moment de la synthèse — sert à dire
+ *  « synthèse à jour » ou « visite enrichie depuis » (+N notes, +N photos…). */
+export interface VisitSourceSnapshot {
+  photos: number
+  videos: number
+  vocals: number
+  notes: number
+  /** ISO de la capture la plus récente prise en compte (null si aucune). */
+  last_capture_at: string | null
+}
+
 export interface VisitDebriefContext {
   visit: DbSiteReport
   capturedText: string | null
@@ -1713,6 +1724,8 @@ export interface VisitDebriefContext {
   history: string
   /** V2.1 — digest court par sujet ouvert ; l'Agent 1 identifie le concerné. */
   subjectDigests: string[]
+  /** Instantané des sources prises en compte — pour la synthèse versionnée. */
+  sourceSnapshot: VisitSourceSnapshot
 }
 
 /**
@@ -1742,7 +1755,16 @@ export async function gatherVisitDebriefContext(reportId: string): Promise<Visit
     buildSiteMemorySignals(siteId),
   ])
 
-  const caps = ((capturesRes.data ?? []) as Array<{ kind: string; body: string | null }>)
+  const caps = ((capturesRes.data ?? []) as Array<{ kind: string; body: string | null; created_at: string }>)
+  const countKind = (k: string) => caps.filter((c) => c.kind === k).length
+  const lastCaptureAt = caps.reduce<string | null>((max, c) => (!max || c.created_at > max ? c.created_at : max), null)
+  const sourceSnapshot: VisitSourceSnapshot = {
+    photos: countKind('photo'),
+    videos: countKind('video'),
+    vocals: countKind('vocal'),
+    notes: countKind('note'),
+    last_capture_at: lastCaptureAt,
+  }
   const vocalBodies = caps.filter((c) => c.kind === 'vocal' && c.body?.trim()).map((c) => c.body!.trim())
   const captureNotes = caps
     .filter((c) => (c.kind === 'note' || c.kind === 'photo' || c.kind === 'video') && c.body?.trim())
@@ -1774,6 +1796,7 @@ export async function gatherVisitDebriefContext(reportId: string): Promise<Visit
     openSubjects,
     history: history.text,
     subjectDigests: history.subjectDigests,
+    sourceSnapshot,
   }
 }
 
