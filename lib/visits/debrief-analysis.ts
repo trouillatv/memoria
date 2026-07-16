@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { gatherVisitDebriefContext, type VisitSourceSnapshot } from '@/lib/db/visits'
 import { runVisitDebriefAgent, type VisitDebriefInput, type VisitDebriefParsed } from '@/services/ai/visit-debrief'
+import { projectDebriefToProposals } from '@/lib/db/knowledge-proposals'
 
 type Confidence = 'elevee' | 'moyenne' | 'faible' | null
 
@@ -335,6 +336,18 @@ export async function loadOrRunVisitDebrief(
     const oldLedger = cache?.schema_version === ANALYSIS_SCHEMA_VERSION ? cache.action_ledger : undefined
     const analysis = fromAgent(res.narrative, res.parsed, res.provider, res.model, hash, version, snapshot, oldLedger)
     await writeAnalysis(reportId, analysis).catch(() => {})
+    // Couche d'extraction métier : la synthèse fraîche est projetée en propositions
+    // (actions, vigilances, décisions, savoirs, intervenants, échéances), visibles
+    // partout et distinctes des objets validés. Best-effort : ne casse jamais la
+    // synthèse si la projection échoue. Idempotent → pas de doublon aux mises à jour.
+    if (ctx.visit.site_id && ctx.visit.organization_id) {
+      await projectDebriefToProposals({
+        reportId,
+        siteId: ctx.visit.site_id,
+        organizationId: ctx.visit.organization_id,
+        analysis,
+      }).catch(() => {})
+    }
     return { ok: true, status: 'ready', loaded: { analysis, openSubjects: ctx.openSubjects, fromCache: false } }
   } catch {
     await clearLease(reportId).catch(() => {})
