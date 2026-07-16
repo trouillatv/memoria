@@ -16,7 +16,6 @@ import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief, setActionState, ensureActionProposalsProjected, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
 import { promoteProposal, dismissProposal, getActionProposalStates } from '@/lib/db/knowledge-proposals'
-import { invalidateSiteProjection } from '@/lib/knowledge/projection'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -383,9 +382,8 @@ export async function promoteActionProposalAction(input: unknown): Promise<{ ok:
       organizationId: orgId ?? visit.organization_id ?? null,
     })
     if (!res) return { ok: false, error: 'Promotion impossible' }
-    // UN seul point d'invalidation : le cache de projection tombe et TOUTES les
-    // surfaces (mobile + dashboard) se recomposent — « invalider → tout change ».
-    if (visit.site_id) invalidateSiteProjection(visit.site_id)
+    // L'invalidation de la projection est portée par la MUTATION (createSiteAction,
+    // appelée dans promoteProposal) — jamais par l'écran/l'action.
     return { ok: true, objectId: res.objectId }
   } catch {
     return { ok: false, error: "Échec de la création de l'action" }
@@ -405,9 +403,8 @@ export async function dismissActionProposalAction(input: unknown): Promise<{ ok:
     return { ok: false, error: 'Visite hors organisation' }
   }
   try {
+    // dismissProposal porte lui-même l'invalidation de la projection (la mutation invalide).
     await dismissProposal(parsed.data.proposal_id, auth.userId, undefined, orgId ?? visit.organization_id ?? null)
-    // Une proposition écartée doit disparaître des « à confirmer » partout.
-    if (visit.site_id) invalidateSiteProjection(visit.site_id)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }

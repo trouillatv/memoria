@@ -16,6 +16,7 @@
 import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
@@ -201,6 +202,10 @@ export async function projectDebriefToProposals(params: {
     if (insErr) throw insErr
   }
 
+  // De nouvelles propositions (ou des textes rafraîchis) → la connaissance « à
+  // confirmer » du chantier change : la mutation invalide la projection.
+  if (toInsert.length > 0 || refreshed > 0) invalidateSiteProjection(siteId)
+
   return { inserted: toInsert.length, refreshed, skipped }
 }
 
@@ -262,8 +267,11 @@ export async function dismissProposal(
     .eq('id', id)
     .eq('status', 'proposed') // on n'écarte que ce qui est encore proposé
   if (organizationId) q = q.eq('organization_id', organizationId)
-  const { error } = await q
+  const { data, error } = await q.select('site_id')
   if (error) throw error
+  // Une proposition écartée disparaît des « à confirmer » : la mutation invalide.
+  const siteId = (data as Array<{ site_id: string }> | null)?.[0]?.site_id
+  if (siteId) invalidateSiteProjection(siteId)
   return true
 }
 

@@ -17,8 +17,9 @@ import 'server-only'
 // étape — une vue. À terme cette couche portera d'autres agrégats (visite, mission,
 // entreprise…) ; c'est pour ça qu'elle vit dans son propre module.
 
-import { unstable_cache, revalidateTag, revalidatePath } from 'next/cache'
+import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { siteProjectionTag } from '@/lib/knowledge/invalidate'
 import type { ProposalKind, ProposalPayload } from '@/lib/db/knowledge-proposals'
 
 // Tri par PERTINENCE : les premières propositions montrées ne sont pas « les 3
@@ -161,41 +162,20 @@ async function computeSiteProjection(siteId: string, topLimit: number): Promise<
   }
 }
 
-function projectionTag(siteId: string): string {
-  return `site-projection:${siteId}`
-}
-
 /**
  * Projection agrégée du chantier, MISE EN CACHE (cross-requête, TTL 30 s) et
  * étiquetée par chantier. Toutes les surfaces (Accueil, Dashboard, Site, Travail,
- * Planning) appellent ceci sans multiplier les requêtes DB. Une promotion appelle
- * `invalidateSiteProjection(siteId)` → le cache tombe → tous les écrans se
- * recomposent, sans code spécifique par écran.
+ * Planning) appellent ceci sans multiplier les requêtes DB. Une mutation appelle
+ * `invalidateSiteProjection(siteId)` (cf. lib/knowledge/invalidate) → le cache tombe
+ * → tous les écrans se recomposent, sans code spécifique par écran.
  */
 export function getSiteProjection(siteId: string, opts?: { topLimit?: number }): Promise<SiteProjection> {
   const topLimit = opts?.topLimit ?? 3
   return unstable_cache(
     () => computeSiteProjection(siteId, topLimit),
     ['site-projection', siteId, String(topLimit)],
-    { tags: [projectionTag(siteId)], revalidate: 30 },
+    { tags: [siteProjectionTag(siteId)], revalidate: 30 },
   )()
-}
-
-/**
- * INVALIDE la projection d'un chantier après une écriture (promotion, écartement,
- * clôture d'action…). Fait tomber le cache de données ET revalide les routes qui
- * lisent la projection, mobile ET tableau de bord — « invalider → tous les écrans
- * changent ». Le SEUL point à appeler depuis les server actions.
- */
-export function invalidateSiteProjection(siteId: string): void {
-  revalidateTag(projectionTag(siteId))
-  revalidatePath('/m')
-  revalidatePath('/m/actions')
-  revalidatePath('/m/planning')
-  revalidatePath(`/m/site/${siteId}`)
-  revalidatePath('/dashboard')
-  revalidatePath(`/sites/${siteId}`)
-  revalidatePath(`/sites/${siteId}/actions`)
 }
 
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
