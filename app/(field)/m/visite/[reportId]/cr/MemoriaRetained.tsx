@@ -13,9 +13,15 @@
 // on ne bloque jamais l'accès à ce qui a été dit.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Square, CheckSquare, X } from 'lucide-react'
-import { getVisitDebriefFieldAction, setVisitActionStateAction } from '../debrief-actions'
-import type { StoredDebriefAnalysis, SnapshotDelta, LedgerAction, ActionState } from '@/lib/visits/debrief-analysis'
+import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Plus, Check, ArrowUpRight } from 'lucide-react'
+import {
+  getVisitDebriefFieldAction,
+  getActionProposalStatesAction,
+  promoteActionProposalAction,
+  dismissActionProposalAction,
+  type ActionProposalState,
+} from '../debrief-actions'
+import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -31,6 +37,9 @@ export function MemoriaRetained({
   const [analysis, setAnalysis] = useState<StoredDebriefAnalysis | null>(null)
   const [staleDelta, setStaleDelta] = useState<SnapshotDelta | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  // État des propositions d'action, indexé par la clé du ledger (null = pas encore chargé).
+  const [propStates, setPropStates] = useState<Record<string, ActionProposalState> | null>(null)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aliveRef = useRef(true)
   const loadRef = useRef<(force: boolean) => void>(() => {})
@@ -52,6 +61,11 @@ export function MemoriaRetained({
     setAnalysis(res.loaded.analysis)
     setStaleDelta(res.status === 'stale' ? res.delta : null)
     setPhase('ready')
+    // Propositions d'action promouvables (« Créer l'action ») — après la synthèse.
+    // Projette de façon idempotente côté serveur, puis renvoie leur état actuel.
+    setPropStates(null)
+    const states = await getActionProposalStatesAction({ report_id: reportId })
+    if (aliveRef.current) setPropStates(states)
   }, [reportId])
 
   useEffect(() => { loadRef.current = load }, [load])
@@ -70,13 +84,30 @@ export function MemoriaRetained({
     void load(true)
   }
 
-  // Décision humaine sur une action : optimiste tout de suite, persistée en fond.
-  // L'IA n'efface jamais — un « fait »/« écarté » survit aux mises à jour de synthèse.
-  function setActState(key: string, next: ActionState) {
-    setAnalysis((prev) => prev
-      ? { ...prev, action_ledger: (prev.action_ledger ?? []).map((x) => (x.key === key ? { ...x, state: next } : x)) }
-      : prev)
-    void setVisitActionStateAction({ report_id: reportId, key, state: next })
+  // « Créer l'action » : PROMEUT la proposition en vraie site_action. Une action
+  // n'existe (Travail/Site/Accueil) et ne peut être « faite » qu'après ce geste.
+  // Optimiste, puis persisté ; les autres surfaces sont revalidées côté serveur.
+  async function createAction(key: string) {
+    const st = propStates?.[key]
+    if (!st || st.status !== 'proposed' || busyKey) return
+    setBusyKey(key)
+    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+    if (!aliveRef.current) return
+    setBusyKey(null)
+    if (res.ok) {
+      setPropStates((prev) => ({ ...(prev ?? {}), [key]: { ...st, status: 'confirmed', promotedObjectType: 'site_action', promotedObjectId: res.objectId } }))
+    }
+  }
+
+  // « Écarter » : décision humaine, jamais ressuscitée par une re-synthèse.
+  async function dismissAction(key: string) {
+    const st = propStates?.[key]
+    if (!st || st.status !== 'proposed' || busyKey) return
+    setBusyKey(key)
+    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+    if (!aliveRef.current) return
+    setBusyKey(null)
+    if (res.ok) setPropStates((prev) => ({ ...(prev ?? {}), [key]: { ...st, status: 'dismissed' } }))
   }
 
   // ── En cours (analyse ou attente d'une analyse concurrente) ──
@@ -123,8 +154,13 @@ export function MemoriaRetained({
 
   // ── Résultat : « Ce que MemorIA a retenu » ──
   const a = analysis!
-  const openActions = (a.action_ledger ?? []).filter((x) => x.state !== 'dismissed')
-  const hasActions = openActions.length > 0
+  // Actions du ledger encore visibles (compat : on ignore les vieux 'dismissed' du
+  // ledger), segmentées par le STATUT de leur PROPOSITION : active (à créer / créée)
+  // vs écartée dans le nouveau cycle. Le ledger n'est plus le pilote — la proposition l'est.
+  const ledgerActions = (a.action_ledger ?? []).filter((x) => x.state !== 'dismissed')
+  const activeActions = ledgerActions.filter((x) => propStates?.[x.key]?.status !== 'dismissed')
+  const dismissedActions = ledgerActions.filter((x) => propStates?.[x.key]?.status === 'dismissed')
+  const hasActions = activeActions.length > 0
   const hasWatch = a.watchpoints.length > 0
   const hasDecisions = a.decisions.length > 0
   const hasSavoir = a.a_savoir.length > 0
@@ -167,46 +203,75 @@ export function MemoriaRetained({
 
       {hasActions && (
         <Block Icon={ListTodo} cls="text-violet-600" title="Actions proposées">
-          <ul className="space-y-2">
-            {openActions.map((act) => {
-              const done = act.state === 'done'
+          <ul className="space-y-2.5">
+            {activeActions.map((act) => {
+              const st = propStates?.[act.key]
+              const created = st?.status === 'confirmed'
               const isNew = a.analysis_version > 1 && act.version_added === a.analysis_version
+              const busy = busyKey === act.key
               return (
-                <li key={act.key} className="flex gap-2.5 text-[13px] leading-snug">
-                  <button
-                    type="button"
-                    onClick={() => setActState(act.key, done ? 'open' : 'done')}
-                    aria-label={done ? 'Rouvrir cette action' : 'Marquer comme faite'}
-                    className="mt-px shrink-0 text-violet-600"
-                  >
-                    {done ? <CheckSquare className="h-[18px] w-[18px]" /> : <Square className="h-[18px] w-[18px]" />}
-                  </button>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      {isNew && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Nouveau</span>}
-                      {act.priority && <PriorityChip p={act.priority} />}
-                      <span className={`font-medium ${done ? 'text-muted-foreground line-through' : 'text-foreground/90'}`}>{act.title}</span>
-                    </span>
-                    {act.rationale && <span className="mt-0.5 block text-[12px] text-muted-foreground">{act.rationale}</span>}
-                    {(act.owner || act.due) && (
-                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                        {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+                <li key={act.key} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {created ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        <Check className="h-3 w-3" /> Action créée
                       </span>
+                    ) : (
+                      <>
+                        {isNew && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Nouveau</span>}
+                        {act.priority && <PriorityChip p={act.priority} />}
+                      </>
                     )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setActState(act.key, 'dismissed')}
-                    aria-label="Écarter cette proposition"
-                    className="mt-px shrink-0 text-muted-foreground/50 hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  </div>
+                  <p className={`mt-1 font-medium ${created ? 'text-foreground/80' : 'text-foreground/90'}`}>{act.title}</p>
+                  {!created && act.rationale && <p className="mt-0.5 text-[12px] text-muted-foreground">{act.rationale}</p>}
+                  {!created && (act.owner || act.due) && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
+                    </p>
+                  )}
+                  {created ? (
+                    <a href="/m/actions" className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-violet-700 dark:text-violet-300">
+                      Ouvrir l’action <ArrowUpRight className="h-3.5 w-3.5" />
+                    </a>
+                  ) : (
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void createAction(act.key)}
+                        disabled={!st || !!busyKey}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
+                      >
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Créer l’action
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void dismissAction(act.key)}
+                        disabled={!st || !!busyKey}
+                        className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                      >
+                        Écarter
+                      </button>
+                    </div>
+                  )}
                 </li>
               )
             })}
           </ul>
         </Block>
+      )}
+
+      {dismissedActions.length > 0 && (
+        <details className="rounded-xl border bg-muted/20 px-3 py-2">
+          <summary className="cursor-pointer text-[12px] font-medium text-muted-foreground">
+            Éléments écartés ({dismissedActions.length})
+          </summary>
+          <ul className="mt-2 space-y-1.5">
+            {dismissedActions.map((act) => (
+              <li key={act.key} className="text-[12px] text-muted-foreground line-through">{act.title}</li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {hasWatch && (

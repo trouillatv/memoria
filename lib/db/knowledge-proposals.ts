@@ -246,17 +246,61 @@ export async function countProposalsBySite(
 // vers son objet métier réel (et la marquer 'confirmed', sans la détruire). Écarter
 // = 'dismissed' (elle ne réapparaîtra jamais à une re-synthèse — la dédup la reconnaît).
 
-/** Écarte une proposition : décision humaine, jamais ressuscitée. */
-export async function dismissProposal(id: string, reviewedBy: string | null, reason?: string): Promise<boolean> {
+/** Écarte une proposition : décision humaine, jamais ressuscitée. `organizationId`
+ *  = garde fail-closed (le service-role bypasse la RLS) : on n'écarte que dans son org. */
+export async function dismissProposal(
+  id: string,
+  reviewedBy: string | null,
+  reason?: string,
+  organizationId?: string | null,
+): Promise<boolean> {
   const supabase = createAdminClient()
   const now = new Date().toISOString()
-  const { error } = await supabase
+  let q = supabase
     .from('site_knowledge_proposals')
     .update({ status: 'dismissed', reviewed_at: now, reviewed_by: reviewedBy, dismiss_reason: reason ?? null, updated_at: now })
     .eq('id', id)
     .eq('status', 'proposed') // on n'écarte que ce qui est encore proposé
+  if (organizationId) q = q.eq('organization_id', organizationId)
+  const { error } = await q
   if (error) throw error
   return true
+}
+
+/**
+ * Correspondance ledger → proposition (côté serveur) : pour une liste d'actions du
+ * grand livre (titre + responsable + échéance), recalcule le `dedupe_key` — IDENTIQUE
+ * à celui de la projection — et renvoie l'état de la proposition d'action associée,
+ * indexé par la clé du ledger (`key`). Permet à la synthèse de savoir, pour chaque
+ * action affichée, si elle est encore proposée / confirmée (promue) / écartée.
+ */
+export async function getActionProposalStates(
+  siteId: string,
+  actions: Array<{ key: string; title: string; owner?: string | null; due?: string | null }>,
+): Promise<Record<string, { proposalId: string; status: ProposalStatus; promotedObjectType: string | null; promotedObjectId: string | null }>> {
+  const out: Record<string, { proposalId: string; status: ProposalStatus; promotedObjectType: string | null; promotedObjectId: string | null }> = {}
+  if (actions.length === 0) return out
+  // dedupe_key → clé ledger (mêmes parts que buildDesiredProposals : titre, owner, due).
+  const ledgerByDedupe = new Map<string, string>()
+  for (const a of actions) {
+    ledgerByDedupe.set(dedupeKey('action', siteId, [a.title, a.owner ?? '', a.due ?? '']), a.key)
+  }
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_knowledge_proposals')
+    .select('id, dedupe_key, status, promoted_object_type, promoted_object_id')
+    .eq('site_id', siteId)
+    .eq('kind', 'action')
+    .in('dedupe_key', Array.from(ledgerByDedupe.keys()))
+  if (error) throw error
+  for (const r of data ?? []) {
+    const row = r as { id: string; dedupe_key: string; status: ProposalStatus; promoted_object_type: string | null; promoted_object_id: string | null }
+    const ledgerKey = ledgerByDedupe.get(row.dedupe_key)
+    if (ledgerKey) {
+      out[ledgerKey] = { proposalId: row.id, status: row.status, promotedObjectType: row.promoted_object_type, promotedObjectId: row.promoted_object_id }
+    }
+  }
+  return out
 }
 
 export interface PromotionResult { objectType: string; objectId: string }
@@ -270,11 +314,14 @@ export interface PromotionResult { objectType: string; objectId: string }
  * Aujourd'hui : kind 'action' → site_action. Les autres types (vigilance→site_notes,
  * échéance→obligation, intervenant→site_intervenant, savoir→mémoire) arrivent ensuite.
  */
-export async function promoteProposal(params: { id: string; userId: string | null }): Promise<PromotionResult | null> {
+export async function promoteProposal(params: { id: string; userId: string | null; organizationId?: string | null }): Promise<PromotionResult | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.from('site_knowledge_proposals').select('*').eq('id', params.id).single()
   if (error || !data) return null
   const p = data as DbKnowledgeProposal
+
+  // Garde fail-closed (le service-role bypasse la RLS) : jamais promouvoir hors de son org.
+  if (params.organizationId && p.organization_id && p.organization_id !== params.organizationId) return null
 
   // Déjà promue : on renvoie l'objet existant (idempotent), on ne recrée rien.
   if (p.status !== 'proposed') {

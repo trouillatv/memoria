@@ -14,7 +14,8 @@ import { createSiteReserve } from '@/lib/db/site-reserve'
 import { curateProposal, markProposalCreated } from '@/lib/db/site-reports'
 import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
-import { loadOrRunVisitDebrief, setActionState, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
+import { loadOrRunVisitDebrief, setActionState, ensureActionProposalsProjected, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
+import { promoteProposal, dismissProposal, getActionProposalStates } from '@/lib/db/knowledge-proposals'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -321,6 +322,94 @@ export async function setVisitActionStateAction(input: unknown): Promise<{ ok: t
 
   const ok = await setActionState(parsed.data.report_id, parsed.data.key, parsed.data.state)
   return ok ? { ok: true } : { ok: false, error: 'Action introuvable' }
+}
+
+// ── Convergence : propositions d'action de la synthèse (mig 212) ──────────────
+// La synthèse est la PORTE D'ENTRÉE. Chaque action proposée peut être PROMUE en
+// vraie site_action (« Créer l'action ») ou écartée — la MÊME server action de
+// promotion que partout ailleurs. Une action n'existe (Travail/Site/Accueil) et ne
+// peut être « faite » qu'APRÈS promotion. Cf. convergence-metier-visite-priorite.
+
+export type ActionProposalState = {
+  proposalId: string
+  status: 'proposed' | 'confirmed' | 'dismissed' | 'superseded'
+  promotedObjectType: string | null
+  promotedObjectId: string | null
+}
+
+/**
+ * État des propositions d'action pour la synthèse, indexé par la clé du ledger.
+ * Projette de façon idempotente au passage → garantit une proposition à promouvoir,
+ * même pour une analyse en cache d'avant la couche d'extraction. Garde org fail-closed.
+ */
+export async function getActionProposalStatesAction(input: unknown): Promise<Record<string, ActionProposalState>> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return {}
+  const parsed = z.object({ report_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return {}
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit || !visit.site_id) return {}
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) return {}
+  try {
+    const ledger = await ensureActionProposalsProjected(parsed.data.report_id, visit.site_id, visit.organization_id ?? null)
+    return await getActionProposalStates(visit.site_id, ledger)
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Promeut une proposition d'action → site_action (« Créer l'action »). Les surfaces
+ * qui lisent site_actions (Travail, Site, Accueil, Planning) sont revalidées : la
+ * décision se répercute immédiatement partout. Idempotent (déjà promue → même objet).
+ */
+export async function promoteActionProposalAction(input: unknown): Promise<{ ok: true; objectId: string } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid(), proposal_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+  try {
+    const res = await promoteProposal({
+      id: parsed.data.proposal_id,
+      userId: auth.userId,
+      organizationId: orgId ?? visit.organization_id ?? null,
+    })
+    if (!res) return { ok: false, error: 'Promotion impossible' }
+    revalidatePath('/m')
+    revalidatePath('/m/actions')
+    revalidatePath('/m/planning')
+    if (visit.site_id) revalidatePath(`/m/site/${visit.site_id}`)
+    return { ok: true, objectId: res.objectId }
+  } catch {
+    return { ok: false, error: "Échec de la création de l'action" }
+  }
+}
+
+/** Écarte une proposition d'action (« Écarter ») — décision humaine, jamais ressuscitée. */
+export async function dismissActionProposalAction(input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid(), proposal_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+  try {
+    await dismissProposal(parsed.data.proposal_id, auth.userId, undefined, orgId ?? visit.organization_id ?? null)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Échec' }
+  }
 }
 
 /**

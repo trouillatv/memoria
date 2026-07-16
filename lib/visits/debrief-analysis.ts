@@ -370,3 +370,27 @@ export async function setActionState(reportId: string, key: string, state: Actio
   await writeAnalysis(reportId, analysis)
   return true
 }
+
+/**
+ * Lecture SEULE de l'analyse stockée (aucun LLM, aucune régénération), suivie d'une
+ * projection IDEMPOTENTE en propositions métier : GARANTIT que les propositions
+ * d'action existent pour la synthèse actuellement affichée (une analyse en cache
+ * d'avant la couche d'extraction n'avait encore rien projeté — sinon « Créer
+ * l'action » n'aurait aucune proposition à promouvoir). Renvoie le grand livre des
+ * actions non écartées (clé + titre + responsable + échéance). L'appelant DOIT
+ * avoir vérifié l'organisation avant d'appeler (service-role → RLS bypassée).
+ */
+export async function ensureActionProposalsProjected(
+  reportId: string,
+  siteId: string,
+  organizationId: string | null,
+): Promise<Array<{ key: string; title: string; owner: string; due: string }>> {
+  const { analysis } = await readState(reportId)
+  if (!analysis) return []
+  if (organizationId) {
+    await projectDebriefToProposals({ reportId, siteId, organizationId, analysis }).catch(() => {})
+  }
+  return (analysis.action_ledger ?? [])
+    .filter((a) => a.state !== 'dismissed')
+    .map((a) => ({ key: a.key, title: a.title, owner: a.owner, due: a.due }))
+}
