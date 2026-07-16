@@ -17,6 +17,9 @@ import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteDeadline } from '@/lib/db/site-deadlines'
+import { createSiteDecision } from '@/lib/db/site-decisions'
+import { openSiteIntervenant } from '@/lib/db/site-intervenants'
+import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
@@ -411,6 +414,47 @@ export async function getActionProposalStates(
 export interface PromotionResult { objectType: string; objectId: string }
 
 /**
+ * LES TYPES QU'ON SAIT PROMOUVOIR — la source unique de la règle de sortie :
+ * « aucun bouton visible ne doit pouvoir lever "promotion non supportée" ».
+ *
+ * Les surfaces DÉRIVENT leurs boutons d'ici (`canPromote`), elles ne les
+ * devinent pas. Sinon un écran afficherait un jour « Confirmer » sur une
+ * information et le conducteur récolterait une exception à la place d'un geste.
+ * Manquent : 'vigilance' (cible à trancher) et 'knowledge' (destination non
+ * décidée : information actuelle vs connaissance durable).
+ */
+export const PROMOTABLE_KINDS = ['action', 'deadline', 'decision', 'stakeholder'] as const
+
+export function canPromote(kind: string): boolean {
+  return (PROMOTABLE_KINDS as readonly string[]).includes(kind)
+}
+
+/** Ce que l'humain doit encore RENSEIGNER pour que la promotion aboutisse. */
+export function promotionNeedsRole(kind: string): boolean {
+  return kind === 'stakeholder'
+}
+
+/** Le geste MÉTIER, jamais un « Confirmer » générique. */
+export function promotionLabel(kind: string): string | null {
+  switch (kind) {
+    case 'action': return "Créer l'action"
+    case 'deadline': return 'Ajouter au planning'
+    case 'decision': return 'Confirmer la décision'
+    case 'stakeholder': return 'Ajouter au chantier'
+    default: return null
+  }
+}
+
+/** Pourquoi un type n'a pas (encore) de geste — dit honnêtement, jamais masqué. */
+export function whyNotPromotable(kind: string): string | null {
+  switch (kind) {
+    case 'vigilance': return "MemorIA ne sait pas encore où ranger un point de vigilance."
+    case 'knowledge': return "MemorIA ne sait pas encore si c'est une information du moment ou un savoir durable."
+    default: return null
+  }
+}
+
+/**
  * Confirme une proposition en la PROMOUVANT vers son objet métier réel, puis la
  * marque 'confirmed' avec le lien vers l'objet créé. Idempotent : si déjà promue,
  * renvoie l'objet existant sans recréer. Un geste EXPLICITE par type — une vigilance
@@ -419,7 +463,29 @@ export interface PromotionResult { objectType: string; objectId: string }
  * Aujourd'hui : kind 'action' → site_action. Les autres types (vigilance→site_notes,
  * échéance→obligation, intervenant→site_intervenant, savoir→mémoire) arrivent ensuite.
  */
-export async function promoteProposal(params: { id: string; userId: string | null; organizationId?: string | null }): Promise<PromotionResult | null> {
+/**
+ * Ce que l'humain doit FOURNIR pour promouvoir, quand la proposition ne le sait
+ * pas. Une proposition d'intervenant est une CHAÎNE NUE (« Ginger »,
+ * « Électriciens ») : `analysis.intervenants` est un `string[]` et son payload
+ * est vide. Or `site_intervenants` exige un rôle NOT NULL. Le rôle est donc
+ * inconnaissable depuis la proposition — et le deviner (« Électriciens » ⇒ rôle
+ * ELEC ?) serait inventer un casting que personne n'a dit. On le DEMANDE.
+ */
+export interface PromotionInput {
+  /** Rôle sur le chantier (ETV / MOE / BET / …). REQUIS pour un intervenant. */
+  role?: string
+  /** L'entreprise, si l'humain corrige le nom lu (« Ginger SAS »). */
+  companyName?: string
+  /** Rattacher à un contact existant plutôt qu'au seul nom d'entreprise. */
+  contactId?: string | null
+}
+
+export async function promoteProposal(params: {
+  id: string
+  userId: string | null
+  organizationId?: string | null
+  input?: PromotionInput
+}): Promise<PromotionResult | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.from('site_knowledge_proposals').select('*').eq('id', params.id).single()
   if (error || !data) return null
@@ -468,7 +534,45 @@ export async function promoteProposal(params: { id: string; userId: string | nul
       created_from: 'visit_debrief_ai',
     })
     result = { objectType: 'site_deadline', objectId: id }
+  } else if (p.kind === 'decision') {
+    // Le conducteur confirme qu'une décision a bien été PRISE. `source: 'transcript'`
+    // dit d'où elle vient : elle a été LUE dans un débrief, pas saisie à la main —
+    // et `confiance: 'sûr'` parce qu'un humain vient de la valider. Sans quoi la
+    // fiche chantier ne saurait plus distinguer ce qu'elle a entendu de ce qu'on
+    // lui a affirmé.
+    const id = await createSiteDecision({
+      siteId: p.site_id,
+      reportId: p.report_id ?? null,
+      titre: p.title,
+      description: p.body,
+      source: 'transcript',
+      confiance: 'sûr',
+      createdBy: params.userId,
+    })
+    result = { objectType: 'site_decision', objectId: id }
+  } else if (p.kind === 'stakeholder') {
+    // Le RÔLE ne peut pas être deviné (cf. PromotionInput). Sans lui, on refuse —
+    // on ne fabrique pas un casting que personne n'a dit.
+    const role = params.input?.role?.trim()
+    if (!role) throw new Error('ROLE_REQUIS')
+    const orgId = params.organizationId ?? p.organization_id
+    if (!orgId) return null
+    // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
+    // fois sur deux visites ne crée pas deux entreprises.
+    const companyId = await findOrCreateCompanyByName(orgId, params.input?.companyName?.trim() || p.title)
+    await openSiteIntervenant({
+      siteId: p.site_id,
+      role,
+      companyId,
+      mainContactId: params.input?.contactId ?? null,
+      sourceReportId: p.report_id ?? null,
+    })
+    result = { objectType: 'site_intervenant', objectId: companyId }
   } else {
+    // Reste 'vigilance' (cible à trancher : site_notes typée ou site_watchpoints)
+    // et 'knowledge' (destination non décidée : information actuelle vs durable).
+    // Tant que la cible n'est pas tranchée, AUCUN bouton ne doit appeler ceci :
+    // les surfaces n'exposent qu'« Écarter » pour ces types.
     throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
   }
 
