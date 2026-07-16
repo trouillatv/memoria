@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { CalendarDays, Clock, Layers3, ListOrdered, Route, ShieldAlert, Users } from 'lucide-react'
+import { CalendarClock, CalendarDays, Clock, Layers3, ListOrdered, Route, ShieldAlert, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { cycleStatusLabel } from '@/lib/chantier/labels'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
+import type { SiteDeadline } from '@/lib/db/site-deadlines'
+import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
 
@@ -17,6 +19,8 @@ interface PlanningWorkspaceProps {
   blocages: SiteBlocage[]
   cycles: PlanningCycle[]
   teams: DbTeam[]
+  /** Les échéances confirmées du chantier : datées ET à planifier. */
+  deadlines: SiteDeadline[]
 }
 
 const WEEKDAYS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.']
@@ -30,7 +34,12 @@ export function PlanningWorkspace({
   blocages,
   cycles,
   teams,
+  deadlines,
 }: PlanningWorkspaceProps) {
+  // Une échéance sans date n'est pas incomplète : elle attend une décision. Elle a
+  // donc sa place à elle — pas une ligne grise en bas d'un calendrier.
+  const toPlan = deadlines.filter((d) => !d.due_date)
+  const dated = deadlines.filter((d) => d.due_date)
   const week = getCurrentWeek()
   const interventionsThisWeek = interventions.filter((intervention) => {
     const date = intervention.scheduled_for ?? isoDate(intervention.scheduled_at)
@@ -63,6 +72,50 @@ export function PlanningWorkspace({
           </div>
         </div>
       </section>
+
+      {/* ── LES ÉCHÉANCES DU CHANTIER ──────────────────────────────────────
+          Ce que MemorIA a entendu et que le conducteur a confirmé. Deux temps,
+          jamais mélangés : ce qui est daté vit dans le calendrier ; ce qui attend
+          une décision a sa propre section — visible, pas enfoui. Une échéance sans
+          date n'est pas une erreur : c'est du travail réel qui attend un jour. */}
+      {deadlines.length > 0 && (
+        <section className="rounded-[22px] border bg-card p-5 shadow-sm">
+          <SectionTitle icon={CalendarClock} title="Échéances" detail="Ce qui doit arriver, et quand on le sait." />
+
+          {toPlan.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                À planifier ({toPlan.length})
+              </h3>
+              <ul className="mt-2 space-y-2">
+                {toPlan.map((d) => (
+                  <li key={d.id}>
+                    <p className="text-sm font-medium text-foreground">{d.title}</p>
+                    {/* La contrainte, avec les mots du débrief : elle dit POURQUOI
+                        cette échéance attend, et personne n'a inventé de date. */}
+                    {d.constraint_text && (
+                      <p className="text-[12px] text-muted-foreground">{d.constraint_text}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {dated.length > 0 && (
+            <ul className="mt-4 space-y-2">
+              {dated.map((d) => (
+                <li key={d.id} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-sm text-foreground">{d.title}</span>
+                  <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+                    {echeanceDateLabel(d.due_date!)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_320px]">
         <div className="space-y-4">

@@ -11,8 +11,42 @@
 //
 // Module PUR (ni base, ni serveur) : le compte-rendu mobile, le PDF et la fiche
 // chantier disent les mêmes mots parce qu'ils lisent les mêmes fonctions.
+//
+// Le TYPE et le lecteur tolérant vivent ICI, pas dans `debrief-analysis` : ce
+// dernier touche la base (donc `next/headers`), et un composant CLIENT qui
+// importerait une seule de ses fonctions embarquerait toute la couche serveur —
+// le build casse. Une donnée pure n'a pas à habiter chez le serveur.
 
-import type { DebriefEcheance } from '@/lib/visits/debrief-analysis'
+/** Une échéance telle que le débrief la donne : ce qui doit arriver, et la notion
+ *  de temps qui l'accompagne — une date si elle est dite, sinon la contrainte. */
+export interface DebriefEcheance {
+  label: string
+  /** AAAA-MM-JJ, ou '' : une date DITE, jamais déduite d'un délai. */
+  date: string
+  /** « Avant le démarrage », « Sous une dizaine de jours ». '' si une date est nette. */
+  constraint: string
+}
+
+/** Les analyses écrites AVANT la forme structurée stockaient des chaînes nues.
+ *  On les relit sans jamais les jeter : une vieille échéance devient un label sans
+ *  date ni contrainte — exactement ce qu'elle disait, ni plus, ni moins. */
+export function toDebriefEcheance(raw: unknown): DebriefEcheance | null {
+  if (typeof raw === 'string') {
+    const label = raw.trim()
+    return label ? { label, date: '', constraint: '' } : null
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as { label?: unknown; date?: unknown; constraint?: unknown }
+    const label = typeof o.label === 'string' ? o.label.trim() : ''
+    if (!label) return null
+    return {
+      label,
+      date: typeof o.date === 'string' ? o.date.trim() : '',
+      constraint: typeof o.constraint === 'string' ? o.constraint.trim() : '',
+    }
+  }
+  return null
+}
 
 const dayMonthFmt = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Pacific/Noumea',

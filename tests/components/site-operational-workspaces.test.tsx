@@ -5,6 +5,7 @@ import { ChronologyWorkspace } from '@/app/(dashboard)/sites/[id]/views/chronolo
 import { PlanningWorkspace } from '@/app/(dashboard)/sites/[id]/views/planning/PlanningWorkspace'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
+import type { SiteDeadline } from '@/lib/db/site-deadlines'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { VisitWithCounts } from '@/lib/db/visits'
 import type { DbMission, DbTeam } from '@/types/db'
@@ -111,6 +112,7 @@ describe('site operational workspaces', () => {
           actions: 3,
         }]}
         changes={[]}
+        deadlines={[]}
         interventions={[]}
         actions={[actionFixture()]}
         blocages={[]}
@@ -128,6 +130,32 @@ describe('site operational workspaces', () => {
     expect(screen.queryByRole('link', { name: 'Frise' })).not.toBeInTheDocument()
   })
 
+  // ── L'HISTOIRE DU CHANTIER, PAS CELLE DE L'APPLICATION ─────────────────────
+  // « Échéance ajoutée », pas « échéance confirmée » : ce qui compte n'est pas
+  // qu'on ait cliqué, c'est que le chantier attende désormais quelque chose. Et le
+  // QUAND est dit avec les mots du débrief — jamais une date déduite d'un délai.
+  it("raconte l'ajout d'une échéance comme un fait du chantier", () => {
+    render(
+      <ChronologyWorkspace
+        siteId="site-1"
+        visits={[]}
+        changes={[]}
+        deadlines={[deadlineFixture({
+          title: 'Prévoir la pose du coffret électrique',
+          constraint_text: 'dans environ 10 jours',
+        })]}
+        interventions={[]}
+        actions={[]}
+        blocages={[]}
+      />,
+    )
+    expect(screen.getByText(/Échéance ajoutée/)).toBeInTheDocument()
+    expect(screen.getByText('Prévoir la pose du coffret électrique')).toBeInTheDocument()
+    expect(screen.getByText('dans environ 10 jours')).toBeInTheDocument()
+    // Le mot « confirmée » appartient à l'application, pas au chantier.
+    expect(screen.queryByText(/confirmée/i)).not.toBeInTheDocument()
+  })
+
   it('shows planning as a coordination view with seven days and real cycles', () => {
     render(
       <PlanningWorkspace
@@ -137,6 +165,7 @@ describe('site operational workspaces', () => {
         missions={[missionFixture({ assigned_team_id: 'team-1' })]}
         teams={[teamFixture()]}
         blocages={[]}
+        deadlines={[]}
         cycles={[{
           id: 'cycle-1',
           siteId: 'site-1',
@@ -160,7 +189,60 @@ describe('site operational workspaces', () => {
     expect(screen.getByText('Roulement Matin')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Utiliser pour planifier' })).toHaveAttribute('href', '/semaine?site=site-1')
   })
+
+  // ── L'ÉCHÉANCE CONFIRMÉE ATTERRIT QUELQUE PART ─────────────────────────────
+  // Une échéance sans date n'est pas une erreur : c'est du travail réel qui attend
+  // un jour. Elle a sa section, avec la CONTRAINTE qui dit pourquoi elle attend —
+  // dans les mots du débrief, jamais une date déduite.
+  it('montre les échéances : à planifier d’un côté, datées de l’autre', () => {
+    render(
+      <PlanningWorkspace
+        siteId="site-1"
+        nextEvent={null}
+        interventions={[]}
+        missions={[]}
+        teams={[]}
+        blocages={[]}
+        cycles={[]}
+        deadlines={[
+          deadlineFixture({ id: 'd-1', title: 'Programmer la visite PAVE', constraint_text: 'Avant le démarrage' }),
+          deadlineFixture({ id: 'd-2', title: 'Poser le coffret', due_date: '2026-07-28', status: 'planned' }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('À planifier (1)')).toBeInTheDocument()
+    expect(screen.getByText('Programmer la visite PAVE')).toBeInTheDocument()
+    expect(screen.getByText('Avant le démarrage')).toBeInTheDocument()
+    // La datée vit dans le temps, pas dans l'attente.
+    expect(screen.getByText('Poser le coffret')).toBeInTheDocument()
+    expect(screen.getByText('28 juillet')).toBeInTheDocument()
+  })
+
+  it('se tait quand le chantier n’a aucune échéance', () => {
+    render(
+      <PlanningWorkspace
+        siteId="site-1" nextEvent={null} interventions={[]} missions={[]}
+        teams={[]} blocages={[]} cycles={[]} deadlines={[]}
+      />,
+    )
+    expect(screen.queryByText(/À planifier/)).not.toBeInTheDocument()
+  })
 })
+
+function deadlineFixture(overrides: Partial<SiteDeadline> = {}): SiteDeadline {
+  return {
+    id: 'd-1',
+    site_id: 'site-1',
+    report_id: 'report-1',
+    title: 'Échéance',
+    constraint_text: null,
+    due_date: null,
+    status: 'to_plan',
+    created_at: '2026-07-17T08:00:00.000Z',
+    ...overrides,
+  }
+}
 
 function missionFixture(overrides: Partial<DbMission> = {}): DbMission {
   return {
