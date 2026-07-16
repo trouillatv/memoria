@@ -7,6 +7,8 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteTimeline, type TimelineKind } from '@/lib/db/site-timeline'
+import { getSiteHistory } from '@/lib/knowledge/site-events'
+import { NOUMEA_TZ, frDayMonthLocal } from '@/lib/time/local-date'
 import { SiteTabs } from '../SiteTabs'
 import { VisitLauncher } from '../VisitLauncher'
 
@@ -19,6 +21,9 @@ export const dynamic = 'force-dynamic'
  * décisions). Déterministe, zéro IA. Chaque carte ouvre son objet quand une vue
  * mobile existe. Sous-écran de la fiche (barre basse masquée) → retour en tête.
  */
+/** L'heure du conducteur, jamais celle du serveur (Vercel tourne en UTC). */
+const friseHeure = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
+
 const META: Record<TimelineKind, { Icon: typeof Users; cls: string; ring: string }> = {
   visit: { Icon: Footprints, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
   meeting: { Icon: Users, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40' },
@@ -48,7 +53,15 @@ export default async function SiteFriseMobilePage({
     .maybeSingle()
   if (!site) notFound()
 
-  const events = await buildSiteTimeline(siteId).catch(() => [])
+  // La frise lisait des tables d'avant la connaissance : elle disait « visite
+  // terrain » et s'arrêtait là, alors que la visite avait produit dix objets. On
+  // lit désormais AUSSI le flux d'événements — le même que l'accueil, tourné vers
+  // le passé. Une visite ne raconte plus « je suis venu » mais « voilà ce que j'ai
+  // rapporté ».
+  const [events, knowledge] = await Promise.all([
+    buildSiteTimeline(siteId).catch(() => []),
+    getSiteHistory(siteId).catch(() => []),
+  ])
 
   return (
     <div className="max-w-md space-y-4 pb-16">
@@ -64,7 +77,29 @@ export default async function SiteFriseMobilePage({
         <SiteTabs siteId={siteId} active="frise" userRole={user.role} />
       </header>
 
-      {events.length === 0 ? (
+      {/* ── CE QUE MEMORIA A APPRIS ────────────────────────────────────────
+          Le récit du chantier vu par la connaissance : « Synthèse créée »,
+          « 3 actions proposées », « 3 échéances détectées », « 1 action
+          confirmée ». Les mêmes faits que l'accueil — un seul flux, deux
+          points de vue. Silence total s'il n'y a rien à raconter. */}
+      {knowledge.length > 0 && (
+        <section className="rounded-xl border bg-card p-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Ce que MemorIA a appris
+          </h2>
+          <ol className="mt-2 space-y-1.5">
+            {knowledge.map((k) => (
+              <li key={k.id} className="flex items-baseline gap-3 text-[13px]">
+                <span className="shrink-0 tabular-nums text-muted-foreground">{friseHeure.format(new Date(k.at))}</span>
+                <span className="min-w-0 text-foreground/90">{k.label}</span>
+                <span className="ml-auto shrink-0 text-[12px] text-muted-foreground">{frDayMonthLocal(k.at)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {events.length === 0 && knowledge.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
           <p className="text-sm text-muted-foreground">
             Aucune activité pour l&apos;instant. Commencez à documenter ce chantier — visites, réunions et jalons apparaîtront ici.

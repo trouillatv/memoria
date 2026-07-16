@@ -69,6 +69,8 @@ export interface VisitImpact {
 
 /** Jusqu'où on regarde en arrière pour retrouver la dernière visite. */
 const LOOKBACK_DAYS = 14
+/** Le récit d'un chantier : assez large pour raconter, borné pour rester lisible. */
+const HISTORY_DAYS = 180
 const TODO_LIMIT = 3
 /** Ce que le chantier attend — borné : l'accueil montre, il n'inventorie pas. */
 const DEADLINES_LIMIT = 3
@@ -151,6 +153,29 @@ function buildEvents(rows: SiteEventRow[]): ChangeEvent[] {
 
 function countKind(rows: SiteEventRow[], kind: string): number {
   return rows.filter((r) => r.kind === 'proposal_created' && r.proposal_kind === kind).length
+}
+
+/**
+ * LE RÉCIT D'UN CHANTIER — les mêmes événements, tournés vers le passé.
+ *
+ * L'Historique répond « que s'est-il passé ? », l'accueil « qu'est-ce qui a
+ * changé ? », le Planning « qu'est-ce qui arrive ? ». Trois questions, UN flux :
+ * c'est ce qui garantit qu'ils ne se contrediront jamais, et qu'un futur type
+ * d'événement (réunion, incident, validation) apparaîtra partout sans retoucher
+ * un seul écran.
+ *
+ * La frise lisait des tables d'avant la connaissance : elle affichait « visite
+ * terrain » et s'arrêtait là, alors que la visite avait produit dix objets. Elle
+ * n'était pas vide — elle était branchée ailleurs.
+ */
+export async function getSiteHistory(siteId: string, days = HISTORY_DAYS): Promise<ChangeEvent[]> {
+  const orgId = await getOrgId()
+  const now = new Date()
+  const from = new Date(now.getTime() - days * 86_400_000).toISOString()
+  const rows = await readEvents(from, now.toISOString(), orgId, siteId).catch(() => [] as SiteEventRow[])
+  if (rows.length === 0) return []
+  // Le plus RÉCENT d'abord : une frise se lit en remontant le temps.
+  return buildEvents(rows).reverse()
 }
 
 /**

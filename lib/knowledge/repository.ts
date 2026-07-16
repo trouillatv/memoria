@@ -194,7 +194,13 @@ export interface SiteEventRow {
  *
  * Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model.
  */
-export async function readEvents(from: string, to: string, orgId: string | null): Promise<SiteEventRow[]> {
+export async function readEvents(
+  from: string,
+  to: string,
+  orgId: string | null,
+  /** Restreint à un chantier — l'Historique d'une fiche ne lit pas tout le parc. */
+  siteId?: string,
+): Promise<SiteEventRow[]> {
   const db = createAdminClient()
   // Postgres PARSE les bornes ; nous, en JS, il faut les parser aussi. Comparer deux
   // ISO à la main est un piège : la synthèse de 05:39 à Nouméa s'écrit
@@ -219,6 +225,7 @@ export async function readEvents(from: string, to: string, orgId: string | null)
     .gte('ended_at', from)
     .lte('ended_at', to)
   if (orgId) rq = rq.eq('organization_id', orgId)
+  if (siteId) rq = rq.eq('site_id', siteId)
   const { data: reports } = await rq
   for (const r of (reports ?? []) as Array<{ site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
     out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended' })
@@ -236,6 +243,7 @@ export async function readEvents(from: string, to: string, orgId: string | null)
     .gte('created_at', from)
     .lte('created_at', to)
   if (orgId) pq = pq.eq('organization_id', orgId)
+  if (siteId) pq = pq.eq('site_id', siteId)
   const { data: props } = await pq
   for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string }>) {
     out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind })
@@ -252,6 +260,7 @@ export async function readEvents(from: string, to: string, orgId: string | null)
     .gte('reviewed_at', from)
     .lte('reviewed_at', to)
   if (orgId) cq = cq.eq('organization_id', orgId)
+  if (siteId) cq = cq.eq('site_id', siteId)
   const { data: confirmed } = await cq
   for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string }>) {
     out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind })
