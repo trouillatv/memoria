@@ -1,5 +1,18 @@
 /**
- * Chantier de recette — le terrain de validation PERMANENT d'une organisation.
+ * Chantier de recette — le terrain de validation PERMANENT, dans le tenant DÉMO.
+ *
+ * ── LA RÈGLE ────────────────────────────────────────────────────────────────
+ * Aucun test ne s'écrit dans le tenant d'un utilisateur réel. Jamais.
+ *
+ * Ce n'est pas de l'hygiène de base de données, c'est de la confiance : quand
+ * MemorIA propose des actions, alimente un planning et écrit une mémoire, une
+ * donnée de test n'est plus « une ligne dans une table » — elle contamine la
+ * vision qu'un conducteur a de SON chantier. Devant un bug, il se demandera
+ * « est-ce encore une donnée de test ? », et il aura raison de douter de tout.
+ *
+ * D'où le garde-fou : ce script REFUSE toute organisation qui n'est pas le tenant
+ * de démonstration. Reproduire un bug client = cloner le chantier ici, pas écrire
+ * chez lui.
  *
  * Pourquoi un script et pas un clic dans l'app : le bac à sable doit exister à
  * l'identique pour tout le monde, être recréable après un reset de base, et porter
@@ -7,8 +20,7 @@
  *
  * IDEMPOTENT : relancer ne crée pas de doublon, ne touche à aucune donnée.
  *
- *   npx tsx scripts/dev/ensure-sandbox-site.ts [slug-organisation]
- *   (défaut : agp)
+ *   npx tsx scripts/dev/ensure-sandbox-site.ts
  */
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
@@ -16,9 +28,19 @@ import { config } from 'dotenv'
 config({ path: '.env.local' })
 
 const SANDBOX_NAME = '🧪 Recette'
+/** Le SEUL tenant où un bac à sable a le droit d'exister. */
+export const DEMO_ORG_SLUG = 'demo'
 
 async function main() {
-  const orgSlug = process.argv[2] ?? 'agp'
+  const orgSlug = process.argv[2] ?? DEMO_ORG_SLUG
+  // Le refus est ici, pas dans une consigne : un argument ne doit pas pouvoir
+  // planter un chantier de test chez un client.
+  if (orgSlug !== DEMO_ORG_SLUG) {
+    throw new Error(
+      `Refusé : un chantier de recette ne s'installe que dans le tenant « ${DEMO_ORG_SLUG} ». `
+      + `Pour reproduire un bug de « ${orgSlug} », clone son chantier dans le tenant démo.`,
+    )
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY manquants')

@@ -7,12 +7,19 @@
  *
  * IDEMPOTENT : ne crée rien si une visite existe déjà sur le bac à sable.
  *
- *   npx tsx scripts/dev/seed-sandbox-visit.ts [slug-organisation]
+ * Tenant DÉMO uniquement — voir ensure-sandbox-site.ts : aucun test ne s'écrit
+ * chez un utilisateur réel.
+ *
+ *   npx tsx scripts/dev/seed-sandbox-visit.ts
  */
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
 
 config({ path: '.env.local' })
+
+// Volontairement recopié plutôt qu'importé : `ensure-sandbox-site` exécute son
+// `main()` au chargement — l'importer pour une constante créerait un chantier.
+const DEMO_ORG_SLUG = 'demo'
 
 // Un débrief plausible de conducteur : des actions à faire, des dates floues, des
 // intervenants nommés, du contexte. De quoi exercer TOUS les objets du contrat.
@@ -25,7 +32,10 @@ Il faut que je prévienne le bureau d'études que la réservation pour la gaine 
 La réception des travaux est calée pour la fin du mois prochain.`
 
 async function main() {
-  const orgSlug = process.argv[2] ?? 'agp'
+  const orgSlug = process.argv[2] ?? DEMO_ORG_SLUG
+  if (orgSlug !== DEMO_ORG_SLUG) {
+    throw new Error(`Refusé : une visite de recette ne s'écrit que dans le tenant « ${DEMO_ORG_SLUG} ».`)
+  }
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
   const { data: org } = await db.from('organizations').select('id, name').eq('slug', orgSlug).maybeSingle()
