@@ -16,6 +16,7 @@ import { markWatchlistItemPromoted } from '@/lib/db/visit-watchlist'
 import { getVisit, deleteVisit, finalizeVisit } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief, setActionState, ensureActionProposalsProjected, type DebriefLoadResult } from '@/lib/visits/debrief-analysis'
 import { promoteProposal, dismissProposal, getActionProposalStates } from '@/lib/db/knowledge-proposals'
+import { invalidateSiteProjection } from '@/lib/knowledge/projection'
 import {
   setCaptureTriage,
   listVisitCaptures,
@@ -382,17 +383,9 @@ export async function promoteActionProposalAction(input: unknown): Promise<{ ok:
       organizationId: orgId ?? visit.organization_id ?? null,
     })
     if (!res) return { ok: false, error: 'Promotion impossible' }
-    // Mobile terrain ET tableau de bord lisent le MÊME objet (site_actions) : on
-    // revalide les deux familles pour que l'action promue apparaisse partout.
-    revalidatePath('/m')
-    revalidatePath('/m/actions')
-    revalidatePath('/m/planning')
-    revalidatePath('/dashboard')
-    if (visit.site_id) {
-      revalidatePath(`/m/site/${visit.site_id}`)
-      revalidatePath(`/sites/${visit.site_id}`)
-      revalidatePath(`/sites/${visit.site_id}/actions`)
-    }
+    // UN seul point d'invalidation : le cache de projection tombe et TOUTES les
+    // surfaces (mobile + dashboard) se recomposent — « invalider → tout change ».
+    if (visit.site_id) invalidateSiteProjection(visit.site_id)
     return { ok: true, objectId: res.objectId }
   } catch {
     return { ok: false, error: "Échec de la création de l'action" }
@@ -413,6 +406,8 @@ export async function dismissActionProposalAction(input: unknown): Promise<{ ok:
   }
   try {
     await dismissProposal(parsed.data.proposal_id, auth.userId, undefined, orgId ?? visit.organization_id ?? null)
+    // Une proposition écartée doit disparaître des « à confirmer » partout.
+    if (visit.site_id) invalidateSiteProjection(visit.site_id)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }

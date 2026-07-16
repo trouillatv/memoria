@@ -17,7 +17,7 @@ import {
 import { cn } from '@/lib/utils'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
-import { getSiteProjection, emptySiteProjection, type SiteProjection } from '@/lib/db/knowledge-proposals'
+import { getSiteProjection, emptySiteProjection, type SiteProjection } from '@/lib/knowledge/projection'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { listMissionsBySite } from '@/lib/db/missions'
 import { listInterventionsSupervisor, type SupervisorInterventionRow } from '@/lib/db/interventions'
