@@ -24,6 +24,7 @@ import {
   type SiteOverview,
 } from '@/lib/knowledge/site-overview'
 import { sourceLabels, pendingLabel, visitDateLabel, durationLabel } from '@/lib/chantier/overview-labels'
+import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { SiteBriefButton } from '../../SiteBriefButton'
 
 // ── ONGLET APERÇU ────────────────────────────────────────────────────────────
@@ -544,20 +545,28 @@ function attentionTone(kind: AttentionKind): 'green' | 'orange' | 'red' | 'blue'
   return 'orange'
 }
 
+// Rendu SERVEUR (Vercel = UTC) : sans fuseau explicite, l'heure d'une réunion
+// s'affiche décalée de 11 h et sa date peut reculer d'un jour. Le fuseau de
+// l'organisation est la seule vérité pour un conducteur.
+const shortDateFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, day: 'numeric', month: 'short' })
+const longEventFmt = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: NOUMEA_TZ,
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+const relativeFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, day: '2-digit', month: 'short' })
+
 function formatShortEventDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  return shortDateFmt.format(new Date(iso))
 }
 
 function formatLongEventDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return longEventFmt.format(new Date(iso))
 }
 
 function formatRelativeDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
+  return relativeFmt.format(new Date(iso))
 }

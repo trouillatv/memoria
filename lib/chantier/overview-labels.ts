@@ -10,6 +10,7 @@
 // « read model », « delta » ne doit sortir d'ici.
 
 import type { SynthesisStatus } from '@/lib/knowledge/site-overview'
+import { todayLocalIso, yesterdayLocalIso, localDateOf, frDayMonthLocal } from '@/lib/time/local-date'
 
 export interface SourceCounts { photos: number; videos: number; vocals: number; notes: number }
 
@@ -40,18 +41,19 @@ export function durationLabel(minutes: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m}`
 }
 
-/** « Aujourd'hui », « Hier », sinon la date — on parle comme un conducteur. */
+/** « Aujourd'hui », « Hier », sinon la date — on parle comme un conducteur.
+ *  Le jour se compare EN ZONE NOUMÉA : rendu côté serveur (Vercel = UTC), un
+ *  `toDateString()` raisonne en UTC et fait mentir le mot. Entre minuit et 11 h
+ *  locales, la date UTC est la veille — une visite de ce matin s'annoncerait
+ *  « Hier », et le conducteur croirait n'avoir rien fait aujourd'hui. */
 export function visitDateLabel(iso: string | null): string {
   if (!iso) return 'Date inconnue'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return 'Date inconnue'
-  const today = new Date()
-  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
-  if (sameDay(d, today)) return "Aujourd'hui"
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (sameDay(d, yesterday)) return 'Hier'
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+  const day = localDateOf(d)
+  if (day === todayLocalIso()) return "Aujourd'hui"
+  if (day === yesterdayLocalIso()) return 'Hier'
+  return frDayMonthLocal(d)
 }
 
 /** L'état de la synthèse dit en clair. `tone` porte le sens, jamais une couleur. */

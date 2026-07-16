@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { frDayMonthPaddedLocal, frDayMonthTimeLocal } from '@/lib/time/local-date'
 import { ChevronDown, History, MessageSquare, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SiteActionRow } from '@/lib/db/site-actions'
@@ -299,10 +300,14 @@ function TimelineDot({ tone }: { tone: 'blue' | 'green' | 'orange' | 'neutral' }
   return <span className={`absolute -left-[25px] top-6 h-3 w-3 rounded-full ${className} ring-4 ring-background`} />
 }
 
+// La chronologie est rendue côté SERVEUR (Vercel tourne en UTC) : `toLocaleString`
+// sans fuseau y affichait l'heure UTC, décalée de 11 h. Une visite de 11:57 se
+// racontait « 00:57 » — une heure plausible, donc un mensonge invisible. Le fuseau
+// de l'organisation est la seule vérité pour un conducteur (lib/time/local-date).
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })
+  return frDayMonthPaddedLocal(value)
 }
 
 function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString('fr-FR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })
+  return frDayMonthTimeLocal(value)
 }
