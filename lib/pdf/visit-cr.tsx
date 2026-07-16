@@ -230,7 +230,10 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
   const reservesTitle = isPremiere ? 'Premières réserves' : isAo ? 'Points de vigilance observés' : 'Réserves'
   const actionsTitle = isPremiere ? 'Premières actions' : 'Actions à réaliser'
   const photosBase = isPremiere ? 'Photos de référence' : 'Photos clés'
-  const title = `${kicker} — ${doc.siteName}`
+  // Titre du DOCUMENT PDF : Chrome (Android surtout) l'affiche comme titre d'onglet
+  // à l'ouverture « inline » — sans la DATE, toutes les visites d'un même chantier
+  // portent le même titre et donnent l'impression d'ouvrir le même fichier.
+  const title = `${kicker} — ${doc.siteName} · ${doc.dateLabel}`
 
   const reserveLines = [
     ...doc.reserves.map((r) => `${r.label}${r.location ? ` (${r.location})` : ''}`),
