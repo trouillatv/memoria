@@ -63,6 +63,15 @@ Interfaces                     ← Accueil · Site · Travail · Planning · His
    toujours invalidée — personne ne peut « oublier » depuis un écran. Une écriture →
    toutes les vues changent.
 
+## Vocabulaire
+
+- **Code** : `Proposal` / `proposed` reste correct (technique, stable).
+- **Métier / UI** : parler d'**élément de connaissance proposé** (ou « connaissance
+  proposée »), pas de « proposition ». Une échéance, un intervenant, un « à savoir »
+  ne sont pas des « propositions » — ce sont tous des **éléments de connaissance**,
+  à l'état *proposé* ou *validé*. C'est la connaissance qui est le cœur ; « proposé »
+  et « validé » ne sont que ses deux états.
+
 ## Ordre de construction des objets
 
 Chaque objet métier suit le **même** cycle (proposé → validé → projeté → toutes les

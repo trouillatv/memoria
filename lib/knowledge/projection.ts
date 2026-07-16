@@ -1,26 +1,31 @@
 import 'server-only'
 
-// ── COUCHE PROJECTION ────────────────────────────────────────────────────────
-// LECTURE SEULE de la connaissance d'un chantier. Cette couche NE fait JAMAIS :
-// pas de calcul métier décisionnel, pas de promotion, pas de mutation. Le sens de
+// ── PROJECTION BUILDER ───────────────────────────────────────────────────────
+// Construit les projections de la connaissance d'un chantier. LECTURE SEULE, et —
+// point important — il ne connaît PAS Supabase : il reçoit des lignes brutes du
+// KnowledgeRepository (lib/knowledge/repository.ts) et les agrège/trie. Le sens de
 // circulation est strict :
 //
-//   Promoter → écrit les objets   (site_actions, propositions…)
-//   Projection → LIT les objets    (ce fichier)
-//   UI → affiche la projection
+//   Repository → lit les tables      (le seul à connaître Supabase)
+//   Builder    → agrège/trie          (ce fichier, pur — testable sans base)
+//   UI         → affiche la projection
 //
-// Jamais l'inverse. Si un écran a besoin d'écrire, il passe par un Promoter / une
-// server action, jamais par la projection.
+// Jamais l'inverse. Une écriture passe par un Promoter / une mutation (qui invalide
+// la projection, cf. lib/knowledge/invalidate), jamais par cette couche.
 //
 // Le cœur du système n'est pas la projection : c'est la CONNAISSANCE du chantier
-// (proposée par l'IA, validée par l'humain). La projection n'en est que la dernière
-// étape — une vue. À terme cette couche portera d'autres agrégats (visite, mission,
-// entreprise…) ; c'est pour ça qu'elle vit dans son propre module.
+// (proposée par l'IA, validée par l'humain). La projection n'en est qu'une vue.
 
 import { unstable_cache } from 'next/cache'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { siteProjectionTag } from '@/lib/knowledge/invalidate'
-import type { ProposalKind, ProposalPayload } from '@/lib/db/knowledge-proposals'
+import {
+  readProposedRowsForKind,
+  readAllProposedRows,
+  readSiteActionRows,
+  type ProposalRow,
+  type ActionRow,
+} from '@/lib/knowledge/repository'
+import type { ProposalKind } from '@/lib/db/knowledge-proposals'
 
 // Tri par PERTINENCE : les premières propositions montrées ne sont pas « les 3
 // premières de la base » mais les plus importantes → priorité, puis confiance IA,
@@ -34,17 +39,9 @@ export interface ProposalProjection {
   proposedTop: Array<{ id: string; title: string }>
 }
 
-interface ScorableProposalRow {
-  id: string
-  title: string
-  payload: ProposalPayload
-  confidence: string | null
-  created_at: string
-}
-
-/** Cœur PUR : ordonne un lot de propositions par pertinence → ProposalProjection.
- *  Partagé par le helper par-type ET l'agrégat chantier (une seule logique de tri). */
-function projectProposalRows(rows: ScorableProposalRow[], topLimit: number): ProposalProjection {
+/** Cœur PUR : ordonne un lot d'éléments proposés par pertinence → ProposalProjection.
+ *  Reçoit des lignes (jamais la base). Partagé par le helper par-type ET l'agrégat. */
+function buildProposalProjection(rows: ProposalRow[], topLimit: number): ProposalProjection {
   const scored = rows
     .map((r) => ({
       id: r.id,
@@ -60,19 +57,14 @@ function projectProposalRows(rows: ScorableProposalRow[], topLimit: number): Pro
   }
 }
 
-/** Aperçu GÉNÉRIQUE de propositions d'UN type (action, vigilance, échéance…). */
+/** Aperçu GÉNÉRIQUE des éléments proposés d'UN type (action, vigilance, échéance…). */
 export async function getProposalProjection(
   siteId: string,
   kind: ProposalKind,
   opts?: { topLimit?: number },
 ): Promise<ProposalProjection> {
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('site_knowledge_proposals')
-    .select('id, title, payload, confidence, created_at')
-    .eq('site_id', siteId).eq('kind', kind).eq('status', 'proposed')
-  if (error) return { proposed: 0, proposedTop: [] }
-  return projectProposalRows((data ?? []) as ScorableProposalRow[], opts?.topLimit ?? 3)
+  const rows = await readProposedRowsForKind(siteId, kind)
+  return buildProposalProjection(rows, opts?.topLimit ?? 3)
 }
 
 /** Volet MÉTIER de l'objet Action (site_actions), ajouté à son volet proposition. */
@@ -82,8 +74,8 @@ export interface ActionProjection extends ProposalProjection {
   overdue: number
 }
 
-/** Compteurs métier des site_actions (open/planned = actives, done = terminées, retard). */
-function tallyActionRows(rows: Array<{ status: string; due_date: string | null }>, todayIso: string): { confirmed: number; completed: number; overdue: number } {
+/** Compteurs métier des actions (open/planned = actives, done = terminées, retard). PUR. */
+function buildActionTally(rows: ActionRow[], todayIso: string): { confirmed: number; completed: number; overdue: number } {
   let confirmed = 0
   let completed = 0
   let overdue = 0
@@ -98,20 +90,20 @@ function tallyActionRows(rows: Array<{ status: string; due_date: string | null }
 }
 
 export async function getActionProjection(siteId: string, opts?: { topLimit?: number }): Promise<ActionProjection> {
-  const supabase = createAdminClient()
   const todayIso = new Date().toISOString().slice(0, 10)
-  const [proposal, actionsRes] = await Promise.all([
+  const [proposal, actionRows] = await Promise.all([
     getProposalProjection(siteId, 'action', opts),
-    supabase.from('site_actions').select('status, due_date').eq('site_id', siteId),
+    readSiteActionRows(siteId),
   ])
-  return { ...proposal, ...tallyActionRows((actionsRes.data ?? []) as Array<{ status: string; due_date: string | null }>, todayIso) }
+  return { ...proposal, ...buildActionTally(actionRows, todayIso) }
 }
 
 /**
- * PROJECTION AGRÉGÉE DU CHANTIER — le point d'entrée unique des ÉCRANS (Dashboard,
- * fiche chantier) qui affichent plusieurs objets. UNE lecture des propositions (tous
- * types) + UNE des site_actions, au lieu d'un helper par bloc. Aujourd'hui seul
- * `actions` a son volet métier ; les autres exposent déjà leur volet proposition.
+ * PROJECTION AGRÉGÉE DU CHANTIER — UNE lecture des éléments proposés (tous types) +
+ * UNE des actions. Aujourd'hui seul `actions` a son volet métier ; les autres
+ * exposent leur volet proposition. NB : à terme, les ÉCRANS passent par des read
+ * models dédiés (getSiteOverview…) qui composent ces projections ; getSiteProjection
+ * n'est PAS destiné à devenir l'agrégat universel de toute l'app.
  */
 export interface SiteProjection {
   actions: ActionProjection
@@ -136,38 +128,30 @@ export function emptySiteProjection(): SiteProjection {
 }
 
 async function computeSiteProjection(siteId: string, topLimit: number): Promise<SiteProjection> {
-  const supabase = createAdminClient()
   const todayIso = new Date().toISOString().slice(0, 10)
-  const [propRes, actionsRes] = await Promise.all([
-    supabase
-      .from('site_knowledge_proposals')
-      .select('id, kind, title, payload, confidence, created_at')
-      .eq('site_id', siteId).eq('status', 'proposed'),
-    supabase.from('site_actions').select('status, due_date').eq('site_id', siteId),
+  const [propRows, actionRows] = await Promise.all([
+    readAllProposedRows(siteId),
+    readSiteActionRows(siteId),
   ])
-  const byKind: Record<ProposalKind, ScorableProposalRow[]> = {
+  const byKind: Record<ProposalKind, ProposalRow[]> = {
     action: [], vigilance: [], decision: [], knowledge: [], stakeholder: [], deadline: [],
   }
-  for (const r of (propRes.data ?? []) as Array<ScorableProposalRow & { kind: ProposalKind }>) {
-    byKind[r.kind]?.push(r)
-  }
-  const action = projectProposalRows(byKind.action, topLimit)
+  for (const r of propRows) byKind[r.kind]?.push(r)
+  const action = buildProposalProjection(byKind.action, topLimit)
   return {
-    actions: { ...action, ...tallyActionRows((actionsRes.data ?? []) as Array<{ status: string; due_date: string | null }>, todayIso) },
-    deadlines: projectProposalRows(byKind.deadline, topLimit),
-    watchpoints: projectProposalRows(byKind.vigilance, topLimit),
-    knowledge: projectProposalRows(byKind.knowledge, topLimit),
-    stakeholders: projectProposalRows(byKind.stakeholder, topLimit),
-    decisions: projectProposalRows(byKind.decision, topLimit),
+    actions: { ...action, ...buildActionTally(actionRows, todayIso) },
+    deadlines: buildProposalProjection(byKind.deadline, topLimit),
+    watchpoints: buildProposalProjection(byKind.vigilance, topLimit),
+    knowledge: buildProposalProjection(byKind.knowledge, topLimit),
+    stakeholders: buildProposalProjection(byKind.stakeholder, topLimit),
+    decisions: buildProposalProjection(byKind.decision, topLimit),
   }
 }
 
 /**
  * Projection agrégée du chantier, MISE EN CACHE (cross-requête, TTL 30 s) et
- * étiquetée par chantier. Toutes les surfaces (Accueil, Dashboard, Site, Travail,
- * Planning) appellent ceci sans multiplier les requêtes DB. Une mutation appelle
- * `invalidateSiteProjection(siteId)` (cf. lib/knowledge/invalidate) → le cache tombe
- * → tous les écrans se recomposent, sans code spécifique par écran.
+ * étiquetée par chantier. Une mutation appelle `invalidateSiteProjection(siteId)`
+ * (cf. lib/knowledge/invalidate) → le cache tombe → tous les écrans se recomposent.
  */
 export function getSiteProjection(siteId: string, opts?: { topLimit?: number }): Promise<SiteProjection> {
   const topLimit = opts?.topLimit ?? 3
@@ -178,20 +162,5 @@ export function getSiteProjection(siteId: string, opts?: { topLimit?: number }):
   )()
 }
 
-/** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
-export async function countProposedActionsForSites(siteIds: string[]): Promise<Record<string, number>> {
-  const out: Record<string, number> = {}
-  if (siteIds.length === 0) return out
-  const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('site_knowledge_proposals')
-    .select('site_id')
-    .in('site_id', siteIds)
-    .eq('kind', 'action')
-    .eq('status', 'proposed')
-  if (error) return out
-  for (const r of (data ?? []) as Array<{ site_id: string }>) {
-    out[r.site_id] = (out[r.site_id] ?? 0) + 1
-  }
-  return out
-}
+// Re-export (continuité pour les appelants existants) : l'accès data vit dans le repository.
+export { countProposedActionsForSites } from '@/lib/knowledge/repository'
