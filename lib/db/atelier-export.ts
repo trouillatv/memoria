@@ -16,6 +16,7 @@
 // par Vincent dans S2). Le DG signera manuellement le PDF reçu.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getOrgId } from '@/lib/db/users'
 import type {
   DbTenderChatMessage,
   DbTenderChatAttachment,
@@ -290,23 +291,66 @@ export async function getAtelierExportData(
 async function aggregateForces(
   supabase: ReturnType<typeof createAdminClient>,
 ): Promise<AtelierExportForces> {
+  // Garde fail-closed : le service-role bypasse la RLS. Sans ce filtre, le
+  // « capital de preuves » comptait la plateforme ENTIÈRE — les photos des
+  // autres clients incluses. (Cf. isolation-tenants-fail-closed.)
+  const orgId = await getOrgId()
+
   // Contrats actifs
-  const { count: activeContractsCount } = await supabase
+  let cq = supabase
     .from('contracts')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'active')
     .is('deleted_at', null)
+  if (orgId) cq = cq.eq('organization_id', orgId)
+  const { count: activeContractsCount } = await cq
 
-  // Photos totales
-  const { count: totalPhotos } = await supabase
+  // ── LES PREUVES ───────────────────────────────────────────────────────────
+  // Comptaient `intervention_photos` : une table VIDE sur les 5 organisations
+  // (0 intervention partout, face à 25 visites). Le tableau de bord annonçait
+  // donc « 0 preuves » à un conducteur qui venait de photographier son chantier.
+  // La preuve d'aujourd'hui est une CAPTURE DE VISITE — photo, vocal, vidéo. On
+  // ignore les captures écartées au tri : une photo jetée n'a rien prouvé.
+  let sq = supabase.from('sites').select('id').is('deleted_at', null)
+  if (orgId) sq = sq.eq('organization_id', orgId)
+  const { data: sites } = await sq
+  const siteIds = ((sites ?? []) as Array<{ id: string }>).map((s) => s.id)
+
+  let capturePhotos = 0
+  let visitesDocumentees = 0
+  if (siteIds.length > 0) {
+    const { data: reps } = await supabase
+      .from('site_reports')
+      .select('id, ended_at')
+      .in('site_id', siteIds)
+      .not('origin', 'is', null)
+      .is('deleted_at', null)
+    const reportIds = ((reps ?? []) as Array<{ id: string; ended_at: string | null }>).map((r) => r.id)
+    visitesDocumentees = ((reps ?? []) as Array<{ ended_at: string | null }>).filter((r) => r.ended_at).length
+    if (reportIds.length > 0) {
+      const { count } = await supabase
+        .from('visit_capture')
+        .select('id', { count: 'exact', head: true })
+        .in('report_id', reportIds)
+        .in('kind', ['photo', 'video', 'vocal'])
+        .neq('status', 'discarded')
+      capturePhotos = count ?? 0
+    }
+  }
+
+  // Les photos d'intervention restent comptées : elles ne sont pas fausses, elles
+  // sont vides. Le jour où un tenant en produit, elles s'additionnent.
+  const { count: itvPhotos } = await supabase
     .from('intervention_photos')
     .select('id', { count: 'exact', head: true })
+  const totalPhotos = capturePhotos + (itvPhotos ?? 0)
 
-  // Interventions documentées (completed ou validated)
-  const { count: totalInterventions } = await supabase
+  // « Documentées » = ce qui a laissé une trace. Une visite terminée en est une.
+  const { count: itvDone } = await supabase
     .from('interventions')
     .select('id', { count: 'exact', head: true })
     .in('status', ['completed', 'validated'])
+  const totalInterventions = visitesDocumentees + (itvDone ?? 0)
 
   // Premier contrat actif (par start_date asc) — continuité opérationnelle
   const { data: firstContractRows } = await supabase
