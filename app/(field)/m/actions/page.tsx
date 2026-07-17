@@ -4,6 +4,8 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listOpenSiteActions, type SiteActionRow } from '@/lib/db/site-actions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { FieldActionsList } from '@/components/actions/FieldActionsList'
+import { getPendingWork } from '@/lib/knowledge/pending-work'
+import { PendingWorkBlock } from './PendingWorkBlock'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,9 +31,13 @@ export default async function FieldActionsPage({
     siteName = (data as { name?: string } | null)?.name ?? null
   }
 
-  const actions = await listOpenSiteActions(scoped ? { siteIds: [siteId!] } : undefined).catch(
-    () => [] as SiteActionRow[],
-  )
+  // DEUX BLOCS, jamais mélangés. Une proposition est du travail humain restant
+  // — la cacher laisserait croire qu'il n'y a rien à faire. Mais elle n'est pas
+  // exécutable : personne ne s'est engagé. « à confirmer » n'est pas « ouvert ».
+  const [actions, pending] = await Promise.all([
+    listOpenSiteActions(scoped ? { siteIds: [siteId!] } : undefined).catch(() => [] as SiteActionRow[]),
+    getPendingWork(scoped ? { siteIds: [siteId!] } : {}).catch(() => ({ actions: [], deadlines: [] })),
+  ])
 
   return (
     <div className="space-y-6 pb-24">
@@ -54,6 +60,11 @@ export default async function FieldActionsPage({
         </p>
       </header>
 
+      {/* Ce qui attend une DÉCISION — au-dessus, parce que c'est ce qui bloque
+          le reste : une action non confirmée n'existe nulle part ailleurs. */}
+      <PendingWorkBlock work={pending} />
+
+      {/* Ce qui attend une EXÉCUTION — des engagements pris. */}
       <FieldActionsList actions={actions} />
     </div>
   )
