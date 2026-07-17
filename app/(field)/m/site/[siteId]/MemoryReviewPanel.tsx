@@ -30,34 +30,58 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
   // geste, sans attendre le rechargement. Sinon le conducteur clique, rien ne
   // bouge, et il doute d'avoir cliqué.
   const [done, setDone] = useState<Set<string>>(new Set())
-  const [confirmedCount, setConfirmedCount] = useState(review.confirmed.length)
+  // Ce qui vient d'être retenu, dit tout de suite. La liste `confirmed` vient du
+  // serveur et ne bougera qu'au rechargement ; on ne fait pas patienter.
+  const [justConfirmed, setJustConfirmed] = useState<string[]>([])
 
   const remaining = review.toReview.filter((i) => !done.has(i.id))
+  const groups = [...new Set(review.confirmed.map((c) => c.group))]
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Ce que le chantier sait
-        </h2>
-        {review.confirmed.length + confirmedCount - review.confirmed.length > 0 || review.confirmed.length > 0 ? (
-          <ul className="mt-2 space-y-1">
-            {review.confirmed.map((c) => (
-              <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
-                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                <span className="min-w-0">{c.title}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          // Honnête, et bref : une grande carte vide donnerait l'impression d'un
-          // écran cassé. La phrase dit l'état réel, les propositions suivent tout
-          // de suite — c'est là qu'est le travail.
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Rien de confirmé pour l’instant.
-          </p>
-        )}
-      </div>
+      {review.confirmed.length + justConfirmed.length === 0 ? (
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Ce que le chantier sait
+          </h2>
+          {/* Honnête, et bref : une grande carte vide donnerait l'impression d'un
+              écran cassé. La phrase dit l'état réel, les propositions suivent tout
+              de suite — c'est là qu'est le travail. */}
+          <p className="mt-1 text-[13px] text-muted-foreground">Rien de confirmé pour l’instant.</p>
+        </div>
+      ) : (
+        groups.map((g) => (
+          <div key={g}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{g}</h2>
+            <ul className="mt-2 space-y-1">
+              {review.confirmed.filter((c) => c.group === g).map((c) => (
+                <li key={c.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                  <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                  <span className="min-w-0">
+                    {c.title}
+                    {/* La nature choisie à la confirmation, enfin visible : sans
+                        elle, la question posée n'aurait servi à rien. */}
+                    {c.nature && (
+                      <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+
+      {justConfirmed.length > 0 && (
+        <ul className="space-y-1">
+          {justConfirmed.map((t) => (
+            <li key={t} className="flex items-start gap-2 text-[13px] text-foreground/90">
+              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              <span className="min-w-0">{t}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {remaining.length > 0 && (
         <div>
@@ -72,7 +96,7 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
                 item={item}
                 onDone={(promoted) => {
                   setDone((s) => new Set(s).add(item.id))
-                  if (promoted) setConfirmedCount((n) => n + 1)
+                  if (promoted) setJustConfirmed((l) => [...l, item.title])
                 }}
               />
             ))}

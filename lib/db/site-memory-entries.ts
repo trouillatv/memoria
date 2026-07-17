@@ -73,6 +73,72 @@ export async function createKnowledgeEntry(input: CreateKnowledgeEntryInput): Pr
   return (data as { id: string }).id
 }
 
+/** Une entrée de la mémoire, telle que les surfaces la lisent. */
+export interface KnowledgeEntry {
+  id: string
+  kind: KnowledgeEntryKind
+  title: string
+  body: string | null
+  sourceReportId: string | null
+  validFrom: string
+  confirmedAt: string
+}
+
+/**
+ * CE QUE LE CHANTIER SAIT — lu depuis l'objet réel, jamais depuis la proposition
+ * qui l'a fait naître. Lire le statut de la proposition dirait « confirmé » sans
+ * jamais dire CE QUI a été retenu ni sous quelle nature : la question posée à
+ * l'humain (« vraie en ce moment, ou durablement ? ») resterait sans effet
+ * visible — et une question dont la réponse ne sert à rien ne se pose pas.
+ *
+ * 'superseded' et 'archived' sortent de la lecture courante : une information
+ * remplacée ne disparaît pas, elle cesse d'être ce que le chantier sait.
+ */
+export async function listKnowledgeEntries(siteId: string): Promise<KnowledgeEntry[]> {
+  const { data } = await createAdminClient()
+    .from('site_knowledge_entries')
+    .select('id, kind, title, body, source_report_id, valid_from, confirmed_at')
+    .eq('site_id', siteId)
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .order('confirmed_at', { ascending: false })
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    kind: r.kind as KnowledgeEntryKind,
+    title: r.title as string,
+    body: (r.body as string) ?? null,
+    sourceReportId: (r.source_report_id as string) ?? null,
+    validFrom: r.valid_from as string,
+    confirmedAt: r.confirmed_at as string,
+  }))
+}
+
+export interface Watchpoint {
+  id: string
+  title: string
+  body: string | null
+  sourceReportId: string | null
+  confirmedAt: string
+}
+
+/** Les points de vigilance ACTIFS — ceux que personne n'a levés ni convertis. */
+export async function listWatchpoints(siteId: string): Promise<Watchpoint[]> {
+  const { data } = await createAdminClient()
+    .from('site_watchpoints')
+    .select('id, title, body, report_id, confirmed_at')
+    .eq('site_id', siteId)
+    .eq('status', 'active')
+    .is('deleted_at', null)
+    .order('confirmed_at', { ascending: false })
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    body: (r.body as string) ?? null,
+    sourceReportId: (r.report_id as string) ?? null,
+    confirmedAt: r.confirmed_at as string,
+  }))
+}
+
 export interface CreateWatchpointInput {
   organizationId: string
   siteId: string

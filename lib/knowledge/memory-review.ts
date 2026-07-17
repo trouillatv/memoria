@@ -13,6 +13,14 @@ import {
   listProposalsBySite, getPromotionCapability,
   type PromotionCapability, type ProposalKind,
 } from '@/lib/db/knowledge-proposals'
+import {
+  listKnowledgeEntries, listWatchpoints, knowledgeKindLabel,
+  type KnowledgeEntryKind,
+} from '@/lib/db/site-memory-entries'
+import { listDecisionsBySite, type SiteDecision } from '@/lib/db/site-decisions'
+import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-intervenants'
+import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
+import type { KnowledgeEntry, Watchpoint } from '@/lib/db/site-memory-entries'
 
 /** D'où vient un élément — « Mentionné dans la visite du 15 juillet · 2 mémos ». */
 export interface ProposalProvenance {
@@ -35,11 +43,21 @@ export interface ReviewItem {
   provenance: ProposalProvenance
 }
 
-/** Un élément déjà retenu par un humain. */
+/**
+ * Un élément déjà retenu — lu depuis l'OBJET RÉEL (site_knowledge_entries,
+ * site_watchpoints, site_decisions, site_intervenants), jamais depuis la
+ * proposition qui l'a fait naître. La proposition dit qu'un geste a eu lieu ;
+ * seul l'objet dit ce que le chantier sait, et sous quelle nature.
+ */
 export interface ConfirmedItem {
   id: string
-  kind: ProposalKind
+  /** Le groupe d'affichage, avec les mots du conducteur. */
+  group: string
   title: string
+  /** « Information actuelle » / « Connaissance durable » — la réponse de l'humain,
+   *  enfin visible. Sans elle, la question posée à la confirmation n'aurait servi
+   *  à rien. */
+  nature: string | null
 }
 
 export interface MemoryReview {
@@ -61,19 +79,39 @@ const MEMORY_KINDS: ProposalKind[] = ['knowledge', 'stakeholder', 'decision', 'v
 
 export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
   const orgId = await getOrgId()
-  const rows = await listProposalsBySite(siteId, { status: ['proposed', 'confirmed'] }).catch(() => [])
+  // Chaque lecture se protège seule : un objet indisponible ne doit pas rendre
+  // toute la Mémoire muette.
+  const [rows, entries, watchpoints, decisions, intervenants] = await Promise.all([
+    listProposalsBySite(siteId, { status: ['proposed'] }).catch(() => [] as DbKnowledgeProposal[]),
+    listKnowledgeEntries(siteId).catch(() => [] as KnowledgeEntry[]),
+    listWatchpoints(siteId).catch(() => [] as Watchpoint[]),
+    listDecisionsBySite(siteId).catch(() => [] as SiteDecision[]),
+    listSiteIntervenants(siteId).catch(() => [] as SiteIntervenant[]),
+  ])
   // Garde fail-closed : le service-role bypasse la RLS, l'org se filtre ici.
-  const mine = rows.filter(
+  const proposed = rows.filter(
     (r) => MEMORY_KINDS.includes(r.kind) && (!orgId || !r.organization_id || r.organization_id === orgId),
   )
-
-  const proposed = mine.filter((r) => r.status === 'proposed')
   const provenance = await readProvenance([...new Set(proposed.map((r) => r.report_id).filter((id): id is string => !!id))])
 
+  // Ce que le chantier sait, lu dans les objets eux-mêmes. L'ordre suit ce qu'un
+  // conducteur cherche : le durable d'abord, le périssable ensuite.
+  const confirmed: ConfirmedItem[] = [
+    ...entries
+      .filter((e) => e.kind === 'durable_knowledge')
+      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind) })),
+    ...entries
+      .filter((e) => e.kind !== 'durable_knowledge')
+      .map((e) => ({ id: e.id, group: 'Ce que le chantier sait', title: e.title, nature: natureOf(e.kind) })),
+    ...intervenants.map((i) => ({
+      id: i.id, group: 'Intervenants', title: `${i.companyName} — ${i.role}`, nature: null,
+    })),
+    ...decisions.map((d) => ({ id: d.id, group: 'Décisions', title: d.titre, nature: null })),
+    ...watchpoints.map((w) => ({ id: w.id, group: 'Points de vigilance', title: w.title, nature: null })),
+  ]
+
   return {
-    confirmed: mine
-      .filter((r) => r.status === 'confirmed')
-      .map((r) => ({ id: r.id, kind: r.kind, title: r.title })),
+    confirmed,
     toReview: proposed.map((r) => ({
       id: r.id,
       kind: r.kind,
@@ -84,6 +122,11 @@ export async function getMemoryReview(siteId: string): Promise<MemoryReview> {
       provenance: provenance.get(r.report_id ?? '') ?? { reportId: r.report_id, visitedAt: null, photos: 0, vocals: 0 },
     })),
   }
+}
+
+/** La nature d'une information, dite au conducteur — jamais 'durable_knowledge'. */
+function natureOf(kind: KnowledgeEntryKind): string {
+  return knowledgeKindLabel(kind)
 }
 
 /** La visite d'origine et ses preuves. Une provenance absente reste absente :
