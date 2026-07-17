@@ -21,6 +21,8 @@ describe('site operational workspaces', () => {
         blocages={[blocageFixture()]}
         proposed={[]}
         proposedTotal={0}
+        deadlines={[]}
+        deadlinesProposed={0}
         completedRecent={[]}
       />,
     )
@@ -57,6 +59,8 @@ describe('site operational workspaces', () => {
         blocages={[blocageFixture()]}
         proposed={[{ id: 'p-1', title: 'Contacter M. Vincent Milon (PAVE)' }]}
         proposedTotal={3}
+        deadlines={[]}
+        deadlinesProposed={0}
         completedRecent={[{ id: 'a-9', title: 'Nettoyer la machine après prestation' }]}
         synthesisHref="/m/visite/report-1/cr"
       />,
@@ -86,6 +90,8 @@ describe('site operational workspaces', () => {
         blocages={[blocageFixture()]}
         proposed={[]}
         proposedTotal={0}
+        deadlines={[]}
+        deadlinesProposed={0}
         completedRecent={[]}
       />,
     )

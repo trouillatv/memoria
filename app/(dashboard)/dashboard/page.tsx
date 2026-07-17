@@ -1026,8 +1026,13 @@ function ReservoirEtDefense({
   const fmt = (n: number) => n.toLocaleString('fr-FR')
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-4">
+      {/* « interventions documentées » comptait un objet que plus aucun tenant ne
+          crée (0 sur les 5 organisations). Le mot ment sur ce qu'il mesure : ce
+          sont les PASSAGES documentés — visites terminées et interventions
+          faites. Et « 0 preuves » s'affichait pendant que 50 captures de visite
+          existaient. */}
       <p className="text-xs text-muted-foreground tabular-nums">
-        Mémoire accumulée : {fmt(interventions)} interventions documentées · {fmt(preuves)} preuves
+        Mémoire accumulée : {fmt(interventions)} passage{interventions > 1 ? 's' : ''} documenté{interventions > 1 ? 's' : ''} · {fmt(preuves)} preuve{preuves > 1 ? 's' : ''}
       </p>
       <Link
         href="/litige"

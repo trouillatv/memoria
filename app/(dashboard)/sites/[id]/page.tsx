@@ -56,6 +56,8 @@ import { SandboxResetButton } from './SandboxResetButton'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { ChronologyWorkspace } from './views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from './views/planning/PlanningWorkspace'
+import { getPlanningTimeline } from '@/lib/db/planning-timeline'
+import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
@@ -124,6 +126,19 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   const recentChanges = selectRecentChanges(toOverviewChanges(recentActivity), { sinceIso, limit: 5 })
   const nextEvent = selectNextEvent(toOverviewEvents(currentState, id), new Date().toISOString())
 
+  // La vie datée du chantier — visites, réunions, échéances, interventions. Le
+  // Planning ne traçait que les interventions : ZÉRO ligne sur les 5
+  // organisations. Il était vide par construction, la semaine où une visite a eu
+  // lieu. On charge la semaine courante ± une, pour que la grille et les
+  // compteurs lisent la même chose.
+  const jour = new Date()
+  const lundi = new Date(jour); lundi.setDate(jour.getDate() - ((jour.getDay() === 0 ? 7 : jour.getDay()) - 1))
+  const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const planningTimeline: PlanningTimelineEvent[] = tab === 'planning'
+    ? await getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [id] }).catch(() => [])
+    : []
+
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-5 px-1 pb-10">
       <DynamicCrumb segmentId={id} label={identity.name} />
@@ -187,7 +202,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                 <Link href={`/semaine?site=${id}`} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">
                   <CalendarPlus className="h-4 w-4" /> Planifier
                 </Link>
-                <SiteAddMenu siteId={id} />              </div>
+                <SiteAddMenu siteId={id} />
+              </div>
             </div>
           </div>
 
@@ -207,6 +223,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             interventions={interventionsResult.items}
             proposed={workOverview.actions.proposed}
             proposedTotal={workOverview.actions.summary.proposed}
+            deadlines={deadlines}
+            deadlinesProposed={workOverview.deadlines.summary.proposed}
             completedRecent={workOverview.actions.completedRecent}
             synthesisHref={workOverview.activity.lastVisit ? `/m/visite/${workOverview.activity.lastVisit.reportId}/cr` : undefined}
           />
@@ -230,6 +248,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             cycles={cycles}
             deadlines={deadlines}
             teams={teams}
+            timeline={planningTimeline}
           />
         ) : tab === 'documents-preuves' ? (
           <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />

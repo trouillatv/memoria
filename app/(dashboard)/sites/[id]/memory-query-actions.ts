@@ -103,6 +103,66 @@ const OBSERVATION_TITLE: Record<string, string> = {
  * points vérifiés). Ce flux était invisible à la recherche jusqu'ici. Match =
  * correspondance exacte (keyword:true) → nourrit l'ancrage lexical.
  */
+/**
+ * LES OBJETS DE CONNAISSANCE — décisions, vigilances, intervenants, savoirs.
+ *
+ * Le moteur interrogeait NEUF tables (missions, interventions, photos,
+ * anomalies, accès, rapports, actions, notes) et ZÉRO objet de connaissance. Ce
+ * n'était pas un index incomplet : il a été écrit avant ces tables. « Quelles
+ * décisions concernent ce chantier ? » ne pouvait donc rien trouver, même avec
+ * une décision en base — le type `site_decision` existait dans MemoryHitType,
+ * personne ne le produisait.
+ *
+ * Recherche DÉTERMINISTE (ILIKE) : ces objets sont courts et nommés par un
+ * humain. Pas d'IA pour retrouver une phrase qu'on a soi-même validée.
+ */
+async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemoryHit[]> {
+  const supabase = createAdminClient()
+  const pattern = `%${q.replace(/[\%_]/g, (m) => `\${m}`)}%`
+  const hit = (
+    type: SiteMemoryHit['type'], id: string, title: string, snippet: string, at: string,
+  ): SiteMemoryHit => ({ type, id, title, snippet, occurredAt: at, similarity: null, keyword: true })
+
+  const [dec, wp, ent, itv] = await Promise.all([
+    supabase.from('site_decisions').select('id, titre, description, date_decision')
+      .eq('site_id', siteId).ilike('titre', pattern).limit(10),
+    supabase.from('site_watchpoints').select('id, title, body, confirmed_at')
+      .eq('site_id', siteId).eq('status', 'active').is('deleted_at', null).ilike('title', pattern).limit(10),
+    supabase.from('site_knowledge_entries').select('id, title, body, confirmed_at')
+      .eq('site_id', siteId).eq('status', 'active').is('deleted_at', null).ilike('title', pattern).limit(10),
+    supabase.from('site_intervenants').select('id, role, company_id, effective_from')
+      .eq('site_id', siteId).is('effective_to', null).limit(20),
+  ])
+
+  const out: SiteMemoryHit[] = []
+  for (const d of (dec.data ?? []) as Array<Record<string, string>>) {
+    out.push(hit('site_decision', d.id, d.titre, d.description ?? d.titre, d.date_decision ?? ''))
+  }
+  for (const w of (wp.data ?? []) as Array<Record<string, string>>) {
+    out.push(hit('site_reserve', w.id, w.title, w.body ?? w.title, w.confirmed_at ?? ''))
+  }
+  for (const k of (ent.data ?? []) as Array<Record<string, string>>) {
+    out.push(hit('knowledge', k.id, k.title, k.body ?? k.title, k.confirmed_at ?? ''))
+  }
+  // Un intervenant ne se cherche pas par son titre : « Qui connaît ce chantier ? »
+  // ne contient ni « Sotrap » ni « ETV ». On le nomme, et le filtre porte sur le
+  // NOM de l'entreprise, résolu ici.
+  const ids = ((itv.data ?? []) as Array<{ company_id: string }>).map((i) => i.company_id)
+  if (ids.length > 0) {
+    const { data: cos } = await supabase.from('companies').select('id, name').in('id', [...new Set(ids)])
+    const nameOf = new Map(((cos ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]))
+    const needle = q.toLowerCase()
+    for (const i of (itv.data ?? []) as Array<Record<string, string>>) {
+      const nom = nameOf.get(i.company_id) ?? ''
+      const label = `${nom} — ${i.role}`
+      if (label.toLowerCase().includes(needle) || /qui|connait|connaît|intervenant|equipe|équipe/.test(needle)) {
+        out.push(hit('intervention', i.id, label, `Intervenant du chantier · ${i.role}`, i.effective_from ?? ''))
+      }
+    }
+  }
+  return out
+}
+
 async function searchSiteObservations(siteId: string, q: string): Promise<SiteMemoryHit[]> {
   const supabase = createAdminClient()
   // Neutralise les jokers LIKE saisis par l'utilisateur (recherche littérale).
@@ -245,11 +305,13 @@ export async function askSiteMemoryAction(
   // Sémantique + plein-texte + index d'enrichissement + DOCUMENTS (S4a-2) en parallèle.
   const generalQuestion = isGeneralSiteMemoryQuestion(q)
   if (generalQuestion) {
-    const [reportHits, observationHits] = await Promise.all([
+    const [reportHits, observationHits, knowledgeHits] = await Promise.all([
       searchSiteReports(siteId, q).catch(() => [] as SiteMemoryHit[]),
       searchSiteObservations(siteId, q).catch(() => [] as SiteMemoryHit[]),
+      // Les objets de connaissance — absents du corpus jusqu'ici.
+      searchSiteKnowledge(siteId, q).catch(() => [] as SiteMemoryHit[]),
     ])
-    const hits = [...reportHits, ...observationHits]
+    const hits = [...reportHits, ...observationHits, ...knowledgeHits]
       .sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1))
       .slice(0, 30)
     void logUsageEvent({ event: 'memory_search', siteId, query: q })
@@ -257,7 +319,7 @@ export async function askSiteMemoryAction(
   }
   const queryEmbedding = generalQuestion ? null : await getEmbedding(q).catch(() => null)
   const tenantId = await getSiteTenantId(siteId)
-  const [ftsHits, semHits, timeline, docHits, observationHits, reportHits] = await Promise.all([
+  const [ftsHits, semHits, timeline, docHits, observationHits, reportHits, knowledgeHits] = await Promise.all([
     searchMemory({ q, siteId, periodDays: 3650, limit: 30 }).catch(() => []),
     queryEmbedding
       ? findSimilarTraces({ siteId, queryEmbedding, limit: 20 }).catch(() => [])
@@ -269,6 +331,9 @@ export async function askSiteMemoryAction(
     // P2 — observations terrain (visit_capture), plein-texte déterministe.
     searchSiteObservations(siteId, q).catch(() => [] as SiteMemoryHit[]),
     searchSiteReports(siteId, q).catch(() => [] as SiteMemoryHit[]),
+    // Décisions, vigilances, savoirs, intervenants — le corpus que le moteur
+    // ignorait. « Quels risques sont encore ouverts ? » passe par ici.
+    searchSiteKnowledge(siteId, q).catch(() => [] as SiteMemoryHit[]),
   ])
 
   const byId = new Map(timeline.map((e) => [e.id, e]))
@@ -290,6 +355,11 @@ export async function askSiteMemoryAction(
   }
   for (const r of reportHits) {
     merged.set(`report_document:${r.id}`, { ...r, fts: r.keyword ? 0.02 : 0.01 })
+  }
+  // Les objets de connaissance : un fait VALIDÉ par un humain pèse plus qu'une
+  // trace brute — c'est la seule chose ici dont quelqu'un a répondu.
+  for (const k of knowledgeHits) {
+    merged.set(`${k.type}:${k.id}`, { ...k, fts: 0.05 })
   }
   for (const s of semHits) {
     const type = SRC_TO_TYPE[s.source_type]
