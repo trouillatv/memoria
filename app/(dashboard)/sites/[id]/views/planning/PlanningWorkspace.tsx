@@ -4,6 +4,7 @@ import { CalendarClock, CalendarDays, Clock, Layers3, ListOrdered, Route, Shield
 import { cn } from '@/lib/utils'
 import { cycleStatusLabel } from '@/lib/chantier/labels'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
+import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
 import type { SiteDeadline } from '@/lib/db/site-deadlines'
@@ -21,9 +22,23 @@ interface PlanningWorkspaceProps {
   teams: DbTeam[]
   /** Les échéances confirmées du chantier : datées ET à planifier. */
   deadlines: SiteDeadline[]
+  /** TOUT ce qui est daté sur ce chantier — visites, réunions, échéances,
+   *  interventions. Le compteur « Visites » disait `nextEvent?.kind === 'visit'`
+   *  : il ne comptait rien, il regardait si le PROCHAIN événement était une
+   *  visite. Une visite passée ne pouvait jamais l'incrémenter. Et aucun tenant
+   *  n'a d'intervention (0 sur les 5 organisations) : la grille des jours ne
+   *  traçait donc qu'un objet que personne ne crée. */
+  timeline?: PlanningTimelineEvent[]
 }
 
 const WEEKDAYS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.']
+
+/** Le mot du conducteur pour chaque type daté. */
+const PLANNING_LABEL: Record<string, string> = {
+  visite: 'Visite', reunion: 'Réunion', reunion_a_organiser: 'Réunion à organiser',
+  intervention: 'Intervention', action: 'Action', echeance: 'Échéance',
+  roulement: 'Roulement', fermeture: 'Fermeture', blocage: 'Blocage',
+}
 const WEEKDAYS_LONG = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
 export function PlanningWorkspace({
@@ -35,6 +50,7 @@ export function PlanningWorkspace({
   cycles,
   teams,
   deadlines,
+  timeline,
 }: PlanningWorkspaceProps) {
   // Une échéance sans date n'est pas incomplète : elle attend une décision. Elle a
   // donc sa place à elle — pas une ligne grise en bas d'un calendrier.
@@ -45,6 +61,14 @@ export function PlanningWorkspace({
     const date = intervention.scheduled_for ?? isoDate(intervention.scheduled_at)
     return date >= week[0].iso && date <= week[6].iso
   })
+  // Les VRAIS événements de la semaine, quels qu'ils soient.
+  const inWeek = (timeline ?? []).filter((e) => {
+    const day = e.start.slice(0, 10)
+    return day >= week[0].iso && day <= week[6].iso
+  })
+  const visitesThisWeek = inWeek.filter((e) => e.type === 'visite')
+  const reunionsThisWeek = inWeek.filter((e) => e.type === 'reunion' || e.type === 'reunion_a_organiser')
+
   const teamById = new Map(teams.map((team) => [team.id, team]))
   const unassignedInterventions = interventionsThisWeek.filter((intervention) => !intervention.assigned_team_id)
   const unteamedMissions = missions.filter((mission) => !mission.assigned_team_id)
@@ -120,30 +144,41 @@ export function PlanningWorkspace({
       <section className="grid gap-4 xl:grid-cols-[1fr_320px]">
         <div className="space-y-4">
           <div className="rounded-[22px] border bg-card p-5 shadow-sm">
-            <SectionTitle icon={CalendarDays} title="Semaine" detail="Lundi à dimanche, avec les interventions connues." />
+            <SectionTitle icon={CalendarDays} title="Semaine" detail="Lundi à dimanche — tout ce qui est daté sur ce chantier." />
             <div className="mt-4 grid gap-2 lg:grid-cols-7">
               {week.map((day) => {
-                const dayInterventions = interventionsThisWeek.filter((intervention) => (intervention.scheduled_for ?? isoDate(intervention.scheduled_at)) === day.iso)
+                // La grille ne traçait QUE les interventions — un objet dont la
+                // base ne contient aucune ligne, sur aucune organisation. Elle
+                // était donc vide par construction, la semaine où une visite a eu
+                // lieu. Elle montre désormais tout ce qui est daté.
+                const dayEvents = inWeek.filter((e) => e.start.slice(0, 10) === day.iso)
                 return (
                   <div
                     key={day.iso}
                     className={cn(
                       'rounded-2xl border p-3',
-                      dayInterventions.length > 0 ? 'min-h-[140px] bg-card' : 'min-h-[76px] bg-muted/20',
+                      dayEvents.length > 0 ? 'min-h-[140px] bg-card' : 'min-h-[76px] bg-muted/20',
                     )}
                   >
                     <p className="text-sm font-semibold">{day.label}</p>
                     <p className="text-xs text-muted-foreground">{day.shortDate}</p>
                     <div className="mt-2 space-y-2">
-                      {dayInterventions.map((intervention) => (
+                      {dayEvents.map((e) => (
                         <Link
-                          key={intervention.id}
-                          href={`/interventions/${intervention.id}`}
-                          className="block rounded-xl border border-amber-200 bg-amber-50 p-2 text-sm hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                          key={e.id}
+                          href={e.href ?? '#'}
+                          className={cn(
+                            'block rounded-xl border p-2 text-sm',
+                            e.type === 'visite'
+                              ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30'
+                              : e.type === 'reunion' || e.type === 'reunion_a_organiser'
+                                ? 'border-sky-200 bg-sky-50 hover:bg-sky-100 dark:border-sky-900 dark:bg-sky-950/30'
+                                : 'border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30',
+                          )}
                         >
-                          <p className="font-medium">{formatTime(intervention.scheduled_at)}</p>
-                          <p className="mt-0.5 text-xs">{intervention.mission?.name ?? 'Intervention'}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{intervention.team?.name ?? 'Non affectée'}</p>
+                          <p className="font-medium">{PLANNING_LABEL[e.type] ?? 'Événement'}</p>
+                          <p className="mt-0.5 text-xs">{e.title}</p>
+                          {e.detail && <p className="mt-0.5 text-xs text-muted-foreground">{e.detail}</p>}
                         </Link>
                       ))}
                     </div>
@@ -176,8 +211,8 @@ export function PlanningWorkspace({
             title="Cette semaine"
             rows={[
               ['Interventions', String(interventionsThisWeek.length)],
-              ['Visites', nextEvent?.kind === 'visit' ? '1' : '0'],
-              ['Réunions', nextEvent?.kind === 'meeting' ? '1' : '0'],
+              ['Visites', String(visitesThisWeek.length)],
+              ['Réunions', String(reunionsThisWeek.length)],
               ['Équipes prévues', String(new Set(interventionsThisWeek.map((i) => i.assigned_team_id).filter(Boolean)).size)],
             ]}
           />
