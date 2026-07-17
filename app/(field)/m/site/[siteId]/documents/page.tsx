@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, FileText, FileImage, File as FileIcon, ExternalLink } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { SiteTabs } from '../SiteTabs'
@@ -23,8 +23,9 @@ export default async function SiteDocumentsMobilePage({
   params: Promise<{ siteId: string }>
 }) {
   const { siteId } = await params
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
+  // Un chantier d'une autre organisation doit être indiscernable d'un chantier
+  // inexistant : la garde rend 404, jamais « accès refusé ».
+  const { user } = await requireSiteAccess(siteId)
   // Même frontière de rôle que le desktop : les documents ne sont pas un
   // objet terrain du chef d'équipe.
   if (user.role !== 'admin' && user.role !== 'manager') redirect(`/m/site/${siteId}`)

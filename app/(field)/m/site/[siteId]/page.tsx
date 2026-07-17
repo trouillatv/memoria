@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { getSiteResumeContext } from '@/lib/db/interventions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -134,8 +134,9 @@ export default async function FieldSitePage({
   // DIRECTEMENT en panier, sans attendre que la relecture `getActiveVisit` reflète
   // l'insert — le « swap » fiche → panier devient déterministe (cf. getStartedVisitById).
   const liveVisitId = typeof sp.live === 'string' && sp.live.length > 0 ? sp.live : null
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
+  // Un chantier d'une autre organisation doit être indiscernable d'un chantier
+  // inexistant : la garde rend 404, jamais « accès refusé ».
+  const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase

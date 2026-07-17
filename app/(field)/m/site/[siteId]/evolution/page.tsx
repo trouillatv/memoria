@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteViewpointRows, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { groupViewpointChains } from '@/lib/visits/viewpoints'
@@ -24,8 +24,9 @@ export default async function SiteEvolutionMobilePage({
 }) {
   const { siteId } = await params
   const { repere } = await searchParams
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
+  // Un chantier d'une autre organisation doit être indiscernable d'un chantier
+  // inexistant : la garde rend 404, jamais « accès refusé ».
+  const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
