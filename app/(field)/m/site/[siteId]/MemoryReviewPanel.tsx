@@ -12,6 +12,7 @@
 import { useState, useTransition } from 'react'
 import { Check, ChevronRight, Loader2, MapPin, X } from 'lucide-react'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actions'
+import { WhyButton } from '@/components/provenance/WhyButton'
 import type { MemoryReview, ReviewItem } from '@/lib/knowledge/memory-review'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 
@@ -66,6 +67,14 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
                         elle, la question posée n'aurait servi à rien. */}
                     {c.nature && (
                       <span className="ml-1.5 text-[11px] text-muted-foreground">· {c.nature}</span>
+                    )}
+                    {/* « Voir l'origine » — le raccourci du moteur d'explication,
+                        réservé aux décisions (l'objet le plus durable mérite de
+                        montrer d'où il vient). */}
+                    {c.group === 'Décisions' && (
+                      <span className="mt-0.5 block">
+                        <WhyButton objectType="decision" objectId={c.id} label="Voir l’origine" />
+                      </span>
                     )}
                   </span>
                 </li>

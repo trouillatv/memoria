@@ -5,6 +5,7 @@
 
 import { z } from 'zod'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { logUsageEvent } from '@/lib/db/usage-events'
 import { getProvenance, type ProvenanceChain, type ProvenanceObjectType } from '@/lib/knowledge/provenance'
 
 const Schema = z.object({
@@ -25,5 +26,8 @@ export async function getProvenanceAction(input: {
 
   const chain = await getProvenance(parsed.data.type, parsed.data.id)
   if (!chain) return { ok: false, error: 'Origine non tracée pour cet élément.' }
+  // La mesure du cadrage : depuis quel type d'objet le « Pourquoi ? » est-il
+  // ouvert ? Best-effort, jamais bloquant.
+  void logUsageEvent({ event: 'why_opened', query: parsed.data.type })
   return { ok: true, chain }
 }

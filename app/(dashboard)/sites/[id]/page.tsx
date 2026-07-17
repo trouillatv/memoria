@@ -31,6 +31,9 @@ import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/vi
 import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
+import { getSiteGraph } from '@/lib/knowledge/site-graph'
+import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
+import { logUsageEvent } from '@/lib/db/usage-events'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import {
@@ -262,6 +265,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             teams={teams}
             traceCount={visits.length}
           />
+        ) : tab === 'explorer' ? (
+          <ExplorerView siteId={id} />
         ) : (
           null
         )}
@@ -360,6 +365,15 @@ function captureKindLabel(kind: string): string {
   if (kind === 'vocal') return 'Mémo vocal de visite'
   if (kind === 'note') return 'Note de visite'
   return 'Capture de visite'
+}
+
+async function ExplorerView({ siteId }: { siteId: string }) {
+  const graph = await getSiteGraph(siteId)
+  if (!graph) return null
+  // La mesure, dès le premier jour (cadrage) : l'utilise-t-il ? quand ? —
+  // best-effort, ne retarde jamais le rendu.
+  void logUsageEvent({ event: 'explorer_opened', siteId })
+  return <ExplorerWorkspace graph={graph} />
 }
 
 async function MemoireView({

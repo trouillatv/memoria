@@ -8,6 +8,10 @@ export const SITE_TABS = [
   { key: 'planning', label: 'Planning' },
   { key: 'documents-preuves', label: 'Documents & preuves' },
   { key: 'memoire', label: 'Mémoire' },
+  // « Explorer », jamais « Connexions » (cadrage 2026-07-18) : la Mémoire dit ce
+  // que MemorIA sait ; Explorer montre comment tout est relié. Un outil, pas un
+  // CRUD — mêmes données, autre lecture.
+  { key: 'explorer', label: 'Explorer' },
 ] as const
 
 export type SiteTabKey = typeof SITE_TABS[number]['key']
