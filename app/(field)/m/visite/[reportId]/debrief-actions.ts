@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireFieldAgent } from '@/lib/field/auth'
+import { getVisitSummary, type VisitSummary } from '@/lib/knowledge/visit-summary'
 import { getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
@@ -521,4 +522,27 @@ export async function finalizeVisitAction(input: unknown): Promise<{ ok: boolean
   } catch {
     return { ok: false, error: 'Échec de la clôture de la visite' }
   }
+}
+
+/**
+ * LE CONTRAT UNIQUE DU COMPTE-RENDU — mobile, desktop et PDF lisent ceci.
+ *
+ * L'écran ne reconstruit plus son monde depuis `debrief_analysis` : il reçoit les
+ * objets validés et les propositions vivantes, déjà séparés. Le JSON ne connaît
+ * pas le cycle de vie — il continuait d'affirmer ce qui avait été écarté.
+ */
+export async function getVisitSummaryAction(
+  input: unknown,
+): Promise<{ ok: true; summary: VisitSummary } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = z.object({ report_id: z.string().uuid() }).safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const visit = await getVisit(parsed.data.report_id)
+  if (!visit) return { ok: false, error: 'Visite introuvable' }
+  const orgId = await getOrgId()
+  if (orgId && visit.organization_id && visit.organization_id !== orgId) {
+    return { ok: false, error: 'Visite hors organisation' }
+  }
+  return { ok: true, summary: await getVisitSummary(parsed.data.report_id) }
 }

@@ -21,11 +21,37 @@ import {
   dismissActionProposalAction,
   getDeadlineProposalStatesAction,
   type ActionProposalState,
+  getVisitSummaryAction,
 } from '../debrief-actions'
+import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
 import { echeanceDateLabel, toDebriefEcheance, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
+
+/**
+ * Ce que MemorIA a compris mais que personne n'a validé — dit, et à part.
+ *
+ * Le MÊME découpage que le PDF, parce que c'est le même contrat. Mélanger une
+ * supposition aux faits actés ferait croire au conducteur qu'il a approuvé ce
+ * qu'il n'a jamais lu.
+ */
+function ToConfirm({ items }: { items: SummaryItem[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="mt-2">
+      <p className="text-[12px] text-sky-700 dark:text-sky-300">À confirmer — relevé par MemorIA :</p>
+      <ul className="mt-1 space-y-1">
+        {items.map((i) => (
+          <li key={i.id} className="flex gap-2 text-[13px] leading-snug text-muted-foreground">
+            <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full border border-sky-400" />
+            <span className="min-w-0">{i.title}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export function MemoriaRetained({
   reportId,
@@ -40,6 +66,10 @@ export function MemoriaRetained({
 }) {
   const [phase, setPhase] = useState<Phase>('loading')
   const [analysis, setAnalysis] = useState<StoredDebriefAnalysis | null>(null)
+  // LE CONTRAT UNIQUE — le même que le PDF. L'écran ne reconstruit plus son monde
+  // depuis `debrief_analysis` : ce JSON ignore le cycle de vie et continuait
+  // d'affirmer ce qui avait été écarté ou déjà validé ailleurs.
+  const [summary, setSummary] = useState<VisitSummary | null>(null)
   const [staleDelta, setStaleDelta] = useState<SnapshotDelta | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
   // État des propositions d'action, indexé par la clé du ledger (null = pas encore chargé).
@@ -79,10 +109,12 @@ export function MemoriaRetained({
     // Projette de façon idempotente côté serveur, puis renvoie leur état actuel.
     setPropStates(null)
     setDeadlineStates(null)
-    const [states, deadlines] = await Promise.all([
+    const [states, deadlines, sum] = await Promise.all([
       getActionProposalStatesAction({ report_id: reportId }),
       getDeadlineProposalStatesAction({ report_id: reportId }),
+      getVisitSummaryAction({ report_id: reportId }),
     ])
+    if (aliveRef.current && sum.ok) setSummary(sum.summary)
     if (!aliveRef.current) return
     setPropStates(states)
     setDeadlineStates(deadlines)
@@ -233,9 +265,14 @@ export function MemoriaRetained({
   const activeActions = ledgerActions.filter((x) => isLive(x.key))
   const dismissedActions = ledgerActions.filter((x) => propStates?.[x.key]?.status === 'dismissed')
   const hasActions = activeActions.length > 0
-  const hasWatch = a.watchpoints.length > 0
-  const hasDecisions = a.decisions.length > 0
-  const hasSavoir = a.a_savoir.length > 0
+  // Ces trois notions viennent du CONTRAT, pas du JSON : une proposition écartée
+  // n'y est plus, un fait validé y est marqué comme tel.
+  const watch = summary?.watchpoints ?? { confirmed: [], proposed: [] }
+  const decisions = summary?.decisions ?? { confirmed: [], proposed: [] }
+  const savoir = summary?.knowledge ?? { confirmed: [], proposed: [] }
+  const hasWatch = watch.confirmed.length + watch.proposed.length > 0
+  const hasDecisions = decisions.confirmed.length + decisions.proposed.length > 0
+  const hasSavoir = savoir.confirmed.length + savoir.proposed.length > 0
   // Les échéances de la LECTURE COURANTE, écartées et périmées retirées — même
   // règle que les actions : on ne propose pas de confirmer ce que MemorIA ne dit plus.
   const liveEcheances = (a.echeances ?? [])
@@ -246,7 +283,8 @@ export function MemoriaRetained({
       return s !== 'dismissed' && s !== 'superseded'
     })
   const hasEcheances = liveEcheances.length > 0
-  const hasIntervenants = a.intervenants.length > 0
+  const stake = summary?.stakeholders ?? { confirmed: [], proposed: [] }
+  const hasIntervenants = stake.confirmed.length + stake.proposed.length > 0
   const generatedLabel = safeDate(a.generated_at)
 
   return (
@@ -278,7 +316,8 @@ export function MemoriaRetained({
 
       {hasDecisions && (
         <Block Icon={ListChecks} cls="text-indigo-600" title="Décisions">
-          <BulletList items={a.decisions} dot="bg-indigo-500" />
+          <BulletList items={decisions.confirmed.map((d) => d.title)} dot="bg-indigo-500" />
+          <ToConfirm items={decisions.proposed} />
         </Block>
       )}
 
@@ -363,28 +402,24 @@ export function MemoriaRetained({
       {hasWatch && (
         <Block Icon={Eye} cls="text-amber-600" title="Points de vigilance">
           <ul className="space-y-2">
-            {a.watchpoints.map((w, i) => (
-              <li key={i} className="flex gap-2 text-[13px] leading-snug">
+            {watch.confirmed.map((w) => (
+              <li key={w.id} className="flex gap-2 text-[13px] leading-snug">
                 <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
                 <span className="min-w-0">
-                  <span className="font-medium text-foreground/90">{w.label}</span>
-                  {(w.impact || w.owner || w.due) && (
-                    <span className="mt-0.5 block text-[12px] text-muted-foreground">
-                      {w.impact}
-                      {w.owner ? `${w.impact ? ' · ' : ''}Responsable : ${w.owner}` : ''}
-                      {w.due ? `${w.impact || w.owner ? ' · ' : ''}Échéance : ${w.due}` : ''}
-                    </span>
-                  )}
+                  <span className="font-medium text-foreground/90">{w.title}</span>
+                  {w.detail && <span className="mt-0.5 block text-[12px] text-muted-foreground">{w.detail}</span>}
                 </span>
               </li>
             ))}
           </ul>
+          <ToConfirm items={watch.proposed} />
         </Block>
       )}
 
       {hasSavoir && (
         <Block Icon={Info} cls="text-sky-600" title="À savoir">
-          <BulletList items={a.a_savoir} dot="bg-sky-500" />
+          <BulletList items={savoir.confirmed.map((k) => k.title)} dot="bg-sky-500" />
+          <ToConfirm items={savoir.proposed} />
         </Block>
       )}
 
@@ -456,7 +491,8 @@ export function MemoriaRetained({
 
       {hasIntervenants && (
         <Block Icon={Users} cls="text-slate-600" title="Intervenants">
-          <BulletList items={a.intervenants} dot="bg-slate-500" />
+          <BulletList items={stake.confirmed.map((i) => i.title)} dot="bg-slate-500" />
+          <ToConfirm items={stake.proposed} />
         </Block>
       )}
 
