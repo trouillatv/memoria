@@ -3,6 +3,7 @@
 // ici, sous-traitant ailleurs). C'est ce qui fait passer MemorIA des codes nus
 // (« ETV ») aux vrais acteurs (« ETV · BatiSud · Jean Dupont »).
 import { createAdminClient } from '@/lib/supabase/admin'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 
 export interface SiteIntervenant {
   id: string
@@ -87,6 +88,9 @@ export async function openSiteIntervenant(input: {
   if (existing?.id) {
     const { error } = await sb.from('site_intervenants').update({ main_contact_id: input.mainContactId ?? null }).eq('id', existing.id)
     if (error) throw new Error(error.message)
+    // Cette branche SORT tôt : sans invalidation ici, rattacher un contact à un
+    // intervenant existant ne se verrait nulle part. C'est la mutation qui invalide.
+    invalidateSiteProjection(input.siteId)
     return
   }
   const row: Record<string, unknown> = {
@@ -96,6 +100,7 @@ export async function openSiteIntervenant(input: {
   if (input.effectiveFrom) row.effective_from = input.effectiveFrom
   const { error } = await sb.from('site_intervenants').insert(row)
   if (error) throw new Error(error.message)
+  invalidateSiteProjection(input.siteId)
 }
 
 /** CLÔTURE un lien (effective_to = date) au lieu de le supprimer → l'historique du

@@ -11,7 +11,6 @@
 // depuis la synthèse. Aucun second mécanisme — sinon deux chemins de promotion
 // divergeraient et l'un des deux finirait par écrire ce que l'autre interdit.
 
-import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { requireOwned } from '@/lib/auth/ownership'
@@ -95,10 +94,11 @@ export async function promoteFromMemoryAction(
     })
     switch (res.status) {
       case 'promoted':
-        // L'invalidation de la projection est portée par la MUTATION elle-même
-        // (createSiteAction / createSiteDecision…), jamais par l'écran.
-        revalidatePath(`/m/site/${g.siteId}/patrimoine`)
-        revalidatePath(`/m/site/${g.siteId}`)
+        // L'invalidation est portée par `promoteProposal`, jamais par l'écran.
+        // Ce commentaire l'affirmait déjà — et deux `revalidatePath` le
+        // démentaient juste en dessous. Un écran qui rattrape une invalidation
+        // manquante la masque : les surfaces qu'il ne connaît pas (l'Aperçu, le
+        // Travail) restaient périmées, et personne ne voyait le trou.
         return { ok: true, objectId: res.objectId }
       case 'needs_input':
         return { ok: false, needsInput: res.missing, error: missingLabel(res.missing) }
@@ -137,9 +137,8 @@ export async function dismissFromMemoryAction(
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
 
   try {
+    // `dismissProposal` invalide déjà (il l'a toujours fait) : rien à rattraper ici.
     await dismissProposal(g.proposalId, g.userId, parsed.data.reason ?? undefined, g.orgId)
-    revalidatePath(`/m/site/${g.siteId}/patrimoine`)
-    revalidatePath(`/m/site/${g.siteId}`)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Impossible de l’écarter' }

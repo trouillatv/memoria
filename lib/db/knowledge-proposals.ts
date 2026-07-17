@@ -645,5 +645,22 @@ export async function promoteProposal(params: {
     })
     .eq('id', params.id)
   if (updErr) throw updErr
+
+  // ── L'INVALIDATION VIENT ICI, ET NULLE PART AILLEURS ────────────────────────
+  // Les créateurs (`createSiteAction`, `createSiteDeadline`…) invalident déjà —
+  // mais ils le font AVANT cette mise à jour. À ce moment-là la proposition est
+  // encore 'proposed' : une recomposition déclenchée par eux recompterait le fait
+  // comme « à confirmer » alors qu'il vient d'être confirmé.
+  //
+  // Deux d'entre eux n'invalidaient rien du tout (`createSiteDecision`,
+  // `openSiteIntervenant`) : promouvoir une décision ou un intervenant ne
+  // rafraîchissait aucun écran. C'est corrigé chez eux — mais s'appuyer sur le
+  // créateur restait un pari. La promotion est UNE transaction : elle écrit le
+  // fait ET retire la proposition. C'est elle qui doit invalider, une fois les
+  // deux écritures réussies.
+  //
+  // Les retours anticipés au-dessus (not_found, needs_input, unsupported, déjà
+  // promue) n'écrivent rien : ils n'ont rien à invalider.
+  invalidateSiteProjection(p.site_id)
   return { status: 'promoted', objectType: result.objectType, objectId: result.objectId }
 }

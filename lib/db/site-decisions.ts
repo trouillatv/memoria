@@ -2,6 +2,7 @@
 // que… ». Mémoire du SITE (≠ ajout éditorial de CR). Calqué sur site-actions ; projeté
 // dans le spine (PointExamine type 'decision' → Points administratifs).
 import { createAdminClient } from '@/lib/supabase/admin'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { DECISION_STATUTS, DECISION_IMPACTS, type DecisionStatut, type DecisionImpact } from './decision-constants'
 import type { PointExamine } from './points-examines'
 
@@ -118,6 +119,11 @@ export async function createSiteDecision(input: CreateDecisionInput): Promise<st
     .select('id')
     .single()
   if (error) throw new Error(error.message)
+  // C'est la MUTATION qui invalide, jamais l'écran (cf. lib/knowledge/invalidate).
+  // Cette ligne manquait : `createSiteAction`, `createSiteDeadline`,
+  // `createKnowledgeEntry` et `createWatchpoint` l'avaient, pas les décisions.
+  // Une décision confirmée n'apparaissait donc pas avant l'expiration du TTL.
+  invalidateSiteProjection(input.siteId)
   return data.id as string
 }
 
