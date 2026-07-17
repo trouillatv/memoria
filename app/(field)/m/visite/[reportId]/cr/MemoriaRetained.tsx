@@ -18,13 +18,10 @@ import {
   getVisitDebriefFieldAction,
   promoteActionProposalAction,
   dismissActionProposalAction,
-  getDeadlineProposalStatesAction,
-  type ActionProposalState,
   getVisitSummaryAction,
 } from '../debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
-import { echeanceDateLabel, toDebriefEcheance, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -71,8 +68,6 @@ export function MemoriaRetained({
   const [summary, setSummary] = useState<VisitSummary | null>(null)
   const [staleDelta, setStaleDelta] = useState<SnapshotDelta | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
-  // État des propositions d'échéance, indexé par le label de l'échéance.
-  const [deadlineStates, setDeadlineStates] = useState<Record<string, ActionProposalState> | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aliveRef = useRef(true)
@@ -102,16 +97,10 @@ export function MemoriaRetained({
     setAnalysis(res.loaded.analysis)
     setStaleDelta(res.status === 'stale' ? res.delta : null)
     setPhase('ready')
-    setDeadlineStates(null)
-    // Les états de promotion des ACTIONS ne se lisent plus à part : le contrat
-    // les porte. Restent ceux des échéances, tant qu'elles ne sont pas migrées.
-    const [deadlines, sum] = await Promise.all([
-      getDeadlineProposalStatesAction({ report_id: reportId }),
-      getVisitSummaryAction({ report_id: reportId }),
-    ])
+    // Plus AUCUN état de promotion lu à part : le contrat porte tout, actions
+    // comme échéances. Une seule lecture, une seule vérité.
+    const sum = await getVisitSummaryAction({ report_id: reportId })
     if (aliveRef.current && sum.ok) setSummary(sum.summary)
-    if (!aliveRef.current) return
-    setDeadlineStates(deadlines)
   }, [reportId])
 
   useEffect(() => { loadRef.current = load }, [load])
@@ -155,27 +144,24 @@ export function MemoriaRetained({
   // On ne demande PAS la date : le conducteur confirme que l'échéance existe. Sans
   // date, elle naît « à planifier » et attend dans le Planning — exiger une date ici
   // ferait renoncer, et l'échéance retournerait au néant dont on l'a tirée.
-  async function confirmEcheance(label: string) {
-    const st = deadlineStates?.[label]
-    if (!st || st.status !== 'proposed' || busyKey) return
-    setBusyKey(`ech:${label}`)
-    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+  async function confirmEcheance(proposalId: string) {
+    if (busyKey) return
+    setBusyKey(proposalId)
+    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: proposalId })
     if (!aliveRef.current) return
     setBusyKey(null)
-    if (res.ok) {
-      setDeadlineStates((prev) => ({ ...(prev ?? {}), [label]: { ...st, status: 'confirmed', promotedObjectType: 'site_deadline', promotedObjectId: res.objectId } }))
-      void refreshSummary()
-    }
+    // On RELIT le contrat : l'échéance quitte « proposées » parce que le serveur
+    // le dit, pas parce qu'un état local le mime.
+    if (res.ok) void refreshSummary()
   }
 
-  async function dismissEcheance(label: string) {
-    const st = deadlineStates?.[label]
-    if (!st || st.status !== 'proposed' || busyKey) return
-    setBusyKey(`ech:${label}`)
-    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+  async function dismissEcheance(proposalId: string) {
+    if (busyKey) return
+    setBusyKey(proposalId)
+    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: proposalId })
     if (!aliveRef.current) return
     setBusyKey(null)
-    if (res.ok) setDeadlineStates((prev) => ({ ...(prev ?? {}), [label]: { ...st, status: 'dismissed' } }))
+    if (res.ok) void refreshSummary()
   }
 
   // « Écarter » : décision humaine, jamais ressuscitée par une re-synthèse.
@@ -265,14 +251,7 @@ export function MemoriaRetained({
   const hasSavoir = savoir.confirmed.length + savoir.proposed.length > 0
   // Les échéances de la LECTURE COURANTE, écartées et périmées retirées — même
   // règle que les actions : on ne propose pas de confirmer ce que MemorIA ne dit plus.
-  const liveEcheances = (a.echeances ?? [])
-    .map((e) => toDebriefEcheance(e))
-    .filter((e): e is NonNullable<typeof e> => e !== null)
-    .filter((e) => {
-      const s = deadlineStates?.[e.label]?.status
-      return s !== 'dismissed' && s !== 'superseded'
-    })
-  const hasEcheances = liveEcheances.length > 0
+  const deadlinesProposed = summary?.deadlines.proposed ?? []
   const actionsProposed = summary?.actions.proposed ?? []
   const stake = summary?.stakeholders ?? { confirmed: [], proposed: [] }
   const hasIntervenants = stake.confirmed.length + stake.proposed.length > 0
@@ -436,65 +415,40 @@ export function MemoriaRetained({
         </Block>
       )}
 
-      {hasEcheances && (
+      {/* Les échéances proposées viennent du CONTRAT. Leur titre y est mis en
+          forme UNE fois — « ce qui doit arriver · quand on le sait » : une date
+          si elle a été donnée, la contrainte sinon. Le renderer ne retraduit
+          jamais « sous dix jours » en 27 juillet. */}
+      {deadlinesProposed.length > 0 && (
         <Block Icon={Calendar} cls="text-rose-600" title="Échéances proposées">
           <ul className="space-y-2.5">
-            {liveEcheances.map((e) => {
-              const st = deadlineStates?.[e.label]
-              const created = st?.status === 'confirmed'
-              const busy = busyKey === `ech:${e.label}`
+            {deadlinesProposed.map((e) => {
+              const busy = busyKey === e.proposalId
               return (
-                <li key={e.label} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
-                  {created ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <Check className="h-3 w-3" /> Échéance confirmée
-                    </span>
-                  ) : (
-                    e.date && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                        {echeanceDateLabel(e.date)}
-                      </span>
-                    )
+                <li key={e.id} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
+                  {e.isNewInVersion && (
+                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">Nouveau</span>
                   )}
-                  <p className="mt-1 font-medium text-foreground">{e.label}</p>
-
-                  {/* La CONTRAINTE, avec les mots du débrief. On ne la traduit pas en
-                      date : « sous dix jours » n'est pas le 27 juillet. */}
-                  {!e.date && e.constraint && (
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      <span className="font-medium">Contrainte détectée</span> · {e.constraint}
-                    </p>
-                  )}
-                  {/* Ce n'est pas la date qui manque : c'est la planification qui
-                      reste à faire. Et elle ne bloque pas la confirmation. */}
-                  {!e.date && !created && (
-                    <p className="mt-0.5 text-[12px] text-amber-700 dark:text-amber-300">{A_PLANIFIER_LABEL}</p>
-                  )}
-
-                  {created ? (
-                    <a href={`/sites/${siteId}?tab=planning`} className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary">
-                      Voir dans le planning <ArrowUpRight className="h-3.5 w-3.5" />
-                    </a>
-                  ) : (
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void confirmEcheance(e.label)}
-                        disabled={!st || !!busyKey}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
-                      >
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmer l’échéance
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void dismissEcheance(e.label)}
-                        disabled={!st || !!busyKey}
-                        className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-                      >
-                        Écarter
-                      </button>
-                    </div>
-                  )}
+                  <p className="mt-1 font-medium text-foreground">{e.title}</p>
+                  {e.detail && <p className="mt-0.5 text-[12px] text-muted-foreground">{e.detail}</p>}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => e.proposalId && void confirmEcheance(e.proposalId)}
+                      disabled={!e.capability.available || !!busyKey}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {e.capability.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => e.proposalId && void dismissEcheance(e.proposalId)}
+                      disabled={!!busyKey}
+                      className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      Écarter
+                    </button>
+                  </div>
                 </li>
               )
             })}

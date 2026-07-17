@@ -79,8 +79,6 @@ const styles = StyleSheet.create({
   // Action proposée : une case à COCHER (à faire), pas une puce.
   actionRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 3 },
   checkbox: { width: 9, height: 9, borderWidth: 1, borderColor: '#7c3aed', borderRadius: 2, marginTop: 2, marginRight: 7 },
-  checkboxDone: { width: 9, height: 9, borderWidth: 1, borderColor: '#7c3aed', borderRadius: 2, marginTop: 2, marginRight: 7, backgroundColor: '#7c3aed' },
-  actionDone: { textDecoration: 'line-through', color: COLORS.muted },
   actionText: { flex: 1 },
   actionWhy: { fontSize: 8.5, color: COLORS.muted },
   // Point de vigilance : une ALERTE (pastille orange), lisible en 3 secondes.
