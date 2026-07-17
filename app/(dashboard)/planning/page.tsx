@@ -234,12 +234,25 @@ export default async function MissionsPage({
 
   return (
     <div className="space-y-6 w-full">
-      <header>
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-sky-600" />
-          Planning des interventions
-        </h1>
-        <p className="text-sm text-muted-foreground">Vue cross-contrats des interventions à venir et récentes.</p>
+      {/* UN écran, UN nom. Cette page s'appelait « Planning des interventions »
+          alors que le nav la nomme « Journal » — et que le vrai planificateur vit
+          dans l'espace Planning (/semaine). Deux écrans nommés « Planning », dont
+          un où l'on ne peut rien planifier : le manager qui cherchait le bouton
+          « Planifier » atterrissait ici et ne le trouvait pas (audit lot 1). */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-sky-600" />
+            Journal des interventions
+          </h1>
+          <p className="text-sm text-muted-foreground">Vue cross-contrats des interventions à venir et récentes — en lecture.</p>
+        </div>
+        <Link
+          href="/semaine"
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+        >
+          Planifier — ouvrir le planning
+        </Link>
       </header>
 
       <FiltersBar
