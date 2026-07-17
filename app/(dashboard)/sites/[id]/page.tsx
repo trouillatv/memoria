@@ -30,6 +30,7 @@ import { listSitePhotos } from '@/lib/db/site-photos'
 import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/visit-captures'
 import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
+import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import {
@@ -376,9 +377,14 @@ async function MemoireView({
   teams: DbTeam[]
   traceCount: number
 }) {
-  const [subjects, passations] = await Promise.all([
+  // La connaissance du chantier — la MÊME source que la Mémoire du terrain
+  // (`getMemoryReview`), jamais une copie : un fait ne peut pas être vrai sur un
+  // écran et inexistant sur l'autre. Une lecture qui échoue laisse le reste de la
+  // Mémoire debout.
+  const [subjects, passations, review] = await Promise.all([
     listSubjectsBySite(siteId).catch(() => []),
     listHandoverBriefsBySite(siteId).catch(() => []),
+    getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
   ])
 
   return (
@@ -386,6 +392,7 @@ async function MemoireView({
       siteId={siteId}
       siteName={siteName}
       signals={signals}
+      review={review}
       subjects={subjects}
       relays={toSiteRelays(interventions)}
       teams={teams}

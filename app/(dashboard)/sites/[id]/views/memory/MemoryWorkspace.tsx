@@ -2,8 +2,10 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { BookOpen, GitBranch, Search, Send, Users } from 'lucide-react'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
+import type { MemoryReview } from '@/lib/knowledge/memory-review'
 import type { SubjectSummary } from '@/lib/db/subjects'
 import type { DbHandoverBrief, DbTeam } from '@/types/db'
+import { MemoryReviewPanel } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 import { SiteMemoryQuery } from '../../SiteMemoryQuery'
 import { PrepareSitePassationButton } from './PrepareSitePassationButton'
 
@@ -18,6 +20,7 @@ export function MemoryWorkspace({
   siteId,
   siteName = 'ce chantier',
   signals,
+  review,
   subjects,
   relays = [],
   teams = [],
@@ -28,6 +31,9 @@ export function MemoryWorkspace({
   siteId: string
   siteName?: string
   signals: MemorySignal[]
+  /** Ce que le chantier SAIT, et ce qui attend un geste. Optionnel : un chantier
+   *  dont la lecture échoue garde une Mémoire lisible plutôt qu'un écran mort. */
+  review?: MemoryReview
   subjects: SubjectSummary[]
   relays?: SiteRelay[]
   teams?: DbTeam[]
@@ -35,6 +41,7 @@ export function MemoryWorkspace({
   traceCount?: number
   questionSlot?: ReactNode
 }) {
+  const knows = (review?.confirmed.length ?? 0) + (review?.toReview.length ?? 0) > 0
   return (
     <main className="space-y-4">
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -64,13 +71,44 @@ export function MemoryWorkspace({
         {questionSlot ?? <SiteMemoryQuery siteId={siteId} />}
       </section>
 
+      {/* ── CE QUE LE CHANTIER SAIT ───────────────────────────────────────────
+          La Mémoire desktop lisait UNIQUEMENT des détecteurs (actions en retard,
+          décisions sans suite). Elle ignorait le modèle de connaissance : un
+          chantier avec six informations à confirmer affichait « aucune
+          information n'a encore été marquée comme durable ». Pire, l'Aperçu
+          annonçait « 3 à confirmer » et pointait ICI — vers une page qui ne les
+          montrait pas. La boucle était coupée en son milieu.
+
+          On réutilise le panneau du terrain, pas une seconde copie : « un geste
+          métier ne doit exister qu'une seule fois dans MemorIA ». Et il reste
+          borné aux quatre types de la Mémoire (`MEMORY_KINDS`) — les actions et
+          les échéances se confirment dans le Travail et le Planning. */}
+      {knows && review && (
+        <section className="rounded-[22px] border bg-card p-5 shadow-sm" aria-labelledby="site-knows-title">
+          <div className="mb-4 flex items-start gap-3">
+            <BookOpen className="mt-0.5 h-5 w-5 text-violet-600 dark:text-violet-300" />
+            <div>
+              <h2 id="site-knows-title" className="text-lg font-semibold">Ce que le chantier sait</h2>
+              <p className="text-sm text-muted-foreground">
+                Ce qu&apos;un humain a validé, et ce que MemorIA propose de retenir.
+              </p>
+            </div>
+          </div>
+          <MemoryReviewPanel siteId={siteId} review={review} />
+        </section>
+      )}
+
       <div className="grid gap-4 xl:grid-cols-2">
+        {/* Les détecteurs ne sont PAS la connaissance du chantier : ils disent ce
+            qui TRAÎNE (« 3 actions en retard », « 1 décision sans suite »). Tant
+            qu'ils s'appelaient « Connaissances importantes », ils occupaient le nom
+            de ce qu'ils ne sont pas — et le vrai savoir n'avait plus de place. */}
         <section className="rounded-[22px] border bg-card p-5 shadow-sm" aria-labelledby="important-knowledge-title">
           <div className="mb-4 flex items-start gap-3">
             <BookOpen className="mt-0.5 h-5 w-5 text-violet-600 dark:text-violet-300" />
             <div>
-              <h2 id="important-knowledge-title" className="text-lg font-semibold">Connaissances importantes</h2>
-              <p className="text-sm text-muted-foreground">Éléments durables détectés dans les actions, décisions, réserves et obligations.</p>
+              <h2 id="important-knowledge-title" className="text-lg font-semibold">Ce qui demande une suite</h2>
+              <p className="text-sm text-muted-foreground">Relevé dans les actions, décisions, réserves et obligations du chantier.</p>
             </div>
           </div>
           {signals.length > 0 ? (
@@ -95,13 +133,15 @@ export function MemoryWorkspace({
               ))}
             </div>
           ) : (
-            // Un état vide qui explique la différence entre une trace et une mémoire,
-            // et qui propose l'étape suivante au lieu de constater le vide.
+            // Un état vide qui dit un FAIT MÉTIER — « rien ne traîne » — et non
+            // l'absence d'une donnée. Il ne parle plus de « marqué comme durable » :
+            // c'était le vocabulaire de la connaissance, qui vit maintenant dans
+            // « Ce que le chantier sait ».
             <UsefulEmpty
-              title="Aucune information n’a encore été marquée comme durable."
+              title="Rien ne demande de suite pour l’instant."
               detail={traceCount > 0
                 ? `${traceCount} événement${traceCount > 1 ? 's existent' : ' existe'} dans la chronologie du chantier.`
-                : 'Une trace devient durable lorsqu’elle est promue en décision, réserve ou obligation.'}
+                : 'Une action en retard ou une décision sans suite apparaîtra ici.'}
               action={traceCount > 0 ? { label: 'Ouvrir la chronologie', href: `/sites/${siteId}?tab=chronologie` } : null}
             />
           )}

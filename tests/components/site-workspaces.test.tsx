@@ -15,6 +15,51 @@ vi.mock('next/navigation', () => ({
 }))
 
 describe('site workspaces', () => {
+  // ── LA MÉMOIRE DESKTOP MONTRE LA CONNAISSANCE, PAS SEULEMENT LES DÉTECTEURS ──
+  // Elle ne lisait QUE `signals` (actions en retard, décisions sans suite). Un
+  // chantier avec deux informations à confirmer affichait « aucune information
+  // n'a encore été marquée comme durable » — et l'Aperçu, lui, annonçait
+  // « 3 à confirmer » en pointant ICI. Deux écrans, deux vérités.
+  it('shows what the site knows and what awaits a human, not just detectors', () => {
+    render(
+      <MemoryWorkspace
+        siteId="site-1"
+        questionSlot={<div role="search">Question réelle</div>}
+        signals={[]}
+        subjects={[]}
+        review={{
+          confirmed: [
+            { id: 'k-1', group: 'Décisions', title: 'Les accès seront communiqués ultérieurement', nature: null },
+          ],
+          toReview: [
+            {
+              id: 'p-1',
+              kind: 'knowledge',
+              title: 'Les électriciens vont vérifier les consignations',
+              body: null,
+              createdAt: '2026-07-15T02:07:00.000Z',
+              capability: {
+                available: true,
+                label: 'Ajouter à la mémoire',
+                requiredInputs: ['nature'],
+                explanation: null,
+              },
+              provenance: { reportId: 'r-1', visitedAt: '2026-07-15T02:07:00.000Z', photos: 4, vocals: 2 },
+            },
+          ],
+        }}
+      />,
+    )
+
+    const knows = screen.getByRole('region', { name: 'Ce que le chantier sait' })
+    expect(within(knows).getByText('Les accès seront communiqués ultérieurement')).toBeInTheDocument()
+    expect(within(knows).getByText('Les électriciens vont vérifier les consignations')).toBeInTheDocument()
+    // Le verbe vient du contrat (`capability.label`), jamais du JSX.
+    expect(within(knows).getByRole('button', { name: /Ajouter à la mémoire/ })).toBeInTheDocument()
+    // Le mensonge d'origine ne doit plus pouvoir s'afficher quand le savoir existe.
+    expect(screen.queryByText(/marquée comme durable/)).not.toBeInTheDocument()
+  })
+
   it('makes memory a workspace for retrieving what the site knows', () => {
     render(
       <MemoryWorkspace
@@ -50,7 +95,9 @@ describe('site workspaces', () => {
     expect(screen.getByText('Ici, je peux retrouver ce que le chantier sait.')).toBeInTheDocument()
     expect(screen.getByRole('search')).toHaveTextContent('Question réelle')
 
-    const knowledge = screen.getByRole('region', { name: 'Connaissances importantes' })
+    // Les détecteurs disent ce qui TRAÎNE — ils ne sont pas la connaissance du
+    // chantier, qui vit désormais dans « Ce que le chantier sait ».
+    const knowledge = screen.getByRole('region', { name: 'Ce qui demande une suite' })
     expect(within(knowledge).getByText('1 décision sans suite identifiée')).toBeInTheDocument()
     expect(within(knowledge).queryByText('1 décision jamais appliquée')).not.toBeInTheDocument()
     expect(within(knowledge).getByText('Changer le fournisseur')).toBeInTheDocument()
