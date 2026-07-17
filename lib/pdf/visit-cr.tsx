@@ -13,7 +13,6 @@
 import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
-import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import type { VisitSummary, SummarySection, SummaryItem } from '@/lib/knowledge/visit-summary'
 
 const COLORS = {
@@ -245,7 +244,12 @@ function ToConfirm({ items }: { items: SummaryItem[] }) {
   )
 }
 
-export function VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }: { doc: VisitCrDoc; debrief?: StoredDebriefAnalysis | null; summary: VisitSummary; exportDate: string; mapImage?: string | null }) {
+/**
+ * Le PDF est un RENDERER. Il ne reçoit plus `debrief_analysis` — pas « il ne s'en
+ * sert plus » : il ne peut plus. Seul le read model connaît ce stockage, donc le
+ * document ne peut plus diverger de l'écran par distraction.
+ */
+export function VisitCrPdf({ doc, summary, exportDate, mapImage }: { doc: VisitCrDoc; summary: VisitSummary; exportDate: string; mapImage?: string | null }) {
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
@@ -271,12 +275,16 @@ export function VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }: { do
   // « Ce que MemorIA a retenu » — LE MÊME modèle que le mobile : le résultat de
   // l'analyse (narratif propre, actions proposées, points de vigilance), jamais
   // le verbatim. Repli déterministe si l'analyse n'est pas disponible.
-  const summaryText = debrief?.summary?.trim() || doc.summary?.trim() || ''
+  // Le RÉCIT vient du read model, jamais du JSON : le renderer ignore le
+  // stockage. Repli déterministe sur le doc si la synthèse n'a pas tourné.
+  const summaryText = summary.narrative.trim() || doc.summary?.trim() || ''
   // Actions VIVANTES : le grand livre (hors écartées) est la source ; on montre
   // l'état « fait » (case cochée). Repli sur `actions` pour d'anciennes analyses.
-  const proposedActions = debrief?.action_ledger
-    ? debrief.action_ledger.filter((x) => x.state !== 'dismissed')
-    : (debrief?.actions ?? []).map((a) => ({ ...a, state: 'open' as const }))
+  // Les actions viennent du read model comme le reste : `action_ledger` était le
+  // dernier JSON lu par ce document. Le grand livre disait déjà « hors écartées »,
+  // mais il ignorait ce qui avait été CONFIRMÉ — le PDF rangeait donc une action
+  // devenue réelle parmi les « proposées ».
+  const actionsSection = summary.actions
   // ── LA SOURCE UNIQUE ──────────────────────────────────────────────────────
   // Ces cinq notions ne viennent PLUS de `debrief_analysis`. Le JSON est figé :
   // écarter une proposition ne le changeait pas, et le document qui part chez le
@@ -291,7 +299,6 @@ export function VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }: { do
   const aSavoir = summary.knowledge
   const echeances = summary.deadlines
   const intervenants = summary.stakeholders
-  const PRIORITY_FR: Record<string, string> = { haute: 'Priorité haute', moyenne: 'Priorité moyenne', basse: 'Préparation' }
 
   // « En bref » — richesse de la visite (comptes réels par type).
   const stats: Array<{ n: number; label: string }> = [
@@ -367,26 +374,19 @@ export function VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }: { do
         {/* Actions proposées — un bloc DÉDIÉ, en cases à cocher (à faire), plus
             noyées dans le texte. Issues de l'analyse (propositions), jamais des
             actions déjà validées. */}
-        {proposedActions.length > 0 && (
+        {sectionHas(actionsSection) && (
           <View style={styles.section}>
-            <SectionTitle text="Actions proposées" color="#7c3aed" />
-            {proposedActions.map((a, i) => (
-              <View key={i} style={styles.actionRow} wrap={false}>
-                <View style={a.state === 'done' ? styles.checkboxDone : styles.checkbox} />
+            <SectionTitle text="Actions" color="#7c3aed" />
+            {actionsSection.confirmed.map((a) => (
+              <View key={a.id} style={styles.actionRow} wrap={false}>
+                <View style={styles.checkbox} />
                 <View style={styles.actionText}>
-                  <Text style={a.state === 'done' ? styles.actionDone : undefined}>
-                    {a.priority ? <Text style={styles.metaStrong}>{`[${PRIORITY_FR[a.priority] ?? a.priority}] `}</Text> : null}
-                    {a.title}
-                  </Text>
-                  {a.rationale ? <Text style={styles.actionWhy}>{a.rationale}</Text> : null}
-                  {(a.owner || a.due) ? (
-                    <Text style={styles.actionWhy}>
-                      {a.owner ? `Responsable : ${a.owner}` : ''}{a.owner && a.due ? ' · ' : ''}{a.due ? `Échéance : ${a.due}` : ''}
-                    </Text>
-                  ) : null}
+                  <Text>{a.title}</Text>
+                  {a.detail ? <Text style={styles.actionWhy}>{a.detail}</Text> : null}
                 </View>
               </View>
             ))}
+            <ToConfirm items={actionsSection.proposed} />
           </View>
         )}
 

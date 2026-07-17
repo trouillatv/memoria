@@ -48,10 +48,13 @@ export async function GET(req: Request, ctx: RouteCtx) {
     .then((r) => (r.ok && (r.status === 'ready' || r.status === 'stale') ? r.loaded.analysis : null))
     .catch(() => null)
 
-  // LA source unique des objets métier du CR : le PDF lit ce que l'écran lit.
-  // `debrief` ne sert plus qu'au RÉCIT (summary) — une prose, pas un objet : rien
-  // ne peut la contredire, elle n'a pas de cycle de validation.
-  const summary = await getVisitSummary(reportId)
+  // LA source unique du CR : le PDF lit ce que l'écran lit. Le RÉCIT y entre
+  // aussi — seul le read model connaît `debrief_analysis`. Le renderer ignore le
+  // stockage : demain le récit peut être versionné sans toucher un écran, et
+  // mobile et PDF ont exactement la même prose.
+  const summary = await getVisitSummary(reportId, {
+    narrative: { text: debrief?.summary ?? '', outdated: false },
+  })
 
   const exportDate = new Date().toLocaleDateString('fr-FR', {
     day: '2-digit',
@@ -68,7 +71,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   let pdfBuffer: Buffer
   try {
-    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }))
+    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, summary, exportDate, mapImage }))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'render error'
     console.error('[visit-cr-pdf] PDF render failed:', e)

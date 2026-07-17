@@ -30,6 +30,8 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { echeanceLine } from '@/lib/visits/echeance-labels'
+import { unwrap } from '@/lib/knowledge/read-guard'
+import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
 /** Un fait du compte-rendu, et ce qu'il vaut. */
 export interface SummaryItem {
@@ -51,6 +53,18 @@ export interface SummarySection {
 
 export interface VisitSummary {
   reportId: string
+  /**
+   * LE RÉCIT — la prose de la synthèse, servie par le read model.
+   *
+   * Elle vient bien de `debrief_analysis`, mais AUCUN renderer ne va l'y
+   * chercher. La règle n'est pas « personne ne lit ce JSON » : c'est « seul le
+   * read model connaît ce stockage ». Ainsi le récit pourra être versionné ou
+   * remplacé sans toucher un seul écran, et mobile et PDF ont exactement la
+   * même prose — pas deux replis différents.
+   */
+  narrative: string
+  /** Le récit est-il à jour de la dernière lecture ? Dit sans ambiguïté. */
+  narrativeOutdated: boolean
   actions: SummarySection
   deadlines: SummarySection
   decisions: SummarySection
@@ -64,6 +78,8 @@ const EMPTY: SummarySection = { confirmed: [], proposed: [] }
 export function emptyVisitSummary(reportId: string): VisitSummary {
   return {
     reportId,
+    narrative: '',
+    narrativeOutdated: false,
     actions: { ...EMPTY }, deadlines: { ...EMPTY }, decisions: { ...EMPTY },
     stakeholders: { ...EMPTY }, watchpoints: { ...EMPTY }, knowledge: { ...EMPTY },
   }
@@ -78,10 +94,13 @@ export function emptyVisitSummary(reportId: string): VisitSummary {
  * plus ; une lecture périmée ('superseded') non plus. C'est exactement ce que le
  * JSON était incapable de dire.
  */
-export async function getVisitSummary(reportId: string): Promise<VisitSummary> {
+export async function getVisitSummary(
+  reportId: string,
+  opts: { narrative?: { text: string; outdated: boolean } } = {},
+): Promise<VisitSummary> {
   const db = createAdminClient()
 
-  const [props, actions, deadlines, decisions, intervenants, watchpoints, entries] = await Promise.all([
+  const [propsRes, actionsRes, deadlinesRes, decisionsRes, intervenantsRes, watchpointsRes, entriesRes] = await Promise.all([
     db.from('site_knowledge_proposals').select('id, kind, title, body, payload').eq('report_id', reportId).eq('status', 'proposed'),
     // ⚠️ NI `site_actions` NI `site_decisions` n'ont de `deleted_at` (colonnes
     // vérifiées en base). Filtrer dessus fait ÉCHOUER la requête, qui renvoie
@@ -96,9 +115,21 @@ export async function getVisitSummary(reportId: string): Promise<VisitSummary> {
     db.from('site_knowledge_entries').select('id, title, body, kind').eq('source_report_id', reportId).is('deleted_at', null),
   ])
 
+  // Aucune lecture ne se tait : une erreur de SCHÉMA lève ici plutôt que de
+  // rendre un vide qui a l'air valide. (C'est le filtre `deleted_at` sur une
+  // colonne inexistante qui a coûté cette leçon.)
+  const M = 'getVisitSummary'
+  const props = unwrap<{ id: string; kind: string; title: string; body: string | null; payload: Record<string, unknown> }>('site_knowledge_proposals', M, propsRes)
+  const actions = unwrap<{ id: string; title: string; body: string | null }>('site_actions', M, actionsRes)
+  const deadlines = unwrap<{ id: string; title: string; due_date: string | null; constraint_text: string | null }>('site_deadlines', M, deadlinesRes)
+  const decisions = unwrap<{ id: string; titre: string; description: string | null }>('site_decisions', M, decisionsRes)
+  const intervenants = unwrap<{ id: string; role: string; company_id: string }>('site_intervenants', M, intervenantsRes)
+  const watchpoints = unwrap<{ id: string; title: string; body: string | null }>('site_watchpoints', M, watchpointsRes)
+  const entries = unwrap<{ id: string; title: string; body: string | null; kind: string }>('site_knowledge_entries', M, entriesRes)
+
   // Le nom de l'entreprise : un intervenant validé se dit « Sotrap — ETV », pas
   // par son UUID de société.
-  const companyIds = ((intervenants.data ?? []) as Array<{ company_id: string }>).map((i) => i.company_id)
+  const companyIds = intervenants.map((i) => i.company_id)
   const names = new Map<string, string>()
   if (companyIds.length > 0) {
     const { data: cos } = await db.from('companies').select('id, name').in('id', [...new Set(companyIds)])
@@ -106,7 +137,7 @@ export async function getVisitSummary(reportId: string): Promise<VisitSummary> {
   }
 
   const proposedOf = (kind: string): SummaryItem[] =>
-    ((props.data ?? []) as Array<{ id: string; kind: string; title: string; body: string | null; payload: Record<string, unknown> }>)
+    props
       .filter((p) => p.kind === kind)
       .map((p) => ({
         id: p.id,
@@ -124,13 +155,14 @@ export async function getVisitSummary(reportId: string): Promise<VisitSummary> {
 
   return {
     reportId,
+    narrative: opts.narrative?.text?.trim() ?? '',
+    narrativeOutdated: opts.narrative?.outdated ?? false,
     actions: {
-      confirmed: ((actions.data ?? []) as Array<{ id: string; title: string; body: string | null }>)
-        .map((a) => ({ id: a.id, title: a.title, detail: a.body })),
+      confirmed: actions.map((a) => ({ id: a.id, title: a.title, detail: a.body })),
       proposed: proposedOf('action'),
     },
     deadlines: {
-      confirmed: ((deadlines.data ?? []) as Array<{ id: string; title: string; due_date: string | null; constraint_text: string | null }>)
+      confirmed: deadlines
         .map((d) => ({
           id: d.id,
           title: echeanceLine({ label: d.title, date: d.due_date ?? '', constraint: d.constraint_text ?? '' }),
@@ -139,22 +171,19 @@ export async function getVisitSummary(reportId: string): Promise<VisitSummary> {
       proposed: proposedOf('deadline'),
     },
     decisions: {
-      confirmed: ((decisions.data ?? []) as Array<{ id: string; titre: string; description: string | null }>)
-        .map((d) => ({ id: d.id, title: d.titre, detail: d.description })),
+      confirmed: decisions.map((d) => ({ id: d.id, title: d.titre, detail: d.description })),
       proposed: proposedOf('decision'),
     },
     stakeholders: {
-      confirmed: ((intervenants.data ?? []) as Array<{ id: string; role: string; company_id: string }>)
-        .map((i) => ({ id: i.id, title: `${names.get(i.company_id) ?? '—'} — ${i.role}`, detail: null })),
+      confirmed: intervenants.map((i) => ({ id: i.id, title: `${names.get(i.company_id) ?? '—'} — ${i.role}`, detail: null })),
       proposed: proposedOf('stakeholder'),
     },
     watchpoints: {
-      confirmed: ((watchpoints.data ?? []) as Array<{ id: string; title: string; body: string | null }>)
-        .map((w) => ({ id: w.id, title: w.title, detail: w.body })),
+      confirmed: watchpoints.map((w) => ({ id: w.id, title: w.title, detail: w.body })),
       proposed: proposedOf('vigilance'),
     },
     knowledge: {
-      confirmed: ((entries.data ?? []) as Array<{ id: string; title: string; body: string | null; kind: string }>)
+      confirmed: entries
         .map((k) => ({
           id: k.id,
           title: k.title,
