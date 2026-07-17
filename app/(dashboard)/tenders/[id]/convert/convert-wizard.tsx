@@ -238,9 +238,9 @@ function Step3({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
     <div className="space-y-4 rounded-lg border p-4 bg-card">
       <h2 className="text-sm font-semibold">Chantiers du contrat</h2>
       <p className="text-xs text-muted-foreground">
-        Les sites s&apos;ajoutent <strong>juste après</strong>, depuis la fiche du contrat
-        (onglet <strong>Sites</strong>). On crée d&apos;abord le contrat, puis vous y rattachez
-        ses sites, missions et interventions. Continuez.
+        Les chantiers s&apos;ajoutent <strong>juste après</strong>, depuis la fiche du contrat
+        (onglet <strong>Chantiers</strong>). On crée d&apos;abord le contrat, puis vous y rattachez
+        ses chantiers, missions et interventions. Continuez.
       </p>
       <div className="flex justify-between pt-2">
         <button type="button" onClick={onBack} className="px-3 py-1.5 rounded border text-sm">

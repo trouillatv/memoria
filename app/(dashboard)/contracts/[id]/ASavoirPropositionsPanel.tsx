@@ -44,7 +44,7 @@ export function ASavoirPropositionsPanel({
       const r = await materializeASavoirAction(fd)
       setBusyId(null)
       if (r.ok) {
-        toast.success('« À savoir » ajouté au site')
+        toast.success('« À savoir » ajouté au chantier')
         router.refresh()
       } else {
         toast.error(r.error)
@@ -61,13 +61,13 @@ export function ASavoirPropositionsPanel({
           <span className="text-xs font-normal text-sky-800/70 dark:text-sky-200/60">({propositions.length})</span>
         </h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Savoir opérationnel détecté dans le dossier. Choisissez le site concerné pour le transformer en « à savoir ».
+          Savoir opérationnel détecté dans le dossier. Choisissez le chantier concerné pour le transformer en « à savoir ».
         </p>
       </div>
 
       {sites.length === 0 ? (
         <p className="text-xs text-amber-700 dark:text-amber-300">
-          Ajoutez d&apos;abord un site à ce contrat pour pouvoir y rattacher ces savoirs.
+          Ajoutez d&apos;abord un chantier à ce contrat pour pouvoir y rattacher ces savoirs.
         </p>
       ) : (
         <ul className="space-y-2">

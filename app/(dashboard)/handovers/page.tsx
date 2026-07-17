@@ -135,7 +135,7 @@ export default async function HandoversPage({
         <p className="text-sm text-muted-foreground">
           Anticiper les passations (fins de contrat proches) et transmettre la
           mémoire d&apos;un lieu quand quelqu&apos;un bascule ou qu&apos;une équipe
-          prend un site. Le sujet est la mémoire, jamais la personne.
+          prend un chantier. Le sujet est la mémoire, jamais la personne.
         </p>
       </header>
 
@@ -202,7 +202,7 @@ export default async function HandoversPage({
                   className="inline-flex items-center gap-1.5 rounded-md border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs text-brand-800 transition-colors hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/30 dark:text-brand-200"
                 >
                   <MapPin className="h-3.5 w-3.5" />
-                  Préparer une passation (une équipe prend un site)
+                  Préparer une passation (une équipe prend un chantier)
                 </Link>
               </div>
             </div>
@@ -239,7 +239,7 @@ export default async function HandoversPage({
                           {b.title}
                         </p>
                         <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {b.payload?.sites?.length ?? 0} site
+                          {b.payload?.sites?.length ?? 0} chantier
                           {(b.payload?.sites?.length ?? 0) > 1 ? 's' : ''}
                           {b.shared_token && b.expires_at && (
                             <>
@@ -345,7 +345,7 @@ function RecentPassationsTimeline({ entries }: { entries: RecentPassationEntry[]
       {entries.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">
           Aucun passage de témoin n&apos;a encore été préparé. Dès qu&apos;une
-          personne change d&apos;équipe ou qu&apos;une équipe prend un site, un
+          personne change d&apos;équipe ou qu&apos;une équipe prend un chantier, un
           brief fige la mémoire utile du lieu (à savoir, anomalies, documents,
           équipes relais) pour que rien ne se perde.
         </p>
@@ -373,7 +373,7 @@ function RecentPassationsTimeline({ entries }: { entries: RecentPassationEntry[]
                   <p className="text-sm truncate">
                     {e.title}
                     {e.sitesCount > 0 && (
-                      <span className="text-muted-foreground"> · {e.sitesCount} site{e.sitesCount > 1 ? 's' : ''}</span>
+                      <span className="text-muted-foreground"> · {e.sitesCount} chantier{e.sitesCount > 1 ? 's' : ''}</span>
                     )}
                   </p>
                   <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">

@@ -92,7 +92,7 @@ export default async function MemoireSitePage({ params }: PageProps) {
           href={`/sites/${siteId}`}
           className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
         >
-          Voir toutes les traces du site →
+          Voir toutes les traces du chantier →
         </Link>
       </div>
     </div>

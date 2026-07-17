@@ -151,7 +151,7 @@ export function OrgMemoryQuery() {
         </h2>
         <p className="text-[11px] text-muted-foreground mt-0.5">
           MemorIA retrouve dans la mémoire de tous les chantiers (anomalies, notes, interventions).
-          Chaque trace est rattachée à son site&nbsp;: il ne répond pas à votre place.
+          Chaque trace est rattachée à son chantier&nbsp;: il ne répond pas à votre place.
         </p>
       </div>
 

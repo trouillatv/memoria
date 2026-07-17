@@ -280,7 +280,7 @@ export default async function TeamProfilePage({
         <section className="rounded-lg border bg-card p-4 space-y-3">
           <h2 className="text-sm font-medium flex items-center gap-2">
             <Building2 className="h-4 w-4 text-brand-600" />
-            Sites favoris
+            Chantiers favoris
           </h2>
           {favoriteSites.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
@@ -393,7 +393,7 @@ export default async function TeamProfilePage({
             Équipes voisines
           </h2>
           <p className="text-[11px] text-muted-foreground">
-            Équipes qui partagent au moins un membre ou un site avec celle-ci.
+            Équipes qui partagent au moins un membre ou un chantier avec celle-ci.
             Utile pour les passages de témoin et le back-up.
           </p>
           {companions.length === 0 ? (
@@ -420,7 +420,7 @@ export default async function TeamProfilePage({
                       )}
                       {c.sharedActiveMembers > 0 && c.sharedSites > 0 && ' · '}
                       {c.sharedSites > 0 && (
-                        <>{c.sharedSites} site{c.sharedSites > 1 ? 's' : ''}</>
+                        <>{c.sharedSites} chantier{c.sharedSites > 1 ? 's' : ''}</>
                       )}
                     </span>
                   </Link>

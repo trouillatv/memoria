@@ -59,7 +59,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
 
   async function submit() {
     if (!name.trim() || !siteId) {
-      toast.error('Site et nom requis')
+      toast.error('Chantier et nom requis')
       return
     }
     const validChecklist = checklist.filter((it) => it.label.trim().length > 0)
@@ -112,7 +112,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
           )}
           {mode === 'create' && otherSites && otherSites.length > 0 && (
             <p className="text-[11px] text-muted-foreground italic">
-              Vous pouvez réutiliser un site existant d&apos;un autre contrat.
+              Vous pouvez réutiliser un chantier existant d&apos;un autre contrat.
             </p>
           )}
         </div>

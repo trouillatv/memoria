@@ -112,7 +112,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         <div className="pl-7 flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
           {client.contact_name && <span>{client.contact_name}</span>}
           <span className="inline-flex items-center gap-1"><FileCheck className="h-3.5 w-3.5" />{contractCount} contrat{contractCount > 1 ? 's' : ''}</span>
-          <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{siteCount} site{siteCount > 1 ? 's' : ''}</span>
+          <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{siteCount} chantier{siteCount > 1 ? 's' : ''}</span>
         </div>
       </header>
 
@@ -226,7 +226,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           {/* Santé des sites — anneau (proportion) + liste actionnable */}
           <div className="rounded-xl border bg-card p-5">
             <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5" /> Santé des sites
+              <MapPin className="h-3.5 w-3.5" /> Santé des chantiers
             </h2>
             <div className="flex items-start gap-6">
               <HealthRing
@@ -257,7 +257,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           {/* Charge par site — où se concentre l'activité */}
           <div className="rounded-xl border bg-card p-5">
             <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-1.5">
-              <Layers className="h-3.5 w-3.5" /> Charge par site
+              <Layers className="h-3.5 w-3.5" /> Charge par chantier
             </h2>
             {cockpit.sites.some((s) => s.interventionCount > 0) ? (
               (() => {
@@ -345,7 +345,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold uppercase tracking-widest text-muted-foreground inline-flex items-center gap-2">
                   <MapPin className="h-3.5 w-3.5" />
-                  Sites ({siteCount})
+                  Chantiers ({siteCount})
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-1.5">

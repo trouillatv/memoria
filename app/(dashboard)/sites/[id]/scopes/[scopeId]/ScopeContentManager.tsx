@@ -80,7 +80,7 @@ export function ScopeContentManager({ siteId, scopeId, kind, items }: Props) {
         <div className="border-t px-3 py-3">
           {others.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              Rien à rattacher ici (déjà rattaché, ou aucun élément sur le site).
+              Rien à rattacher ici (déjà rattaché, ou aucun élément sur le chantier).
             </p>
           ) : (
             <ul className="space-y-1.5">

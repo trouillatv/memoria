@@ -43,7 +43,7 @@ export function CreateSiteForm({ contractId, clientName: _clientName }: { contra
       if (r && 'error' in r && r.error) {
         toast.error(r.error)
       } else {
-        toast.success('Site ajouté')
+        toast.success('Chantier ajouté')
         reset()
         setOpen(false)
         router.refresh()
@@ -59,7 +59,7 @@ export function CreateSiteForm({ contractId, clientName: _clientName }: { contra
         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
       >
         <Plus className="h-3.5 w-3.5" />
-        Ajouter un site
+        Ajouter un chantier
       </button>
     )
   }

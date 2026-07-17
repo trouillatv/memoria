@@ -146,7 +146,7 @@ function EntryCard({ entry }: { entry: ContinuityEntry }) {
             <span className="italic">Aucun chantier documenté pour les équipes actives de cette personne.</span>
           ) : (
             <>
-              <strong>{entry.sitesCovered.length} site{entry.sitesCovered.length > 1 ? 's' : ''}</strong> via{' '}
+              <strong>{entry.sitesCovered.length} chantier{entry.sitesCovered.length > 1 ? 's' : ''}</strong> via{' '}
               <strong>{entry.activeTeams.length} équipe{entry.activeTeams.length > 1 ? 's' : ''}</strong>
               {entry.activeTeams.length > 0 && (
                 <>

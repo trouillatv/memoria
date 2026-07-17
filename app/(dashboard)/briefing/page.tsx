@@ -238,7 +238,7 @@ export default async function BriefingPage({
         <CardHeader>
           <CardTitle className="text-base inline-flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            Couverture prévue ({briefing.coverageBySite.length} site
+            Couverture prévue ({briefing.coverageBySite.length} chantier
             {briefing.coverageBySite.length > 1 ? 's' : ''})
           </CardTitle>
         </CardHeader>
@@ -360,7 +360,7 @@ export default async function BriefingPage({
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
               <MapPin className="h-4 w-4 text-amber-600" />
-              Sites sans couverture demain ({briefing.sitesWithoutCoverage.length})
+              Chantiers sans couverture demain ({briefing.sitesWithoutCoverage.length})
             </CardTitle>
           </CardHeader>
           <CardContent>

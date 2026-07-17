@@ -79,7 +79,7 @@ export default async function ContractMissionsPage({
 
         {sites.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border p-4">
-            Ajoutez d&apos;abord un site dans l&apos;onglet <Link href={`/contracts/${id}/sites`} className="underline">Sites</Link>.
+            Ajoutez d&apos;abord un chantier dans l&apos;onglet <Link href={`/contracts/${id}/sites`} className="underline">Chantiers</Link>.
           </p>
         ) : missions.length === 0 ? (
           <p className="text-sm text-muted-foreground rounded-lg border p-4">

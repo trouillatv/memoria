@@ -113,7 +113,7 @@ export default async function AdminUsagePage() {
             <div className="text-4xl font-semibold tabular-nums">{summary.briefToActionCount}</div>
             <p className="text-sm text-muted-foreground">
               Actions créées ≤ 10 min après l&apos;ouverture d&apos;un brief, par la même personne sur le
-              même site. Indice que préparer une visite/réunion déclenche un acte concret.
+              même chantier. Indice que préparer une visite/réunion déclenche un acte concret.
             </p>
           </CardContent>
         </Card>
@@ -134,7 +134,7 @@ export default async function AdminUsagePage() {
 
         {scopeMon.overall.total === 0 ? (
           <p className="text-sm text-muted-foreground italic">
-            Aucun site avec sous-périmètres pour l&apos;instant.
+            Aucun chantier avec sous-périmètres pour l&apos;instant.
           </p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">

@@ -23,7 +23,7 @@ interface BeforeInstallPromptEvent extends Event {
 // domaine que « Dossier de démarrage » (les AO), et un espace de travail INTERNE à
 // un dossier, pas une action de démarrage → redondant, retiré (Vincent 2026-06-27).
 const SHORTCUTS = [
-  { href: '/sites', label: 'Site', icon: MapPin },
+  { href: '/sites', label: 'Chantier', icon: MapPin },
   { href: '/tenders/new', label: 'Dossier de démarrage', icon: FileText },
   { href: '/equipes', label: 'Équipe', icon: Users },
 ]

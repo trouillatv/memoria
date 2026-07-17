@@ -28,7 +28,7 @@ export default async function ClientsPage() {
           <div>
             <h1 className="text-2xl font-semibold leading-tight tracking-tight">Clients</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Vue agrégée par client — contrats, sites et activité.
+              Vue agrégée par client — contrats, chantiers et activité.
             </p>
           </div>
         </div>
@@ -67,7 +67,7 @@ export default async function ClientsPage() {
                         <span>{client.contractCount} contrat{client.contractCount > 1 ? 's' : ''}</span>
                       )}
                       {client.siteCount > 0 && (
-                        <span>{client.siteCount} site{client.siteCount > 1 ? 's' : ''}</span>
+                        <span>{client.siteCount} chantier{client.siteCount > 1 ? 's' : ''}</span>
                       )}
                       {client.contractCount === 0 && client.siteCount === 0 && (
                         <span className="italic">Aucun chantier ni contrat</span>

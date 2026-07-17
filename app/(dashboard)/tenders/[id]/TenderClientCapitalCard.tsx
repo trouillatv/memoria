@@ -60,7 +60,7 @@ export function TenderClientCapitalCard({ capital }: Props) {
               <div className="rounded-md border bg-card px-3 py-2">
                 <dt className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
-                  Sites
+                  Chantiers
                 </dt>
                 <dd className="text-xl font-semibold tabular-nums">
                   {capital.sitesCount.toLocaleString('fr-FR')}

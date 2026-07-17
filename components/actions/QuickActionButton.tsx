@@ -95,7 +95,7 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
       {needsSitePick && (
         <div className="space-y-1">
           <label htmlFor="qa-site" className="text-xs text-muted-foreground">
-            Site <span className="text-amber-600">*</span>
+            Chantier <span className="text-amber-600">*</span>
           </label>
           <select
             id="qa-site"

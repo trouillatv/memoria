@@ -219,7 +219,7 @@ export default async function SiteSubjectsPage({ params, searchParams }: { param
   return (
     <div className="space-y-6 w-full">
       <DynamicCrumb segmentId="subjects" label="Sujets" />
-      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Sites' }, { href: `/sites/${id}`, label: identity.name }]} />
+      <BreadcrumbPrefix crumbs={[{ href: '/sites', label: 'Chantiers' }, { href: `/sites/${id}`, label: identity.name }]} />
 
       <Link href={`/sites/${id}`} className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
         ← {identity.name}

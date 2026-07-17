@@ -104,7 +104,7 @@ export function SiteScopesSection({ siteId, scopes, typeOptions }: Props) {
             Sous-périmètres
           </h2>
           <p className="text-[12px] text-muted-foreground mt-0.5">
-            Découpez la mémoire du site (VRD, réseau, bâtiment…) pour pouvoir l&apos;interroger précisément.
+            Découpez la mémoire du chantier (VRD, réseau, bâtiment…) pour pouvoir l&apos;interroger précisément.
           </p>
         </div>
         {!adding && (
@@ -118,7 +118,7 @@ export function SiteScopesSection({ siteId, scopes, typeOptions }: Props) {
       {/* Liste */}
       {scopes.length === 0 && !adding ? (
         <p className="text-sm text-muted-foreground italic">
-          Aucun sous-périmètre. Le contenu vit au niveau du site.
+          Aucun sous-périmètre. Le contenu vit au niveau du chantier.
         </p>
       ) : (
         <ul className="space-y-1.5">

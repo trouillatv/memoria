@@ -121,7 +121,7 @@ export function AnomaliesList({
     }
     return (
       <p className="text-sm text-muted-foreground italic">
-        Aucune anomalie ouverte sur ce site.
+        Aucune anomalie ouverte sur ce chantier.
       </p>
     )
   }

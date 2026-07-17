@@ -54,17 +54,28 @@ import type {
   AnomalyCategory,
   DbSiteReportProposal,
   MissionCadence,
-  SiteReportProposalType,
 } from '@/types/db'
 
 const BUCKET = 'site-reports'
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024 // 25 MB — couvre l'import d'un audio de réunion (~25 min)
 const MAX_FILE_BYTES = 20 * 1024 * 1024 // 20 MB (PDF, image, plan…)
+const MAX_MANUAL_TEXT_CHARS = 200000 // couvre un transcript manuel très long avec marge
 
 /** Tronque proprement à 140 (limite stricte de createSiteNote). */
 function clip140(s: string): string {
   const t = s.trim()
   return t.length <= 140 ? t : t.slice(0, 137).trimEnd() + '…'
+}
+
+function zodErrorMessage(error: z.ZodError): string {
+  const issue = error.issues[0]
+  if (!issue) return 'Paramètres invalides'
+  const field = issue.path.join('.') || 'champ'
+  if (issue.code === 'too_big' && typeof issue.maximum === 'number') {
+    return `${field} trop long (max ${issue.maximum} caractères)`
+  }
+  if (issue.message) return `${field} : ${issue.message}`
+  return `Paramètres invalides (${field})`
 }
 
 /** Résout le tenant : depuis le site (réunion site) ou le 1er site du contrat
@@ -102,7 +113,7 @@ const draftSchema = z.object({
   site_id: z.string().uuid().optional(),
   contract_id: z.string().uuid().optional(),
   title: z.string().max(200).optional(),
-  text_input: z.string().max(5000).optional(),
+  text_input: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
   audio_mime: z.string().max(80).optional(),
   audio_duration_seconds: z.coerce.number().int().min(0).max(600).optional(),
 })
@@ -122,7 +133,7 @@ export async function createReportDraftAction(formData: FormData): Promise<
     audio_mime: formData.get('audio_mime') ?? undefined,
     audio_duration_seconds: formData.get('audio_duration_seconds') ?? undefined,
   })
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.success) return { ok: false, error: zodErrorMessage(parsed.error) }
 
   const type = parsed.data.report_type
   if (type === 'site' && !parsed.data.site_id) return { ok: false, error: 'Site manquant' }
@@ -242,7 +253,7 @@ export async function startMeetingAction(
 // texte, désormais) — même garantie qu'avant : le texte part en premier.
 const textPatchSchema = z.object({
   report_id: z.string().uuid(),
-  text_input: z.string().max(5000).optional(),
+  text_input: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
 })
 
 export async function setReportTextInputAction(
@@ -251,7 +262,7 @@ export async function setReportTextInputAction(
   const auth = await requireFieldAgent()
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = textPatchSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.success) return { ok: false, error: zodErrorMessage(parsed.error) }
   try {
     await setReportText(parsed.data.report_id, { text_input: parsed.data.text_input ?? null })
     return { ok: true }
@@ -550,8 +561,8 @@ export async function transcribeReportAction(
 
 const analyzeSchema = z.object({
   report_id: z.string().uuid(),
-  transcript_corrected: z.string().max(12000).optional(),
-  text_input: z.string().max(5000).optional(),
+  transcript_corrected: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
+  text_input: z.string().max(MAX_MANUAL_TEXT_CHARS).optional(),
 })
 
 export async function listSiteMissionsForReportAction(
@@ -647,7 +658,7 @@ export async function analyzeReportAction(formData: FormData): Promise<
     transcript_corrected: formData.get('transcript_corrected') ?? undefined,
     text_input: formData.get('text_input') ?? undefined,
   })
-  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  if (!parsed.success) return { ok: false, error: zodErrorMessage(parsed.error) }
 
   const report = await getSiteReport(parsed.data.report_id)
   if (!report) return { ok: false, error: 'Compte-rendu introuvable' }
@@ -897,6 +908,7 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
                 corps_etat: p.corps_etat,
                 assigned_to: p.assigned_to,
                 created_by: auth.userId,
+                created_from: 'mobile_site_report',
               })
               await markProposalCreated(p.id, 'site_action', actionId)
             } else {
@@ -938,6 +950,7 @@ export async function createValidatedProposalsAction(reportId: string): Promise<
             assigned_to: p.assigned_to,
             due_date: scheduledFor,
             created_by: auth.userId,
+            created_from: 'mobile_site_report',
           })
           if (outcome === 'intervention') {
             const missionId = await resolveMission(p, siteId, auth.userId)

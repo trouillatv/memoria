@@ -368,7 +368,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
           <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
               <MapPin className="h-4 w-4 text-sky-600" />
-              Sites connus ({sites.length})
+              Chantiers connus ({sites.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -408,7 +408,7 @@ export default async function IntervenantDetailPage({ params }: Props) {
                 ))}
                 {sites.length > 8 && (
                   <li className="px-6 py-2 text-[11px] text-muted-foreground italic">
-                    + {sites.length - 8} autres sites
+                    + {sites.length - 8} autres chantiers
                   </li>
                 )}
               </ul>

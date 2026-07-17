@@ -112,7 +112,7 @@ export function AccessSection({
         className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2"
       >
         <KeyRound className="h-3 w-3" />
-        Accès site
+        Accès au chantier
       </h2>
 
       {events.length > 0 && (

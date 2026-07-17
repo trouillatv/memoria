@@ -52,7 +52,7 @@ export function SiteAccessCard({
     >
       <summary className="cursor-pointer select-none flex items-center justify-between px-4 py-3">
         <h2 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-          Accès au site
+          Accès au chantier
         </h2>
         <ChevronDown
           className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180"

@@ -84,7 +84,7 @@ export default async function SiteQrPage({ params }: PageProps) {
       <DynamicCrumb segmentId="qr" label="QR Code" />
       <BreadcrumbPrefix
         crumbs={[
-          { href: '/sites', label: 'Sites' },
+          { href: '/sites', label: 'Chantiers' },
           { href: `/sites/${id}`, label: info.name },
         ]}
       />

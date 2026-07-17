@@ -135,7 +135,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
         setStep('dup_warning')
         return
       }
-      toast.success('Site créé')
+      toast.success('Chantier créé')
       close()
       router.refresh()
       router.push(`/sites/${result.siteId}`)
@@ -209,7 +209,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                 <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    Sites similaires déjà enregistrés
+                    Chantiers similaires déjà enregistrés
                   </div>
                   <ul className="space-y-1">
                     {liveSimilar.map((s) => (
@@ -232,7 +232,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                     ))}
                   </ul>
                   <p className="text-[10px] text-amber-700/80">
-                    Vérifiez qu&apos;il s&apos;agit bien d&apos;un nouveau site avant de continuer.
+                    Vérifiez qu&apos;il s&apos;agit bien d&apos;un nouveau chantier avant de continuer.
                   </p>
                 </div>
               )}
@@ -341,7 +341,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Le site peut exister sans contrat — il survivra aux contrats futurs.
+                  Le chantier peut exister sans contrat — il survivra aux contrats futurs.
                 </p>
               </div>
             )}
@@ -411,7 +411,7 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
                 <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-900">
                   Des chantiers au nom similaire à <strong>{name}</strong> existent déjà.
-                  Vérifiez qu&apos;il s&apos;agit bien d&apos;un nouveau site distinct.
+                  Vérifiez qu&apos;il s&apos;agit bien d&apos;un nouveau chantier distinct.
                 </p>
               </div>
               <ul className="space-y-1.5">
@@ -440,8 +440,8 @@ export function CreateSiteDialog({ clients, contracts, allSites }: Props) {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Si ce site est distinct des autres (zone différente, bâtiment séparé…),
-              vous pouvez le créer quand même. La mémoire IA sera indépendante pour chaque site.
+              Si ce chantier est distinct des autres (zone différente, bâtiment séparé…),
+              vous pouvez le créer quand même. La mémoire IA sera indépendante pour chaque chantier.
             </p>
 
             <div className="flex justify-between gap-2 pt-1">

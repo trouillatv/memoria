@@ -84,8 +84,8 @@ export function NewMeetingButton({ contracts, sites }: { contracts: Option[]; si
                     <Building2 className="h-4 w-4 text-violet-600" /> Réunion de contrat
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Une réunion (ex. lundi matin) qui couvre plusieurs sites d&apos;un même contrat.
-                    L&apos;IA route chaque décision vers le bon site ; vous confirmez.
+                    Une réunion (ex. lundi matin) qui couvre plusieurs chantiers d&apos;un même contrat.
+                    L&apos;IA route chaque décision vers le bon chantier ; vous confirmez.
                   </p>
                 </button>
                 <button
@@ -94,10 +94,10 @@ export function NewMeetingButton({ contracts, sites }: { contracts: Option[]; si
                   className="w-full text-left rounded-lg border p-3 hover:border-foreground/40 hover:bg-muted/20 transition-colors active:scale-[0.99]"
                 >
                   <div className="flex items-center gap-2 font-medium text-sm">
-                    <MapPin className="h-4 w-4 text-sky-600" /> Réunion de site
+                    <MapPin className="h-4 w-4 text-sky-600" /> Réunion de chantier
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Un point sur un seul site. Tout est rattaché à ce site.
+                    Un point sur un seul chantier. Tout est rattaché à ce chantier.
                   </p>
                 </button>
               </div>

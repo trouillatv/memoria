@@ -65,7 +65,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
       if (r && 'error' in r && r.error) {
         toast.error(r.error)
       } else {
-        toast.success('Site mis à jour')
+        toast.success('Chantier mis à jour')
         setEditing(false)
         router.refresh()
       }
@@ -87,7 +87,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
         // long pour ne pas perdre le message.
         toast.error(r.error, { duration: 8000 })
       } else {
-        toast.success('Site supprimé')
+        toast.success('Chantier supprimé')
         router.refresh()
       }
     })

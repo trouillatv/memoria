@@ -229,7 +229,7 @@ export default async function DossierAoPage({ params }: { params: Promise<{ id: 
           )}
 
           {/* Ce qu'on a observé sur site — la matière brute, à transformer en postes. */}
-          <Block icon={<Eye className="h-4 w-4 text-sky-600" />} title="Ce qu'on a observé sur site">
+          <Block icon={<Eye className="h-4 w-4 text-sky-600" />} title="Ce qu'on a observé sur place">
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <Stat icon={<Camera className="h-3.5 w-3.5" />} n={r.observed.photos} label="photo" />
               <Stat icon={<Video className="h-3.5 w-3.5" />} n={r.observed.videos} label="vidéo" />

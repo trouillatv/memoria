@@ -59,7 +59,7 @@ export function FreePhotoFab({ sites }: { sites: FreePhotoFabSite[] }) {
           }
         >
           <Camera className="h-6 w-6" />
-          Photo libre sur un site
+          Photo libre sur un chantier
         </SheetTrigger>
       </div>
 

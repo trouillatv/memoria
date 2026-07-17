@@ -298,7 +298,7 @@ export default async function HandoverDetailPage({
       {/* Footer doctrine */}
       <p className="text-[11px] text-muted-foreground italic text-center py-2">
         Snapshot immuable. Le contenu ci-dessus reflète l’état au moment de la
-        génération. Le brief documente le site et la mémoire utile à transmettre,
+        génération. Le brief documente le chantier et la mémoire utile à transmettre,
         jamais la personne qui s&apos;en va.
       </p>
     </div>

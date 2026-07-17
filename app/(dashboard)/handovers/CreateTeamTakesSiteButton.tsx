@@ -41,7 +41,7 @@ export function CreateTeamTakesSiteButton({
 
   function submit() {
     if (!siteId) {
-      toast.error('Choisis un site')
+      toast.error('Choisis un chantier')
       return
     }
     startTransition(async () => {
@@ -66,15 +66,15 @@ export function CreateTeamTakesSiteButton({
         render={
           <Button variant="outline" size="sm">
             <Building2 className="h-3.5 w-3.5" />
-            Brief pour une prise de site
+            Brief pour une prise de chantier
           </Button>
         }
       />
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Prise de site — {teamName}</DialogTitle>
+          <DialogTitle>Prise de chantier — {teamName}</DialogTitle>
           <DialogDescription>
-            L&apos;équipe va prendre en charge un nouveau site. MemorIA compile
+            L&apos;équipe va prendre en charge un nouveau chantier. MemorIA compile
             la mémoire accumulée par les équipes qui l&apos;ont couvert avant :
             à savoir, anomalies, documents, contacts.
           </DialogDescription>
@@ -97,7 +97,7 @@ export function CreateTeamTakesSiteButton({
             ))}
           </select>
           <p className="text-[11px] text-muted-foreground">
-            {availableSites.length} site{availableSites.length > 1 ? 's' : ''} disponible{availableSites.length > 1 ? 's' : ''}.
+            {availableSites.length} chantier{availableSites.length > 1 ? 's' : ''} disponible{availableSites.length > 1 ? 's' : ''}.
           </p>
         </div>
 
@@ -112,7 +112,7 @@ export function CreateTeamTakesSiteButton({
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
           />
           <p className="text-[11px] text-muted-foreground">
-            Date à laquelle l&apos;équipe prend effectivement le site — obligatoire.
+            Date à laquelle l&apos;équipe prend effectivement le chantier — obligatoire.
           </p>
         </div>
 

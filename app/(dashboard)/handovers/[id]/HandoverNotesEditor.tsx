@@ -101,7 +101,7 @@ export function HandoverNotesEditor({ briefId, initialNotes, disabled }: Props) 
       />
       <p className="text-[11px] text-muted-foreground">
         {draft.length}/4000 caractères. Ces notes sont éditoriales et restent
-        modifiables. Le reste du brief (snapshot des sites) est immuable.
+        modifiables. Le reste du brief (snapshot des chantiers) est immuable.
       </p>
     </section>
   )

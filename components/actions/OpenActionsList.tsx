@@ -214,7 +214,7 @@ export function OpenActionsList({
                       href={`/sites/${a.site_id}`}
                       className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
                     >
-                      <MapPin className="h-3.5 w-3.5" />Voir le site
+                      <MapPin className="h-3.5 w-3.5" />Voir le chantier
                     </Link>
                     {a.report_id && (
                       <Link

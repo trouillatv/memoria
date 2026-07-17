@@ -151,7 +151,7 @@ export function ManagerTodayView({ sites, todayLabel }: Props) {
                 href={`/sites/${site.siteId}`}
                 className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 rounded-md hover:bg-muted/40 active:bg-muted/60 ml-auto"
               >
-                Fiche site
+                Fiche chantier
                 <ArrowRight className="h-3 w-3" />
               </Link>
             </div>

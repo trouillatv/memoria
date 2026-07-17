@@ -34,7 +34,7 @@ export default async function SitePhotosPage({ params }: PageProps) {
 
       {photos.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">
-          Pas de photo déposée sur ce site.
+          Pas de photo déposée sur ce chantier.
         </p>
       ) : (
         <div className="columns-1 sm:columns-2 gap-4 space-y-4">
