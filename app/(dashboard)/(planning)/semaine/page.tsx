@@ -39,6 +39,7 @@ import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisio
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { resolutionOptions, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import { listTeams } from '@/lib/db/teams'
+import { countFieldMembersByTeam } from '@/lib/db/team-field-members'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import {
   getWeekOperationalSignals,
@@ -219,18 +220,24 @@ async function fetchSiteOptions(orgId: string | null): Promise<SiteOption[]> {
   })
 }
 
-/** Compte les membres actifs par équipe (left_at IS NULL). Info descriptive,
- * doctrine V2 : JAMAIS exploité comme KPI. P1 isolation : fail-closed org. */
+/** Compte les personnes actives par équipe : membres CONNECTÉS (team_members)
+ * + personnes TERRAIN sans compte (team_field_members, mig 219). Le compteur du
+ * planificateur additionne les deux — la distinction se lit dans la composition,
+ * page Équipes. Info descriptive, doctrine V2 : JAMAIS exploité comme KPI.
+ * P1 isolation : fail-closed org. */
 async function fetchTeamMemberCounts(orgId: string | null): Promise<Map<string, number>> {
   if (!orgId) return new Map()
   const supabase = createAdminClient()
-  const { data, error } = await supabase
-    .from('team_members')
-    .select('team_id')
-    .is('left_at', null)
-    .eq('organization_id', orgId)
+  const [{ data, error }, fieldCounts] = await Promise.all([
+    supabase
+      .from('team_members')
+      .select('team_id')
+      .is('left_at', null)
+      .eq('organization_id', orgId),
+    countFieldMembersByTeam(orgId),
+  ])
   if (error) throw error
-  const counts = new Map<string, number>()
+  const counts = new Map<string, number>(fieldCounts)
   for (const row of data ?? []) {
     counts.set(row.team_id, (counts.get(row.team_id) ?? 0) + 1)
   }

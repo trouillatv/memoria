@@ -39,6 +39,7 @@ import {
   listTeamRecentPhotos,
 } from '@/lib/db/team-profile'
 import { listMembersOfTeam } from '@/lib/db/teams'
+import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { SpecialtyBadge } from '@/components/ui/team-specialties'
 import { TeamRhythm } from './TeamRhythm'
@@ -116,6 +117,7 @@ export default async function TeamProfilePage({
     recentInterventions,
     recentPhotos,
     members,
+    fieldMembers,
     availableSites,
     specialtyCatalog,
   ] = await Promise.all([
@@ -127,6 +129,7 @@ export default async function TeamProfilePage({
     listTeamRecentInterventions(id, 15),
     listTeamRecentPhotos(id, 8),
     listMembersOfTeam(id),
+    listFieldMembersOfTeam(id).catch(() => []),
     // Sprint Équipes C : pour le sélecteur de site dans le bouton « Prise de site »
     // P1 isolation : sites DU TENANT uniquement (la garde plus haut assure
     // me.organization_id non-null).
@@ -435,27 +438,56 @@ export default async function TeamProfilePage({
           <p className="text-[11px] text-muted-foreground">
             Membres présents aujourd&apos;hui dans l&apos;équipe.
           </p>
-          {members.length === 0 ? (
+          {members.length === 0 && fieldMembers.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
               Aucun membre — ajoute des chefs d&apos;équipe via la page Équipes.
             </p>
           ) : (
-            <ul className="space-y-1 text-sm">
-              {members.map((m) => {
-                const name = displayName(m.user.full_name, m.user.email)
-                const isRef = overview.referent?.id === m.user.id
-                return (
-                  <li key={m.user.id} className="flex items-center gap-2">
-                    <span>{name}</span>
-                    {isRef && (
-                      <span className="text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-600/10">
-                        Réf.
-                      </span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+            <>
+              {members.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Membres connectés</p>
+                  <ul className="space-y-1 text-sm">
+                    {members.map((m) => {
+                      const name = displayName(m.user.full_name, m.user.email)
+                      const isRef = overview.referent?.id === m.user.id
+                      return (
+                        <li key={m.user.id} className="flex items-center gap-2">
+                          <span>{name}</span>
+                          {isRef && (
+                            <span className="text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-600/10">
+                              Réf.
+                            </span>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+              {/* Personnes TERRAIN (mig 219) — sans compte : elles ne reçoivent
+                  ni briefing ni passation, l'écran ne les confond jamais avec
+                  un membre connecté. */}
+              {fieldMembers.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Personnes terrain</p>
+                  <ul className="space-y-1 text-sm">
+                    {fieldMembers.map((p) => (
+                      <li key={p.membershipId} className="flex items-center gap-2">
+                        <span>
+                          {p.fullName}
+                          {p.job && <span className="text-muted-foreground"> — {p.job}</span>}
+                          {p.companyName && <span className="text-muted-foreground"> ({p.companyName})</span>}
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-600/10 dark:text-amber-300">
+                          Terrain
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

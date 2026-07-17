@@ -9,6 +9,7 @@
 import Link from 'next/link'
 import { ExternalLink } from 'lucide-react'
 import { listMembersOfTeam, getTeamDependencies, type TeamWithMemberCount } from '@/lib/db/teams'
+import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
 import { ArchiveTeamButton } from './ArchiveTeamButton'
@@ -29,10 +30,14 @@ function displayName(fullName: string | null, email: string): string {
 }
 
 export async function TeamRow({ team, availableUsers }: Props) {
-  const [memberships, deps] = await Promise.all([
+  const [memberships, deps, fieldMembers] = await Promise.all([
     listMembersOfTeam(team.id),
     // Ce que l'équipe tient encore — lu AVANT de proposer de l'archiver.
     getTeamDependencies(team.id),
+    // Les personnes TERRAIN (sans compte, mig 219) — affichées à part : un
+    // membre connecté et une personne terrain ne sont pas équivalents, et
+    // l'écran ne doit pas le laisser croire.
+    listFieldMembersOfTeam(team.id).catch(() => []),
   ])
   const members: MemberLite[] = memberships.map((m) => ({
     id: m.user.id,
@@ -63,11 +68,11 @@ export async function TeamRow({ team, availableUsers }: Props) {
             <TeamBadge name={team.name} color={team.color} icon={team.icon} size="md" />
           </Link>
           <span className="text-sm text-muted-foreground">
-            · {team.memberCount} personne{team.memberCount > 1 ? 's' : ''}
+            · {team.memberCount + fieldMembers.length} personne{team.memberCount + fieldMembers.length > 1 ? 's' : ''}
           </span>
         </div>
         <div className="mt-2 text-sm text-foreground/90">
-          {members.length === 0 ? (
+          {members.length === 0 && fieldMembers.length === 0 ? (
             <span className="italic text-muted-foreground">
               Aucun membre — cliquez sur Éditer pour en ajouter.
             </span>
@@ -93,6 +98,27 @@ export async function TeamRow({ team, availableUsers }: Props) {
             })
           )}
         </div>
+        {/* Personnes TERRAIN — sans compte de connexion. Badge distinct : le
+            compteur global additionne, mais le détail ne ment jamais sur la
+            nature (un « M. X » ne reçoit ni briefing ni passation). */}
+        {fieldMembers.length > 0 && (
+          <div className="mt-1.5 text-sm text-foreground/90">
+            {fieldMembers.map((p, i) => (
+              <span key={p.membershipId}>
+                {i > 0 && <span className="mx-2 text-muted-foreground">·</span>}
+                <span>{p.fullName}</span>
+                {p.job && <span className="text-muted-foreground"> — {p.job}</span>}
+                {p.companyName && <span className="text-muted-foreground"> ({p.companyName})</span>}
+                <span
+                  className="ml-1 inline-flex items-center text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-600/10 dark:text-amber-300 align-middle"
+                  title="Personne terrain — sans compte de connexion"
+                >
+                  Terrain
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="mt-2">
           <TeamReferentEditor
             teamId={team.id}

@@ -26,6 +26,7 @@ import {
   getTeam,
   setTeamReferent,
 } from '@/lib/db/teams'
+import { createFieldPersonInTeam } from '@/lib/db/team-field-members'
 import { logAuditEvent } from '@/lib/audit/log'
 import { requireOwned } from '@/lib/auth/ownership'
 import type { UserRole } from '@/types/db'
@@ -114,6 +115,15 @@ const archiveSchema = z.object({
 const memberSchema = z.object({
   teamId: z.string().uuid(),
   userId: z.string().uuid(),
+})
+
+// Personne TERRAIN (mig 219) : un nom suffit — le métier et l'entreprise sont
+// optionnels, l'identité est progressive (« M. X » → « Jean Dupont — ETV »).
+const fieldPersonSchema = z.object({
+  teamId: z.string().uuid(),
+  fullName: z.string().trim().min(1, 'Le nom est requis').max(120),
+  job: z.string().trim().max(80).optional(),
+  companyName: z.string().trim().max(120).optional(),
 })
 
 // ----------------------------------------------------------------------------
@@ -275,6 +285,56 @@ export async function archiveTeamAction(input: {
     const msg = e instanceof Error ? e.message : 'Erreur archivage équipe'
     return { ok: false, error: msg }
   }
+}
+
+/**
+ * Ajoute une personne TERRAIN (sans compte) à une équipe — le maillon qui
+ * forçait à quitter le planificateur. Ne crée NI compte Auth, NI invitation,
+ * NI rôle applicatif, NI affectation individuelle d'intervention : une fiche
+ * company_contacts + une appartenance team_field_members, rien d'autre.
+ */
+export async function addFieldPersonToTeamAction(input: {
+  teamId: string
+  fullName: string
+  job?: string
+  companyName?: string
+}): Promise<{ ok: boolean; error?: string; contactId?: string }> {
+  const auth = await requireManagerOrAdmin()
+  if ('error' in auth) return { ok: false, error: auth.error }
+
+  const parsed = fieldPersonSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+  const denied = await guardTeam(auth.role, parsed.data.teamId)
+  if (denied) return { ok: false, error: denied }
+
+  const existing = await getTeam(parsed.data.teamId)
+  if (!existing) return { ok: false, error: 'Équipe introuvable' }
+
+  const res = await createFieldPersonInTeam({
+    teamId: parsed.data.teamId,
+    fullName: parsed.data.fullName,
+    job: parsed.data.job ?? null,
+    companyName: parsed.data.companyName ?? null,
+    createdBy: auth.userId,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'site',
+    entityId: parsed.data.teamId,
+    action: 'updated',
+    metadata: {
+      kind: 'team_field_person_added',
+      team_id: parsed.data.teamId,
+      contact_id: res.contactId,
+    },
+  })
+  revalidatePath('/equipes')
+  revalidatePath('/semaine')
+  return { ok: true, contactId: res.contactId }
 }
 
 export async function addMemberToTeamAction(input: {

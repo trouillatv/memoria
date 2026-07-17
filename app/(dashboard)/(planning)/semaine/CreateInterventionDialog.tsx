@@ -18,7 +18,7 @@ import { TimeField } from '@/components/ui/time-field'
 import { Button } from '@/components/ui/button'
 import { createInterventionFromWeekAction } from './actions'
 import { createMissionAction } from '@/app/(dashboard)/missions/actions'
-import { createTeamAction } from '@/app/(dashboard)/equipes/actions'
+import { addFieldPersonToTeamAction, createTeamAction } from '@/app/(dashboard)/equipes/actions'
 import {
   pickInitialMissionId,
   mergeMissionOptions,
@@ -99,6 +99,17 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   const [creatingTeam, setCreatingTeam] = useState(false)
   const [newTeamName, setNewTeamName] = useState('')
   const [teamPending, startTeamCreate] = useTransition()
+  // Personne TERRAIN (lot 1) : le maillon qui forçait à quitter le planificateur.
+  // Pas un compte — une fiche (nom, métier, entreprise optionnelle) rattachée à
+  // l'équipe sélectionnée, sans fermer ce dialogue.
+  const [addingPerson, setAddingPerson] = useState(false)
+  const [personName, setPersonName] = useState('')
+  const [personJob, setPersonJob] = useState('')
+  const [personCompany, setPersonCompany] = useState('')
+  const [personPending, startPersonCreate] = useTransition()
+  // Compteur optimiste : les personnes ajoutées pendant que le dialogue est
+  // ouvert, par équipe. Le serveur reste la source (router.refresh les absorbe).
+  const [fieldAdds, setFieldAdds] = useState<Record<string, number>>({})
   const missions = useMemo(
     () => mergeMissionOptions(missionsFromServer, inlineMissions),
     [missionsFromServer, inlineMissions],
@@ -190,10 +201,37 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
   const sortedTeams = useMemo(() => {
     const byId = new Map<string, TeamOption>()
     for (const t of [...teams, ...inlineTeams]) byId.set(t.id, t)
-    return [...byId.values()].sort((a, b) =>
-      a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }),
-    )
-  }, [teams, inlineTeams])
+    // Le compteur additionne comptes ET personnes terrain (global ici — la
+    // distinction se lit dans la composition de l'équipe, page Équipes).
+    return [...byId.values()]
+      .map((t) => ({ ...t, memberCount: t.memberCount + (fieldAdds[t.id] ?? 0) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
+  }, [teams, inlineTeams, fieldAdds])
+
+  function submitNewPerson() {
+    const name = personName.trim()
+    const teamId = teamChoice
+    if (!name || personPending || teamId === INHERIT || teamId === UNASSIGNED) return
+    startPersonCreate(async () => {
+      const r = await addFieldPersonToTeamAction({
+        teamId,
+        fullName: name,
+        job: personJob.trim() || undefined,
+        companyName: personCompany.trim() || undefined,
+      })
+      if (!r.ok) {
+        toast.error(r.error ?? 'Ajout impossible')
+        return
+      }
+      setFieldAdds((prev) => ({ ...prev, [teamId]: (prev[teamId] ?? 0) + 1 }))
+      setPersonName('')
+      setPersonJob('')
+      setPersonCompany('')
+      // Le bloc reste ouvert : on ajoute souvent plusieurs personnes d'affilée.
+      toast.success(`${name} ajouté à l’équipe`)
+      router.refresh()
+    })
+  }
 
   function submitNewTeam() {
     const name = newTeamName.trim()
@@ -209,6 +247,9 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
       setTeamChoice(teamId) // l'équipe créée est SÉLECTIONNÉE, on reste ici
       setCreatingTeam(false)
       setNewTeamName('')
+      // L'équipe naît vide : on enchaîne directement sur l'ajout d'une personne
+      // — le parcours du lot 1, sans quitter le formulaire.
+      setAddingPerson(true)
       toast.success('Équipe créée et sélectionnée')
       router.refresh()
     })
@@ -544,7 +585,7 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
                   </button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Vous ajouterez les personnes plus tard, depuis la fiche de l&apos;équipe.
+                  Vous pourrez ajouter les personnes juste après, sans quitter ce formulaire.
                 </p>
               </div>
             ) : (
@@ -563,6 +604,79 @@ export function CreateInterventionDialog({ missions: missionsFromServer, sites, 
                   + Nouvelle équipe
                 </button>
               </div>
+            )}
+
+            {/* ── PERSONNE TERRAIN (lot 1) ─────────────────────────────────
+                Le maillon qui brisait le parcours : ajouter quelqu'un exigeait
+                de quitter le planificateur pour créer un COMPTE. Ici : une
+                fiche (nom, métier, entreprise optionnelle), rattachée à
+                l'équipe SÉLECTIONNÉE, sans fermer le dialogue. Aucun compte,
+                aucune invitation, aucune affectation individuelle. */}
+            {teamChoice !== INHERIT && teamChoice !== UNASSIGNED && (
+              addingPerson ? (
+                <div className="space-y-1.5 rounded-lg border border-dashed p-2.5">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Ajouter une personne terrain à «&nbsp;{sortedTeams.find((t) => t.id === teamChoice)?.name ?? 'l’équipe'}&nbsp;» — sans compte de connexion.
+                  </p>
+                  <input
+                    type="text"
+                    value={personName}
+                    onChange={(e) => setPersonName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNewPerson() } }}
+                    placeholder="Nom — ex. M. X, Jean Dupont…"
+                    autoFocus
+                    disabled={personPending}
+                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={personJob}
+                      onChange={(e) => setPersonJob(e.target.value)}
+                      placeholder="Métier (optionnel) — ex. Électricien"
+                      disabled={personPending}
+                      className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <input
+                      type="text"
+                      value={personCompany}
+                      onChange={(e) => setPersonCompany(e.target.value)}
+                      placeholder="Entreprise (optionnelle)"
+                      disabled={personPending}
+                      className="w-full rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={submitNewPerson}
+                      disabled={personPending || personName.trim().length === 0}
+                    >
+                      {personPending ? 'Ajout…' : 'Ajouter à l’équipe'}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => { setAddingPerson(false); setPersonName(''); setPersonJob(''); setPersonCompany('') }}
+                      disabled={personPending}
+                      className="text-xs text-muted-foreground underline hover:text-foreground"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setAddingPerson(true)}
+                    disabled={pending}
+                    className="text-xs text-muted-foreground underline hover:text-foreground"
+                  >
+                    + Ajouter une personne
+                  </button>
+                </div>
+              )
             )}
           </div>
         </div>
