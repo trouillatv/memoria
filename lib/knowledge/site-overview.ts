@@ -24,6 +24,10 @@ import {
 import { computeSnapshotDelta, countSnapshotDelta, type SnapshotDelta } from '@/lib/visits/source-snapshot'
 import { getSiteIdentity, listSiteASavoirActive } from '@/lib/db/sites'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
+import {
+  listWatchpoints, listKnowledgeEntries,
+  type Watchpoint, type KnowledgeEntry,
+} from '@/lib/db/site-memory-entries'
 import { echeanceLine } from '@/lib/visits/echeance-labels'
 import { listSiteIntervenants } from '@/lib/db/site-intervenants'
 import { getSiteRecentActivity, buildSiteStatusSummary } from '@/lib/db/visits'
@@ -184,10 +188,10 @@ export interface SiteOverview {
   history: HistoryItem[]
 }
 
-/** Section « proposé seul » (objet validé pas encore modélisé, ex. vigilances). */
-function proposedOnly(p: ProposalProjection): KnowledgeSection {
-  return { proposed: p.proposedTop.slice(0, TOP), confirmed: [], summary: { proposed: p.proposed, confirmed: 0 } }
-}
+// `proposedOnly` a été SUPPRIMÉE : elle affichait le proposé sans le validé, pour
+// les types dont l'objet métier n'existait pas encore. Il n'en reste aucun — les
+// six ont leur table. La garder rouvrirait la porte à l'évaporation : confirmer
+// un fait le faisait disparaître de la fiche.
 
 /** Section « proposé + validé ». */
 function proposedAndConfirmed(p: ProposalProjection, confirmed: KnowledgeItem[], confirmedTotal: number): KnowledgeSection {
@@ -351,7 +355,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
  * a son repli, et la forme est toujours complète (aucun `undefined`).
  */
 export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
-  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows] = await Promise.all([
+  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows] = await Promise.all([
     getSiteProjection(siteId).catch(() => emptySiteProjection()),
     readSiteActionSummaries(siteId).catch(() => [] as ActionSummaryRow[]),
     listSiteASavoirActive(siteId).catch(() => []),
@@ -366,6 +370,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     getSiteCockpitActivity(siteId, ACTIVITY_LIMIT).catch(() => []),
     // Les échéances VALIDÉES : la fiche doit les montrer, pas seulement le Planning.
     listSiteDeadlines(siteId).catch(() => []),
+    // Les vigilances et connaissances VALIDÉES (mig 217 / 218).
+    listWatchpoints(siteId).catch(() => [] as Watchpoint[]),
+    listKnowledgeEntries(siteId).catch(() => [] as KnowledgeEntry[]),
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
@@ -428,8 +435,26 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     href: c.href ?? null,
   }))
 
-  // ── Connaissances « à savoir » validées (site_notes a_savoir) ──
-  const knowledgeConfirmed: KnowledgeItem[] = aSavoir.map((n) => ({ id: n.id, title: n.body }))
+  // ── Connaissances validées ──
+  // DEUX MAGASINS, et c'est un problème ouvert : `site_notes(kind='a_savoir')`
+  // (mig 045, saisie humaine directe) et `site_knowledge_entries` (mig 218,
+  // promotion d'une proposition). L'union les réconcilie ICI pour que la fiche
+  // ne mente pas — une information validée doit rester visible. Mais deux
+  // magasins pour « que sait-on de ce chantier » finiront par diverger : la
+  // fusion est un arbitrage produit, pas une décision de read model.
+  const knowledgeConfirmed: KnowledgeItem[] = [
+    ...knowledgeRows.map((k) => ({ id: k.id, title: k.title })),
+    ...aSavoir.map((n) => ({ id: n.id, title: n.body })),
+  ]
+
+  // ── Vigilances validées (mig 217) ──
+  // Avant, `watchpoints` n'affichait que le PROPOSÉ : on retenait un point de
+  // vigilance, il quittait « à confirmer » et n'apparaissait plus nulle part ici
+  // — le conducteur voyait son information s'évaporer parce qu'il l'avait
+  // validée. C'était vrai tant qu'aucun objet Vigilance n'existait ; la table
+  // existe depuis la mig 217. Exactement la même faute que pour les échéances
+  // (mig 215), refaite parce que le correctif n'avait pas été répliqué.
+  const watchpointConfirmed: KnowledgeItem[] = watchpointRows.map((w) => ({ id: w.id, title: w.title }))
 
   // ── Intervenants validés (casting actif) ──
   const stakeholderConfirmed: KnowledgeItem[] = intervenants.map((it) => ({
@@ -513,7 +538,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     recentChanges,
     reserves: { open: numberOf(statusSummary.find((s) => s.key === 'reserves')?.value) },
     blockages: { open: openBlocages(blocages).length },
-    watchpoints: proposedOnly(proj.watchpoints),
+    watchpoints: proposedAndConfirmed(proj.watchpoints, watchpointConfirmed, watchpointConfirmed.length),
     // Une échéance CONFIRMÉE doit rester visible sur la fiche. Avant, `deadlines`
     // ne montrait que le proposé : on confirmait, l'échéance quittait « à confirmer »
     // et n'apparaissait plus nulle part ici — le conducteur voyait son information
