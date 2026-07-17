@@ -8,6 +8,7 @@ import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
 import type { SiteDeadline } from '@/lib/db/site-deadlines'
+import { WhyButton } from '@/components/provenance/WhyButton'
 import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
@@ -120,6 +121,14 @@ export function PlanningWorkspace({
                     {d.constraint_text && (
                       <p className="text-[12px] text-muted-foreground">{d.constraint_text}</p>
                     )}
+                    {/* Le raccourci transversal du moteur d'explication : la
+                        chaîne remontée jusqu'au mémo qui a dicté cette échéance.
+                        Rendu seulement quand la provenance existe. */}
+                    {d.report_id && (
+                      <div className="mt-1">
+                        <WhyButton objectType="deadline" objectId={d.id} />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -129,11 +138,18 @@ export function PlanningWorkspace({
           {dated.length > 0 && (
             <ul className="mt-4 space-y-2">
               {dated.map((d) => (
-                <li key={d.id} className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 text-sm text-foreground">{d.title}</span>
-                  <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
-                    {echeanceDateLabel(d.due_date!)}
-                  </span>
+                <li key={d.id}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 text-sm text-foreground">{d.title}</span>
+                    <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+                      {echeanceDateLabel(d.due_date!)}
+                    </span>
+                  </div>
+                  {d.report_id && (
+                    <div className="mt-0.5">
+                      <WhyButton objectType="deadline" objectId={d.id} />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

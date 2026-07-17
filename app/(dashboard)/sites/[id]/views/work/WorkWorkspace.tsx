@@ -6,6 +6,7 @@ import { interventionStatusLabel } from '@/lib/chantier/labels'
 import type { KnowledgeItem } from '@/lib/knowledge/site-overview'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { SiteActionRow } from '@/lib/db/site-actions'
+import { WhyButton } from '@/components/provenance/WhyButton'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
 import type { SiteDeadline } from '@/lib/db/site-deadlines'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
@@ -276,9 +277,18 @@ export function WorkWorkspace({
                     </Link>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {action.corps_etat ? `Mission : ${action.corps_etat}` : 'Mission non renseignée'}
-                      {' · '}
-                      {action.report_id ? 'Créée lors d’une visite' : 'Origine non renseignée'}
+                      {!action.report_id && ' · Origine non renseignée'}
                     </p>
+                    {/* « Créée lors d'une visite » était une affirmation morte.
+                        Elle devient une question qui répond : la chaîne remontée
+                        jusqu'au mémo, mot pour mot. Rendu SEULEMENT quand la
+                        provenance existe — un bouton qui ne tient pas sa
+                        promesse est pire qu'aucun bouton. */}
+                    {action.report_id && (
+                      <div className="mt-1.5">
+                        <WhyButton objectType="action" objectId={action.id} label="Pourquoi cette action ?" />
+                      </div>
+                    )}
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                       {action.assigned_to ? (
                         <Chip>{action.assigned_to}</Chip>
