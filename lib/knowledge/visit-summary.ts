@@ -31,7 +31,12 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { echeanceLine } from '@/lib/visits/echeance-labels'
 import { unwrap } from '@/lib/knowledge/read-guard'
-import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
+import { getPromotionCapability, type PromotionCapability } from '@/lib/db/knowledge-proposals'
+
+/** Les urgences que le domaine connaît. Le reste n'existe pas. */
+export type SummaryPriority = 'haute' | 'moyenne' | 'basse'
+
+const PRIORITIES: readonly string[] = ['haute', 'moyenne', 'basse']
 
 /**
  * Un fait du compte-rendu, et ce qu'il vaut.
@@ -51,11 +56,32 @@ export interface SummaryItem {
   promotedObjectId: string | null
   /** Qui doit s'en charger — dit par le terrain, jamais déduit. */
   owner: string | null
-  /** « haute » | « moyenne » | « basse » — l'urgence telle que lue. */
-  priority: string | null
+  /** L'urgence telle que lue. Typée : une valeur inconnue devient null plutôt que
+   *  de traverser le contrat et de casser un écran plus loin. */
+  priority: SummaryPriority | null
   /** Le moment tel qu'il a été DIT : une date, ou une contrainte (« avant le
    *  démarrage »). Jamais l'une déguisée en l'autre. */
   due: string | null
+  /** La lecture qui a fait apparaître ce fait. Null pour un fait validé : l'objet
+   *  ne dépend plus d'une analyse. */
+  analysisVersion: number | null
+  /**
+   * « Nouveau » — SÉMANTIQUE MÉTIER : nouveau APRÈS RAPPROCHEMENT.
+   *
+   * IMPLÉMENTATION PROVISOIRE : `analysisVersion === version courante`. C'est une
+   * approximation LEXICALE, et elle ment déjà — « Demander à Sotrap d'évacuer les
+   * gravats » porte le badge « Nouveau » alors que le même fait est confirmé
+   * depuis v1 sous une autre formulation. Le badge ne dit pas « nouveau », il dit
+   * « reformulé ».
+   *
+   * Le mensonge est ISOLÉ ICI, en une ligne de calcul, plutôt que dans un
+   * composant. Quand ProposalMatch arrivera, cette ligne changera — le contrat,
+   * non, et aucun renderer ne bougera.
+   */
+  isNewInVersion: boolean
+  /** Ce qu'on peut FAIRE de ce fait — dérivé de getPromotionCapability, la source
+   *  unique. Jamais recalculé par un écran. */
+  capability: PromotionCapability
 }
 
 /**
@@ -119,7 +145,7 @@ export async function getVisitSummary(
   const db = createAdminClient()
 
   const [propsRes, actionsRes, deadlinesRes, decisionsRes, intervenantsRes, watchpointsRes, entriesRes] = await Promise.all([
-    db.from('site_knowledge_proposals').select('id, kind, title, body, payload').eq('report_id', reportId).eq('status', 'proposed'),
+    db.from('site_knowledge_proposals').select('id, kind, title, body, payload, analysis_version').eq('report_id', reportId).eq('status', 'proposed'),
     // ⚠️ NI `site_actions` NI `site_decisions` n'ont de `deleted_at` (colonnes
     // vérifiées en base). Filtrer dessus fait ÉCHOUER la requête, qui renvoie
     // zéro ligne SANS erreur visible — le CR aurait affiché « 0 action validée »
@@ -137,7 +163,10 @@ export async function getVisitSummary(
   // rendre un vide qui a l'air valide. (C'est le filtre `deleted_at` sur une
   // colonne inexistante qui a coûté cette leçon.)
   const M = 'getVisitSummary'
-  const props = unwrap<{ id: string; kind: string; title: string; body: string | null; payload: Record<string, unknown> }>('site_knowledge_proposals', M, propsRes)
+  const props = unwrap<{ id: string; kind: string; title: string; body: string | null; payload: Record<string, unknown>; analysis_version: number }>('site_knowledge_proposals', M, propsRes)
+  // La lecture COURANTE de cette visite : la plus haute version présente. Une
+  // proposition d'une lecture antérieure n'est pas « nouvelle ».
+  const currentVersion = props.reduce((max, p) => Math.max(max, p.analysis_version ?? 1), 0)
   const actions = unwrap<{ id: string; title: string; body: string | null }>('site_actions', M, actionsRes)
   const deadlines = unwrap<{ id: string; title: string; due_date: string | null; constraint_text: string | null }>('site_deadlines', M, deadlinesRes)
   const decisions = unwrap<{ id: string; titre: string; description: string | null }>('site_decisions', M, decisionsRes)
@@ -154,10 +183,17 @@ export async function getVisitSummary(
     for (const c of (cos ?? []) as Array<{ id: string; name: string }>) names.set(c.id, c.name)
   }
 
-  /** Un fait VALIDÉ : il porte son objet, jamais une proposition à promouvoir. */
-  const obj = (id: string, title: string, detail: string | null): SummaryItem => ({
-    id, title, detail, proposalId: null, promotedObjectId: id, owner: null, priority: null, due: null,
+  /** Un fait VALIDÉ : il porte son objet, jamais une proposition à promouvoir.
+   *  Ni version ni « nouveau » : il ne dépend plus d'une lecture de l'IA. */
+  const obj = (kind: string, id: string, title: string, detail: string | null): SummaryItem => ({
+    id, title, detail, proposalId: null, promotedObjectId: id,
+    owner: null, priority: null, due: null,
+    analysisVersion: null, isNewInVersion: false, capability: getPromotionCapability(kind),
   })
+
+  /** Une priorité que le domaine ne connaît pas n'entre pas dans le contrat. */
+  const prio = (v: unknown): SummaryPriority | null =>
+    typeof v === 'string' && PRIORITIES.includes(v) ? (v as SummaryPriority) : null
 
   const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
 
@@ -179,8 +215,11 @@ export async function getVisitSummary(
         proposalId: p.id,
         promotedObjectId: null,
         owner: str(p.payload?.owner),
-        priority: str(p.payload?.priority),
+        priority: prio(p.payload?.priority),
         due: str(p.payload?.due) ?? str(p.payload?.constraint),
+        analysisVersion: p.analysis_version ?? null,
+        isNewInVersion: currentVersion > 1 && p.analysis_version === currentVersion,
+        capability: getPromotionCapability(kind),
       }))
 
   return {
@@ -188,31 +227,31 @@ export async function getVisitSummary(
     narrative: opts.narrative?.text?.trim() ?? '',
     narrativeOutdated: opts.narrative?.outdated ?? false,
     actions: {
-      confirmed: actions.map((a) => obj(a.id, a.title, a.body)),
+      confirmed: actions.map((a) => obj('action', a.id, a.title, a.body)),
       proposed: proposedOf('action'),
     },
     deadlines: {
       confirmed: deadlines.map((d) =>
-        obj(d.id, echeanceLine({ label: d.title, date: d.due_date ?? '', constraint: d.constraint_text ?? '' }), null),
+        obj('deadline', d.id, echeanceLine({ label: d.title, date: d.due_date ?? '', constraint: d.constraint_text ?? '' }), null),
       ),
       proposed: proposedOf('deadline'),
     },
     decisions: {
-      confirmed: decisions.map((d) => obj(d.id, d.titre, d.description)),
+      confirmed: decisions.map((d) => obj('decision', d.id, d.titre, d.description)),
       proposed: proposedOf('decision'),
     },
     stakeholders: {
-      confirmed: intervenants.map((i) => obj(i.id, `${names.get(i.company_id) ?? '—'} — ${i.role}`, null)),
+      confirmed: intervenants.map((i) => obj('stakeholder', i.id, `${names.get(i.company_id) ?? '—'} — ${i.role}`, null)),
       proposed: proposedOf('stakeholder'),
     },
     watchpoints: {
-      confirmed: watchpoints.map((w) => obj(w.id, w.title, w.body)),
+      confirmed: watchpoints.map((w) => obj('vigilance', w.id, w.title, w.body)),
       proposed: proposedOf('vigilance'),
     },
     knowledge: {
       confirmed: entries.map((k) =>
         // La nature choisie par l'humain survit jusqu'au document.
-        obj(k.id, k.title, k.body ?? (k.kind === 'current_information' ? 'Information actuelle' : 'Connaissance durable')),
+        obj('knowledge', k.id, k.title, k.body ?? (k.kind === 'current_information' ? 'Information actuelle' : 'Connaissance durable')),
       ),
       proposed: proposedOf('knowledge'),
     },
