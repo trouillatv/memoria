@@ -139,6 +139,13 @@ export function MemoriaRetained({
   // « Confirmer l'action » : PROMEUT la proposition en vraie site_action. Une action
   // n'existe (Travail/Site/Accueil) et ne peut être « faite » qu'après ce geste.
   // Optimiste, puis persisté ; les autres surfaces sont revalidées côté serveur.
+  /** Relit LE CONTRAT après un geste — le serveur est la source, pas un état
+   *  local qui afficherait le fait deux fois le temps de l'aller-retour. */
+  async function refreshSummary() {
+    const sum = await getVisitSummaryAction({ report_id: reportId })
+    if (aliveRef.current && sum.ok) setSummary(sum.summary)
+  }
+
   async function createAction(key: string) {
     const st = propStates?.[key]
     if (!st || st.status !== 'proposed' || busyKey) return
@@ -148,6 +155,7 @@ export function MemoriaRetained({
     setBusyKey(null)
     if (res.ok) {
       setPropStates((prev) => ({ ...(prev ?? {}), [key]: { ...st, status: 'confirmed', promotedObjectType: 'site_action', promotedObjectId: res.objectId } }))
+      void refreshSummary()
     }
   }
 
@@ -318,6 +326,28 @@ export function MemoriaRetained({
         <Block Icon={ListChecks} cls="text-indigo-600" title="Décisions">
           <BulletList items={decisions.confirmed.map((d) => d.title)} dot="bg-indigo-500" />
           <ToConfirm items={decisions.proposed} />
+        </Block>
+      )}
+
+      {/* Le VALIDÉ d'abord — il fait foi, et c'est ce que le PDF montre en tête.
+          Ces actions viennent du CONTRAT : ce sont les site_actions réelles nées
+          de cette visite, pas des lignes du grand livre de l'IA. */}
+      {summary && summary.actions.confirmed.length > 0 && (
+        <Block Icon={ListTodo} cls="text-emerald-600" title="Actions confirmées">
+          <ul className="space-y-2">
+            {summary.actions.confirmed.map((act) => (
+              <li key={act.id} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <Check className="h-3 w-3" /> Confirmée
+                </span>
+                <p className="mt-1 font-medium text-foreground/90">{act.title}</p>
+                {act.detail && <p className="mt-0.5 text-[12px] text-muted-foreground">{act.detail}</p>}
+                <a href="/m/actions" className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-violet-700 dark:text-violet-300">
+                  Ouvrir l’action <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+              </li>
+            ))}
+          </ul>
         </Block>
       )}
 

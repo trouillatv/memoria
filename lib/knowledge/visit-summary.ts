@@ -33,11 +33,29 @@ import { echeanceLine } from '@/lib/visits/echeance-labels'
 import { unwrap } from '@/lib/knowledge/read-guard'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 
-/** Un fait du compte-rendu, et ce qu'il vaut. */
+/**
+ * Un fait du compte-rendu, et ce qu'il vaut.
+ *
+ * `proposalId` et `promotedObjectId` sont exclusifs par construction : un fait
+ * proposé n'a pas encore d'objet, un fait validé n'est plus une proposition.
+ * Les deux sont exposés parce que l'écran a besoin de l'un pour AGIR (promouvoir,
+ * écarter) et de l'autre pour OUVRIR l'objet réel.
+ */
 export interface SummaryItem {
   id: string
   title: string
   detail: string | null
+  /** La proposition à promouvoir ou écarter. Null si le fait est déjà validé. */
+  proposalId: string | null
+  /** L'objet métier réel. Null tant que personne n'a validé. */
+  promotedObjectId: string | null
+  /** Qui doit s'en charger — dit par le terrain, jamais déduit. */
+  owner: string | null
+  /** « haute » | « moyenne » | « basse » — l'urgence telle que lue. */
+  priority: string | null
+  /** Le moment tel qu'il a été DIT : une date, ou une contrainte (« avant le
+   *  démarrage »). Jamais l'une déguisée en l'autre. */
+  due: string | null
 }
 
 /**
@@ -136,6 +154,13 @@ export async function getVisitSummary(
     for (const c of (cos ?? []) as Array<{ id: string; name: string }>) names.set(c.id, c.name)
   }
 
+  /** Un fait VALIDÉ : il porte son objet, jamais une proposition à promouvoir. */
+  const obj = (id: string, title: string, detail: string | null): SummaryItem => ({
+    id, title, detail, proposalId: null, promotedObjectId: id, owner: null, priority: null, due: null,
+  })
+
+  const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+
   const proposedOf = (kind: string): SummaryItem[] =>
     props
       .filter((p) => p.kind === kind)
@@ -151,6 +176,11 @@ export async function getVisitSummary(
             })
           : p.title,
         detail: p.body,
+        proposalId: p.id,
+        promotedObjectId: null,
+        owner: str(p.payload?.owner),
+        priority: str(p.payload?.priority),
+        due: str(p.payload?.due) ?? str(p.payload?.constraint),
       }))
 
   return {
@@ -158,38 +188,32 @@ export async function getVisitSummary(
     narrative: opts.narrative?.text?.trim() ?? '',
     narrativeOutdated: opts.narrative?.outdated ?? false,
     actions: {
-      confirmed: actions.map((a) => ({ id: a.id, title: a.title, detail: a.body })),
+      confirmed: actions.map((a) => obj(a.id, a.title, a.body)),
       proposed: proposedOf('action'),
     },
     deadlines: {
-      confirmed: deadlines
-        .map((d) => ({
-          id: d.id,
-          title: echeanceLine({ label: d.title, date: d.due_date ?? '', constraint: d.constraint_text ?? '' }),
-          detail: null,
-        })),
+      confirmed: deadlines.map((d) =>
+        obj(d.id, echeanceLine({ label: d.title, date: d.due_date ?? '', constraint: d.constraint_text ?? '' }), null),
+      ),
       proposed: proposedOf('deadline'),
     },
     decisions: {
-      confirmed: decisions.map((d) => ({ id: d.id, title: d.titre, detail: d.description })),
+      confirmed: decisions.map((d) => obj(d.id, d.titre, d.description)),
       proposed: proposedOf('decision'),
     },
     stakeholders: {
-      confirmed: intervenants.map((i) => ({ id: i.id, title: `${names.get(i.company_id) ?? '—'} — ${i.role}`, detail: null })),
+      confirmed: intervenants.map((i) => obj(i.id, `${names.get(i.company_id) ?? '—'} — ${i.role}`, null)),
       proposed: proposedOf('stakeholder'),
     },
     watchpoints: {
-      confirmed: watchpoints.map((w) => ({ id: w.id, title: w.title, detail: w.body })),
+      confirmed: watchpoints.map((w) => obj(w.id, w.title, w.body)),
       proposed: proposedOf('vigilance'),
     },
     knowledge: {
-      confirmed: entries
-        .map((k) => ({
-          id: k.id,
-          title: k.title,
-          // La nature choisie par l'humain survit jusqu'au document.
-          detail: k.body ?? (k.kind === 'current_information' ? 'Information actuelle' : 'Connaissance durable'),
-        })),
+      confirmed: entries.map((k) =>
+        // La nature choisie par l'humain survit jusqu'au document.
+        obj(k.id, k.title, k.body ?? (k.kind === 'current_information' ? 'Information actuelle' : 'Connaissance durable')),
+      ),
       proposed: proposedOf('knowledge'),
     },
   }
