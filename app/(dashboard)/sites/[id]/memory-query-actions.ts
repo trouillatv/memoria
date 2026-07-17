@@ -31,8 +31,41 @@ import { getVisitCapturePreviewUrls, listVisitCapturesBySite } from '@/lib/db/vi
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { searchKnowledgeForSite } from '@/lib/ai/match-ao-knowledge'
+import {
+  isCategoryOnlyQuestion, normalizeQuery, queryCategories, queryTerms, type QueryCategory,
+} from '@/lib/knowledge/query-terms'
 
 const IdSchema = z.string().uuid()
+
+/** Ne correspond à aucune ligne. Dire « rien » explicitement vaut mieux que de
+ *  laisser une requête sans filtre déverser le chantier entier. */
+const MATCHES_NOTHING = '00000000-0000-0000-0000-000000000000'
+
+/**
+ * Applique la portée d'une question à une requête.
+ *
+ *   'all'   — la question NOMME ce rayon et rien d'autre → rends-le en entier ;
+ *   'terms' — filtre sur les termes, dans n'importe laquelle des colonnes ;
+ *   'none'  — ni terme ni rayon : on ne cherche pas ici.
+ *
+ * Les termes sortent de `normalizeQuery` : uniquement [a-z0-9], donc sans danger
+ * pour la syntaxe de `.or()` (qui découpe sur la virgule et la parenthèse).
+ */
+// `Q` reste LIBRE (non contraint) : contraindre le builder Supabase par une
+// interface récursive (`{ or(f): Q }`) fait exploser l'inférence — TS2589, « type
+// instantiation is excessively deep ». On récupère les deux méthodes par un cast
+// local, et le type du builder traverse la fonction intact.
+function onCols<Q>(
+  q: Q,
+  scope: 'all' | 'terms' | 'none',
+  terms: string[],
+  cols: string[],
+): Q {
+  if (scope === 'all') return q
+  const b = q as unknown as { or(filter: string): Q; eq(column: string, value: string): Q }
+  if (scope === 'none' || terms.length === 0) return b.eq('id', MATCHES_NOTHING)
+  return b.or(cols.flatMap((c) => terms.map((t) => `${c}.ilike.%${t}%`)).join(','))
+}
 
 async function requireOperator(): Promise<boolean> {
   const user = await getCurrentUserWithProfile()
@@ -118,18 +151,34 @@ const OBSERVATION_TITLE: Record<string, string> = {
  */
 async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemoryHit[]> {
   const supabase = createAdminClient()
-  const pattern = `%${q.replace(/[\%_]/g, (m) => `\${m}`)}%`
+  // La QUESTION n'est plus cherchée comme sous-chaîne : on cherche ses TERMES, et
+  // on reconnaît le RAYON qu'elle nomme (cf. lib/knowledge/query-terms).
+  const terms = queryTerms(q)
+  const cats = queryCategories(q)
+  const wholeShelf = isCategoryOnlyQuestion(q)
+  const wants = (c: QueryCategory) => cats.includes(c)
   const hit = (
     type: SiteMemoryHit['type'], id: string, title: string, snippet: string, at: string,
   ): SiteMemoryHit => ({ type, id, title, snippet, occurredAt: at, similarity: null, keyword: true })
 
-  const [dec, wp, ent, itv] = await Promise.all([
-    supabase.from('site_decisions').select('id, titre, description, date_decision')
-      .eq('site_id', siteId).ilike('titre', pattern).limit(10),
-    supabase.from('site_watchpoints').select('id, title, body, confirmed_at')
-      .eq('site_id', siteId).eq('status', 'active').is('deleted_at', null).ilike('title', pattern).limit(10),
-    supabase.from('site_knowledge_entries').select('id, title, body, confirmed_at')
-      .eq('site_id', siteId).eq('status', 'active').is('deleted_at', null).ilike('title', pattern).limit(10),
+  /** « Rends-moi ce rayon en entier » vs « filtre-le sur ces mots » vs « rien à
+   *  chercher ici ». Le 3ᵉ cas est un refus explicite : sans terme ni rayon, on
+   *  ne déverse pas le chantier. */
+  const scope = (c: QueryCategory): 'all' | 'terms' | 'none' => {
+    if (wants(c) && wholeShelf) return 'all'
+    return terms.length > 0 ? 'terms' : 'none'
+  }
+
+  const [dec, wp, ent, dl, itv] = await Promise.all([
+    onCols(supabase.from('site_decisions').select('id, titre, description, date_decision')
+      .eq('site_id', siteId), scope('decision'), terms, ['titre', 'description']).limit(10),
+    onCols(supabase.from('site_watchpoints').select('id, title, body, confirmed_at')
+      .eq('site_id', siteId).eq('status', 'active').is('deleted_at', null), scope('watchpoint'), terms, ['title', 'body']).limit(10),
+    onCols(supabase.from('site_knowledge_entries').select('id, title, body, confirmed_at')
+      .eq('site_id', siteId).eq('status', 'active').is('deleted_at', null), scope('knowledge'), terms, ['title', 'body']).limit(10),
+    // Les échéances : « Quelles échéances ? » n'atteignait aucune table.
+    onCols(supabase.from('site_deadlines').select('id, title, constraint_text, due_date, created_at')
+      .eq('site_id', siteId), scope('deadline'), terms, ['title', 'constraint_text']).limit(10),
     supabase.from('site_intervenants').select('id, role, company_id, effective_from')
       .eq('site_id', siteId).is('effective_to', null).limit(20),
   ])
@@ -144,6 +193,15 @@ async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemor
   for (const k of (ent.data ?? []) as Array<Record<string, string>>) {
     out.push(hit('knowledge', k.id, k.title, k.body ?? k.title, k.confirmed_at ?? ''))
   }
+  // Une échéance dit CE QUI doit arriver ; la contrainte dit POURQUOI elle attend.
+  // Sans date, elle existe quand même — « à planifier » n'est pas « inexistante ».
+  for (const d of (dl.data ?? []) as Array<Record<string, string>>) {
+    out.push(hit(
+      'site_deadline', d.id, d.title,
+      d.constraint_text ?? d.title,
+      d.due_date ?? d.created_at ?? '',
+    ))
+  }
   // Un intervenant ne se cherche pas par son titre : « Qui connaît ce chantier ? »
   // ne contient ni « Sotrap » ni « ETV ». On le nomme, et le filtre porte sur le
   // NOM de l'entreprise, résolu ici.
@@ -151,11 +209,14 @@ async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemor
   if (ids.length > 0) {
     const { data: cos } = await supabase.from('companies').select('id, name').in('id', [...new Set(ids)])
     const nameOf = new Map(((cos ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]))
-    const needle = q.toLowerCase()
     for (const i of (itv.data ?? []) as Array<Record<string, string>>) {
       const nom = nameOf.get(i.company_id) ?? ''
       const label = `${nom} — ${i.role}`
-      if (label.toLowerCase().includes(needle) || /qui|connait|connaît|intervenant|equipe|équipe/.test(needle)) {
+      // Le rayon nommé (« Qui connaît ce chantier ? ») rend tout le casting ;
+      // sinon on filtre sur le nom ou le rôle réellement écrits.
+      const named = wants('stakeholder')
+      const matched = terms.length > 0 && terms.some((t) => normalizeQuery(label).includes(t))
+      if (named || matched) {
         out.push(hit('intervention', i.id, label, `Intervenant du chantier · ${i.role}`, i.effective_from ?? ''))
       }
     }
@@ -165,16 +226,19 @@ async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemor
 
 async function searchSiteObservations(siteId: string, q: string): Promise<SiteMemoryHit[]> {
   const supabase = createAdminClient()
-  // Neutralise les jokers LIKE saisis par l'utilisateur (recherche littérale).
-  const pattern = `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`
-  const { data } = await supabase
+  // C'EST ICI que « Quelles ont été les observations ? » échouait : la question
+  // entière était cherchée comme sous-chaîne du texte des captures. Elle nomme un
+  // rayon — il faut le rendre en entier, pas chercher la phrase.
+  const terms = queryTerms(q)
+  const wholeShelf = isCategoryOnlyQuestion(q) && queryCategories(q).includes('observation')
+  const base = supabase
     .from('visit_capture')
     .select('id, body, kind, captured_at, created_at')
     .eq('site_id', siteId)
     .is('hidden_at', null)
     .in('kind', ['note', 'vocal', 'verification'])
     .not('body', 'is', null)
-    .ilike('body', pattern)
+  const { data } = await onCols(base, wholeShelf ? 'all' : terms.length > 0 ? 'terms' : 'none', terms, ['body'])
     .order('captured_at', { ascending: false, nullsFirst: false })
     .limit(20)
   return ((data ?? []) as Array<{ id: string; body: string | null; kind: string; captured_at: string | null; created_at: string }>).map((r) => ({

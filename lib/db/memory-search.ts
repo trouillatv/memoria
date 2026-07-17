@@ -20,6 +20,9 @@ export type MemoryHitType =
   // vivant du produit (note de terrain ou transcription d'un vocal) : il était
   // INVISIBLE à la recherche jusqu'ici.
   | 'observation' | 'site_decision' | 'knowledge' | 'blocage' | 'obligation'
+  // Mig 215 — l'échéance confirmée. « Quelles échéances ? » n'atteignait aucune
+  // table : l'objet existait, la recherche ne le connaissait pas.
+  | 'site_deadline'
   // Le SUJET lui-même : pas un fait, mais LE FIL auquel les faits se rattachent.
   | 'subject'
   // Mig 204 — le texte extrait des DOCUMENTS. Les LITIGES en sont exclus, à la

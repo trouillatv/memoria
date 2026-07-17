@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock } from 'lucide-react'
 import {
   askOrgMemoryAction,
   getOrgMemoryTermsAction,
@@ -43,6 +43,7 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   site_action:      { label: 'Action',       Icon: ListTodo, cls: 'bg-teal-50 text-teal-700 border-teal-200' },
   meeting_decision: { label: 'Décision',     Icon: Check,    cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   site_reserve:     { label: 'Réserve',      Icon: Flag,     cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  site_deadline:    { label: 'Échéance',     Icon: CalendarClock, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   report_document:  { label: 'Compte-rendu', Icon: Archive,  cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   // Mig 200 — le reste de la mémoire entre dans la recherche.
   observation:      { label: 'Observation',  Icon: Eye,           cls: 'bg-teal-50 text-teal-700 border-teal-200' },
