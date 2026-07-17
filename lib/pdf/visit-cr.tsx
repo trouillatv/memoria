@@ -14,7 +14,7 @@ import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
-import { echeanceLine } from '@/lib/visits/echeance-labels'
+import type { VisitSummary, SummarySection, SummaryItem } from '@/lib/knowledge/visit-summary'
 
 const COLORS = {
   text: '#0f172a',
@@ -222,7 +222,30 @@ function ObservationMapSnapshot({ src, positions }: { src: string; positions: Vi
   )
 }
 
-export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitCrDoc; debrief?: StoredDebriefAnalysis | null; exportDate: string; mapImage?: string | null }) {
+/** Une section n'existe que si elle a quelque chose à dire — validé OU proposé. */
+function sectionHas(s: SummarySection): boolean {
+  return s.confirmed.length + s.proposed.length > 0
+}
+
+/**
+ * Ce que MemorIA a compris mais que PERSONNE n'a encore validé.
+ *
+ * Dit explicitement, et à part. Un compte-rendu part chez un client : y glisser
+ * une supposition de l'IA au milieu des faits actés, sans le dire, transformerait
+ * une hypothèse en engagement. La mention n'est pas une précaution juridique,
+ * c'est la frontière que le produit défend — l'IA propose, l'humain décide.
+ */
+function ToConfirm({ items }: { items: SummaryItem[] }) {
+  if (items.length === 0) return null
+  return (
+    <View>
+      <Text style={styles.actionWhy}>À confirmer — relevé par MemorIA, pas encore validé :</Text>
+      <Bullets items={items.map((i) => i.title)} />
+    </View>
+  )
+}
+
+export function VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }: { doc: VisitCrDoc; debrief?: StoredDebriefAnalysis | null; summary: VisitSummary; exportDate: string; mapImage?: string | null }) {
   // L'INTENTION spécialise le TITRE et quelques intitulés — mêmes données, cadrage
   // différent (première = référence · prévisite = appel d'offres · suivi = normal).
   const isPremiere = doc.motive === 'premiere'
@@ -254,11 +277,20 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
   const proposedActions = debrief?.action_ledger
     ? debrief.action_ledger.filter((x) => x.state !== 'dismissed')
     : (debrief?.actions ?? []).map((a) => ({ ...a, state: 'open' as const }))
-  const watchpoints = debrief?.watchpoints ?? []
-  const decisions = debrief?.decisions ?? []
-  const aSavoir = debrief?.a_savoir ?? []
-  const echeances = debrief?.echeances ?? []
-  const intervenants = debrief?.intervenants ?? []
+  // ── LA SOURCE UNIQUE ──────────────────────────────────────────────────────
+  // Ces cinq notions ne viennent PLUS de `debrief_analysis`. Le JSON est figé :
+  // écarter une proposition ne le changeait pas, et le document qui part chez le
+  // client continuait d'affirmer ce que le conducteur avait refusé. Le PDF lit
+  // désormais le même read model que l'écran — il est devenu un renderer.
+  //
+  // Le VALIDÉ et le PROPOSÉ restent séparés jusque dans le document : présenter
+  // une supposition de l'IA comme un fait acté, dans un écrit qui engage, est
+  // exactement ce que le produit refuse.
+  const watchpoints = summary.watchpoints
+  const decisions = summary.decisions
+  const aSavoir = summary.knowledge
+  const echeances = summary.deadlines
+  const intervenants = summary.stakeholders
   const PRIORITY_FR: Record<string, string> = { haute: 'Priorité haute', moyenne: 'Priorité moyenne', basse: 'Préparation' }
 
   // « En bref » — richesse de la visite (comptes réels par type).
@@ -360,63 +392,63 @@ export function VisitCrPdf({ doc, debrief, exportDate, mapImage }: { doc: VisitC
 
         {/* Points de vigilance — des FICHES exploitables (risque + impact +
             responsable + échéance), pas des paragraphes. */}
-        {watchpoints.length > 0 && (
+        {sectionHas(watchpoints) && (
           <View style={styles.section}>
             <SectionTitle text="Points de vigilance" color="#d97706" />
-            {watchpoints.map((p, i) => (
-              <View key={i} style={styles.alertRow} wrap={false}>
+            {watchpoints.confirmed.map((p) => (
+              <View key={p.id} style={styles.alertRow} wrap={false}>
                 <View style={styles.alertDot} />
                 <View style={styles.actionText}>
-                  <Text><Text style={styles.metaStrong}>{p.label}</Text></Text>
-                  {(p.impact || p.owner || p.due) ? (
-                    <Text style={styles.actionWhy}>
-                      {p.impact}
-                      {p.owner ? `${p.impact ? ' · ' : ''}Responsable : ${p.owner}` : ''}
-                      {p.due ? `${p.impact || p.owner ? ' · ' : ''}Échéance : ${p.due}` : ''}
-                    </Text>
-                  ) : null}
+                  <Text><Text style={styles.metaStrong}>{p.title}</Text></Text>
+                  {p.detail ? <Text style={styles.actionWhy}>{p.detail}</Text> : null}
                 </View>
               </View>
             ))}
+            <ToConfirm items={watchpoints.proposed} />
           </View>
         )}
 
         {/* Décisions prises — les ENGAGEMENTS actés (ni action, ni risque). */}
-        {decisions.length > 0 && (
+        {sectionHas(decisions) && (
           <View style={styles.section}>
             <SectionTitle text="Décisions prises" color="#4f46e5" />
-            {decisions.map((d, i) => (
-              <View key={i} style={styles.checkRow} wrap={false}>
+            {decisions.confirmed.map((d) => (
+              <View key={d.id} style={styles.checkRow} wrap={false}>
                 <View style={styles.checkMark} />
-                <Text style={styles.bulletText}>{d}</Text>
+                <Text style={styles.bulletText}>{d.title}</Text>
               </View>
             ))}
+            <ToConfirm items={decisions.proposed} />
           </View>
         )}
 
         {/* À savoir — le contexte important mais non actionnable. */}
-        {aSavoir.length > 0 && (
+        {sectionHas(aSavoir) && (
           <View style={styles.section}>
             <SectionTitle text="À savoir" color={COLORS.muted} />
-            <Bullets items={aSavoir} />
+            <Bullets items={aSavoir.confirmed.map((k) => k.title)} />
+            <ToConfirm items={aSavoir.proposed} />
           </View>
         )}
 
         {/* Échéances — les délais isolés. */}
-        {echeances.length > 0 && (
+        {sectionHas(echeances) && (
           <View style={styles.section}>
             <SectionTitle text="Échéances" color="#e11d48" />
             {/* Le document de preuve dit ce qui a été DIT : une date si elle a été
-                donnée, la contrainte sinon. Jamais une date déduite d'un délai. */}
-            <Bullets items={echeances.map((e) => echeanceLine(e))} />
+                donnée, la contrainte sinon. Jamais une date déduite d'un délai.
+                (La mise en forme vit dans le read model — même phrase partout.) */}
+            <Bullets items={echeances.confirmed.map((e) => e.title)} />
+            <ToConfirm items={echeances.proposed} />
           </View>
         )}
 
         {/* Intervenants — personnes/entreprises citées, réutilisables. */}
-        {intervenants.length > 0 && (
+        {sectionHas(intervenants) && (
           <View style={styles.section}>
             <SectionTitle text="Intervenants" color={COLORS.slate} />
-            <Bullets items={intervenants} />
+            <Bullets items={intervenants.confirmed.map((i) => i.title)} />
+            <ToConfirm items={intervenants.proposed} />
           </View>
         )}
 

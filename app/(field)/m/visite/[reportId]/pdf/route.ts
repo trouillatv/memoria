@@ -11,6 +11,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief } from '@/lib/visits/debrief-analysis'
 import { VisitCrPdf } from '@/lib/pdf/visit-cr'
+import { getVisitSummary } from '@/lib/knowledge/visit-summary'
 import { loadCrMapSnapshotDataUri } from '@/lib/pdf/cr-map-snapshot'
 
 export const dynamic = 'force-dynamic'
@@ -47,6 +48,11 @@ export async function GET(req: Request, ctx: RouteCtx) {
     .then((r) => (r.ok && (r.status === 'ready' || r.status === 'stale') ? r.loaded.analysis : null))
     .catch(() => null)
 
+  // LA source unique des objets métier du CR : le PDF lit ce que l'écran lit.
+  // `debrief` ne sert plus qu'au RÉCIT (summary) — une prose, pas un objet : rien
+  // ne peut la contredire, elle n'a pas de cycle de validation.
+  const summary = await getVisitSummary(reportId)
+
   const exportDate = new Date().toLocaleDateString('fr-FR', {
     day: '2-digit',
     month: 'long',
@@ -62,7 +68,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
 
   let pdfBuffer: Buffer
   try {
-    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, debrief, exportDate, mapImage }))
+    pdfBuffer = await renderToBuffer(VisitCrPdf({ doc, debrief, summary, exportDate, mapImage }))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'render error'
     console.error('[visit-cr-pdf] PDF render failed:', e)
