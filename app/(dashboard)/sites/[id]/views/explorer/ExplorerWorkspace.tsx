@@ -41,6 +41,10 @@ const SIZE: Record<GraphNodeType, number> = {
   site: 26, visite: 19, photo: 15, memo: 14, action: 12, ech: 12, dec: 12,
   vigilance: 12, acteur: 15, know: 12,
 }
+// Les PREUVES : elles racontent un moment, pas la structure. À l'échelle du
+// chantier elles noieraient la carte (les 218 photos de Petro Atiti) — elles
+// n'apparaissent qu'à côté de l'objet exploré qui les contient, ou dépliées.
+const PROOF = new Set<GraphNodeType>(['photo', 'memo'])
 
 type P = { x: number; y: number; vx: number; vy: number; alpha: number }
 type PanelMode = 'fiche' | 'recit' | 'gaps'
@@ -63,6 +67,11 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
   // La légende n'est pas une légende : c'est le panneau de contrôle de
   // l'exploration (arbitrage 2026-07-18) — masquer, mettre en évidence, compter.
   const [hidden, setHidden] = useState<ReadonlySet<GraphNodeType>>(new Set())
+  // Niveau de détail (arbitrage 2026-07-18, 2e volet) : le niveau de détail
+  // dépend du point d'entrée — comme une carte, on ne voit pas les rues à
+  // l'échelle du pays. `revealed` = preuves dépliées à la demande ; il se
+  // réinitialise à chaque déplacement (le dépliage est contextuel).
+  const [revealed, setRevealed] = useState<ReadonlySet<GraphNodeType>>(new Set())
 
   const nodeById = useMemo(() => Object.fromEntries(graph.nodes.map((n) => [n.id, n])), [graph])
   const neigh = useMemo(() => {
@@ -115,9 +124,9 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
     dragId: string | null; hoverNode: string | null; hoverEdge: GraphEdge | null
     simUntil: number; running: boolean
     center: string; depth: 1 | 2; enqueteSet: Set<string> | null; timeMax: string | null
-    hiddenTypes: ReadonlySet<GraphNodeType>; hlType: GraphNodeType | null
+    hiddenTypes: ReadonlySet<GraphNodeType>; revealedTypes: ReadonlySet<GraphNodeType>; hlType: GraphNodeType | null
     doSelect?: (id: string) => void; refreshVis?: () => void; reset?: () => void; redraw?: () => void
-  }>({ P: {}, pinned: new Set(), view: { k: 1, tx: 0, ty: 0 }, dragId: null, hoverNode: null, hoverEdge: null, simUntil: 0, running: false, center: 'site', depth: 2, enqueteSet: null, timeMax: null, hiddenTypes: new Set(), hlType: null })
+  }>({ P: {}, pinned: new Set(), view: { k: 1, tx: 0, ty: 0 }, dragId: null, hoverNode: null, hoverEdge: null, simUntil: 0, running: false, center: 'site', depth: 2, enqueteSet: null, timeMax: null, hiddenTypes: new Set(), revealedTypes: new Set(), hlType: null })
 
   useEffect(() => { engine.current.center = center }, [center])
   useEffect(() => {
@@ -125,8 +134,9 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
     engine.current.enqueteSet = enquete ? new Set(enquete.set) : null
     engine.current.timeMax = timeMax
     engine.current.hiddenTypes = hidden
+    engine.current.revealedTypes = revealed
     engine.current.refreshVis?.()
-  }, [depth, enquete, timeMax, hidden])
+  }, [depth, enquete, timeMax, hidden, revealed])
 
   useEffect(() => {
     const wrap = wrapRef.current!, cv = cvRef.current!, ctx = cv.getContext('2d')!
@@ -147,6 +157,15 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
       if (E.timeMax) for (const id of [...s]) {
         const t = nodeById[id]?.t
         if (t && t.slice(0, 10) > E.timeMax) s.delete(id)
+      }
+      // Niveau de détail : une preuve n'est visible que si elle entoure
+      // directement l'objet exploré (ou dépliée, ou pendant une enquête).
+      if (!E.enqueteSet) {
+        const near = neigh[E.center] ?? new Set()
+        for (const id of [...s]) {
+          const ty = nodeById[id]?.type
+          if (ty && PROOF.has(ty) && id !== E.center && !near.has(id) && !E.revealedTypes.has(ty)) s.delete(id)
+        }
       }
       if (E.hiddenTypes.size) for (const id of [...s]) {
         const ty = nodeById[id]?.type
@@ -365,6 +384,7 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
 
     function select(id: string) {
       setCenter(id)
+      setRevealed(new Set())
       setPanelMode('fiche')
       setTrail((t) => { const i = t.indexOf(id); return i >= 0 ? t.slice(0, i + 1) : [...t, id] })
       setTimeout(() => { placeNew(); kick(700) }, 0)
@@ -456,27 +476,42 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
       {/* La légende n'est pas une légende : c'est le panneau de contrôle.
           Clic = afficher/masquer la catégorie · survol = mise en évidence
           subtile (halo, le reste s'atténue — jamais de clignotement) ·
-          compteur = le CONTEXTE exploré, pas tout le chantier. */}
+          compteur = le CONTEXTE exploré, pas tout le chantier. Les preuves
+          repliées par le niveau de détail s'affichent « ▸ » : un clic les
+          déplie autour du contexte courant. */}
       <div className="flex flex-wrap gap-1.5 text-[12px]">
         {(['visite', 'memo', 'action', 'ech', 'dec', 'vigilance', 'acteur', 'photo', 'know'] as GraphNodeType[]).map((t) => {
           const c = contextCounts[t] ?? 0
-          const off = hidden.has(t)
-          if (c === 0 && !off) return null
+          if (c === 0 && !hidden.has(t)) return null
+          const near = [...(neigh[center] ?? [])].some((id) => nodeById[id]?.type === t)
+          const on = !hidden.has(t) && (!PROOF.has(t) || !!enquete || revealed.has(t) || near)
+          const folded = !on && !hidden.has(t)
           return (
             <button
               key={t}
               type="button"
-              aria-pressed={!off}
-              title={off ? 'Afficher cette catégorie' : 'Masquer cette catégorie'}
-              onClick={() => setHidden((h) => { const n = new Set(h); if (n.has(t)) n.delete(t); else n.add(t); return n })}
+              aria-pressed={on}
+              title={on ? 'Masquer cette catégorie' : folded ? 'Déplier ces preuves autour du contexte exploré' : 'Afficher cette catégorie'}
+              onClick={() => {
+                if (on) {
+                  setHidden((h) => new Set(h).add(t))
+                  setRevealed((r) => { const n = new Set(r); n.delete(t); return n })
+                } else {
+                  setHidden((h) => { const n = new Set(h); n.delete(t); return n })
+                  if (PROOF.has(t)) setRevealed((r) => new Set(r).add(t))
+                }
+              }}
               onMouseEnter={() => { engine.current.hlType = t; engine.current.redraw?.() }}
               onMouseLeave={() => { engine.current.hlType = null; engine.current.redraw?.() }}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1',
-                off ? 'text-muted-foreground/50 line-through' : 'text-muted-foreground hover:text-foreground hover:border-foreground/30',
+                on ? 'text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                  : folded ? 'text-muted-foreground/70 hover:text-foreground hover:border-foreground/30'
+                  : 'text-muted-foreground/50 line-through',
               )}
             >
-              <i className="inline-block h-2 w-2 rounded-full" style={{ background: COLOR[t], opacity: off ? 0.35 : 1 }} />
+              <i className="inline-block h-2 w-2 rounded-full" style={{ background: COLOR[t], opacity: on ? 1 : 0.35 }} />
+              {folded && <span aria-hidden>▸</span>}
               {TYPE_LABEL[t]}
               <span className="tabular-nums">({c})</span>
             </button>
