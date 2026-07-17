@@ -30,6 +30,7 @@ import {
 } from '@/lib/db/site-memory-entries'
 import { echeanceLine } from '@/lib/visits/echeance-labels'
 import { listSiteIntervenants } from '@/lib/db/site-intervenants'
+import { listDecisionsBySite, type SiteDecision } from '@/lib/db/site-decisions'
 import { getSiteRecentActivity, buildSiteStatusSummary } from '@/lib/db/visits'
 import { listBlocagesBySite } from '@/lib/db/site-blocages'
 import { buildSiteMemorySignals, type MemorySignal } from '@/lib/db/site-memory-signals'
@@ -185,6 +186,11 @@ export interface SiteOverview {
   deadlines: KnowledgeSection
   stakeholders: KnowledgeSection
   knowledge: KnowledgeSection
+  /** Ce que le chantier a ACTÉ. L'objet le plus durable du produit était absent
+   *  de la vue qui prétend résumer ce qu'il faut savoir : la projection portait
+   *  déjà `decisions`, personne ne l'exposait. Elles n'étaient atteignables que
+   *  par /recit ou /subjects — la Mémoire mobile, elle, les montrait. */
+  decisions: KnowledgeSection
   history: HistoryItem[]
 }
 
@@ -346,6 +352,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     deadlines: { ...emptySection },
     stakeholders: { ...emptySection },
     knowledge: { ...emptySection },
+    decisions: { ...emptySection },
     history: [],
   }
 }
@@ -355,7 +362,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
  * a son repli, et la forme est toujours complète (aucun `undefined`).
  */
 export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
-  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows] = await Promise.all([
+  const [proj, actionRows, aSavoir, intervenants, recent, identity, synth, blocages, statusSummary, memorySignals, currentState, activity, deadlineRows, watchpointRows, knowledgeRows, decisionRows] = await Promise.all([
     getSiteProjection(siteId).catch(() => emptySiteProjection()),
     readSiteActionSummaries(siteId).catch(() => [] as ActionSummaryRow[]),
     listSiteASavoirActive(siteId).catch(() => []),
@@ -373,6 +380,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     // Les vigilances et connaissances VALIDÉES (mig 217 / 218).
     listWatchpoints(siteId).catch(() => [] as Watchpoint[]),
     listKnowledgeEntries(siteId).catch(() => [] as KnowledgeEntry[]),
+    // Les décisions ACTÉES — même source que la Mémoire mobile, pour qu'un fait
+    // ne soit pas vrai sur un écran et absent de l'autre.
+    listDecisionsBySite(siteId).catch(() => [] as SiteDecision[]),
   ])
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
@@ -455,6 +465,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   // existe depuis la mig 217. Exactement la même faute que pour les échéances
   // (mig 215), refaite parce que le correctif n'avait pas été répliqué.
   const watchpointConfirmed: KnowledgeItem[] = watchpointRows.map((w) => ({ id: w.id, title: w.title }))
+
+  // ── Décisions actées ──
+  const decisionConfirmed: KnowledgeItem[] = decisionRows.map((d) => ({ id: d.id, title: d.titre }))
 
   // ── Intervenants validés (casting actif) ──
   const stakeholderConfirmed: KnowledgeItem[] = intervenants.map((it) => ({
@@ -547,6 +560,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     deadlines: proposedAndConfirmed(proj.deadlines, deadlineConfirmed, deadlineConfirmed.length),
     stakeholders: proposedAndConfirmed(proj.stakeholders, stakeholderConfirmed, stakeholderConfirmed.length),
     knowledge: proposedAndConfirmed(proj.knowledge, knowledgeConfirmed, knowledgeConfirmed.length),
+    decisions: proposedAndConfirmed(proj.decisions, decisionConfirmed, decisionConfirmed.length),
     history: recent.map((a) => ({
       id: a.reportId ?? a.href,
       label: a.label,

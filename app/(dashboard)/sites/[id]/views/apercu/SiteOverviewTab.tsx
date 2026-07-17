@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Clock,
   Footprints,
+  Gavel,
   Info,
   ListTodo,
   RefreshCw,
@@ -40,7 +41,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
     actions, attention, nextEvent, recentChanges, reserves, blockages, activity, synthesis,
-    knowledge, stakeholders, deadlines, watchpoints,
+    knowledge, stakeholders, deadlines, watchpoints, decisions,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
   const synthesisHref = activity.lastVisit ? `/m/visite/${activity.lastVisit.reportId}/cr` : undefined
@@ -48,6 +49,7 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
     + deadlines.summary.proposed + deadlines.summary.confirmed
     + knowledge.summary.proposed + knowledge.summary.confirmed
     + watchpoints.summary.proposed + watchpoints.summary.confirmed
+    + decisions.summary.proposed + decisions.summary.confirmed
 
   return (
     <main className="space-y-4">
@@ -187,6 +189,18 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
               proposed={watchpoints.proposed}
               confirmed={watchpoints.confirmed}
               summary={watchpoints.summary}
+              href={synthesisHref}
+            />
+            {/* Les décisions ACTÉES. L'objet le plus durable du produit était
+                absent de la vue qui prétend résumer le chantier — la Mémoire
+                mobile les montrait, l'Aperçu non. Un fait ne peut pas être vrai
+                sur un écran et inexistant sur l'autre. */}
+            <KnowledgeGroup
+              title="Décisions"
+              icon={Gavel}
+              proposed={decisions.proposed}
+              confirmed={decisions.confirmed}
+              summary={decisions.summary}
               href={synthesisHref}
             />
           </div>
