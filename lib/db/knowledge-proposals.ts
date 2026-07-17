@@ -17,6 +17,10 @@ import { createHash } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createSiteAction } from '@/lib/db/site-actions'
 import { createSiteDeadline } from '@/lib/db/site-deadlines'
+import { createSiteDecision } from '@/lib/db/site-decisions'
+import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
+import { openSiteIntervenant } from '@/lib/db/site-intervenants'
+import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
@@ -411,29 +415,118 @@ export async function getActionProposalStates(
 export interface PromotionResult { objectType: string; objectId: string }
 
 /**
- * Confirme une proposition en la PROMOUVANT vers son objet métier réel, puis la
- * marque 'confirmed' avec le lien vers l'objet créé. Idempotent : si déjà promue,
- * renvoie l'objet existant sans recréer. Un geste EXPLICITE par type — une vigilance
- * ne devient jamais une réserve automatiquement (portée contractuelle).
- *
- * Aujourd'hui : kind 'action' → site_action. Les autres types (vigilance→site_notes,
- * échéance→obligation, intervenant→site_intervenant, savoir→mémoire) arrivent ensuite.
+ * L'ISSUE d'une promotion. `needs_input` n'est PAS une erreur : c'est un état
+ * métier PRÉVU. Le rôle d'un intervenant et la nature d'une information ne sont
+ * pas des pannes — ce sont des questions que le système DOIT poser, parce que la
+ * proposition ne les porte pas et que les deviner fabriquerait un fait.
+ * Les traiter en exception forcerait chaque appelant à rattraper un throw pour
+ * afficher... un sélecteur. L'attendu ne se lève pas, il se retourne.
  */
-export async function promoteProposal(params: { id: string; userId: string | null; organizationId?: string | null }): Promise<PromotionResult | null> {
+export type PromotionOutcome =
+  | { status: 'promoted'; objectType: string; objectId: string }
+  | { status: 'needs_input'; missing: PromotionInputName[] }
+  | { status: 'unsupported'; kind: string }
+  | { status: 'not_found' }
+
+/**
+ * CE QU'ON PEUT FAIRE D'UNE PROPOSITION — la source unique de vérité de l'UI.
+ *
+ * L'écran ne décide plus, il DEMANDE : « que puis-je faire avec cet objet ? ».
+ * Une seule fonction répond. Auparavant la réponse était éparpillée en quatre
+ * (canPromote / promotionLabel / promotionNeedsRole / whyNotPromotable) qui
+ * racontaient toutes la même chose — et qu'un écran pouvait consulter à moitié.
+ *
+ * C'est la leçon du bug d'origine : promoteProposal ne gérait que 2 types sur 6,
+ * et rien n'empêchait un bouton d'exister pour les 4 autres. Ici, un type sans
+ * geste porte son explication ; il ne peut pas être promouvable ET inexpliqué.
+ */
+export type PromotionInputName = 'role' | 'nature'
+
+export interface PromotionCapability {
+  /** Y a-t-il un geste métier réel derrière ? */
+  available: boolean
+  /** Le verbe du conducteur — « Créer l'action ». Jamais « Confirmer » nu. */
+  label: string | null
+  /** Ce que l'humain doit fournir : la proposition ne le porte pas. */
+  requiredInputs: PromotionInputName[]
+  /** Pourquoi c'est impossible. Renseigné UNIQUEMENT si `available` est faux. */
+  explanation: string | null
+}
+
+/** Les six types de la mig 212 et leur geste. Le 7ᵉ devra passer par ici. */
+const CAPABILITIES: Record<string, { label: string; requiredInputs: PromotionInputName[] }> = {
+  action: { label: "Créer l'action", requiredInputs: [] },
+  deadline: { label: 'Ajouter au planning', requiredInputs: [] },
+  decision: { label: 'Confirmer la décision', requiredInputs: [] },
+  // Le rôle ne se lit pas dans « Ginger » : la proposition est une chaîne nue.
+  stakeholder: { label: 'Ajouter au chantier', requiredInputs: ['role'] },
+  vigilance: { label: 'Retenir le point de vigilance', requiredInputs: [] },
+  // Périssable ou durable ? L'humain tranche, jamais le modèle.
+  knowledge: { label: 'Ajouter à la mémoire', requiredInputs: ['nature'] },
+}
+
+export function getPromotionCapability(kind: string): PromotionCapability {
+  const c = CAPABILITIES[kind]
+  if (!c) {
+    return {
+      available: false,
+      label: null,
+      requiredInputs: [],
+      explanation: "MemorIA ne sait pas encore quoi faire de ce type d'élément.",
+    }
+  }
+  return { available: true, label: c.label, requiredInputs: c.requiredInputs, explanation: null }
+}
+
+/** Les types promouvables — dérivés du contrat, jamais recopiés à côté. */
+export const PROMOTABLE_KINDS = Object.keys(CAPABILITIES) as readonly string[]
+
+export interface PromotionInput {
+  /** Rôle sur le chantier (ETV / MOE / BET / …). REQUIS pour un intervenant. */
+  role?: string
+  /** L'entreprise, si l'humain corrige le nom lu (« Ginger SAS »). */
+  companyName?: string
+  /** Rattacher à un contact existant plutôt qu'au seul nom d'entreprise. */
+  contactId?: string | null
+  /** La NATURE d'une information. REQUIS pour 'knowledge' : « vraie maintenant »
+   *  et « vraie durablement » ne se rangent pas au même endroit, et l'IA n'a pas
+   *  à trancher. */
+  knowledgeKind?: 'current_information' | 'durable_knowledge'
+}
+
+export async function promoteProposal(params: {
+  id: string
+  userId: string | null
+  organizationId?: string | null
+  input?: PromotionInput
+}): Promise<PromotionOutcome> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.from('site_knowledge_proposals').select('*').eq('id', params.id).single()
-  if (error || !data) return null
+  if (error || !data) return { status: 'not_found' }
   const p = data as DbKnowledgeProposal
 
   // Garde fail-closed (le service-role bypasse la RLS) : jamais promouvoir hors de son org.
-  if (params.organizationId && p.organization_id && p.organization_id !== params.organizationId) return null
+  if (params.organizationId && p.organization_id && p.organization_id !== params.organizationId) {
+    return { status: 'not_found' }
+  }
 
   // Déjà promue : on renvoie l'objet existant (idempotent), on ne recrée rien.
   if (p.status !== 'proposed') {
     return p.promoted_object_type && p.promoted_object_id
-      ? { objectType: p.promoted_object_type, objectId: p.promoted_object_id }
-      : null
+      ? { status: 'promoted', objectType: p.promoted_object_type, objectId: p.promoted_object_id }
+      : { status: 'not_found' }
   }
+
+  // Ce qui manque se DEMANDE, avant tout travail : on ne crée pas une entreprise
+  // pour découvrir ensuite qu'on n'a pas le rôle.
+  const capability = getPromotionCapability(p.kind)
+  if (!capability.available) return { status: 'unsupported', kind: p.kind }
+  const missing = capability.requiredInputs.filter((i) =>
+    i === 'role'
+      ? !params.input?.role?.trim()
+      : !params.input?.knowledgeKind || !isChoosableKnowledgeKind(params.input.knowledgeKind),
+  )
+  if (missing.length > 0) return { status: 'needs_input', missing }
 
   let result: PromotionResult
   if (p.kind === 'action') {
@@ -468,8 +561,75 @@ export async function promoteProposal(params: { id: string; userId: string | nul
       created_from: 'visit_debrief_ai',
     })
     result = { objectType: 'site_deadline', objectId: id }
+  } else if (p.kind === 'decision') {
+    // Le conducteur confirme qu'une décision a bien été PRISE. `source: 'transcript'`
+    // dit d'où elle vient : elle a été LUE dans un débrief, pas saisie à la main —
+    // et `confiance: 'sûr'` parce qu'un humain vient de la valider. Sans quoi la
+    // fiche chantier ne saurait plus distinguer ce qu'elle a entendu de ce qu'on
+    // lui a affirmé.
+    const id = await createSiteDecision({
+      siteId: p.site_id,
+      reportId: p.report_id ?? null,
+      titre: p.title,
+      description: p.body,
+      source: 'transcript',
+      confiance: 'sûr',
+      createdBy: params.userId,
+    })
+    result = { objectType: 'site_decision', objectId: id }
+  } else if (p.kind === 'stakeholder') {
+    // Le RÔLE ne peut pas être deviné (cf. PromotionInput). Sans lui, on refuse —
+    // on ne fabrique pas un casting que personne n'a dit.
+    const role = params.input!.role!.trim()
+    const orgId = params.organizationId ?? p.organization_id
+    if (!orgId) return { status: 'not_found' }
+    // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
+    // fois sur deux visites ne crée pas deux entreprises.
+    const companyId = await findOrCreateCompanyByName(orgId, params.input?.companyName?.trim() || p.title)
+    await openSiteIntervenant({
+      siteId: p.site_id,
+      role,
+      companyId,
+      mainContactId: params.input?.contactId ?? null,
+      sourceReportId: p.report_id ?? null,
+    })
+    result = { objectType: 'site_intervenant', objectId: companyId }
+  } else if (p.kind === 'vigilance') {
+    const orgId = params.organizationId ?? p.organization_id
+    if (!orgId) return { status: 'not_found' }
+    const payload = (p.payload ?? {}) as { impact?: string | null }
+    const id = await createWatchpoint({
+      organizationId: orgId,
+      siteId: p.site_id,
+      title: p.title,
+      // L'impact dit POURQUOI ça mérite l'attention — il survit à la confirmation.
+      body: payload.impact ?? p.body,
+      reportId: p.report_id ?? null,
+      sourceCaptureIds: p.source_capture_ids ?? [],
+      confirmedBy: params.userId,
+    })
+    result = { objectType: 'site_watchpoint', objectId: id }
+  } else if (p.kind === 'knowledge') {
+    // La NATURE ne se devine pas : « l'avancement n'est pas encore défini » est
+    // périssable, « Vincent Milon est l'interlocuteur PAVE » est durable. Demander
+    // au modèle de trancher lui ferait porter un jugement qu'il raterait en
+    // silence. L'humain choisit ; sans choix, on refuse.
+    const kind = params.input!.knowledgeKind!
+    const orgId = params.organizationId ?? p.organization_id
+    if (!orgId) return { status: 'not_found' }
+    const id = await createKnowledgeEntry({
+      organizationId: orgId,
+      siteId: p.site_id,
+      kind,
+      title: p.title,
+      body: p.body,
+      sourceReportId: p.report_id ?? null,
+      sourceCaptureIds: p.source_capture_ids ?? [],
+      confirmedBy: params.userId,
+    })
+    result = { objectType: 'site_knowledge_entry', objectId: id }
   } else {
-    throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
+    return { status: 'unsupported', kind: p.kind }
   }
 
   const now = new Date().toISOString()
@@ -485,5 +645,5 @@ export async function promoteProposal(params: { id: string; userId: string | nul
     })
     .eq('id', params.id)
   if (updErr) throw updErr
-  return result
+  return { status: 'promoted', objectType: result.objectType, objectId: result.objectId }
 }

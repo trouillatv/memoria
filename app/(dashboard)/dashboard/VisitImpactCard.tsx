@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { CalendarClock, Check, ChevronRight, HardHat, RefreshCw, Sparkles } from 'lucide-react'
-import type { SiteChangedToday, TodayChanges } from '@/lib/knowledge/today-changes'
+import type { SiteImpact, VisitImpact } from '@/lib/knowledge/site-events'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { cn } from '@/lib/utils'
 
@@ -15,15 +15,17 @@ import { cn } from '@/lib/utils'
 
 const heureFmt = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
 
-export function TodayChangesCard({ changes }: { changes: TodayChanges }) {
+export function VisitImpactCard({ changes }: { changes: VisitImpact }) {
   if (changes.sites.length === 0) return null
 
   return (
     <section className="rounded-[18px] border bg-card p-4 shadow-sm sm:p-5">
+      {/* Le titre suit le RÉCIT, pas le calendrier : « Depuis votre visite d'hier ».
+          C'est ce que le conducteur a en tête en ouvrant MemorIA — pas « aujourd'hui ». */}
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-muted-foreground" />
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Aujourd&apos;hui
+          {changes.sites[0]?.sinceLabel ?? "Aujourd'hui"}
         </h2>
       </div>
 
@@ -53,7 +55,7 @@ export function TodayChangesCard({ changes }: { changes: TodayChanges }) {
   )
 }
 
-function SiteBlock({ site }: { site: SiteChangedToday }) {
+function SiteBlock({ site }: { site: SiteImpact }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -116,7 +118,7 @@ function SiteBlock({ site }: { site: SiteChangedToday }) {
 }
 
 /** « +3 actions proposées » — ce qui est APPARU aujourd'hui. Un zéro se tait. */
-function addedLabels(added: SiteChangedToday['added']): string[] {
+function addedLabels(added: SiteImpact['added']): string[] {
   const out: string[] = []
   if (added.actions > 0) out.push(`+${added.actions} action${added.actions > 1 ? 's' : ''} proposée${added.actions > 1 ? 's' : ''}`)
   if (added.watchpoints > 0) out.push(`+${added.watchpoints} point${added.watchpoints > 1 ? 's' : ''} de vigilance`)
@@ -127,7 +129,7 @@ function addedLabels(added: SiteChangedToday['added']): string[] {
 }
 
 /** Les mêmes mots que la fiche chantier — un état ne change pas de nom selon l'écran. */
-function SynthesisChip({ status }: { status: SiteChangedToday['synthesisStatus'] }) {
+function SynthesisChip({ status }: { status: SiteImpact['synthesisStatus'] }) {
   if (status === 'up_to_date') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[12px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">

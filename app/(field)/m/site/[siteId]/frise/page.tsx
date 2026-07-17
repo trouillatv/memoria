@@ -3,10 +3,13 @@ import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ChevronRight, Footprints, Users, Wrench,
   ClipboardList, CheckCircle2, CheckSquare, Compass, Trophy, Star,
+  MapPin, CalendarClock, AlertTriangle, Info, Check,
 } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteTimeline, type TimelineKind } from '@/lib/db/site-timeline'
+import { getSiteHistory } from '@/lib/knowledge/site-events'
+import { NOUMEA_TZ, frDayMonthLocal } from '@/lib/time/local-date'
 import { SiteTabs } from '../SiteTabs'
 import { VisitLauncher } from '../VisitLauncher'
 
@@ -19,6 +22,9 @@ export const dynamic = 'force-dynamic'
  * décisions). Déterministe, zéro IA. Chaque carte ouvre son objet quand une vue
  * mobile existe. Sous-écran de la fiche (barre basse masquée) → retour en tête.
  */
+/** L'heure du conducteur, jamais celle du serveur (Vercel tourne en UTC). */
+const friseHeure = new Intl.DateTimeFormat('fr-FR', { timeZone: NOUMEA_TZ, hour: '2-digit', minute: '2-digit' })
+
 const META: Record<TimelineKind, { Icon: typeof Users; cls: string; ring: string }> = {
   visit: { Icon: Footprints, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
   meeting: { Icon: Users, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40' },
@@ -36,8 +42,9 @@ export default async function SiteFriseMobilePage({
   params: Promise<{ siteId: string }>
 }) {
   const { siteId } = await params
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
+  // Un chantier d'une autre organisation doit être indiscernable d'un chantier
+  // inexistant : la garde rend 404, jamais « accès refusé ».
+  const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
@@ -48,7 +55,15 @@ export default async function SiteFriseMobilePage({
     .maybeSingle()
   if (!site) notFound()
 
-  const events = await buildSiteTimeline(siteId).catch(() => [])
+  // La frise lisait des tables d'avant la connaissance : elle disait « visite
+  // terrain » et s'arrêtait là, alors que la visite avait produit dix objets. On
+  // lit désormais AUSSI le flux d'événements — le même que l'accueil, tourné vers
+  // le passé. Une visite ne raconte plus « je suis venu » mais « voilà ce que j'ai
+  // rapporté ».
+  const [events, knowledge] = await Promise.all([
+    buildSiteTimeline(siteId).catch(() => []),
+    getSiteHistory(siteId).catch(() => []),
+  ])
 
   return (
     <div className="max-w-md space-y-4 pb-16">
@@ -64,7 +79,87 @@ export default async function SiteFriseMobilePage({
         <SiteTabs siteId={siteId} active="frise" userRole={user.role} />
       </header>
 
-      {events.length === 0 ? (
+      {/* ── CE QUE MEMORIA A APPRIS ────────────────────────────────────────
+          Le récit du chantier vu par la connaissance : « Synthèse créée »,
+          « 3 actions proposées », « 3 échéances détectées », « 1 action
+          confirmée ». Les mêmes faits que l'accueil — un seul flux, deux
+          points de vue. Silence total s'il n'y a rien à raconter. */}
+      {knowledge.length > 0 && (
+        <ol className="space-y-3">
+          {knowledge.map((entry) =>
+            entry.kind === 'visit' ? (
+              // La carte ENTIÈRE ouvre la synthèse : la visite EST sa synthèse, et
+              // un bouton « Voir la synthèse » ferait croire à une seconde chose à
+              // aller chercher. On touche la visite, on lit ce qu'elle a rapporté.
+              <li key={entry.id}>
+                <Link
+                  href={`/m/visite/${entry.reportId}/cr`}
+                  className="block rounded-xl border bg-card p-3 shadow-sm active:brightness-95"
+                >
+                  <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">{site.name}</span>
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {frDayMonthLocal(entry.at)} — {entry.isFirst ? 'Première visite' : 'Visite terrain'}
+                  </p>
+                  {/* Le geste terrain : la preuve que quelqu'un y est allé. */}
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    {[
+                      entry.durationMin ? `${entry.durationMin} min` : null,
+                      entry.photos > 0 ? `${entry.photos} photo${entry.photos > 1 ? 's' : ''}` : null,
+                      entry.vocals > 0 ? `${entry.vocals} mémo${entry.vocals > 1 ? 's' : ''}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || friseHeure.format(new Date(entry.at))}
+                  </p>
+                  {producedLines(entry.produced).length > 0 ? (
+                    <>
+                      <p className="mt-2 text-[13px] text-muted-foreground">MemorIA en a retenu :</p>
+                      <ul className="mt-1 space-y-1">
+                        {producedLines(entry.produced).map(({ key, Icon, cls, text }) => (
+                          <li key={key} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                            <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${cls}`} />
+                            <span className="min-w-0">{text}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-[13px] text-muted-foreground">Rien à retenir de cette visite.</p>
+                  )}
+                  <span className="mt-2 flex items-center gap-1 text-[13px] font-medium text-primary">
+                    Consulter la synthèse <ChevronRight className="h-3.5 w-3.5" />
+                  </span>
+                </Link>
+              </li>
+            ) : (
+              // La décision humaine reste un événement À PART : la visite dit ce que
+              // MemorIA a compris, la décision dit ce que le conducteur en a fait.
+              <li key={entry.id} className="rounded-xl border bg-muted/30 p-3">
+                <p className="text-[12px] text-muted-foreground">
+                  {frDayMonthLocal(entry.at)} · {friseHeure.format(new Date(entry.at))}
+                </p>
+                {/* « Guillaume confirme : » — une validation est un acte, et un acte
+                    a un auteur. Sans nom, la frise dit qu'une main anonyme a décidé.
+                    Faute de nom connu, on dit ce qui a été retenu, sans inventer. */}
+                <p className="mt-0.5 text-[13px] font-medium">
+                  {entry.by ? `${entry.by} confirme :` : entry.label}
+                </p>
+                {entry.title && (
+                  <p className="mt-0.5 flex items-start gap-2 text-[13px] text-foreground/90">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <span className="min-w-0">{entry.title}</span>
+                  </p>
+                )}
+                {entry.by && <p className="mt-0.5 text-[12px] text-muted-foreground">{entry.label}</p>}
+              </li>
+            ),
+          )}
+        </ol>
+      )}
+
+      {events.length === 0 && knowledge.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center space-y-3">
           <p className="text-sm text-muted-foreground">
             Aucune activité pour l&apos;instant. Commencez à documenter ce chantier — visites, réunions et jalons apparaîtront ici.
@@ -110,4 +205,38 @@ export default async function SiteFriseMobilePage({
       )}
     </div>
   )
+}
+
+/**
+ * Ce que la visite a APPORTÉ, une ligne par type. Un zéro se tait : on ne liste
+ * pas ce qui n'existe pas pour faire du volume.
+ *
+ * Le vocabulaire est celui du chantier, pas celui de la base : « 3 actions à
+ * réaliser », jamais « 3 actions proposées » — `proposed` est un statut de table,
+ * et le conducteur n'a pas à connaître nos statuts. (Cf.
+ * [[vocabulaire-conducteur-jamais-developpeur]].)
+ */
+function producedLines(p: {
+  actions: number
+  deadlines: number
+  stakeholders: number
+  knowledge: number
+  decisions: number
+  watchpoints: number
+}): Array<{ key: string; Icon: typeof Users; cls: string; text: string }> {
+  const s = (n: number) => (n > 1 ? 's' : '')
+  const out: Array<{ key: string; Icon: typeof Users; cls: string; text: string }> = []
+  if (p.actions > 0)
+    out.push({ key: 'a', Icon: CheckSquare, cls: 'text-emerald-600', text: `${p.actions} action${s(p.actions)} à réaliser` })
+  if (p.deadlines > 0)
+    out.push({ key: 'd', Icon: CalendarClock, cls: 'text-sky-600', text: `${p.deadlines} échéance${s(p.deadlines)} à tenir` })
+  if (p.watchpoints > 0)
+    out.push({ key: 'w', Icon: AlertTriangle, cls: 'text-amber-600', text: `${p.watchpoints} point${s(p.watchpoints)} de vigilance` })
+  if (p.stakeholders > 0)
+    out.push({ key: 's', Icon: Users, cls: 'text-violet-600', text: `${p.stakeholders} intervenant${s(p.stakeholders)} identifié${s(p.stakeholders)}` })
+  if (p.knowledge > 0)
+    out.push({ key: 'k', Icon: Info, cls: 'text-slate-600', text: `${p.knowledge} information${s(p.knowledge)} importante${s(p.knowledge)}` })
+  if (p.decisions > 0)
+    out.push({ key: 'c', Icon: Compass, cls: 'text-violet-600', text: `${p.decisions} décision${s(p.decisions)} relevée${s(p.decisions)}` })
+  return out
 }

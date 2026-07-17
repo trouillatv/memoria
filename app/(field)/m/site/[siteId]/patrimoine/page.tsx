@@ -3,14 +3,16 @@ import { notFound } from 'next/navigation'
 import {
   ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
 } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteStatusSummary, buildSitePatrimoine, getSiteRecentActivity, buildSiteImportantEvidence } from '@/lib/db/visits'
+import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { listSiteMapCaptures } from '@/lib/db/visit-captures'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteTabs } from '../SiteTabs'
 import { SiteStatusCard } from '../SiteStatusCard'
 import { SitePatrimoineSearch } from '../SitePatrimoineSearch'
+import { MemoryReviewPanel } from '../MemoryReviewPanel'
 import { CaptureMap } from '@/components/CaptureMap'
 
 export const dynamic = 'force-dynamic'
@@ -42,20 +44,26 @@ export default async function SitePatrimoinePage({
   params: Promise<{ siteId: string }>
 }) {
   const { siteId } = await params
-  const user = await getCurrentUserWithProfile()
-  if (!user) return null
+  // Un chantier d'une autre organisation doit être indiscernable d'un chantier
+  // inexistant : la garde rend 404, jamais « accès refusé ».
+  const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase.from('sites').select('id, name').eq('id', siteId).is('deleted_at', null).maybeSingle()
   if (!site) notFound()
 
-  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence] = await Promise.all([
+  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence, review] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     buildSitePatrimoine(siteId).catch(() => null),
     listSubjectsBySite(siteId).catch(() => []),
     getSiteRecentActivity(siteId).catch(() => []),
     listSiteMapCaptures(siteId).catch(() => []),
     buildSiteImportantEvidence(siteId).catch(() => ({ photos: [], decisions: [] })),
+    // La mémoire du chantier vient du MÊME read model que la fiche : un fait su
+    // ne peut pas être vrai ici et faux là.
+    // Ce qu'on peut CONFIRMER — chaque élément porte déjà son geste et sa
+    // provenance : l'écran ne décide d'aucun bouton.
+    getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
   ])
   const hasEvidence = evidence.photos.length > 0 || evidence.decisions.length > 0
 
@@ -86,6 +94,34 @@ export default async function SitePatrimoinePage({
 
       {/* LA recherche — la porte d'entrée de toute la connaissance du chantier. */}
       <SitePatrimoineSearch siteId={siteId} suggestions={suggestions} />
+
+      {/* ── CE QUE MEMORIA SAIT ────────────────────────────────────────────
+          Cet écran demandait « qu'est-ce que ce chantier sait aujourd'hui ? » et
+          ne savait pas y répondre : il lisait tout SAUF la connaissance. La
+          mémoire ne commence pas à la troisième visite, elle commence à la
+          PREMIÈRE — dès qu'un fait durable est su, il est su.
+          Les échéances ne sont PAS ici : elles répondent à « quand agir ? », donc
+          au Planning. Le même objet à deux endroits sous deux noms, c'est le
+          conducteur qui ne sait plus lequel fait foi. */}
+      {(review.confirmed.length + review.toReview.length) > 0 && (
+        <section className="space-y-3 rounded-2xl border bg-card p-4">
+          {/* La Mémoire ne se contente plus de MONTRER : on peut agir. Elle était
+              vide en « confirmées » parce que personne ne pouvait confirmer — 4
+              types sur 6 levaient « promotion non supportée ». Le cycle est
+              complet ; l'écran est la moitié visible.
+              Les actions et les échéances ne sont PAS ici : leur contexte naturel
+              est le Travail et le Planning. La Mémoire n'est pas un centre de
+              validation universel. */}
+          <MemoryReviewPanel siteId={siteId} review={review} />
+
+          {/* « Habitudes observées » : une ligne, pas une carte. Une habitude se
+              constate sur plusieurs visites — l'annoncer avant serait inventer une
+              régularité qui n'existe pas. */}
+          <p className="border-t pt-2 text-[12px] text-muted-foreground">
+            Aucune habitude détectée pour l’instant. Elles apparaîtront après plusieurs visites.
+          </p>
+        </section>
+      )}
 
       {/* ── Bloc : Le chantier aujourd'hui (état + prochaine échéance) ── */}
       {statusCells.length > 0 && (

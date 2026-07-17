@@ -13,6 +13,13 @@ import type { ProposalKind, ProposalPayload } from '@/lib/db/knowledge-proposals
 import type { VisitSourceSnapshot } from '@/lib/db/visits'
 import { EMPTY_SNAPSHOT } from '@/lib/visits/source-snapshot'
 
+/** Le geste terrain d'une visite : ce que quelqu'un a réellement capturé. */
+export interface VisitCaptureCount {
+  report_id: string
+  photos: number
+  vocals: number
+}
+
 /** Ligne brute d'un élément de connaissance PROPOSÉ (avant tri/agrégation). */
 export interface ProposalRow {
   id: string
@@ -158,69 +165,107 @@ export async function readVisitSourceSnapshot(reportId: string): Promise<VisitSo
   }
 }
 
-// ── CE QUI A BOUGÉ AUJOURD'HUI ───────────────────────────────────────────────
-// Le repository DÉCOUVRE quels chantiers ont bougé et QUAND — rien d'autre. Il ne
-// compte aucune connaissance : les nombres de l'accueil viennent de SiteOverview,
-// jamais d'ici, sinon l'accueil dirait « 2 » quand la fiche dit « 3 ».
+// ── LES ÉVÉNEMENTS DU CHANTIER ───────────────────────────────────────────────
+// L'objet central n'est ni l'action, ni l'échéance, ni l'histoire : c'est
+// l'ÉVÉNEMENT. Une visite en produit — visite réalisée, synthèse générée, action
+// proposée, échéance détectée, connaissance validée. Chaque écran n'est ensuite
+// qu'un point de vue sur ce même flux :
+//
+//   Historique → que s'est-il passé ?      (le flux, tourné vers le passé)
+//   Planning   → qu'est-ce qui arrive ?    (le flux, tourné vers le futur)
+//   Accueil    → qu'est-ce qui a changé ?  (le flux, depuis la dernière visite)
+//   PDF        → que retenir de la visite ? (le flux d'une seule visite)
+//
+// Le repository DÉCOUVRE ces faits et QUAND — rien d'autre. Il ne compte aucune
+// connaissance : les nombres viennent de SiteOverview, jamais d'ici, sinon
+// l'accueil dirait « 2 » quand la fiche dit « 3 ».
 
-/** Un fait daté du jour : une visite finie, une synthèse écrite, une proposition. */
-export interface DayEventRow {
+/** Un fait daté du chantier : une visite finie, une synthèse écrite, une proposition. */
+export interface SiteEventRow {
   site_id: string
   at: string
   kind: 'visit_ended' | 'synthesis_created' | 'proposal_created' | 'proposal_confirmed'
   /** Type de proposition (`action`, `deadline`…) — absent pour les autres faits. */
   proposal_kind?: string
+  /** La VISITE dont ce fait est issu. C'est elle qui permet de raconter « cette
+   *  visite a apporté 3 actions » au lieu d'égrener « 3 actions proposées » dans
+   *  un journal — un chantier a une histoire, pas un log. */
+  report_id?: string | null
+  /** Le titre du fait — pour NOMMER une décision humaine (« Échéance ajoutée :
+   *  Fournir l'attestation »). Un compte ne dit pas ce qu'on a validé. */
+  title?: string | null
+  /** QUI a validé. Renseigné pour `proposal_confirmed` seulement : une validation
+   *  est un acte humain, et un acte a un auteur. */
+  reviewed_by?: string | null
+  /** Début de la visite — sert à dire sa durée réelle. */
+  started_at?: string | null
 }
 
-/** Faits datés du jour, pour l'organisation courante. `dayIso` = date civile locale.
- *  Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model. */
-export async function readDayEvents(dayIso: string, orgId: string | null): Promise<DayEventRow[]> {
+/**
+ * Les événements d'une PÉRIODE, pour l'organisation courante. `from`/`to` sont des
+ * instants ISO — pas un jour.
+ *
+ * La fenêtre était figée sur « aujourd'hui », et ça se voyait : la visite du 15
+ * juillet ne produisait plus rien le 17, donc l'accueil de Guillaume devenait muet
+ * sur sa dernière visite dès le lendemain. Ce n'était pas un manque de données,
+ * c'était une fenêtre. Une plage ouvre les mêmes faits à l'Historique (le passé),
+ * au Planning (le futur) et à l'accueil (depuis la dernière visite).
+ *
+ * Renvoie des LIGNES : le tri, le groupage et les mots sont l'affaire du read model.
+ */
+export async function readEvents(
+  from: string,
+  to: string,
+  orgId: string | null,
+  /** Restreint à un chantier — l'Historique d'une fiche ne lit pas tout le parc. */
+  siteId?: string,
+): Promise<SiteEventRow[]> {
   const db = createAdminClient()
-  // Bornes de la journée civile en zone Nouméa (UTC+11). Postgres les PARSE ; nous,
-  // en JS, il faut les parser aussi. Comparer deux ISO à la main est un piège : la
-  // synthèse de 05:39 à Nouméa s'écrit « 2026-07-16T18:39Z », donc « plus petite »
-  // que « 2026-07-17T00:00+11:00 » en comparaison de TEXTE. Le fait existait, la
-  // chaîne le cachait. On compare des instants, jamais des lettres.
-  const from = `${dayIso}T00:00:00.000+11:00`
-  const to = `${dayIso}T23:59:59.999+11:00`
+  // Postgres PARSE les bornes ; nous, en JS, il faut les parser aussi. Comparer deux
+  // ISO à la main est un piège : la synthèse de 05:39 à Nouméa s'écrit
+  // « 2026-07-16T18:39Z », donc « plus petite » que « 2026-07-17T00:00+11:00 » en
+  // comparaison de TEXTE. Le fait existait, la chaîne le cachait. On compare des
+  // instants, jamais des lettres.
   const fromMs = Date.parse(from)
   const toMs = Date.parse(to)
-  const withinDay = (iso: string | undefined): boolean => {
+  const withinRange = (iso: string | undefined): boolean => {
     if (!iso) return false
     const ms = Date.parse(iso)
     return Number.isFinite(ms) && ms >= fromMs && ms <= toMs
   }
-  const out: DayEventRow[] = []
+  const out: SiteEventRow[] = []
 
   let rq = db
     .from('site_reports')
-    .select('site_id, ended_at, debrief_analysis')
+    .select('id, site_id, started_at, ended_at, debrief_analysis')
     .not('site_id', 'is', null)
     .is('deleted_at', null)
     .not('ended_at', 'is', null)
     .gte('ended_at', from)
     .lte('ended_at', to)
   if (orgId) rq = rq.eq('organization_id', orgId)
+  if (siteId) rq = rq.eq('site_id', siteId)
   const { data: reports } = await rq
-  for (const r of (reports ?? []) as Array<{ site_id: string; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
-    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended' })
+  for (const r of (reports ?? []) as Array<{ id: string; site_id: string; started_at: string | null; ended_at: string; debrief_analysis: { generated_at?: string } | null }>) {
+    out.push({ site_id: r.site_id, at: r.ended_at, kind: 'visit_ended', report_id: r.id, started_at: r.started_at })
     const generatedAt = r.debrief_analysis?.generated_at
-    // La synthèse n'est un fait que si elle a réellement été écrite AUJOURD'HUI.
-    if (generatedAt && withinDay(generatedAt)) {
-      out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created' })
+    // La synthèse n'est un fait que si elle a réellement été écrite DANS la période.
+    if (generatedAt && withinRange(generatedAt)) {
+      out.push({ site_id: r.site_id, at: generatedAt, kind: 'synthesis_created', report_id: r.id })
     }
   }
 
   let pq = db
     .from('site_knowledge_proposals')
-    .select('site_id, kind, created_at')
+    .select('site_id, kind, created_at, report_id, title')
     .eq('status', 'proposed')
     .gte('created_at', from)
     .lte('created_at', to)
   if (orgId) pq = pq.eq('organization_id', orgId)
+  if (siteId) pq = pq.eq('site_id', siteId)
   const { data: props } = await pq
-  for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string }>) {
-    out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind })
+  for (const p of (props ?? []) as Array<{ site_id: string; kind: string; created_at: string; report_id: string | null; title: string | null }>) {
+    out.push({ site_id: p.site_id, at: p.created_at, kind: 'proposal_created', proposal_kind: p.kind, report_id: p.report_id, title: p.title })
   }
 
   // Une confirmation est un fait de la journée AU MÊME TITRE qu'une visite : c'est
@@ -228,17 +273,71 @@ export async function readDayEvents(dayIso: string, orgId: string | null): Promi
   // est posé par la promotion — on ne devine pas, on lit la décision.
   let cq = db
     .from('site_knowledge_proposals')
-    .select('site_id, kind, reviewed_at')
+    .select('site_id, kind, reviewed_at, report_id, title, reviewed_by')
     .eq('status', 'confirmed')
     .not('reviewed_at', 'is', null)
     .gte('reviewed_at', from)
     .lte('reviewed_at', to)
   if (orgId) cq = cq.eq('organization_id', orgId)
+  if (siteId) cq = cq.eq('site_id', siteId)
   const { data: confirmed } = await cq
-  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string }>) {
-    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind })
+  for (const c of (confirmed ?? []) as Array<{ site_id: string; kind: string; reviewed_at: string; report_id: string | null; title: string | null; reviewed_by: string | null }>) {
+    out.push({ site_id: c.site_id, at: c.reviewed_at, kind: 'proposal_confirmed', proposal_kind: c.kind, report_id: c.report_id, title: c.title, reviewed_by: c.reviewed_by })
   }
   return out
+}
+
+/**
+ * Photos et mémos par visite — la preuve que quelqu'un y est allé, ce qu'aucun
+ * compte de propositions ne dit. On ignore les captures ÉCARTÉES au tri : une
+ * photo jetée n'a rien apporté au chantier.
+ */
+export async function readVisitCaptureCounts(reportIds: string[]): Promise<VisitCaptureCount[]> {
+  if (reportIds.length === 0) return []
+  const db = createAdminClient()
+  const { data } = await db
+    .from('visit_capture')
+    .select('report_id, kind')
+    .in('report_id', reportIds)
+    .in('kind', ['photo', 'vocal'])
+    .neq('status', 'discarded')
+  const acc = new Map<string, VisitCaptureCount>()
+  for (const c of (data ?? []) as Array<{ report_id: string; kind: string }>) {
+    const e = acc.get(c.report_id) ?? { report_id: c.report_id, photos: 0, vocals: 0 }
+    if (c.kind === 'photo') e.photos++
+    else e.vocals++
+    acc.set(c.report_id, e)
+  }
+  return [...acc.values()]
+}
+
+/**
+ * La PREMIÈRE visite d'un chantier, sur TOUTE son histoire — jamais sur la
+ * fenêtre affichée. Dire « première visite » de la plus ancienne visite des 90
+ * derniers jours, alors que dix la précèdent, serait raconter un faux début.
+ */
+export async function readFirstVisitId(siteId: string): Promise<string | null> {
+  const db = createAdminClient()
+  const { data } = await db
+    .from('site_reports')
+    .select('id')
+    .eq('site_id', siteId)
+    .not('origin', 'is', null)
+    .not('ended_at', 'is', null)
+    .is('deleted_at', null)
+    .order('ended_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return (data as { id: string } | null)?.id ?? null
+}
+
+/** Les noms des auteurs d'une validation — pour dire « Guillaume confirme ». */
+export async function readUserNames(userIds: string[]): Promise<Array<{ id: string; full_name: string | null }>> {
+  const unique = [...new Set(userIds)]
+  if (unique.length === 0) return []
+  const db = createAdminClient()
+  const { data } = await db.from('users').select('id, full_name').in('id', unique)
+  return (data ?? []) as Array<{ id: string; full_name: string | null }>
 }
 
 /** Compte des actions proposées pour PLUSIEURS chantiers (accueil multi-sites). */
