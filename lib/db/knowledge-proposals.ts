@@ -415,76 +415,72 @@ export async function getActionProposalStates(
 export interface PromotionResult { objectType: string; objectId: string }
 
 /**
- * LES TYPES QU'ON SAIT PROMOUVOIR — la source unique de la règle de sortie :
- * « aucun bouton visible ne doit pouvoir lever "promotion non supportée" ».
- *
- * Les surfaces DÉRIVENT leurs boutons d'ici (`canPromote`), elles ne les
- * devinent pas. Sinon un écran afficherait un jour « Confirmer » sur une
- * information et le conducteur récolterait une exception à la place d'un geste.
- *
- * Les SIX y sont désormais : le cycle « proposé → confirmé → projeté » est
- * complet. Deux d'entre eux exigent encore une réponse humaine que la
- * proposition ne porte pas (le rôle d'un intervenant, la nature d'une
- * information) : cf. promotionNeedsRole / promotionNeedsNature.
+ * L'ISSUE d'une promotion. `needs_input` n'est PAS une erreur : c'est un état
+ * métier PRÉVU. Le rôle d'un intervenant et la nature d'une information ne sont
+ * pas des pannes — ce sont des questions que le système DOIT poser, parce que la
+ * proposition ne les porte pas et que les deviner fabriquerait un fait.
+ * Les traiter en exception forcerait chaque appelant à rattraper un throw pour
+ * afficher... un sélecteur. L'attendu ne se lève pas, il se retourne.
  */
-export const PROMOTABLE_KINDS = ['action', 'deadline', 'decision', 'stakeholder', 'vigilance', 'knowledge'] as const
+export type PromotionOutcome =
+  | { status: 'promoted'; objectType: string; objectId: string }
+  | { status: 'needs_input'; missing: PromotionInputName[] }
+  | { status: 'unsupported'; kind: string }
+  | { status: 'not_found' }
 
-export function canPromote(kind: string): boolean {
-  return (PROMOTABLE_KINDS as readonly string[]).includes(kind)
+/**
+ * CE QU'ON PEUT FAIRE D'UNE PROPOSITION — la source unique de vérité de l'UI.
+ *
+ * L'écran ne décide plus, il DEMANDE : « que puis-je faire avec cet objet ? ».
+ * Une seule fonction répond. Auparavant la réponse était éparpillée en quatre
+ * (canPromote / promotionLabel / promotionNeedsRole / whyNotPromotable) qui
+ * racontaient toutes la même chose — et qu'un écran pouvait consulter à moitié.
+ *
+ * C'est la leçon du bug d'origine : promoteProposal ne gérait que 2 types sur 6,
+ * et rien n'empêchait un bouton d'exister pour les 4 autres. Ici, un type sans
+ * geste porte son explication ; il ne peut pas être promouvable ET inexpliqué.
+ */
+export type PromotionInputName = 'role' | 'nature'
+
+export interface PromotionCapability {
+  /** Y a-t-il un geste métier réel derrière ? */
+  available: boolean
+  /** Le verbe du conducteur — « Créer l'action ». Jamais « Confirmer » nu. */
+  label: string | null
+  /** Ce que l'humain doit fournir : la proposition ne le porte pas. */
+  requiredInputs: PromotionInputName[]
+  /** Pourquoi c'est impossible. Renseigné UNIQUEMENT si `available` est faux. */
+  explanation: string | null
 }
 
-/** Ce que l'humain doit RENSEIGNER : le rôle ne se lit pas dans « Ginger ». */
-export function promotionNeedsRole(kind: string): boolean {
-  return kind === 'stakeholder'
+/** Les six types de la mig 212 et leur geste. Le 7ᵉ devra passer par ici. */
+const CAPABILITIES: Record<string, { label: string; requiredInputs: PromotionInputName[] }> = {
+  action: { label: "Créer l'action", requiredInputs: [] },
+  deadline: { label: 'Ajouter au planning', requiredInputs: [] },
+  decision: { label: 'Confirmer la décision', requiredInputs: [] },
+  // Le rôle ne se lit pas dans « Ginger » : la proposition est une chaîne nue.
+  stakeholder: { label: 'Ajouter au chantier', requiredInputs: ['role'] },
+  vigilance: { label: 'Retenir le point de vigilance', requiredInputs: [] },
+  // Périssable ou durable ? L'humain tranche, jamais le modèle.
+  knowledge: { label: 'Ajouter à la mémoire', requiredInputs: ['nature'] },
 }
 
-/** La NATURE d'une information : périssable ou durable. L'humain tranche. */
-export function promotionNeedsNature(kind: string): boolean {
-  return kind === 'knowledge'
-}
-
-/** Le geste MÉTIER, jamais un « Confirmer » générique. */
-export function promotionLabel(kind: string): string | null {
-  switch (kind) {
-    case 'action': return "Créer l'action"
-    case 'deadline': return 'Ajouter au planning'
-    case 'decision': return 'Confirmer la décision'
-    case 'stakeholder': return 'Ajouter au chantier'
-    case 'vigilance': return 'Retenir le point de vigilance'
-    // Le geste dépend de la nature choisie : « Conserver comme information
-    // actuelle » ou « Ajouter à la mémoire du chantier » (knowledgeKindAction).
-    case 'knowledge': return 'Ajouter à la mémoire'
-    default: return null
+export function getPromotionCapability(kind: string): PromotionCapability {
+  const c = CAPABILITIES[kind]
+  if (!c) {
+    return {
+      available: false,
+      label: null,
+      requiredInputs: [],
+      explanation: "MemorIA ne sait pas encore quoi faire de ce type d'élément.",
+    }
   }
+  return { available: true, label: c.label, requiredInputs: c.requiredInputs, explanation: null }
 }
 
-/**
- * Pourquoi un type n'a pas de geste. Plus aucun aujourd'hui : les six sont
- * promouvables. La fonction reste — elle est la moitié de la règle de sortie, et
- * le 7ᵉ type qui apparaîtra devra passer par ici ou par une branche réelle.
- */
-export function whyNotPromotable(kind: string): string | null {
-  void kind
-  return null
-}
+/** Les types promouvables — dérivés du contrat, jamais recopiés à côté. */
+export const PROMOTABLE_KINDS = Object.keys(CAPABILITIES) as readonly string[]
 
-/**
- * Confirme une proposition en la PROMOUVANT vers son objet métier réel, puis la
- * marque 'confirmed' avec le lien vers l'objet créé. Idempotent : si déjà promue,
- * renvoie l'objet existant sans recréer. Un geste EXPLICITE par type — une vigilance
- * ne devient jamais une réserve automatiquement (portée contractuelle).
- *
- * Aujourd'hui : kind 'action' → site_action. Les autres types (vigilance→site_notes,
- * échéance→obligation, intervenant→site_intervenant, savoir→mémoire) arrivent ensuite.
- */
-/**
- * Ce que l'humain doit FOURNIR pour promouvoir, quand la proposition ne le sait
- * pas. Une proposition d'intervenant est une CHAÎNE NUE (« Ginger »,
- * « Électriciens ») : `analysis.intervenants` est un `string[]` et son payload
- * est vide. Or `site_intervenants` exige un rôle NOT NULL. Le rôle est donc
- * inconnaissable depuis la proposition — et le deviner (« Électriciens » ⇒ rôle
- * ELEC ?) serait inventer un casting que personne n'a dit. On le DEMANDE.
- */
 export interface PromotionInput {
   /** Rôle sur le chantier (ETV / MOE / BET / …). REQUIS pour un intervenant. */
   role?: string
@@ -503,21 +499,34 @@ export async function promoteProposal(params: {
   userId: string | null
   organizationId?: string | null
   input?: PromotionInput
-}): Promise<PromotionResult | null> {
+}): Promise<PromotionOutcome> {
   const supabase = createAdminClient()
   const { data, error } = await supabase.from('site_knowledge_proposals').select('*').eq('id', params.id).single()
-  if (error || !data) return null
+  if (error || !data) return { status: 'not_found' }
   const p = data as DbKnowledgeProposal
 
   // Garde fail-closed (le service-role bypasse la RLS) : jamais promouvoir hors de son org.
-  if (params.organizationId && p.organization_id && p.organization_id !== params.organizationId) return null
+  if (params.organizationId && p.organization_id && p.organization_id !== params.organizationId) {
+    return { status: 'not_found' }
+  }
 
   // Déjà promue : on renvoie l'objet existant (idempotent), on ne recrée rien.
   if (p.status !== 'proposed') {
     return p.promoted_object_type && p.promoted_object_id
-      ? { objectType: p.promoted_object_type, objectId: p.promoted_object_id }
-      : null
+      ? { status: 'promoted', objectType: p.promoted_object_type, objectId: p.promoted_object_id }
+      : { status: 'not_found' }
   }
+
+  // Ce qui manque se DEMANDE, avant tout travail : on ne crée pas une entreprise
+  // pour découvrir ensuite qu'on n'a pas le rôle.
+  const capability = getPromotionCapability(p.kind)
+  if (!capability.available) return { status: 'unsupported', kind: p.kind }
+  const missing = capability.requiredInputs.filter((i) =>
+    i === 'role'
+      ? !params.input?.role?.trim()
+      : !params.input?.knowledgeKind || !isChoosableKnowledgeKind(params.input.knowledgeKind),
+  )
+  if (missing.length > 0) return { status: 'needs_input', missing }
 
   let result: PromotionResult
   if (p.kind === 'action') {
@@ -571,10 +580,9 @@ export async function promoteProposal(params: {
   } else if (p.kind === 'stakeholder') {
     // Le RÔLE ne peut pas être deviné (cf. PromotionInput). Sans lui, on refuse —
     // on ne fabrique pas un casting que personne n'a dit.
-    const role = params.input?.role?.trim()
-    if (!role) throw new Error('ROLE_REQUIS')
+    const role = params.input!.role!.trim()
     const orgId = params.organizationId ?? p.organization_id
-    if (!orgId) return null
+    if (!orgId) return { status: 'not_found' }
     // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
     // fois sur deux visites ne crée pas deux entreprises.
     const companyId = await findOrCreateCompanyByName(orgId, params.input?.companyName?.trim() || p.title)
@@ -588,7 +596,7 @@ export async function promoteProposal(params: {
     result = { objectType: 'site_intervenant', objectId: companyId }
   } else if (p.kind === 'vigilance') {
     const orgId = params.organizationId ?? p.organization_id
-    if (!orgId) return null
+    if (!orgId) return { status: 'not_found' }
     const payload = (p.payload ?? {}) as { impact?: string | null }
     const id = await createWatchpoint({
       organizationId: orgId,
@@ -606,10 +614,9 @@ export async function promoteProposal(params: {
     // périssable, « Vincent Milon est l'interlocuteur PAVE » est durable. Demander
     // au modèle de trancher lui ferait porter un jugement qu'il raterait en
     // silence. L'humain choisit ; sans choix, on refuse.
-    const kind = params.input?.knowledgeKind
-    if (!kind || !isChoosableKnowledgeKind(kind)) throw new Error('NATURE_REQUISE')
+    const kind = params.input!.knowledgeKind!
     const orgId = params.organizationId ?? p.organization_id
-    if (!orgId) return null
+    if (!orgId) return { status: 'not_found' }
     const id = await createKnowledgeEntry({
       organizationId: orgId,
       siteId: p.site_id,
@@ -622,7 +629,7 @@ export async function promoteProposal(params: {
     })
     result = { objectType: 'site_knowledge_entry', objectId: id }
   } else {
-    throw new Error(`Promotion non encore supportée pour le type « ${p.kind} »`)
+    return { status: 'unsupported', kind: p.kind }
   }
 
   const now = new Date().toISOString()
@@ -638,5 +645,5 @@ export async function promoteProposal(params: {
     })
     .eq('id', params.id)
   if (updErr) throw updErr
-  return result
+  return { status: 'promoted', objectType: result.objectType, objectId: result.objectId }
 }

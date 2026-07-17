@@ -1,10 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  PROMOTABLE_KINDS, canPromote, promotionLabel, promotionNeedsRole,
-  promotionNeedsNature, whyNotPromotable,
-} from '@/lib/db/knowledge-proposals'
+import { PROMOTABLE_KINDS, getPromotionCapability } from '@/lib/db/knowledge-proposals'
 import { CHOOSABLE_KNOWLEDGE_KINDS, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
 
 const SOURCE = join(process.cwd(), 'lib/db/knowledge-proposals.ts')
@@ -40,10 +37,9 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
     expect(kinds.length).toBe(6)
 
     for (const k of kinds) {
-      const promouvable = canPromote(k)
-      const explique = whyNotPromotable(k) !== null
+      const cap = getPromotionCapability(k)
       expect(
-        promouvable !== explique,
+        cap.available !== (cap.explanation !== null),
         `« ${k} » doit avoir SOIT un geste métier, SOIT une explication honnête — jamais les deux, jamais aucun`,
       ).toBe(true)
     }
@@ -51,12 +47,12 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
 
   it('chaque type promouvable porte un verbe métier, jamais « Confirmer » générique', () => {
     for (const k of PROMOTABLE_KINDS) {
-      const label = promotionLabel(k)
-      expect(label, `« ${k} » n'a pas de geste`).toBeTruthy()
-      expect(label, 'un bouton « Confirmer » nu ne dit pas ce qui va se passer').not.toBe('Confirmer')
+      const cap = getPromotionCapability(k)
+      expect(cap.label, `« ${k} » n'a pas de geste`).toBeTruthy()
+      expect(cap.label, 'un bouton « Confirmer » nu ne dit pas ce qui va se passer').not.toBe('Confirmer')
     }
-    expect(promotionLabel('action')).toBe("Créer l'action")
-    expect(promotionLabel('deadline')).toBe('Ajouter au planning')
+    expect(getPromotionCapability('action').label).toBe("Créer l'action")
+    expect(getPromotionCapability('deadline').label).toBe('Ajouter au planning')
   })
 
   it("le cycle est complet : plus aucun type n'est orphelin", () => {
@@ -66,14 +62,18 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
     // knowledge→site_knowledge_entries (mig 218).
     expect(PROMOTABLE_KINDS.length).toBe(6)
     for (const k of ['action', 'deadline', 'decision', 'stakeholder', 'vigilance', 'knowledge']) {
-      expect(canPromote(k), `« ${k} » doit avoir un geste`).toBe(true)
-      expect(whyNotPromotable(k), `« ${k} » n'a plus besoin d'excuse`).toBeNull()
+      const cap = getPromotionCapability(k)
+      expect(cap.available, `« ${k} » doit avoir un geste`).toBe(true)
+      expect(cap.explanation, `« ${k} » n'a plus besoin d'excuse`).toBeNull()
     }
   })
 
-  it("un type inconnu n'a jamais de geste", () => {
-    expect(canPromote('habitude')).toBe(false)
-    expect(promotionLabel('habitude')).toBeNull()
+  it("un type inconnu n'a jamais de geste, mais TOUJOURS une explication", () => {
+    const cap = getPromotionCapability('habitude')
+    expect(cap.available).toBe(false)
+    expect(cap.label).toBeNull()
+    // L'écran ne doit jamais rester muet : un type sans geste dit pourquoi.
+    expect(cap.explanation).toBeTruthy()
   })
 
   it('la liste des promouvables correspond à ce que le code sait vraiment faire', () => {
@@ -96,14 +96,17 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
 // dit. On le demande. (Vérifié en base : un intervenant sans rôle est refusé.)
 describe("L'intervenant — le rôle se demande, il ne se déduit pas", () => {
   it('seul un intervenant réclame un rôle', () => {
-    expect(promotionNeedsRole('stakeholder')).toBe(true)
-    expect(promotionNeedsRole('decision')).toBe(false)
-    expect(promotionNeedsRole('action')).toBe(false)
+    expect(getPromotionCapability('stakeholder').requiredInputs).toEqual(['role'])
+    expect(getPromotionCapability('decision').requiredInputs).toEqual([])
+    expect(getPromotionCapability('action').requiredInputs).toEqual([])
   })
 
-  it('la promotion refuse plutôt que de fabriquer un rôle', () => {
-    const src = readFileSync(SOURCE, 'utf8')
-    expect(src).toContain('ROLE_REQUIS')
+  it("le manque est un ÉTAT métier retourné, jamais une exception levée", () => {
+    // Le rôle qui manque n'est pas exceptionnel : c'est prévu. Le lever forcerait
+    // chaque appelant à rattraper un throw pour afficher... un sélecteur.
+    const fn = bodyOf('promoteProposal')
+    expect(fn).toContain("status: 'needs_input'")
+    expect(fn, 'un état prévu ne se lève pas').not.toMatch(/throw new Error\('ROLE_REQUIS'\)|NATURE_REQUISE/)
   })
 })
 
@@ -115,13 +118,9 @@ describe("L'intervenant — le rôle se demande, il ne se déduit pas", () => {
 // lui ferait porter un jugement qu'il raterait en silence.
 describe("L'information — sa nature se demande, elle ne se déduit pas", () => {
   it('seule une information réclame sa nature', () => {
-    expect(promotionNeedsNature('knowledge')).toBe(true)
-    expect(promotionNeedsNature('decision')).toBe(false)
-    expect(promotionNeedsNature('vigilance')).toBe(false)
-  })
-
-  it('la promotion refuse plutôt que de choisir à la place de l’humain', () => {
-    expect(readFileSync(SOURCE, 'utf8')).toContain('NATURE_REQUISE')
+    expect(getPromotionCapability('knowledge').requiredInputs).toEqual(['nature'])
+    expect(getPromotionCapability('decision').requiredInputs).toEqual([])
+    expect(getPromotionCapability('vigilance').requiredInputs).toEqual([])
   })
 
   it("une HABITUDE ne peut pas naître d'une seule visite", () => {

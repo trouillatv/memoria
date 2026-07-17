@@ -402,7 +402,10 @@ export async function promoteActionProposalAction(input: unknown): Promise<{ ok:
       userId: auth.userId,
       organizationId: orgId ?? visit.organization_id ?? null,
     })
-    if (!res) return { ok: false, error: 'Promotion impossible' }
+    // Depuis la synthèse, seules les actions sont promues : elles n'exigent aucune
+    // saisie. Un needs_input ici signifierait qu'on a branché un type qui pose une
+    // question — l'écran devrait alors la poser, pas l'avaler.
+    if (res.status !== 'promoted') return { ok: false, error: 'Promotion impossible' }
     // L'invalidation de la projection est portée par la MUTATION (createSiteAction,
     // appelée dans promoteProposal) — jamais par l'écran/l'action.
     return { ok: true, objectId: res.objectId }

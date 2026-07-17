@@ -16,7 +16,21 @@ import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { requireOwned } from '@/lib/auth/ownership'
 import { getOrgId } from '@/lib/db/users'
-import { promoteProposal, dismissProposal } from '@/lib/db/knowledge-proposals'
+import {
+  promoteProposal, dismissProposal, getPromotionCapability,
+  type PromotionInputName,
+} from '@/lib/db/knowledge-proposals'
+
+/**
+ * L'issue d'un geste de confirmation. `needs_input` n'est pas un échec : c'est la
+ * question que l'écran doit poser (le sélecteur de rôle, le choix de nature).
+ * Elle traverse la couche action SANS être aplatie en erreur — sinon l'écran
+ * devrait deviner, à partir d'un texte, s'il faut ouvrir un sélecteur.
+ */
+export type PromoteResult =
+  | { ok: true; objectId: string }
+  | { ok: false; needsInput: PromotionInputName[]; error: string }
+  | { ok: false; error: string; needsInput?: undefined }
 
 const baseSchema = z.object({ site_id: z.string().uuid(), proposal_id: z.string().uuid() })
 
@@ -61,7 +75,7 @@ const promoteSchema = baseSchema.extend({
  */
 export async function promoteFromMemoryAction(
   input: z.input<typeof promoteSchema>,
-): Promise<{ ok: true; objectId: string } | { ok: false; error: string; needsRole?: true; needsNature?: true }> {
+): Promise<PromoteResult> {
   const g = await guard(input)
   if (!g.ok) return { ok: false, error: g.error }
   const parsed = promoteSchema.safeParse(input)
@@ -79,22 +93,30 @@ export async function promoteFromMemoryAction(
         knowledgeKind: parsed.data.knowledge_kind,
       },
     })
-    if (!res) return { ok: false, error: 'Confirmation impossible' }
-    // L'invalidation de la projection est portée par la MUTATION elle-même
-    // (createSiteAction / createSiteDecision…), jamais par l'écran.
-    revalidatePath(`/m/site/${g.siteId}/patrimoine`)
-    revalidatePath(`/m/site/${g.siteId}`)
-    return { ok: true, objectId: res.objectId }
-  } catch (e) {
-    // Ni le rôle ni la nature ne sont des pannes : ce sont des questions à poser.
-    if (e instanceof Error && e.message === 'ROLE_REQUIS') {
-      return { ok: false, error: 'Indiquez son rôle sur le chantier', needsRole: true }
+    switch (res.status) {
+      case 'promoted':
+        // L'invalidation de la projection est portée par la MUTATION elle-même
+        // (createSiteAction / createSiteDecision…), jamais par l'écran.
+        revalidatePath(`/m/site/${g.siteId}/patrimoine`)
+        revalidatePath(`/m/site/${g.siteId}`)
+        return { ok: true, objectId: res.objectId }
+      case 'needs_input':
+        return { ok: false, needsInput: res.missing, error: missingLabel(res.missing) }
+      case 'unsupported':
+        return { ok: false, error: getPromotionCapability(res.kind).explanation ?? 'Impossible' }
+      case 'not_found':
+        return { ok: false, error: 'Élément introuvable' }
     }
-    if (e instanceof Error && e.message === 'NATURE_REQUISE') {
-      return { ok: false, error: 'Information du moment, ou savoir durable ?', needsNature: true }
-    }
+  } catch {
     return { ok: false, error: 'Confirmation impossible' }
   }
+}
+
+/** La question à poser, avec les mots du conducteur. */
+function missingLabel(missing: PromotionInputName[]): string {
+  if (missing.includes('role')) return 'Indiquez son rôle sur le chantier'
+  if (missing.includes('nature')) return 'Information du moment, ou savoir durable ?'
+  return 'Information manquante'
 }
 
 const dismissSchema = baseSchema.extend({ reason: z.string().trim().max(500).nullish() })

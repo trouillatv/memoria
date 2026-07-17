@@ -1,17 +1,18 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
-  ArrowLeft, Check, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
+  ArrowLeft, ChevronRight, Brain, Footprints, Users, Wrench, MapPin, Star, Gavel,
 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildSiteStatusSummary, buildSitePatrimoine, getSiteRecentActivity, buildSiteImportantEvidence } from '@/lib/db/visits'
-import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
+import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { listSiteMapCaptures } from '@/lib/db/visit-captures'
 import { listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteTabs } from '../SiteTabs'
 import { SiteStatusCard } from '../SiteStatusCard'
 import { SitePatrimoineSearch } from '../SitePatrimoineSearch'
+import { MemoryReviewPanel } from '../MemoryReviewPanel'
 import { CaptureMap } from '@/components/CaptureMap'
 
 export const dynamic = 'force-dynamic'
@@ -50,7 +51,7 @@ export default async function SitePatrimoinePage({
   const { data: site } = await supabase.from('sites').select('id, name').eq('id', siteId).is('deleted_at', null).maybeSingle()
   if (!site) notFound()
 
-  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence, overview] = await Promise.all([
+  const [statusCells, patrimoine, subjects, activity, mapCaptures, evidence, review] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     buildSitePatrimoine(siteId).catch(() => null),
     listSubjectsBySite(siteId).catch(() => []),
@@ -59,9 +60,10 @@ export default async function SitePatrimoinePage({
     buildSiteImportantEvidence(siteId).catch(() => ({ photos: [], decisions: [] })),
     // La mémoire du chantier vient du MÊME read model que la fiche : un fait su
     // ne peut pas être vrai ici et faux là.
-    getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
+    // Ce qu'on peut CONFIRMER — chaque élément porte déjà son geste et sa
+    // provenance : l'écran ne décide d'aucun bouton.
+    getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
   ])
-  const { knowledge, stakeholders } = overview
   const hasEvidence = evidence.photos.length > 0 || evidence.decisions.length > 0
 
   // Sujets, du plus fréquent au moins fréquent (déterministe).
@@ -100,23 +102,20 @@ export default async function SitePatrimoinePage({
           Les échéances ne sont PAS ici : elles répondent à « quand agir ? », donc
           au Planning. Le même objet à deux endroits sous deux noms, c'est le
           conducteur qui ne sait plus lequel fait foi. */}
-      {(knowledge.confirmed.length + knowledge.proposed.length + stakeholders.confirmed.length + stakeholders.proposed.length) > 0 && (
+      {(review.confirmed.length + review.toReview.length) > 0 && (
         <section className="space-y-3 rounded-2xl border bg-card p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Ce que MemorIA sait
-          </h2>
-
-          {/* Ce qu'un HUMAIN a validé et ce que MemorIA PROPOSE ne se mélangent
-              jamais dans la même liste : sinon le conducteur ne sait plus ce qui
-              fait foi — et c'est toute la frontière que le produit défend. */}
-          <KnownBlock title="Ce que le chantier sait" section={knowledge} />
-          <KnownBlock title="Intervenants connus" section={stakeholders} />
+          {/* La Mémoire ne se contente plus de MONTRER : on peut agir. Elle était
+              vide en « confirmées » parce que personne ne pouvait confirmer — 4
+              types sur 6 levaient « promotion non supportée ». Le cycle est
+              complet ; l'écran est la moitié visible.
+              Les actions et les échéances ne sont PAS ici : leur contexte naturel
+              est le Travail et le Planning. La Mémoire n'est pas un centre de
+              validation universel. */}
+          <MemoryReviewPanel siteId={siteId} review={review} />
 
           {/* « Habitudes observées » : une ligne, pas une carte. Une habitude se
               constate sur plusieurs visites — l'annoncer avant serait inventer une
-              régularité qui n'existe pas. Mais une grande carte vide redonnerait
-              l'impression d'un écran incomplet : la phrase suffit à dire ce que
-              MemorIA deviendra. Elle deviendra une carte quand elle aura à dire. */}
+              régularité qui n'existe pas. */}
           <p className="border-t pt-2 text-[12px] text-muted-foreground">
             Aucune habitude détectée pour l’instant. Elles apparaîtront après plusieurs visites.
           </p>
@@ -273,50 +272,6 @@ function Stat({ n, label }: { n: number; label: string }) {
     <div>
       <p className="text-lg font-semibold tabular-nums">{n}</p>
       <p className="text-[11px] text-muted-foreground">{label}</p>
-    </div>
-  )
-}
-
-/**
- * Un bloc de mémoire : le VALIDÉ d'abord, l'« à confirmer » ensuite — jamais dans
- * la même liste. Un fait validé par un humain et une déduction de MemorIA n'ont
- * pas le même poids ; les aligner ferait croire au conducteur qu'il a approuvé
- * des choses qu'il n'a jamais lues.
- */
-function KnownBlock({
-  title,
-  section,
-}: {
-  title: string
-  section: { confirmed: Array<{ id: string; title: string }>; proposed: Array<{ id: string; title: string }> }
-}) {
-  if (section.confirmed.length + section.proposed.length === 0) return null
-  return (
-    <div>
-      <h3 className="text-[13px] font-medium text-muted-foreground">{title}</h3>
-      {section.confirmed.length > 0 && (
-        <ul className="mt-1 space-y-1">
-          {section.confirmed.map((k) => (
-            <li key={k.id} className="flex items-start gap-2 text-[13px] text-foreground/90">
-              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-              <span className="min-w-0">{k.title}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {section.proposed.length > 0 && (
-        <>
-          <p className="mt-2 text-[12px] font-medium text-sky-700 dark:text-sky-300">À confirmer</p>
-          <ul className="mt-1 space-y-1">
-            {section.proposed.map((k) => (
-              <li key={k.id} className="flex items-start gap-2 text-[13px] text-muted-foreground">
-                <span className="mt-[5px] h-2.5 w-2.5 shrink-0 rounded-full border border-sky-400" />
-                <span className="min-w-0">{k.title}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
     </div>
   )
 }
