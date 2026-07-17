@@ -26,20 +26,23 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: MemoryReview }) {
-  // Le déplacement INSTANTANÉ : l'élément quitte « À examiner » au moment du
-  // geste, sans attendre le rechargement. Sinon le conducteur clique, rien ne
-  // bouge, et il doute d'avoir cliqué.
+  // Le déplacement INSTANTANÉ : l'élément quitte « À examiner » dès le geste,
+  // sans attendre le serveur. Sinon le conducteur clique, rien ne bouge, et il
+  // doute d'avoir cliqué.
+  //
+  // L'élément retenu, en revanche, n'est PAS ajouté ici : `revalidatePath` le
+  // fait réapparaître dans `confirmed`, lu depuis l'objet réel. Une liste
+  // optimiste en plus l'afficherait DEUX FOIS pendant l'aller-retour — c'est
+  // arrivé, et c'est la même faute que deux read models pour un même fait :
+  // deux sources, une vérité. Le serveur est la source.
   const [done, setDone] = useState<Set<string>>(new Set())
-  // Ce qui vient d'être retenu, dit tout de suite. La liste `confirmed` vient du
-  // serveur et ne bougera qu'au rechargement ; on ne fait pas patienter.
-  const [justConfirmed, setJustConfirmed] = useState<string[]>([])
 
   const remaining = review.toReview.filter((i) => !done.has(i.id))
   const groups = [...new Set(review.confirmed.map((c) => c.group))]
 
   return (
     <section className="space-y-4">
-      {review.confirmed.length + justConfirmed.length === 0 ? (
+      {review.confirmed.length === 0 ? (
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Ce que le chantier sait
@@ -72,17 +75,6 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
         ))
       )}
 
-      {justConfirmed.length > 0 && (
-        <ul className="space-y-1">
-          {justConfirmed.map((t) => (
-            <li key={t} className="flex items-start gap-2 text-[13px] text-foreground/90">
-              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-              <span className="min-w-0">{t}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
       {remaining.length > 0 && (
         <div>
           <h3 className="text-[13px] font-medium text-sky-700 dark:text-sky-300">
@@ -94,10 +86,7 @@ export function MemoryReviewPanel({ siteId, review }: { siteId: string; review: 
                 key={item.id}
                 siteId={siteId}
                 item={item}
-                onDone={(promoted) => {
-                  setDone((s) => new Set(s).add(item.id))
-                  if (promoted) setJustConfirmed((l) => [...l, item.title])
-                }}
+                onDone={() => setDone((s) => new Set(s).add(item.id))}
               />
             ))}
           </ul>
@@ -114,7 +103,7 @@ function ReviewCard({
 }: {
   siteId: string
   item: ReviewItem
-  onDone: (promoted: boolean) => void
+  onDone: () => void
 }) {
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -125,7 +114,7 @@ function ReviewCard({
     setError(null)
     start(async () => {
       const res = await promoteFromMemoryAction({ site_id: siteId, proposal_id: item.id, ...extra })
-      if (res.ok) return onDone(true)
+      if (res.ok) return onDone()
       // `needsInput` n'est pas une panne : c'est la question à poser.
       if (res.needsInput?.includes('role')) return setAsking('role')
       if (res.needsInput?.includes('nature')) return setAsking('nature')
@@ -137,7 +126,7 @@ function ReviewCard({
     setError(null)
     start(async () => {
       const res = await dismissFromMemoryAction({ site_id: siteId, proposal_id: item.id })
-      if (res.ok) return onDone(false)
+      if (res.ok) return onDone()
       setError(res.error)
     })
   }
