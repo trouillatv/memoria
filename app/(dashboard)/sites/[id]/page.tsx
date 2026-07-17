@@ -223,6 +223,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             interventions={interventionsResult.items}
             proposed={workOverview.actions.proposed}
             proposedTotal={workOverview.actions.summary.proposed}
+            deadlines={deadlines}
+            deadlinesProposed={workOverview.deadlines.summary.proposed}
             completedRecent={workOverview.actions.completedRecent}
             synthesisHref={workOverview.activity.lastVisit ? `/m/visite/${workOverview.activity.lastVisit.reportId}/cr` : undefined}
           />

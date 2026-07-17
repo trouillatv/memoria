@@ -7,6 +7,7 @@ import type { KnowledgeItem } from '@/lib/knowledge/site-overview'
 import { todayLocalIso } from '@/lib/time/local-date'
 import type { SiteActionRow } from '@/lib/db/site-actions'
 import type { SiteBlocage } from '@/lib/db/site-blocages'
+import type { SiteDeadline } from '@/lib/db/site-deadlines'
 import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { DbMission } from '@/types/db'
 
@@ -21,6 +22,13 @@ interface WorkWorkspaceProps {
    *  et que l'accueil — une action est LA MÊME partout, ou elle n'est rien. */
   proposed: KnowledgeItem[]
   proposedTotal: number
+  /** Les VRAIES échéances du chantier. La section « Échéances » comptait les
+   *  ACTIONS par date : elle portait le nom d'un objet et en mesurait un autre.
+   *  Avec 0 action confirmée, elle affichait 0/0/0/0 — pendant que 3 échéances
+   *  attendaient. */
+  deadlines: SiteDeadline[]
+  /** Combien attendent une confirmation. « à confirmer » n'est pas « ouvert ». */
+  deadlinesProposed: number
   completedRecent: KnowledgeItem[]
   /** Là où l'on confirme une proposition : la synthèse de la dernière visite. */
   synthesisHref?: string
@@ -29,6 +37,7 @@ interface WorkWorkspaceProps {
 export function WorkWorkspace({
   siteId, actions, blocages, missions, interventions,
   proposed, proposedTotal, completedRecent, synthesisHref,
+  deadlines, deadlinesProposed,
 }: WorkWorkspaceProps) {
   const todayIso = todayLocalIso()
   const plannedInterventions = interventions.filter((intervention) => !isDone(intervention))
@@ -36,6 +45,14 @@ export function WorkWorkspace({
   const todayActions = actions.filter((action) => action.due_date === todayIso)
   const weekActions = actions.filter((action) => action.due_date && action.due_date > todayIso && action.due_date <= addDays(todayIso, 7))
   const undatedActions = actions.filter((action) => !action.due_date)
+  // Les échéances, lues des échéances. Une date passée sans que rien n'arrive
+  // est un retard ; une échéance sans date attend une décision, elle n'est pas
+  // incomplète.
+  const dueOf = (d: SiteDeadline) => d.due_date
+  const overdueDeadlines = deadlines.filter((d) => dueOf(d) && dueOf(d)! < todayIso)
+  const todayDeadlines = deadlines.filter((d) => dueOf(d) === todayIso)
+  const weekDeadlines = deadlines.filter((d) => dueOf(d) && dueOf(d)! > todayIso && dueOf(d)! <= addDays(todayIso, 7))
+  const toPlanDeadlines = deadlines.filter((d) => !dueOf(d))
   const unteamedMissions = missions.filter((mission) => !mission.assigned_team_id)
   const sortedActions = [...actions].sort((a, b) => {
     const aDue = a.due_date ?? '9999-12-31'
@@ -330,14 +347,22 @@ export function WorkWorkspace({
           <section className="rounded-[22px] border bg-card p-5 shadow-sm">
             <SectionTitle icon={Target} title="Échéances" detail="Ce qui approche ou reste à dater." />
             <dl className="mt-4 space-y-2">
-              <DeadlineRow label="En retard" value={overdueActions.length} tone={overdueActions.length > 0 ? 'red' : undefined} />
-              <DeadlineRow label="Aujourd'hui" value={todayActions.length} />
-              <DeadlineRow label="Cette semaine" value={weekActions.length} />
-              <DeadlineRow label="Sans échéance" value={undatedActions.length} />
+              <DeadlineRow label="En retard" value={overdueDeadlines.length} tone={overdueDeadlines.length > 0 ? 'red' : undefined} />
+              <DeadlineRow label="Aujourd'hui" value={todayDeadlines.length} />
+              <DeadlineRow label="Cette semaine" value={weekDeadlines.length} />
+              <DeadlineRow label="À planifier" value={toPlanDeadlines.length} />
             </dl>
-            {undatedActions.length > 0 && (
-              <Link href={`/sites/${siteId}/actions`} className="mt-4 block rounded-lg border px-3 py-2 text-center text-sm font-medium hover:bg-muted">
-                Dater les {undatedActions.length} éléments
+            {/* « à confirmer » n'est pas « ouvert » : une échéance proposée
+                n'engage personne. Elle est du travail — la cacher laisserait
+                croire qu'il n'y a rien à faire. */}
+            {deadlinesProposed > 0 && (
+              <p className="mt-3 text-[13px] text-sky-700 dark:text-sky-300">
+                {deadlinesProposed} échéance{deadlinesProposed > 1 ? 's' : ''} à confirmer — relevée{deadlinesProposed > 1 ? 's' : ''} par MemorIA.
+              </p>
+            )}
+            {toPlanDeadlines.length > 0 && (
+              <Link href={`/sites/${siteId}?tab=planning`} className="mt-4 block rounded-lg border px-3 py-2 text-center text-sm font-medium hover:bg-muted">
+                Dater les {toPlanDeadlines.length} échéance{toPlanDeadlines.length > 1 ? 's' : ''}
               </Link>
             )}
           </section>
