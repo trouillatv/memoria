@@ -60,8 +60,11 @@ export default async function FieldActionsPage({
         </p>
       </header>
 
-      {/* Ce qui attend une DÉCISION — au-dessus, parce que c'est ce qui bloque
-          le reste : une action non confirmée n'existe nulle part ailleurs. */}
+      {/* Ce qui attend une DÉCISION — au-dessus, parce que c'est ce qu'on ne
+          voit nulle part ailleurs. Attention au mot : une proposition ne bloque
+          PAS le chantier. Elle bloque la CONNAISSANCE — une action proposée
+          empêche seulement l'action d'exister, une décision proposée empêche la
+          mémoire de la porter. Le travail du terrain, lui, continue. */}
       <PendingWorkBlock work={pending} />
 
       {/* Ce qui attend une EXÉCUTION — des engagements pris. */}

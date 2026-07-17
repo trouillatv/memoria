@@ -171,9 +171,20 @@ export function MemoryWorkspace({
             ))}
           </ul>
         ) : (
+          /* « Aucune équipe n'est venue » était une AFFIRMATION MÉTIER tirée d'une
+             absence de donnée dans UNE table. Le relais se construit depuis les
+             interventions (toSiteRelays) : sur un chantier dont le travail est
+             capturé en VISITES, la phrase était fausse — quelqu'un y est allé.
+
+             Le produit doit toujours distinguer « le fait n'a pas eu lieu » de
+             « la donnée n'est pas enregistrée ». Le premier est un savoir, le
+             second un aveu. Ici, MemorIA ne sait pas qui est venu : aucune des
+             25 visites en base ne renseigne ses participants (la colonne existe,
+             mig 100, mais seul le flux de PV la remplit). Et l'auteur d'un
+             rapport n'est pas un témoin — l'inférer serait du pointage. */
           <UsefulEmpty
-            title="Aucune équipe n’est encore venue sur ce chantier."
-            detail="Le relais se construit dès la première intervention réalisée."
+            title="Aucune intervention n’a encore été enregistrée sur ce chantier."
+            detail="Le relais d’équipes se lit dans les interventions réalisées. Les visites, elles, n’enregistrent pas encore qui était présent."
             action={null}
           />
         )}
