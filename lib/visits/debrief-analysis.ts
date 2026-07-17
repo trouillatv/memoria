@@ -147,7 +147,23 @@ export function computeCorpusHash(input: VisitDebriefInput): string {
 // Les actions ne sont pas jetées à chaque synthèse. L'IA PROPOSE, l'humain
 // décide (fait / écarté), et une mise à jour AJOUTE les nouvelles propositions
 // sans jamais effacer les anciennes ni ressusciter une proposition écartée.
-export type ActionState = 'open' | 'done' | 'dismissed'
+/**
+ * L'état d'une entrée du grand livre.
+ *
+ * 'done' A ÉTÉ SUPPRIMÉ. Il portait « action faite sans avoir jamais existé » :
+ * un travail réel, coché pendant le débrief, mais absent de Travail, du chantier,
+ * de l'historique, des statistiques et du PDF. C'est l'inverse de ce que MemorIA
+ * construit — et ça n'existait nulle part ailleurs : une vigilance n'existe pas
+ * sans watchpoint, une décision pas sans site_decision.
+ *
+ * Le cycle est désormais unique : proposition → confirmée → action → terminée.
+ * L'utilisateur peut enchaîner les deux gestes ; la création peut lui être
+ * invisible. Elle ne doit pas l'être pour le modèle.
+ *
+ * Vérifié avant suppression : zéro ligne en 'done' sur toute la base, et
+ * setVisitActionStateAction n'était appelé par aucun composant.
+ */
+export type ActionState = 'open' | 'dismissed'
 export interface LedgerAction {
   key: string
   title: string
@@ -403,21 +419,6 @@ export async function loadOrRunVisitDebrief(
   }
 }
 
-/**
- * Change l'état d'UNE action du grand livre (fait / écarté / rouverte). N'appelle
- * jamais le LLM : lecture-modification-écriture du JSONB. Ne régénère rien — c'est
- * une décision HUMAINE sur une proposition, préservée aux prochaines synthèses.
- * L'appelant DOIT avoir vérifié l'organisation.
- */
-export async function setActionState(reportId: string, key: string, state: ActionState): Promise<boolean> {
-  const { analysis } = await readState(reportId)
-  if (!analysis || !Array.isArray(analysis.action_ledger)) return false
-  const entry = analysis.action_ledger.find((a) => a.key === key)
-  if (!entry) return false
-  entry.state = state
-  await writeAnalysis(reportId, analysis)
-  return true
-}
 
 /**
  * Lecture SEULE de l'analyse stockée (aucun LLM, aucune régénération), suivie d'une

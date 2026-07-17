@@ -28,6 +28,9 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { buildTodayView, todayUtcIso, type TodayIntervention, type OverdueIntervention, type UnassignedRecent } from '@/lib/db/today-view'
+import { getPlanningTimeline } from '@/lib/db/planning-timeline'
+import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
+import { DayTimeline } from './DayTimeline'
 import { getTenantDayReading } from '@/lib/ai/site-readings'
 import { ReadingCard } from '@/components/ui/reading-card'
 import { resolveDocNamesFromFragments } from '@/lib/documents/resolve-doc-names'
@@ -70,7 +73,15 @@ export default async function TodayPage({
     ? params.date
     : todayUtcIso()
 
-  const view = await buildTodayView(target)
+  // La journée du chantier, PAS seulement ses interventions. buildTodayView ne
+  // lit que `interventions` : il annonçait « 0 » un jour où une visite venait
+  // d'avoir lieu. getPlanningTimeline lit tout — visites, réunions, échéances,
+  // fermetures, blocages, interventions incluses. Elle existait, testée, et
+  // aucune page ne l'importait.
+  const [view, timeline] = await Promise.all([
+    buildTodayView(target),
+    getPlanningTimeline({ from: target, to: target }).catch(() => [] as PlanningTimelineEvent[]),
+  ])
 
   // Construire le contexte site → missions planifiées pour croiser avec absences IA
   const siteContextMap = new Map<string, string[]>()
@@ -105,6 +116,11 @@ export default async function TodayPage({
           </p>
         </div>
       </header>
+
+      {/* Ce que les chantiers ont VÉCU aujourd'hui — avant les compteurs. Les
+          stats ci-dessous ne comptent que les interventions ; elles disent « 0 »
+          sur un tenant qui n'en a pas, même quand une visite a eu lieu. */}
+      <DayTimeline events={timeline} />
 
       {/* 4 stats — réduction cognitive : pas de redondance avec la dette détaillée
           en dessous. "À traiter" = somme silencieuse (sans équipe + en retard). */}

@@ -16,16 +16,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sparkles, Loader2, RefreshCw, ChevronDown, AlertTriangle, ListTodo, Eye, ListChecks, Info, Calendar, Users, Check, ArrowUpRight } from 'lucide-react'
 import {
   getVisitDebriefFieldAction,
-  getActionProposalStatesAction,
   promoteActionProposalAction,
   dismissActionProposalAction,
-  getDeadlineProposalStatesAction,
-  type ActionProposalState,
   getVisitSummaryAction,
 } from '../debrief-actions'
 import type { VisitSummary, SummaryItem } from '@/lib/knowledge/visit-summary'
 import type { StoredDebriefAnalysis, SnapshotDelta } from '@/lib/visits/debrief-analysis'
-import { echeanceDateLabel, toDebriefEcheance, A_PLANIFIER_LABEL } from '@/lib/visits/echeance-labels'
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error'
 
@@ -72,10 +68,6 @@ export function MemoriaRetained({
   const [summary, setSummary] = useState<VisitSummary | null>(null)
   const [staleDelta, setStaleDelta] = useState<SnapshotDelta | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
-  // État des propositions d'action, indexé par la clé du ledger (null = pas encore chargé).
-  const [propStates, setPropStates] = useState<Record<string, ActionProposalState> | null>(null)
-  // État des propositions d'échéance, indexé par le label de l'échéance.
-  const [deadlineStates, setDeadlineStates] = useState<Record<string, ActionProposalState> | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aliveRef = useRef(true)
@@ -105,19 +97,10 @@ export function MemoriaRetained({
     setAnalysis(res.loaded.analysis)
     setStaleDelta(res.status === 'stale' ? res.delta : null)
     setPhase('ready')
-    // Propositions d'action promouvables (« Confirmer l'action ») — après la synthèse.
-    // Projette de façon idempotente côté serveur, puis renvoie leur état actuel.
-    setPropStates(null)
-    setDeadlineStates(null)
-    const [states, deadlines, sum] = await Promise.all([
-      getActionProposalStatesAction({ report_id: reportId }),
-      getDeadlineProposalStatesAction({ report_id: reportId }),
-      getVisitSummaryAction({ report_id: reportId }),
-    ])
+    // Plus AUCUN état de promotion lu à part : le contrat porte tout, actions
+    // comme échéances. Une seule lecture, une seule vérité.
+    const sum = await getVisitSummaryAction({ report_id: reportId })
     if (aliveRef.current && sum.ok) setSummary(sum.summary)
-    if (!aliveRef.current) return
-    setPropStates(states)
-    setDeadlineStates(deadlines)
   }, [reportId])
 
   useEffect(() => { loadRef.current = load }, [load])
@@ -136,9 +119,6 @@ export function MemoriaRetained({
     void load(true)
   }
 
-  // « Confirmer l'action » : PROMEUT la proposition en vraie site_action. Une action
-  // n'existe (Travail/Site/Accueil) et ne peut être « faite » qu'après ce geste.
-  // Optimiste, puis persisté ; les autres surfaces sont revalidées côté serveur.
   /** Relit LE CONTRAT après un geste — le serveur est la source, pas un état
    *  local qui afficherait le fait deux fois le temps de l'aller-retour. */
   async function refreshSummary() {
@@ -146,15 +126,16 @@ export function MemoriaRetained({
     if (aliveRef.current && sum.ok) setSummary(sum.summary)
   }
 
-  async function createAction(key: string) {
-    const st = propStates?.[key]
-    if (!st || st.status !== 'proposed' || busyKey) return
-    setBusyKey(key)
-    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+  async function createAction(proposalId: string) {
+    if (busyKey) return
+    setBusyKey(proposalId)
+    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: proposalId })
     if (!aliveRef.current) return
     setBusyKey(null)
     if (res.ok) {
-      setPropStates((prev) => ({ ...(prev ?? {}), [key]: { ...st, status: 'confirmed', promotedObjectType: 'site_action', promotedObjectId: res.objectId } }))
+      // On RELIT le contrat : l'action quitte « proposées » et rejoint
+      // « confirmées » parce que le serveur le dit, pas parce qu'un état local
+      // le mime.
       void refreshSummary()
     }
   }
@@ -163,39 +144,37 @@ export function MemoriaRetained({
   // On ne demande PAS la date : le conducteur confirme que l'échéance existe. Sans
   // date, elle naît « à planifier » et attend dans le Planning — exiger une date ici
   // ferait renoncer, et l'échéance retournerait au néant dont on l'a tirée.
-  async function confirmEcheance(label: string) {
-    const st = deadlineStates?.[label]
-    if (!st || st.status !== 'proposed' || busyKey) return
-    setBusyKey(`ech:${label}`)
-    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+  async function confirmEcheance(proposalId: string) {
+    if (busyKey) return
+    setBusyKey(proposalId)
+    const res = await promoteActionProposalAction({ report_id: reportId, proposal_id: proposalId })
     if (!aliveRef.current) return
     setBusyKey(null)
-    if (res.ok) {
-      setDeadlineStates((prev) => ({ ...(prev ?? {}), [label]: { ...st, status: 'confirmed', promotedObjectType: 'site_deadline', promotedObjectId: res.objectId } }))
-      void refreshSummary()
-    }
+    // On RELIT le contrat : l'échéance quitte « proposées » parce que le serveur
+    // le dit, pas parce qu'un état local le mime.
+    if (res.ok) void refreshSummary()
   }
 
-  async function dismissEcheance(label: string) {
-    const st = deadlineStates?.[label]
-    if (!st || st.status !== 'proposed' || busyKey) return
-    setBusyKey(`ech:${label}`)
-    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+  async function dismissEcheance(proposalId: string) {
+    if (busyKey) return
+    setBusyKey(proposalId)
+    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: proposalId })
     if (!aliveRef.current) return
     setBusyKey(null)
-    if (res.ok) setDeadlineStates((prev) => ({ ...(prev ?? {}), [label]: { ...st, status: 'dismissed' } }))
+    if (res.ok) void refreshSummary()
   }
 
   // « Écarter » : décision humaine, jamais ressuscitée par une re-synthèse.
-  async function dismissAction(key: string) {
-    const st = propStates?.[key]
-    if (!st || st.status !== 'proposed' || busyKey) return
-    setBusyKey(key)
-    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: st.proposalId })
+  async function dismissAction(proposalId: string) {
+    if (busyKey) return
+    setBusyKey(proposalId)
+    const res = await dismissActionProposalAction({ report_id: reportId, proposal_id: proposalId })
     if (!aliveRef.current) return
     setBusyKey(null)
-    if (res.ok) setPropStates((prev) => ({ ...(prev ?? {}), [key]: { ...st, status: 'dismissed' } }))
+    if (res.ok) void refreshSummary()
   }
+
+
 
   // ── En cours ────────────────────────────────────────────────────────────────
   // « MemorIA analyse… » ne s'affiche QUE si une analyse tourne vraiment. Avant, ce
@@ -258,24 +237,12 @@ export function MemoriaRetained({
 
   // ── Résultat : « Ce que MemorIA a retenu » ──
   const a = analysis!
-  // Actions du ledger encore visibles (compat : on ignore les vieux 'dismissed' du
-  // ledger), segmentées par le STATUT de leur PROPOSITION : active (à créer / créée)
-  // vs écartée dans le nouveau cycle. Le ledger n'est plus le pilote — la proposition l'est.
-  const ledgerActions = (a.action_ledger ?? []).filter((x) => x.state !== 'dismissed')
-  // 'superseded' = la synthèse courante ne dit plus ce fait ; elle le dit AUTREMENT,
-  // et cette nouvelle formulation est déjà affichée juste à côté. Le grand livre,
-  // lui, n'oublie rien : sans ce filtre, on proposerait de confirmer une phrase que
-  // MemorIA a elle-même remplacée. Ce n'est pas « écarté » (Guillaume n'a rien
-  // refusé) : c'est une lecture périmée, elle n'a plus à être sur cet écran.
-  const isLive = (key: string) => {
-    const s = propStates?.[key]?.status
-    return s !== 'dismissed' && s !== 'superseded'
-  }
-  const activeActions = ledgerActions.filter((x) => isLive(x.key))
-  const dismissedActions = ledgerActions.filter((x) => propStates?.[x.key]?.status === 'dismissed')
-  const hasActions = activeActions.length > 0
-  // Ces trois notions viennent du CONTRAT, pas du JSON : une proposition écartée
-  // n'y est plus, un fait validé y est marqué comme tel.
+  // ── TOUT VIENT DU CONTRAT ────────────────────────────────────────────────
+  // Le grand livre a disparu de cet écran. Il fallait auparavant filtrer ici les
+  // 'dismissed' et les 'superseded' : le ledger n'oublie rien, et sans ce filtre
+  // on proposait de confirmer une phrase que MemorIA avait elle-même remplacée.
+  // Ce raisonnement n'a plus à vivre dans un composant — le read model ne remonte
+  // que les propositions VIVANTES.
   const watch = summary?.watchpoints ?? { confirmed: [], proposed: [] }
   const decisions = summary?.decisions ?? { confirmed: [], proposed: [] }
   const savoir = summary?.knowledge ?? { confirmed: [], proposed: [] }
@@ -284,14 +251,8 @@ export function MemoriaRetained({
   const hasSavoir = savoir.confirmed.length + savoir.proposed.length > 0
   // Les échéances de la LECTURE COURANTE, écartées et périmées retirées — même
   // règle que les actions : on ne propose pas de confirmer ce que MemorIA ne dit plus.
-  const liveEcheances = (a.echeances ?? [])
-    .map((e) => toDebriefEcheance(e))
-    .filter((e): e is NonNullable<typeof e> => e !== null)
-    .filter((e) => {
-      const s = deadlineStates?.[e.label]?.status
-      return s !== 'dismissed' && s !== 'superseded'
-    })
-  const hasEcheances = liveEcheances.length > 0
+  const deadlinesProposed = summary?.deadlines.proposed ?? []
+  const actionsProposed = summary?.actions.proposed ?? []
   const stake = summary?.stakeholders ?? { confirmed: [], proposed: [] }
   const hasIntervenants = stake.confirmed.length + stake.proposed.length > 0
   const generatedLabel = safeDate(a.generated_at)
@@ -352,64 +313,48 @@ export function MemoriaRetained({
         </Block>
       )}
 
-      {hasActions && (
+      {/* Les propositions viennent du CONTRAT. Le renderer ne sait plus qu'un
+          grand livre existe : il ne calcule ni « nouveau », ni l'état de
+          promotion, ni le rapprochement avec un objet validé. Il reçoit des
+          lignes prêtes à rendre. */}
+      {actionsProposed.length > 0 && (
         <Block Icon={ListTodo} cls="text-violet-600" title="Actions proposées">
           <ul className="space-y-2.5">
-            {activeActions.map((act) => {
-              const st = propStates?.[act.key]
-              const created = st?.status === 'confirmed'
-              const isNew = a.analysis_version > 1 && act.version_added === a.analysis_version
-              const busy = busyKey === act.key
+            {actionsProposed.map((act) => {
+              const busy = busyKey === act.proposalId
               return (
-                <li key={act.key} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
+                <li key={act.id} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {created ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                        <Check className="h-3 w-3" /> Action confirmée
-                      </span>
-                    ) : (
-                      <>
-                        {isNew && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Nouveau</span>}
-                        {act.priority && <PriorityChip p={act.priority} />}
-                      </>
-                    )}
+                    {act.isNewInVersion && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Nouveau</span>}
+                    {act.priority && <PriorityChip p={act.priority} />}
                   </div>
-                  <p className={`mt-1 font-medium ${created ? 'text-foreground/80' : 'text-foreground/90'}`}>{act.title}</p>
-                  {!created && act.rationale && <p className="mt-0.5 text-[12px] text-muted-foreground">{act.rationale}</p>}
-                  {!created && (act.owner || act.due) && (
+                  <p className="mt-1 font-medium text-foreground/90">{act.title}</p>
+                  {act.detail && <p className="mt-0.5 text-[12px] text-muted-foreground">{act.detail}</p>}
+                  {(act.owner || act.due) && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {act.owner && `Responsable : ${act.owner}`}{act.owner && act.due ? ' · ' : ''}{act.due && `Échéance : ${act.due}`}
                     </p>
                   )}
-                  {created ? (
-                    <a href="/m/actions" className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-violet-700 dark:text-violet-300">
-                      Ouvrir l’action <ArrowUpRight className="h-3.5 w-3.5" />
-                    </a>
-                  ) : (
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void createAction(act.key)}
-                        disabled={!st || !!busyKey}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
-                      >
-                        {/* « Confirmer », pas « Créer » : partout ailleurs on annonce
-                            « 3 actions à confirmer », « Voir la synthèse et confirmer ».
-                            Le conducteur cherchait un mot qui n'existait sur aucun bouton.
-                            Et le geste n'est pas une création : MemorIA a déjà compris —
-                            l'humain valide. */}
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmer l’action
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void dismissAction(act.key)}
-                        disabled={!st || !!busyKey}
-                        className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-                      >
-                        Écarter
-                      </button>
-                    </div>
-                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => act.proposalId && void createAction(act.proposalId)}
+                      disabled={!act.capability.available || !!busyKey}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
+                    >
+                      {/* Le geste vient du CONTRAT — « Créer l'action ». Pas un
+                          « Confirmer » nu : le bouton dit ce qui va se passer. */}
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {act.capability.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => act.proposalId && void dismissAction(act.proposalId)}
+                      disabled={!!busyKey}
+                      className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      Écarter
+                    </button>
+                  </div>
                 </li>
               )
             })}
@@ -417,18 +362,11 @@ export function MemoriaRetained({
         </Block>
       )}
 
-      {dismissedActions.length > 0 && (
-        <details className="rounded-xl border bg-muted/20 px-3 py-2">
-          <summary className="cursor-pointer text-[12px] font-medium text-muted-foreground">
-            Éléments écartés ({dismissedActions.length})
-          </summary>
-          <ul className="mt-2 space-y-1.5">
-            {dismissedActions.map((act) => (
-              <li key={act.key} className="text-[12px] text-muted-foreground line-through">{act.title}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {/* Le bloc « Éléments écartés » a disparu : le contrat ne remonte que les
+          propositions VIVANTES, et « écarté disparaît partout » — le PDF ne l'a
+          jamais eu. La trace n'est pas perdue pour autant : la proposition reste
+          en base en `status='dismissed'`, et ne sera jamais ressuscitée par une
+          re-synthèse. */}
 
       {hasWatch && (
         <Block Icon={Eye} cls="text-amber-600" title="Points de vigilance">
@@ -477,65 +415,40 @@ export function MemoriaRetained({
         </Block>
       )}
 
-      {hasEcheances && (
+      {/* Les échéances proposées viennent du CONTRAT. Leur titre y est mis en
+          forme UNE fois — « ce qui doit arriver · quand on le sait » : une date
+          si elle a été donnée, la contrainte sinon. Le renderer ne retraduit
+          jamais « sous dix jours » en 27 juillet. */}
+      {deadlinesProposed.length > 0 && (
         <Block Icon={Calendar} cls="text-rose-600" title="Échéances proposées">
           <ul className="space-y-2.5">
-            {liveEcheances.map((e) => {
-              const st = deadlineStates?.[e.label]
-              const created = st?.status === 'confirmed'
-              const busy = busyKey === `ech:${e.label}`
+            {deadlinesProposed.map((e) => {
+              const busy = busyKey === e.proposalId
               return (
-                <li key={e.label} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
-                  {created ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <Check className="h-3 w-3" /> Échéance confirmée
-                    </span>
-                  ) : (
-                    e.date && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                        {echeanceDateLabel(e.date)}
-                      </span>
-                    )
+                <li key={e.id} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
+                  {e.isNewInVersion && (
+                    <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">Nouveau</span>
                   )}
-                  <p className="mt-1 font-medium text-foreground">{e.label}</p>
-
-                  {/* La CONTRAINTE, avec les mots du débrief. On ne la traduit pas en
-                      date : « sous dix jours » n'est pas le 27 juillet. */}
-                  {!e.date && e.constraint && (
-                    <p className="mt-0.5 text-[12px] text-muted-foreground">
-                      <span className="font-medium">Contrainte détectée</span> · {e.constraint}
-                    </p>
-                  )}
-                  {/* Ce n'est pas la date qui manque : c'est la planification qui
-                      reste à faire. Et elle ne bloque pas la confirmation. */}
-                  {!e.date && !created && (
-                    <p className="mt-0.5 text-[12px] text-amber-700 dark:text-amber-300">{A_PLANIFIER_LABEL}</p>
-                  )}
-
-                  {created ? (
-                    <a href={`/sites/${siteId}?tab=planning`} className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary">
-                      Voir dans le planning <ArrowUpRight className="h-3.5 w-3.5" />
-                    </a>
-                  ) : (
-                    <div className="mt-2 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void confirmEcheance(e.label)}
-                        disabled={!st || !!busyKey}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
-                      >
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Confirmer l’échéance
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void dismissEcheance(e.label)}
-                        disabled={!st || !!busyKey}
-                        className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-                      >
-                        Écarter
-                      </button>
-                    </div>
-                  )}
+                  <p className="mt-1 font-medium text-foreground">{e.title}</p>
+                  {e.detail && <p className="mt-0.5 text-[12px] text-muted-foreground">{e.detail}</p>}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => e.proposalId && void confirmEcheance(e.proposalId)}
+                      disabled={!e.capability.available || !!busyKey}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-[13px] font-medium text-white active:brightness-95 disabled:opacity-50"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {e.capability.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => e.proposalId && void dismissEcheance(e.proposalId)}
+                      disabled={!!busyKey}
+                      className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      Écarter
+                    </button>
+                  </div>
                 </li>
               )
             })}
