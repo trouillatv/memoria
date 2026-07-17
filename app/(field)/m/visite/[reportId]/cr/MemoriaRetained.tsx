@@ -172,6 +172,7 @@ export function MemoriaRetained({
     setBusyKey(null)
     if (res.ok) {
       setDeadlineStates((prev) => ({ ...(prev ?? {}), [label]: { ...st, status: 'confirmed', promotedObjectType: 'site_deadline', promotedObjectId: res.objectId } }))
+      void refreshSummary()
     }
   }
 
@@ -450,6 +451,29 @@ export function MemoriaRetained({
         <Block Icon={Info} cls="text-sky-600" title="À savoir">
           <BulletList items={savoir.confirmed.map((k) => k.title)} dot="bg-sky-500" />
           <ToConfirm items={savoir.proposed} />
+        </Block>
+      )}
+
+      {/* Le VALIDÉ d'abord. Ces échéances viennent du CONTRAT : ce sont les
+          site_deadlines réelles nées de cette visite, pas des lignes du JSON. */}
+      {summary && summary.deadlines.confirmed.length > 0 && (
+        <Block Icon={Calendar} cls="text-emerald-600" title="Échéances confirmées">
+          <ul className="space-y-2">
+            {summary.deadlines.confirmed.map((e) => (
+              <li key={e.id} className="rounded-xl border bg-background p-2.5 text-[13px] leading-snug">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <Check className="h-3 w-3" /> Confirmée
+                </span>
+                {/* Le titre porte déjà « ce qui doit arriver · quand on le sait » —
+                    mis en forme UNE fois, dans le contrat. Le renderer ne
+                    retraduit pas une contrainte en date. */}
+                <p className="mt-1 font-medium text-foreground">{e.title}</p>
+                <a href={`/sites/${siteId}?tab=planning`} className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary">
+                  Voir dans le planning <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+              </li>
+            ))}
+          </ul>
         </Block>
       )}
 
