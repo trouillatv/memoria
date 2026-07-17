@@ -51,11 +51,40 @@ describe('Obsolescence des propositions', () => {
 })
 
 describe("Le compte-rendu ne propose pas de confirmer une lecture périmée", () => {
-  const cr = readFileSync(
-    join(process.cwd(), 'app/(field)/m/visite/[reportId]/cr/MemoriaRetained.tsx'),
-    'utf8',
-  )
-  it('écarte les propositions obsolètes des actions à confirmer', () => {
-    expect(cr).toContain("s !== 'superseded'")
+  // LA RÈGLE N'A PAS CHANGÉ — son lieu, si. Elle vivait dans le renderer, qui
+  // filtrait `s !== 'superseded'` sur le grand livre. Elle vit maintenant dans le
+  // READ MODEL : `getVisitSummary` ne lit que `status = 'proposed'`, donc une
+  // lecture périmée n'atteint AUCUN écran. C'est plus fort qu'avant : un seul
+  // renderer filtrait, et le PDF — qui lisait le JSON — ne filtrait rien.
+  //
+  // Ce test avait raison de crier quand le filtre a disparu. Il vérifiait une
+  // implémentation là où il fallait garantir un comportement ; on le remonte.
+
+  /** Le CODE seul : un commentaire qui EXPLIQUE la règle ne doit pas la
+   *  déclencher. (Erreur commise trois fois dans la journée.) */
+  const code = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+
+  it('le read model ne remonte QUE les propositions vivantes', () => {
+    const summary = code('lib/knowledge/visit-summary.ts')
+    expect(summary).toContain("eq('status', 'proposed')")
+    expect(summary, 'une lecture périmée ne doit jamais sortir du read model')
+      .not.toContain("'superseded'")
+  })
+
+  it('aucun renderer n’a besoin de filtrer : ils ne reçoivent que du vivant', () => {
+    for (const rel of [
+      'app/(field)/m/visite/[reportId]/cr/MemoriaRetained.tsx',
+      'lib/pdf/visit-cr.tsx',
+    ]) {
+      expect(code(rel), `${rel} ne doit plus connaître 'superseded' : le read model l'a déjà exclu`)
+        .not.toContain("'superseded'")
+    }
+  })
+
+  it('le Travail non plus ne propose pas de confirmer du périmé', () => {
+    const pending = readFileSync(join(process.cwd(), 'lib/knowledge/pending-work.ts'), 'utf8')
+    expect(pending).toContain("eq('status', 'proposed')")
   })
 })
