@@ -16,13 +16,7 @@ import {
 import type { ActionsDashboard as Data } from '@/lib/knowledge/actions-dashboard'
 
 const ORIGIN_LABEL: Record<ActionOrigin['type'], string> = { reunion: 'Réunion', visite: 'Visite', reserve: 'Réserve', sujet: 'Sujet' }
-const ORIGIN_ICON: Record<ActionOrigin['type'], { ic: string; cls: string }> = {
-  reunion: { ic: '☷', cls: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
-  visite: { ic: '◱', cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300' },
-  reserve: { ic: '▦', cls: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
-  sujet: { ic: '◇', cls: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
-}
-// Pastille couleur par type — l'ADN MemorIA : d'où vient officiellement l'action.
+// Pastille couleur par type — l'ADN MemorIA : chaque action rattachée à un fait réel.
 const ORIGIN_DOT: Record<ActionOrigin['type'], string> = {
   reunion: '#6366f1', visite: '#10b981', reserve: '#f43f5e', sujet: '#0ea5e9',
 }
@@ -38,15 +32,6 @@ function frDue(iso: string): string {
   const [, m, d] = iso.split('-')
   return `${d}/${m}`
 }
-function relTime(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
-  if (days <= 0) return "aujourd’hui"
-  if (days === 1) return 'il y a 1 jour'
-  if (days < 30) return `il y a ${days} jours`
-  const mo = Math.floor(days / 30)
-  return mo === 1 ? 'il y a 1 mois' : `il y a ${mo} mois`
-}
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '·'
 
 // ── KPI compact : presque une phrase, sur une seule ligne (desktop) ──
 function Kpi({ label, value, accent, sub }: { label: string; value: number; accent: string; sub: React.ReactNode }) {
@@ -144,65 +129,35 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
         </div>
       </div>
 
-      {/* ── La liste (~75 %). HYBRIDE : récit à gauche, colonnes alignées à droite
-           pour balayer/comparer vite 60 actions (qui · quand · état). ── */}
+      {/* ── La liste : UNE LIGNE = UNE ACTION. Le titre domine (« quelle est la
+           prochaine chose à faire ? »). Origine, échéance et responsable sont du
+           CONTEXTE sous le titre — pas des colonnes qui se battent avec lui. ── */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="hidden items-center gap-3 border-b bg-muted/30 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:flex">
-          <span className="min-w-0 flex-1">Action</span>
-          <span className="w-32 shrink-0 text-right">Responsable</span>
-          <span className="w-16 shrink-0 text-right">Échéance</span>
-          <span className="w-32 shrink-0 text-right">Origine</span>
-          <span className="w-24 shrink-0 text-right">État</span>
-        </div>
         <ul className="divide-y divide-border/60">
           {rows.map((a: ActionDashboardItem) => {
             const overdue = isOverdue(a, today)
-            const origin = a.origin ? ORIGIN_ICON[a.origin.type] : null
-            const dueTone = a.lateness.tone === 'neg' && a.status !== 'done' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
-            const badge = <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>{overdue && <span aria-hidden>⚠</span>}{a.statusLabel}</span>
-            const resp = a.responsibleName
-              ? <span className="inline-flex items-center justify-end gap-2"><span className="truncate text-[12.5px]">{a.responsibleName}</span><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{initials(a.responsibleName)}</span></span>
-              : <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900">À affecter</span>
             return (
               <li key={a.id} className={cn('relative hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
                 {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
-                <div className="flex items-center gap-3 px-4 py-2.5">
-                  {/* Récit : quoi + pourquoi + depuis quand */}
-                  <div className="min-w-0 flex-1">
-                    <Link href={a.href} scroll={false} className="group block">
-                      <span className="block truncate text-[14px] font-semibold text-foreground group-hover:text-primary">{a.title}</span>
-                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
-                        {a.origin && (
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className={cn('grid h-[18px] w-[18px] place-items-center rounded text-[11px]', origin?.cls)}>{origin?.ic}</span>{a.origin.label}
-                          </span>
-                        )}
-                        {a.lastActivity && <span className="text-muted-foreground/70">· {a.lastActivity.label} · {relTime(a.lastActivity.occurredAt)}</span>}
-                      </span>
-                    </Link>
-                    {/* Mobile : les attributs sous le récit (pas de colonnes étroites) */}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] sm:hidden">
-                      {resp}
-                      {a.dueDate && <span className={dueTone}>{frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` · ${a.lateness.text}`}</span>}
-                      {badge}
-                    </div>
-                  </div>
-                  {/* Colonnes alignées (desktop) */}
-                  <div className="hidden w-32 shrink-0 justify-end sm:flex">{resp}</div>
-                  <div className={cn('hidden w-16 shrink-0 text-right text-[12.5px] tabular-nums sm:block', dueTone)}>
-                    {a.dueDate ? <>{frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && <span className="block text-[10.5px] font-semibold">{a.lateness.text}</span>}</> : <span className="text-muted-foreground/60">—</span>}
-                  </div>
-                  {/* Origine — l'ADN MemorIA : chaque action rattachée à un fait réel */}
-                  <div className="hidden w-32 shrink-0 items-center justify-end gap-1.5 sm:flex">
-                    {a.origin ? (
-                      <Link href={a.origin.href ?? '#'} className="inline-flex min-w-0 items-center gap-1.5 hover:underline">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORIGIN_DOT[a.origin.type] }} />
-                        <span className="truncate text-[12px] text-muted-foreground">{a.origin.short}</span>
-                      </Link>
-                    ) : <span className="text-[12px] text-muted-foreground/60">—</span>}
-                  </div>
-                  <div className="hidden w-24 shrink-0 justify-end sm:flex">{badge}</div>
-                </div>
+                <Link href={a.href} scroll={false} className="block px-4 py-3">
+                  <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
+                    {overdue && <span aria-hidden>⚠</span>}{a.statusLabel}
+                  </span>
+                  <p className="mt-1.5 text-[15px] font-semibold leading-snug text-foreground">{a.title}</p>
+                  {a.origin && (
+                    <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORIGIN_DOT[a.origin.type] }} />
+                      {a.origin.label}
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    {a.dueDate && (
+                      <span className={overdue ? 'font-medium text-rose-600 dark:text-rose-400' : undefined}>
+                        Échéance : {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` (${a.lateness.text})`} • </span>
+                    )}
+                    Responsable : {a.responsibleName ?? 'À affecter'}
+                  </p>
+                </Link>
               </li>
             )
           })}

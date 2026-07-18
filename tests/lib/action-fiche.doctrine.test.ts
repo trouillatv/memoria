@@ -98,7 +98,7 @@ describe('« État actuel » + relations — dérivés, jamais inventés', () =>
   it('la checklist est calculée depuis responsible/source/échéance/clôture, pas un champ nouveau', () => {
     expect(src).toContain("label: 'Responsable affecté', done: !!responsible")
     expect(src).toContain("label: 'Origine identifiée', done: !!source")
-    expect(src).toContain("label: 'Clôturée', done: a.status === 'done'")
+    expect(src).toContain("label: 'Action clôturée', done: a.status === 'done'")
   })
 
   it('les relations viennent de la provenance connue (site + source), jamais devinées', () => {

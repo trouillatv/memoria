@@ -102,6 +102,9 @@ export interface ActionFicheData {
   relations: Array<{ label: string; href: string | null }>
   /** Ce qui a été observé sur le terrain et a déclenché l'action, ou `null`. */
   observed: ActionFicheObserved | null
+  /** Qui a créé l'action (auteur de l'événement `created`), ou `null`. Replace
+   *  l'action dans son histoire humaine. Jamais résolu depuis l'état courant. */
+  createdByLabel: string | null
 }
 
 const PROOF_BUCKET = 'intervention-photos'
@@ -309,13 +312,15 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     historyDays,
     historyNote,
     proofs,
-    // « État actuel » — faits dérivés, jamais inventés.
+    // « État actuel » — le CHEMIN de l'engagement, dans l'ordre. Faits dérivés,
+    // jamais inventés : on voit ce qui est fait et ce qui reste.
     progress: [
-      { label: 'Responsable affecté', done: !!responsible },
       { label: 'Origine identifiée', done: !!source && source.available },
-      { label: 'Échéance fixée', done: due !== null && a.due_date_status === 'explicit' },
-      { label: 'Preuve de clôture', done: !!(a.completed_photo_path || a.completed_comment?.trim()) },
-      { label: 'Clôturée', done: a.status === 'done' },
+      { label: 'Responsable affecté', done: !!responsible },
+      { label: 'Échéance définie', done: due !== null && a.due_date_status === 'explicit' },
+      { label: 'Planifiée en intervention', done: a.status === 'planned' || !!a.converted_to_id },
+      { label: 'Preuve déposée', done: !!(a.completed_photo_path || a.completed_comment?.trim()) },
+      { label: 'Action clôturée', done: a.status === 'done' },
     ],
     // Relations depuis la provenance connue (jamais une association devinée).
     relations: [
@@ -324,5 +329,6 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
       ...(context ? [{ label: context.label, href: context.href }] : []),
     ],
     observed,
+    createdByLabel: historyEntries.find((e) => e.kind === 'created')?.actorLabel ?? null,
   }
 }

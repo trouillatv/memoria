@@ -65,6 +65,9 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
                 // Une relation existait mais l'objet a disparu — jamais masqué.
                 <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
               )}
+              {a.createdByLabel && (
+                <p className="mt-1.5 text-[11.5px] text-muted-foreground">Créée par {a.createdByLabel}</p>
+              )}
               {/* Ce qui a été observé sur le terrain — la capture précise qui a
                   déclenché l'action. Le PROBLÈME, pas seulement le titre. */}
               {a.observed && (
@@ -138,43 +141,6 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </section>
           )}
 
-          {/* ── LE DÉROULÉ : uniquement les faits journalisés (site_action_events),
-               présentés comme un fil. Jamais reconstruit depuis l'état courant. ── */}
-          <section>
-            <h4 className={H4}>Historique</h4>
-            <div className="mt-1.5 space-y-3">
-              {a.historyDays.map((day) => (
-                <div key={day.dayIso}>
-                  <p className="text-[11.5px] font-medium text-muted-foreground">{day.dayLabel}</p>
-                  <ul className="mt-1.5 space-y-2 border-l border-border pl-3.5">
-                    {day.items.map((it) => {
-                      const actor = it.actorLabel
-                        ? `Par ${it.actorLabel}`
-                        : it.actorFallback === 'auto'
-                          ? 'Automatique'
-                          : it.actorFallback === 'unknown'
-                            ? 'Auteur indisponible'
-                            : null
-                      return (
-                        <li key={it.id} className="relative text-[13px]">
-                          <span className="absolute -left-[18px] top-1 h-2 w-2 rounded-full bg-primary/70 ring-2 ring-background" />
-                          <div className="flex items-baseline gap-2">
-                            <span className="font-medium">{it.line}</span>
-                            <span className="text-[11px] tabular-nums text-muted-foreground/70">{it.time}</span>
-                          </div>
-                          {it.detail && <div className="text-[12.5px] text-muted-foreground">{it.detail}</div>}
-                          {actor && <div className="text-[12px] text-muted-foreground/80">{actor}</div>}
-                          {it.reason && <div className="text-[12.5px] text-muted-foreground">Motif : {it.reason}</div>}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
-            {a.historyNote && <p className="mt-2 text-[12px] italic text-muted-foreground">{a.historyNote}</p>}
-          </section>
-
           {a.proofs && (
             <section>
               <h4 className={H4}>{a.proofs.scope === 'current' ? 'Preuves' : 'Clôture antérieure'}</h4>
@@ -230,6 +196,44 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
               </div>
             </section>
           )}
+
+          {/* ── LE DÉROULÉ, EN BAS : on ouvre la fiche pour comprendre POURQUOI, pas
+               pour savoir à quelle heure elle a été créée. Uniquement les faits
+               journalisés (site_action_events), en fil. Jamais reconstruit. ── */}
+          <section>
+            <h4 className={H4}>Historique</h4>
+            <div className="mt-1.5 space-y-3">
+              {a.historyDays.map((day) => (
+                <div key={day.dayIso}>
+                  <p className="text-[11.5px] font-medium text-muted-foreground">{day.dayLabel}</p>
+                  <ul className="mt-1.5 space-y-2 border-l border-border pl-3.5">
+                    {day.items.map((it) => {
+                      const actor = it.actorLabel
+                        ? `Par ${it.actorLabel}`
+                        : it.actorFallback === 'auto'
+                          ? 'Automatique'
+                          : it.actorFallback === 'unknown'
+                            ? 'Auteur indisponible'
+                            : null
+                      return (
+                        <li key={it.id} className="relative text-[13px]">
+                          <span className="absolute -left-[18px] top-1 h-2 w-2 rounded-full bg-primary/70 ring-2 ring-background" />
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-medium">{it.line}</span>
+                            <span className="text-[11px] tabular-nums text-muted-foreground/70">{it.time}</span>
+                          </div>
+                          {it.detail && <div className="text-[12.5px] text-muted-foreground">{it.detail}</div>}
+                          {actor && <div className="text-[12px] text-muted-foreground/80">{actor}</div>}
+                          {it.reason && <div className="text-[12.5px] text-muted-foreground">Motif : {it.reason}</div>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            {a.historyNote && <p className="mt-2 text-[12px] italic text-muted-foreground">{a.historyNote}</p>}
+          </section>
         </div>
       </SheetContent>
     </Sheet>
