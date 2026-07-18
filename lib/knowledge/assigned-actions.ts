@@ -83,6 +83,61 @@ export function assignedActionsByContact(
   return out
 }
 
+// ── PRÉSENTATION (P2 Slice 3B) — helpers PURS, déterministes ─────────────────
+
+/** « 1 action avec cette personne » / « N actions… ». Pas « actions ouvertes »
+ *  (le contrat inclut planned). */
+export function assignedActionCountLabel(n: number): string {
+  return `${n} action${n > 1 ? 's' : ''} avec cette personne`
+}
+
+export type AssignedActionDatePresentation =
+  | { kind: 'late'; label: string }
+  | { kind: 'today'; label: string }
+  | { kind: 'future'; label: string }
+  | { kind: 'estimated'; label: string }
+  | { kind: 'none'; label: null }
+
+/** Date civile « YYYY-MM-DD » → « 24 juillet » (+ année si hors année courante).
+ *  Construite en UTC et formatée en UTC : AUCUN décalage de fuseau (la classe de
+ *  bug que le read model a évitée ne doit pas revenir par la présentation). */
+function frCivilDate(ymd: string, withYear: boolean): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'UTC', day: 'numeric', month: 'long', ...(withYear ? { year: 'numeric' as const } : {}),
+  }).format(dt)
+}
+
+/**
+ * Les QUATRE états de date, clairement distincts (P2 Slice 3B). `today` = jour
+ * civil Nouméa « YYYY-MM-DD », fourni par l'appelant (déterministe, jamais
+ * recalculé silencieusement). Réutilise `isLate` déjà calculé par le read model
+ * pour rester cohérent avec lui. Une date `estimated` n'est JAMAIS un retard et
+ * n'emprunte jamais le mot « échéance ».
+ */
+export function describeAssignedActionDate(
+  a: Pick<AssignedAction, 'dueDate' | 'dueDateStatus' | 'isLate'>,
+  today: string,
+): AssignedActionDatePresentation {
+  const due = a.dueDate
+  if (!due) return { kind: 'none', label: null }
+  const withYear = due.slice(0, 4) !== today.slice(0, 4)
+  if (a.dueDateStatus === 'estimated') {
+    return { kind: 'estimated', label: `Date envisagée le ${frCivilDate(due, withYear)} · à confirmer` }
+  }
+  if (a.dueDateStatus === 'explicit') {
+    if (a.isLate) {
+      const days = Math.max(1, Math.round((Date.parse(today) - Date.parse(due)) / 86_400_000))
+      return { kind: 'late', label: `Échéance dépassée depuis ${days} jour${days > 1 ? 's' : ''}` }
+    }
+    if (due === today) return { kind: 'today', label: 'Échéance aujourd’hui' }
+    return { kind: 'future', label: `Échéance le ${frCivilDate(due, withYear)}` }
+  }
+  // Date sans statut (ne devrait pas arriver) : aucun texte fort de remplacement.
+  return { kind: 'none', label: null }
+}
+
 /** Bucket d'ordre : retard explicite → explicite future → date estimée → sans date. */
 function bucket(a: Ranked): number {
   if (a.isLate) return 0

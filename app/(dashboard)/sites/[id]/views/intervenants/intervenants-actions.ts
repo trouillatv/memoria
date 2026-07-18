@@ -49,6 +49,28 @@ export async function logIntervenantFicheOpenedAction(
   })
 }
 
+const actionOpenedSchema = z.object({
+  site_id: z.string().uuid(),
+  /** La destination effective (P2 Slice 3B) : la réunion source ou l'onglet
+   *  Travail. C'est le signal utile — best-effort, jamais bloquant, aucune
+   *  donnée nominative. (logUsageEvent ne porte que event+siteId : l'actionId/
+   *  contactId ne sont pas persistés ici, ce serait une extension hors slice.) */
+  destination: z.enum(['report', 'site_work']),
+})
+
+/** Trace l'ouverture d'une action depuis une fiche (best-effort, ne lève jamais,
+ *  ne bloque jamais la navigation). */
+export async function logIntervenantActionOpenedAction(
+  input: z.input<typeof actionOpenedSchema>,
+): Promise<void> {
+  const parsed = actionOpenedSchema.safeParse(input)
+  if (!parsed.success) return
+  await logUsageEvent({
+    event: `intervenant_action_opened:${parsed.data.destination}`,
+    siteId: parsed.data.site_id,
+  })
+}
+
 export interface OrgContactHit {
   contactId: string
   name: string

@@ -13,9 +13,12 @@
 
 import Link from 'next/link'
 import { ChevronRight, Network, Phone } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { frDayMonthLocal } from '@/lib/time/local-date'
+import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
 import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
+import { assignedActionCountLabel, describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
+import { logIntervenantActionOpenedAction } from './intervenants-actions'
 
 export function IntervenantFicheSheet({ siteId, person, onClose }: {
   siteId: string
@@ -24,6 +27,8 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
 }) {
   if (!person) return null
   const p = person
+  // Jour civil Nouméa, calculé UNE fois (jamais dans la boucle de rendu).
+  const today = todayLocalIso()
 
   // Une phrase DÉTERMINISTE, composée de faits — jamais un texte inventé.
   const phrase = p.isPerson
@@ -60,10 +65,49 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
             <p className="mt-0.5 text-[12px] text-muted-foreground/80">{provenance}</p>
           </section>
 
-          {/* « Aujourd'hui » (ce qu'on attend de cette personne) reviendra en
-              Slice 3 du P2, branché sur la vraie relation action→contact. Le
-              signal précédent (actions comptées par égalité rôle↔texte) n'était
-              pas un fait métier — retiré en Slice 0. */}
+          {/* « Aujourd'hui » — ce que la personne doit faire sur CE chantier,
+              d'après la relation structurelle assigned_contact_id (P2 Slice 3B).
+              L'état vide est affiché (le système a vérifié) ; jamais un « 0 »
+              décoratif ni l'ancien assigned_to comme s'il désignait la personne. */}
+          <section>
+            <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Aujourd’hui</h4>
+            {p.assignedActions.length === 0 ? (
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Rien ne vous attend avec cette personne pour le moment.
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-[13px] font-medium">{assignedActionCountLabel(p.assignedActions.length)}</p>
+                <ul className="mt-1.5 space-y-1.5">
+                  {p.assignedActions.map((a) => {
+                    const d = describeAssignedActionDate(a, today)
+                    return (
+                      <li key={a.id}>
+                        {/* La ligne ENTIÈRE est le seul lien (un seul geste, jamais
+                            deux déclenchements). Le log est best-effort et ne
+                            bloque jamais la navigation (void, sans preventDefault). */}
+                        <Link
+                          href={a.href}
+                          onClick={() => { void logIntervenantActionOpenedAction({ site_id: siteId, destination: a.hrefSource }) }}
+                          className="block rounded-lg border px-2.5 py-1.5 hover:bg-muted/40"
+                        >
+                          <span className="block text-[13px] font-medium leading-snug line-clamp-3">{a.title}</span>
+                          {d.label && (
+                            <span className={cn('mt-0.5 block text-[12px]', d.kind === 'late' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>
+                              {d.label}
+                            </span>
+                          )}
+                          <span className="mt-0.5 inline-flex items-center gap-0.5 text-[12px] font-medium text-primary">
+                            Ouvrir <ChevronRight className="h-3 w-3" />
+                          </span>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            )}
+          </section>
 
           <section>
             <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">

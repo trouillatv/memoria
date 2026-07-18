@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { assignedActionsByContact, type RawAssignedActionRow } from '@/lib/knowledge/assigned-actions'
+import {
+  assignedActionsByContact, assignedActionCountLabel, describeAssignedActionDate,
+  type RawAssignedActionRow, type AssignedAction,
+} from '@/lib/knowledge/assigned-actions'
 
 // ── P2 · Slice 3A — attribution d'actions à une personne, par IDENTITÉ ───────
 // Tests de COMPORTEMENT (fonction pure), pas de simples recherches de chaîne :
@@ -86,5 +89,59 @@ describe('assignedActionsByContact — la preuve est assigned_contact_id', () =>
 
   it('aucune action → map vide (état vide honnête en amont)', () => {
     expect(assignedActionsByContact(SITE, [], TODAY).size).toBe(0)
+  })
+})
+
+// ── Slice 3B — présentation (helpers purs, déterministes) ────────────────────
+describe('assignedActionCountLabel — singulier / pluriel, jamais « ouvertes »', () => {
+  it('1 action', () => expect(assignedActionCountLabel(1)).toBe('1 action avec cette personne'))
+  it('N actions', () => expect(assignedActionCountLabel(3)).toBe('3 actions avec cette personne'))
+})
+
+describe('describeAssignedActionDate — quatre états distincts', () => {
+  const p = (o: Partial<Pick<AssignedAction, 'dueDate' | 'dueDateStatus' | 'isLate'>>) =>
+    describeAssignedActionDate({ dueDate: null, dueDateStatus: null, isLate: false, ...o }, TODAY)
+
+  it('sans date → aucun texte de remplacement', () => {
+    expect(p({})).toEqual({ kind: 'none', label: null })
+  })
+
+  it('échéance explicite aujourd’hui (jamais en retard, calcul strict < today)', () => {
+    expect(p({ dueDate: '2026-07-19', dueDateStatus: 'explicit', isLate: false }))
+      .toEqual({ kind: 'today', label: 'Échéance aujourd’hui' })
+  })
+
+  it('échéance explicite future — « le 24 juillet », sans année si année courante', () => {
+    expect(p({ dueDate: '2026-07-24', dueDateStatus: 'explicit', isLate: false }))
+      .toEqual({ kind: 'future', label: 'Échéance le 24 juillet' })
+  })
+
+  it('échéance explicite future d’une autre année → année ajoutée', () => {
+    expect(p({ dueDate: '2027-01-05', dueDateStatus: 'explicit', isLate: false }))
+      .toEqual({ kind: 'future', label: 'Échéance le 5 janvier 2027' })
+  })
+
+  it('retard d’un jour → « depuis 1 jour » (pas d’exception « hier »)', () => {
+    expect(p({ dueDate: '2026-07-18', dueDateStatus: 'explicit', isLate: true }))
+      .toEqual({ kind: 'late', label: 'Échéance dépassée depuis 1 jour' })
+  })
+
+  it('retard de plusieurs jours → « depuis N jours »', () => {
+    expect(p({ dueDate: '2026-07-15', dueDateStatus: 'explicit', isLate: true }))
+      .toEqual({ kind: 'late', label: 'Échéance dépassée depuis 4 jours' })
+  })
+
+  it('date estimée → « à confirmer », jamais « échéance », jamais un retard', () => {
+    // Même passée, une estimée n'est jamais présentée comme un retard.
+    const r = p({ dueDate: '2026-07-10', dueDateStatus: 'estimated', isLate: false })
+    expect(r.kind).toBe('estimated')
+    expect(r.label).toBe('Date envisagée le 10 juillet · à confirmer')
+    expect(r.label).not.toContain('Échéance')
+  })
+
+  it('frontière de jour civil — déterministe, aucun décalage de fuseau', () => {
+    expect(p({ dueDate: '2026-07-19', dueDateStatus: 'explicit', isLate: false }).kind).toBe('today')
+    expect(p({ dueDate: '2026-07-20', dueDateStatus: 'explicit', isLate: false }).kind).toBe('future')
+    expect(p({ dueDate: '2026-07-18', dueDateStatus: 'explicit', isLate: true }).kind).toBe('late')
   })
 })
