@@ -620,6 +620,9 @@ export interface DbSiteAction {
   reserve_id: string | null
   // Rattachement à un sujet vivant (migration 124). NULL = action non rattachée.
   subject_id: string | null
+  // Capture terrain d'origine (migration 183) — « d'où vient cette action ? ».
+  // NULL = non issue d'une capture. Sert la provenance de la fiche Action.
+  source_capture_id: string | null
   // Dernière avancée « Fait aujourd'hui » (migration 169). NULL = pas avancée ; jamais une clôture.
   last_progress_at: string | null
   // Type d'action (migration 149) : one_shot (ponctuelle, défaut) | deadline (pour

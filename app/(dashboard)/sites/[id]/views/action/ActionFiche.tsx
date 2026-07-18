@@ -79,12 +79,34 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
           </section>
 
           {a.source && (
-            <Link
-              href={a.source.href}
-              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[13px] font-medium hover:bg-muted"
-            >
-              {a.source.label} <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+            <section>
+              <h4 className={H4}>Origine</h4>
+              {a.source.available ? (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-[12px] font-medium text-muted-foreground">{a.source.typeLabel}</p>
+                  <p className="text-[13.5px] font-medium">{a.source.title}</p>
+                  {a.source.detail && <p className="text-[12px] text-muted-foreground">{a.source.detail}</p>}
+                  {a.source.href && (
+                    <Link href={a.source.href} className="inline-flex items-center gap-0.5 pt-0.5 text-[13px] font-medium text-primary hover:underline">
+                      {a.source.linkLabel} <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                // Une relation existait mais l'objet a disparu — jamais masqué.
+                <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
+              )}
+              {a.context && (
+                <div className="mt-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contexte</p>
+                  {a.context.href ? (
+                    <Link href={a.context.href} className="text-[13px] text-primary hover:underline">{a.context.label}</Link>
+                  ) : (
+                    <p className="text-[13px] text-muted-foreground">{a.context.label}</p>
+                  )}
+                </div>
+              )}
+            </section>
           )}
         </div>
       </SheetContent>

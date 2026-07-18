@@ -31,3 +31,21 @@ describe('getSiteActionFiche — lecture canonique, fail-closed', () => {
     expect(src).toMatch(/status !== 'cancelled'/)
   })
 })
+
+describe('provenance STRUCTURELLE (Slice 5) — jamais inférée', () => {
+  it('la source vient des colonnes FK via primaryProvenanceKind', () => {
+    expect(src).toContain('primaryProvenanceKind')
+  })
+
+  it('les objets sources sont chargés scopés au chantier (garde IDOR)', () => {
+    expect(src).toMatch(/site_reserve[\s\S]*?eq\('site_id', siteId\)/)
+    expect(src).toMatch(/subjects[\s\S]*?eq\('site_id', siteId\)/)
+    expect(src).toMatch(/site_reports[\s\S]*?eq\('site_id', siteId\)/)
+    expect(src).toMatch(/visit_capture[\s\S]*?eq\('site_id', siteId\)/)
+  })
+
+  it('un objet source disparu → « Origine indisponible », jamais un faux lien', () => {
+    expect(src).toContain('Origine indisponible')
+    expect(src).toMatch(/href: null/)
+  })
+})
