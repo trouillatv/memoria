@@ -19,6 +19,7 @@
 //   · les VRAIES photos dans la fiche, plein écran au clic.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import type { SiteGraph, GraphEdge, GraphNode, GraphNodeType } from '@/lib/knowledge/site-graph'
 import { cn } from '@/lib/utils'
 
@@ -616,6 +617,19 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
                 )}
                 {n.type !== 'site' && n.type !== 'photo' && (
                   <WowBtn onClick={() => startEnquete(center)}>🔍 Voir les conséquences</WowBtn>
+                )}
+                {/* Le graphe REPÈRE, la fiche EXPLIQUE : un intervenant confirmé
+                    (nœud int_*) ouvre sa fiche transverse. Les acteurs « à
+                    confirmer » (act_*) n'en ont pas encore — on ne lie que le
+                    confirmé. */}
+                {n.type === 'acteur' && center.startsWith('int_') && (
+                  <Link
+                    href={`/sites/${graph.siteId}?tab=explorer&person=${center.slice(4)}&person_source=explorer`}
+                    scroll={false}
+                    className="rounded-full border bg-muted/50 px-3 py-1.5 text-[12.5px] font-semibold hover:border-foreground/30"
+                  >
+                    👤 Ouvrir la fiche
+                  </Link>
                 )}
               </div>
 
