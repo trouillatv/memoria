@@ -599,7 +599,7 @@ export async function promoteProposal(params: {
     // fois sur deux visites ne crée pas deux entreprises.
     const companyId = await findOrCreateCompanyByName(orgId, companyName ?? p.title)
     let contactId = params.input?.contactId ?? null
-    if (!contactId && personName) contactId = await findOrCreateCompanyContact(companyId, personName)
+    if (!contactId && personName) contactId = await findOrCreateCompanyContact(orgId, companyId, personName)
     const intervenantId = await openSiteIntervenant({
       siteId: p.site_id,
       role,

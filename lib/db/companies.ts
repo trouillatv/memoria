@@ -115,8 +115,13 @@ export async function findOrCreateCompanyByName(orgId: string, name: string): Pr
  *  nom. C'est ce helper qui permet à la confirmation de dire « personne » :
  *  sans lui, confirmer « Vincent Milon (PAVE) » créait une ENTREPRISE
  *  « Vincent Milon ». Dédoublonne par nom : le même « Jean Dupont » cité sur
- *  deux visites reste une seule personne. */
-export async function findOrCreateCompanyContact(companyId: string, fullName: string): Promise<string> {
+ *  deux visites reste une seule personne.
+ *
+ *  `orgId` est REQUIS : depuis la mig 219, company_contacts.organization_id est
+ *  NOT NULL et un trigger (check_company_contact_org) refuse tout contact sans
+ *  org — l'isolation ne dépend plus de l'entreprise (elle est devenue
+ *  optionnelle). Il doit correspondre à l'org de `companyId`. */
+export async function findOrCreateCompanyContact(orgId: string, companyId: string, fullName: string): Promise<string> {
   const clean = fullName.trim()
   if (!clean) throw new Error('Nom de personne vide.')
   const db = createAdminClient()
@@ -131,7 +136,7 @@ export async function findOrCreateCompanyContact(companyId: string, fullName: st
   if (data?.id) return data.id as string
   const { data: ins, error } = await db
     .from('company_contacts')
-    .insert({ company_id: companyId, full_name: clean })
+    .insert({ organization_id: orgId, company_id: companyId, full_name: clean })
     .select('id')
     .single()
   if (error) throw new Error(error.message)
