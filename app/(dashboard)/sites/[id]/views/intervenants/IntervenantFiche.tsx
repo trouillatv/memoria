@@ -12,6 +12,7 @@
 // composée de faits datés et sourcés.
 
 import Link from 'next/link'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { ChevronRight, Network, Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -25,10 +26,22 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
   person: IntervenantPerson | null
   onClose: () => void
 }) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   if (!person) return null
   const p = person
   // Jour civil Nouméa, calculé UNE fois (jamais dans la boucle de rendu).
   const today = todayLocalIso()
+  // Lot 4 · Slice 4 — « plus jamais une simple ligne » : une action ouvre TOUJOURS
+  // sa fiche canonique (?action=), plus la réunion ni l'onglet Travail. On ferme
+  // la fiche personne et on ouvre celle de l'action, en gardant l'onglet courant.
+  const actionHref = (actionId: string): string => {
+    const q = new URLSearchParams(searchParams?.toString() ?? '')
+    q.set('action', actionId)
+    q.set('action_source', 'person')
+    q.delete('person'); q.delete('person_source')
+    return `${pathname}?${q.toString()}`
+  }
 
   // Une phrase DÉTERMINISTE, composée de faits — jamais un texte inventé.
   const phrase = p.isPerson
@@ -91,7 +104,8 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
                             deux déclenchements). Le log est best-effort et ne
                             bloque jamais la navigation (void, sans preventDefault). */}
                         <Link
-                          href={a.href}
+                          href={actionHref(a.id)}
+                          scroll={false}
                           onClick={() => { void logIntervenantActionOpenedAction({ site_id: siteId, destination: a.hrefSource }) }}
                           className="block rounded-lg border px-2.5 py-1.5 hover:bg-muted/40"
                         >

@@ -135,11 +135,14 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   const renderHit = (h: SiteMemoryHit) => {
     const meta = TYPE_META[h.type]
     const Icon = meta.Icon
-    // Un intervenant ouvre sa FICHE transverse — mais seulement en desktop : le
-    // deep-link `?person=` n'existe pas encore sur le terrain mobile.
+    // Un intervenant ouvre sa FICHE transverse ; une action ouvre sa FICHE
+    // canonique (Lot 4 · Slice 4). Desktop seulement : les deep-links
+    // `?person=`/`?action=` n'existent pas encore sur le terrain mobile.
     const href = h.type === 'intervenant' && h.personId && variant === 'desktop'
       ? `${siteHref}?tab=intervenants&person=${h.personId}&person_source=recherche`
-      : h.href ?? siteHref
+      : h.type === 'site_action' && variant === 'desktop'
+        ? `${siteHref}?action=${h.id}&action_source=recherche`
+        : h.href ?? siteHref
     return (
       <li key={`${h.type}-${h.id}`}>
         <Link href={href} scroll={false} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">

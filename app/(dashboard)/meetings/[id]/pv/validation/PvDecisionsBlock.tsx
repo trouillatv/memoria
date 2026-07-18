@@ -110,7 +110,7 @@ function ddmmyyyy(iso: string | null): string | null {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
-function Row({ reportId, d, contacts, actions, personLinkByContact }: { reportId: string; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[]; personLinkByContact: Record<string, string> }) {
+function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { reportId: string; siteId: string | null; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[]; personLinkByContact: Record<string, string> }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -224,7 +224,16 @@ function Row({ reportId, d, contacts, actions, personLinkByContact }: { reportId
                 {metaParts.map((part, i) => <span key={i}>{i > 0 && ' · '}{part}</span>)}
               </span>
             )}
-            {actionLabel && <span className="block text-[11px] text-sky-700">→ Action : {actionLabel}</span>}
+            {actionLabel && (
+              // Lot 4 · Slice 4 : une décision qui référence une action ouvre la
+              // FICHE canonique de l'action (?action=). Sinon simple texte.
+              siteId && d.actionId ? (
+                <Link href={`/sites/${siteId}?action=${d.actionId}&action_source=decision`} scroll={false}
+                  className="block text-[11px] text-sky-700 hover:underline">→ Action : {actionLabel}</Link>
+              ) : (
+                <span className="block text-[11px] text-sky-700">→ Action : {actionLabel}</span>
+              )
+            )}
           </span>
           {/* Cycle de vie piloté à la main (la mémoire vivante : appliquée / caduque…). */}
           <select value={d.statut} disabled={pending} title="Statut de la décision"
@@ -308,8 +317,8 @@ function AddDecision({ reportId, contacts }: { reportId: string; contacts: Decis
   )
 }
 
-export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions = [], existingSubjectNames = [], personLinkByContact = {} }: {
-  reportId: string; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]; existingSubjectNames?: string[]
+export function PvDecisionsBlock({ reportId, siteId = null, decisions, contacts = [], actions = [], existingSubjectNames = [], personLinkByContact = {} }: {
+  reportId: string; siteId?: string | null; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]; existingSubjectNames?: string[]
   /** contactId → id du lien de casting actif : le décisionnaire n'est cliquable
    *  (ouvre sa fiche) que s'il est présent ici. Absent = nom inerte. */
   personLinkByContact?: Record<string, string>
@@ -321,7 +330,7 @@ export function PvDecisionsBlock({ reportId, decisions, contacts = [], actions =
       </h2>
       <SubjectProposals reportId={reportId} decisions={decisions} existingNames={existingSubjectNames} />
       {decisions.length > 0 && (
-        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} d={d} contacts={contacts} actions={actions} personLinkByContact={personLinkByContact} />)}</ul>
+        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} siteId={siteId} d={d} contacts={contacts} actions={actions} personLinkByContact={personLinkByContact} />)}</ul>
       )}
       <AddDecision reportId={reportId} contacts={contacts} />
     </section>

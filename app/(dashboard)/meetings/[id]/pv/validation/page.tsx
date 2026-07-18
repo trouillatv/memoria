@@ -307,7 +307,7 @@ export default async function PvValidationPage({ params, searchParams }: {
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
           les Points administratifs du CR (spine), gérée ici (pas d'écran parallèle). */}
       <div className="border-t pt-5">
-        <PvDecisionsBlock reportId={id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} personLinkByContact={personLinkByContact} />
+        <PvDecisionsBlock reportId={id} siteId={report.site_id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} personLinkByContact={personLinkByContact} />
       </div>
 
       {/* Ajouts STRUCTURÉS en séance (anomalie / prévision) — objets typés mémorisés. */}
