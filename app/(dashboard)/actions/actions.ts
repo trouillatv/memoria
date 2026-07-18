@@ -185,8 +185,9 @@ export async function closeActionAction(
     photoPath = path
   }
 
+  const actor = await getCurrentUserWithProfile()
   try {
-    await markSiteActionDone(id, { comment: cParsed.data, photoPath })
+    await markSiteActionDone(id, { comment: cParsed.data, photoPath }, actor?.id ?? null)
   } catch {
     return { ok: false, error: 'Échec de la clôture' }
   }
@@ -214,16 +215,18 @@ export async function reopenActionAction(
     return { ok: false, error: 'Action invalide' }
   }
   const siteId = typeof formData.get('site_id') === 'string' ? (formData.get('site_id') as string) : undefined
+  const reason = typeof formData.get('reason') === 'string' ? (formData.get('reason') as string).trim() || null : null
 
   const auth = await requireOperator()
   if (!auth.ok) return auth
+  const actor = await getCurrentUserWithProfile()
 
+  // Réouverture ATOMIQUE : repasse open/done_at=null ET journalise l'événement
+  // `reopened` dans la même transaction (mig 221). L'événement `completed` antérieur
+  // reste dans le journal → l'histoire de clôture n'est plus détruite. No-op si
+  // l'action n'est pas terminée.
   const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('site_actions')
-    .update({ status: 'open', done_at: null })
-    .eq('id', id)
-    .eq('status', 'done')
+  const { error } = await supabase.rpc('fn_reopen_action', { p_id: id, p_actor_id: actor?.id ?? null, p_reason: reason })
   if (error) return { ok: false, error: 'Échec de la réouverture' }
 
   revalidateActionSurfaces(siteId)

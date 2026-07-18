@@ -414,7 +414,7 @@ export async function editActionAction(
       assigned_contact_id: resp.assigned_contact_id,
       due_date: input.dueDate || null,
       due_date_status: input.dueDate ? null : null, // date saisie = confirmée (null = figée)
-    })
+    }, user.id)
     await recordCorrections({ reportId, actorId: user.id, events: [{ entity: 'action', field: 'contenu', category: 'action', op: 'edited', after: title }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
     revalidatePath(`/meetings/${reportId}`)

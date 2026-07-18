@@ -88,23 +88,30 @@ export async function updateSiteAction(
     status?: SiteActionStatus
     kind?: 'one_shot' | 'deadline' | 'recurring_until_done'
   },
+  // Acteur métier (facultatif : les parcours système/terrain sans identité fiable
+  // passent null). Sert à horodater qui a (dés)attribué ou déplacé l'échéance dans
+  // le journal site_action_events (mig 221).
+  actorId?: string | null,
 ): Promise<void> {
   const supabase = createAdminClient()
-  const update: Record<string, unknown> = {}
-  if (patch.title !== undefined) update.title = patch.title
-  if (patch.assigned_to !== undefined) update.assigned_to = patch.assigned_to
-  if (patch.assigned_contact_id !== undefined) update.assigned_contact_id = patch.assigned_contact_id
-  if (patch.corps_etat !== undefined) update.corps_etat = patch.corps_etat
-  if (patch.due_date !== undefined) update.due_date = patch.due_date
-  if (patch.due_date_status !== undefined) update.due_date_status = patch.due_date_status
-  if (patch.status !== undefined) update.status = patch.status
-  if (patch.kind !== undefined) update.kind = patch.kind
-  if (Object.keys(update).length === 0) return
-  const { data, error } = await supabase.from('site_actions').update(update).eq('id', id).select('site_id').maybeSingle()
+  // Patch partiel : une clé absente ne modifie rien ; une clé présente (même null)
+  // affecte. On ne transmet QUE les clés fournies — la RPC applique cette sémantique
+  // à l'identique et émet l'événement dans la MÊME transaction que la mutation.
+  const p_patch: Record<string, unknown> = {}
+  if (patch.title !== undefined) p_patch.title = patch.title
+  if (patch.assigned_to !== undefined) p_patch.assigned_to = patch.assigned_to
+  if (patch.assigned_contact_id !== undefined) p_patch.assigned_contact_id = patch.assigned_contact_id
+  if (patch.corps_etat !== undefined) p_patch.corps_etat = patch.corps_etat
+  if (patch.due_date !== undefined) p_patch.due_date = patch.due_date
+  if (patch.due_date_status !== undefined) p_patch.due_date_status = patch.due_date_status
+  if (patch.status !== undefined) p_patch.status = patch.status
+  if (patch.kind !== undefined) p_patch.kind = patch.kind
+  if (Object.keys(p_patch).length === 0) return
+  const { data, error } = await supabase.rpc('fn_update_action', { p_id: id, p_patch, p_actor_id: actorId ?? null })
   if (error) throw error
   // Clôture / édition d'une action → la projection du chantier change (ex. « Terminer »
   // décrémente les actives, incrémente les terminées). La mutation invalide.
-  const siteId = (data as { site_id: string } | null)?.site_id
+  const siteId = data as string | null
   if (siteId) invalidateSiteProjection(siteId)
 }
 
@@ -341,17 +348,18 @@ export async function getOpenActionsHealth(): Promise<OpenActionsHealth> {
 export async function markSiteActionDone(
   id: string,
   closure?: { comment?: string | null; photoPath?: string | null },
+  actorId?: string | null,
 ): Promise<void> {
+  // Clôture ATOMIQUE : la mutation (status/done_at/commentaire/photo) et l'événement
+  // `completed` du journal (mig 221) réussissent ou échouent ensemble. No-op si
+  // l'action est déjà terminée — jamais un 2ᵉ `completed` artificiel.
   const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('site_actions')
-    .update({
-      status: 'done',
-      done_at: new Date().toISOString(),
-      completed_comment: closure?.comment ?? null,
-      completed_photo_path: closure?.photoPath ?? null,
-    })
-    .eq('id', id)
+  const { error } = await supabase.rpc('fn_complete_action', {
+    p_id: id,
+    p_actor_id: actorId ?? null,
+    p_comment: closure?.comment ?? null,
+    p_photo: closure?.photoPath ?? null,
+  })
   if (error) throw error
 }
 
