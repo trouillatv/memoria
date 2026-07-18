@@ -35,6 +35,8 @@ import { getSiteGraph } from '@/lib/knowledge/site-graph'
 import { getSiteIntervenantsView, getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
 import { IntervenantsWorkspace } from './views/intervenants/IntervenantsWorkspace'
 import { IntervenantFicheDeepLink } from './views/intervenants/IntervenantFicheDeepLink'
+import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
+import { ActionFicheDeepLink } from './views/action/ActionFicheDeepLink'
 import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { listSubjectsBySite } from '@/lib/db/subjects'
@@ -69,7 +71,7 @@ import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; person?: string; person_source?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; person_source?: string; action?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
@@ -85,7 +87,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab, person: personId, person_source: personSource } = await searchParams
+  const { tab: rawTab, person: personId, person_source: personSource, action: actionId } = await searchParams
   const tab: ChantierViewKey = (CHANTIER_VIEW_KEYS as ReadonlyArray<string>).includes(rawTab ?? '')
     ? (rawTab as ChantierViewKey)
     : 'apercu'
@@ -98,6 +100,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (ficheParam && personSource && FICHE_SOURCES.has(personSource)) {
     void logUsageEvent({ event: `intervenant_fiche_opened:${personSource}`, siteId: id })
   }
+
+  // « Plus jamais une simple ligne » (Lot 4) : un `?action=<id>` ouvre la fiche
+  // canonique de l'action par-dessus n'importe quel onglet. Fail-closed en amont.
+  const actionFiche = actionId ? await getSiteActionFiche(id, actionId).catch(() => null) : null
 
   // L'onglet Aperçu ne figure PAS ici : il lit son propre read model (SiteOverview).
   // Ces chargeurs servent les autres onglets, qui recevront le leur à leur tour.
@@ -293,6 +299,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
       {/* La fiche transverse, ouverte par-dessus n'importe quel onglet via
           `?person=`. Une seule fiche, des dizaines de portes. */}
       {ficheParam && <IntervenantFicheDeepLink siteId={id} person={ficheParam} />}
+      {/* La fiche canonique Action, même mécanique via `?action=`. */}
+      {actionFiche && <ActionFicheDeepLink action={actionFiche} />}
     </div>
   )
 }
