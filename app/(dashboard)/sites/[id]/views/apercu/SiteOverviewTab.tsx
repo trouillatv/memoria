@@ -159,13 +159,15 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             </h2>
           </div>
           <div className="mt-3 grid items-start gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
-            <KnowledgeGroup
-              title="Intervenants"
-              icon={Users}
-              proposed={stakeholders.proposed}
-              confirmed={stakeholders.confirmed}
-              summary={stakeholders.summary}
-              href={`/sites/${siteId}?tab=memoire`}
+            {/* L'Aperçu ne porte qu'une SYNTHÈSE des intervenants (arbitrage
+                2026-07-18) : entreprises + compte + « Voir tous ». La liste
+                complète et « À identifier » vivent dans l'onglet Intervenants —
+                sinon l'Aperçu grossirait bloc après bloc. */}
+            <IntervenantsSummaryCard
+              siteId={siteId}
+              companies={overview.stakeholderCompanies}
+              confirmed={stakeholders.summary.confirmed}
+              toIdentify={stakeholders.summary.proposed}
             />
             <KnowledgeGroup
               title="Échéances"
@@ -340,6 +342,48 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
 
 /** Un groupe de « ce que MemorIA a retenu » : le VALIDÉ d'abord, le PROPOSÉ ensuite —
  *  jamais mélangés. Silence total quand l'objet n'a rien à dire (pas de carte vide). */
+/** La synthèse Intervenants de l'Aperçu — la carte validée sur maquette
+ *  (2026-07-18) : entreprises, compte, « à identifier », Voir tous. */
+function IntervenantsSummaryCard({
+  siteId,
+  companies,
+  confirmed,
+  toIdentify,
+}: {
+  siteId: string
+  companies: string[]
+  confirmed: number
+  toIdentify: number
+}) {
+  if (confirmed + toIdentify === 0) return null
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+        <h3 className="text-[13px] font-medium text-muted-foreground">Intervenants</h3>
+        <span className="text-[13px] font-semibold tabular-nums">{confirmed + toIdentify}</span>
+        {toIdentify > 0 && (
+          <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
+            {toIdentify} à identifier
+          </span>
+        )}
+      </div>
+      {companies.length > 0 && (
+        <p className="mt-1.5 text-[13px] font-medium text-foreground/90">
+          {companies.slice(0, 4).join(' · ')}
+          {companies.length > 4 && ` · +${companies.length - 4}`}
+        </p>
+      )}
+      <Link
+        href={`/sites/${siteId}?tab=intervenants`}
+        className="mt-1 inline-block text-[13px] font-medium text-primary hover:underline"
+      >
+        Voir tous →
+      </Link>
+    </div>
+  )
+}
+
 function KnowledgeGroup({
   title,
   icon: Icon,

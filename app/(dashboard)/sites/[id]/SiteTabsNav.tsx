@@ -7,6 +7,10 @@ export const SITE_TABS = [
   { key: 'chronologie', label: 'Chronologie' },
   { key: 'planning', label: 'Planning' },
   { key: 'documents-preuves', label: 'Documents & preuves' },
+  // « Intervenants » (cadrage + maquette validés 2026-07-18) : « qui travaille
+  // ici ? » — question durable, distincte de l'Aperçu (« où en est-on ? »).
+  // La même personne se retrouve ici sur chaque chantier où elle apparaît.
+  { key: 'intervenants', label: 'Intervenants' },
   { key: 'memoire', label: 'Mémoire' },
   // « Explorer », jamais « Connexions » (cadrage 2026-07-18) : la Mémoire dit ce
   // que MemorIA sait ; Explorer montre comment tout est relié. Un outil, pas un

@@ -32,6 +32,8 @@ import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { getSiteGraph } from '@/lib/knowledge/site-graph'
+import { getSiteIntervenantsView } from '@/lib/knowledge/site-intervenants-view'
+import { IntervenantsWorkspace } from './views/intervenants/IntervenantsWorkspace'
 import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { listSubjectsBySite } from '@/lib/db/subjects'
@@ -256,6 +258,8 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           />
         ) : tab === 'documents-preuves' ? (
           <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
+        ) : tab === 'intervenants' ? (
+          <IntervenantsView siteId={id} />
         ) : tab === 'memoire' ? (
           <MemoireView
             siteId={id}
@@ -365,6 +369,12 @@ function captureKindLabel(kind: string): string {
   if (kind === 'vocal') return 'Mémo vocal de visite'
   if (kind === 'note') return 'Note de visite'
   return 'Capture de visite'
+}
+
+async function IntervenantsView({ siteId }: { siteId: string }) {
+  const view = await getSiteIntervenantsView(siteId)
+  if (!view) return null
+  return <IntervenantsWorkspace view={view} />
 }
 
 async function ExplorerView({ siteId }: { siteId: string }) {

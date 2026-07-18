@@ -185,6 +185,11 @@ export interface SiteOverview {
   watchpoints: KnowledgeSection
   deadlines: KnowledgeSection
   stakeholders: KnowledgeSection
+  /** Les entreprises du casting actif — pour la carte de synthèse de l'Aperçu
+   *  (« PAVE · BatiSud · Ginger — Voir tous → »). La liste complète vit dans
+   *  l'onglet Intervenants ; l'Aperçu ne porte qu'une synthèse (arbitrage
+   *  2026-07-18). */
+  stakeholderCompanies: string[]
   knowledge: KnowledgeSection
   /** Ce que le chantier a ACTÉ. L'objet le plus durable du produit était absent
    *  de la vue qui prétend résumer ce qu'il faut savoir : la projection portait
@@ -351,6 +356,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     watchpoints: { ...emptySection },
     deadlines: { ...emptySection },
     stakeholders: { ...emptySection },
+    stakeholderCompanies: [],
     knowledge: { ...emptySection },
     decisions: { ...emptySection },
     history: [],
@@ -559,6 +565,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     // Échéance n'existait ; la table existe désormais (mig 215).
     deadlines: proposedAndConfirmed(proj.deadlines, deadlineConfirmed, deadlineConfirmed.length),
     stakeholders: proposedAndConfirmed(proj.stakeholders, stakeholderConfirmed, stakeholderConfirmed.length),
+    stakeholderCompanies: [...new Set(intervenants.map((it) => it.companyShort || it.companyName).filter(Boolean))],
     knowledge: proposedAndConfirmed(proj.knowledge, knowledgeConfirmed, knowledgeConfirmed.length),
     decisions: proposedAndConfirmed(proj.decisions, decisionConfirmed, decisionConfirmed.length),
     history: recent.map((a) => ({
