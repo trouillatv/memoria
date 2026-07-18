@@ -32,7 +32,7 @@ describe('Confirmer une personne crée une personne, jamais une entreprise à so
     // Le schéma rattache tout contact à une entreprise : si l'humain déclare une
     // personne sans dire l'entreprise, on demande (needs_input) — on ne crée
     // jamais une entreprise au nom de la personne.
-    expect(src).toMatch(/personName && !companyName.*needs_input.*company/s)
+    expect(src).toMatch(/personName && !companyName[\s\S]*?needs_input[\s\S]*?company/)
   })
 
   it('la promotion trace le LIEN exact du casting, plus seulement l’entreprise', () => {

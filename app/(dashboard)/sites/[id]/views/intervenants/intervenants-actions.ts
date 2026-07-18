@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
+import { logUsageEvent } from '@/lib/db/usage-events'
 
 async function requireManagerOrAdmin() {
   const user = await getCurrentUserWithProfile()
@@ -26,6 +27,26 @@ async function requireSiteInOrg(siteId: string): Promise<string | null> {
     .from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
   if (!data || (data as { organization_id: string | null }).organization_id !== orgId) return null
   return orgId
+}
+
+const ficheOpenedSchema = z.object({
+  site_id: z.string().uuid(),
+  /** D'où la fiche a été ouverte — c'est LA donnée de l'observation : les
+   *  conducteurs pensent-ils « une personne » (onglet) ou « une situation »
+   *  (visite, Explorer, recherche…) ? Nouveau point d'entrée = nouvelle valeur. */
+  source: z.enum(['tab', 'apercu', 'explorer', 'recherche', 'visite', 'action']),
+})
+
+/** Trace l'ouverture d'une fiche intervenant (best-effort, ne lève jamais). */
+export async function logIntervenantFicheOpenedAction(
+  input: z.input<typeof ficheOpenedSchema>,
+): Promise<void> {
+  const parsed = ficheOpenedSchema.safeParse(input)
+  if (!parsed.success) return
+  await logUsageEvent({
+    event: `intervenant_fiche_opened:${parsed.data.source}`,
+    siteId: parsed.data.site_id,
+  })
 }
 
 export interface OrgContactHit {

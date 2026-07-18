@@ -26,7 +26,9 @@ import type {
   IntervenantPerson, SiteIntervenantsView, ToIdentifyItem,
 } from '@/lib/knowledge/site-intervenants-view'
 import { promoteFromMemoryAction, dismissFromMemoryAction } from '@/app/(field)/m/site/[siteId]/memory-actions'
-import { associateContactAction, searchOrgContactsAction, type OrgContactHit } from './intervenants-actions'
+import {
+  associateContactAction, logIntervenantFicheOpenedAction, searchOrgContactsAction, type OrgContactHit,
+} from './intervenants-actions'
 
 /** Les rôles courants du chantier — la même liste libre que la Mémoire (mig 137). */
 const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
@@ -138,7 +140,11 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
                     <button
                       key={p.intervenantId}
                       type="button"
-                      onClick={() => setSelected(p)}
+                      onClick={() => {
+                        setSelected(p)
+                        // L'observation du lot : d'où vient-on à la fiche ?
+                        void logIntervenantFicheOpenedAction({ site_id: view.siteId, source: 'tab' })
+                      }}
                       className={cn(
                         'flex w-full items-baseline gap-2.5 border-t px-3.5 py-2.5 text-left hover:bg-primary/5',
                         selected?.intervenantId === p.intervenantId && 'bg-primary/5',

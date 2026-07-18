@@ -374,6 +374,9 @@ function captureKindLabel(kind: string): string {
 async function IntervenantsView({ siteId }: { siteId: string }) {
   const view = await getSiteIntervenantsView(siteId)
   if (!view) return null
+  // La décision « l'onglet a-t-il sa place ? » se prendra sur l'usage réel
+  // (arbitrage 2026-07-18 : en observation) — best-effort, ne retarde rien.
+  void logUsageEvent({ event: 'intervenants_opened', siteId })
   return <IntervenantsWorkspace view={view} />
 }
 
