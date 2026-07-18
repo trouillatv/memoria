@@ -25,7 +25,7 @@ import {
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 import { createContact } from '@/lib/db/company-contacts'
-import { openSiteIntervenant, closeSiteIntervenant } from '@/lib/db/site-intervenants'
+import { openSiteIntervenant, closeSiteIntervenant, listSiteContacts } from '@/lib/db/site-intervenants'
 import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
 import { generatePv } from '@/services/ai/document-generation'
 import {
@@ -343,21 +343,43 @@ export async function deleteReportPhotoAction(
 // L'entité la plus fréquente d'un CR (Vincent : « dans 80 % des cas, Émeline ajoute »).
 // Écrit la SOURCE (site_actions) → ressert partout (briefing, recherche, actions).
 
+/** Le responsable STRUCTUREL (personne). Un contact reçu doit appartenir au
+ *  CASTING ACTIF du chantier (mêmes personnes que le sélecteur) — sinon on
+ *  refuse. La garde applicative double l'invariant tenant du trigger DB (mig
+ *  220). Le nom du contact alimente `assigned_to` (mirror lisible par les vues
+ *  qui n'affichent que le texte) ; c'est `assigned_contact_id` qui fait foi. */
+async function resolveResponsible(
+  siteId: string,
+  input: { assignedTo?: string; assignedContactId?: string | null },
+): Promise<{ assigned_to: string | null; assigned_contact_id: string | null } | { error: string }> {
+  const contactId = input.assignedContactId?.trim() || null
+  if (!contactId) {
+    return { assigned_to: input.assignedTo?.trim() || null, assigned_contact_id: null }
+  }
+  const contacts = await listSiteContacts(siteId)
+  const c = contacts.find((x) => x.id === contactId)
+  if (!c) return { error: 'Cette personne n’est pas dans le casting du chantier.' }
+  return { assigned_to: c.fullName, assigned_contact_id: c.id }
+}
+
 export async function addActionAction(
   reportId: string,
-  input: { title: string; assignedTo?: string; dueDate?: string; corpsEtat?: string },
+  input: { title: string; assignedTo?: string; assignedContactId?: string | null; dueDate?: string; corpsEtat?: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
   const title = input.title.trim()
   if (!title) return { ok: false, error: 'Intitulé vide.' }
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site — action impossible.' }
+  const resp = await resolveResponsible(report.site_id, input)
+  if ('error' in resp) return { ok: false, error: resp.error }
   try {
     await createSiteAction({
       site_id: report.site_id,
       report_id: reportId,
       title,
-      assigned_to: input.assignedTo?.trim() || null,
+      assigned_to: resp.assigned_to,
+      assigned_contact_id: resp.assigned_contact_id,
       due_date: input.dueDate || null,
       due_date_status: input.dueDate ? 'explicit' : null,
       corps_etat: input.corpsEtat?.trim() || null,
@@ -376,15 +398,20 @@ export async function addActionAction(
 export async function editActionAction(
   reportId: string,
   actionId: string,
-  input: { title: string; assignedTo?: string; dueDate?: string },
+  input: { title: string; assignedTo?: string; assignedContactId?: string | null; dueDate?: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
   const title = input.title.trim()
   if (!title) return { ok: false, error: 'Intitulé vide.' }
+  const report = await getSiteReport(reportId)
+  if (!report?.site_id) return { ok: false, error: 'Réunion sans site.' }
+  const resp = await resolveResponsible(report.site_id, input)
+  if ('error' in resp) return { ok: false, error: resp.error }
   try {
     await updateSiteAction(actionId, {
       title,
-      assigned_to: input.assignedTo?.trim() || null,
+      assigned_to: resp.assigned_to,
+      assigned_contact_id: resp.assigned_contact_id,
       due_date: input.dueDate || null,
       due_date_status: input.dueDate ? null : null, // date saisie = confirmée (null = figée)
     })

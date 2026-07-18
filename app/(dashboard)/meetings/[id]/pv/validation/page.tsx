@@ -79,7 +79,7 @@ export default async function PvValidationPage({ params, searchParams }: {
   )
   const actionRows: ActionRow[] = (await listSiteActionsByReport(id))
     .filter((a) => a.status !== 'cancelled')
-    .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [] }))
+    .map((a) => ({ id: a.id, title: a.title, assignedTo: a.assigned_to ?? '', assignedContactId: a.assigned_contact_id ?? '', dueDate: a.due_date ?? '', corpsEtat: a.corps_etat ?? '', actionCodes: actionCodesBySource.get(a.id) ?? [] }))
 
   // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
   const decisions = await listDecisionsByReport(id)
@@ -101,6 +101,16 @@ export default async function PvValidationPage({ params, searchParams }: {
     id: c.id,
     label: c.function ? `${c.fullName} — ${c.companyName} (${c.function})` : `${c.fullName} — ${c.companyName}`,
   }))
+  // Les PERSONNES confirmées du chantier, groupées par entreprise — le sélecteur
+  // « Responsable identifié » (P2 Slice 2). Toutes les personnes du casting actif,
+  // pas seulement les contacts principaux : une action appartient à une personne.
+  const castingPersonsByCompany = new Map<string, { company: string; persons: Array<{ id: string; fullName: string; fonction: string | null }> }>()
+  for (const c of siteContacts) {
+    const g = castingPersonsByCompany.get(c.companyName) ?? { company: c.companyName, persons: [] }
+    g.persons.push({ id: c.id, fullName: c.fullName, fonction: c.function })
+    castingPersonsByCompany.set(c.companyName, g)
+  }
+  const castingPersons = [...castingPersonsByCompany.values()].sort((a, b) => a.company.localeCompare(b.company, 'fr'))
 
   // « Fiche partout » (4/4) : un décisionnaire ouvre sa fiche transverse UNIQUEMENT
   // s'il est déjà un intervenant du casting (mainContactId d'une ligne active). Pas
@@ -291,7 +301,7 @@ export default async function PvValidationPage({ params, searchParams }: {
 
       {/* Actions — Ajouter / Modifier / Supprimer (l'entité la plus fréquente). */}
       <div className="border-t pt-5">
-        <PvActionsBlock reportId={id} actions={actionRows} roleActors={roleActors} />
+        <PvActionsBlock reportId={id} actions={actionRows} roleActors={roleActors} castingPersons={castingPersons} />
       </div>
 
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
