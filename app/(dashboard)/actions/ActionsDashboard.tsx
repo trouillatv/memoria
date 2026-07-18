@@ -1,20 +1,27 @@
 'use client'
 
-// ── PILOTAGE DES ACTIONS — coquille (Tranche 1) ──────────────────────────────
-// Présentationnel pur : tout vient de getActionsDashboard. Le clic sur une ligne
-// ouvre la fiche canonique existante (?action=). Aucune fonction hors-tranche
-// (priorité, relance, affectation entreprise) : elles restent des lots futurs.
+// ── PILOTAGE DES ACTIONS — coquille (Tranche 1 + pass hiérarchie) ────────────
+// Présentationnel pur : tout vient de getActionsDashboard. La LIGNE est l'objet
+// que le chef d'équipe lit 95 % du temps → elle raconte une histoire (quoi ·
+// pourquoi · qui · pour quand). KPIs compacts sur une ligne, filtres collants,
+// onglets discrets. Aucune fonction hors-tranche (priorité/relance/affectation).
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import {
-  ACTION_STATUS_LABEL, inTab, applyActionFilters,
+  ACTION_STATUS_LABEL, inTab, applyActionFilters, isOverdue,
   type ActionDashboardItem, type ActionOrigin, type ActionListStatus, type ActionTab,
 } from '@/lib/knowledge/actions-dashboard-model'
 import type { ActionsDashboard as Data } from '@/lib/knowledge/actions-dashboard'
 
 const ORIGIN_LABEL: Record<ActionOrigin['type'], string> = { reunion: 'Réunion', visite: 'Visite', reserve: 'Réserve', sujet: 'Sujet' }
+const ORIGIN_ICON: Record<ActionOrigin['type'], { ic: string; cls: string }> = {
+  reunion: { ic: '☷', cls: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
+  visite: { ic: '◱', cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300' },
+  reserve: { ic: '▦', cls: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
+  sujet: { ic: '◇', cls: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+}
 
 const STATUS_CLS: Record<ActionListStatus, string> = {
   open: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900',
@@ -37,15 +44,18 @@ function relTime(iso: string): string {
 }
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '·'
 
-const H4 = 'text-[11px] font-semibold uppercase tracking-wide'
-
-function KpiCard({ label, value, accent, children }: { label: string; value: number; accent: string; children?: React.ReactNode }) {
+// ── KPI compact : presque une phrase, sur une seule ligne (desktop) ──
+function Kpi({ label, value, accent, sub }: { label: string; value: number; accent: string; sub: React.ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border bg-card p-4 shadow-sm">
-      <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: accent }} />
-      <p className={H4} style={{ color: accent }}>{label}</p>
-      <p className="mt-1.5 text-[30px] font-bold leading-none tracking-tight tabular-nums">{value}</p>
-      <div className="mt-1.5 text-[11.5px] text-muted-foreground">{children}</div>
+    <div className="rounded-lg border bg-card px-3.5 py-2.5">
+      <div className="flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+        <span className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      </div>
+      <div className="mt-0.5 flex items-baseline gap-2">
+        <span className="text-[22px] font-bold leading-none tabular-nums">{value}</span>
+        <span className="text-[11.5px] text-muted-foreground leading-tight">{sub}</span>
+      </div>
     </div>
   )
 }
@@ -54,7 +64,7 @@ const TABS: Array<{ key: ActionTab; label: string }> = [
   { key: 'all', label: 'Toutes' },
   { key: 'active', label: 'Actives' },
   { key: 'overdue', label: 'En retard' },
-  { key: 'done_no_proof', label: 'Terminées sans preuve' },
+  { key: 'done_no_proof', label: 'Sans preuve' },
   { key: 'done', label: 'Terminées' },
 ]
 
@@ -77,130 +87,113 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
     return applyActionFilters(byTab, { search, responsibleName, originType, status })
   }, [actions, today, tab, search, responsibleName, originType, status])
 
+  const b = summary.proposalBreakdown
+
   return (
-    <div className="space-y-6">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Actions</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Pilotage des engagements et obligations</p>
-        </div>
+    <div className="space-y-3">
+      <header>
+        <h1 className="text-xl font-bold tracking-tight">Actions</h1>
+        <p className="text-[13px] text-muted-foreground">Pilotage des engagements et obligations</p>
       </header>
 
-      {/* ── 5 KPIs réels ── */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <KpiCard label="À confirmer" value={summary.aConfirmer} accent="#d97706">
-          propositions d’action à valider
-          <span className="mt-2 block border-t border-dashed pt-2 text-[11px] leading-relaxed">
-            Autres éléments à examiner : {summary.proposalBreakdown.deadline} échéances · {summary.proposalBreakdown.decision} décision · {summary.proposalBreakdown.knowledge} connaissances · {summary.proposalBreakdown.stakeholder} intervenants
-          </span>
-        </KpiCard>
-        <KpiCard label="Actions actives" value={summary.actives} accent="#2563eb">
-          {summary.activesBreakdown.planned} planifiées · {summary.activesBreakdown.open} ouvertes
-        </KpiCard>
-        <KpiCard label="En retard" value={summary.enRetard} accent="#e11d48">échéance dépassée</KpiCard>
-        <KpiCard label="Terminées sans preuve" value={summary.termineesSansPreuve} accent="#059669">clôturées sans trace de clôture</KpiCard>
-        <KpiCard label="Terminées" value={summary.terminees} accent="#0891b2">historique conservé</KpiCard>
+      {/* ── 5 KPIs compacts, une seule ligne sur desktop (~15 % de l'écran) ── */}
+      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+        <Kpi label="À confirmer" value={summary.aConfirmer} accent="#d97706"
+          sub={<>actions proposées<span className="mt-0.5 block text-[10.5px] text-muted-foreground/80">+{b.deadline} échéances · +{b.decision} décision · +{b.knowledge} conn. · +{b.stakeholder} interv.</span></>} />
+        <Kpi label="Actions actives" value={summary.actives} accent="#2563eb"
+          sub={<>{summary.activesBreakdown.open} ouvertes · {summary.activesBreakdown.planned} planifiée{summary.activesBreakdown.planned > 1 ? 's' : ''}</>} />
+        <Kpi label="En retard" value={summary.enRetard} accent="#e11d48" sub="échéance dépassée" />
+        <Kpi label="Sans preuve" value={summary.termineesSansPreuve} accent="#059669" sub="clôtures à justifier" />
+        <Kpi label="Terminées" value={summary.terminees} accent="#0891b2" sub="historique conservé" />
       </section>
 
-      {/* ── Onglets ── */}
-      <div className="flex flex-wrap gap-5 border-b">
-        {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={cn('flex items-center gap-2 border-b-2 pb-2.5 pt-1 text-sm',
-              tab === t.key ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
-            {t.label}
-            <span className={cn('rounded-full px-1.5 py-0.5 text-[11px] font-semibold', tab === t.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>{tabCounts[t.key]}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Filtres simples ── */}
-      <div className="flex flex-wrap gap-2">
-        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <span className="text-muted-foreground">🔍</span>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une action, un responsable, une origine…"
-            className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground" />
+      {/* ── Onglets + filtres, COLLANTS pendant le scroll de la liste ── */}
+      <div className="sticky top-0 z-20 -mx-6 border-b bg-background/95 px-6 pb-2.5 pt-2 backdrop-blur">
+        <div className="mb-2 flex flex-wrap gap-4">
+          {TABS.map((t) => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={cn('flex items-center gap-1.5 border-b-2 pb-1.5 text-[13px] transition-colors',
+                tab === t.key ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+              {t.label}
+              <span className={cn('rounded-full px-1.5 text-[10.5px] font-semibold tabular-nums', tab === t.key ? 'bg-primary/10 text-primary' : 'text-muted-foreground/70')}>{tabCounts[t.key]}</span>
+            </button>
+          ))}
         </div>
-        <select value={responsibleName ?? ''} onChange={(e) => setResponsible(e.target.value || null)} className="rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
-          <option value="">Responsable</option>
-          {filters.responsibles.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <select value={originType ?? ''} onChange={(e) => setOrigin((e.target.value || null) as ActionOrigin['type'] | null)} className="rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
-          <option value="">Origine</option>
-          {filters.origins.map((o) => <option key={o} value={o}>{ORIGIN_LABEL[o]}</option>)}
-        </select>
-        <select value={status ?? ''} onChange={(e) => setStatus((e.target.value || null) as ActionListStatus | null)} className="rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground">
-          <option value="">État</option>
-          {filters.statuses.map((s) => <option key={s} value={s}>{ACTION_STATUS_LABEL[s]}</option>)}
-        </select>
+        <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-[13px]">
+            <span className="text-muted-foreground">🔍</span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une action, un responsable, une origine…"
+              className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground" />
+          </div>
+          <select value={responsibleName ?? ''} onChange={(e) => setResponsible(e.target.value || null)} className="rounded-lg border bg-card px-2.5 py-1.5 text-[13px] text-muted-foreground">
+            <option value="">Responsable</option>
+            {filters.responsibles.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <select value={originType ?? ''} onChange={(e) => setOrigin((e.target.value || null) as ActionOrigin['type'] | null)} className="rounded-lg border bg-card px-2.5 py-1.5 text-[13px] text-muted-foreground">
+            <option value="">Origine</option>
+            {filters.origins.map((o) => <option key={o} value={o}>{ORIGIN_LABEL[o]}</option>)}
+          </select>
+          <select value={status ?? ''} onChange={(e) => setStatus((e.target.value || null) as ActionListStatus | null)} className="rounded-lg border bg-card px-2.5 py-1.5 text-[13px] text-muted-foreground">
+            <option value="">État</option>
+            {filters.statuses.map((s) => <option key={s} value={s}>{ACTION_STATUS_LABEL[s]}</option>)}
+          </select>
+        </div>
       </div>
 
-      {/* ── Liste ── */}
-      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-        <table className="w-full min-w-[860px] border-collapse">
-          <thead>
-            <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-3 font-semibold">Action</th>
-              <th className="px-4 py-3 font-semibold">État</th>
-              <th className="px-4 py-3 font-semibold">Responsable</th>
-              <th className="px-4 py-3 font-semibold">Échéance</th>
-              <th className="px-4 py-3 font-semibold">Origine</th>
-              <th className="px-4 py-3 font-semibold">Dernière activité</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((a: ActionDashboardItem) => (
-              <tr key={a.id} className="border-b border-border/50 last:border-0 hover:bg-muted/50">
-                <td className="px-4 py-3">
-                  <Link href={a.href} scroll={false} className="block">
-                    <span className="font-semibold text-foreground">{a.title}</span>
-                    {a.description && <span className="mt-0.5 block text-[11.5px] text-muted-foreground line-clamp-1">{a.description}</span>}
-                  </Link>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[11.5px] font-medium ring-1', STATUS_CLS[a.status])}>{a.statusLabel}</span>
-                </td>
-                <td className="px-4 py-3">
-                  {a.responsibleName ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="grid h-6 w-6 place-items-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">{initials(a.responsibleName)}</span>
-                      <span className="text-[13px]">{a.responsibleName}{a.responsibleSub && <span className="block text-[10.5px] text-muted-foreground">{a.responsibleSub}</span>}</span>
-                    </span>
-                  ) : <span className="text-[13px] text-muted-foreground/70">Aucun responsable</span>}
-                </td>
-                <td className="px-4 py-3 text-[13px]">
-                  {a.dueDate ? (
-                    <>
-                      <span className="tabular-nums">{frDue(a.dueDate)}</span>
-                      {a.lateness.text && (
-                        <span className={cn('mt-0.5 block text-[11px] font-semibold',
-                          a.lateness.tone === 'neg' ? 'text-rose-600 dark:text-rose-400' : a.lateness.tone === 'done' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
-                          {a.lateness.text}
+      {/* ── La liste : le cœur de la page (~75 %). Chaque ligne raconte l'engagement. ── */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <ul className="divide-y divide-border/60">
+          {rows.map((a: ActionDashboardItem) => {
+            const overdue = isOverdue(a, today)
+            const origin = a.origin ? ORIGIN_ICON[a.origin.type] : null
+            return (
+              <li key={a.id} className={cn('relative hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
+                {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
+                <div className="flex items-start gap-4 px-4 py-3">
+                  {/* Quoi + Pourquoi + Pour quand — le récit de l'engagement */}
+                  <div className="min-w-0 flex-1">
+                    <Link href={a.href} scroll={false} className="group block">
+                      <div className="flex items-center gap-2">
+                        <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
+                          {overdue && <span aria-hidden>⚠</span>}{a.statusLabel}
+                        </span>
+                        <span className="truncate text-[14.5px] font-semibold text-foreground group-hover:text-primary">{a.title}</span>
+                      </div>
+                      {a.description && <p className="mt-1 line-clamp-1 text-[12.5px] text-muted-foreground">{a.description}</p>}
+                    </Link>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                      {a.origin && (
+                        <Link href={a.origin.href ?? '#'} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline">
+                          <span className={cn('grid h-[18px] w-[18px] place-items-center rounded text-[11px]', origin?.cls)}>{origin?.ic}</span>
+                          {a.origin.label}
+                        </Link>
+                      )}
+                      {a.dueDate && (
+                        <span className={cn('inline-flex items-center gap-1', a.lateness.tone === 'neg' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>
+                          Échéance&nbsp;: {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && <span className="font-semibold"> · {a.lateness.text}</span>}
                         </span>
                       )}
-                    </>
-                  ) : <span className="text-muted-foreground/70">—</span>}
-                </td>
-                <td className="px-4 py-3 text-[13px]">
-                  {a.origin ? (
-                    a.origin.href ? <Link href={a.origin.href} className="text-primary hover:underline">{a.origin.label}</Link> : <span className="text-muted-foreground">{a.origin.label}</span>
-                  ) : <span className="text-muted-foreground/70">—</span>}
-                </td>
-                <td className="px-4 py-3 text-[13px]">
-                  {a.lastActivity ? (
-                    <><span className="text-foreground">{a.lastActivity.label}</span><span className="block text-[10.5px] text-muted-foreground">{relTime(a.lastActivity.occurredAt)}</span></>
-                  ) : <span className="text-muted-foreground/70">—</span>}
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune action ne correspond à ces filtres.</td></tr>
-            )}
-          </tbody>
-        </table>
-        <div className="flex items-center justify-between px-4 py-3 text-[12.5px] text-muted-foreground">
-          <span>{rows.length} action{rows.length > 1 ? 's' : ''}</span>
-        </div>
+                      {a.lastActivity && <span className="text-muted-foreground/70">{a.lastActivity.label} · {relTime(a.lastActivity.occurredAt)}</span>}
+                    </div>
+                  </div>
+                  {/* Qui */}
+                  <div className="shrink-0 pt-0.5 text-right">
+                    {a.responsibleName ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-[13px]">{a.responsibleName}{a.responsibleSub && <span className="block text-[10.5px] text-muted-foreground">{a.responsibleSub}</span>}</span>
+                        <span className="grid h-7 w-7 place-items-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">{initials(a.responsibleName)}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[11.5px] font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900">À affecter</span>
+                    )}
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+          {rows.length === 0 && <li className="px-4 py-12 text-center text-sm text-muted-foreground">Aucune action ne correspond à ces filtres.</li>}
+        </ul>
+        <div className="border-t px-4 py-2.5 text-[12px] text-muted-foreground">{rows.length} action{rows.length > 1 ? 's' : ''}</div>
       </div>
     </div>
   )
