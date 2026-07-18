@@ -106,3 +106,20 @@ describe('« État actuel » + relations — dérivés, jamais inventés', () =>
     expect(src).toMatch(/source\?\.available && source\.href/)
   })
 })
+
+describe('« Ce qui a été observé » (Slice ②) — la capture PRÉCISE, jamais le report', () => {
+  it('lit la capture déclencheuse par source_capture_id, scopée au chantier', () => {
+    expect(src).toMatch(/from\('visit_capture'\)[\s\S]*?eq\('id', a\.source_capture_id\)[\s\S]*?eq\('site_id', siteId\)/)
+  })
+
+  it('le texte vient de capture.body ; la photo est SIGNÉE (bucket privé), jamais un chemin brut', () => {
+    expect(src).toContain('a.source_capture_id')
+    expect(src).toMatch(/from\('site_report_attachments'\)/)
+    expect(src).toMatch(/signProofPhoto\(db, path\)/)
+  })
+
+  it('jamais une photo « du même report » : on ne charge pas les captures par report_id ici', () => {
+    // Le bloc observé s'ancre sur la capture unique, pas sur une liste par report.
+    expect(src).not.toMatch(/visit_capture'\)[\s\S]{0,200}in\('report_id'/)
+  })
+})

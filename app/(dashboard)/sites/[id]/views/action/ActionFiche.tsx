@@ -65,6 +65,27 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
                 // Une relation existait mais l'objet a disparu — jamais masqué.
                 <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
               )}
+              {/* Ce qui a été observé sur le terrain — la capture précise qui a
+                  déclenché l'action. Le PROBLÈME, pas seulement le titre. */}
+              {a.observed && (
+                <div className="mt-2.5 rounded-lg border-l-2 border-primary/40 bg-muted/40 p-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">Ce qui a été observé</p>
+                  {a.observed.text && <p className="mt-1 text-[13px] italic">« {a.observed.text} »</p>}
+                  {(a.observed.isVocal || a.observed.authorLabel) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-muted-foreground">
+                      {a.observed.isVocal && <span>🎤 Mémo vocal (transcription)</span>}
+                      {a.observed.authorLabel && <span>Noté par {a.observed.authorLabel}</span>}
+                    </div>
+                  )}
+                  {a.observed.photoUrl && (
+                    <a href={a.observed.photoUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block w-fit">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={a.observed.photoUrl} alt="Photo prise sur le terrain" className="max-h-40 w-auto rounded-md border" />
+                    </a>
+                  )}
+                  {a.observed.photoMissing && <p className="mt-1 text-[11.5px] text-muted-foreground">Photo indisponible</p>}
+                </div>
+              )}
               {a.context && (
                 <div className="mt-2.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contexte</p>

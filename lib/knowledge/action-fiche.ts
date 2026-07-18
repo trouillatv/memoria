@@ -54,6 +54,19 @@ export interface ActionFicheProofs {
   empty: boolean
 }
 
+/** « Ce qui a été observé » — la capture QUI A DÉCLENCHÉ l'action (source_capture_id) :
+ *  son texte (note ou transcription vocale) + éventuellement sa photo. JAMAIS une
+ *  photo « du même report supposée liée » : uniquement la capture précise. */
+export interface ActionFicheObserved {
+  text: string | null
+  authorLabel: string | null
+  /** URL signée de la photo de la capture ; `null` = pas de photo ou fichier disparu. */
+  photoUrl: string | null
+  photoMissing: boolean
+  /** Mémo vocal : le texte est alors sa transcription. */
+  isVocal: boolean
+}
+
 export interface ActionFicheData {
   id: string
   siteId: string
@@ -87,6 +100,8 @@ export interface ActionFicheData {
   progress: Array<{ label: string; done: boolean }>
   /** Objets liés cliquables (mémoire du chantier), depuis la provenance connue. */
   relations: Array<{ label: string; href: string | null }>
+  /** Ce qui a été observé sur le terrain et a déclenché l'action, ou `null`. */
+  observed: ActionFicheObserved | null
 }
 
 const PROOF_BUCKET = 'intervention-photos'
@@ -247,6 +262,34 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     }
   }
 
+  // ── « Ce qui a été observé » (Slice ②) : la capture QUI A DÉCLENCHÉ l'action —
+  //    son texte + sa photo. Scopée à source_capture_id (la capture PRÉCISE), jamais
+  //    une photo « du même report supposée liée ». ──
+  let observed: ActionFicheObserved | null = null
+  if (a.source_capture_id) {
+    const { data: cap } = await db.from('visit_capture')
+      .select('kind, body, attachment_id, created_by').eq('id', a.source_capture_id).eq('site_id', siteId).maybeSingle()
+    if (cap) {
+      const c = cap as { kind: string; body: string | null; attachment_id: string | null; created_by: string | null }
+      let photoUrl: string | null = null
+      let photoMissing = false
+      if (c.kind === 'photo' && c.attachment_id) {
+        const { data: att } = await db.from('site_report_attachments').select('storage_path').eq('id', c.attachment_id).maybeSingle()
+        const path = (att as { storage_path: string } | null)?.storage_path
+        if (path) { photoUrl = (await signProofPhoto(db, path)).url; photoMissing = !photoUrl }
+      }
+      let authorLabel: string | null = null
+      if (c.created_by) {
+        const { data: u } = await db.from('users').select('full_name').eq('id', c.created_by).maybeSingle()
+        authorLabel = (u as { full_name: string | null } | null)?.full_name ?? null
+      }
+      const text = c.body?.trim() || null
+      if (text || photoUrl || photoMissing || c.kind === 'vocal') {
+        observed = { text, authorLabel, photoUrl, photoMissing, isVocal: c.kind === 'vocal' }
+      }
+    }
+  }
+
   return {
     id: a.id,
     siteId,
@@ -280,5 +323,6 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
       ...(source?.available && source.href ? [{ label: source.title, href: source.href }] : []),
       ...(context ? [{ label: context.label, href: context.href }] : []),
     ],
+    observed,
   }
 }
