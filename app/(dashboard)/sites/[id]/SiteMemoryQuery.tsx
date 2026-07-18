@@ -55,6 +55,8 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   blocage:          { label: 'Blocage',       Icon: Ban,             cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   obligation:       { label: 'Obligation',    Icon: ClipboardCheck,  cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   subject:          { label: 'Sujet suivi',   Icon: GitBranch,       cls: 'bg-brand-50 text-brand-800 border-brand-200' },
+  // « Je cherche Vincent » → sa fiche. Icône Users, pas la clé des interventions.
+  intervenant:      { label: 'Intervenant',   Icon: Users,           cls: 'bg-violet-50 text-violet-700 border-violet-200' },
 }
 
 function fmtDate(iso: string | null): string {
@@ -133,9 +135,14 @@ export function SiteMemoryQuery({ siteId, variant = 'desktop' }: { siteId: strin
   const renderHit = (h: SiteMemoryHit) => {
     const meta = TYPE_META[h.type]
     const Icon = meta.Icon
+    // Un intervenant ouvre sa FICHE transverse — mais seulement en desktop : le
+    // deep-link `?person=` n'existe pas encore sur le terrain mobile.
+    const href = h.type === 'intervenant' && h.personId && variant === 'desktop'
+      ? `${siteHref}?tab=intervenants&person=${h.personId}&person_source=recherche`
+      : h.href ?? siteHref
     return (
       <li key={`${h.type}-${h.id}`}>
-        <Link href={h.href ?? siteHref} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
+        <Link href={href} scroll={false} className="block rounded-lg border bg-background p-2.5 hover:border-foreground/30 hover:bg-muted/30 transition-colors">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
               <Icon className="h-2.5 w-2.5" /> {meta.label}

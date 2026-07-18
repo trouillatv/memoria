@@ -98,7 +98,7 @@ export interface SiteMemoryHit {
   // 'observation' (P2) = flux terrain visit_capture (notes / mémos vocaux
   // transcrits / points vérifiés), cherché en plein-texte DÉTERMINISTE (ILIKE) —
   // c'est le cœur mobile, jusqu'ici absent du corpus de recherche.
-  type: MemoryHitType | 'document' | 'observation' | 'report_document'
+  type: MemoryHitType | 'document' | 'observation' | 'report_document' | 'intervenant'
   id: string
   title: string
   snippet: string
@@ -110,6 +110,10 @@ export interface SiteMemoryHit {
   keyword: boolean
   /** Lien direct (documents). Absent pour les traces terrain (→ fiche site). */
   href?: string
+  /** Pour un intervenant : l'id du lien de casting, qui ouvre sa FICHE
+   *  transverse (`?person=`). Le href se construit côté UI selon le variant —
+   *  le deep-link n'existe pas encore sur le terrain mobile. */
+  personId?: string
 }
 
 // S4a-2 — poids de source DÉTERMINISTE (dans le moteur, pas en UI). Un document
@@ -217,7 +221,13 @@ async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemor
       const named = wants('stakeholder')
       const matched = terms.length > 0 && terms.some((t) => normalizeQuery(label).includes(t))
       if (named || matched) {
-        out.push(hit('intervention', i.id, label, `Intervenant du chantier · ${i.role}`, i.effective_from ?? ''))
+        // Type dédié (≠ 'intervention', qui a l'icône clé) + personId : cliquer
+        // ouvre la FICHE transverse. « Je cherche Vincent » → sa fiche.
+        out.push({
+          type: 'intervenant', id: i.id, title: label,
+          snippet: `Intervenant du chantier · ${i.role}`,
+          occurredAt: i.effective_from ?? '', similarity: null, keyword: true, personId: i.id,
+        })
       }
     }
   }
