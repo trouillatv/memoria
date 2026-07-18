@@ -2,32 +2,36 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-// ── P2 · SLICE 0 — le faux signal « actions par rôle » ne revient jamais ─────
-// La fiche Intervenant comptait les « actions ouvertes » d'une personne par
-// ÉGALITÉ DE CHAÎNE entre site_actions.assigned_to (majuscules) et le rôle de
-// son casting. Ce n'est PAS une relation métier : assigned_to est du texte
-// libre (« Papa », « Sotrap »…), et en prod 0 valeur correspondait à un rôle du
-// casting — le signal valait 0 pour tout le monde tout en se présentant comme
-// un fait. Retiré AVANT tout le reste du P2 (arbitrage Vincent).
+// ── La fiche lit les actions par IDENTITÉ, jamais par rôle/texte ─────────────
+// Slice 0 avait tué le signal « N actions par rôle » (égalité assigned_to↔rôle,
+// faux : 0 correspondance en prod). Slice 3A réintroduit une lecture de
+// site_actions — mais LÉGITIME : par la relation structurelle
+// `assigned_contact_id` (mig 220), scopée au chantier. Le principe verrouillé :
 //
-// La lecture « ce que cette personne doit faire » reviendra en Slice 3, fondée
-// sur une vraie relation structurelle site_actions.assigned_contact_id (FK
-// company_contacts), jamais sur ce rapprochement rôle↔texte.
+//   La fiche ne reconstruit JAMAIS une responsabilité personnelle à partir de
+//   assigned_to, d'un rôle, d'un libellé libre ou d'une correspondance de texte.
+//
+// (Le comportement réel du rattachement est prouvé par assigned-actions.test.ts ;
+// ici on protège le CHEMIN de lecture du read model, sans bannir globalement la
+// chaîne « assigned_to » qui vit légitimement dans des commentaires.)
 
-const VIEW = 'lib/knowledge/site-intervenants-view.ts'
-const src = readFileSync(join(process.cwd(), VIEW), 'utf8')
+const src = readFileSync(join(process.cwd(), 'lib/knowledge/site-intervenants-view.ts'), 'utf8')
 
-// On ne cherche PAS la sous-chaîne « assigned_to » : elle vit légitimement dans
-// un commentaire qui EXPLIQUE pourquoi ce champ (texte libre) ne peut pas servir
-// de preuve. Le garde-fou porte sur le CODE : plus de lecture de site_actions,
-// plus de calcul par rôle, plus de champ openActions.
-describe('P2 Slice 0 — aucun suivi d’actions par rapprochement rôle↔texte', () => {
-  it('le read model Intervenant ne lit plus la table site_actions', () => {
-    expect(src).not.toContain("from('site_actions')")
+describe('Read model Intervenant — actions lues par assigned_contact_id seul', () => {
+  it('la lecture d’actions filtre par assigned_contact_id, le site et les statuts ouverts', () => {
+    expect(src).toMatch(/\.in\(\s*['"]assigned_contact_id['"]/)
+    expect(src).toMatch(/\.in\(\s*['"]status['"]\s*,\s*\[\s*['"]open['"]\s*,\s*['"]planned['"]/)
+    // La requête d'actions est scopée au chantier.
+    expect(src).toContain("from('site_actions')")
+    expect(src).toMatch(/\.eq\(\s*['"]site_id['"]/)
   })
 
-  it('le champ openActions et son calcul openByRole ont disparu', () => {
-    expect(src).not.toContain('openActions')
+  it('aucune reconstruction par rôle ni filtre par assigned_to', () => {
     expect(src).not.toContain('openByRole')
+    expect(src).not.toContain('openActions')
+    // Pas de filtre/rapprochement SQL par assigned_to, pas de match rôle↔texte.
+    expect(src).not.toMatch(/\.eq\(\s*['"]assigned_to['"]/)
+    expect(src).not.toMatch(/assigned_to['"\s)]*\.?\s*toUpperCase/)
+    expect(src).not.toMatch(/toUpperCase\(\)\s*===\s*[^\n]*role/)
   })
 })

@@ -20,6 +20,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-intervenants'
 import { splitPersonCompany } from '@/lib/knowledge/person-name'
+import { assignedActionsByContact, type AssignedAction, type RawAssignedActionRow } from '@/lib/knowledge/assigned-actions'
+import { todayLocalIso } from '@/lib/time/local-date'
 
 export interface IntervenantCitedVisit {
   reportId: string
@@ -54,6 +56,9 @@ export interface IntervenantPerson {
   citedVisits: IntervenantCitedVisit[]
   /** Nombre de mentions confirmées (transcriptions/captures). */
   mentionCount: number
+  /** Ce que la personne doit faire sur CE chantier — actions ouvertes assignées
+   *  STRUCTURELLEMENT (assigned_contact_id), jamais par texte/rôle (P2 Slice 3A). */
+  assignedActions: AssignedAction[]
   /** Où on le connaît ailleurs (contact d'abord, sinon entreprise) — org-scopé. */
   elsewhere: IntervenantElsewhere[]
 }
@@ -188,6 +193,22 @@ async function buildIntervenantPeople(
     }
   }
 
+  // ── Actions ASSIGNÉES structurellement (P2 Slice 3A) ──────────────────────
+  // « Qu'attend-on de cette personne ? » — UNIQUEMENT par assigned_contact_id
+  // (mig 220), jamais assigned_to/rôle. Une seule requête batch pour tout le
+  // casting (pas de N+1), scopée au chantier. Une action assignée à un contact
+  // hors casting actif n'est rattachée à personne (pas de personne orpheline).
+  const activeContactIds = [...new Set(intervenants.map((i) => i.mainContactId).filter((x): x is string => !!x))]
+  let actionsByContact = new Map<string, AssignedAction[]>()
+  if (activeContactIds.length > 0) {
+    const { data: actionRows } = await db.from('site_actions')
+      .select('id, title, assigned_contact_id, due_date, due_date_status, report_id, status, created_at')
+      .eq('site_id', siteId)
+      .in('assigned_contact_id', activeContactIds)
+      .in('status', ['open', 'planned'])
+    actionsByContact = assignedActionsByContact(siteId, (actionRows ?? []) as RawAssignedActionRow[], todayLocalIso())
+  }
+
   return intervenants.map((it) => {
     const mentions = mentionsByIntervenant.get(it.id) ?? []
     const visits = new Map<string, string | null>()
@@ -216,6 +237,7 @@ async function buildIntervenantPeople(
       lastActivity: dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null,
       citedVisits,
       mentionCount,
+      assignedActions: it.mainContactId ? actionsByContact.get(it.mainContactId) ?? [] : [],
       // Dédoublonné par chantier — deux rôles sur le même chantier = une ligne.
       elsewhere: [...new Map(elsewhere.map((e) => [e.siteId, e])).values()],
     }
