@@ -45,6 +45,10 @@ const SIZE: Record<GraphNodeType, number> = {
 // chantier elles noieraient la carte (les 218 photos de Petro Atiti) — elles
 // n'apparaissent qu'à côté de l'objet exploré qui les contient, ou dépliées.
 const PROOF = new Set<GraphNodeType>(['photo', 'memo'])
+// La vue globale du chantier ne montre par défaut que la STRUCTURE (décision
+// Vincent 2026-07-18) : visites, actions, décisions, intervenants. Le reste
+// se déplie depuis la légende.
+const GLOBAL_DEFAULT = new Set<GraphNodeType>(['visite', 'action', 'dec', 'acteur'])
 
 type P = { x: number; y: number; vx: number; vy: number; alpha: number }
 type PanelMode = 'fiche' | 'recit' | 'gaps'
@@ -158,13 +162,16 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
         const t = nodeById[id]?.t
         if (t && t.slice(0, 10) > E.timeMax) s.delete(id)
       }
-      // Niveau de détail : une preuve n'est visible que si elle entoure
-      // directement l'objet exploré (ou dépliée, ou pendant une enquête).
+      // Niveau de détail adapté au point d'entrée : au niveau chantier, seule
+      // la structure (GLOBAL_DEFAULT) ; ailleurs, une preuve n'est visible que
+      // si elle entoure directement l'objet exploré. Déplié ou enquête = tout.
       if (!E.enqueteSet) {
         const near = neigh[E.center] ?? new Set()
         for (const id of [...s]) {
           const ty = nodeById[id]?.type
-          if (ty && PROOF.has(ty) && id !== E.center && !near.has(id) && !E.revealedTypes.has(ty)) s.delete(id)
+          if (!ty || ty === 'site' || id === E.center || E.revealedTypes.has(ty)) continue
+          if (E.center === 'site') { if (!GLOBAL_DEFAULT.has(ty)) s.delete(id) }
+          else if (PROOF.has(ty) && !near.has(id)) s.delete(id)
         }
       }
       if (E.hiddenTypes.size) for (const id of [...s]) {
@@ -484,21 +491,22 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
           const c = contextCounts[t] ?? 0
           if (c === 0 && !hidden.has(t)) return null
           const near = [...(neigh[center] ?? [])].some((id) => nodeById[id]?.type === t)
-          const on = !hidden.has(t) && (!PROOF.has(t) || !!enquete || revealed.has(t) || near)
+          const defaultOn = center === 'site' ? GLOBAL_DEFAULT.has(t) : !PROOF.has(t) || near
+          const on = !hidden.has(t) && (!!enquete || revealed.has(t) || defaultOn)
           const folded = !on && !hidden.has(t)
           return (
             <button
               key={t}
               type="button"
               aria-pressed={on}
-              title={on ? 'Masquer cette catégorie' : folded ? 'Déplier ces preuves autour du contexte exploré' : 'Afficher cette catégorie'}
+              title={on ? 'Masquer cette catégorie' : folded ? 'Déplier cette catégorie dans la carte' : 'Afficher cette catégorie'}
               onClick={() => {
                 if (on) {
                   setHidden((h) => new Set(h).add(t))
                   setRevealed((r) => { const n = new Set(r); n.delete(t); return n })
                 } else {
                   setHidden((h) => { const n = new Set(h); n.delete(t); return n })
-                  if (PROOF.has(t)) setRevealed((r) => new Set(r).add(t))
+                  setRevealed((r) => new Set(r).add(t))
                 }
               }}
               onMouseEnter={() => { engine.current.hlType = t; engine.current.redraw?.() }}
