@@ -65,15 +65,19 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
             <p className="mt-0.5 text-[12px] text-muted-foreground/80">{provenance}</p>
           </section>
 
-          {/* « Aujourd'hui » — ce que la personne doit faire sur CE chantier,
-              d'après la relation structurelle assigned_contact_id (P2 Slice 3B).
-              L'état vide est affiché (le système a vérifié) ; jamais un « 0 »
-              décoratif ni l'ancien assigned_to comme s'il désignait la personne. */}
+          {/* « Actions à suivre » — les actions liées structurellement à cette
+              personne sur CE chantier (assigned_contact_id). Cadrage NEUTRE
+              (Vincent) : surtout pas « Aujourd'hui », qui suggérerait une
+              obligation quotidienne — le terrain travaille sur plusieurs jours,
+              l'absence de réalisation/déclaration du jour n'est jamais une
+              anomalie. « Aujourd'hui » ne se justifiera que pendant une session
+              de contrôle (parcours futur). L'état vide reste affiché (le système
+              a vérifié) ; jamais un « 0 » décoratif ni l'ancien assigned_to. */}
           <section>
-            <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Aujourd’hui</h4>
+            <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Actions à suivre</h4>
             {p.assignedActions.length === 0 ? (
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Rien ne vous attend avec cette personne pour le moment.
+                Aucune action à suivre avec cette personne sur ce chantier.
               </p>
             ) : (
               <>
