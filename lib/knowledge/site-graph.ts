@@ -20,6 +20,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
 import { getVisitCapturePreviewUrls, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { listSiteIntervenants } from '@/lib/db/site-intervenants'
 
 export type GraphNodeType =
   | 'site' | 'visite' | 'photo' | 'memo'
@@ -74,6 +75,8 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
   const siteName = (site as { name: string }).name
 
+  // Le casting confirmé part en parallèle des lectures Supabase ci-dessous.
+  const intervenantsP = listSiteIntervenants(siteId).catch(() => [])
   const [reports, captures, actions, deadlines, decisions, watchpoints, proposals] = await Promise.all([
     db.from('site_reports').select('id, started_at').eq('site_id', siteId)
       .order('started_at', { ascending: true }).limit(CAP.reports),
@@ -173,6 +176,44 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       for (const capId of p.source_capture_ids ?? []) {
         link({ a: `m_${capId}`, b: objId, type: (p.kind === 'deadline' ? 'ech' : p.kind === 'decision' ? 'dec' : p.kind) as GraphNodeType, why: 'Extrait de cette transcription, confirmé par un humain' })
       }
+    }
+  }
+
+  // Les intervenants CONFIRMÉS (casting actif, migs 137/138). La confirmation
+  // ENRICHIT la carte : avant, seules les propositions 'proposed' devenaient des
+  // nœuds — confirmer une personne la faisait DISPARAÎTRE d'Explorer. Même
+  // doctrine que l'Aperçu : un fait confirmé ne s'évapore jamais.
+  const intervenants = await intervenantsP
+  for (const it of intervenants) {
+    const aid = `int_${it.id}`
+    add({
+      id: aid, type: 'acteur',
+      label: it.contactName ?? (it.companyShort || it.companyName),
+      sub: it.contactName ? `${it.companyShort || it.companyName} · ${it.role}` : `Intervenant · ${it.role}`,
+      t: it.effectiveFrom,
+    })
+    link({ a: 'site', b: aid, type: 'acteur', why: `Intervenant confirmé du chantier — rôle ${it.role}` })
+    if (it.sourceReportId) {
+      link({ a: `v_${it.sourceReportId}`, b: aid, type: 'acteur', why: 'Ajouté au casting depuis cette visite' })
+    }
+  }
+
+  // Les mentions confirmées rejoignent LEUR intervenant : promoted_object_id
+  // vise le lien du casting (nouvelles promotions) ou l'entreprise (lignes
+  // promues avant que l'id du lien soit tracé) — on accepte les deux.
+  const intNodeByObjectId = new Map<string, string>()
+  for (const it of intervenants) {
+    intNodeByObjectId.set(it.id, `int_${it.id}`)
+    if (!intNodeByObjectId.has(it.companyId)) intNodeByObjectId.set(it.companyId, `int_${it.id}`)
+  }
+  for (const p of props.filter((x) => x.kind === 'stakeholder' && x.status === 'confirmed' && x.promoted_object_id)) {
+    const target = intNodeByObjectId.get(p.promoted_object_id!)
+    if (!target) continue
+    for (const capId of p.source_capture_ids ?? []) {
+      link({ a: `m_${capId}`, b: target, type: 'acteur', why: 'Mentionné dans cette transcription — confirmé par un humain' })
+    }
+    if ((p.source_capture_ids ?? []).length === 0 && p.report_id) {
+      link({ a: `v_${p.report_id}`, b: target, type: 'acteur', why: 'Cité pendant cette visite — confirmé' })
     }
   }
 

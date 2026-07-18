@@ -111,6 +111,33 @@ export async function findOrCreateCompanyByName(orgId: string, name: string): Pr
   return createCompany(orgId, { name: clean })
 }
 
+/** Trouve (insensible à la casse, dans l'entreprise) ou crée un contact par son
+ *  nom. C'est ce helper qui permet à la confirmation de dire « personne » :
+ *  sans lui, confirmer « Vincent Milon (PAVE) » créait une ENTREPRISE
+ *  « Vincent Milon ». Dédoublonne par nom : le même « Jean Dupont » cité sur
+ *  deux visites reste une seule personne. */
+export async function findOrCreateCompanyContact(companyId: string, fullName: string): Promise<string> {
+  const clean = fullName.trim()
+  if (!clean) throw new Error('Nom de personne vide.')
+  const db = createAdminClient()
+  const { data } = await db
+    .from('company_contacts')
+    .select('id')
+    .eq('company_id', companyId)
+    .is('deleted_at', null)
+    .ilike('full_name', clean)
+    .limit(1)
+    .maybeSingle()
+  if (data?.id) return data.id as string
+  const { data: ins, error } = await db
+    .from('company_contacts')
+    .insert({ company_id: companyId, full_name: clean })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  return ins.id as string
+}
+
 export async function updateCompany(orgId: string, id: string, patch: Partial<CompanyInput>): Promise<void> {
   const row: Record<string, unknown> = {}
   const m: Record<keyof CompanyInput, string> = {

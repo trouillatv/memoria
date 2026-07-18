@@ -58,6 +58,9 @@ const promoteSchema = baseSchema.extend({
   /** REQUIS pour un intervenant : le rôle ne se devine pas depuis « Ginger ». */
   role: z.string().trim().min(1).max(60).optional(),
   company_name: z.string().trim().max(200).optional(),
+  /** La personne confirmée — déclarée par l'humain. Exige company_name (le
+   *  serveur répond needs_input:['company'] sinon, jamais une entreprise à son nom). */
+  person_name: z.string().trim().max(200).optional(),
   contact_id: z.string().uuid().nullish(),
   /** REQUIS pour une information : périssable ou durable ? L'humain tranche. */
   knowledge_kind: z.enum(['current_information', 'durable_knowledge']).optional(),
@@ -88,6 +91,7 @@ export async function promoteFromMemoryAction(
       input: {
         role: parsed.data.role,
         companyName: parsed.data.company_name,
+        personName: parsed.data.person_name,
         contactId: parsed.data.contact_id ?? null,
         knowledgeKind: parsed.data.knowledge_kind,
       },
@@ -115,6 +119,7 @@ export async function promoteFromMemoryAction(
 /** La question à poser, avec les mots du conducteur. */
 function missingLabel(missing: PromotionInputName[]): string {
   if (missing.includes('role')) return 'Indiquez son rôle sur le chantier'
+  if (missing.includes('company')) return 'Indiquez son entreprise'
   if (missing.includes('nature')) return 'Information du moment, ou savoir durable ?'
   return 'Information manquante'
 }

@@ -20,7 +20,7 @@ import { createSiteDeadline } from '@/lib/db/site-deadlines'
 import { createSiteDecision } from '@/lib/db/site-decisions'
 import { createKnowledgeEntry, createWatchpoint, isChoosableKnowledgeKind } from '@/lib/db/site-memory-entries'
 import { openSiteIntervenant } from '@/lib/db/site-intervenants'
-import { findOrCreateCompanyByName } from '@/lib/db/companies'
+import { findOrCreateCompanyByName, findOrCreateCompanyContact } from '@/lib/db/companies'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { StoredDebriefAnalysis } from '@/lib/visits/debrief-analysis'
 import { toDebriefEcheance } from '@/lib/visits/echeance-labels'
@@ -440,7 +440,7 @@ export type PromotionOutcome =
  * et rien n'empêchait un bouton d'exister pour les 4 autres. Ici, un type sans
  * geste porte son explication ; il ne peut pas être promouvable ET inexpliqué.
  */
-export type PromotionInputName = 'role' | 'nature'
+export type PromotionInputName = 'role' | 'nature' | 'company'
 
 export interface PromotionCapability {
   /** Y a-t-il un geste métier réel derrière ? */
@@ -486,6 +486,11 @@ export interface PromotionInput {
   role?: string
   /** L'entreprise, si l'humain corrige le nom lu (« Ginger SAS »). */
   companyName?: string
+  /** La PERSONNE confirmée (« Vincent Milon »). Déclarée par l'humain, jamais
+   *  devinée : c'est elle qui empêche le bug historique — sans distinction,
+   *  confirmer une personne créait une ENTREPRISE à son nom. Exige companyName
+   *  (mig 137 : tout contact vit sous une entreprise). */
+  personName?: string
   /** Rattacher à un contact existant plutôt qu'au seul nom d'entreprise. */
   contactId?: string | null
   /** La NATURE d'une information. REQUIS pour 'knowledge' : « vraie maintenant »
@@ -583,17 +588,28 @@ export async function promoteProposal(params: {
     const role = params.input!.role!.trim()
     const orgId = params.organizationId ?? p.organization_id
     if (!orgId) return { status: 'not_found' }
+    const personName = params.input?.personName?.trim() || null
+    const companyName = params.input?.companyName?.trim() || null
+    // Une PERSONNE exige son entreprise : le schéma (mig 137) rattache tout
+    // contact à une entreprise, et créer une entreprise au nom d'une personne
+    // est exactement le bug que cette branche corrige. Le manque est un état
+    // métier — l'écran pose la question, il ne récolte pas une exception.
+    if (personName && !companyName) return { status: 'needs_input', missing: ['company'] }
     // findOrCreateCompanyByName dédoublonne par nom normalisé : « Ginger » lu deux
     // fois sur deux visites ne crée pas deux entreprises.
-    const companyId = await findOrCreateCompanyByName(orgId, params.input?.companyName?.trim() || p.title)
-    await openSiteIntervenant({
+    const companyId = await findOrCreateCompanyByName(orgId, companyName ?? p.title)
+    let contactId = params.input?.contactId ?? null
+    if (!contactId && personName) contactId = await findOrCreateCompanyContact(companyId, personName)
+    const intervenantId = await openSiteIntervenant({
       siteId: p.site_id,
       role,
       companyId,
-      mainContactId: params.input?.contactId ?? null,
+      mainContactId: contactId,
       sourceReportId: p.report_id ?? null,
     })
-    result = { objectType: 'site_intervenant', objectId: companyId }
+    // promoted_object_id = le LIEN exact du casting (avant : l'entreprise — les
+    // mentions d'une personne étaient introuvables depuis l'objet confirmé).
+    result = { objectType: 'site_intervenant', objectId: intervenantId }
   } else if (p.kind === 'vigilance') {
     const orgId = params.organizationId ?? p.organization_id
     if (!orgId) return { status: 'not_found' }

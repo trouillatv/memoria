@@ -15,6 +15,7 @@ import { promoteFromMemoryAction, dismissFromMemoryAction } from './memory-actio
 import { WhyButton } from '@/components/provenance/WhyButton'
 import type { MemoryReview, ReviewItem } from '@/lib/knowledge/memory-review'
 import { frDayMonthLocal } from '@/lib/time/local-date'
+import { splitPersonCompany, looksLikePerson } from '@/lib/knowledge/person-name'
 
 /** Les rôles courants du chantier. Libre : le métier varie (mig 137). */
 const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
@@ -117,15 +118,28 @@ function ReviewCard({
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
   // Ce que l'écran doit DEMANDER — il ne le devine pas, la capability le dit.
-  const [asking, setAsking] = useState<'role' | 'nature' | null>(null)
+  const [asking, setAsking] = useState<'role' | 'who' | 'nature' | null>(null)
+  // Le rôle choisi, en attente de la réponse « personne ou entreprise ? ».
+  const [role, setRole] = useState<string | null>(null)
+  // Préremplissage PROPOSÉ depuis le titre (« Vincent Milon (PAVE) ») — l'humain
+  // tranche : sans distinction, confirmer une personne créait une ENTREPRISE.
+  const guess = splitPersonCompany(item.title)
+  const [personName, setPersonName] = useState(guess.person ?? (looksLikePerson(item.title) ? item.title : ''))
+  const [companyName, setCompanyName] = useState(guess.company ?? '')
 
-  function promote(extra: { role?: string; knowledge_kind?: 'current_information' | 'durable_knowledge' } = {}) {
+  function promote(extra: {
+    role?: string
+    person_name?: string
+    company_name?: string
+    knowledge_kind?: 'current_information' | 'durable_knowledge'
+  } = {}) {
     setError(null)
     start(async () => {
       const res = await promoteFromMemoryAction({ site_id: siteId, proposal_id: item.id, ...extra })
       if (res.ok) return onDone()
       // `needsInput` n'est pas une panne : c'est la question à poser.
       if (res.needsInput?.includes('role')) return setAsking('role')
+      if (res.needsInput?.includes('company')) return setAsking('who')
       if (res.needsInput?.includes('nature')) return setAsking('nature')
       setError(res.error)
     })
@@ -157,12 +171,63 @@ function ReviewCard({
                 key={r}
                 type="button"
                 disabled={pending}
-                onClick={() => promote({ role: r })}
+                onClick={() => { setRole(r); setAsking('who') }}
                 className="rounded-full border bg-background px-2.5 py-1 text-[12px] font-medium active:brightness-95 disabled:opacity-50"
               >
                 {r}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {asking === 'who' && (
+        <div className="mt-2 space-y-2 rounded-lg bg-muted/50 p-2">
+          {/* LA question qui manquait : sans elle, confirmer « Vincent Milon »
+              créait une ENTREPRISE « Vincent Milon ». L'humain déclare, le
+              titre ne fait que préremplir. */}
+          <p className="text-[12px] text-muted-foreground">Qui ajoutez-vous{role ? ` comme ${role}` : ''} ?</p>
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              value={personName}
+              onChange={(e) => setPersonName(e.target.value)}
+              placeholder="Personne (laisser vide si entreprise seule)"
+              className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
+            />
+            <input
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="Entreprise"
+              className="block w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]"
+            />
+            {personName.trim() && !companyName.trim() && (
+              <p className="text-[12px] text-muted-foreground">Une personne s’ajoute avec son entreprise.</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={pending || (!personName.trim() && !companyName.trim()) || (!!personName.trim() && !companyName.trim())}
+              onClick={() => promote({
+                role: role ?? undefined,
+                person_name: personName.trim() || undefined,
+                company_name: companyName.trim() || undefined,
+              })}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground active:opacity-80 disabled:opacity-50"
+            >
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {personName.trim() ? 'Ajouter la personne' : 'Ajouter l’entreprise'}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setAsking('role')}
+              className="rounded-lg border px-3 py-1.5 text-[13px] text-muted-foreground active:brightness-95 disabled:opacity-50"
+            >
+              Changer le rôle
+            </button>
           </div>
         </div>
       )}
