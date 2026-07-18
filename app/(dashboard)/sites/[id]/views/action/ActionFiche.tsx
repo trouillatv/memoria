@@ -70,6 +70,48 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </section>
           )}
 
+          {a.proofs && (
+            <section>
+              <h4 className={H4}>{a.proofs.scope === 'current' ? 'Preuves' : 'Clôture antérieure'}</h4>
+              {a.proofs.scope === 'previous' && (
+                // Les traces d'une clôture antérieure ne prouvent PAS l'état courant :
+                // l'action a été rouverte. On ne les présente jamais comme « terminé ».
+                <p className="mt-1 text-[12px] text-muted-foreground/80">
+                  Éléments fournis lors d’une clôture antérieure{a.proofs.dateLabel ? ` · ${a.proofs.dateLabel}` : ''}. L’action a depuis été rouverte.
+                </p>
+              )}
+              {a.proofs.empty ? (
+                <p className="mt-1 text-[13px] text-muted-foreground">Clôturée sans preuve jointe.</p>
+              ) : (
+                <div className="mt-1.5 space-y-2.5 text-[13px]">
+                  {a.proofs.photo && (
+                    <div>
+                      <p className="font-medium">{a.proofs.scope === 'current' ? 'Photo de clôture' : 'Photo fournie à la clôture'}</p>
+                      {a.proofs.scope === 'current' && a.proofs.dateLabel && (
+                        <p className="text-[12px] text-muted-foreground">Ajoutée le {a.proofs.dateLabel}</p>
+                      )}
+                      {a.proofs.photo.url ? (
+                        <a href={a.proofs.photo.url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 pt-0.5 text-[13px] font-medium text-primary hover:underline">
+                          Ouvrir la photo <ChevronRight className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        // Fichier disparu du stockage — état honnête, jamais un lien mort.
+                        <p className="text-[12px] text-muted-foreground">Fichier indisponible</p>
+                      )}
+                    </div>
+                  )}
+                  {a.proofs.comment && (
+                    <div>
+                      <p className="font-medium">{a.proofs.scope === 'current' ? 'Commentaire de réalisation' : 'Commentaire de clôture'}</p>
+                      <p className="text-[13px] text-muted-foreground">« {a.proofs.comment} »</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           <section>
             <h4 className={H4}>Historique</h4>
             {/* Uniquement les faits réellement journalisés (site_action_events),

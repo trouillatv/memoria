@@ -41,6 +41,19 @@ export type ActionFicheResponsible =
   | { kind: 'contact'; name: string; fonction: string | null }
   | { kind: 'text'; label: string }
 
+/** Preuves de RÉALISATION — jamais l'origine. Uniquement les traces déclarées à la
+ *  clôture (completed_comment / completed_photo_path, mig 107). `scope` distingue la
+ *  preuve de la clôture ACTUELLE d'éléments d'une clôture ANTÉRIEURE (action rouverte). */
+export interface ActionFicheProofs {
+  scope: 'current' | 'previous'
+  dateLabel: string | null
+  /** `null` = aucune photo déclarée ; `missing` = chemin présent mais fichier introuvable. */
+  photo: { url: string | null; missing: boolean } | null
+  comment: string | null
+  /** Action terminée sans aucune trace jointe (affichage honnête, pas de carte vide). */
+  empty: boolean
+}
+
 export interface ActionFicheData {
   id: string
   siteId: string
@@ -66,6 +79,18 @@ export interface ActionFicheData {
   historyDays: ActionHistoryDay[]
   /** Note honnête quand seule la création est connue (action ancienne, backfill). */
   historyNote: string | null
+  /** Preuves de réalisation (ou éléments d'une clôture antérieure), ou `null` si
+   *  l'action n'a jamais été clôturée. Jamais l'origine, jamais reconstruit. */
+  proofs: ActionFicheProofs | null
+}
+
+const PROOF_BUCKET = 'intervention-photos'
+/** Accès à une photo de clôture (bucket PRIVÉ) : URL signée courte, générée côté
+ *  serveur après le contrôle d'org. Fichier disparu → `missing`, jamais de lien mort. */
+async function signProofPhoto(db: Db, path: string): Promise<{ url: string | null; missing: boolean }> {
+  const { data } = await db.storage.from(PROOF_BUCKET).createSignedUrl(path, 3600)
+  const url = data?.signedUrl ?? null
+  return { url, missing: !url }
 }
 
 // ── Chargements de provenance — TOUS scopés au chantier (garde IDOR) ─────────
@@ -175,6 +200,35 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
   const historyDays = groupHistoryByDay(historyEntries)
   const historyNote = historyNoteFor(historyEntries)
 
+  // ── Preuves de RÉALISATION (Slice 7) : uniquement les traces déclarées à la
+  //    clôture (mig 107). source_capture_id est une ORIGINE (Provenance), jamais ici. ──
+  const hasComment = !!a.completed_comment?.trim()
+  const hasPhoto = !!a.completed_photo_path
+  let proofs: ActionFicheProofs | null = null
+  if (a.status === 'done') {
+    // Clôture ACTUELLE : les colonnes correspondent à l'état terminé courant.
+    proofs = {
+      scope: 'current',
+      dateLabel: frDate(a.done_at),
+      photo: hasPhoto ? await signProofPhoto(db, a.completed_photo_path as string) : null,
+      comment: hasComment ? a.completed_comment : null,
+      empty: !hasPhoto && !hasComment,
+    }
+  } else if (hasPhoto || hasComment) {
+    // Action ROUVERTE (ou clôturée avant le journal) : ces éléments ne prouvent PAS
+    // l'état courant. On les montre comme une clôture ANTÉRIEURE, datée par l'événement
+    // `completed` le plus récent (fiable : les colonnes reflètent la dernière clôture ;
+    // fn_complete_action est no-op si déjà terminée). Pas d'événement → pas de date.
+    const lastCompleted = [...historyEntries].reverse().find((e) => e.kind === 'completed')
+    proofs = {
+      scope: 'previous',
+      dateLabel: lastCompleted ? frDate(lastCompleted.occurredAt) : null,
+      photo: hasPhoto ? await signProofPhoto(db, a.completed_photo_path as string) : null,
+      comment: hasComment ? a.completed_comment : null,
+      empty: false,
+    }
+  }
+
   // ── Contexte secondaire : la réunion/visite d'origine, quand la source primaire
   //    est une réserve ou un sujet. Vient de la colonne report_id de l'action. ──
   let context: ActionFicheContext | null = null
@@ -205,5 +259,6 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     doneAt: a.done_at,
     historyDays,
     historyNote,
+    proofs,
   }
 }

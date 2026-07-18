@@ -63,3 +63,33 @@ describe('historique CANONIQUE (Slice 6B) — lu, jamais reconstruit', () => {
     expect(src).toContain('historyNoteFor')
   })
 })
+
+describe('preuves de RÉALISATION (Slice 7) — jamais l’origine, jamais ambiguës', () => {
+  it('la preuve vient des traces de clôture (mig 107), pas de source_capture_id', () => {
+    // Le bloc « proofs » lit completed_comment / completed_photo_path…
+    expect(src).toMatch(/completed_comment/)
+    expect(src).toMatch(/completed_photo_path/)
+    // …tandis que source_capture_id reste une ORIGINE (provenance « capture »),
+    // jamais une preuve d'exécution.
+    expect(src).toMatch(/kind === 'capture' && a\.source_capture_id/)
+  })
+
+  it('preuve COURANTE seulement si l’action est terminée ; sinon clôture ANTÉRIEURE', () => {
+    expect(src).toMatch(/a\.status === 'done'/)
+    expect(src).toContain("scope: 'current'")
+    expect(src).toContain("scope: 'previous'")
+    // la clôture antérieure est datée par l'événement completed le plus récent, jamais inventée
+    expect(src).toMatch(/reverse\(\)\.find\(\(e\) => e\.kind === 'completed'\)/)
+  })
+
+  it('photo servie par URL signée serveur (bucket privé) ; fichier disparu → indisponible', () => {
+    expect(src).toContain('createSignedUrl')
+    expect(src).toContain('intervention-photos')
+    expect(src).toMatch(/missing: !url/)
+  })
+
+  it('action jamais clôturée → aucune preuve (pas de carte vide)', () => {
+    // proofs reste null si status !== 'done' ET aucune trace de clôture.
+    expect(src).toMatch(/let proofs: ActionFicheProofs \| null = null/)
+  })
+})
