@@ -48,13 +48,18 @@ export interface ContactInput {
   isMain?: boolean
 }
 
-export async function createContact(companyId: string, input: ContactInput): Promise<string> {
+/** `orgId` REQUIS depuis la mig 219 : company_contacts.organization_id est
+ *  NOT NULL et un trigger (check_company_contact_org) refuse tout contact sans
+ *  org — l'isolation ne passe plus par l'entreprise (devenue optionnelle). Il
+ *  doit correspondre à l'org de `companyId`. */
+export async function createContact(orgId: string, companyId: string, input: ContactInput): Promise<string> {
   const sb = createAdminClient()
   // Un seul contact principal par entreprise : si on en désigne un, on dégrade les autres.
   if (input.isMain) await sb.from('company_contacts').update({ is_main: false }).eq('company_id', companyId)
   const { data, error } = await sb
     .from('company_contacts')
     .insert({
+      organization_id: orgId,
       company_id: companyId,
       full_name: input.fullName.trim(),
       function: input.function?.trim() || null,

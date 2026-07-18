@@ -463,7 +463,7 @@ export async function addSiteIntervenantAction(
     const companyId = await findOrCreateCompanyByName(ctx.orgId, companyName)
     let contactId: string | null = null
     if (input.contactName?.trim()) {
-      contactId = await createContact(companyId, {
+      contactId = await createContact(ctx.orgId, companyId, {
         fullName: input.contactName,
         function: input.contactFunction,
         phone: input.contactPhone,
