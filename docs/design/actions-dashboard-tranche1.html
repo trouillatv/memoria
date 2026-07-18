@@ -1,0 +1,394 @@
+<style>
+  :root {
+    --sidebar: #0f172a; --sidebar-ink: #cbd5e1; --sidebar-ink-dim: #64748b; --sidebar-active: #1e293b;
+    --ground: #f1f5f9; --panel: #ffffff; --ink: #0f172a; --ink-soft: #334155; --muted: #64748b; --faint: #94a3b8;
+    --line: #e2e8f0; --line-soft: #eef2f6; --primary: #2563eb; --primary-soft: #eff6ff;
+    --amber: #d97706; --amber-bg: #fffbeb; --amber-ring: #fde68a;
+    --blue: #2563eb; --blue-bg: #eff6ff; --blue-ring: #bfdbfe;
+    --rose: #e11d48; --rose-bg: #fff1f2; --rose-ring: #fecdd3;
+    --emerald: #059669; --emerald-bg: #ecfdf5; --emerald-ring: #a7f3d0;
+    --indigo: #4f46e5; --indigo-bg: #eef2ff; --indigo-ring: #c7d2fe;
+    --deferred: #cbd5e1;
+    --radius: 12px; --shadow: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0b1220; --panel: #0f172a; --ink: #e2e8f0; --ink-soft: #cbd5e1; --muted: #94a3b8; --faint: #64748b;
+      --line: #1e293b; --line-soft: #172033; --primary: #60a5fa; --primary-soft: #172033;
+      --amber:#fbbf24; --amber-bg:#231a08; --amber-ring:#3f2d0a;
+      --blue:#60a5fa; --blue-bg:#0e1a33; --blue-ring:#1e3a6b;
+      --rose:#fb7185; --rose-bg:#2a0f16; --rose-ring:#4c1622;
+      --emerald:#34d399; --emerald-bg:#07231a; --emerald-ring:#0c3b2b;
+      --indigo:#a5b4fc; --indigo-bg:#161a33; --indigo-ring:#26306b;
+      --deferred:#334155; --sidebar:#070d18; --sidebar-active:#141f33;
+    }
+  }
+  :root[data-theme="light"] { --ground:#f1f5f9; --panel:#fff; --ink:#0f172a; --line:#e2e8f0; }
+  :root[data-theme="dark"] {
+    --ground:#0b1220; --panel:#0f172a; --ink:#e2e8f0; --ink-soft:#cbd5e1; --muted:#94a3b8; --faint:#64748b;
+    --line:#1e293b; --line-soft:#172033; --primary:#60a5fa; --primary-soft:#172033;
+    --amber:#fbbf24;--amber-bg:#231a08;--amber-ring:#3f2d0a;--blue:#60a5fa;--blue-bg:#0e1a33;--blue-ring:#1e3a6b;
+    --rose:#fb7185;--rose-bg:#2a0f16;--rose-ring:#4c1622;--emerald:#34d399;--emerald-bg:#07231a;--emerald-ring:#0c3b2b;
+    --indigo:#a5b4fc;--indigo-bg:#161a33;--indigo-ring:#26306b;--deferred:#334155;--sidebar:#070d18;--sidebar-active:#141f33;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font); background: var(--ground); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .app { display: grid; grid-template-columns: 232px minmax(0,1fr); min-height: 100vh; }
+
+  /* ---- Sidebar ---- */
+  .side { background: var(--sidebar); color: var(--sidebar-ink); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 6px 8px 14px; font-weight: 700; color: #fff; font-size: 17px; }
+  .brand .m { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg,#3b82f6,#2563eb); display: grid; place-items: center; color:#fff; font-weight: 800; font-size: 14px; }
+  .site-switch { background: var(--sidebar-active); border-radius: 10px; padding: 9px 11px; margin: 2px 0 12px; }
+  .site-switch b { color: #fff; font-size: 13.5px; display: block; }
+  .site-switch span { color: var(--sidebar-ink-dim); font-size: 11.5px; }
+  .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--sidebar-ink); text-decoration: none; font-size: 13.5px; }
+  .nav a .ic { width: 16px; height: 16px; opacity: .8; }
+  .nav a.active { background: var(--sidebar-active); color: #fff; box-shadow: inset 2px 0 0 var(--primary); }
+  .nav a.active .ic { opacity: 1; }
+  .nav .sp { flex: 1; }
+  .side .foot { margin-top: auto; display: flex; align-items: center; gap: 9px; padding: 8px; border-top: 1px solid #1e293b; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: #334155; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+
+  /* ---- Main ---- */
+  .main { padding: 24px 28px 40px; min-width: 0; }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+  .head h1 { margin: 0; font-size: 25px; letter-spacing: -.01em; }
+  .head p { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; }
+  .head .tools { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; font-size: 13px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+
+  /* ---- KPI cards ---- */
+  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 22px; }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 15px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--accent); }
+  .kpi .k-top { display:flex; align-items:center; justify-content:space-between; }
+  .kpi .k-label { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+  .kpi .k-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-bg); display:grid; place-items:center; color: var(--accent); font-size: 15px; }
+  .kpi .k-num { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin: 6px 0 2px; }
+  .kpi .k-sub { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .kpi .k-sub .dot { display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; vertical-align: middle; }
+  .kpi.confirm { --accent: var(--amber); --accent-bg: var(--amber-bg); }
+  .kpi.engaged { --accent: var(--blue); --accent-bg: var(--blue-bg); }
+  .kpi.late    { --accent: var(--rose); --accent-bg: var(--rose-bg); }
+  .kpi.prove   { --accent: var(--emerald); --accent-bg: var(--emerald-bg); }
+  .kpi.done    { --accent: #0891b2; --accent-bg: #ecfeff; }
+  @media (prefers-color-scheme: dark){ .kpi.done{ --accent:#22d3ee; --accent-bg:#082630; } }
+  .k-breakdown { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .k-breakdown b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ---- Tabs + filters ---- */
+  .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tabs a { padding: 9px 2px; font-size: 13.5px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; display: inline-flex; align-items: center; gap: 7px; }
+  .tabs a.active { color: var(--primary); border-color: var(--primary); font-weight: 600; }
+  .tabs .count { background: var(--line-soft); color: var(--muted); border-radius: 20px; padding: 1px 7px; font-size: 11px; font-weight: 600; }
+  .tabs a.active .count { background: var(--primary-soft); color: var(--primary); }
+  .filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .search { flex: 1; min-width: 220px; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; color: var(--faint); font-size: 13px; }
+  .search input { border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 13px; width: 100%; font-family: inherit; }
+  .select { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; font-size: 13px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+
+  /* ---- Table ---- */
+  .table-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; box-shadow: var(--shadow); }
+  table { width: 100%; border-collapse: collapse; min-width: 860px; }
+  thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); font-weight: 600; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  tbody td { padding: 13px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--line-soft); }
+  tbody tr.sel { background: var(--primary-soft); box-shadow: inset 3px 0 0 var(--primary); }
+  .a-title { font-weight: 600; color: var(--ink); }
+  .a-ctx { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 500; ring: 1px; border: 1px solid transparent; }
+  .pill.open { background: var(--blue-bg); color: var(--blue); border-color: var(--blue-ring); }
+  .pill.planned { background: var(--indigo-bg); color: var(--indigo); border-color: var(--indigo-ring); }
+  .pill.done { background: var(--emerald-bg); color: var(--emerald); border-color: var(--emerald-ring); }
+  .pill.overdue { background: var(--rose-bg); color: var(--rose); border-color: var(--rose-ring); }
+  .pill.propose { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-ring); }
+  .who { display: inline-flex; align-items: center; gap: 8px; }
+  .who .av { width: 24px; height: 24px; border-radius: 50%; background: var(--line); color: var(--ink-soft); display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+  .who small { display:block; color: var(--muted); font-size: 10.5px; }
+  .due .d { font-variant-numeric: tabular-nums; }
+  .due .tag { font-size: 11px; font-weight: 600; }
+  .due .tag.neg { color: var(--rose); }
+  .due .tag.ok { color: var(--muted); }
+  .due .tag.done { color: var(--emerald); }
+  .origin { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); }
+  .origin .oi { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; }
+  .activity { color: var(--muted); }
+  .activity b { color: var(--ink-soft); font-weight: 500; }
+  .activity small { display: block; font-size: 10.5px; }
+  .none { color: var(--faint); }
+  .pager { display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; color: var(--muted); font-size: 12.5px; }
+  .pager .pages { display: flex; gap: 4px; }
+  .pager .pages span { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; border: 1px solid var(--line); }
+  .pager .pages span.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  /* ---- Side panel (= fiche ?action= déjà construite) ---- */
+  .layout { display: grid; grid-template-columns: minmax(0,1fr) 372px; gap: 20px; align-items: start; }
+  .fiche { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); position: sticky; top: 20px; overflow: hidden; }
+  .fiche .fh { padding: 16px 18px 12px; border-bottom: 1px solid var(--line-soft); }
+  .fiche .fh .close { float: right; color: var(--faint); font-size: 18px; cursor: pointer; }
+  .fiche h3 { margin: 0 0 8px; font-size: 16px; letter-spacing: -.01em; padding-right: 20px; }
+  .fiche .badges { display: flex; gap: 6px; }
+  .meta { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); }
+  .meta .m-l { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); font-weight: 600; }
+  .meta .m-v { font-size: 12.5px; margin-top: 3px; font-weight: 500; }
+  .ftabs { display: flex; gap: 16px; padding: 0 18px; border-bottom: 1px solid var(--line-soft); }
+  .ftabs a { padding: 10px 0; font-size: 12.5px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+  .ftabs a.active { color: var(--primary); border-color: var(--primary); font-weight: 600; }
+  .fbody { padding: 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+  .sec h4 { margin: 0 0 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 700; }
+  .src { background: var(--line-soft); border-radius: 9px; padding: 11px 12px; }
+  .src .st { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 12.5px; }
+  .src .sd { color: var(--muted); font-size: 11.5px; margin: 3px 0 0 26px; }
+  .src .quote { margin: 8px 0 0 26px; font-style: italic; color: var(--ink-soft); font-size: 12px; }
+  .link { color: var(--primary); font-weight: 500; font-size: 12.5px; text-decoration: none; }
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl { display: grid; grid-template-columns: 62px 1fr; gap: 10px; padding-bottom: 12px; position: relative; }
+  .tl .tt { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .tl .tc { font-size: 12.5px; border-left: 2px solid var(--line); padding-left: 12px; padding-bottom: 4px; margin-left: 2px; position: relative; }
+  .tl .tc::before { content:""; position:absolute; left:-5px; top:4px; width:8px; height:8px; border-radius:50%; background: var(--panel); border: 2px solid var(--primary); }
+  .tl .tc b { font-weight: 600; }
+  .tl .tc small { display: block; color: var(--muted); font-size: 11px; }
+  .proof { border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; font-size: 12.5px; }
+  .proof .pl { font-weight: 600; margin-bottom: 3px; }
+  .proof .pm { color: var(--muted); font-size: 11.5px; }
+  .empty-proof { color: var(--muted); font-size: 12.5px; padding: 4px 0; }
+  .relations { display: flex; flex-wrap: wrap; gap: 7px; }
+  .rel { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 11.5px; color: var(--ink-soft); display: inline-flex; gap: 6px; align-items: center; }
+
+  /* ---- Legend of grounded vs deferred ---- */
+  .legend { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+  .legend h4 { margin: 0 0 10px; font-size: 13px; }
+  .legend .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .legend ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+  .legend .ok li { color: var(--ink-soft); }
+  .legend .ok li b { color: var(--emerald); }
+  .legend .off li { color: var(--muted); }
+  .legend .off li b { color: var(--faint); }
+  .tagline { font-size: 11px; color: var(--faint); margin-top: 12px; }
+
+  @media (max-width: 1180px) { .layout { grid-template-columns: 1fr; } .fiche { position: static; } .kpis { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 720px) { .app { grid-template-columns: 1fr; } .side { display: none; } .legend .cols { grid-template-columns: 1fr; } }
+</style>
+
+<div class="app">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="side">
+    <div class="brand"><span class="m">M</span> MemorIA</div>
+    <div class="site-switch"><b>Petro Attiti</b><span>Chantier actif ▾</span></div>
+    <nav class="nav">
+      <a href="#">◎ Aperçu</a>
+      <a href="#">▤ Planning</a>
+      <a href="#">✔ Travail du jour</a>
+      <a href="#" class="active">◉ Actions</a>
+      <a href="#">⏱ Échéances</a>
+      <a href="#">◑ Intervenants</a>
+      <a href="#">⬡ Équipes</a>
+      <a href="#">△ Vigilances</a>
+      <a href="#">▦ Réserves</a>
+      <a href="#">▢ Documents</a>
+      <a href="#">◱ Visites</a>
+      <a href="#">☷ Réunions</a>
+      <a href="#">▥ Rapports</a>
+    </nav>
+    <div class="sp"></div>
+    <a href="#" style="color:var(--sidebar-ink-dim);text-decoration:none;font-size:13px;padding:8px 10px;">⚙ Paramètres</a>
+    <div class="foot"><span class="avatar">VM</span><div style="font-size:12.5px;color:#fff;">Vincent Milon<br><span style="color:var(--sidebar-ink-dim);font-size:11px;">Gestionnaire</span></div></div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+    <div class="head">
+      <div><h1>Actions</h1><p>Pilotage des engagements et obligations</p></div>
+      <div class="tools"><button class="btn">▤ 13 – 26 juillet 2025</button><button class="btn">⛃ Filtres</button></div>
+    </div>
+
+    <!-- KPI CARDS (5, tous groundés) -->
+    <section class="kpis">
+      <div class="kpi confirm">
+        <div class="k-top"><span class="k-label">À confirmer</span><span class="k-icon">◔</span></div>
+        <div class="k-num">3</div>
+        <div class="k-sub">propositions d’<b>action</b> à valider</div>
+        <div class="k-breakdown">Autres propositions du chantier :<br><b>3</b> actions · <b>3</b> échéances · <b>1</b> décision · <b>2</b> connaissances · <b>3</b> intervenants</div>
+      </div>
+      <div class="kpi engaged">
+        <div class="k-top"><span class="k-label">Engagées</span><span class="k-icon">◉</span></div>
+        <div class="k-num">37</div>
+        <div class="k-sub"><span class="dot" style="background:var(--indigo)"></span>8 planifiées<br><span class="dot" style="background:var(--blue)"></span>29 ouvertes</div>
+      </div>
+      <div class="kpi late">
+        <div class="k-top"><span class="k-label">En retard</span><span class="k-icon">⚠</span></div>
+        <div class="k-num">4</div>
+        <div class="k-sub">échéance dépassée</div>
+      </div>
+      <div class="kpi prove">
+        <div class="k-top"><span class="k-label">À prouver</span><span class="k-icon">◇</span></div>
+        <div class="k-num">6</div>
+        <div class="k-sub">terminées sans trace de clôture</div>
+      </div>
+      <div class="kpi done">
+        <div class="k-top"><span class="k-label">Terminées</span><span class="k-icon">✓</span></div>
+        <div class="k-num">52</div>
+        <div class="k-sub">historique conservé</div>
+      </div>
+    </section>
+
+    <div class="layout">
+      <div>
+        <!-- TABS -->
+        <nav class="tabs">
+          <a href="#" class="active">Toutes <span class="count">49</span></a>
+          <a href="#">Engagées <span class="count">37</span></a>
+          <a href="#">En retard <span class="count">4</span></a>
+          <a href="#">À prouver <span class="count">6</span></a>
+          <a href="#">Terminées <span class="count">52</span></a>
+        </nav>
+
+        <!-- FILTERS -->
+        <div class="filters">
+          <div class="search">🔍 <input placeholder="Rechercher une action, un responsable, une origine…" /></div>
+          <button class="select">Responsable ▾</button>
+          <button class="select">Origine ▾</button>
+          <button class="select">État ▾</button>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Action</th><th>État</th><th>Responsable</th><th>Échéance</th><th>Origine</th><th>Dernière activité</th>
+            </tr></thead>
+            <tbody>
+              <tr class="sel">
+                <td><div class="a-title">Remplacer le coffret électrique</div><div class="a-ctx">Coffret endommagé, risque de coupure</div></td>
+                <td><span class="pill open">Ouverte</span></td>
+                <td><span class="who"><span class="av">MT</span><span>M. Tama<small>Élec Pro</small></span></span></td>
+                <td class="due"><span class="d">22/07/2025</span><br><span class="tag neg">J-3</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--indigo-bg);color:var(--indigo)">☷</span>Réunion #8</span></td>
+                <td class="activity"><b>Attribuée à M. Tama</b><small>il y a 1 jour</small></td>
+              </tr>
+              <tr>
+                <td><div class="a-title">Mettre en place les protections</div><div class="a-ctx">Absence de garde-corps niveau 2</div></td>
+                <td><span class="pill planned">Planifiée</span></td>
+                <td><span class="who"><span class="av">AW</span><span>A. Wright<small>AGP</small></span></span></td>
+                <td class="due"><span class="d">25/07/2025</span><br><span class="tag ok">J-6</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--blue-bg);color:var(--blue)">▥</span>CR chantier · 14/07</span></td>
+                <td class="activity"><b>Échéance déplacée</b><small>il y a 3 jours</small></td>
+              </tr>
+              <tr>
+                <td><div class="a-title">Lever la réserve R-14</div><div class="a-ctx">Non-conformité câblage local</div></td>
+                <td><span class="pill open">Ouverte</span></td>
+                <td><span class="who"><span class="av">JB</span><span>J. Roy<small>Becib</small></span></span></td>
+                <td class="due"><span class="d">05/07/2025</span><br><span class="tag neg">+12 jours</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--rose-bg);color:var(--rose)">▦</span>Réserve R-14</span></td>
+                <td class="activity"><b>Créée</b><small>il y a 14 jours</small></td>
+              </tr>
+              <tr>
+                <td><div class="a-title">Peindre les murs du local technique</div><div class="a-ctx">Finition intérieure</div></td>
+                <td><span class="pill done">Terminée</span></td>
+                <td><span class="who"><span class="av">CB</span><span>C. Bat<small>ContraBat</small></span></span></td>
+                <td class="due"><span class="d">18/07/2025</span><br><span class="tag done">clôturée</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--emerald-bg);color:var(--emerald)">◱</span>Visite · 08/07</span></td>
+                <td class="activity"><b>Clôturée</b><small>il y a 1 jour</small></td>
+              </tr>
+              <tr>
+                <td><div class="a-title">Vérifier l’étanchéité toiture</div><div class="a-ctx">Infiltrations constatées</div></td>
+                <td><span class="pill open">Ouverte</span></td>
+                <td><span class="none">Aucun responsable</span></td>
+                <td class="due"><span class="none">—</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--emerald-bg);color:var(--emerald)">◱</span>Visite · 02/07</span></td>
+                <td class="activity"><b>Créée</b><small>il y a 17 jours</small></td>
+              </tr>
+              <tr>
+                <td><div class="a-title">Nettoyer le chantier</div><div class="a-ctx">Accumulation de gravats</div></td>
+                <td><span class="pill done">Terminée</span></td>
+                <td><span class="who"><span class="av">AW</span><span>A. Wright<small>AGP</small></span></span></td>
+                <td class="due"><span class="d">20/07/2025</span><br><span class="tag done">clôturée</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--indigo-bg);color:var(--indigo)">☷</span>Réunion #7</span></td>
+                <td class="activity"><b>Clôturée</b><small>il y a 2 jours</small></td>
+              </tr>
+              <tr>
+                <td><div class="a-title">Installer clôture provisoire</div><div class="a-ctx">Accès chantier non sécurisé</div></td>
+                <td><span class="pill open">Ouverte</span></td>
+                <td><span class="none">Aucun responsable</span></td>
+                <td class="due"><span class="none">—</span></td>
+                <td><span class="origin"><span class="oi" style="background:var(--emerald-bg);color:var(--emerald)">◱</span>Visite · 15/07</span></td>
+                <td class="activity"><b>Créée</b><small>il y a 4 jours</small></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pager"><span>49 actions</span><div class="pages"><span class="on">1</span><span>2</span><span>3</span><span>…</span><span>5</span></div></div>
+        </div>
+      </div>
+
+      <!-- ============ SIDE PANEL = fiche ?action= DÉJÀ CONSTRUITE (Slices 6A→7) ============ -->
+      <aside class="fiche">
+        <div class="fh">
+          <span class="close">✕</span>
+          <h3>Remplacer le coffret électrique</h3>
+          <div class="badges"><span class="pill open">Ouverte</span></div>
+        </div>
+        <div class="meta">
+          <div><div class="m-l">Responsable</div><div class="m-v">M. Tama</div></div>
+          <div><div class="m-l">Échéance</div><div class="m-v">22/07 · <span style="color:var(--rose)">J-3</span></div></div>
+          <div><div class="m-l">Créée le</div><div class="m-v">15/07/2025</div></div>
+        </div>
+        <div class="ftabs"><a href="#" class="active">Vue d’ensemble</a><a href="#">Historique</a></div>
+        <div class="fbody">
+          <div class="sec">
+            <h4>Origine (déclencheur)</h4>
+            <div class="src">
+              <div class="st"><span class="oi" style="background:var(--indigo-bg);color:var(--indigo);width:20px;height:20px;border-radius:5px;display:inline-grid;place-items:center;">☷</span> Réunion #8</div>
+              <div class="sd">14 juillet 2025 · Vincent Milon</div>
+              <div class="quote">« Le coffret est endommagé et présente un risque de coupure générale. »</div>
+              <div style="margin:9px 0 0 26px;"><a class="link" href="#">Voir le compte rendu →</a></div>
+            </div>
+          </div>
+          <div class="sec">
+            <h4>Historique</h4>
+            <div class="timeline">
+              <div class="tl"><div class="tt">15/07 09:14</div><div class="tc"><b>Créée</b><small>Proposée puis promue</small></div></div>
+              <div class="tl"><div class="tt">18/07 09:11</div><div class="tc"><b>Attribuée à M. Tama</b><small>Par Vincent Milon</small></div></div>
+              <div class="tl"><div class="tt">18/07 10:03</div><div class="tc"><b>Échéance fixée</b><small>22 juillet 2025</small></div></div>
+            </div>
+          </div>
+          <div class="sec">
+            <h4>Preuves</h4>
+            <div class="empty-proof">Aucune preuve — l’action n’est pas clôturée. La trace de clôture (photo + commentaire) apparaîtra une fois l’action terminée.</div>
+          </div>
+          <div class="sec">
+            <h4>Relations</h4>
+            <div class="relations">
+              <span class="rel">◈ Petro Attiti</span><span class="rel">☷ Réunion #8</span><span class="rel">◑ M. Tama</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ============ LÉGENDE : ce qui est réel vs différé ============ -->
+    <div class="legend">
+      <h4>Tranche 1 — construite sur le modèle réel, sans rien inventer</h4>
+      <div class="cols">
+        <ul class="ok">
+          <li><b>✓ Groundé</b> — 5 KPIs réels : « À confirmer » = propositions <code>kind=action</code> non promues (mig 212)</li>
+          <li><b>✓</b> Statuts <b>traduits</b> : Ouverte · Planifiée · Terminée (jamais « En cours »)</li>
+          <li><b>✓</b> Origine, Historique, Preuve de clôture = read models canoniques (Slices 5·6·7)</li>
+          <li><b>✓</b> Panneau latéral = la fiche <code>?action=</code> déjà construite, réutilisée telle quelle</li>
+          <li><b>✓</b> Responsable = la personne réelle (contact du casting), ou « Aucun responsable »</li>
+        </ul>
+        <ul class="off">
+          <li><b>Hors tranche</b> — Priorité (Haute/Basse) : aucune colonne aujourd’hui</li>
+          <li><b>Hors tranche</b> — « Relance envoyée » : pas de fonction de relance</li>
+          <li><b>Hors tranche</b> — Multi-preuves pendant l’exécution : preuve = trace de clôture (Slice 7)</li>
+          <li><b>Hors tranche</b> — Affectation à une entreprise/équipe : affectation = une personne</li>
+          <li><b>Hors tranche</b> — Boîte de validation transverse : « À confirmer » compte les actions</li>
+        </ul>
+      </div>
+      <p class="tagline">La maquette est une direction visuelle. Chaque élément « hors tranche » est un lot ultérieur, décidé séparément — plusieurs brossent l’anti-ERP (priorité, relances).</p>
+    </div>
+  </main>
+</div>

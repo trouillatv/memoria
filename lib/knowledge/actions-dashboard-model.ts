@@ -1,0 +1,160 @@
+// ── PILOTAGE DES ACTIONS — modèle PUR (Tranche 1) ────────────────────────────
+// Classification des KPIs, libellés d'échéance, filtres. Aucune dépendance
+// serveur → testable en vitest. Règle : on ne raconte QUE le modèle réel
+// (statuts open/planned/done/cancelled) ; aucun statut inventé, aucune priorité,
+// aucune relance. « À confirmer » ne vient PAS d'ici (ce sont des propositions,
+// pas des actions) — il est calculé côté serveur depuis site_knowledge_proposals.
+
+export type ActionListStatus = 'open' | 'planned' | 'done' | 'cancelled'
+
+/** Traduction fidèle des statuts réels — jamais « En cours ». */
+export const ACTION_STATUS_LABEL: Record<ActionListStatus, string> = {
+  open: 'Ouverte', planned: 'Planifiée', done: 'Terminée', cancelled: 'Annulée',
+}
+
+export interface ActionOrigin {
+  type: 'reunion' | 'visite' | 'reserve' | 'sujet'
+  label: string
+  href: string | null
+}
+
+export interface LatenessLabel {
+  text: string | null
+  tone: 'neg' | 'ok' | 'done' | null
+}
+
+export interface ActionDashboardItem {
+  id: string
+  siteId: string
+  siteName: string
+  title: string
+  description: string | null
+  status: ActionListStatus
+  statusLabel: string
+  /** La personne réelle (contact du casting) ou null — jamais une entreprise. */
+  responsibleName: string | null
+  responsibleSub: string | null
+  dueDate: string | null
+  dueDateStatus: 'explicit' | 'estimated' | null
+  lateness: LatenessLabel
+  origin: ActionOrigin | null
+  lastActivity: { label: string; occurredAt: string } | null
+  /** Trace de clôture présente (photo ou commentaire) — pour « Terminées sans preuve ». */
+  hasClosureTrace: boolean
+  /** Ouvre la fiche canonique existante (Sheet ?action=). */
+  href: string
+}
+
+// ── Appartenance aux KPIs (actions seulement ; « à confirmer » = propositions) ──
+export const isActive = (s: ActionListStatus): boolean => s === 'open' || s === 'planned'
+export const isDone = (s: ActionListStatus): boolean => s === 'done'
+
+/** En retard = engagée, échéance EXPLICITE (confirmée) dépassée. Une échéance
+ *  estimée ne compte pas (cohérent avec la fiche). */
+export function isOverdue(a: Pick<ActionDashboardItem, 'status' | 'dueDate' | 'dueDateStatus'>, today: string): boolean {
+  return isActive(a.status) && a.dueDate !== null && a.dueDateStatus === 'explicit' && a.dueDate < today
+}
+
+/** Terminée sans preuve = clôturée SANS trace de clôture (Slice 7). Le problème
+ *  n'est pas l'absence de preuve pendant l'exécution, mais l'absence de trace AU
+ *  MOMENT de la clôture. */
+export function isDoneWithoutProof(a: Pick<ActionDashboardItem, 'status' | 'hasClosureTrace'>): boolean {
+  return a.status === 'done' && !a.hasClosureTrace
+}
+
+function toUtcDay(d: string): number {
+  const [y, m, dd] = d.slice(0, 10).split('-').map(Number)
+  return Date.UTC(y, m - 1, dd)
+}
+/** Jours civils entre aujourd'hui et l'échéance (positif = à venir). */
+export function daysUntil(today: string, due: string): number {
+  return Math.round((toUtcDay(due) - toUtcDay(today)) / 86_400_000)
+}
+
+/** Libellé d'échéance : « J-3 » à venir, « +12 jours » en retard, « clôturée » si
+ *  terminée. Ne dépend jamais de l'état courant reconstruit. */
+export function latenessLabel(
+  a: Pick<ActionDashboardItem, 'status' | 'dueDate'>, today: string,
+): LatenessLabel {
+  if (a.status === 'done') return { text: 'clôturée', tone: 'done' }
+  if (a.status === 'cancelled' || !a.dueDate) return { text: null, tone: null }
+  const d = daysUntil(today, a.dueDate)
+  if (d < 0) return { text: `+${-d} jour${-d > 1 ? 's' : ''}`, tone: 'neg' }
+  if (d === 0) return { text: 'aujourd’hui', tone: 'neg' }
+  return { text: `J-${d}`, tone: d <= 3 ? 'neg' : 'ok' }
+}
+
+// ── Onglets + filtres (logique CENTRALISÉE, jamais dispersée dans les composants) ──
+export type ActionTab = 'all' | 'active' | 'overdue' | 'done_no_proof' | 'done'
+
+export function inTab(item: ActionDashboardItem, today: string, tab: ActionTab): boolean {
+  switch (tab) {
+    case 'active': return isActive(item.status)
+    case 'overdue': return isOverdue(item, today)
+    case 'done_no_proof': return isDoneWithoutProof(item)
+    case 'done': return isDone(item.status)
+    default: return item.status !== 'cancelled' // « Toutes » masque les annulées
+  }
+}
+
+export interface ActionFilterState {
+  search: string
+  responsibleName: string | null
+  originType: ActionOrigin['type'] | null
+  status: ActionListStatus | null
+}
+
+export function applyActionFilters(items: ActionDashboardItem[], f: ActionFilterState): ActionDashboardItem[] {
+  const q = f.search.trim().toLowerCase()
+  return items.filter((it) => {
+    if (f.status && it.status !== f.status) return false
+    if (f.responsibleName && it.responsibleName !== f.responsibleName) return false
+    if (f.originType && it.origin?.type !== f.originType) return false
+    if (q) {
+      const hay = `${it.title} ${it.description ?? ''} ${it.responsibleName ?? ''} ${it.origin?.label ?? ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+}
+
+// ── KPIs ─────────────────────────────────────────────────────────────────────
+export interface ActionsDashboardSummary {
+  /** Propositions kind='action' encore à valider (site_knowledge_proposals). */
+  aConfirmer: number
+  /** Contexte transverse SECONDAIRE (autres propositions à examiner). */
+  proposalBreakdown: { deadline: number; decision: number; knowledge: number; stakeholder: number; vigilance: number }
+  actives: number
+  activesBreakdown: { open: number; planned: number }
+  enRetard: number
+  termineesSansPreuve: number
+  terminees: number
+  /** Total affiché dans la liste (hors annulées). */
+  total: number
+}
+
+/** Résumé calculé PUREMENT depuis la liste (les propositions sont injectées à part). */
+export function summarizeActions(
+  items: ActionDashboardItem[], today: string,
+  proposals: { aConfirmer: number; breakdown: ActionsDashboardSummary['proposalBreakdown'] },
+): ActionsDashboardSummary {
+  let open = 0, planned = 0, enRetard = 0, terminees = 0, sansPreuve = 0, total = 0
+  for (const it of items) {
+    if (it.status === 'cancelled') continue
+    total++
+    if (it.status === 'open') open++
+    if (it.status === 'planned') planned++
+    if (isOverdue(it, today)) enRetard++
+    if (it.status === 'done') { terminees++; if (!it.hasClosureTrace) sansPreuve++ }
+  }
+  return {
+    aConfirmer: proposals.aConfirmer,
+    proposalBreakdown: proposals.breakdown,
+    actives: open + planned,
+    activesBreakdown: { open, planned },
+    enRetard,
+    termineesSansPreuve: sansPreuve,
+    terminees,
+    total,
+  }
+}

@@ -81,7 +81,7 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
                 </p>
               )}
               {a.proofs.empty ? (
-                <p className="mt-1 text-[13px] text-muted-foreground">Clôturée sans preuve jointe.</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">Action marquée terminée — aucune trace de clôture enregistrée.</p>
               ) : (
                 <div className="mt-1.5 space-y-2.5 text-[13px]">
                   {a.proofs.photo && (
