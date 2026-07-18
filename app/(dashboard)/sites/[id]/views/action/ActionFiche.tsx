@@ -7,7 +7,7 @@
 // historique minimal. Aucune écriture ici (clôture = Slice 8).
 
 import Link from 'next/link'
-import { ChevronRight, UserCheck } from 'lucide-react'
+import { ChevronRight, UserCheck, CheckCircle2, Circle } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -46,6 +46,53 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
         <div className="space-y-5 px-4 pb-6">
           {a.body && <p className="text-[13.5px]">{a.body}</p>}
 
+          {/* ── L'HISTOIRE D'ABORD : pourquoi cette action existe ── */}
+          {a.source && (
+            <section>
+              <h4 className={H4}>Pourquoi cette action</h4>
+              {a.source.available ? (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-[12px] font-medium text-muted-foreground">{a.source.typeLabel}</p>
+                  <p className="text-[13.5px] font-medium">{a.source.title}</p>
+                  {a.source.detail && <p className="text-[12px] text-muted-foreground">{a.source.detail}</p>}
+                  {a.source.href && (
+                    <Link href={a.source.href} className="inline-flex items-center gap-0.5 pt-0.5 text-[13px] font-medium text-primary hover:underline">
+                      {a.source.linkLabel} <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                // Une relation existait mais l'objet a disparu — jamais masqué.
+                <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
+              )}
+              {a.context && (
+                <div className="mt-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contexte</p>
+                  {a.context.href ? (
+                    <Link href={a.context.href} className="text-[13px] text-primary hover:underline">{a.context.label}</Link>
+                  ) : (
+                    <p className="text-[13px] text-muted-foreground">{a.context.label}</p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── ÉTAT ACTUEL : où en est l'engagement, en un coup d'œil (dérivé) ── */}
+          <section>
+            <h4 className={H4}>État actuel</h4>
+            <ul className="mt-1.5 space-y-1">
+              {a.progress.map((p) => (
+                <li key={p.label} className="flex items-center gap-2 text-[13px]">
+                  {p.done
+                    ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    : <Circle className="h-4 w-4 shrink-0 text-muted-foreground/40" />}
+                  <span className={p.done ? 'text-foreground' : 'text-muted-foreground'}>{p.label}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
           <section>
             <h4 className={H4}>Responsable</h4>
             {a.responsible?.kind === 'contact' ? (
@@ -57,7 +104,7 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
               // Trace texte historique — jamais présentée comme une personne.
               <p className="mt-1 text-[13px] text-muted-foreground">Responsable (ancien suivi) : {a.responsible.label}</p>
             ) : (
-              <p className="mt-1 text-[13px] text-muted-foreground">Aucun responsable identifié.</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">À affecter — aucun responsable identifié.</p>
             )}
           </section>
 
@@ -69,6 +116,43 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
               </p>
             </section>
           )}
+
+          {/* ── LE DÉROULÉ : uniquement les faits journalisés (site_action_events),
+               présentés comme un fil. Jamais reconstruit depuis l'état courant. ── */}
+          <section>
+            <h4 className={H4}>Historique</h4>
+            <div className="mt-1.5 space-y-3">
+              {a.historyDays.map((day) => (
+                <div key={day.dayIso}>
+                  <p className="text-[11.5px] font-medium text-muted-foreground">{day.dayLabel}</p>
+                  <ul className="mt-1.5 space-y-2 border-l border-border pl-3.5">
+                    {day.items.map((it) => {
+                      const actor = it.actorLabel
+                        ? `Par ${it.actorLabel}`
+                        : it.actorFallback === 'auto'
+                          ? 'Automatique'
+                          : it.actorFallback === 'unknown'
+                            ? 'Auteur indisponible'
+                            : null
+                      return (
+                        <li key={it.id} className="relative text-[13px]">
+                          <span className="absolute -left-[18px] top-1 h-2 w-2 rounded-full bg-primary/70 ring-2 ring-background" />
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-medium">{it.line}</span>
+                            <span className="text-[11px] tabular-nums text-muted-foreground/70">{it.time}</span>
+                          </div>
+                          {it.detail && <div className="text-[12.5px] text-muted-foreground">{it.detail}</div>}
+                          {actor && <div className="text-[12px] text-muted-foreground/80">{actor}</div>}
+                          {it.reason && <div className="text-[12.5px] text-muted-foreground">Motif : {it.reason}</div>}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            {a.historyNote && <p className="mt-2 text-[12px] italic text-muted-foreground">{a.historyNote}</p>}
+          </section>
 
           {a.proofs && (
             <section>
@@ -112,70 +196,17 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
             </section>
           )}
 
-          <section>
-            <h4 className={H4}>Historique</h4>
-            {/* Uniquement les faits réellement journalisés (site_action_events),
-                dans l'ordre. Jamais complété par déduction depuis l'état courant. */}
-            <div className="mt-1.5 space-y-3">
-              {a.historyDays.map((day) => (
-                <div key={day.dayIso}>
-                  <p className="text-[11.5px] font-medium text-muted-foreground">{day.dayLabel}</p>
-                  <ul className="mt-1 space-y-1.5">
-                    {day.items.map((it) => {
-                      const actor = it.actorLabel
-                        ? `Par ${it.actorLabel}`
-                        : it.actorFallback === 'auto'
-                          ? 'Automatique'
-                          : it.actorFallback === 'unknown'
-                            ? 'Auteur indisponible'
-                            : null
-                      return (
-                        <li key={it.id} className="flex gap-2.5 text-[13px]">
-                          <span className="w-9 shrink-0 tabular-nums text-muted-foreground">{it.time}</span>
-                          <div className="min-w-0">
-                            <span className="font-medium">{it.line}</span>
-                            {it.detail && <div className="text-[12.5px] text-muted-foreground">{it.detail}</div>}
-                            {actor && <div className="text-[12px] text-muted-foreground/80">{actor}</div>}
-                            {it.reason && <div className="text-[12.5px] text-muted-foreground">Motif : {it.reason}</div>}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
-            {a.historyNote && <p className="mt-2 text-[12px] italic text-muted-foreground">{a.historyNote}</p>}
-          </section>
-
-          {a.source && (
+          {/* ── RELATIONS : naviguer dans la mémoire du chantier (provenance connue) ── */}
+          {a.relations.length > 0 && (
             <section>
-              <h4 className={H4}>Origine</h4>
-              {a.source.available ? (
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-[12px] font-medium text-muted-foreground">{a.source.typeLabel}</p>
-                  <p className="text-[13.5px] font-medium">{a.source.title}</p>
-                  {a.source.detail && <p className="text-[12px] text-muted-foreground">{a.source.detail}</p>}
-                  {a.source.href && (
-                    <Link href={a.source.href} className="inline-flex items-center gap-0.5 pt-0.5 text-[13px] font-medium text-primary hover:underline">
-                      {a.source.linkLabel} <ChevronRight className="h-3.5 w-3.5" />
-                    </Link>
-                  )}
-                </div>
-              ) : (
-                // Une relation existait mais l'objet a disparu — jamais masqué.
-                <p className="mt-1 text-[13px] text-muted-foreground">Origine indisponible</p>
-              )}
-              {a.context && (
-                <div className="mt-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Contexte</p>
-                  {a.context.href ? (
-                    <Link href={a.context.href} className="text-[13px] text-primary hover:underline">{a.context.label}</Link>
-                  ) : (
-                    <p className="text-[13px] text-muted-foreground">{a.context.label}</p>
-                  )}
-                </div>
-              )}
+              <h4 className={H4}>Relations</h4>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {a.relations.map((r, i) => r.href ? (
+                  <Link key={i} href={r.href} className="rounded-lg border px-2.5 py-1 text-[12px] hover:bg-muted">{r.label}</Link>
+                ) : (
+                  <span key={i} className="rounded-lg border px-2.5 py-1 text-[12px] text-muted-foreground">{r.label}</span>
+                ))}
+              </div>
             </section>
           )}
         </div>

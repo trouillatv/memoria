@@ -82,6 +82,11 @@ export interface ActionFicheData {
   /** Preuves de réalisation (ou éléments d'une clôture antérieure), ou `null` si
    *  l'action n'a jamais été clôturée. Jamais l'origine, jamais reconstruit. */
   proofs: ActionFicheProofs | null
+  /** « État actuel » : où en est l'engagement, en un coup d'œil. DÉRIVÉ des données
+   *  déjà chargées — aucun champ inventé, aucune donnée nouvelle. */
+  progress: Array<{ label: string; done: boolean }>
+  /** Objets liés cliquables (mémoire du chantier), depuis la provenance connue. */
+  relations: Array<{ label: string; href: string | null }>
 }
 
 const PROOF_BUCKET = 'intervention-photos'
@@ -129,8 +134,9 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
   const orgId = await getOrgId()
   if (!orgId) return null
   const db = createAdminClient()
-  const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
+  const { data: site } = await db.from('sites').select('id, organization_id, name').eq('id', siteId).maybeSingle()
   if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  const siteName = (site as { name: string | null }).name ?? 'Chantier'
 
   const { data } = await db.from('site_actions').select('*').eq('id', actionId).eq('site_id', siteId).maybeSingle()
   if (!data) return null
@@ -260,5 +266,19 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     historyDays,
     historyNote,
     proofs,
+    // « État actuel » — faits dérivés, jamais inventés.
+    progress: [
+      { label: 'Responsable affecté', done: !!responsible },
+      { label: 'Origine identifiée', done: !!source && source.available },
+      { label: 'Échéance fixée', done: due !== null && a.due_date_status === 'explicit' },
+      { label: 'Preuve de clôture', done: !!(a.completed_photo_path || a.completed_comment?.trim()) },
+      { label: 'Clôturée', done: a.status === 'done' },
+    ],
+    // Relations depuis la provenance connue (jamais une association devinée).
+    relations: [
+      { label: siteName, href: `/sites/${siteId}` },
+      ...(source?.available && source.href ? [{ label: source.title, href: source.href }] : []),
+      ...(context ? [{ label: context.label, href: context.href }] : []),
+    ],
   }
 }
