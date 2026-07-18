@@ -49,3 +49,17 @@ describe('provenance STRUCTURELLE (Slice 5) — jamais inférée', () => {
     expect(src).toMatch(/href: null/)
   })
 })
+
+describe('historique CANONIQUE (Slice 6B) — lu, jamais reconstruit', () => {
+  it('la chronologie vient de site_action_events, triée en SQL, scopée action+chantier', () => {
+    expect(src).toMatch(/from\('site_action_events'\)/)
+    expect(src).toMatch(/eq\('action_id', actionId\)[\s\S]*?eq\('site_id', siteId\)/)
+    expect(src).toMatch(/order\('occurred_at'/)
+  })
+
+  it('la composition passe par le module pur (jamais de reconstruction depuis l’état courant)', () => {
+    expect(src).toContain('normalizeActionHistory')
+    expect(src).toContain('groupHistoryByDay')
+    expect(src).toContain('historyNoteFor')
+  })
+})

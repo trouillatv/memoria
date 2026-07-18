@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { ChevronRight, UserCheck } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
-import { frDayMonthLocal, todayLocalIso } from '@/lib/time/local-date'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import type { SiteActionStatus } from '@/types/db'
@@ -72,10 +72,38 @@ export function ActionFicheSheet({ action, onClose }: { action: ActionFicheData 
 
           <section>
             <h4 className={H4}>Historique</h4>
-            <ul className="mt-1 space-y-0.5 text-[13px]">
-              <li><span className="text-muted-foreground">Créée</span> · {frDayMonthLocal(a.createdAt)}</li>
-              {a.doneAt && <li><span className="text-muted-foreground">Terminée</span> · {frDayMonthLocal(a.doneAt)}</li>}
-            </ul>
+            {/* Uniquement les faits réellement journalisés (site_action_events),
+                dans l'ordre. Jamais complété par déduction depuis l'état courant. */}
+            <div className="mt-1.5 space-y-3">
+              {a.historyDays.map((day) => (
+                <div key={day.dayIso}>
+                  <p className="text-[11.5px] font-medium text-muted-foreground">{day.dayLabel}</p>
+                  <ul className="mt-1 space-y-1.5">
+                    {day.items.map((it) => {
+                      const actor = it.actorLabel
+                        ? `Par ${it.actorLabel}`
+                        : it.actorFallback === 'auto'
+                          ? 'Automatique'
+                          : it.actorFallback === 'unknown'
+                            ? 'Auteur indisponible'
+                            : null
+                      return (
+                        <li key={it.id} className="flex gap-2.5 text-[13px]">
+                          <span className="w-9 shrink-0 tabular-nums text-muted-foreground">{it.time}</span>
+                          <div className="min-w-0">
+                            <span className="font-medium">{it.line}</span>
+                            {it.detail && <div className="text-[12.5px] text-muted-foreground">{it.detail}</div>}
+                            {actor && <div className="text-[12px] text-muted-foreground/80">{actor}</div>}
+                            {it.reason && <div className="text-[12.5px] text-muted-foreground">Motif : {it.reason}</div>}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            {a.historyNote && <p className="mt-2 text-[12px] italic text-muted-foreground">{a.historyNote}</p>}
           </section>
 
           {a.source && (

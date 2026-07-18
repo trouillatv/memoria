@@ -17,6 +17,10 @@ import {
   primaryProvenanceKind, PROVENANCE_TYPE_LABEL, PROVENANCE_LINK_LABEL,
   type ActionFicheSource, type ActionFicheContext, type ProvenanceType,
 } from '@/lib/knowledge/action-provenance'
+import {
+  normalizeActionHistory, groupHistoryByDay, historyNoteFor,
+  type RawActionEvent, type ActionHistoryDay,
+} from '@/lib/knowledge/action-history'
 
 type Db = SupabaseClient
 
@@ -57,6 +61,11 @@ export interface ActionFicheData {
   context: ActionFicheContext | null
   createdAt: string
   doneAt: string | null
+  /** Chronologie CANONIQUE — uniquement les événements réellement journalisés
+   *  (site_action_events), jamais reconstruits depuis l'état courant. */
+  historyDays: ActionHistoryDay[]
+  /** Note honnête quand seule la création est connue (action ancienne, backfill). */
+  historyNote: string | null
 }
 
 // ── Chargements de provenance — TOUS scopés au chantier (garde IDOR) ─────────
@@ -156,6 +165,16 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
         }
   }
 
+  // ── Historique CANONIQUE : lu depuis site_action_events, trié en SQL (jamais
+  //    en React), scopé à l'action ET au chantier (garde IDOR/tenant). ──
+  const { data: events } = await db.from('site_action_events')
+    .select('id, kind, occurred_at, actor_label, before_value, after_value, reason')
+    .eq('action_id', actionId).eq('site_id', siteId)
+    .order('occurred_at', { ascending: true }).order('id', { ascending: true })
+  const historyEntries = normalizeActionHistory((events ?? []) as RawActionEvent[])
+  const historyDays = groupHistoryByDay(historyEntries)
+  const historyNote = historyNoteFor(historyEntries)
+
   // ── Contexte secondaire : la réunion/visite d'origine, quand la source primaire
   //    est une réserve ou un sujet. Vient de la colonne report_id de l'action. ──
   let context: ActionFicheContext | null = null
@@ -184,5 +203,7 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     context,
     createdAt: a.created_at,
     doneAt: a.done_at,
+    historyDays,
+    historyNote,
   }
 }
