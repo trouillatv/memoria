@@ -69,7 +69,7 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
           </div>
           <span className="text-sm font-semibold tabular-nums">{view.confirmedCount}</span>
           {toIdentify.length > 0 && (
-            <span className="rounded-full bg-reading-bg px-2 py-0.5 text-[11px] font-medium text-reading-label ring-1 ring-reading-border">
+            <span className="rounded-full bg-reading-bg/10 px-2 py-0.5 text-[11px] font-medium text-reading-label ring-1 ring-reading-border/40">
               {toIdentify.length} à identifier
             </span>
           )}
@@ -172,7 +172,7 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
         {/* Ce que MemorIA a ENTENDU mais ne connaît pas encore — la couche IA,
             jamais mélangée au confirmé. */}
         {toIdentify.length > 0 && (
-          <div className="mt-5 rounded-xl border border-dashed border-reading-border bg-reading-bg p-3.5">
+          <div className="mt-5 rounded-xl border border-dashed border-reading-border/60 bg-reading-bg/[0.07] p-3.5">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-reading-label">À identifier</h3>
             <p className="mt-0.5 text-[12.5px] text-muted-foreground">
               Des personnes citées dans les visites et mémos, que MemorIA ne connaît pas encore.
@@ -253,7 +253,7 @@ function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: ToIdenti
   ].filter(Boolean).join(' — ')
 
   return (
-    <li className="rounded-lg border border-reading-border bg-card p-3">
+    <li className="rounded-lg border border-reading-border/50 bg-card p-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="min-w-0">
           <p className="text-[13.5px] font-semibold">« {item.title} »</p>
