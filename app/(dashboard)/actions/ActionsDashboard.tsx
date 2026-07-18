@@ -31,8 +31,8 @@ const STATUS_CLS: Record<ActionListStatus, string> = {
 }
 
 function frDue(iso: string): string {
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
+  const [, m, d] = iso.split('-')
+  return `${d}/${m}`
 }
 function relTime(iso: string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
@@ -140,53 +140,54 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
         </div>
       </div>
 
-      {/* ── La liste : le cœur de la page (~75 %). Chaque ligne raconte l'engagement. ── */}
+      {/* ── La liste (~75 %). HYBRIDE : récit à gauche, colonnes alignées à droite
+           pour balayer/comparer vite 60 actions (qui · quand · état). ── */}
       <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="hidden items-center gap-3 border-b bg-muted/30 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:flex">
+          <span className="min-w-0 flex-1">Action</span>
+          <span className="w-36 shrink-0 text-right">Responsable</span>
+          <span className="w-20 shrink-0 text-right">Échéance</span>
+          <span className="w-24 shrink-0 text-right">État</span>
+        </div>
         <ul className="divide-y divide-border/60">
           {rows.map((a: ActionDashboardItem) => {
             const overdue = isOverdue(a, today)
             const origin = a.origin ? ORIGIN_ICON[a.origin.type] : null
+            const dueTone = a.lateness.tone === 'neg' && a.status !== 'done' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
+            const badge = <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>{overdue && <span aria-hidden>⚠</span>}{a.statusLabel}</span>
+            const resp = a.responsibleName
+              ? <span className="inline-flex items-center justify-end gap-2"><span className="truncate text-[12.5px]">{a.responsibleName}</span><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{initials(a.responsibleName)}</span></span>
+              : <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900">À affecter</span>
             return (
               <li key={a.id} className={cn('relative hover:bg-muted/40', overdue && 'bg-rose-50/40 dark:bg-rose-950/10')}>
                 {overdue && <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500/70" />}
-                <div className="flex items-start gap-4 px-4 py-3">
-                  {/* Quoi + Pourquoi + Pour quand — le récit de l'engagement */}
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  {/* Récit : quoi + pourquoi + depuis quand */}
                   <div className="min-w-0 flex-1">
                     <Link href={a.href} scroll={false} className="group block">
-                      <div className="flex items-center gap-2">
-                        <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1', STATUS_CLS[a.status])}>
-                          {overdue && <span aria-hidden>⚠</span>}{a.statusLabel}
-                        </span>
-                        <span className="truncate text-[14.5px] font-semibold text-foreground group-hover:text-primary">{a.title}</span>
-                      </div>
-                      {a.description && <p className="mt-1 line-clamp-1 text-[12.5px] text-muted-foreground">{a.description}</p>}
+                      <span className="block truncate text-[14px] font-semibold text-foreground group-hover:text-primary">{a.title}</span>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-muted-foreground">
+                        {a.origin && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className={cn('grid h-[18px] w-[18px] place-items-center rounded text-[11px]', origin?.cls)}>{origin?.ic}</span>{a.origin.label}
+                          </span>
+                        )}
+                        {a.lastActivity && <span className="text-muted-foreground/70">· {a.lastActivity.label} · {relTime(a.lastActivity.occurredAt)}</span>}
+                      </span>
                     </Link>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
-                      {a.origin && (
-                        <Link href={a.origin.href ?? '#'} className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline">
-                          <span className={cn('grid h-[18px] w-[18px] place-items-center rounded text-[11px]', origin?.cls)}>{origin?.ic}</span>
-                          {a.origin.label}
-                        </Link>
-                      )}
-                      {a.dueDate && (
-                        <span className={cn('inline-flex items-center gap-1', a.lateness.tone === 'neg' ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>
-                          Échéance&nbsp;: {frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && <span className="font-semibold"> · {a.lateness.text}</span>}
-                        </span>
-                      )}
-                      {a.lastActivity && <span className="text-muted-foreground/70">{a.lastActivity.label} · {relTime(a.lastActivity.occurredAt)}</span>}
+                    {/* Mobile : les attributs sous le récit (pas de colonnes étroites) */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] sm:hidden">
+                      {resp}
+                      {a.dueDate && <span className={dueTone}>{frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && ` · ${a.lateness.text}`}</span>}
+                      {badge}
                     </div>
                   </div>
-                  {/* Qui */}
-                  <div className="shrink-0 pt-0.5 text-right">
-                    {a.responsibleName ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="text-[13px]">{a.responsibleName}{a.responsibleSub && <span className="block text-[10.5px] text-muted-foreground">{a.responsibleSub}</span>}</span>
-                        <span className="grid h-7 w-7 place-items-center rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">{initials(a.responsibleName)}</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[11.5px] font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900">À affecter</span>
-                    )}
+                  {/* Colonnes alignées (desktop) */}
+                  <div className="hidden w-36 shrink-0 justify-end sm:flex">{resp}</div>
+                  <div className={cn('hidden w-20 shrink-0 text-right text-[12.5px] tabular-nums sm:block', dueTone)}>
+                    {a.dueDate ? <>{frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && <span className="block text-[10.5px] font-semibold">{a.lateness.text}</span>}</> : <span className="text-muted-foreground/60">—</span>}
                   </div>
+                  <div className="hidden w-24 shrink-0 justify-end sm:flex">{badge}</div>
                 </div>
               </li>
             )
