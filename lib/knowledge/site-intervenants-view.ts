@@ -54,8 +54,6 @@ export interface IntervenantPerson {
   citedVisits: IntervenantCitedVisit[]
   /** Nombre de mentions confirmées (transcriptions/captures). */
   mentionCount: number
-  /** Actions ouvertes portées par son RÔLE (assigned_to) — un fait, pas un score. */
-  openActions: number
   /** Où on le connaît ailleurs (contact d'abord, sinon entreprise) — org-scopé. */
   elsewhere: IntervenantElsewhere[]
 }
@@ -104,19 +102,22 @@ type StakeholderProp = {
 }
 
 /** Le cœur partagé : enrichit des lignes de casting en IntervenantPerson (faits
- *  datés, mentions confirmées, actions par rôle, présence ailleurs). Appelé pour
- *  TOUT le casting (onglet) ou pour une seule ligne (fiche) — même calcul. */
+ *  datés, mentions confirmées, présence ailleurs). Appelé pour TOUT le casting
+ *  (onglet) ou pour une seule ligne (fiche) — même calcul.
+ *
+ *  Ne lit AUCUNE action : le suivi par personne exige une relation structurelle
+ *  action→contact qui n'existe pas encore (site_actions.assigned_to = texte
+ *  libre). Le rapprochement rôle↔texte précédent n'était pas un fait métier — il
+ *  a été retiré (Slice 0 du P2). La lecture par personne arrivera avec la FK
+ *  assigned_contact_id. */
 async function buildIntervenantPeople(
   db: Db, orgId: string, siteId: string, intervenants: SiteIntervenant[],
 ): Promise<IntervenantPerson[]> {
   if (intervenants.length === 0) return []
 
-  const [confirmedRes, actionsRes] = await Promise.all([
-    db.from('site_knowledge_proposals')
-      .select('id, title, status, report_id, source_capture_ids, promoted_object_id')
-      .eq('site_id', siteId).eq('kind', 'stakeholder').eq('status', 'confirmed'),
-    db.from('site_actions').select('id, assigned_to').eq('site_id', siteId).eq('status', 'open'),
-  ])
+  const confirmedRes = await db.from('site_knowledge_proposals')
+    .select('id, title, status, report_id, source_capture_ids, promoted_object_id')
+    .eq('site_id', siteId).eq('kind', 'stakeholder').eq('status', 'confirmed')
   const confirmed = (confirmedRes.data ?? []) as StakeholderProp[]
 
   // Dates des visites citées (mentions + visite d'origine du casting).
@@ -130,13 +131,6 @@ async function buildIntervenantPeople(
     for (const r of (reports ?? []) as Array<{ id: string; started_at: string | null }>) {
       reportDate.set(r.id, r.started_at)
     }
-  }
-
-  // Actions ouvertes par RÔLE (assigned_to porte le code rôle — cf. getRoleActorMap).
-  const openByRole = new Map<string, number>()
-  for (const a of (actionsRes.data ?? []) as Array<{ assigned_to: string | null }>) {
-    const r = a.assigned_to?.trim().toUpperCase()
-    if (r) openByRole.set(r, (openByRole.get(r) ?? 0) + 1)
   }
 
   // Mentions confirmées → leur intervenant. promoted_object_id vise le LIEN du
@@ -222,7 +216,6 @@ async function buildIntervenantPeople(
       lastActivity: dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null,
       citedVisits,
       mentionCount,
-      openActions: openByRole.get(it.role.toUpperCase()) ?? 0,
       // Dédoublonné par chantier — deux rôles sur le même chantier = une ligne.
       elsewhere: [...new Map(elsewhere.map((e) => [e.siteId, e])).values()],
     }

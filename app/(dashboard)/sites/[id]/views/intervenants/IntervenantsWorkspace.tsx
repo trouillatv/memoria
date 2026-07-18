@@ -35,7 +35,6 @@ const ROLES = ['MOA', 'MOE', 'BET', 'ETV', 'OPC', 'CSPS', 'PAVE', 'PLANIF']
 export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) {
   const router = useRouter()
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'action'>('all')
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set())
   const [selected, setSelected] = useState<IntervenantPerson | null>(null)
   const [associating, setAssociating] = useState(false)
@@ -48,12 +47,11 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
     .map((g) => ({
       ...g,
       people: g.people.filter((p) => {
-        if (filter === 'action' && p.openActions === 0) return false
         if (!q) return true
         return `${p.name} ${p.companyName} ${p.role} ${p.fonction ?? ''}`.toLowerCase().includes(q)
       }),
     }))
-    .filter((g) => g.people.length > 0), [view.groups, filter, q])
+    .filter((g) => g.people.length > 0), [view.groups, q])
 
   const toIdentify = view.toIdentify.filter((t) => !done.has(t.proposalId))
 
@@ -86,10 +84,8 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
               className="w-full bg-transparent text-foreground outline-none"
             />
           </label>
-          <div className="flex gap-1.5" role="group" aria-label="Filtres">
-            <FilterChip on={filter === 'all'} onClick={() => setFilter('all')}>Tous</FilterChip>
-            <FilterChip on={filter === 'action'} onClick={() => setFilter('action')}>Avec action ouverte</FilterChip>
-          </div>
+          {/* Le filtre « Avec action ouverte » reposait sur le signal rôle↔texte
+              retiré en Slice 0 ; il reviendra en Slice 3 sur la vraie relation. */}
           <button
             type="button"
             onClick={() => setAssociating((v) => !v)}
@@ -155,10 +151,10 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
                           {p.fonction ?? (p.isPerson ? p.role : `Rôle ${p.role}`)}
                         </span>
                       </span>
-                      {/* UN fait à droite : la dernière activité. Le point vert =
-                          au moins une action ouverte portée par son rôle. */}
+                      {/* UN fait à droite : la dernière activité. (Le point vert
+                          « action ouverte » reposait sur le signal rôle↔texte
+                          retiré en Slice 0 — il reviendra sur la vraie relation.) */}
                       <span className="ml-auto hidden shrink-0 text-[12.5px] text-muted-foreground/80 sm:inline">
-                        {p.openActions > 0 && <span className="mr-1 text-emerald-600">●</span>}
                         {p.lastActivity ? frDayMonthLocal(p.lastActivity) : null}
                       </span>
                     </button>
@@ -197,22 +193,6 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
 
       <IntervenantFicheSheet siteId={view.siteId} person={selected} onClose={() => setSelected(null)} />
     </main>
-  )
-}
-
-function FilterChip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        'rounded-full border px-3 py-1.5 text-[12.5px]',
-        on ? 'border-foreground bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-      )}
-    >
-      {children}
-    </button>
   )
 }
 

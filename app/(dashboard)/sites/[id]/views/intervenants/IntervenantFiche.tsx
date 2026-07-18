@@ -12,7 +12,7 @@
 // composée de faits datés et sourcés.
 
 import Link from 'next/link'
-import { Check, ChevronRight, Network, Phone } from 'lucide-react'
+import { ChevronRight, Network, Phone } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import type { IntervenantPerson } from '@/lib/knowledge/site-intervenants-view'
@@ -60,15 +60,10 @@ export function IntervenantFicheSheet({ siteId, person, onClose }: {
             <p className="mt-0.5 text-[12px] text-muted-foreground/80">{provenance}</p>
           </section>
 
-          {p.openActions > 0 && (
-            <section>
-              <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">Aujourd’hui</h4>
-              <p className="mt-1 text-[13px]">
-                <Check className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />
-                {p.openActions} action{p.openActions > 1 ? 's' : ''} ouverte{p.openActions > 1 ? 's' : ''} pour {p.role}
-              </p>
-            </section>
-          )}
+          {/* « Aujourd'hui » (ce qu'on attend de cette personne) reviendra en
+              Slice 3 du P2, branché sur la vraie relation action→contact. Le
+              signal précédent (actions comptées par égalité rôle↔texte) n'était
+              pas un fait métier — retiré en Slice 0. */}
 
           <section>
             <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
