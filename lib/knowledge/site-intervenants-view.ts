@@ -1,20 +1,24 @@
 import 'server-only'
 
-// ── LES INTERVENANTS DU CHANTIER — read model de l'onglet Intervenants ───────
+// ── LES INTERVENANTS DU CHANTIER — read model de l'onglet + de la fiche ──────
 // « Qui travaille sur ce chantier ? » — la question durable, distincte de
 // l'Aperçu (« où en est le chantier ? »). Cadrage + maquette validés
-// 2026-07-18 : liste compacte groupée par ENTREPRISE (le conducteur pense
-// « qui est chez PAVE ? », pas alphabétique), zone « À identifier » séparée
-// (ce que MemorIA a entendu mais ne connaît pas), fiche narrative par personne.
+// 2026-07-18 : liste compacte groupée par ENTREPRISE, zone « À identifier »
+// séparée, FICHE NARRATIVE par personne.
+//
+// La fiche est l'objet TRANSVERSE du produit : le même IntervenantPerson est
+// calculé ici, qu'on l'ouvre depuis l'onglet (liste) ou depuis n'importe quelle
+// autre porte (Explorer, recherche, objets métier) via getSiteIntervenantFiche.
+// Un seul read model, une seule vérité — jamais deux calculs qui divergent.
 //
 // Aucune nouvelle table : casting (migs 137/138) + propositions (mig 212).
-// Chaque chiffre affiché est un FAIT daté et traçable — mentions confirmées,
-// visites d'origine, actions ouvertes portées par le RÔLE (site_actions.
-// assigned_to = code rôle). Jamais de score, jamais d'inférence.
+// Chaque chiffre affiché est un FAIT daté et traçable. Jamais de score, jamais
+// d'inférence.
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgId } from '@/lib/db/users'
-import { listSiteIntervenants } from '@/lib/db/site-intervenants'
+import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-intervenants'
 import { splitPersonCompany } from '@/lib/knowledge/person-name'
 
 export interface IntervenantCitedVisit {
@@ -92,34 +96,32 @@ export interface SiteIntervenantsView {
 const norm = (s: string): string =>
   s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
 
-/** La vue Intervenants d'un chantier. `null` si le chantier n'appartient pas à
- *  l'organisation de l'appelant (fail-closed — le service-role bypasse la RLS). */
-export async function getSiteIntervenantsView(siteId: string): Promise<SiteIntervenantsView | null> {
-  const orgId = await getOrgId()
-  if (!orgId) return null
-  const db = createAdminClient()
+type Db = SupabaseClient
 
-  const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
-  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+type StakeholderProp = {
+  id: string; title: string; status: string; report_id: string | null
+  source_capture_ids: string[] | null; promoted_object_id: string | null
+}
 
-  const [intervenants, propsRes, actionsRes] = await Promise.all([
-    listSiteIntervenants(siteId).catch(() => []),
+/** Le cœur partagé : enrichit des lignes de casting en IntervenantPerson (faits
+ *  datés, mentions confirmées, actions par rôle, présence ailleurs). Appelé pour
+ *  TOUT le casting (onglet) ou pour une seule ligne (fiche) — même calcul. */
+async function buildIntervenantPeople(
+  db: Db, orgId: string, siteId: string, intervenants: SiteIntervenant[],
+): Promise<IntervenantPerson[]> {
+  if (intervenants.length === 0) return []
+
+  const [confirmedRes, actionsRes] = await Promise.all([
     db.from('site_knowledge_proposals')
       .select('id, title, status, report_id, source_capture_ids, promoted_object_id')
-      .eq('site_id', siteId).eq('kind', 'stakeholder').in('status', ['proposed', 'confirmed'])
-      .order('created_at', { ascending: true }),
+      .eq('site_id', siteId).eq('kind', 'stakeholder').eq('status', 'confirmed'),
     db.from('site_actions').select('id, assigned_to').eq('site_id', siteId).eq('status', 'open'),
   ])
+  const confirmed = (confirmedRes.data ?? []) as StakeholderProp[]
 
-  type Prop = {
-    id: string; title: string; status: string; report_id: string | null
-    source_capture_ids: string[] | null; promoted_object_id: string | null
-  }
-  const props = (propsRes.data ?? []) as Prop[]
-
-  // Les dates des visites citées — pour dater mentions et provenance.
+  // Dates des visites citées (mentions + visite d'origine du casting).
   const reportIds = [...new Set([
-    ...props.map((p) => p.report_id),
+    ...confirmed.map((p) => p.report_id),
     ...intervenants.map((i) => i.sourceReportId),
   ].filter((x): x is string => !!x))]
   const reportDate = new Map<string, string | null>()
@@ -145,9 +147,9 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
     intByObjectId.set(it.id, it.id)
     if (!intByObjectId.has(it.companyId)) intByObjectId.set(it.companyId, it.id)
   }
-  const mentionsByIntervenant = new Map<string, Prop[]>()
-  for (const p of props) {
-    if (p.status !== 'confirmed' || !p.promoted_object_id) continue
+  const mentionsByIntervenant = new Map<string, StakeholderProp[]>()
+  for (const p of confirmed) {
+    if (!p.promoted_object_id) continue
     const target = intByObjectId.get(p.promoted_object_id)
     if (!target) continue
     const list = mentionsByIntervenant.get(target) ?? []
@@ -161,7 +163,7 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
   const companyIds = [...new Set(intervenants.map((i) => i.companyId))]
   const elsewhereByContact = new Map<string, IntervenantElsewhere[]>()
   const elsewhereByCompany = new Map<string, IntervenantElsewhere[]>()
-  if (companyIds.length > 0) {
+  {
     const orFilters = [
       contactIds.length > 0 ? `main_contact_id.in.(${contactIds.join(',')})` : null,
       `company_id.in.(${companyIds.join(',')})`,
@@ -192,8 +194,7 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
     }
   }
 
-  // ── Les personnes du casting ──
-  const people: IntervenantPerson[] = intervenants.map((it) => {
+  return intervenants.map((it) => {
     const mentions = mentionsByIntervenant.get(it.id) ?? []
     const visits = new Map<string, string | null>()
     for (const m of mentions) if (m.report_id) visits.set(m.report_id, reportDate.get(m.report_id) ?? null)
@@ -226,6 +227,34 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
       elsewhere: [...new Map(elsewhere.map((e) => [e.siteId, e])).values()],
     }
   })
+}
+
+/** Le chantier appartient-il à l'org de l'appelant ? Fail-closed : le
+ *  service-role bypasse la RLS, la garde vit dans le code. Retourne l'orgId. */
+async function siteOrgId(db: Db, siteId: string): Promise<string | null> {
+  const orgId = await getOrgId()
+  if (!orgId) return null
+  const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
+  if (!site || (site as { organization_id: string | null }).organization_id !== orgId) return null
+  return orgId
+}
+
+/** La vue Intervenants d'un chantier (onglet). `null` si hors org (fail-closed). */
+export async function getSiteIntervenantsView(siteId: string): Promise<SiteIntervenantsView | null> {
+  const db = createAdminClient()
+  const orgId = await siteOrgId(db, siteId)
+  if (!orgId) return null
+
+  const [intervenants, proposedRes] = await Promise.all([
+    listSiteIntervenants(siteId).catch(() => [] as SiteIntervenant[]),
+    db.from('site_knowledge_proposals')
+      .select('id, title, status, report_id, source_capture_ids, promoted_object_id')
+      .eq('site_id', siteId).eq('kind', 'stakeholder').eq('status', 'proposed')
+      .order('created_at', { ascending: true }),
+  ])
+  const proposed = (proposedRes.data ?? []) as StakeholderProp[]
+
+  const people = await buildIntervenantPeople(db, orgId, siteId, intervenants)
 
   // ── Groupé par entreprise (« qui est chez PAVE ? ») ──
   const groupByCompany = new Map<string, IntervenantGroup>()
@@ -244,7 +273,14 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
   // Rapprochement avec le registre org : égalité STRICTE de nom normalisé
   // uniquement (fusionner deux personnes distinctes serait pire que ne rien
   // proposer). La proposition reste une proposition — l'humain tranche.
-  const proposed = props.filter((p) => p.status === 'proposed')
+  const reportIds = [...new Set(proposed.map((p) => p.report_id).filter((x): x is string => !!x))]
+  const reportDate = new Map<string, string | null>()
+  if (reportIds.length > 0) {
+    const { data: reports } = await db.from('site_reports').select('id, started_at').in('id', reportIds)
+    for (const r of (reports ?? []) as Array<{ id: string; started_at: string | null }>) {
+      reportDate.set(r.id, r.started_at)
+    }
+  }
   let contactsIndex: Array<{ id: string; name: string; norm: string; companyName: string }> = []
   if (proposed.length > 0) {
     const { data: orgCompanies } = await db
@@ -283,4 +319,29 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
     groups,
     toIdentify,
   }
+}
+
+/** UNE fiche intervenant, chargée par identité — le point d'accès de « la fiche
+ *  partout » (Explorer, recherche, objets métier). Résout par lien de casting
+ *  (`intervenantId`) ou par contact (`contactId`, pour un décisionnaire/présent).
+ *  `null` si hors org, ou si l'identité ne correspond à aucun intervenant ACTIF
+ *  de ce chantier — on ne fabrique pas une fiche pour quelqu'un hors casting. */
+export async function getSiteIntervenantFiche(
+  siteId: string,
+  key: { intervenantId?: string | null; contactId?: string | null },
+): Promise<IntervenantPerson | null> {
+  const db = createAdminClient()
+  const orgId = await siteOrgId(db, siteId)
+  if (!orgId) return null
+  if (!key.intervenantId && !key.contactId) return null
+
+  const intervenants = await listSiteIntervenants(siteId).catch(() => [] as SiteIntervenant[])
+  const picked = intervenants.find((it) =>
+    (key.intervenantId && it.id === key.intervenantId)
+    || (key.contactId && it.mainContactId === key.contactId),
+  )
+  if (!picked) return null
+
+  const people = await buildIntervenantPeople(db, orgId, siteId, [picked])
+  return people[0] ?? null
 }

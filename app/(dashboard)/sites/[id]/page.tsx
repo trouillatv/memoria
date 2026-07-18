@@ -32,8 +32,9 @@ import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { getMemoryReview } from '@/lib/knowledge/memory-review'
 import { getSiteGraph } from '@/lib/knowledge/site-graph'
-import { getSiteIntervenantsView } from '@/lib/knowledge/site-intervenants-view'
+import { getSiteIntervenantsView, getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
 import { IntervenantsWorkspace } from './views/intervenants/IntervenantsWorkspace'
+import { IntervenantFicheDeepLink } from './views/intervenants/IntervenantFicheDeepLink'
 import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { listSubjectsBySite } from '@/lib/db/subjects'
@@ -68,11 +69,15 @@ import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; person_source?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
 const CHANTIER_VIEW_KEYS = SITE_TAB_KEYS
+
+// D'où la fiche a été ouverte — l'instrumentation qui tranchera « onglet vs
+// fiche partout » (arbitrage 2026-07-18). Toute NOUVELLE porte ajoute sa source.
+const FICHE_SOURCES = new Set(['explorer', 'recherche', 'visite', 'reunion', 'decision', 'apercu'])
 
 export default async function SitePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()
@@ -80,10 +85,19 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab } = await searchParams
+  const { tab: rawTab, person: personId, person_source: personSource } = await searchParams
   const tab: ChantierViewKey = (CHANTIER_VIEW_KEYS as ReadonlyArray<string>).includes(rawTab ?? '')
     ? (rawTab as ChantierViewKey)
     : 'apercu'
+
+  // « La fiche est le produit » : un `?person=<id>` ouvre la MÊME fiche par
+  // dessus n'importe quel onglet. Chargée ici pour être disponible partout.
+  const ficheParam = personId
+    ? await getSiteIntervenantFiche(id, { intervenantId: personId }).catch(() => null)
+    : null
+  if (ficheParam && personSource && FICHE_SOURCES.has(personSource)) {
+    void logUsageEvent({ event: `intervenant_fiche_opened:${personSource}`, siteId: id })
+  }
 
   // L'onglet Aperçu ne figure PAS ici : il lit son propre read model (SiteOverview).
   // Ces chargeurs servent les autres onglets, qui recevront le leur à leur tour.
@@ -275,6 +289,10 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           null
         )}
       </ChantierShell>
+
+      {/* La fiche transverse, ouverte par-dessus n'importe quel onglet via
+          `?person=`. Une seule fiche, des dizaines de portes. */}
+      {ficheParam && <IntervenantFicheDeepLink siteId={id} person={ficheParam} />}
     </div>
   )
 }
