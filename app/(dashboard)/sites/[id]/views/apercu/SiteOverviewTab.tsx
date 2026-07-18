@@ -497,14 +497,18 @@ function StateCard({
   detail: string
 }) {
   const content = (
-    <>
-      <Icon className={cn('h-5 w-5', toneClass[tone].icon)} />
-      <div className="mt-5 text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
-      <div className="mt-2 text-sm font-medium">{title}</div>
-      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
-    </>
+    <div className="flex items-start gap-3">
+      <span className={cn('inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', toneClass[tone].soft)}>
+        <Icon className={cn('h-4 w-4', toneClass[tone].icon)} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[22px] font-bold leading-none tracking-tight tabular-nums">{value}</div>
+        <div className="mt-1 text-[13px] font-medium leading-tight">{title}</div>
+        <div className="text-[11.5px] text-muted-foreground">{detail}</div>
+      </div>
+    </div>
   )
-  const className = cn('min-h-[128px] rounded-[18px] border p-4 shadow-sm transition', toneClass[tone].bg)
+  const className = cn('rounded-xl border p-3 shadow-sm transition', toneClass[tone].bg)
   return href ? (
     <Link href={href} className={cn(className, 'block hover:brightness-[0.98]')}>
       {content}
