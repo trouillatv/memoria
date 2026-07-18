@@ -39,6 +39,8 @@ const EMPTY: ActionsDashboard = {
 
 const LONG = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long' })
 const longDate = (iso: string | null | undefined): string | null => (iso ? LONG.format(new Date(iso)) : null)
+const SHORT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: '2-digit', month: '2-digit' })
+const shortDate = (iso: string | null | undefined): string | null => (iso ? SHORT.format(new Date(iso)) : null)
 
 export async function getActionsDashboard(opts?: { siteId?: string }): Promise<ActionsDashboard> {
   const orgId = await getOrgId()
@@ -122,21 +124,33 @@ export async function getActionsDashboard(opts?: { siteId?: string }): Promise<A
     const kind = primaryProvenanceKind({ reserveId: a.reserve_id, reportId: a.report_id, sourceCaptureId: a.source_capture_id, subjectId: a.subject_id })
     if (kind === 'reserve' && a.reserve_id) {
       const label = reserveById.get(a.reserve_id)
-      return { type: 'reserve', label: label ? `Suite à la réserve ${label}` : 'Suite à une réserve', href: `/sites/${a.site_id}/reserves` }
+      return {
+        type: 'reserve',
+        label: label ? `Suite à la réserve ${label}` : 'Suite à une réserve',
+        short: label ? `Réserve ${label}` : 'Réserve',
+        href: `/sites/${a.site_id}/reserves`,
+      }
     }
     const repId = kind === 'report' ? a.report_id : kind === 'capture' ? (a.source_capture_id ? captureReport.get(a.source_capture_id) ?? null : null) : null
     if ((kind === 'report' || kind === 'capture') && repId) {
       const r = reportById.get(repId)
       const type: ActionOrigin['type'] = r?.origin ? 'visite' : 'reunion'
-      const d = longDate(r?.date)
+      const l = longDate(r?.date)
+      const s = shortDate(r?.date)
       const label = type === 'visite'
-        ? (d ? `Après la visite du ${d}` : 'Après une visite')
-        : (d ? `Issue de la réunion du ${d}` : 'Issue d’une réunion')
-      return { type, label, href: `/meetings/${repId}` }
+        ? (l ? `Après la visite du ${l}` : 'Après une visite')
+        : (l ? `Issue de la réunion du ${l}` : 'Issue d’une réunion')
+      const base = r?.title?.trim() || (type === 'visite' ? 'Visite' : 'Réunion')
+      return { type, label, short: s ? `${base} · ${s}` : base, href: `/meetings/${repId}` }
     }
     if (kind === 'subject' && a.subject_id) {
       const name = subjectById.get(a.subject_id)
-      return { type: 'sujet', label: name ? `Rattachée au sujet « ${name} »` : 'Rattachée à un sujet', href: `/sites/${a.site_id}/subjects/${a.subject_id}` }
+      return {
+        type: 'sujet',
+        label: name ? `Rattachée au sujet « ${name} »` : 'Rattachée à un sujet',
+        short: name ? `Sujet · ${name}` : 'Sujet',
+        href: `/sites/${a.site_id}/subjects/${a.subject_id}`,
+      }
     }
     return null
   }

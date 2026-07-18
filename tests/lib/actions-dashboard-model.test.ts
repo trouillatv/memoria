@@ -80,8 +80,8 @@ describe('onglets et filtres — logique centralisée', () => {
   })
   it('filtres responsable / origine / recherche', () => {
     const list = [
-      item({ id: '1', title: 'Coffret', responsibleName: 'M. Tama', origin: { type: 'reunion', label: 'Réunion #8', href: '/m/8' } }),
-      item({ id: '2', title: 'Peinture', responsibleName: 'A. Wright', origin: { type: 'visite', label: 'Visite', href: '/v' } }),
+      item({ id: '1', title: 'Coffret', responsibleName: 'M. Tama', origin: { type: 'reunion', label: 'Issue de la réunion du 8 juillet', short: 'Réunion · 08/07', href: '/m/8' } }),
+      item({ id: '2', title: 'Peinture', responsibleName: 'A. Wright', origin: { type: 'visite', label: 'Après la visite', short: 'Visite · 02/07', href: '/v' } }),
     ]
     expect(applyActionFilters(list, { search: '', responsibleName: 'M. Tama', originType: null, status: null }).map((i) => i.id)).toEqual(['1'])
     expect(applyActionFilters(list, { search: '', responsibleName: null, originType: 'visite', status: null }).map((i) => i.id)).toEqual(['2'])

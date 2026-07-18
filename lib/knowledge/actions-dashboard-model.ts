@@ -14,7 +14,10 @@ export const ACTION_STATUS_LABEL: Record<ActionListStatus, string> = {
 
 export interface ActionOrigin {
   type: 'reunion' | 'visite' | 'reserve' | 'sujet'
+  /** Prose sous le titre : « Après la visite du 17 juillet » (le contexte). */
   label: string
+  /** Forme courte pour la colonne alignée : « Visite · 17/07 » (d'où ça vient). */
+  short: string
   href: string | null
 }
 

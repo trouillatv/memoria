@@ -22,6 +22,10 @@ const ORIGIN_ICON: Record<ActionOrigin['type'], { ic: string; cls: string }> = {
   reserve: { ic: '▦', cls: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
   sujet: { ic: '◇', cls: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
 }
+// Pastille couleur par type — l'ADN MemorIA : d'où vient officiellement l'action.
+const ORIGIN_DOT: Record<ActionOrigin['type'], string> = {
+  reunion: '#6366f1', visite: '#10b981', reserve: '#f43f5e', sujet: '#0ea5e9',
+}
 
 const STATUS_CLS: Record<ActionListStatus, string> = {
   open: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900',
@@ -145,8 +149,9 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
       <div className="overflow-hidden rounded-xl border bg-card">
         <div className="hidden items-center gap-3 border-b bg-muted/30 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:flex">
           <span className="min-w-0 flex-1">Action</span>
-          <span className="w-36 shrink-0 text-right">Responsable</span>
-          <span className="w-20 shrink-0 text-right">Échéance</span>
+          <span className="w-32 shrink-0 text-right">Responsable</span>
+          <span className="w-16 shrink-0 text-right">Échéance</span>
+          <span className="w-32 shrink-0 text-right">Origine</span>
           <span className="w-24 shrink-0 text-right">État</span>
         </div>
         <ul className="divide-y divide-border/60">
@@ -183,9 +188,18 @@ export function ActionsDashboard({ data, today }: { data: Data; today: string })
                     </div>
                   </div>
                   {/* Colonnes alignées (desktop) */}
-                  <div className="hidden w-36 shrink-0 justify-end sm:flex">{resp}</div>
-                  <div className={cn('hidden w-20 shrink-0 text-right text-[12.5px] tabular-nums sm:block', dueTone)}>
+                  <div className="hidden w-32 shrink-0 justify-end sm:flex">{resp}</div>
+                  <div className={cn('hidden w-16 shrink-0 text-right text-[12.5px] tabular-nums sm:block', dueTone)}>
                     {a.dueDate ? <>{frDue(a.dueDate)}{a.lateness.text && a.status !== 'done' && <span className="block text-[10.5px] font-semibold">{a.lateness.text}</span>}</> : <span className="text-muted-foreground/60">—</span>}
+                  </div>
+                  {/* Origine — l'ADN MemorIA : chaque action rattachée à un fait réel */}
+                  <div className="hidden w-32 shrink-0 items-center justify-end gap-1.5 sm:flex">
+                    {a.origin ? (
+                      <Link href={a.origin.href ?? '#'} className="inline-flex min-w-0 items-center gap-1.5 hover:underline">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ORIGIN_DOT[a.origin.type] }} />
+                        <span className="truncate text-[12px] text-muted-foreground">{a.origin.short}</span>
+                      </Link>
+                    ) : <span className="text-[12px] text-muted-foreground/60">—</span>}
                   </div>
                   <div className="hidden w-24 shrink-0 justify-end sm:flex">{badge}</div>
                 </div>
